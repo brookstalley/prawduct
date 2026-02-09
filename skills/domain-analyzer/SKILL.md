@@ -101,6 +101,8 @@ Total discovery questions must be proportionate to risk:
 
 This is a budget, not a quota. Stop earlier if you have enough to define the product. Never pad questions to fill the budget.
 
+Proactive expertise items (Tier 3 and the Proactive Expertise section below) are surfaced as statements, inferences, or recommendations — not counted as questions against this budget. However, if you phrase a proactive item as a question (e.g., "When you say 'scores,' do you mean..."), it counts against the budget. Prefer inference-confirm framing: "I'm assuming 'scores' means point totals per game — sound right?"
+
 ### Discovery Questions: UI Application
 
 Questions are tiered by decision impact. Start with Tier 1. Move to Tier 2 only for questions whose answers aren't inferable from context. Tier 3 items are surfaced as considerations, not asked as questions.
@@ -162,13 +164,29 @@ After generating questions, identify considerations the user is unlikely to rais
 
 After classification and discovery, produce:
 
-1. **Updated `project-state.yaml`** with:
-   - Classification (domain, shape, risk profile)
-   - Any product definition fields you can already populate from the conversation
-   - Open questions for anything that needs more user input
-   - User expertise profile based on signals observed so far
+1. **Updated `project-state.yaml`** — write all fields you have enough information to populate:
 
-2. **Discovery summary** for the Orchestrator:
+   **After Stage 0 (classification):**
+   - `classification.domain`
+   - `classification.shape` (and `sub_shapes` if hybrid)
+   - `classification.risk_profile.overall`
+   - `classification.risk_profile.factors` (each with level and rationale)
+   - `current_stage`: update to "discovery"
+   - `change_log`: add entry for initial classification
+   - `user_expertise`: initial inferences from the opening message
+
+   **After Stage 1 (discovery):**
+   - `product_definition.vision`: one-sentence product description
+   - `product_definition.users.personas`: at least one persona with name, description, primary needs
+   - `product_definition.core_flows`: flows discovered in conversation
+   - `product_definition.scope.v1`: items confirmed for v1
+   - `product_definition.scope.later`: items explicitly deferred
+   - `product_definition.platform`: where the product runs
+   - `product_definition.nonfunctional`: any NFRs surfaced (proportionate to risk)
+   - `user_expertise`: updated with evidence from conversation
+   - `open_questions`: anything that needs more user input before artifact generation
+
+2. **Discovery summary** for the Orchestrator (in-context only — this is not persisted to a file, it's the LLM's working reasoning as it transitions back to the Orchestrator's instructions):
    - What was discovered
    - What remains open
    - Whether discovery is sufficient to proceed to product definition, or more questions are needed

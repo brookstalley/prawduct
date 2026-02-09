@@ -14,6 +14,38 @@
 
 The input is deliberately vague, non-technical, and low-stakes. It signals a non-technical user with a simple, personal need.
 
+## Test Conversation
+
+To ensure repeatable evaluation, the following scripted responses define what the test user says when asked about each topic. The evaluator provides these responses regardless of how the system phrases its questions. If the system doesn't ask about a topic (e.g., because it infers the answer), the corresponding response is not volunteered.
+
+**When asked to confirm classification or assumptions:**
+> "Yeah, that sounds right."
+>
+> Accept reasonable inferences. Only correct if the system makes an obviously wrong assumption.
+
+**When asked about users / who uses it:**
+> "Mostly my family — me, my wife, and our two kids, ages 10 and 14. Sometimes we have friends over for game night too, maybe 2-3 extra people."
+
+**When asked about the core action / what "track scores" means:**
+> "I'd love to keep track of scores during a game and also see a history over time. Like, who's winning at Catan overall."
+
+**When asked about platform / where they use it:**
+> "On our phones, at the table while we're playing."
+
+**When asked about data persistence / whether history matters:**
+> "Yeah, I'd want to keep the history. That's half the fun."
+
+**When asked about sharing / multi-user / how multiple people interact:**
+> "It would be cool if everyone could enter their own scores on their own phone."
+
+**When asked about current process / how they do it now:**
+> "We just use pen and paper. It works fine but we lose the paper and there's no history."
+
+**When asked about anything not covered above:**
+> Give a brief, non-technical, cooperative answer consistent with the persona: an enthusiastic, non-technical parent who wants something simple for family game nights.
+
+**General persona:** Enthusiastic but non-technical. Uses plain language. Doesn't volunteer technical requirements. Wants to get to building quickly. Does not push back on system recommendations.
+
 ## Evaluation Rubric
 
 ### Domain Analyzer (C2)
@@ -120,6 +152,45 @@ The input is deliberately vague, non-technical, and low-stakes. It signals a non
 - Severity ratings are proportionate to the product's risk level.
 - Addressing the findings would measurably improve the artifacts.
 - No lens produces more than 3-5 findings for a low-risk utility.
+
+### Project State (C5)
+
+The rubric evaluates the resulting `project-state.yaml` after the full process (Stages 0-2).
+
+**Must-do (structural):**
+
+- All populated fields use correct types per the template schema (strings for strings, lists for lists, etc.).
+- No fields added that don't exist in the template schema.
+- Risk factors include rationale, not just a level.
+
+**Must-do (content after Stages 0-2):**
+
+- `classification.domain`: populated ("utility" or "entertainment/utility").
+- `classification.shape`: "ui-application".
+- `classification.risk_profile.overall`: "low".
+- `classification.risk_profile.factors`: at least 2 evaluated factors with rationale.
+- `product_definition.vision`: a clear, specific one-sentence description (not generic).
+- `product_definition.users.personas`: at least one persona with name, description, and primary needs.
+- `product_definition.core_flows`: at least 2 flows (score recording, history viewing).
+- `product_definition.scope.v1`: at least 3 concrete items.
+- `product_definition.scope.later`: at least 1 item explicitly deferred.
+- `product_definition.platform`: populated (mobile).
+- `product_definition.nonfunctional`: at least performance and uptime populated, proportionate to risk level.
+- `user_expertise`: at least `technical_depth` and `product_thinking` inferred with evidence.
+- `current_stage`: "definition" or later.
+- `change_log`: at least 1 entry (initial classification).
+
+**Must-not-do:**
+
+- Must not leave classification fields null after Stage 0.
+- Must not add regulatory constraints for this scenario.
+- Must not set `risk_profile.overall` above "low" for this scenario.
+
+**Quality criteria:**
+
+- A reader of `project-state.yaml` alone — without seeing the conversation — can understand what's being built, for whom, and what's in v1 scope.
+- Values are specific, not generic ("family score-tracking app for board game nights" not "a utility application").
+- Scope decisions reflect the test conversation (score tracking and history in v1, fancier features deferred).
 
 ## End-to-End Success Criteria
 

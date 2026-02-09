@@ -507,9 +507,11 @@ Skills (LLM instruction sets) produce non-deterministic outputs. This doesn't ex
 Each skill is tested against a defined set of product scenarios. For each scenario, the evaluation rubric specifies:
 
 - **Input:** A product description with known characteristics.
+- **Test conversation:** For conversational scenarios, scripted user responses for each topic the system is likely to ask about. Without defined responses, two evaluations of the same skill will diverge because the evaluator gave different answers, making regression detection unreliable. The scripted responses also encode a test persona (expertise level, communication style, cooperativeness) that the system's behavior should adapt to.
 - **Must-do:** Things the skill must do (e.g., "must classify as automation/pipeline," "must ask about failure recovery," "must surface monitoring as a concern").
 - **Must-not-do:** Things the skill must avoid (e.g., "must not ask about screen layouts for a pipeline," "must not recommend not building without stated reason").
 - **Quality criteria:** Specific, observable markers of good output (e.g., "questions are prioritized by impact, not presented as a flat list," "pushback includes rationale, not just disagreement").
+- **State validation:** Expected state of `project-state.yaml` after the process completes. Since Project State is the coordination mechanism between all skills, its correctness after each stage is a critical test of inter-skill compatibility.
 
 ### Minimum Test Scenarios
 
