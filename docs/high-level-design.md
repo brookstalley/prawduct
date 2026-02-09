@@ -1,0 +1,502 @@
+# High-Level Design
+
+## System Overview
+
+The system consists of eight components organized into three layers: a **Conversation Layer** (user-facing), a **Production Layer** (artifact generation and build management), and a **Quality Layer** (governance, trajectory, and learning).
+
+```
+┌─────────────────────────────────────────────────────┐
+│                 CONVERSATION LAYER                   │
+│                                                      │
+│   ┌──────────────┐       ┌───────────────────┐      │
+│   │  Orchestrator │◄─────►│ Domain Analyzer   │      │
+│   │     (C1)      │       │      (C2)         │      │
+│   └──────┬───────┘       └───────────────────┘      │
+│          │                                           │
+├──────────┼───────────────────────────────────────────┤
+│          │        PRODUCTION LAYER                   │
+│          ▼                                           │
+│   ┌──────────────┐       ┌───────────────────┐      │
+│   │   Artifact    │◄─────►│  Project State    │      │
+│   │  Generator    │       │      (C5)         │      │
+│   │    (C3)       │       └────────┬──────────┘      │
+│   └──────────────┘                │                  │
+│                                   │                  │
+├───────────────────────────────────┼──────────────────┤
+│           QUALITY LAYER           │                  │
+│                                   ▼                  │
+│   ┌──────────────┐       ┌───────────────────┐      │
+│   │  Trajectory   │◄─────►│ Build Governance  │      │
+│   │   Monitor     │       │  (The Critic)     │      │
+│   │    (C7)       │       │      (C6)         │      │
+│   └──────────────┘       └───────────────────┘      │
+│                                                      │
+│   ┌──────────────┐       ┌───────────────────┐      │
+│   │   Review      │       │  Learning System  │      │
+│   │   Lenses      │       │      (C8)         │      │
+│   │    (C4)       │       └───────────────────┘      │
+│   └──────────────┘                                   │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### V1 Scope
+
+Not all components are equally essential for a working v1:
+
+- **V1 Core:** C1 (Orchestrator), C2 (Domain Analyzer), C3 (Artifact Generator), C4 (Review Lenses), C5 (Project State), C6 (Build Governance)
+- **V1.5:** C7 (Trajectory Monitor) — architecturally accommodate but implement after v1 validates
+- **V2:** C8 (Learning System) — requires data from many projects; premature before user base exists
+
+The Trajectory Monitor's triggers (R4.2) can be handled by simple heuristics in v1, upgraded to a dedicated component later.
+
+---
+
+## Product Shape Taxonomy
+
+A key insight from stress-testing: not all products are apps with screens. The system must classify products by shape, which determines the artifact set, the discovery questions, and the governance focus.
+
+### Shapes
+
+**UI Application** — Has screens, navigation, user flows. Traditional apps and websites.
+- Artifacts: IA, screen specs, design direction, accessibility spec, onboarding spec
+- Discovery emphasis: UX flows, visual design, accessibility, onboarding, device/platform
+- Governance emphasis: state coverage (loading/empty/error), accessibility compliance, visual consistency
+
+**API / Service** — Consumed by other software, not directly by humans.
+- Artifacts: API contracts, integration guide, versioning strategy, SLA definition, sandbox spec
+- Discovery emphasis: consumers and their needs, business rules, error handling, idempotency, backward compatibility
+- Governance emphasis: contract compliance, error coverage, documentation accuracy, performance against SLAs
+
+**Automation / Pipeline** — Runs in the background on a schedule or trigger.
+- Artifacts: pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec
+- Discovery emphasis: trigger conditions, data sources, failure modes, monitoring, cost of operation
+- Governance emphasis: failure handling, operational visibility, resource usage, silent failure prevention
+
+**Multi-Party Platform** — Multiple distinct user types with different needs interacting through a shared system.
+- Artifacts: per-party experience specs, party interaction model, trust boundaries, migration/adoption plan
+- Discovery emphasis: each party's needs separately, how parties affect each other, onboarding per party, power dynamics
+- Governance emphasis: trust boundary enforcement, per-party test coverage, cross-party interaction testing
+
+**Hybrid** — Combinations of the above. A B2B platform might be an API (for buyers) + UI Application (for seller admin) + Automation (for order processing). Hybrids apply the relevant artifact set for each sub-shape.
+
+### Shape Detection
+
+The Domain Analyzer (C2) classifies shape during intake based on signals in the user's description:
+- Mentions of "app," "screen," "page," "button," "user sees" → UI Application
+- Mentions of "API," "endpoint," "integration," "consumer," "webhook" → API/Service
+- Mentions of "automatically," "every day," "monitor," "scrape," "post to" → Automation/Pipeline
+- Mentions of "buyer and seller," "admin panel," "two types of users" → Multi-Party
+- Ambiguous → ask
+
+---
+
+## Process Stages
+
+### Stage 0: Intake & Triage
+**Owner:** Orchestrator (C1) + Domain Analyzer (C2)
+
+1. User provides raw input
+2. Domain Analyzer classifies domain and shape
+3. Orchestrator begins expertise calibration from initial input signals
+4. System confirms classification with user: "This sounds like a location-based social app for mobile. Is that right?"
+
+### Stage 0.5: Validation
+**Owner:** Orchestrator (C1) + Domain Analyzer (C2) + Review Lenses (C4)
+
+Product Lens and Skeptic Lens evaluate before deep discovery begins:
+- Does this warrant building? Are there existing solutions?
+- Is this one product or multiple?
+- Is this feasible for LLM-assisted development?
+- Are there obvious regulatory or legal constraints?
+
+If concerns arise, surface them to user. Possible outcomes: proceed, refine scope, pivot, or recommend not building.
+
+### Stage 1: Discovery
+**Owner:** Orchestrator (C1) + Domain Analyzer (C2)
+
+Dynamic questioning based on classification. Discovery depth calibrated to product risk and user patience.
+
+Domain Analyzer provides:
+- Archetype-specific critical questions (prioritized by impact)
+- Shape-specific technical questions
+- Risk and complexity profile
+- Considerations the user hasn't raised
+
+Orchestrator manages:
+- Question pacing and prioritization
+- Expertise calibration (ongoing)
+- Inference and confirmation (not interrogation)
+- Pushback on questionable decisions
+- Recognition of when discovery is "good enough"
+
+Output: Populated Project State (C5) with decisions, open questions, and rationale.
+
+### Stage 2: Product Definition
+**Owner:** Orchestrator (C1) + Review Lenses (C4)
+
+Crystallize discovery into firm decisions:
+- Users and personas
+- Platform and reach
+- Core flows (or core pipeline stages, or core API operations)
+- V1 scope vs. later
+- Non-functional requirements (performance, cost, uptime, accessibility)
+- Regulatory constraints
+
+All four Review Lenses evaluate the product definition before proceeding.
+
+Output: Finalized product decisions in Project State. Ready for artifact generation.
+
+### Stage 3: Artifact Generation
+**Owner:** Artifact Generator (C3) + Review Lenses (C4)
+
+Generate the shape-appropriate artifact set. Each artifact:
+- Is reviewed by all relevant lenses before finalization
+- States its dependencies on other artifacts explicitly
+- Is version-tracked in Project State (C5)
+
+Output: Complete, reviewed artifact set.
+
+### Stage 4: Build Planning
+**Owner:** Artifact Generator (C3) + Project State (C5)
+
+Produce execution plan:
+- Build order with dependency graph
+- Parallelization opportunities
+- Early-feedback milestones (get something in front of the user as soon as possible)
+- Governance checkpoints (when does the Critic run full reviews?)
+
+Output: Ordered build plan ready for coding agent.
+
+### Stage 5: Build + Governance Loop
+**Owner:** Build Governance (C6) + Trajectory Monitor (C7)
+
+Repeating cycle during development:
+1. Coding agent builds a defined chunk
+2. Critic evaluates (spec compliance, test integrity, architectural consistency, documentation)
+3. Issues categorized: blocking / warning / note
+4. Agent addresses blocking issues
+5. Critic verifies fixes (watching for fix-by-fudging)
+6. Trajectory Monitor checks for holistic concerns at defined triggers
+7. Proceed to next chunk or trigger refactoring review
+
+### Stage 6: Iteration
+**Owner:** Orchestrator (C1) + Project State (C5)
+
+User sees built artifact, reacts, requests changes. Orchestrator classifies:
+- **Cosmetic:** flows directly to build, minimal artifact updates
+- **Functional:** updates relevant artifacts, Critic re-validates affected areas
+- **Directional:** may trigger reclassification (R5.4), re-enters discovery for new scope, propagates through all artifacts
+
+---
+
+## Components (Detailed)
+
+### C1: Orchestrator
+
+**Purpose:** Manages the overall process — from first user input through build completion and iteration. The conductor of all other components.
+
+**Key responsibilities:**
+- Stage management and transitions (fuzzy, not rigid gates)
+- Conversation flow: when to ask, infer, push back, or move on
+- User expertise model: multi-dimensional, inferred from behavior, continuously updated
+- Pacing calibration: match discovery depth to product risk and user patience
+- Escalation decisions: what requires user input vs. autonomous handling
+- Change classification: cosmetic vs. functional vs. directional
+
+**Interactions:**
+- Calls C2 for classification and discovery questions
+- Calls C3 for artifact generation
+- Reads/writes C5 for all project decisions
+- Invokes C4 at stage transitions and on generated artifacts
+- Receives signals from C6 and C7 during build phase
+- Escalates to user only per principles (genuine product decisions, unresolvable disagreements, vision-affecting changes)
+
+**Design considerations:**
+- Must handle scattered, contradictory, or uncertain users gracefully
+- Must know when "good enough" discovery has occurred — this threshold varies by product shape and risk level
+- Stage transitions are fuzzy: discovery and definition interleave, building and iteration overlap
+- Must handle "just build it" users by accelerating with explicit assumptions, not by skipping governance
+
+### C2: Domain Analyzer
+
+**Purpose:** Classifies the product and activates relevant lines of inquiry. The system's product knowledge encoded as principles, not encyclopedia entries.
+
+**Key responsibilities:**
+- Product classification: domain (social, marketplace, B2B, utility, etc.) and shape (UI, API, pipeline, multi-party, hybrid)
+- Risk and complexity profiling per archetype
+- Discovery question generation, prioritized by impact
+- Proactive expertise: considerations the user is unlikely to raise, given their expertise profile
+- Prior art awareness: surface existing solutions in the space (using web search when needed)
+- Regulatory flag detection: identify when domain or features trigger regulatory requirements
+
+**Knowledge structure:**
+Principles tagged to archetypes and shapes. Examples:
+- [network effects] "Products with network effects must address the cold-start problem."
+- [user content] "Any product where users generate content must have a moderation strategy."
+- [location] "Location-based products must address privacy, battery impact, and precision."
+- [non-technical users] "Products targeting non-technical users must heavily weight onboarding, error recovery, and accessibility."
+- [unattended] "Products that run unattended must have monitoring, alerting, and failure recovery as core features, not afterthoughts."
+- [financial] "Products handling money must address idempotency, reconciliation, and audit trails."
+- [multi-party] "Products with multiple user types must discover each party's needs independently and model their interactions explicitly."
+- [API] "APIs must address versioning, backward compatibility, and consumer onboarding (docs + sandbox)."
+
+Principles also fire on feature detection: adding messaging to any product triggers moderation concerns regardless of archetype.
+
+**Evolves via:** Learning System (C8) adds new discovery questions and risk patterns based on observed project outcomes.
+
+### C3: Artifact Generator
+
+**Purpose:** Produces the build plan artifacts. Selects the appropriate artifact set based on product shape and generates each artifact from the decisions in Project State.
+
+**Key responsibilities:**
+- Artifact set selection based on product shape (see Product Shape Taxonomy)
+- Generation of each artifact with cross-references and dependency declarations
+- Consistency enforcement across artifacts (data model matches API contracts matches screen specs)
+- Build ordering with dependency graph and early-feedback milestones
+- Artifact updates when decisions change (modular, not regenerate-everything)
+
+**Artifact dependency model:**
+
+```
+Product Brief (universal)
+    │
+    ├──► Information Architecture (UI)     API Contracts (API)     Pipeline Architecture (automation)
+    │         │                                  │                          │
+    │         ▼                                  ▼                          ▼
+    │    Screen Specs (UI)              Integration Guide (API)    Scheduling Spec (automation)
+    │         │                                  │                          │
+    ├──► Data Model (universal) ◄────────────────┤                          │
+    │         │                                  │                          │
+    ▼         ▼                                  ▼                          ▼
+Security Model (universal)              SLA Definition (API)      Monitoring Spec (automation)
+    │
+    ▼
+Non-Functional Requirements (universal)
+    │
+    ▼
+Test Specifications (universal)
+    │
+    ▼
+Operational Specification (universal)
+    │
+    ▼
+Dependency Manifest (universal)
+```
+
+**Each artifact declares:**
+- What it depends on (and which version)
+- What depends on it
+- When it was last validated against implementation (once build begins)
+
+### C4: Review Lenses
+
+**Purpose:** Multi-perspective validation applied to system output at every stage. Defined in principles.md (Product, Design, Architecture, Skeptic).
+
+**When they fire:**
+- **Stage 0.5 (Validation):** Product and Skeptic evaluate whether to build at all
+- **Stage 1 (Discovery):** Product and Skeptic check whether the right questions are being asked
+- **Stage 2 (Product Definition):** All four lenses review crystallized decisions
+- **Stage 3 (Artifact Generation):** All four lenses review artifacts before finalization
+- **Stage 5 (Build + Governance):** Architecture and Skeptic validate implementation
+- **Stage 6 (Iteration):** Product evaluates change requests; Architecture evaluates blast radius
+
+**Output structure per lens evaluation:**
+- Findings: specific observations, not vague impressions
+- Severity: blocking (must address before proceeding), warning (must address before delivery), note (consider)
+- Recommended action: what to do about each finding
+
+**Design considerations:**
+- Different lenses have different authority. The Architecture lens can block on boundary violations. The Skeptic flags but doesn't block (unless the risk is severe).
+- Lenses should not all fire with equal depth on every evaluation. Routine artifact generation gets a lighter touch than a major scope change.
+- Lens perspectives should rotate emphasis: sometimes lead with security, sometimes with cost, sometimes with accessibility. Prevents blind spots from developing.
+
+### C5: Project State
+
+**Purpose:** The single source of truth for the project — all decisions, their rationale, dependencies, open questions, and change history.
+
+**Structure:**
+
+```
+Project State
+├── Classification
+│   ├── Domain(s)
+│   ├── Shape(s)
+│   └── Risk profile
+├── Product Definition
+│   ├── Vision & goals (resolved/open)
+│   ├── Users & personas — per party if multi-party (resolved/open)
+│   ├── Core flows / operations / pipeline stages (resolved/open)
+│   ├── Scope decisions (v1 / accommodate / later / never)
+│   ├── Platform & reach
+│   ├── Non-functional requirements
+│   ├── Regulatory constraints
+│   └── Cost estimates
+├── Technical Decisions
+│   ├── Architecture choices + rationale
+│   ├── Technology choices + rationale
+│   ├── Data model decisions
+│   ├── Integration decisions
+│   └── Operational decisions (deployment, monitoring, recovery)
+├── Design Decisions
+│   ├── IA decisions
+│   ├── Interaction patterns
+│   ├── Accessibility approach
+│   └── Visual direction
+├── Artifact Manifest
+│   ├── (artifact → version, dependencies, last validated)
+│   └── Documentation tier assignments
+├── Dependency Graph
+│   └── (decision → affected decisions, affected artifacts)
+├── Open Questions
+│   └── (question, blocking what, waiting on whom, priority)
+├── User Expertise Profile
+│   └── (dimension → inferred level, evidence)
+└── Change Log
+    └── (what changed, why, blast radius, classification, date)
+```
+
+**Design considerations:**
+- Must support partial resolution. The system works productively with incomplete state throughout discovery.
+- Must be queryable: Critic asks "what did we decide about auth?" Orchestrator asks "what's unresolved?"
+- Must support rollback: if a directional change fails, the previous state is recoverable.
+
+### C6: Build Governance (The Critic)
+
+**Purpose:** Automated quality enforcement during development. The embodiment of the Hard Rules from principles.md.
+
+**Sub-components:**
+
+**Spec Compliance Auditor**
+- After each work unit, diffs implementation against specification
+- Produces explicit checklist: specified → implemented → discrepancy
+- Discrepancies must be resolved: fix implementation or formally amend spec with rationale
+
+**Test Integrity Checker**
+- Monitors for corruption patterns: deletion, commenting, assertion weakening, trivial assertions, testing mocks instead of behavior
+- Mechanical checks: test count trend, assertion count per test, coverage metrics
+- Flags all test modifications with explanation requirement
+- Enforces tests-alongside-implementation
+
+**Architectural Consistency Checker**
+- Validates implementation against architecture artifact
+- Checks: module boundary respect, dependency direction, data flow, separation of concerns
+- Flags violations with specific evidence
+
+**Documentation Controller**
+- Enforces Tier 1/2/3 system
+- Prevents ad hoc document creation in canonical doc space
+- Validates Source of Truth documents against implementation
+- Sweeps ephemeral documents for expiration
+- Maintains artifact manifest in Project State
+
+**Operational Readiness Checker** (for automations, APIs, and services)
+- Verifies monitoring is implemented, not just specified
+- Verifies failure recovery paths are tested
+- Verifies alerting thresholds are configured
+- Verifies deployment procedure is documented and reproducible
+
+**Review cycle:**
+1. Agent completes a defined work unit
+2. All relevant Critic sub-components evaluate
+3. Issues categorized: blocking / warning / note
+4. Agent addresses blocking issues
+5. Critic verifies fixes — specifically watching for:
+   - "Fixing" by weakening the check instead of fixing the code
+   - "Fixing" by changing the spec to match the (wrong) implementation
+   - "Fixing" by adding a workaround rather than addressing root cause
+6. Proceed to next chunk or re-enter step 4
+
+### C7: Trajectory Monitor
+
+**Purpose:** Manages the project's trajectory — detecting drift, triggering holistic reviews, resisting entropy. [v1.5 — simple heuristics in v1, dedicated component later]
+
+**Holistic review triggers:**
+- Change touches >N files/modules
+- Agent works around existing structure
+- 3+ consecutive changes to same area
+- Regular cadence at feature milestones
+- User-initiated scope change classified as directional
+
+**Holistic review process:**
+"If we designed this from scratch today, knowing what we know, would we design it the same way?" Applied at every level: data model, architecture, test suite structure, UX flow, documentation organization.
+
+**Entropy metrics tracked:**
+- Code complexity trends
+- Test suite health trends (coverage, assertion quality, flakiness)
+- Documentation freshness
+- Architectural boundary violation frequency
+- Ratio of workarounds to clean implementations
+
+### C8: Learning System
+
+**Purpose:** Makes the system smarter over time by observing patterns across projects. [v2 — requires project volume]
+
+**Sub-components:**
+
+**C8a: Project Observer** — Passive signal collection. Governance interventions, user direction changes, discovery gaps, refactoring triggers.
+
+**C8b: Pattern Extractor** — Periodic cross-project analysis. Applies review lenses to its own findings. Requires statistical significance, not anecdotes.
+
+**C8c: Validation Pipeline** — Four gates: consistency with principles (hard rules are axioms), appropriate specificity, reversibility, adversarial testing against historical projects.
+
+**C8d: Incorporation Engine** — Routes validated learnings to the right component with provenance. New questions → C2. New failure modes → C6. New patterns → C3. Refined thresholds → C7.
+
+**C8e: Retirement Monitor** — Reviews incorporated learnings against current evidence. System knowledge can shrink.
+
+---
+
+## Documentation Architecture
+
+All projects (including this one) follow a three-tier system:
+
+**Tier 1: Source of Truth**
+- Canonical reference for each topic — exactly one document per topic
+- Must reflect current reality at all times
+- Protected: cannot be created or deleted without governance approval
+- Examples in this project: vision.md, requirements.md, principles.md, high-level-design.md
+
+**Tier 2: Generated**
+- Derived from implementation or Tier 1 docs
+- Automated generation preferred
+- Always current by definition
+- Examples: API docs from code, type docs from schemas, dependency graphs from analysis
+
+**Tier 3: Ephemeral**
+- Working notes, decision explorations, spike findings
+- Stored in a designated working area, separate from Tier 1/2
+- Explicit expiration (default: 2 weeks)
+- Periodically swept: incorporate into Tier 1, or delete
+- Examples: research notes, experiment results, draft proposals
+
+**Document Manifest:** Every project maintains a manifest listing all Tier 1 documents, their purpose, and their last-validated date. The manifest itself is Tier 1.
+
+---
+
+## Cross-Cutting Concerns
+
+### User Expertise Adaptation
+Spans C1, C2, C3, C4. The system maintains a multi-dimensional expertise profile inferred from conversation. Dimensions include: product thinking, technical depth, design sensibility, domain knowledge, operational awareness. The profile updates continuously and drives vocabulary, explanation depth, and involvement calibration.
+
+### Change Propagation
+Decision changes flow: Project State (C5) identifies affected decisions and artifacts → Artifact Generator (C3) updates affected artifacts → Build Governance (C6) re-validates affected implementation → Trajectory Monitor (C7) assesses whether change patterns suggest deeper issues.
+
+### Feedback Integration
+User reacts to build → Orchestrator (C1) classifies feedback → if directional, Domain Analyzer (C2) re-evaluates → if reclassification, discovery reopens for new shape → Project State (C5) updates → change propagation follows.
+
+### Cost Tracking
+Surfaces during discovery (C2 flags cost-relevant design choices), quantified during artifact generation (C3 includes cost estimates in operational spec), monitored during build (C6 checks for cost-relevant deviations), validated during trajectory review (C7 catches cost drift).
+
+---
+
+## Open Design Questions
+
+These are acknowledged gaps that require further work. Per our own principles, we're documenting them rather than pretending they don't exist.
+
+1. **Artifact format specification.** What exactly does each artifact look like? Schema definitions, examples, and validation rules for each artifact type are needed before implementation.
+2. **Agent communication protocol.** How does the build plan get handed to the coding agent? What's the handoff format? How does the agent report back? This is critical for the build governance loop.
+3. **Persistence and session management.** How is Project State stored across sessions? What if the user returns after weeks?
+4. **Multi-user collaboration.** Current design assumes single user. Team scenarios need coordination design.
+5. **Product shapes we haven't tested.** Games, content platforms, developer tools, IoT-adjacent, data-intensive products. The taxonomy may need expansion.
+6. **Minimum viable Critic.** What's the smallest useful Critic for v1? Likely: spec compliance + test integrity + doc controller. Architectural consistency and operational readiness can follow.
+7. **Bootstrapping.** The system itself needs to be built. What's the build order for our own components? Likely: C2 → C1 → C3 → C5 → C4 → C6, with C7 and C8 later.
