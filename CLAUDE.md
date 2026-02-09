@@ -89,25 +89,41 @@ These are the ones most likely to be violated under pressure:
 
 ## V1 Build Order
 
-Components, in recommended implementation order:
+Build as a vertical slice, not component-by-component. See `docs/high-level-design.md` § "Bootstrapping: Vertical Slice Approach" for the full rationale.
 
-1. **C2: Domain Analyzer** (`skills/domain-analyzer/SKILL.md`) — The most novel piece. Start here. Test against diverse product ideas.
-2. **C1: Orchestrator** (`skills/orchestrator/SKILL.md`) — Conversation flow, stage management, calibration. Depends on C2.
-3. **C3: Artifact Generator** (`skills/artifact-generator/SKILL.md`) — Templates and generation logic. Start with universal artifacts, add shape-specific ones.
-4. **C5: Project State** (`templates/project-state.yaml`) — Schema design. Define what gets tracked and how.
-5. **C4: Review Lenses** (`skills/review-lenses/SKILL.md`) — May merge into critic skill. Build and evaluate.
-6. **Mechanical tools** (`tools/`) — Test integrity, doc validation, boundary checking. Satisfying because they're deterministic.
-7. **C6: Critic** (`skills/critic/SKILL.md`) — Combines LLM judgment with mechanical tool invocations.
+### Phase 1: Prove the Path (one scenario end-to-end)
+
+Use the **family utility** test scenario (simple UI app, low risk). Build just enough of each component to handle this one case through the full pipeline:
+
+1. **C5: Project State** (`templates/project-state.yaml`) — Define the schema first. Everything else reads/writes this.
+2. **C2: Domain Analyzer** (`skills/domain-analyzer/SKILL.md`) — Classify "UI Application" + "Utility." Generate discovery questions for this combination only.
+3. **C1: Orchestrator** (`skills/orchestrator/SKILL.md`) — Manage stages 0 → 0.5 → 1 → 2 for this one scenario.
+4. **C3: Artifact Generator** (`skills/artifact-generator/SKILL.md`) — Generate universal artifacts only (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest).
+5. **C4: Review Lenses** (`skills/review-lenses/SKILL.md`) — Apply all four lenses to the generated artifacts.
+
+**Evaluate against the family utility test scenario rubric** (see `docs/high-level-design.md` § "Validation Strategy for Skills"). Phase 1 succeeds when the end-to-end flow produces useful, consistent output from a vague input.
+
+### Phase 2: Widen
+
+- Add product shapes one at a time (automation → API → multi-party), evaluating each against its test scenario rubric.
+- Add shape-specific artifacts and templates as each shape is added.
+- Build mechanical tools (`tools/`).
+- Build the Critic (C6) — start with spec compliance + test integrity.
+- Add Orchestrator sophistication (pacing, expertise calibration, pushback).
+
+### Phase 3: Full V1
+
+All v1 requirements, all five test scenarios passing, framework governing its own development.
 
 C7 (Trajectory Monitor) and C8 (Learning System) are post-v1. Accommodate them architecturally but don't build them yet.
 
 ## Testing Strategy for This Project
 
-Since this project is a framework of skills and tools (not a traditional application), testing looks different:
+Since this project is a framework of skills and tools (not a traditional application), testing looks different. See `docs/high-level-design.md` § "Validation Strategy for Skills" for the full approach.
 
-- **Skills:** Test by running them against diverse product scenarios. Minimum test scenarios: a consumer mobile app, a background automation, a B2B API, a simple family utility, and a multi-party platform. Evaluate whether the skill asks the right questions, produces good artifacts, and catches problems.
+- **Skills:** Test against five defined product scenarios with evaluation rubrics specifying must-do, must-not-do, and quality criteria. "Good" is not a test — specific, observable criteria are. The five scenarios: consumer mobile app, background automation, B2B API, family utility, two-sided marketplace.
 - **Mechanical tools:** Standard unit/integration tests. Feed them known-good and known-bad project states and verify correct detection.
-- **End-to-end:** Take a product idea from raw input through to build plan using the full framework. Evaluate the build plan's quality. This is the compiler-compiles-itself test.
+- **End-to-end:** Take a product idea from raw input through to build plan using the full framework. Evaluate the build plan against its scenario rubric. The compiler-compiles-itself test: run Prawduct through Prawduct.
 
 ## Conventions
 

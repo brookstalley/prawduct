@@ -446,6 +446,133 @@ Project State
 
 ---
 
+## Skill Interaction Model
+
+Components in the Conversation, Production, and Quality layers are implemented as LLM instruction sets (SKILL.md files) operating within a single LLM context. They are not separate services or agents. Understanding how they interact is essential to implementation.
+
+### Execution Model
+
+The LLM operates under one skill's instructions at a time. The Orchestrator (C1) is the default active skill and manages transitions to other skills as needed.
+
+**Interaction patterns:**
+
+- **Skill switching:** The Orchestrator loads another skill's instructions when entering that skill's domain (e.g., loads Domain Analyzer instructions during classification). The Orchestrator's framing context persists.
+- **Shared state via files:** Project State (C5) is a YAML file in the project directory. All skills read from and write to this shared state. This is the primary coordination mechanism.
+- **Artifact I/O:** Generated artifacts are markdown files with YAML frontmatter. Skills produce and consume these files.
+- **Tool invocation:** Mechanical tools (test integrity checker, boundary checker, etc.) are shell scripts invoked by the LLM during governance phases. Their output feeds back into the LLM's evaluation.
+
+### Persistence Model (V1)
+
+Project state persists as files in the user's project directory:
+
+- `project-state.yaml` — Master state file (C5)
+- `doc-manifest.yaml` — Documentation tier tracking
+- `artifacts/` — Generated artifacts (markdown with YAML frontmatter)
+- `working-notes/` — Ephemeral Tier 3 documents
+
+This is intentionally simple: files are human-readable, version-controllable, and require no infrastructure. The LLM reads these files at session start and writes them as decisions are made. This is a reversible choice — if file-based persistence proves insufficient, migration to a structured store is straightforward because the schema is already defined in C5.
+
+### Artifact Format (V1)
+
+Each artifact is a markdown file with structured YAML frontmatter:
+
+```yaml
+---
+artifact: product-brief
+version: 1
+depends_on:
+  - artifact: project-state
+    section: product-definition
+depended_on_by:
+  - artifact: data-model
+  - artifact: information-architecture
+last_validated: null  # populated during build phase
+---
+
+# Product Brief
+
+[Human-readable content here]
+```
+
+The body is readable by both humans and LLMs. The frontmatter enables mechanical dependency tracking and change propagation. This format is a starting hypothesis — if it proves insufficient during the vertical slice, it changes.
+
+---
+
+## Validation Strategy for Skills
+
+Skills (LLM instruction sets) produce non-deterministic outputs. This doesn't excuse them from testability — it requires a different kind of testing. Per "Define Testability for Judgment-Dependent Outputs" (principles.md), evaluation rubrics with specific, observable criteria must be defined before building.
+
+### Scenario-Based Evaluation
+
+Each skill is tested against a defined set of product scenarios. For each scenario, the evaluation rubric specifies:
+
+- **Input:** A product description with known characteristics.
+- **Must-do:** Things the skill must do (e.g., "must classify as automation/pipeline," "must ask about failure recovery," "must surface monitoring as a concern").
+- **Must-not-do:** Things the skill must avoid (e.g., "must not ask about screen layouts for a pipeline," "must not recommend not building without stated reason").
+- **Quality criteria:** Specific, observable markers of good output (e.g., "questions are prioritized by impact, not presented as a flat list," "pushback includes rationale, not just disagreement").
+
+### Minimum Test Scenarios
+
+Five scenarios that cover the product shape taxonomy:
+
+1. **Consumer mobile app** (UI Application) — tests screen-related discovery, accessibility, onboarding, platform considerations.
+2. **Background data pipeline** (Automation) — tests operational concerns, monitoring, failure recovery, cost awareness. Tests that the system does *not* ask about screens or navigation.
+3. **B2B integration API** (API/Service) — tests contract design, versioning, consumer needs, SLAs. Tests expertise calibration for a technical user.
+4. **Simple family utility** (UI Application, low risk) — tests pacing sensitivity, scope restraint. The system should *not* interrogate this the same way it interrogates a B2B platform.
+5. **Two-sided marketplace** (Multi-Party + UI + API hybrid) — tests multi-party discovery, per-party needs, cross-party interactions, trust boundaries.
+
+### Regression Detection
+
+When a skill is modified, all scenarios are re-evaluated. A regression is:
+
+- A must-do item that previously passed now failing.
+- A must-not-do item that previously passed now triggering.
+- Quality criteria that previously held now absent.
+
+This is judgment-based evaluation, not mechanical. But it has structure, and structure enables regression detection even for non-deterministic outputs. Over time, as patterns stabilize, some evaluations may become partially mechanizable (e.g., checking that specific keywords or topics appear in output).
+
+---
+
+## Bootstrapping: Vertical Slice Approach
+
+Per "Prove the Path Before Widening It" (principles.md), the system itself is built as a narrow vertical slice first, then widened. This replaces the component-by-component build order with a path-first approach.
+
+### Phase 1: One Path Through the System
+
+Pick one product scenario (the family utility — a simple UI application with low risk) and build just enough of each component to handle it end-to-end:
+
+1. **C5 (Project State):** Define the schema first — everything else reads/writes this. Validate that the structure captures what discovery and artifact generation need.
+2. **C2 (Domain Analyzer):** Classify "UI Application" + "Utility" domain. Generate discovery questions for this combination only.
+3. **C1 (Orchestrator):** Manage a discovery conversation for this one scenario. Handle stage transitions 0 → 0.5 → 1 → 2.
+4. **C3 (Artifact Generator):** Generate the universal artifact set (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest). Skip shape-specific artifacts initially.
+5. **C4 (Review Lenses):** Apply all four lenses to the generated artifacts. Evaluate whether findings are specific and actionable.
+
+**Evaluate against the family utility test scenario rubric.** The vertical slice succeeds when:
+- The conversation flow produces a populated Project State from a vague input.
+- The artifacts are internally consistent and cross-referenced.
+- The Review Lenses produce specific, actionable findings (not vague impressions).
+- A human reading the output would consider it a plausible starting point for building.
+
+**What this proves:** That the skill interaction model works, that the artifact format is adequate, that Project State captures enough, and that the end-to-end flow produces something useful.
+
+**What this defers:** Other product shapes, shape-specific artifacts, the Critic (C6), pacing sensitivity, prior art search, expertise calibration beyond basic, and mechanical tools.
+
+### Phase 2: Widen Based on Phase 1 Findings
+
+After Phase 1 validates (or forces revision of) the architecture:
+
+- Add product shapes one at a time (automation, then API, then multi-party), evaluating against their respective test scenario rubrics.
+- Add shape-specific artifacts as each shape is added.
+- Build mechanical tools (test integrity, doc validation, boundary checking).
+- Build the Critic (C6) — start with spec compliance + test integrity.
+- Add sophistication to the Orchestrator (pacing, expertise calibration, pushback).
+
+### Phase 3: Full V1
+
+All v1 requirements implemented, all five test scenarios passing evaluation rubrics, the system used to govern its own development. The "compiler compiles itself" test: take Prawduct's own product idea through the full framework and evaluate whether the resulting build plan would produce this system.
+
+---
+
 ## Documentation Architecture
 
 All projects (including this one) follow a three-tier system:
@@ -493,10 +620,15 @@ Surfaces during discovery (C2 flags cost-relevant design choices), quantified du
 
 These are acknowledged gaps that require further work. Per our own principles, we're documenting them rather than pretending they don't exist.
 
-1. **Artifact format specification.** What exactly does each artifact look like? Schema definitions, examples, and validation rules for each artifact type are needed before implementation.
-2. **Agent communication protocol.** How does the build plan get handed to the coding agent? What's the handoff format? How does the agent report back? This is critical for the build governance loop.
-3. **Persistence and session management.** How is Project State stored across sessions? What if the user returns after weeks?
-4. **Multi-user collaboration.** Current design assumes single user. Team scenarios need coordination design.
-5. **Product shapes we haven't tested.** Games, content platforms, developer tools, IoT-adjacent, data-intensive products. The taxonomy may need expansion.
-6. **Minimum viable Critic.** What's the smallest useful Critic for v1? Likely: spec compliance + test integrity + doc controller. Architectural consistency and operational readiness can follow.
-7. **Bootstrapping.** The system itself needs to be built. What's the build order for our own components? Likely: C2 → C1 → C3 → C5 → C4 → C6, with C7 and C8 later.
+### Resolved
+
+1. **~~Artifact format specification.~~** V1 format defined: markdown files with YAML frontmatter for dependency tracking and metadata. See "Artifact Format (V1)" section above. Per-artifact schema definitions and examples will be validated during the vertical slice — the format is a hypothesis, not a commitment.
+2. **~~Agent communication protocol.~~** V1 answer: the LLM *is* both the framework and the coding agent. Skills switch context within a single LLM session. Artifacts are files in the project directory. The "handoff" is the LLM reading its own generated build plan. See "Skill Interaction Model" section above. This will need revisiting for agent agnosticism (R7.3, v1.5).
+3. **~~Persistence and session management.~~** V1 answer: file-based persistence in the project directory. See "Persistence Model (V1)" section above. Session resumption = LLM reads project-state.yaml and artifacts at conversation start.
+7. **~~Bootstrapping.~~** Replaced component-by-component build order with vertical slice approach. See "Bootstrapping: Vertical Slice Approach" section above.
+
+### Open
+
+4. **Multi-user collaboration.** Current design assumes single user. Team scenarios need coordination design. [v1.5 or later — no user projects to learn from yet.]
+5. **Product shapes we haven't tested.** Games, content platforms, developer tools, IoT-adjacent, data-intensive products. The taxonomy may need expansion. [Will surface during Phase 2 widening if users bring these shapes.]
+6. **Minimum viable Critic.** What's the smallest useful Critic for v1? Likely: spec compliance + test integrity + doc controller. Architectural consistency and operational readiness can follow. [Deferred to Phase 2 of bootstrapping.]
