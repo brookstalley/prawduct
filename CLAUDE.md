@@ -54,6 +54,13 @@ prawduct/
 │       ├── party-experience-spec.md   # Per-party template
 │       ├── party-interaction-model.md
 │       └── migration-adoption-plan.md
+├── tests/                             # Evaluation rubrics for skill validation
+│   └── scenarios/                     # Per-scenario test definitions (Tier 1)
+│       ├── family-utility.md          # Phase 1 vertical slice scenario
+│       ├── consumer-mobile-app.md     # Phase 2
+│       ├── background-data-pipeline.md # Phase 2
+│       ├── b2b-integration-api.md     # Phase 2
+│       └── two-sided-marketplace.md   # Phase 2
 ├── docs/                              # This project's own Tier 1 documentation
 │   ├── vision.md
 │   ├── requirements.md

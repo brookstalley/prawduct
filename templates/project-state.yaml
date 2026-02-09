@@ -1,0 +1,217 @@
+# Project State — Master state file for a Prawduct-managed project
+#
+# This file is the single source of truth for all project decisions.
+# All skills read from and write to this file.
+# See docs/high-level-design.md § "C5: Project State" for the specification.
+#
+# Tier: 1 (Source of Truth)
+# Owner: Orchestrator (C1) manages; all skills may read/write their sections.
+#
+# Usage: Copy this template to a new project directory and populate during
+# the discovery process. Fields start as null and are filled as decisions
+# are made. Partially-populated state is normal and expected throughout
+# discovery — the system works productively with incomplete state.
+
+# =============================================================================
+# CLASSIFICATION
+# =============================================================================
+# Populated during Stage 0 (Intake & Triage) by the Domain Analyzer (C2).
+# Confirmed with the user before proceeding to discovery.
+
+classification:
+  # Product domain. Values: utility, social, marketplace, productivity, b2b,
+  # content, automation, developer-tool, education, health, finance,
+  # entertainment, communication.
+  # May have multiple domains for hybrid products.
+  domain: null
+
+  # Product shape. Values: ui-application, api-service, automation-pipeline,
+  # multi-party-platform, hybrid.
+  shape: null
+
+  # For hybrid products only: list the constituent shapes.
+  # Example: [ui-application, api-service]
+  sub_shapes: []
+
+  # Risk and complexity profile.
+  risk_profile:
+    # Overall risk: low, medium, high.
+    # Drives discovery depth (low: 5-8 questions, medium: 8-15, high: 15-25).
+    overall: null
+
+    # Specific risk factors identified during classification.
+    # Each: { factor, level (low/medium/high), rationale }
+    # Common factors: user-count, data-sensitivity, failure-impact,
+    # technical-complexity, regulatory-exposure.
+    factors: []
+
+# =============================================================================
+# PRODUCT DEFINITION
+# =============================================================================
+# Populated during Stages 1-2 (Discovery and Product Definition).
+# Items may be resolved (have a value) or open (null, with a corresponding
+# entry in open_questions).
+
+product_definition:
+  # One-sentence description of what this product is and why it exists.
+  vision: null
+
+  # Measurable success criteria. What does "this worked" look like?
+  # Each: a concrete, evaluable statement.
+  goals: []
+
+  # Who uses this product and what they need.
+  users:
+    # Each persona:
+    #   name: string (e.g., "Family Scorekeeper")
+    #   description: string
+    #   technical_level: none | basic | intermediate | advanced
+    #   primary_needs: [string]
+    #   constraints: [string]  (accessibility, device, connectivity, etc.)
+    personas: []
+
+  # Core user flows (UI), operations (API), or pipeline stages (automation).
+  # Each: { name, description, steps (optional), priority (must-have/nice-to-have) }
+  core_flows: []
+
+  # Scope decisions. Every feature/capability should land in exactly one bucket.
+  scope:
+    # Must have for initial release.
+    v1: []
+    # Design to accommodate but don't build yet.
+    accommodate: []
+    # Genuinely later — not needed for v1 to be useful.
+    later: []
+    # Explicitly out of scope, with rationale.
+    # Each: { item, rationale }
+    never: []
+
+  # Where this runs.
+  # Examples: "mobile (iOS + Android)", "web", "desktop", "CLI"
+  platform: null
+
+  # Non-functional requirements, calibrated to product risk.
+  nonfunctional:
+    # Target response time or throughput.
+    performance: null
+    # Expected user/data growth.
+    scalability: null
+    # Availability target (e.g., "best-effort" for a family app, "99.9%" for B2B).
+    uptime: null
+    # Budget constraints for hosting, APIs, services.
+    cost_constraints: null
+
+  # Regulatory or compliance constraints.
+  # Each: { regulation, applicability, impact }
+  # Empty for most low-risk products.
+  regulatory: []
+
+  # Estimated ongoing operational costs.
+  # Each: { item, estimated_monthly_cost, notes }
+  cost_estimates: []
+
+# =============================================================================
+# TECHNICAL DECISIONS
+# =============================================================================
+# Architecture, technology, and integration choices.
+# Every entry must include rationale (HR4: No Unexamined Decisions).
+# Each: { decision, rationale, alternatives_considered, date }
+
+technical_decisions:
+  architecture: []
+  technology: []
+  data_model: []
+  integrations: []
+  # Deployment, monitoring, recovery decisions.
+  operational: []
+
+# =============================================================================
+# DESIGN DECISIONS
+# =============================================================================
+# UX, IA, and visual direction. Populated only for products with a UI.
+# Each: { decision, rationale, date }
+
+design_decisions:
+  information_architecture: []
+  interaction_patterns: []
+  accessibility_approach: null
+  visual_direction: null
+
+# =============================================================================
+# ARTIFACT MANIFEST
+# =============================================================================
+# Tracks all generated artifacts, their versions, and relationships.
+# Maintained by the Artifact Generator (C3) and validated by the Critic (C6).
+
+artifact_manifest:
+  # Each artifact entry:
+  #   name: string (matches artifact frontmatter)
+  #   file_path: string (relative to project root)
+  #   version: integer
+  #   depends_on: [artifact names]
+  #   depended_on_by: [artifact names]
+  #   last_validated: date or null
+  #   tier: 1 | 2 | 3
+  artifacts: []
+
+# =============================================================================
+# DEPENDENCY GRAPH
+# =============================================================================
+# Maps decisions to their downstream impacts. Used for change propagation.
+# Each: { decision_id, description, affects_decisions: [], affects_artifacts: [] }
+
+dependency_graph: []
+
+# =============================================================================
+# OPEN QUESTIONS
+# =============================================================================
+# Unresolved decisions. Normal during discovery, should shrink toward zero
+# as the project approaches artifact generation.
+# Each:
+#   question: string
+#   blocking: string (what can't proceed until this is answered)
+#   waiting_on: "user" | "system" | "research"
+#   priority: high | medium | low
+#   raised_at_stage: string
+
+open_questions: []
+
+# =============================================================================
+# USER EXPERTISE PROFILE
+# =============================================================================
+# Inferred from conversation signals, never self-assessed (R1.3).
+# Updated continuously by the Orchestrator.
+# Drives vocabulary, explanation depth, and involvement calibration.
+
+user_expertise:
+  # Each dimension: none | basic | intermediate | advanced
+  product_thinking: null
+  technical_depth: null
+  design_sensibility: null
+  domain_knowledge: null
+  operational_awareness: null
+  # Evidence supporting inferences.
+  # Each: { dimension, signal, inferred_from }
+  evidence: []
+
+# =============================================================================
+# PROCESS STATE
+# =============================================================================
+# Current stage in the Prawduct process.
+# Values: intake, validation, discovery, definition, artifact-generation,
+#          build-planning, building, iteration
+
+current_stage: intake
+
+# =============================================================================
+# CHANGE LOG
+# =============================================================================
+# Record of significant changes to project state.
+# Each:
+#   what: string
+#   why: string
+#   blast_radius: string (what else is affected)
+#   classification: cosmetic | functional | directional
+#   date: YYYY-MM-DD
+
+change_log: []
