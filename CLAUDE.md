@@ -11,8 +11,8 @@ Route based on what the user says:
 **They describe a product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
 → They want to USE Prawduct. Read `skills/orchestrator/SKILL.md` and follow its instructions. The Orchestrator handles everything from here — classification, discovery, product definition, artifact generation, and review. **Important:** The Orchestrator will set up a separate project directory for their files. Never write project output into this framework directory.
 
-**They reference framework internals** ("fix the domain analyzer", "update the rubric", "work on Phase 2"):
-→ They want to BUILD Prawduct itself. Follow the framework development instructions below.
+**They reference framework internals or want to work on this project** ("fix the domain analyzer", "update the rubric", "work on Phase 2", "what should I work on next?", "run the eval", "I want to contribute"):
+→ They want to BUILD Prawduct itself. Follow the framework development instructions below. Use the V1 Build Order and current project state to orient.
 
 **Their intent is unclear** ("let's go!", "hello", "what can you do?"):
 → Explain what Prawduct does and ask what they'd like to build. Something like:
@@ -93,7 +93,9 @@ The rest of this file is for building Prawduct itself — the skills, templates,
 1. Read `docs/principles.md` — these are your hard rules. Never violate them.
 2. Read `docs/requirements.md` — focus on [v1] tagged items.
 3. Read `docs/high-level-design.md` — understand the components and their interactions.
-4. Apply the framework to itself. Every decision needs rationale. Every artifact needs tests. Documentation follows the tier system.
+4. Check the V1 Build Order (below) to understand the current phase and what's already been built. Compare it against the actual files in `skills/`, `templates/`, and `tests/scenarios/` to see the current state.
+5. To run an evaluation, see `tests/scenarios/` — each scenario has an Evaluation Procedure section with setup, run, and evaluation steps.
+6. Apply the framework to itself. Every decision needs rationale. Every artifact needs tests. Documentation follows the tier system.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 
