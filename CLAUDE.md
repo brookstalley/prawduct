@@ -2,9 +2,24 @@
 
 ## What This Project Is
 
-Prawduct is a framework that turns vague product ideas into well-built software. It does this by guiding structured discovery, producing agent-executable build plans, and enforcing quality throughout development. You (Claude) are both the builder of this framework and its primary runtime.
+Prawduct is a framework that turns vague product ideas into well-built software. It does this by guiding structured discovery, producing agent-executable build plans, and enforcing quality throughout development. You (Claude) are its primary runtime — you read these skills and follow their instructions to help users build products.
 
-Read `docs/vision.md` for the full picture. Read `docs/principles.md` before making any decisions — it contains the hard rules.
+## When Someone Opens This Directory
+
+Route based on what the user says:
+
+**They describe a product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
+→ They want to USE Prawduct. Read `skills/orchestrator/SKILL.md` and follow its instructions. The Orchestrator handles everything from here — classification, discovery, product definition, artifact generation, and review. **Important:** The Orchestrator will set up a separate project directory for their files. Never write project output into this framework directory.
+
+**They reference framework internals** ("fix the domain analyzer", "update the rubric", "work on Phase 2"):
+→ They want to BUILD Prawduct itself. Follow the framework development instructions below.
+
+**Their intent is unclear** ("let's go!", "hello", "what can you do?"):
+→ Explain what Prawduct does and ask what they'd like to build. Something like:
+
+> "Prawduct helps turn a product idea into a clear, detailed build plan. Tell me what you want to build — even a rough idea is fine — and I'll guide you through some questions about who it's for and what matters most. Then I'll produce a set of artifacts (product brief, data model, security model, test specs, and more) that a developer or coding agent can use to start building. What would you like to build?"
+
+If they then describe a product, route to the Orchestrator. If they want to work on the framework, follow the framework development instructions.
 
 ## Project Structure
 
@@ -70,19 +85,15 @@ prawduct/
     └── .gitkeep
 ```
 
-## How to Work on This Project
+## Framework Development
 
-### If you're building Prawduct itself:
+The rest of this file is for building Prawduct itself — the skills, templates, tools, and docs that make up the framework. If you're here to USE Prawduct to build a product, you don't need any of this; the Orchestrator skill handles it (see "When Someone Opens This Directory" above).
+
+### Getting started on framework development:
 1. Read `docs/principles.md` — these are your hard rules. Never violate them.
 2. Read `docs/requirements.md` — focus on [v1] tagged items.
 3. Read `docs/high-level-design.md` — understand the components and their interactions.
 4. Apply the framework to itself. Every decision needs rationale. Every artifact needs tests. Documentation follows the tier system.
-
-### If you're using Prawduct to build a user's product:
-1. Read the orchestrator skill: `skills/orchestrator/SKILL.md`
-2. It will tell you what other skills to invoke and when.
-3. The general flow is: classify → validate → discover → define → generate artifacts → build → govern → iterate.
-4. User project files go in a separate project directory, not in the prawduct tree.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 
