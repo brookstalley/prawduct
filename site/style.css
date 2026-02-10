@@ -1,0 +1,318 @@
+/* ==========================================================================
+   Brooks Talley — Personal Site
+   Color palette uses CSS custom properties for maintainability and
+   future dark mode accommodation.
+   ========================================================================== */
+
+:root {
+  /* Colors */
+  --color-bg: #F8F7F4;
+  --color-text: #1C2A3A;
+  --color-text-secondary: #4A5568;
+  --color-accent: #5A7B8F;
+  --color-accent-hover: #476272;
+  --color-border: #D8D5CF;
+  --color-placeholder-bg: #E8E6E1;
+
+  /* Typography */
+  --font-serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+
+  /* Spacing */
+  --space-xs: 0.5rem;
+  --space-sm: 1rem;
+  --space-md: 2rem;
+  --space-lg: 4rem;
+  --space-xl: 6rem;
+
+  /* Layout */
+  --max-width: 640px;
+}
+
+/* ==========================================================================
+   Reset & Base
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+main {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-md);
+}
+
+/* ==========================================================================
+   Typography
+   ========================================================================== */
+
+h1, h2, h3 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 2.75rem;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-sm);
+}
+
+h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--color-accent-hover);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   Hero
+   ========================================================================== */
+
+.hero {
+  padding: var(--space-xl) 0 var(--space-lg);
+  text-align: left;
+}
+
+.headline {
+  font-size: 1.125rem;
+  color: var(--color-text-secondary);
+  margin-top: var(--space-xs);
+  letter-spacing: 0.01em;
+}
+
+/* ==========================================================================
+   Sections — shared spacing
+   ========================================================================== */
+
+.narrative,
+.featured-work,
+.press,
+.ceramics,
+.contact {
+  padding: var(--space-lg) 0;
+}
+
+.narrative + .featured-work,
+.featured-work + .press,
+.press + .ceramics,
+.ceramics + .contact {
+  border-top: 1px solid var(--color-border);
+}
+
+/* ==========================================================================
+   Narrative
+   ========================================================================== */
+
+.narrative p {
+  font-size: 1.125rem;
+  line-height: 1.8;
+  color: var(--color-text);
+  max-width: 580px;
+}
+
+/* ==========================================================================
+   Featured Work
+   ========================================================================== */
+
+.work-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.work-item h3 {
+  margin-bottom: 0.25rem;
+}
+
+.work-item h3 a {
+  color: var(--color-accent);
+}
+
+.work-item p {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   Press
+   ========================================================================== */
+
+.press-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.press-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.press-list a {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.publication {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
+}
+
+/* ==========================================================================
+   Ceramics
+   ========================================================================== */
+
+.ceramics-intro {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  margin-bottom: var(--space-md);
+  max-width: 520px;
+}
+
+.ceramics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-sm);
+}
+
+.ceramics-grid figure {
+  margin: 0;
+}
+
+.ceramics-grid img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 2px;
+}
+
+.ceramics-grid figcaption {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.375rem;
+  line-height: 1.4;
+}
+
+/* Image placeholders — replace with actual <img> elements */
+.image-placeholder {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background-color: var(--color-placeholder-bg);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+/* ==========================================================================
+   Contact
+   ========================================================================== */
+
+.contact-links {
+  list-style: none;
+  display: flex;
+  gap: var(--space-md);
+}
+
+.contact-links a {
+  font-size: 1rem;
+  font-weight: 500;
+  padding: var(--space-xs) 0;
+  display: inline-block;
+  min-height: 44px;
+  min-width: 44px;
+  line-height: 44px;
+}
+
+/* ==========================================================================
+   Responsive — Mobile first, then desktop adjustments
+   ========================================================================== */
+
+@media (max-width: 480px) {
+  :root {
+    --space-lg: 2.5rem;
+    --space-xl: 3.5rem;
+  }
+
+  main {
+    padding: var(--space-md) var(--space-sm);
+  }
+
+  h1 {
+    font-size: 2rem;
+  }
+
+  .ceramics-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+  }
+
+  .contact-links {
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+}
+
+@media (min-width: 768px) {
+  main {
+    padding: var(--space-xl) var(--space-md);
+  }
+
+  h1 {
+    font-size: 3.25rem;
+  }
+}
