@@ -41,6 +41,9 @@ The system manages not only whether things are correct *now*, but whether the pr
 ### Mechanical Checks Over Judgment Where Possible
 Where a quality check can be expressed as a structural/mechanical rule (test count didn't decrease, no files modified in protected directories, assertion count per test didn't drop), prefer that over LLM judgment. LLM judgment is valuable for nuanced assessment, but it's also susceptible to the same failure modes it's trying to catch.
 
+### Validate Before Propagating
+When a process produces outputs that become inputs to later steps, validate intermediate outputs at dependency boundaries before building on them. The cost of a defect scales with the number of downstream artifacts, decisions, or implementations that have already incorporated it. Detecting an error in a foundational output after six dependent outputs have been generated means reworking seven things; detecting it immediately means reworking one. This applies to the framework's own processes (review artifacts at dependency boundaries during generation) and to user products (validate specifications before building against them). Corollary: declared dependency structures that don't influence process behavior — dependency chains in metadata that no process reads, risk levels that don't change any gate — are latent bugs. If you declare that B depends on A, your process should validate A before producing B.
+
 ### Escalation Criteria
 The system handles quality enforcement autonomously. It escalates to the user only for:
 - Genuine product decisions (scope, priority, tradeoffs)

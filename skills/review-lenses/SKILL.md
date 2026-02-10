@@ -1,6 +1,6 @@
 # Review Lenses
 
-The Review Lenses provide multi-perspective evaluation of system output at every stage. They are four modes of critical thinking — Product, Design, Architecture, and Skeptic — applied to artifacts, decisions, and project state. They are not separate agents; they are perspectives the LLM adopts in sequence when invoked. The Review Lenses are invoked by the Orchestrator at stage transitions and after artifact generation.
+The Review Lenses provide multi-perspective evaluation of system output at every stage. They are four modes of critical thinking — Product, Design, Architecture, and Skeptic — applied to artifacts, decisions, and project state. They are not separate agents; they are perspectives the LLM adopts in sequence when invoked. The Review Lenses are invoked by the Orchestrator at stage transitions and at dependency boundaries during artifact generation.
 
 ## When You Are Activated
 
@@ -8,7 +8,10 @@ The Orchestrator activates this skill:
 
 - During **Stage 0.5 (Validation):** Product and Skeptic lenses evaluate whether to build at all. (Medium/high-risk products only.)
 - During **Stage 2 (Product Definition):** All four lenses review crystallized decisions before artifact generation.
-- During **Stage 3 (Artifact Generation):** All four lenses review generated artifacts before presenting to user.
+- During **Stage 3 (Artifact Generation):** Lenses are applied in phases as artifacts are generated, not as a single post-hoc review (see Orchestrator Stage 3):
+  - **Phase A (Foundation):** Product and Design lenses review the Product Brief before dependent artifacts are generated. Focus: Is the vision clear? Are personas realistic? Are flows complete? Are all states considered?
+  - **Phase B (Structure):** Architecture lens reviews the Data Model and NFRs against the Product Brief. Focus: Do entities cover the flows? Are NFRs realistic for the platform and risk level?
+  - **Phase C (Integration):** All four lenses review the complete artifact set. This is where cross-cutting concerns (security coverage, test completeness, dependency justification, failure modes) get full evaluation.
 - During **Stage 5 (Build + Governance):** Architecture and Skeptic validate implementation. (Phase 2.)
 
 When activated:

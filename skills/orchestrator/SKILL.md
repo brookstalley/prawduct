@@ -153,11 +153,26 @@ Update `current_stage` to "discovery".
 **Trigger:** `current_stage` is "artifact-generation".
 
 1. **Readiness check.** Before invoking the Artifact Generator, verify the Stage Transition Protocol prerequisites (see below). If anything is missing, fill it in now — don't proceed with gaps.
-2. Read `skills/artifact-generator/SKILL.md`.
-3. Follow the Artifact Generator's process to produce the appropriate artifact set based on the product's shape.
-4. After generation, read `skills/review-lenses/SKILL.md` and apply all four lenses to the generated artifacts.
-5. Present a summary of the artifacts and any review findings to the user.
-6. Update `current_stage` to "build-planning".
+2. Read `skills/artifact-generator/SKILL.md` and `skills/review-lenses/SKILL.md`.
+3. **Generate and review in phases.** Artifacts are generated in dependency order, with review lenses applied at dependency boundaries to catch errors before they propagate downstream. Follow the Artifact Generator's phased process:
+
+   **Phase A — Foundation:** Generate the Product Brief.
+   - Apply the **Product and Design lenses** to the Product Brief.
+   - If any blocking findings, resolve them before proceeding. The Product Brief is the foundation for all other artifacts — errors here infect everything.
+
+   **Phase B — Structure:** Generate the Data Model and Non-Functional Requirements.
+   - Apply the **Architecture lens** to the Data Model, NFRs, and their relationship to the Product Brief.
+   - If any blocking findings, resolve them before proceeding.
+
+   **Phase C — Integration:** Generate the Security Model, Test Specifications, Operational Specification, and Dependency Manifest.
+   - Apply **all four lenses** across the complete artifact set.
+   - The Artifact Generator runs a full cross-artifact consistency check at this stage.
+   - If any blocking findings, resolve them before presenting to the user.
+
+   **Risk-proportionate compression:** For low-risk products, Phases A and B may be compressed into two checkpoints: Product Brief + review, then all remaining artifacts + full review. The foundation review (Product Brief) must never be skipped regardless of risk level.
+
+4. Present a summary of the artifacts and all review findings to the user.
+5. Update `current_stage` to "build-planning".
 
 *Stages 4-6 (Build Planning, Build + Governance, Iteration) are Phase 2. The Orchestrator acknowledges their existence but does not implement them yet.*
 

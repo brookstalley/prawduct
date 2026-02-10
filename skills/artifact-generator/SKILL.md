@@ -10,7 +10,7 @@ When activated:
 
 1. Read `project-state.yaml` in the user's project directory — it must have classification, product definition, and scope decisions populated.
 2. Determine which artifacts to generate based on the product's shape.
-3. Generate each artifact, writing files to the `artifacts/` directory within the user's project directory. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the project directory.
+3. Generate artifacts in phased dependency order, writing files to the `artifacts/` directory within the user's project directory. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the project directory.
 4. Update `project-state.yaml` → `artifact_manifest` with each generated artifact.
 
 ## Step 1: Select Artifact Set
@@ -31,11 +31,17 @@ Based on `classification.shape`, select the artifacts to generate:
 
 **Phase 1 scope:** Generate universal artifacts only. Shape-specific artifacts (UI, API, automation, multi-party) are added in Phase 2 as each shape is implemented.
 
-## Step 2: Generate Each Artifact
+## Step 2: Generate Artifacts in Phases
+
+Artifacts are generated in dependency order across three phases. Each phase includes an incremental consistency check against all previously generated artifacts. The Orchestrator applies review lenses between phases to catch errors before they propagate into downstream artifacts (see Orchestrator Stage 3).
 
 Every artifact must follow the standard format defined in `docs/high-level-design.md` § "Artifact Format (V1)": markdown body with YAML frontmatter.
 
-### Artifact: Product Brief
+### Phase A: Foundation
+
+Generate the Product Brief first. Every other artifact depends on it — errors here propagate into everything downstream. The Orchestrator applies review lenses after this phase before proceeding.
+
+#### Artifact: Product Brief
 
 **Reads from:** `project-state.yaml` → `product_definition`, `classification`
 
@@ -65,7 +71,15 @@ last_validated: null
 
 **Proportionality:** For a low-risk utility, this should be 1-2 pages. For a complex platform, it may be longer. Don't pad.
 
-### Artifact: Data Model
+**Incremental check after Phase A:**
+- Vision, personas, flows, scope, and platform are all present and internally consistent.
+- Every persona has at least one core flow. Every core flow serves at least one persona.
+
+### Phase B: Structure
+
+Generate the Data Model and Non-Functional Requirements. Both depend primarily on the Product Brief. The Orchestrator applies review lenses after this phase before proceeding.
+
+#### Artifact: Data Model
 
 **Reads from:** Product Brief (entities implied by flows), `project-state.yaml` → `technical_decisions.data_model`
 
@@ -91,7 +105,41 @@ last_validated: null
 
 **Key instruction:** The entities must be traceable back to the Product Brief. If the Product Brief mentions "scores," there must be a Score entity (or equivalent). If there's no entity for something the user talked about, something is missing.
 
-### Artifact: Security Model
+#### Artifact: Non-Functional Requirements
+
+**Reads from:** `project-state.yaml` → `product_definition.nonfunctional`, `classification.risk_profile`
+
+**Frontmatter:**
+```yaml
+---
+artifact: nonfunctional-requirements
+version: 1
+depends_on:
+  - artifact: product-brief
+depended_on_by:
+  - artifact: operational-spec
+  - artifact: dependency-manifest
+last_validated: null
+---
+```
+
+**Content must include:**
+- **Performance targets:** Response times, throughput. Proportionate — "pages load in under 2 seconds" is fine for a family app. Don't specify p99 latencies.
+- **Scalability:** Expected user and data growth. Be honest — a family app serving 4-10 users doesn't need horizontal scaling.
+- **Availability:** Uptime target. "Best-effort" or "should work when family wants to play" is fine for low-risk.
+- **Cost constraints:** Budget for hosting, services. Surface this even if the answer is "as cheap as possible."
+
+**Proportionality rule:** NFRs for a family utility should fit on half a page. If you're writing about load balancers and CDNs, recalibrate.
+
+**Incremental check after Phase B:**
+- Entity coverage: every entity implied by Product Brief core flows appears in the Data Model. Every persona's data needs are represented.
+- NFR targets are consistent with the product's risk profile and platform.
+
+### Phase C: Integration
+
+Generate the remaining artifacts. Each depends on one or more artifacts from earlier phases. The Orchestrator applies all four review lenses to the complete artifact set after this phase.
+
+#### Artifact: Security Model
 
 **Reads from:** Product Brief (who accesses what), Data Model (what needs protecting), `project-state.yaml` → `classification.risk_profile`
 
@@ -118,7 +166,7 @@ last_validated: null
 
 **Proportionality rule:** The security model must match the product's risk profile. A low-risk family utility should NOT have the same security model as a B2B financial platform. If you're writing about OAuth flows and role-based access control for a family score tracker, you've over-engineered it.
 
-### Artifact: Test Specifications
+#### Artifact: Test Specifications
 
 **Reads from:** Product Brief (flows to test), Data Model (entities to validate), Security Model (access rules to verify)
 
@@ -151,33 +199,7 @@ last_validated: null
 
 Each test must specify: the setup (preconditions), the action (what the user or system does), and the expected result (what should happen).
 
-### Artifact: Non-Functional Requirements
-
-**Reads from:** `project-state.yaml` → `product_definition.nonfunctional`, `classification.risk_profile`
-
-**Frontmatter:**
-```yaml
----
-artifact: nonfunctional-requirements
-version: 1
-depends_on:
-  - artifact: product-brief
-depended_on_by:
-  - artifact: operational-spec
-  - artifact: dependency-manifest
-last_validated: null
----
-```
-
-**Content must include:**
-- **Performance targets:** Response times, throughput. Proportionate — "pages load in under 2 seconds" is fine for a family app. Don't specify p99 latencies.
-- **Scalability:** Expected user and data growth. Be honest — a family app serving 4-10 users doesn't need horizontal scaling.
-- **Availability:** Uptime target. "Best-effort" or "should work when family wants to play" is fine for low-risk.
-- **Cost constraints:** Budget for hosting, services. Surface this even if the answer is "as cheap as possible."
-
-**Proportionality rule:** NFRs for a family utility should fit on half a page. If you're writing about load balancers and CDNs, recalibrate.
-
-### Artifact: Operational Specification
+#### Artifact: Operational Specification
 
 **Reads from:** NFRs, Security Model, `project-state.yaml` → `technical_decisions.operational`
 
@@ -201,7 +223,7 @@ last_validated: null
 - **Monitoring:** What to watch. Proportionate — "is the app responding?" is sufficient for low-risk.
 - **Failure recovery:** What happens if it goes down. For low-risk: "restart it."
 
-### Artifact: Dependency Manifest
+#### Artifact: Dependency Manifest
 
 **Reads from:** All other artifacts (what external services, libraries, or APIs are needed)
 
@@ -235,9 +257,9 @@ dependencies:
 
 **Key instruction:** Every dependency must have a justification. "It's popular" is not a justification. "It provides [specific capability] that we need for [specific feature], and the alternatives [X, Y] were rejected because [reasons]" is.
 
-## Step 3: Validate Cross-Artifact Consistency
+## Step 3: Validate Cross-Artifact Consistency (Phase C)
 
-After generating all artifacts, check:
+After generating all Phase C artifacts, run the full cross-artifact consistency check. (Phase A and Phase B incremental checks are defined within their respective phases above.)
 
 - **Entity coverage:** Every entity in the Data Model appears in the Test Specifications. Every entity referenced in the Product Brief appears in the Data Model.
 - **Flow coverage:** Every core flow from the Product Brief has test scenarios in the Test Specifications.

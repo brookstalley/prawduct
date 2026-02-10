@@ -84,6 +84,7 @@ Apply these checks to every framework modification. Each check is a thinking pri
 - If the Orchestrator's stage transition prerequisites change, do the skills that populate those fields still align?
 - If a discovery question changes, does the artifact generator still have the information it needs?
 - If a principle changes, do the skills that reference it still comply?
+- If a skill declares dependency structures (artifact dependency chains, stage ordering, risk levels), do those structures actually influence the skill's process behavior? A dependency chain that exists only in metadata but doesn't affect generation ordering, review timing, or validation gates is inert structure — it looks rigorous but has no operational effect. This is a subtle form of documentation fiction (HR3). The test: remove the declared structure. Does the process behave any differently? If not, either the structure is unnecessary or the process is ignoring information it should use.
 
 **Severity guide:**
 - Cross-skill contract broken → **blocking**
