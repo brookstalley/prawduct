@@ -130,6 +130,9 @@ Accessibility is not a feature. It's a quality of all features. This applies to 
 ### The Product Includes Its Operations
 A product that can't be deployed, monitored, recovered from failure, and maintained is not a finished product. Operational concerns are first-class design considerations, not afterthoughts. This is especially true for automations and services that run unattended.
 
+### Generality Over Enumeration
+When evaluation reveals a gap, the fix must strengthen general thinking principles — never add the specific finding as an enumerated checklist item. The framework must work for products it has never been tested against. A specific enumerated concern helps with the next similar product but fails for dissimilar ones; a strong general principle adapts to both. When a Review Lens catches something a skill should have surfaced, ask: "What general reasoning, applied earlier, would have found this?" Then strengthen that reasoning. The Review Lenses prove this works — they use general principles and catch specific issues. Skills should follow the same pattern.
+
 ### Prove the Path Before Widening It
 When building a system with multiple interacting components, validate the architecture by building one narrow vertical slice through the entire system before filling out any single component in breadth. A working thin path exposes integration problems, format mismatches, and interaction failures that component-level development cannot. Widen only after the path works end-to-end. This applies to the system's own build process and to user projects with multi-component architectures.
 

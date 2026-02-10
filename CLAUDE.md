@@ -30,7 +30,7 @@ prawduct/
 │   ├── orchestrator/SKILL.md          # Conversation flow, stage management, user calibration
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
 │   ├── artifact-generator/SKILL.md    # How to produce each artifact type, format specs
-│   ├── critic/SKILL.md                # Governance rules, review cycle, fix verification
+│   ├── critic/SKILL.md                # Framework self-governance + product build governance
 │   └── review-lenses/SKILL.md         # Four evaluation perspectives (product, design, arch, skeptic)
 ├── tools/                             # Deterministic scripts (mechanical enforcement)
 │   ├── test-integrity-checker.sh      # Monitor test count, assertion trends, corruption patterns
@@ -97,6 +97,9 @@ The rest of this file is for building Prawduct itself — the skills, templates,
 5. To run an evaluation, see `tests/scenarios/` — each scenario has an Evaluation Procedure section with setup, run, and evaluation steps.
 6. Apply the framework to itself. Every decision needs rationale. Every artifact needs tests. Documentation follows the tier system.
 
+### After modifying skills, templates, or principles:
+Before committing changes to the framework, read `skills/critic/SKILL.md` and apply **Framework Governance mode** to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, and cross-skill inconsistencies. The Critic is the framework's self-governance mechanism — it enforces the same quality standards the framework applies to user products.
+
 ## Key Principles (read `docs/principles.md` for the full set)
 
 These are the ones most likely to be violated under pressure:
@@ -125,10 +128,10 @@ Use the **family utility** test scenario (simple UI app, low risk). Build just e
 
 ### Phase 2: Widen
 
+- Build the Critic (C6) — framework governance mode first (generality checks, read-write chains, proportionality), then product governance (spec compliance, test integrity).
 - Add product shapes one at a time (automation → API → multi-party), evaluating each against its test scenario rubric.
 - Add shape-specific artifacts and templates as each shape is added.
 - Build mechanical tools (`tools/`).
-- Build the Critic (C6) — start with spec compliance + test integrity.
 - Add Orchestrator sophistication (pacing, expertise calibration, pushback).
 
 ### Phase 3: Full V1
