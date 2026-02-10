@@ -121,11 +121,7 @@ Update `current_stage` to "discovery".
    - Add `product_definition.goals` (measurable success criteria) — infer these from the conversation.
    - Make `product_definition.scope` decisions explicit: what's in v1, what's accommodated but not built, what's deferred to later (with rationale), and what's out of scope entirely (with rationale). Every feature discussed should land in exactly one bucket.
    - Set `product_definition.nonfunctional` values proportionate to the product's risk level.
-   - Populate `technical_decisions` with proportionate architecture choices. Every decision must include rationale and alternatives considered (HR4). At minimum for any product:
-     - **Data storage:** How and where data is stored (e.g., local storage, SQLite, cloud database). For low-risk products, pick the simplest option that meets persistence needs and state it as an assumption.
-     - **Deployment target:** Where this will be hosted and how it will be deployed (e.g., Vercel, app stores, self-hosted). Derive from `product_definition.platform`.
-     - **Key technology choices:** Primary framework or language. For low-risk products, pick something standard and state it as an assumption. Never ask a non-technical user to choose between frameworks.
-     - **Sync model (if multi-device):** When the product involves multiple users viewing or editing shared data simultaneously, clarify whether updates are real-time (WebSocket/subscriptions), polling, or refresh-on-navigation. This significantly affects complexity and technology choices.
+   - Populate `technical_decisions` with proportionate architecture choices. Every decision must include rationale and alternatives considered (HR4). The guiding principle: **identify every architectural choice that would significantly affect implementation complexity, cost, or user experience if decided differently.** For low-risk products, make these decisions as assumptions and state them plainly. For higher-risk products, surface the tradeoffs. Common decisions include data storage, deployment target, and key technology choices — but don't limit yourself to a fixed checklist. If the product's nature raises architectural questions (e.g., how data stays in sync, how identity works, how components communicate), those are technical decisions too.
    - For UI applications, set basic `design_decisions`: at minimum, `accessibility_approach` (even "standard platform accessibility" is fine for low-risk) and general `interaction_patterns` (e.g., "mobile-first, touch-friendly").
    - Populate `product_definition.cost_estimates` with at least a rough hosting/operational cost expectation, even if the answer is "$0 — free tier."
 
@@ -199,7 +195,7 @@ This is the highest-stakes transition — discovery becomes production. Check th
 - `product_definition.scope.later` has at least 1 item (scope without deferral is suspicious)
 - `product_definition.goals` has at least 1 measurable success criterion
 - `product_definition.nonfunctional` has at least `performance` and `uptime` set
-- `technical_decisions` has at least: one data storage decision, one deployment target decision
+- `technical_decisions` has at least one decision with rationale (the specific decisions needed depend on the product — check that every choice affecting implementation complexity has been made)
 - For UI applications: `design_decisions.accessibility_approach` is set
 - `open_questions` has no high-priority items with `waiting_on: "user"` (unresolved user questions block artifact generation)
 
