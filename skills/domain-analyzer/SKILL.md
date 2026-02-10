@@ -10,7 +10,7 @@ The Orchestrator activates this skill when:
 - Discovery questions are needed (Stage 1: generate them).
 - A product's classification may need revision (Stage 6: reclassification).
 
-When activated, read the current `project-state.yaml` before doing anything else.
+When activated, read the current `project-state.yaml` in the user's project directory before doing anything else.
 
 ## Step 1: Classify the Product Shape
 

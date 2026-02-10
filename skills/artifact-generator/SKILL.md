@@ -8,9 +8,9 @@ The Orchestrator activates this skill when `current_stage` is "artifact-generati
 
 When activated:
 
-1. Read `project-state.yaml` — it must have classification, product definition, and scope decisions populated.
+1. Read `project-state.yaml` in the user's project directory — it must have classification, product definition, and scope decisions populated.
 2. Determine which artifacts to generate based on the product's shape.
-3. Generate each artifact, writing files to the `artifacts/` directory.
+3. Generate each artifact, writing files to the `artifacts/` directory within the user's project directory. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the project directory.
 4. Update `project-state.yaml` → `artifact_manifest` with each generated artifact.
 
 ## Step 1: Select Artifact Set

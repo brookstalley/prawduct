@@ -13,7 +13,7 @@ The Orchestrator activates this skill:
 
 When activated:
 
-1. Read `project-state.yaml` to understand the product, its classification, and risk level.
+1. Read `project-state.yaml` in the user's project directory to understand the product, its classification, and risk level.
 2. Read the artifacts or decisions you've been asked to review.
 3. Apply each requested lens in sequence.
 4. Produce structured findings.

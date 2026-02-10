@@ -523,6 +523,18 @@ Five scenarios that cover the product shape taxonomy:
 4. **Simple family utility** (UI Application, low risk) — tests pacing sensitivity, scope restraint. The system should *not* interrogate this the same way it interrogates a B2B platform.
 5. **Two-sided marketplace** (Multi-Party + UI + API hybrid) — tests multi-party discovery, per-party needs, cross-party interactions, trust boundaries.
 
+### Evaluation Isolation
+
+Evaluations must not write files into the prawduct framework repository. Each evaluation run:
+
+1. Creates a temporary project directory outside the prawduct tree (e.g., `/tmp/eval-<scenario-name>/`).
+2. Copies `templates/project-state.yaml` into that directory.
+3. Runs the full scenario with all file output directed to the temporary directory.
+4. Evaluates the resulting files (`project-state.yaml`, `artifacts/`) and the conversation transcript against the rubric.
+5. Records results before cleaning up.
+
+All skills reference `project-state.yaml`, `artifacts/`, and `working-notes/` as paths relative to the user's project directory. The Orchestrator is responsible for establishing this directory at the start of any session and ensuring it is not the prawduct repo itself.
+
 ### Regression Detection
 
 When a skill is modified, all scenarios are re-evaluated. A regression is:

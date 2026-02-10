@@ -8,6 +8,43 @@
 - **Phase:** 1 (vertical slice scenario)
 - **Purpose:** Tests pacing sensitivity, scope restraint, and non-technical user handling. The system should NOT interrogate this the same way it interrogates a B2B platform.
 
+## Evaluation Procedure
+
+### Setup
+
+1. Create an isolated project directory for the evaluation. This must be **outside the prawduct repo** to avoid polluting the framework tree:
+   ```bash
+   mkdir -p /tmp/eval-family-utility
+   ```
+2. Copy the project-state template into it:
+   ```bash
+   cp templates/project-state.yaml /tmp/eval-family-utility/project-state.yaml
+   ```
+
+### Running the evaluation
+
+3. Start a new LLM conversation. Provide the prawduct framework context (CLAUDE.md, skills/, templates/, docs/) as reference material the LLM can read from, but set `/tmp/eval-family-utility` as the project directory where all output files go.
+4. Send the Input prompt (below) as the user's opening message.
+5. For each system question, respond using the scripted Test Conversation responses below. If the system asks about a topic not covered, respond in character as the test persona.
+6. Let the system run through Stages 0 → 0.5 → 1 → 2 → 3.
+
+### Evaluating results
+
+7. After the run completes, evaluate against the Evaluation Rubric (below) by checking:
+   - `/tmp/eval-family-utility/project-state.yaml` against the C5 criteria
+   - `/tmp/eval-family-utility/artifacts/*.md` against the C3 criteria
+   - The conversation transcript against C1, C2, and C4 criteria
+8. Record pass/fail for each must-do, must-not-do, and quality criterion.
+
+### Cleanup
+
+9. Delete the evaluation directory when done:
+   ```bash
+   rm -rf /tmp/eval-family-utility
+   ```
+
+Results should be recorded (pass/fail per criterion, notes on quality criteria, notable observations) before cleanup so regressions can be detected across evaluation runs.
+
 ## Input
 
 > "I want to build an app for my family to keep track of scores when we play board games together"

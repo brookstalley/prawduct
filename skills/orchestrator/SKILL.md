@@ -6,9 +6,10 @@ The Orchestrator manages the overall Prawduct process — from first user input 
 
 This is the default skill. When using Prawduct to build a user's product:
 
-1. Read `project-state.yaml` in the user's project directory. If it doesn't exist, this is a new project — create it by copying `templates/project-state.yaml` to the project directory.
-2. Check `current_stage` to determine where we are.
-3. Follow the instructions for the current stage below.
+1. **Establish the project directory.** All project files (`project-state.yaml`, `artifacts/`, `working-notes/`, `doc-manifest.yaml`) live in a dedicated project directory — **never in the prawduct framework directory itself.** If the user has specified a project directory, use it. If the current working directory is clearly the user's project (not the prawduct repo), use that. Otherwise, ask where project files should go. All file paths in all skills are relative to this project directory.
+2. Read `project-state.yaml` in the project directory. If it doesn't exist, this is a new project — copy `templates/project-state.yaml` to the project directory.
+3. Check `current_stage` to determine where we are.
+4. Follow the instructions for the current stage below.
 
 ## Core Responsibilities
 
