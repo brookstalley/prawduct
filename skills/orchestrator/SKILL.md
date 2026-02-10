@@ -120,6 +120,12 @@ Update `current_stage` to "discovery".
    - Add `product_definition.goals` (measurable success criteria) — infer these from the conversation.
    - Make `product_definition.scope` decisions explicit: what's in v1, what's accommodated but not built, what's deferred to later (with rationale), and what's out of scope entirely (with rationale). Every feature discussed should land in exactly one bucket.
    - Set `product_definition.nonfunctional` values proportionate to the product's risk level.
+   - Populate `technical_decisions` with proportionate architecture choices. Every decision must include rationale and alternatives considered (HR4). At minimum for any product:
+     - **Data storage:** How and where data is stored (e.g., local storage, SQLite, cloud database). For low-risk products, pick the simplest option that meets persistence needs and state it as an assumption.
+     - **Deployment target:** Where this will be hosted and how it will be deployed (e.g., Vercel, app stores, self-hosted). Derive from `product_definition.platform`.
+     - **Key technology choices:** Primary framework or language. For low-risk products, pick something standard and state it as an assumption. Never ask a non-technical user to choose between frameworks.
+   - For UI applications, set basic `design_decisions`: at minimum, `accessibility_approach` (even "standard platform accessibility" is fine for low-risk) and general `interaction_patterns` (e.g., "mobile-first, touch-friendly").
+   - Populate `product_definition.cost_estimates` with at least a rough hosting/operational cost expectation, even if the answer is "$0 — free tier."
 
 2. **Present the product definition to the user** in plain language. Not as a YAML dump — as a readable summary:
 
@@ -130,9 +136,15 @@ Update `current_stage` to "discovery".
    - **Functional changes** (new feature, different flow): update `project-state.yaml`, note in change log, re-evaluate if anything else is affected.
    - **Directional changes** (fundamentally different product): flag this explicitly — "That's a significant shift. It might mean rethinking [X]. Want to explore that, or keep the current direction?"
 
-4. When the user confirms, update `current_stage` to "artifact-generation".
+4. **Review the product definition (risk-proportionate).**
 
-**Transition to Stage 3** when the user confirms the product definition.
+   **For medium and high-risk products:** Before presenting to the user, read `skills/review-lenses/SKILL.md` and apply all four lenses to the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins.
+
+   **For low-risk products:** Skip formal lens review at this stage. Your own review of `project-state.yaml` completeness (step 1) is sufficient. The full artifact review in Stage 3 will catch issues. If you notice obvious concerns while reviewing, surface them informally.
+
+5. When the user confirms, run the Stage Transition Protocol (see below), then update `current_stage` to "artifact-generation".
+
+**Transition to Stage 3** when the user confirms the product definition and the readiness check passes.
 
 ---
 
@@ -140,13 +152,56 @@ Update `current_stage` to "discovery".
 
 **Trigger:** `current_stage` is "artifact-generation".
 
-1. Read `skills/artifact-generator/SKILL.md`.
-2. Follow the Artifact Generator's process to produce the appropriate artifact set based on the product's shape.
-3. After generation, read `skills/review-lenses/SKILL.md` and apply all four lenses to the generated artifacts.
-4. Present a summary of the artifacts and any review findings to the user.
-5. Update `current_stage` to "build-planning".
+1. **Readiness check.** Before invoking the Artifact Generator, verify the Stage Transition Protocol prerequisites (see below). If anything is missing, fill it in now — don't proceed with gaps.
+2. Read `skills/artifact-generator/SKILL.md`.
+3. Follow the Artifact Generator's process to produce the appropriate artifact set based on the product's shape.
+4. After generation, read `skills/review-lenses/SKILL.md` and apply all four lenses to the generated artifacts.
+5. Present a summary of the artifacts and any review findings to the user.
+6. Update `current_stage` to "build-planning".
 
 *Stages 4-6 (Build Planning, Build + Governance, Iteration) are Phase 2. The Orchestrator acknowledges their existence but does not implement them yet.*
+
+---
+
+## Stage Transition Protocol
+
+Before transitioning to any new stage, verify that the prerequisites for that stage are met. This is the system's automated completeness check — it ensures gaps are caught by the framework, not by the user remembering to ask.
+
+**General rule:** Read `project-state.yaml` and verify the required fields for the target stage are populated. If anything is missing, either fill it in (with inference, stated as an assumption) or add it to `open_questions` and determine whether it blocks the transition.
+
+**Specific prerequisites by transition:**
+
+### → Stage 0.5 (Validation)
+- `classification.shape` is set
+- `classification.domain` is set
+- `classification.risk_profile.overall` is set
+- `classification.risk_profile.factors` has at least 2 entries with rationale
+- User has confirmed classification
+
+### → Stage 1 (Discovery)
+- All Stage 0.5 prerequisites met
+- Validation complete (or skipped for low-risk)
+
+### → Stage 2 (Definition)
+- `product_definition.vision` is set
+- `product_definition.users.personas` has at least one persona
+- `product_definition.core_flows` has at least one flow
+- `product_definition.platform` is set
+- `user_expertise` has at least `technical_depth` and `product_thinking` inferred
+
+### → Stage 3 (Artifact Generation)
+This is the highest-stakes transition — discovery becomes production. Check thoroughly:
+
+- All Stage 2 prerequisites met
+- `product_definition.scope.v1` has at least 3 items
+- `product_definition.scope.later` has at least 1 item (scope without deferral is suspicious)
+- `product_definition.goals` has at least 1 measurable success criterion
+- `product_definition.nonfunctional` has at least `performance` and `uptime` set
+- `technical_decisions` has at least: one data storage decision, one deployment target decision
+- For UI applications: `design_decisions.accessibility_approach` is set
+- `open_questions` has no high-priority items with `waiting_on: "user"` (unresolved user questions block artifact generation)
+
+If any prerequisite is missing, fill it in with a proportionate inference and state it as an assumption in the product definition summary. If a prerequisite can't be inferred (rare — usually means discovery was insufficient), flag it to the user before proceeding.
 
 ---
 

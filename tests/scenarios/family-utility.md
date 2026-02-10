@@ -176,6 +176,8 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `product_definition.scope.later`: at least 1 item explicitly deferred.
 - `product_definition.platform`: populated (mobile).
 - `product_definition.nonfunctional`: at least performance and uptime populated, proportionate to risk level.
+- `technical_decisions`: at least one data storage decision and one deployment target decision, each with rationale.
+- `design_decisions.accessibility_approach`: populated (even if minimal, e.g., "standard platform accessibility").
 - `user_expertise`: at least `technical_depth` and `product_thinking` inferred with evidence.
 - `current_stage`: "definition" or later.
 - `change_log`: at least 1 entry (initial classification).
