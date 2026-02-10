@@ -94,7 +94,7 @@ Update `current_stage` to "discovery".
 
    After each round, assess: do we have enough to define the product? "Enough" means you can answer all of these:
    - Who uses this?
-   - What's the core action?
+   - What's the core experience?
    - Where does it run?
    - What's in v1 scope?
    - What are the major design considerations?
@@ -103,7 +103,9 @@ Update `current_stage` to "discovery".
 
 5. **Surface proactive expertise** from the Domain Analyzer's Tier 3 items and Proactive Expertise section. Frame as helpful observations or recommendations, not additional questions.
 
-6. Update `current_stage` to "definition".
+6. **Re-evaluate risk profile.** Before transitioning, check whether discovery revealed complexity not apparent at classification time. The user's initial description may understate technical depth (e.g., "an app that plays sounds" may turn out to require real-time audio synthesis). If any risk factor has materially changed, update `classification.risk_profile` in `project-state.yaml`. If overall risk has increased, consider whether additional discovery is warranted before proceeding — but don't re-run discovery just because risk increased; only if the higher risk reveals gaps in what you've learned.
+
+7. Update `current_stage` to "definition".
 
 **Transition to Stage 2** when you have enough to define the product.
 

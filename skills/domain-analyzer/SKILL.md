@@ -110,8 +110,8 @@ Questions are tiered by decision impact. Start with Tier 1. Move to Tier 2 only 
 #### Tier 1 — Must Ask (highest impact on project direction)
 
 1. **Users:** Who exactly uses this? How many people? Is this just for you, or does it need to work for others?
-2. **Core action:** What's the single most important thing a user does? What's the "verb" of this app?
-3. **Platform:** Where do people use this? Phone? Computer? Both? (Frame in context: "At the game table? At home later?")
+2. **Core experience:** What's the single most important thing that happens? This might be something the user actively does ("tracks scores," "sends a message") or something the system creates for the user ("generates a playlist," "produces a calming environment"). The answer shapes everything: an active-user product needs selection and control UI; a system-driven product needs a feedback/learning mechanism. Frame the question around the experience, not the verb — some products are best when the user does nothing at all.
+3. **Platform and context:** Where do people use this? Phone? Computer? Both? Include the physical context — not just the device but the conditions: dark room, noisy commute, wet hands in a kitchen, glancing while driving. Physical context drives design constraints (brightness, touch target size, audio behavior, screen-off operation) as much as platform choice does. Frame in context: "At the game table? In bed? At a desk?"
 
 #### Tier 2 — Ask If Not Already Inferable
 
