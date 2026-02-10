@@ -143,5 +143,16 @@ documents:
     purpose: "Phase 1 evaluation scenario with rubric"
     last_reviewed: null
 
+  # --- Tier 1: Evaluation History ---
+  # Individual eval results are not pre-registered here (they are append-only
+  # and follow a standard naming convention). The directory itself is tracked.
+  # See CLAUDE.md § "Recording Evaluation Results" for the required format.
+
+  - path: eval-history/
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Evaluation results with YAML frontmatter for regression tracking"
+    last_reviewed: null
+
   # Tier 3 documents live in working-notes/ and are not pre-registered.
   # They must include a creation date and expire after 2 weeks.

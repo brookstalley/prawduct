@@ -76,6 +76,8 @@ prawduct/
 │       ├── background-data-pipeline.md # Phase 2
 │       ├── b2b-integration-api.md     # Phase 2
 │       └── two-sided-marketplace.md   # Phase 2
+├── eval-history/                      # Evaluation results (Tier 1, append-only)
+│   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
 ├── docs/                              # This project's own Tier 1 documentation
 │   ├── vision.md
 │   ├── requirements.md
@@ -147,6 +149,36 @@ Since this project is a framework of skills and tools (not a traditional applica
 - **Skills:** Test against five defined product scenarios with evaluation rubrics specifying must-do, must-not-do, and quality criteria. "Good" is not a test — specific, observable criteria are. The five scenarios: consumer mobile app, background automation, B2B API, family utility, two-sided marketplace.
 - **Mechanical tools:** Standard unit/integration tests. Feed them known-good and known-bad project states and verify correct detection.
 - **End-to-end:** Take a product idea from raw input through to build plan using the full framework. Evaluate the build plan against its scenario rubric. The compiler-compiles-itself test: run Prawduct through Prawduct.
+
+### Recording Evaluation Results
+
+Every evaluation run **must** produce a results file in `eval-history/` before the evaluation directory is cleaned up. This is not optional — unrecorded evaluations are wasted work.
+
+**File naming:** `eval-history/{scenario-name}-{YYYY-MM-DD}.md` (e.g., `family-utility-2026-02-10.md`). If multiple runs happen on the same day, append a sequence number: `-2026-02-10-2.md`.
+
+**Required YAML frontmatter:**
+```yaml
+---
+scenario: family-utility           # Which test scenario was run
+date: 2026-02-10                   # When the evaluation was performed
+evaluator: claude-simulation       # claude-simulation | claude-interactive | human
+framework_version: abc1234         # Git SHA at time of evaluation
+result:
+  pass: 76                         # Total criteria passed
+  partial: 1                       # Partially met
+  fail: 0                          # Failed
+  unable_to_evaluate: 7            # Could not be assessed (e.g., needs transcript)
+  by_component:                    # Breakdown per component
+    C2_domain_analyzer: { pass: 15, partial: 0, fail: 0, unable: 2 }
+    # ... one entry per component
+skills_updated: []                 # Skills modified as a result of this eval
+notes: ""                          # Free-form observations
+---
+```
+
+**Body:** Detailed pass/fail per rubric criterion with evidence, followed by issues found and skills updated.
+
+**Why this matters:** Eval history enables regression detection across framework changes. If a skill update improves C4 but regresses C2, the historical record makes that visible. The YAML frontmatter makes results machine-parseable for future tooling.
 
 ## Conventions
 

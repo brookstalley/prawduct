@@ -36,14 +36,21 @@
    - The conversation transcript against C1, C2, and C4 criteria
 8. Record pass/fail for each must-do, must-not-do, and quality criterion.
 
+### Recording results
+
+9. **Before cleanup**, write the evaluation results to `eval-history/family-utility-{YYYY-MM-DD}.md` in the prawduct repo. This file must include:
+   - YAML frontmatter with scenario name, date, evaluator type, framework version (git SHA), and pass/partial/fail/unable counts per component. See `CLAUDE.md` § "Recording Evaluation Results" for the required format.
+   - Detailed pass/fail per rubric criterion with evidence.
+   - Issues found and any skill updates made as a result.
+
+   **This step is mandatory.** Unrecorded evaluations are wasted work — the results are needed to detect regressions across framework changes.
+
 ### Cleanup
 
-9. Delete the evaluation directory when done:
-   ```bash
-   rm -rf /tmp/eval-family-utility
-   ```
-
-Results should be recorded (pass/fail per criterion, notes on quality criteria, notable observations) before cleanup so regressions can be detected across evaluation runs.
+10. Delete the evaluation directory when done:
+    ```bash
+    rm -rf /tmp/eval-family-utility
+    ```
 
 ## Input
 
