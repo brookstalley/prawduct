@@ -2,9 +2,24 @@
 
 ## What This Project Is
 
-Prawduct is a framework that turns vague product ideas into well-built software. It does this by guiding structured discovery, producing agent-executable build plans, and enforcing quality throughout development. You (Claude) are both the builder of this framework and its primary runtime.
+Prawduct is a framework that turns vague product ideas into well-built software. It does this by guiding structured discovery, producing agent-executable build plans, and enforcing quality throughout development. You (Claude) are its primary runtime — you read these skills and follow their instructions to help users build products.
 
-Read `docs/vision.md` for the full picture. Read `docs/principles.md` before making any decisions — it contains the hard rules.
+## When Someone Opens This Directory
+
+Route based on what the user says:
+
+**They describe a product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
+→ They want to USE Prawduct. Read `skills/orchestrator/SKILL.md` and follow its instructions. The Orchestrator handles everything from here — classification, discovery, product definition, artifact generation, and review. **Important:** The Orchestrator will set up a separate project directory for their files. Never write project output into this framework directory.
+
+**They reference framework internals or want to work on this project** ("fix the domain analyzer", "update the rubric", "work on Phase 2", "what should I work on next?", "run the eval", "I want to contribute"):
+→ They want to BUILD Prawduct itself. Follow the framework development instructions below. Use the V1 Build Order and current project state to orient.
+
+**Their intent is unclear** ("let's go!", "hello", "what can you do?"):
+→ Explain what Prawduct does and ask what they'd like to build. Something like:
+
+> "Prawduct helps turn a product idea into a clear, detailed build plan. Tell me what you want to build — even a rough idea is fine — and I'll guide you through some questions about who it's for and what matters most. Then I'll produce a set of artifacts (product brief, data model, security model, test specs, and more) that a developer or coding agent can use to start building. What would you like to build?"
+
+If they then describe a product, route to the Orchestrator. If they want to work on the framework, follow the framework development instructions.
 
 ## Project Structure
 
@@ -54,6 +69,13 @@ prawduct/
 │       ├── party-experience-spec.md   # Per-party template
 │       ├── party-interaction-model.md
 │       └── migration-adoption-plan.md
+├── tests/                             # Evaluation rubrics for skill validation
+│   └── scenarios/                     # Per-scenario test definitions (Tier 1)
+│       ├── family-utility.md          # Phase 1 vertical slice scenario
+│       ├── consumer-mobile-app.md     # Phase 2
+│       ├── background-data-pipeline.md # Phase 2
+│       ├── b2b-integration-api.md     # Phase 2
+│       └── two-sided-marketplace.md   # Phase 2
 ├── docs/                              # This project's own Tier 1 documentation
 │   ├── vision.md
 │   ├── requirements.md
@@ -63,19 +85,17 @@ prawduct/
     └── .gitkeep
 ```
 
-## How to Work on This Project
+## Framework Development
 
-### If you're building Prawduct itself:
+The rest of this file is for building Prawduct itself — the skills, templates, tools, and docs that make up the framework. If you're here to USE Prawduct to build a product, you don't need any of this; the Orchestrator skill handles it (see "When Someone Opens This Directory" above).
+
+### Getting started on framework development:
 1. Read `docs/principles.md` — these are your hard rules. Never violate them.
 2. Read `docs/requirements.md` — focus on [v1] tagged items.
 3. Read `docs/high-level-design.md` — understand the components and their interactions.
-4. Apply the framework to itself. Every decision needs rationale. Every artifact needs tests. Documentation follows the tier system.
-
-### If you're using Prawduct to build a user's product:
-1. Read the orchestrator skill: `skills/orchestrator/SKILL.md`
-2. It will tell you what other skills to invoke and when.
-3. The general flow is: classify → validate → discover → define → generate artifacts → build → govern → iterate.
-4. User project files go in a separate project directory, not in the prawduct tree.
+4. Check the V1 Build Order (below) to understand the current phase and what's already been built. Compare it against the actual files in `skills/`, `templates/`, and `tests/scenarios/` to see the current state.
+5. To run an evaluation, see `tests/scenarios/` — each scenario has an Evaluation Procedure section with setup, run, and evaluation steps.
+6. Apply the framework to itself. Every decision needs rationale. Every artifact needs tests. Documentation follows the tier system.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 
@@ -89,25 +109,41 @@ These are the ones most likely to be violated under pressure:
 
 ## V1 Build Order
 
-Components, in recommended implementation order:
+Build as a vertical slice, not component-by-component. See `docs/high-level-design.md` § "Bootstrapping: Vertical Slice Approach" for the full rationale.
 
-1. **C2: Domain Analyzer** (`skills/domain-analyzer/SKILL.md`) — The most novel piece. Start here. Test against diverse product ideas.
-2. **C1: Orchestrator** (`skills/orchestrator/SKILL.md`) — Conversation flow, stage management, calibration. Depends on C2.
-3. **C3: Artifact Generator** (`skills/artifact-generator/SKILL.md`) — Templates and generation logic. Start with universal artifacts, add shape-specific ones.
-4. **C5: Project State** (`templates/project-state.yaml`) — Schema design. Define what gets tracked and how.
-5. **C4: Review Lenses** (`skills/review-lenses/SKILL.md`) — May merge into critic skill. Build and evaluate.
-6. **Mechanical tools** (`tools/`) — Test integrity, doc validation, boundary checking. Satisfying because they're deterministic.
-7. **C6: Critic** (`skills/critic/SKILL.md`) — Combines LLM judgment with mechanical tool invocations.
+### Phase 1: Prove the Path (one scenario end-to-end)
+
+Use the **family utility** test scenario (simple UI app, low risk). Build just enough of each component to handle this one case through the full pipeline:
+
+1. **C5: Project State** (`templates/project-state.yaml`) — Define the schema first. Everything else reads/writes this.
+2. **C2: Domain Analyzer** (`skills/domain-analyzer/SKILL.md`) — Classify "UI Application" + "Utility." Generate discovery questions for this combination only.
+3. **C1: Orchestrator** (`skills/orchestrator/SKILL.md`) — Manage stages 0 → 0.5 → 1 → 2 for this one scenario.
+4. **C3: Artifact Generator** (`skills/artifact-generator/SKILL.md`) — Generate universal artifacts only (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest).
+5. **C4: Review Lenses** (`skills/review-lenses/SKILL.md`) — Apply all four lenses to the generated artifacts.
+
+**Evaluate against the family utility test scenario rubric** (see `docs/high-level-design.md` § "Validation Strategy for Skills"). Phase 1 succeeds when the end-to-end flow produces useful, consistent output from a vague input.
+
+### Phase 2: Widen
+
+- Add product shapes one at a time (automation → API → multi-party), evaluating each against its test scenario rubric.
+- Add shape-specific artifacts and templates as each shape is added.
+- Build mechanical tools (`tools/`).
+- Build the Critic (C6) — start with spec compliance + test integrity.
+- Add Orchestrator sophistication (pacing, expertise calibration, pushback).
+
+### Phase 3: Full V1
+
+All v1 requirements, all five test scenarios passing, framework governing its own development.
 
 C7 (Trajectory Monitor) and C8 (Learning System) are post-v1. Accommodate them architecturally but don't build them yet.
 
 ## Testing Strategy for This Project
 
-Since this project is a framework of skills and tools (not a traditional application), testing looks different:
+Since this project is a framework of skills and tools (not a traditional application), testing looks different. See `docs/high-level-design.md` § "Validation Strategy for Skills" for the full approach.
 
-- **Skills:** Test by running them against diverse product scenarios. Minimum test scenarios: a consumer mobile app, a background automation, a B2B API, a simple family utility, and a multi-party platform. Evaluate whether the skill asks the right questions, produces good artifacts, and catches problems.
+- **Skills:** Test against five defined product scenarios with evaluation rubrics specifying must-do, must-not-do, and quality criteria. "Good" is not a test — specific, observable criteria are. The five scenarios: consumer mobile app, background automation, B2B API, family utility, two-sided marketplace.
 - **Mechanical tools:** Standard unit/integration tests. Feed them known-good and known-bad project states and verify correct detection.
-- **End-to-end:** Take a product idea from raw input through to build plan using the full framework. Evaluate the build plan's quality. This is the compiler-compiles-itself test.
+- **End-to-end:** Take a product idea from raw input through to build plan using the full framework. Evaluate the build plan against its scenario rubric. The compiler-compiles-itself test: run Prawduct through Prawduct.
 
 ## Conventions
 
