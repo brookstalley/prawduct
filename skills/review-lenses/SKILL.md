@@ -125,6 +125,27 @@ For each lens, produce findings in this format:
 
 **What this lens does NOT do:** It doesn't fix problems — it finds them. Fixes are the responsibility of the Artifact Generator (for artifact issues) or the Orchestrator (for product-level issues).
 
+## Framework Proportionality Observations
+
+In addition to product-focused findings, every lens application should note whether the artifact being reviewed was **proportionate to the product's actual needs**. This is not a product finding — it's a framework observation that feeds back into framework improvement.
+
+**What to watch for:**
+
+- **An artifact that's mostly documenting absence.** If the majority of an artifact's content says "not applicable," "none," or "this product doesn't need [X]," note it. The artifact may be genuinely unnecessary for this product type, and the framework's artifact selection could be smarter.
+- **A review that has nothing meaningful to say.** If a lens is applied to an artifact and produces no findings — not because the artifact is perfect, but because the lens's concerns simply don't apply — note that. The lens application may not be warranted for this product type.
+- **An artifact that's missing.** If a lens reveals a gap that should be covered by an artifact the framework doesn't produce, that's a framework gap.
+
+**Format:** Include these as a separate section after product findings:
+
+```
+### Framework Observations
+[Brief note on whether this artifact and this lens application were proportionate for this product type. General observations only — no product-specific details.]
+```
+
+These observations are surfaced to the user via the Orchestrator's Framework Reflection Protocol and may lead to framework improvements.
+
+---
+
 ## Applying Lenses to the Family Utility Scenario
 
 For a low-risk utility like a family score tracker, the review should be **proportionate**:
