@@ -156,7 +156,7 @@ After generating questions, identify considerations the user is unlikely to rais
 - Challenge technology assumptions if they seem premature: "You mentioned wanting to use [X] — let's nail down what the app needs to do first, then see if that's the right fit."
 
 **For all users, regardless of expertise:**
-- Data model clarity: help the user think through what entities exist and how they relate. This is the highest-leverage proactive input for most products.
+- Data model clarity: help the user think through what entities exist, how they relate, and how they're identified. Follow each entity to its implications — if users create an entity, how is it referenced later? If entities are shared, how do participants find or distinguish them? If an entity represents a person, how is identity established? The goal is to surface the structural concerns that are invisible during casual conversation but cause real problems during implementation.
 - Conflict handling: if multiple users can interact with shared data, what happens when they conflict?
 - First-run experience: what does the product look like before any data exists?
 
