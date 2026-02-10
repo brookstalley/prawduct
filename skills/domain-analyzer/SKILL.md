@@ -62,8 +62,11 @@ Assess overall risk to determine discovery depth. Evaluate these factors:
 | **Failure impact** | Inconvenience | Lost work or data | Safety, financial loss, legal |
 | **Technical complexity** | CRUD + simple UI | Integrations, real-time features | Distributed systems, ML, safety-critical |
 | **Regulatory exposure** | None | Basic privacy (GDPR email) | HIPAA, COPPA, PCI, SOX |
+| **Execution quality bar** | Functional is sufficient | Quality matters for credibility or retention | Quality is the primary differentiator or success factor |
 
-Overall risk is the highest level among factors that matter for this product. Don't inflate risk — a family app with no sensitive data is low risk even if the user is ambitious about features.
+The execution quality bar captures products where the stakes aren't in data or infrastructure but in how well the thing is made. A personal site for a job search, a client-facing dashboard, or a consumer onboarding flow may be technically simple but have high consequences if the execution is mediocre. This factor doesn't inflate overall risk (it shouldn't trigger deeper discovery about architecture) but it should influence design attention and review emphasis.
+
+Overall risk is the highest level among factors that matter for this product. Don't inflate risk — a family app with no sensitive data is low risk even if the user is ambitious about features. Note: a high execution quality bar does not by itself raise overall risk level. It is tracked as a factor so that downstream stages (especially artifact generation and review) can calibrate design attention appropriately, but it does not drive discovery depth the way data sensitivity or technical complexity do.
 
 Write to `project-state.yaml`:
 - `classification.risk_profile.overall`

@@ -31,6 +31,18 @@ Based on `classification.shape`, select the artifacts to generate:
 
 **Phase 1 scope:** Generate universal artifacts only. Shape-specific artifacts (UI, API, automation, multi-party) are added in Phase 2 as each shape is implemented.
 
+### Applicability Assessment
+
+Before generating each artifact, briefly assess whether it is **substantively applicable** to this product. Some products have degenerate cases where an artifact's domain simply doesn't exist — for example, a static site has no authentication, no server-side data model, and no operational complexity.
+
+**When an artifact is substantively applicable:** Generate it normally, at proportionate depth.
+
+**When an artifact's domain is minimal or absent:** Generate a **minimal artifact** — the standard frontmatter, a brief statement of why the domain is minimal for this product, and any residual concerns worth documenting (e.g., "no auth needed, but email is exposed to scrapers"). A minimal artifact should be under half a page. This is not the same as skipping the artifact — the brief assessment itself has value, and the frontmatter maintains the dependency chain. But don't pad content to fill a template when there's genuinely nothing to say.
+
+**When to use minimal vs. full:** The test is simple: if you find yourself writing sentences that say "not applicable," "none," or "this product doesn't have [X]" for most sections of the artifact, it should be minimal. If any section has substantive content, generate the full artifact.
+
+**The Product Brief and Test Specifications are never minimal.** Every product has users, flows, and testable behavior. If you think the Product Brief is inapplicable, the product definition is incomplete — go back to discovery.
+
 ## Step 2: Generate Artifacts in Phases
 
 Artifacts are generated in dependency order across three phases. Each phase includes an incremental consistency check against all previously generated artifacts. The Orchestrator applies review lenses between phases to catch errors before they propagate into downstream artifacts (see Orchestrator Stage 3).
