@@ -67,7 +67,7 @@ For each lens, produce findings in this format:
 - First-run / empty state: what does the user see before any data exists? Is this addressed?
 - Error states: what happens when things go wrong? Are errors helpful?
 - Loading states: if anything takes time, is the user informed?
-- Accessibility: are there obvious accessibility gaps? (Keyboard navigation, screen reader support, color contrast — at the level of "has this been thought about," not a full audit.)
+- Accessibility: for UI applications, always produce a finding about accessibility. If accessibility has been addressed, acknowledge it as a note. If it hasn't been considered, raise it as a warning. Check: keyboard navigation, screen reader support, color contrast, touch target sizes — at the level of "has this been thought about," not a full audit.
 - Onboarding: does a new user know what to do?
 - Consistency: are interaction patterns consistent across flows?
 
@@ -126,7 +126,7 @@ For each lens, produce findings in this format:
 
 For a low-risk utility like a family score tracker, the review should be **proportionate**:
 
-- **Total findings across all lenses:** 5-12 for a low-risk product. If you're producing 20+ findings for a family score tracker, recalibrate.
+- **Total findings across all lenses:** 5-12 for a low-risk product. Findings are issues or observations that require action or a specific decision — don't pad the count with positive reinforcement ("this looks good, no action needed"). If you're producing 20+ findings for a family score tracker, recalibrate.
 - **Blocking findings:** 0-2 at most. A family app has few things that truly can't ship.
 - **Tone:** Helpful, not adversarial. The goal is to improve the product, not to demonstrate thoroughness.
 - **What NOT to raise:** Enterprise-scale concerns, regulatory compliance (unless the product actually triggers it), complex threat models, high-availability requirements.
