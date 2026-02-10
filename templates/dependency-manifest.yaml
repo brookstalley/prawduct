@@ -1,0 +1,45 @@
+# Dependency Manifest Template
+# Tier: 1 (Source of Truth)
+# Owner: Artifact Generator (C3)
+#
+# Usage: Copy this template to your project's artifacts/ directory.
+# Every external dependency (library, service, API, infrastructure) must be
+# listed here with a justification. "It's popular" is not a justification.
+# "It provides [specific capability] for [specific feature], and alternatives
+# [X, Y] were rejected because [reasons]" is.
+#
+# This artifact depends on all other artifacts — it's generated last because
+# dependencies emerge from decisions made in every other artifact.
+
+---
+artifact: dependency-manifest
+version: 1
+depends_on:
+  - artifact: product-brief
+  - artifact: data-model
+  - artifact: operational-spec
+depended_on_by: []
+last_validated: null
+---
+
+# Each dependency entry:
+#   name: Library, service, or API name
+#   type: library | service | api | infrastructure
+#   justification: Why this is needed and why this specific choice
+#   alternatives_considered: Other options evaluated and why they were rejected
+#   version: Pinned version or acceptable range
+#   cost: "free" or estimated monthly cost
+#   risk: What happens if this dependency disappears or breaks
+
+dependencies: []
+
+# Example entry (delete when populating):
+#
+# dependencies:
+#   - name: "SQLite"
+#     type: library
+#     justification: "Local-first data storage for a family app with <10 users. No server needed."
+#     alternatives_considered: ["PostgreSQL (overkill — requires a server)", "localStorage (too limited for structured data)"]
+#     version: "3.x"
+#     cost: "free"
+#     risk: "Extremely low — SQLite is embedded, has no external dependency, and is one of the most tested software projects in existence."

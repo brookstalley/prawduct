@@ -1,0 +1,147 @@
+# Documentation Manifest — Tracks all documents, their tiers, and ownership
+#
+# Tier: 1 (Source of Truth)
+# Owner: Orchestrator (C1) maintains; Critic (C6) validates.
+#
+# Usage: Every document in a Prawduct-managed project must be registered here.
+# Documents without a manifest entry are orphans (violates HR6: No Ad Hoc Documentation).
+#
+# Tiers:
+#   1 — Source of Truth: Authoritative, kept current, has an owner.
+#   2 — Explanatory: Helps understanding, may drift, owner reviews periodically.
+#   3 — Ephemeral: Working notes, auto-expire after 2 weeks, lives in working-notes/.
+#
+# This manifest is for the framework's own documentation. User projects maintain
+# their own artifact_manifest in project-state.yaml.
+
+documents:
+  # --- Tier 1: Source of Truth ---
+
+  - path: docs/vision.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Problem statement, solution approach, and project scope"
+    last_reviewed: null
+
+  - path: docs/requirements.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Functional and non-functional requirements with version tagging"
+    last_reviewed: null
+
+  - path: docs/principles.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Hard rules, governance philosophy, and design principles"
+    last_reviewed: null
+
+  - path: docs/high-level-design.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Component architecture, interaction model, bootstrapping approach"
+    last_reviewed: null
+
+  - path: CLAUDE.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Entry point, routing logic, project structure, build order"
+    last_reviewed: null
+
+  # --- Tier 1: Skills ---
+
+  - path: skills/orchestrator/SKILL.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Conversation flow management, stage transitions, user calibration"
+    last_reviewed: null
+
+  - path: skills/domain-analyzer/SKILL.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Product classification, discovery question generation"
+    last_reviewed: null
+
+  - path: skills/artifact-generator/SKILL.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Artifact selection, generation, cross-artifact consistency"
+    last_reviewed: null
+
+  - path: skills/review-lenses/SKILL.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Four evaluation perspectives for generated artifacts"
+    last_reviewed: null
+
+  - path: skills/critic/SKILL.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Framework self-governance and product build governance"
+    last_reviewed: null
+
+  # --- Tier 1: Templates ---
+
+  - path: templates/project-state.yaml
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Master state schema — all skills read/write this"
+    last_reviewed: null
+
+  - path: templates/product-brief.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Template for product brief artifact"
+    last_reviewed: null
+
+  - path: templates/data-model.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Template for data model artifact"
+    last_reviewed: null
+
+  - path: templates/security-model.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Template for security model artifact"
+    last_reviewed: null
+
+  - path: templates/test-specifications.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Template for test specifications artifact"
+    last_reviewed: null
+
+  - path: templates/nonfunctional-requirements.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Template for non-functional requirements artifact"
+    last_reviewed: null
+
+  - path: templates/operational-spec.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Template for operational specification artifact"
+    last_reviewed: null
+
+  - path: templates/dependency-manifest.yaml
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Template for dependency manifest artifact"
+    last_reviewed: null
+
+  - path: templates/doc-manifest.yaml
+    tier: 1
+    owner: framework-maintainer
+    purpose: "This file — documentation tracking manifest"
+    last_reviewed: null
+
+  # --- Tier 1: Test Scenarios ---
+
+  - path: tests/scenarios/family-utility.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Phase 1 evaluation scenario with rubric"
+    last_reviewed: null
+
+  # Tier 3 documents live in working-notes/ and are not pre-registered.
+  # They must include a creation date and expire after 2 weeks.
