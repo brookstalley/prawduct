@@ -116,7 +116,7 @@ Questions are tiered by decision impact. Start with Tier 1. Move to Tier 2 only 
 #### Tier 2 — Ask If Not Already Inferable
 
 4. **Data persistence:** Does the data matter long-term, or is each session independent?
-5. **Sharing/multi-user:** Do users need to see each other's data? Can multiple people interact with the same data?
+5. **Sharing/multi-user:** Do users need to see each other's data? Can multiple people interact with the same data? If yes: how do they find or join a shared session? (Link, code, proximity, always-shared?) This shapes the onboarding flow significantly.
 6. **Current process:** How do you do this today? What specifically is broken or annoying about that?
 7. **Success image:** When you imagine this working perfectly, what does that look like? (Helps surface unstated requirements.)
 
@@ -157,6 +157,7 @@ After generating questions, identify considerations the user is unlikely to rais
 
 **For all users, regardless of expertise:**
 - Data model clarity: help the user think through what entities exist and how they relate. This is the highest-leverage proactive input for most products.
+- Identity and matching: if the product has informal user identification (names instead of accounts), surface the fragility of name-matching (typos, case differences, nicknames). Recommend mitigations like autocomplete from existing names or case-insensitive matching. This is easy to overlook and causes real usability issues.
 - Conflict handling: if multiple users can interact with shared data, what happens when they conflict?
 - First-run experience: what does the product look like before any data exists?
 

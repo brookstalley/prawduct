@@ -200,6 +200,7 @@ last_validated: null
 - **Backup & recovery:** How data is backed up. Even a family app should have basic backup.
 - **Monitoring:** What to watch. Proportionate — "is the app responding?" is sufficient for low-risk.
 - **Failure recovery:** What happens if it goes down. For low-risk: "restart it."
+- **Data portability:** Can the user export their data? Even for a low-risk product, note whether data export is in v1, accommodate, or later — users should not be locked into a platform without knowing it.
 
 ### Artifact: Dependency Manifest
 

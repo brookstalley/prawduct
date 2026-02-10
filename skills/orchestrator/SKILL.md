@@ -125,6 +125,7 @@ Update `current_stage` to "discovery".
      - **Data storage:** How and where data is stored (e.g., local storage, SQLite, cloud database). For low-risk products, pick the simplest option that meets persistence needs and state it as an assumption.
      - **Deployment target:** Where this will be hosted and how it will be deployed (e.g., Vercel, app stores, self-hosted). Derive from `product_definition.platform`.
      - **Key technology choices:** Primary framework or language. For low-risk products, pick something standard and state it as an assumption. Never ask a non-technical user to choose between frameworks.
+     - **Sync model (if multi-device):** When the product involves multiple users viewing or editing shared data simultaneously, clarify whether updates are real-time (WebSocket/subscriptions), polling, or refresh-on-navigation. This significantly affects complexity and technology choices.
    - For UI applications, set basic `design_decisions`: at minimum, `accessibility_approach` (even "standard platform accessibility" is fine for low-risk) and general `interaction_patterns` (e.g., "mobile-first, touch-friendly").
    - Populate `product_definition.cost_estimates` with at least a rough hosting/operational cost expectation, even if the answer is "$0 — free tier."
 
