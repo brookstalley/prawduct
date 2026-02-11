@@ -8,6 +8,23 @@ Not everything below is v1. Our own principles demand we scope ourselves. Requir
 - **[v1.5]** — Build soon after v1 validates, architecturally accommodate now
 - **[v2]** — Important but can wait for real usage data
 
+### Phase 1 vs Phase 2 (HR2 Compliance)
+
+V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrapping"). Some [v1] requirements are deferred to Phase 2 of the build because the vertical slice only proves one path (family utility, Stages 0-3). Per HR2, these deferrals are documented here rather than silently dropped.
+
+**Phase 1 delivers:** Classification, discovery, product definition, artifact generation, review, and observation capture — for UI Application shape only, Stages 0-3. This validates the architecture end-to-end.
+
+**Deferred to Phase 2 (still v1, but requires Phase 1 validation first):**
+- R1.5 (Opinionated Pushback) — requires Orchestrator sophistication beyond basic stage management
+- R1.7 (Prior Art Awareness) — requires web search integration; low risk to defer since it's additive
+- R2.5 (Build Ordering) — requires Stage 4, which depends on validated artifact generation
+- R3.1-R3.4, R3.7 (Product Governance) — Critic product mode requires working artifacts to govern against; can't validate before artifact generation works
+- R4.1-R4.3 (Trajectory Management) — requires Stage 5 build loop
+- R5.1-R5.3 (Feedback Integration) — requires Stage 6 iteration loop
+- R7.2 (Product Diversity) — full shape coverage requires Phase 2 widening; UI Application is Phase 1
+
+**Rationale:** Building these before the end-to-end path validates risks wasting effort on components that might need redesign. The vertical slice principle ("Prove the Path Before Widening It") takes priority.
+
 ---
 
 ## R1: Validation & Discovery

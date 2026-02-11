@@ -44,11 +44,12 @@ The system consists of eight components organized into three layers: a **Convers
 
 Not all components are equally essential for a working v1:
 
-- **V1 Core:** C1 (Orchestrator), C2 (Domain Analyzer), C3 (Artifact Generator), C4 (Review Lenses), C5 (Project State), C6 (Build Governance)
+- **V1 Phase 1 (vertical slice):** C1 (Orchestrator), C2 (Domain Analyzer), C3 (Artifact Generator), C4 (Review Lenses), C5 (Project State), C6 framework governance mode, C8a (Observation Capture)
+- **V1 Phase 2 (widen):** C6 product governance mode (spec compliance, test integrity, architectural consistency), additional product shapes, mechanical tools
 - **V1.5:** C7 (Trajectory Monitor) — architecturally accommodate but implement after v1 validates
-- **V2:** C8 (Learning System) — requires data from many projects; premature before user base exists
+- **V2:** C8 full (Learning System with pattern detection, validation, incorporation) — requires data from many projects; premature before user base exists
 
-The Trajectory Monitor's triggers (R4.2) can be handled by simple heuristics in v1, upgraded to a dedicated component later.
+The Trajectory Monitor's triggers (R4.2) can be handled by simple heuristics in v1, upgraded to a dedicated component later. See `docs/requirements.md` § "Phase 1 vs Phase 2" for the full deferral rationale.
 
 ---
 
@@ -656,4 +657,5 @@ These are acknowledged gaps that require further work. Per our own principles, w
 
 4. **Multi-user collaboration.** Current design assumes single user. Team scenarios need coordination design. [v1.5 or later — no user projects to learn from yet.]
 5. **Product shapes we haven't tested.** Games, content platforms, developer tools, IoT-adjacent, data-intensive products. The taxonomy may need expansion. [Will surface during Phase 2 widening if users bring these shapes.]
-6. **Minimum viable Critic.** What's the smallest useful Critic for v1? Likely: spec compliance + test integrity + doc controller. Architectural consistency and operational readiness can follow. [Deferred to Phase 2 of bootstrapping.]
+6. **Minimum viable Critic.** What's the smallest useful Critic for v1? Likely: spec compliance + test integrity + doc controller. Architectural consistency and operational readness can follow. [Deferred to Phase 2 of bootstrapping.]
+8. **Observation capture during product sessions requires framework repo write access.** The Orchestrator instructs writing observation files to `{prawduct-repo}/framework-observations/`, but during product sessions the LLM may be working in a different directory without access to the framework repo. V1 mitigation: fallback to writing observations in the user's project `working-notes/` for manual transfer. Proper fix: a mechanism (MCP server, post-session hook, or shared observation store) that doesn't require direct filesystem access to the framework repo. [Will surface during real product usage.]

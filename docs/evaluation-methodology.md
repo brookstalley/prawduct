@@ -72,6 +72,23 @@ The framework has detailed test scenarios with structured rubrics and mandatory 
 | Edge case discovery | Exploratory | Human | Variable |
 | Real product validation | Exploratory | Human | Variable |
 
+### Capabilities by Evaluator Type
+
+| Criterion Type | Simulation | Interactive | Notes |
+|----------------|------------|-------------|-------|
+| Classification correctness | ✓ | ✓ | Check project-state.yaml fields |
+| Artifact structure/frontmatter | ✓ | ✓ | Mechanical checks |
+| Artifact content accuracy | ✓ | ✓ | Entity presence, test specificity |
+| Discovery question count | ✓ | ✓ | Count from change_log or inference |
+| Vocabulary calibration | ✗ | ✓ | Requires transcript analysis |
+| Question ordering by impact | ✗ | ✓ | Requires transcript analysis |
+| Plain language usage | ✗ | ✓ | Requires transcript analysis |
+| Stage transition naturalness | ✗ | ✓ | Requires transcript analysis |
+| Pacing proportionality | ✗ | ✓ | Subjective; transcript needed |
+| "User feels interrogated" | ✗ | ✓ | Subjective; transcript needed |
+
+**Recommendation**: Use simulation for most regression checks (covers ~60-80% of criteria). Reserve interactive for first baseline runs, when conversation-quality issues are suspected, and before major releases.
+
 ---
 
 ## B. Running an Evaluation
@@ -116,48 +133,20 @@ Before starting an evaluation:
 
 ### Delegation to Subagents (When Using Task Tool)
 
-When delegating evaluation execution to a subagent, the coordinating agent assumes a **verification role**. Delegation does not transfer verification responsibility.
+Delegation does not transfer verification responsibility. The coordinating agent must independently verify results.
 
-**Pre-delegation checklist:**
-- [ ] Subagent has access to all framework files (skills/, templates/, docs/, tests/scenarios/)
-- [ ] Subagent instructions include complete evaluation procedure (setup → execution → evaluation → recording → cleanup)
-- [ ] Subagent instructions specify BLOCKING nature of observation verification
+**Pre-delegation:** Ensure subagent has access to all framework files and instructions include the complete evaluation procedure.
 
 **Post-completion verification (MANDATORY):**
 
-The coordinating agent MUST independently verify these items. Do not trust subagent reports without verification:
+- [ ] Evaluation results file exists: `eval-history/{scenario-name}-{YYYY-MM-DD}.md` with complete YAML frontmatter
+- [ ] Spot-check 3-5 rubric criteria have evidence recorded
+- [ ] `change_log` has framework reflection entries for each stage (see Recording Results § step 7)
+- [ ] If observation file exists, verify field completeness
+- [ ] Artifacts were generated (or cleanup already happened and results reference them)
+- [ ] Baseline comparison done (if regression check)
 
-1. **[ ] Observation file exists and is complete**
-   - Read the file: `framework-observations/{scenario-name}-{YYYY-MM-DD}.yaml`
-   - Run observation verification checklist (see Recording Results § step 7)
-   - Count observations: minimum 5 expected
-   - Check stage coverage: verify all transitions represented
-   - If verification fails → evaluation is incomplete
-
-2. **[ ] Evaluation results file exists and is complete**
-   - Read the file: `eval-history/{scenario-name}-{YYYY-MM-DD}.md`
-   - Verify YAML frontmatter is complete (all required fields)
-   - Spot-check 3-5 rubric criteria have evidence recorded
-   - If incomplete → evaluation must be re-run
-
-3. **[ ] Artifacts were generated**
-   - Check that `/tmp/eval-{scenario}/project-state.yaml` was created (or cleanup already happened and results reference it)
-   - If artifacts don't exist and cleanup hasn't happened → execution incomplete
-
-4. **[ ] Baseline comparison (if regression check)**
-   - Compare current results to baseline pass/fail counts
-   - Check for regressions: previously-passing criteria now failing
-   - Document comparison in eval results
-
-**Why this matters:**
-- Subagents can execute procedures but may not fully enforce BLOCKING requirements
-- Observation capture is critical to the learning loop - incomplete capture breaks the system
-- Trust but verify: delegation is valuable but verification cannot be delegated
-
-**If verification fails:**
-- Document the failure in a new observation (type: process_friction, severity: blocking)
-- Decide: re-run evaluation with corrected subagent instructions, or complete missing steps manually
-- Update this guidance if a pattern of delegation failures emerges
+If verification fails, document the failure as an observation (type: process_friction) and either re-run or complete missing steps manually.
 
 ### Evaluation Procedure
 
@@ -184,6 +173,15 @@ The coordinating agent MUST independently verify these items. Do not trust subag
    - C5 Project State: Sum must-do/must-not-do/quality criteria results
    - End-to-End: Evaluate overall success criteria
 
+### Transcript Analysis (Interactive Evaluations Only)
+
+When using interactive evaluation, follow these procedures for conversation-quality criteria:
+
+1. **Capture full transcript** with clear turn boundaries (User/System labels).
+2. **Quote specific evidence** for each conversation-quality criterion. Example: `| 2 | Questions use plain language | PASS | System asked "Where will you use this?" not "What's your target platform?" |`
+3. **Rate subjective criteria**: count question rounds for pacing, check for abrupt stage transitions, identify vocabulary calibration to persona.
+4. **For simulation-based evals**: mark conversation criteria as "unable-to-evaluate" with reason "Needs transcript."
+
 ### Recording Results
 
 **This step is mandatory before cleanup.** Unrecorded evaluations are wasted work.
@@ -193,13 +191,13 @@ The coordinating agent MUST independently verify these items. Do not trust subag
    - If multiple runs same day: `{scenario}-{YYYY-MM-DD}-2.md`
 
 **2. Add YAML frontmatter**
-   - See § G (Recording Format) below for complete template
+   - See § F (Recording Format) below for complete template
    - Include: scenario, date, evaluator type, framework version (git SHA)
    - Include: pass/partial/fail/unable counts total and by component
    - Include: skills_updated list (initially empty, fill in after § C)
 
 **3. Document detailed findings**
-   - Use table format from § G (Recording Format)
+   - Use table format from § F (Recording Format)
    - For each criterion: result + specific evidence
    - For "unable-to-evaluate": explain why (e.g., "Needs transcript")
 
@@ -210,7 +208,7 @@ The coordinating agent MUST independently verify these items. Do not trust subag
    - Group related findings (e.g., "Orchestrator over-explained in 3 places")
 
 **5. Add meta-observations**
-   - See § F (Evaluating the Evaluation) for template
+   - See § E (Evaluating the Evaluation) for template
    - Document rubric ambiguities, scenario design issues, process friction
 
 **6. Extract observations to framework observation journal**
@@ -225,41 +223,17 @@ The coordinating agent MUST independently verify these items. Do not trust subag
    - Set status: noted for new findings, update existing observations if this is a regression check
    - This ensures eval findings feed the pattern detection system
 
-**7. Verify observation capture happened automatically (BLOCKING CHECKLIST)**
+**7. Verify framework reflection and observation capture**
 
-   Execute ALL checks below. If ANY check fails, the evaluation is INCOMPLETE:
+   **Tier 1 — BLOCKING (mechanical):**
+   - [ ] `change_log` in the eval's `project-state.yaml` has a "Framework reflection" entry for each stage transition (0→0.5, 0.5→1, 1→2, 2→3, completion)
+   - [ ] If an observation file exists in `framework-observations/`, each entry has non-empty `type`, `description`, `evidence`, and `severity` fields
+   - If either check fails → evaluation is incomplete
 
-   **File existence check:**
-   - [ ] File exists: `framework-observations/{scenario-name}-{YYYY-MM-DD}.yaml`
-   - If missing → **BLOCKING FAILURE**: Create observation documenting capture failure (severity: blocking, type: process_friction). Investigation required.
-
-   **If file exists, execute mechanical checks:**
-
-   - [ ] **Count observations**: Run `grep -c "^  - type:" framework-observations/{scenario-name}-{YYYY-MM-DD}.yaml`
-     - Expected minimum: **5 observations** (one per stage transition: 0→0.5, 0.5→1, 1→2, 2→3, completion)
-     - If count < 5 → **BLOCKING FAILURE**: Observation capture incomplete
-
-   - [ ] **Verify stage coverage**: Check that observations represent all stage transitions
-     - Read observation file and identify which stages are represented in evidence/description
-     - Required stages: 0→0.5 (classification), 0.5→1 (validation), 1→2 (discovery), 2→3 (definition), completion (artifact generation)
-     - If any stage missing → **BLOCKING FAILURE**: Observation capture incomplete
-
-   - [ ] **Check field completeness**: For each observation entry, verify:
-     - `type:` field is non-empty
-     - `description:` field is non-empty (not just whitespace)
-     - `evidence:` field is non-empty (not just whitespace)
-     - `severity:` field is set
-     - If any entry incomplete → **WARNING**: Record in meta-observations
-
-   - [ ] **Assess substantiveness**: Read each observation's description
-     - Substantive = identifies specific proportionality concern, coverage gap, applicability mismatch, or pattern
-     - Not substantive = "no concerns", "everything worked fine", generic approval without specifics
-     - If >50% observations are generic → **WARNING**: Record in meta-observations, consider interactive eval
-
-   **Record verification results:**
-   - Document in eval results which checks passed/failed
-   - If any BLOCKING failures → evaluation is incomplete, must re-run or investigate
-   - If WARNINGs → note in meta-observations section for future process improvement
+   **Tier 2 — WARNING (judgment):**
+   - [ ] If an observation file exists, assess substantiveness: do entries identify specific framework issues? (See `framework-observations/README.md` for criteria.)
+   - [ ] If no observation file exists, check `change_log` reflection entries — did any identify concerns that warranted capture? (See `framework-observations/README.md` capture criteria.) If so, note as a warning.
+   - If warnings → record in meta-observations for process improvement
 
 ### Cleanup
 
@@ -416,77 +390,7 @@ Automated regression suite:
 
 ---
 
-## E. Simulation vs. Interactive Evaluation
-
-### Capabilities by Evaluator Type
-
-| Criterion Type | Simulation | Interactive | Notes |
-|----------------|------------|-------------|-------|
-| Classification correctness | ✓ | ✓ | Check project-state.yaml fields |
-| Artifact structure/frontmatter | ✓ | ✓ | Mechanical checks |
-| Artifact content accuracy | ✓ | ✓ | Entity presence, test specificity |
-| Discovery question count | ✓ | ✓ | Count from change_log or inference |
-| Vocabulary calibration | ✗ | ✓ | Requires transcript analysis |
-| Question ordering by impact | ✗ | ✓ | Requires transcript analysis |
-| Plain language usage | ✗ | ✓ | Requires transcript analysis |
-| Stage transition naturalness | ✗ | ✓ | Requires transcript analysis |
-| Pacing proportionality | ✗ | ✓ | Subjective; transcript needed |
-| "User feels interrogated" | ✗ | ✓ | Subjective; transcript needed |
-
-### Transcript Analysis Procedures
-
-When using interactive evaluation, follow these procedures for conversation-quality criteria:
-
-**1. Capture full transcript**
-   - Record complete conversation with clear turn boundaries
-   - Format:
-     ```markdown
-     **User:** [exact user message]
-
-     **System:** [exact system response]
-
-     **User:** [next user message]
-     ```
-
-**2. For each conversation-quality criterion**
-   - Quote specific evidence from transcript
-   - Explain why it passes/partial/fails
-   - Example:
-     ```markdown
-     | 2 | Questions use plain language | PASS | System asked "Where will you use this?" not "What's your target platform?" |
-     ```
-
-**3. Rate subjective criteria**
-   - "User feels interrogated": Count question rounds, assess pacing, note if user showed impatience
-   - "Stage transitions natural": Check for abrupt shifts, clear communication of next steps
-   - "Vocabulary matches expertise": Identify technical terms used, check if appropriate for persona
-
-**4. Document unable-to-evaluate**
-   - For simulation-based evals, mark conversation criteria as "unable-to-evaluate"
-   - Reason: "Needs transcript" or "Simulation produces outputs, not conversation"
-
-### Cost-Benefit Analysis
-
-**Simulation**
-- **Time cost**: 10-20 minutes per scenario
-- **Monetary cost**: ~$0.50-2.00 per scenario (API costs)
-- **Coverage**: ~60-80% of rubric criteria (excludes conversation quality)
-- **Best for**: Regression checks, initial validation, mechanical criteria
-
-**Interactive**
-- **Time cost**: 45-90 minutes per scenario (conversation + evaluation)
-- **Monetary cost**: Human time >> API costs
-- **Coverage**: 100% of rubric criteria
-- **Best for**: Baseline establishment, conversation quality validation, new scenario testing
-
-**Recommendation**: Use simulation for most regression checks, reserve interactive for:
-- First baseline run of each scenario
-- When conversation-quality issues are suspected
-- Before major releases (run at least 1-2 scenarios interactively)
-
----
-
-## F. Evaluating the Evaluation (Meta-Learning)
+## E. Evaluating the Evaluation (Meta-Learning)
 
 **Purpose**: Apply the framework's learning principles to the eval process itself. After each eval, critique not just what was found, but *how* it was found. Every eval should make the next eval better.
 
@@ -583,7 +487,7 @@ Add this section to each eval result file (after "Observations NOT Acted On"):
 
 ---
 
-## G. Recording Format
+## F. Recording Format
 
 ### File Naming
 

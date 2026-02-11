@@ -3,9 +3,12 @@
 # Usage: ./scripts/validate-eval-output.sh /tmp/eval-{scenario}/ {scenario-name}
 #
 # Checks:
-# 1. project-state.yaml schema compliance
-# 2. Artifact presence and frontmatter structure
-# 3. Observation file exists in framework repo
+# 1. project-state.yaml exists
+# 2. project-state.yaml schema compliance
+# 3. Artifacts directory exists with minimum files
+# 4. Artifact frontmatter validation
+# 5. Framework reflection entries in change_log (Tier 1 BLOCKING)
+# 6. Observation file exists (Tier 2 INFO — only for substantive findings)
 #
 # Exit codes:
 # 0 = all checks pass
@@ -37,7 +40,7 @@ echo ""
 FAILURES=0
 
 # Check 1: project-state.yaml exists
-echo "[1/5] Checking project-state.yaml exists..."
+echo "[1/6] Checking project-state.yaml exists..."
 if [ ! -f "$PROJECT_DIR/project-state.yaml" ]; then
     echo "  ✗ FAIL: project-state.yaml not found"
     FAILURES=$((FAILURES + 1))
@@ -46,7 +49,7 @@ else
 fi
 
 # Check 2: project-state.yaml schema validation
-echo "[2/5] Validating project-state.yaml schema..."
+echo "[2/6] Validating project-state.yaml schema..."
 if command -v python3 &> /dev/null; then
     if [ -f "$FRAMEWORK_DIR/scripts/validate-schema.py" ]; then
         if python3 "$FRAMEWORK_DIR/scripts/validate-schema.py" "$PROJECT_DIR/project-state.yaml"; then
@@ -63,7 +66,7 @@ else
 fi
 
 # Check 3: Artifacts directory exists
-echo "[3/5] Checking artifacts directory..."
+echo "[3/6] Checking artifacts directory..."
 if [ ! -d "$PROJECT_DIR/artifacts" ]; then
     echo "  ✗ FAIL: artifacts/ directory not found"
     FAILURES=$((FAILURES + 1))
@@ -78,7 +81,7 @@ else
 fi
 
 # Check 4: Artifact frontmatter validation
-echo "[4/5] Validating artifact frontmatter..."
+echo "[4/6] Validating artifact frontmatter..."
 if command -v python3 &> /dev/null && [ -f "$FRAMEWORK_DIR/scripts/check-artifacts.py" ]; then
     if python3 "$FRAMEWORK_DIR/scripts/check-artifacts.py" "$PROJECT_DIR/artifacts"; then
         echo "  ✓ PASS: Artifact frontmatter validation passed"
@@ -90,8 +93,23 @@ else
     echo "  ⊘ SKIP: Python 3 or check-artifacts.py not available"
 fi
 
-# Check 5: Observation file exists (CRITICAL)
-echo "[5/5] Checking observation file exists..."
+# Check 5: Framework reflection in change_log (Tier 1 BLOCKING)
+echo "[5/6] Checking change_log for framework reflection entries..."
+if [ -f "$PROJECT_DIR/project-state.yaml" ]; then
+    REFLECTION_COUNT=$(grep -c "Framework reflection" "$PROJECT_DIR/project-state.yaml" 2>/dev/null || echo 0)
+    if [ "$REFLECTION_COUNT" -gt 0 ]; then
+        echo "  ✓ PASS: Found $REFLECTION_COUNT framework reflection entries in change_log"
+    else
+        echo "  ✗ FAIL: No 'Framework reflection' entries found in change_log"
+        echo "  The Orchestrator must record a reflection at every stage transition."
+        FAILURES=$((FAILURES + 1))
+    fi
+else
+    echo "  ⊘ SKIP: project-state.yaml not available"
+fi
+
+# Check 6: Observation file (Tier 2 WARNING — only required if substantive findings exist)
+echo "[6/6] Checking for observation file..."
 DATE=$(date +%Y-%m-%d)
 OBSERVATION_FILE="$FRAMEWORK_DIR/framework-observations/${DATE}-${SCENARIO_NAME}-eval.yaml"
 
@@ -103,13 +121,9 @@ if [ -f "$OBSERVATION_FILE" ]; then
         echo "  ⚠ WARNING: Observation file is empty"
     fi
 else
-    echo "  ✗ CRITICAL FAIL: Observation file not found: $OBSERVATION_FILE"
-    echo "  This indicates the observation capture system failed during eval."
-    echo "  Manual action required:"
-    echo "    1. Create observation file documenting the capture failure"
-    echo "    2. Investigate why automatic capture didn't work"
-    echo "    3. Mark as severity: blocking, type: process_friction"
-    FAILURES=$((FAILURES + 1))
+    echo "  ⊘ INFO: No observation file at $OBSERVATION_FILE"
+    echo "  (Observation files are only required for substantive findings.)"
+    echo "  If the eval revealed framework issues, create one manually."
 fi
 
 echo ""

@@ -33,12 +33,19 @@ prawduct/
 │   ├── critic/SKILL.md                # Framework self-governance + product build governance
 │   └── review-lenses/SKILL.md         # Four evaluation perspectives (product, design, arch, skeptic)
 ├── tools/                             # Deterministic scripts (mechanical enforcement)
-│   ├── test-integrity-checker.sh      # Monitor test count, assertion trends, corruption patterns
-│   ├── doc-architecture-validator.sh  # Enforce tier system, manifest compliance, orphan detection
-│   ├── boundary-checker.sh            # Verify architectural boundary respect
-│   └── spec-compliance-diff.sh        # Diff specifications against implementation
+│   ├── critic-reminder.sh             # Warn if Critic not run before framework commits
+│   ├── observation-analysis.sh        # Parse observations, detect patterns, produce summary
+│   ├── test-integrity-checker.sh      # [planned Phase 2] Monitor test count, assertion trends
+│   ├── doc-architecture-validator.sh  # [planned Phase 2] Enforce tier system, manifest compliance
+│   ├── boundary-checker.sh            # [planned Phase 2] Verify architectural boundary respect
+│   └── spec-compliance-diff.sh        # [planned Phase 2] Diff specifications against implementation
+├── scripts/                           # Eval/validation helper scripts
+│   ├── validate-eval-output.sh        # Mechanical validation for evaluation output
+│   ├── validate-schema.py             # Validate project-state.yaml against template
+│   └── check-artifacts.py             # Check artifact files for frontmatter and structure
 ├── templates/                         # Starting templates for user project artifacts
 │   ├── project-state.yaml             # Master project state (decisions, deps, open questions)
+│   ├── eval-result-template.md        # Template for recording evaluation results
 │   ├── doc-manifest.yaml              # Documentation tier tracking
 │   ├── product-brief.md               # Template: users, personas, problem, success criteria
 │   ├── data-model.md                  # Template: entities, relationships, constraints
@@ -72,10 +79,10 @@ prawduct/
 ├── tests/                             # Evaluation rubrics for skill validation
 │   └── scenarios/                     # Per-scenario test definitions (Tier 1)
 │       ├── family-utility.md          # Phase 1 vertical slice scenario
-│       ├── consumer-mobile-app.md     # Phase 2
-│       ├── background-data-pipeline.md # Phase 2
-│       ├── b2b-integration-api.md     # Phase 2
-│       └── two-sided-marketplace.md   # Phase 2
+│       ├── background-data-pipeline.md # Built early (Phase 2 scenario, used for observation testing)
+│       ├── consumer-mobile-app.md     # [planned Phase 2]
+│       ├── b2b-integration-api.md     # [planned Phase 2]
+│       └── two-sided-marketplace.md   # [planned Phase 2]
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
 ├── framework-observations/            # Automatic observation capture (Tier 1, append-only)
@@ -86,7 +93,10 @@ prawduct/
 │   ├── vision.md
 │   ├── requirements.md
 │   ├── principles.md
-│   └── high-level-design.md
+│   ├── high-level-design.md
+│   ├── evaluation-methodology.md
+│   ├── self-improvement-architecture.md # C8 learning system design and philosophy
+│   └── doc-manifest.yaml              # Tier 1 doc registry for the framework itself
 └── working-notes/                     # Tier 3 ephemeral docs (auto-expire after 2 weeks)
     └── .gitkeep
 ```
@@ -129,13 +139,14 @@ Use the **family utility** test scenario (simple UI app, low risk). Build just e
 3. **C1: Orchestrator** (`skills/orchestrator/SKILL.md`) — Manage stages 0 → 0.5 → 1 → 2 for this one scenario.
 4. **C3: Artifact Generator** (`skills/artifact-generator/SKILL.md`) — Generate universal artifacts only (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest).
 5. **C4: Review Lenses** (`skills/review-lenses/SKILL.md`) — Apply all four lenses to the generated artifacts.
-6. **C8a: Observation Capture** (`framework-observations/`) — Automatic observation capture at stage transitions and during evaluation. This is minimal C8 (Observer only); pattern detection and incorporation are Phase 2/3.
+6. **C6: Critic — framework governance mode** (`skills/critic/SKILL.md`) — Apply to framework changes before committing. Product governance mode is Phase 2.
+7. **C8a: Observation Capture** (`framework-observations/`) — Automatic observation capture at stage transitions and during evaluation. This is minimal C8 (Observer only); pattern detection and incorporation are Phase 2/3.
 
 **Evaluate against the family utility test scenario rubric** (see `docs/high-level-design.md` § "Validation Strategy for Skills"). Phase 1 succeeds when the end-to-end flow produces useful, consistent output from a vague input and automatically captures observations for future pattern detection.
 
 ### Phase 2: Widen
 
-- Build the Critic (C6) — framework governance mode first (generality checks, read-write chains, proportionality), then product governance (spec compliance, test integrity).
+- Extend the Critic (C6) with product governance mode (spec compliance, test integrity). Framework governance mode is already in Phase 1.
 - Add product shapes one at a time (automation → API → multi-party), evaluating each against its test scenario rubric.
 - Add shape-specific artifacts and templates as each shape is added.
 - Build mechanical tools (`tools/`).
@@ -159,35 +170,11 @@ Since this project is a framework of skills and tools (not a traditional applica
 
 Every evaluation run **must** produce a results file in `eval-history/` before the evaluation directory is cleaned up. This is not optional — unrecorded evaluations are wasted work.
 
+**Template:** Use `templates/eval-result-template.md` as the canonical format — it defines the required YAML frontmatter, per-component rubric tables, and the full result file structure. Copy it, fill it in, and save to `eval-history/{scenario-name}-{YYYY-MM-DD}.md`.
+
 **For complete evaluation procedures** (setup, execution, analysis, learning extraction, regression detection), see `docs/evaluation-methodology.md`.
 
-**File naming:** `eval-history/{scenario-name}-{YYYY-MM-DD}.md` (e.g., `family-utility-2026-02-10.md`). If multiple runs happen on the same day, append a sequence number: `-2026-02-10-2.md`.
-
-**Required YAML frontmatter:**
-```yaml
----
-scenario: family-utility           # Which test scenario was run
-date: 2026-02-10                   # When the evaluation was performed
-evaluator: claude-simulation       # claude-simulation | claude-interactive | human
-framework_version: abc1234         # Git SHA at time of evaluation
-result:
-  pass: 76                         # Total criteria passed
-  partial: 1                       # Partially met
-  fail: 0                          # Failed
-  unable_to_evaluate: 7            # Could not be assessed (e.g., needs transcript)
-  by_component:                    # Breakdown per component
-    C2_domain_analyzer: { pass: 15, partial: 0, fail: 0, unable: 2 }
-    # ... one entry per component
-skills_updated: []                 # Skills modified as a result of this eval
-notes: ""                          # Free-form observations
----
-```
-
-**Body:** Detailed pass/fail per rubric criterion with evidence, followed by issues found and skills updated.
-
 **Observation extraction:** After recording eval results, framework findings are extracted and written to `framework-observations/` as structured observations. This feeds the pattern detection system. See `docs/evaluation-methodology.md` § "Recording Results" step 6 for the extraction procedure.
-
-**Why this matters:** Eval history enables regression detection across framework changes. If a skill update improves C4 but regresses C2, the historical record makes that visible. The YAML frontmatter makes results machine-parseable for future tooling. The observation journal enables automatic pattern detection across multiple evals and product sessions.
 
 ## Conventions
 

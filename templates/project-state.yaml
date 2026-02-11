@@ -213,5 +213,12 @@ current_stage: intake
 #   blast_radius: string (what else is affected)
 #   classification: cosmetic | functional | directional
 #   date: YYYY-MM-DD
+#
+# Also records framework reflections at each stage transition:
+#   what: "Framework reflection: Stage N (name) complete"
+#   why: "[assessment summary or 'no concerns']"
+#   blast_radius: "none"
+#   classification: cosmetic
+#   date: YYYY-MM-DD
 
 change_log: []

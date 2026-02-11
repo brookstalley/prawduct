@@ -102,67 +102,31 @@ framework-observations/{YYYY-MM-DD}-{short-description}.yaml
 
 ## Observation Capture Guidelines
 
-### What to Observe
+**Core heuristic:** Would this observation change what the framework does for future products? If not, don't capture it.
 
-**Capture:**
-- Framework process felt disproportionate to product complexity
-- Framework asked irrelevant questions for this product shape
-- Framework missed important topics for this product shape
-- Framework required outputs that didn't apply to this product
-- User corrected or challenged framework assumptions
-- Repeated patterns across multiple products
+**Capture** (substantive — identifies something the framework should do differently):
+- Framework process felt disproportionate to product complexity (with specifics)
+- Framework missed important topics or asked irrelevant questions for this product shape
+- Framework required outputs that didn't apply to this product type
+- Concrete recurring patterns across multiple sessions
+- User corrected or challenged a framework assumption (signals a gap)
 
-**Don't capture:**
-- Product-specific details ("Brooks's app needs dark mode")
-- Single-instance anomalies without broader pattern potential
-- User preferences that are product-specific ("User wanted SQLite")
-- Implementation details of user's product
-
-### Substantiveness Criteria
-
-An observation is **substantive** if it identifies a specific, actionable insight about the framework's behavior. Generic approval or "no concerns" observations dilute the signal and should not be captured.
-
-**Substantive observations identify:**
-- **Proportionality concerns**: Framework process felt too heavy or too light for the product
-- **Coverage gaps**: Framework missed important topics or questions for this product shape/domain
-- **Applicability mismatches**: Framework applied patterns that don't fit this product type
-- **Specific patterns**: Concrete recurring behaviors across multiple sessions
-- **Unexpected successes**: Framework handled something well despite expected difficulty (only if this contradicts a prior concern)
-
-**Not substantive (do NOT capture):**
+**Don't capture** (not substantive — no actionable framework change):
 - Generic approval: "Everything worked fine", "No concerns", "Process was smooth"
-- Tautological observations: "Low-risk product had proportionate process" (this is the baseline expectation)
-- Vague assessments: "Framework could be better", "User seemed satisfied" (no actionable insight)
-- Restatements of framework design: "Framework asked discovery questions" (yes, that's what it does)
+- Tautological: "Low-risk product had proportionate process" (baseline expectation)
+- Restatements of design: "Framework asked discovery questions" (yes, that's what it does)
+- Product-specific details: user preferences, implementation choices, or anything that names a specific product
+- Vague assessments without actionable insight: "Framework could be better"
 
 **Examples:**
 
-| Observation | Substantive? | Why |
-|-------------|--------------|-----|
-| "Stage 3 artifact generation completed without significant concerns for low-risk utility." | **No** | Generic approval. If there are no concerns, don't capture. |
-| "Framework asked 12 discovery questions for low-risk utility, exceeding 5-8 guideline." | **Yes** | Specific proportionality concern with quantitative evidence. |
+| Observation | Capture? | Why |
+|-------------|----------|-----|
+| "Framework asked 12 discovery questions for low-risk utility, exceeding 5-8 guideline." | **Yes** | Specific proportionality concern with evidence. |
 | "Framework didn't ask about offline capabilities for media utility app despite user mentioning 'use while camping'." | **Yes** | Specific coverage gap with context. |
-| "Classification process felt appropriate." | **No** | Vague, no actionable insight. |
-| "Framework adapted vocabulary well to non-technical user." | **Only if unexpected** | If this contradicts a prior concern about vocabulary calibration, capture it. Otherwise it's baseline expectation. |
-| "Discovery questions were ordered by impact as expected." | **No** | Restatement of design. If ordering was POOR, that's an observation. |
+| "Stage 3 completed without significant concerns." | **No** | Generic approval. Nothing to change. |
 
-**When in doubt:** Ask "What would the framework do differently based on this observation?" If the answer is "nothing, it's already doing this correctly," don't capture.
-
-### Generalization Principle
-
-Every observation description must be generalizable across products.
-
-**Bad (product-specific):**
-> "User's sleep sound app needs offline audio playback"
-
-**Good (generalizable):**
-> "Framework didn't ask about offline/connectivity requirements for media-heavy utility apps"
-
-**Bad (product-specific):**
-> "Brooks wanted a tabbed interface for sound categories"
-
-**Good (generalizable):**
-> "Framework missed navigation pattern discovery for apps with categorized content"
+**Generalization rule:** Every observation must generalize across products. Write "Framework missed navigation pattern discovery for apps with categorized content," not "Brooks wanted a tabbed interface for sound categories."
 
 ### When to Mark as "acted_on"
 

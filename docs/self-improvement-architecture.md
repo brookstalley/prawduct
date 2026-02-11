@@ -40,10 +40,10 @@ This is not a feature. This is an **existential requirement**. A framework that 
 
 Analogy: Git automatically creates reflog entries when you perform operations. You don't "remember to log." The logging is built into the operation. If git reflog were optional, it would be useless (you'd forget to enable it when you need it most).
 
-Similarly, framework observation must be **automatic and blocking**:
-- Every stage transition writes observations (not "may write" - **must write**)
-- Observation file creation is verified before stage proceeds (blocking requirement)
-- If observation capture fails, the stage transition fails (not silently, not gracefully)
+Similarly, framework reflection must be **automatic and blocking**:
+- Every stage transition records a reflection in `change_log` (not "may record" — **must record**)
+- Observation files are written when substantive findings exist (not for "no concerns")
+- The `change_log` entry is the proof that reflection happened; observation files capture signal worth acting on
 
 ### Why This Matters
 
@@ -51,10 +51,10 @@ Similarly, framework observation must be **automatic and blocking**:
 
 **The lesson**: Building a feature ≠ feature works ≠ feature is used ≠ feature is enforced.
 
-Observation as side-effect means:
-1. **Can't be forgotten** - happens automatically, not on request
-2. **Can't be skipped** - blocking requirement, not optional nice-to-have
-3. **Failures are visible** - if observation doesn't happen, operation fails noisily
+Reflection as side-effect means:
+1. **Can't be forgotten** - reflection is part of every stage transition, recorded in `change_log`
+2. **Can't be skipped** - `change_log` entry is a blocking requirement
+3. **Signal is captured** - substantive findings become observation files; non-findings are still reflected
 
 ### What Gets Observed
 
@@ -86,10 +86,10 @@ Observation as side-effect means:
 Self-improvement has distinct layers that require different capabilities and different amounts of data:
 
 **Phase 1: Capture** (Build immediately)
-- Observation capture at every framework interaction
+- Reflection at every stage transition (recorded in `change_log`), observation files for substantive findings
 - Minimal data needed (just need framework to run)
 - Side-effect of normal operation
-- **Status**: Built 2026-02-11, blocking requirement enforced
+- **Status**: Built 2026-02-11, refined 2026-02-11 (reflection/observation split)
 
 **Phase 2: Pattern Detection** (Build after project volume)
 - Analyze accumulated observations for patterns
@@ -138,8 +138,8 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 **Implementation**:
 - `framework-observations/` directory in framework repo (NOT user project directories)
 - YAML files with schema: observation_id, timestamp, session_type, observations array
-- Mandatory capture at every Orchestrator stage transition (blocking requirement)
-- Verification step before stage proceeds (stage fails if observation file not created)
+- Mandatory reflection at every Orchestrator stage transition (recorded in `change_log` — blocking)
+- Observation files created only for substantive findings (see `framework-observations/README.md` for criteria)
 
 **Location**: Framework repo, not user projects. Observations are about framework behavior, not product specifics.
 
@@ -210,21 +210,20 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 
 ## Critical Requirements
 
-### Requirement 1: Observation Capture Must Be Blocking
+### Requirement 1: Reflection Must Be Blocking
 
-**Status**: ENFORCED (as of 2026-02-11)
+**Status**: ENFORCED (as of 2026-02-11, refined 2026-02-11)
 
-Observation capture cannot be optional. Stage transitions must **fail** if observation file is not created.
+Framework reflection cannot be optional. Stage transitions must record a reflection entry in `change_log`.
 
-**Rationale**: If observation is optional, it will be skipped (accidentally or "to save time"). The data we most need (framework failures, edge cases, gaps) occurs in exceptional situations - exactly when someone is most likely to skip "optional" observation.
+**Rationale**: If reflection is optional, it will be skipped (accidentally or "to save time"). The data we most need (framework failures, edge cases, gaps) occurs in exceptional situations — exactly when someone is most likely to skip "optional" reflection.
 
 **Implementation**:
-- Orchestrator skill § Framework Reflection Protocol requires observation file creation
-- Verification step added: Check file exists before proceeding to next stage
-- Stage transition fails if file not found
-- Language changed from "you may skip" to "You MUST create"
+- Orchestrator skill § Framework Reflection Protocol requires `change_log` entry at every stage transition (blocking)
+- Observation files are created only for substantive findings (not for "no concerns")
+- This split eliminates noise while preserving the side-effect guarantee
 
-**Verification**: Evaluation methodology includes Step 7: Verify observation capture happened (blocking check)
+**Verification**: Evaluation methodology Step 7 Tier 1 (BLOCKING) verifies `change_log` has reflection entries; Tier 2 (WARNING) assesses observation file substantiveness
 
 ### Requirement 2: Observations Must Be Generalized
 
@@ -344,11 +343,11 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 ### Phase 1 Success (Observation Capture)
 
-✅ **Every product session produces observation file** (automatic, not manual)
-✅ **Every evaluation produces observation file** (verified before completion)
+✅ **Every stage transition records reflection in `change_log`** (automatic, blocking)
+✅ **Substantive findings produce observation files** (signal, not noise)
 ✅ **Observation files follow schema** (machine-parseable, structured)
 ✅ **Observations are generalized** (pattern-ready, not product-specific)
-✅ **Stage transitions block if observation not created** (enforcement, not optional)
+✅ **Evaluation methodology verifies reflection mechanically** (Tier 1 BLOCKING check)
 
 ### Phase 2 Success (Pattern Detection)
 

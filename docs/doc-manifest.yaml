@@ -1,0 +1,122 @@
+# Doc Manifest — Prawduct Framework
+#
+# Registry of all Tier 1 documents in this project.
+# Per HR6: every document must have a tier, an owner, and a location.
+# Per R3.5: exactly one canonical location per topic, no duplication.
+#
+# Tier: 1 (Source of Truth)
+# Owner: Framework developers
+# Last updated: 2026-02-11
+
+tier_1_documents:
+  - path: docs/vision.md
+    purpose: "What Prawduct is, the problem it solves, and who it's for"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: docs/requirements.md
+    purpose: "All requirements tagged by version scope [v1]/[v1.5]/[v2] with Phase 1/2 deferral rationale"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: docs/principles.md
+    purpose: "Non-negotiable behavioral rules: hard rules, governance philosophy, discovery/learning/meta principles"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: docs/high-level-design.md
+    purpose: "System architecture: components, stages, shape taxonomy, validation strategy, bootstrapping approach"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: docs/evaluation-methodology.md
+    purpose: "How to run evaluations, extract learnings, detect regressions, and improve the eval process"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: docs/doc-manifest.yaml
+    purpose: "This file — registry of all Tier 1 documents"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: CLAUDE.md
+    purpose: "Entry point: routing, project structure, build order, conventions, eval recording format"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: skills/orchestrator/SKILL.md
+    purpose: "LLM instructions for conversation flow, stage management, user calibration, framework reflection"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: skills/domain-analyzer/SKILL.md
+    purpose: "LLM instructions for product classification, discovery questions, risk profiling"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: skills/artifact-generator/SKILL.md
+    purpose: "LLM instructions for producing build plan artifacts in dependency order"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: skills/review-lenses/SKILL.md
+    purpose: "LLM instructions for four-perspective evaluation (product, design, architecture, skeptic)"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: skills/critic/SKILL.md
+    purpose: "LLM instructions for framework governance and (future) product governance"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: templates/project-state.yaml
+    purpose: "Template for user project master state file — all skills read/write this"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: framework-observations/README.md
+    purpose: "Documentation for the observation capture system: schema, guidelines, pattern detection thresholds"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: framework-observations/schema.yaml
+    purpose: "YAML schema definition for observation entries"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: docs/self-improvement-architecture.md
+    purpose: "Self-improvement system design: observation-as-side-effect philosophy, three-phase architecture (C8), failure modes"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: templates/eval-result-template.md
+    purpose: "Template for recording evaluation results with YAML frontmatter and per-component rubric tables"
+    owner: framework
+    last_validated: 2026-02-11
+
+# Tier 1 append-only directories (not individual files):
+tier_1_directories:
+  - path: eval-history/
+    purpose: "Evaluation results with YAML frontmatter — append-only, enables regression detection"
+    naming: "{scenario-name}-{YYYY-MM-DD}.md"
+
+  - path: framework-observations/
+    purpose: "Structured observation files — append-only, feeds pattern detection"
+    naming: "{YYYY-MM-DD}-{description}.yaml"
+
+  - path: tests/scenarios/
+    purpose: "Test scenario definitions with evaluation rubrics"
+    naming: "{scenario-name}.md"
+
+  - path: templates/
+    purpose: "Artifact templates (product-brief, data-model, security-model, etc.) and shape-specific templates — instructional, copied into user projects"
+    note: "project-state.yaml and eval-result-template.md are listed individually above; remaining templates are tracked as a directory"
+
+  - path: scripts/
+    purpose: "Eval/validation helper scripts (validate-eval-output.sh, validate-schema.py, check-artifacts.py)"
+    note: "May be consolidated into tools/ in a future cleanup"
+
+# Tier 3 (ephemeral):
+tier_3_directories:
+  - path: working-notes/
+    purpose: "Working notes with 2-week expiration — incorporate into Tier 1 or delete"

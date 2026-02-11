@@ -19,7 +19,7 @@ Across all stages, the Orchestrator:
 - **Enforces pacing.** Discovery depth is calibrated to product risk. A low-risk utility gets 1-2 rounds of questions. A high-risk B2B platform gets more. Never hold the user hostage to a process they find tedious.
 - **Makes decisions the user can't.** When the user lacks expertise to choose (architecture, security approach, deployment strategy), make a reasonable choice, state it as an assumption, and move on. Don't ask a non-technical user to pick between PostgreSQL and MongoDB.
 - **Tracks stage transitions.** Stages are fuzzy, not rigid gates. Discovery and definition interleave. But you must know what stage you're in so you know what to do next and can update `project-state.yaml` → `current_stage` at each transition.
-- **Reflects on the framework at every stage transition.** After completing each stage, briefly assess whether the framework's process was proportionate and useful for this product. Note what worked, what felt disproportionate, and what was missing. Surface these observations to the user and record general (not product-specific) findings. See the Framework Reflection Protocol below.
+- **Reflects on the framework at every stage transition.** See the Framework Reflection Protocol below.
 
 ---
 
@@ -33,10 +33,10 @@ Across all stages, the Orchestrator:
 2. Follow the Domain Analyzer's classification process (Steps 1-4): classify shape, domain, and risk profile.
 3. The Domain Analyzer will confirm classification with the user in plain language. Wait for user confirmation.
 4. Update `project-state.yaml` with classification results and initial `user_expertise` inferences from the user's opening message.
-5. **Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was classification proportionate? Did shape/domain taxonomy fit this product? Were risk factors appropriate? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+5. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 6. Update `current_stage` to "validation".
 
-**Transition to Stage 0.5** when classification is confirmed by the user and observation capture is verified.
+**Transition to Stage 0.5** when classification is confirmed by the user.
 
 ---
 
@@ -61,11 +61,11 @@ Evaluate whether this product warrants building. Depth depends on risk:
 - Read `skills/review-lenses/SKILL.md`. Apply the Product Lens and Skeptic Lens to evaluate: does this warrant building? Are there existing solutions? Is this feasible for LLM-assisted development? Is this actually one product?
 - Surface findings and discuss with user. The system must be willing to recommend not building.
 
-**Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was validation depth proportionate to risk? Did we ask the right feasibility questions? Were there validation concerns we missed? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 
 Update `current_stage` to "discovery".
 
-**Transition to Stage 1** after validation completes (or is skipped for low-risk) and observation capture is verified.
+**Transition to Stage 1** after validation completes (or is skipped for low-risk).
 
 ---
 
@@ -109,11 +109,11 @@ Update `current_stage` to "discovery".
 
 6. **Re-evaluate risk profile.** Before transitioning, check whether discovery revealed complexity not apparent at classification time. The user's initial description may understate technical depth (e.g., "an app that plays sounds" may turn out to require real-time audio synthesis). If any risk factor has materially changed, update `classification.risk_profile` in `project-state.yaml`. If overall risk has increased, consider whether additional discovery is warranted before proceeding — but don't re-run discovery just because risk increased; only if the higher risk reveals gaps in what you've learned.
 
-7. **Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was question count proportionate to risk? Did we ask about the right things? Did we miss important discovery areas? Was pacing appropriate for user expertise? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+7. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 
 8. Update `current_stage` to "definition".
 
-**Transition to Stage 2** when you have enough to define the product and observation capture is verified.
+**Transition to Stage 2** when you have enough to define the product.
 
 ---
 
@@ -150,11 +150,11 @@ Update `current_stage` to "discovery".
 
 5. When the user confirms, run the Stage Transition Protocol (see below) to verify prerequisites are met.
 
-6. **Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was product definition process proportionate? Did scope decisions feel right for this product? Were technical decisions made at appropriate level of detail? Did we capture user's intent accurately? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+6. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 
 7. Update `current_stage` to "artifact-generation".
 
-**Transition to Stage 3** when the user confirms the product definition, readiness check passes, and observation capture is verified.
+**Transition to Stage 3** when the user confirms the product definition and readiness check passes.
 
 ---
 
@@ -188,7 +188,7 @@ Update `current_stage` to "discovery".
 
 4. Present a summary of the artifacts and all review findings to the user.
 
-5. **Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was artifact generation proportionate to product complexity? Were review findings appropriate in number and severity? Did we generate the right artifacts for this shape? Were cross-references accurate? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+5. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 
 6. Update `current_stage` to "build-planning".
 
@@ -198,91 +198,36 @@ Update `current_stage` to "discovery".
 
 ## Framework Reflection Protocol
 
-At every stage transition, pause and ask: **did the framework serve this product well in the stage just completed?** This is how the framework improves — not just through post-hoc evaluation, but through continuous self-critique during actual use.
+At every stage transition, pause and assess: **did the framework serve this product well in the stage just completed?**
 
-**When to reflect:** After completing each stage, BEFORE moving to the next. This is a MANDATORY part of the stage transition, not optional.
+**Assess these four dimensions:**
 
-**Process:**
-1. Assess the stage just completed (see "What to assess" below)
-2. Write observations to framework observation journal (MANDATORY - see "Mandatory Observation Capture" section)
-3. Verify observation file was created (BLOCKING - stage transition fails if not created)
-4. Then proceed to next stage
+| Dimension | Question |
+|-----------|----------|
+| Proportionality | Was the work this stage required proportionate to the product's complexity and risk? |
+| Coverage | Did the stage surface everything important? Was anything missed? |
+| Applicability | Were any framework-required outputs inapplicable to this product? |
+| Missing guidance | Did you have to improvise because the framework lacked guidance? |
 
-**What to assess:**
+**Per-stage focus areas:**
 
-1. **Proportionality:** Was the work this stage required proportionate to the product's complexity and risk? Did any step feel like process for its own sake?
-2. **Coverage:** Did the stage surface everything important for this product? Was anything missed that mattered?
-3. **Applicability:** Were any framework-required outputs genuinely inapplicable to this product? (e.g., a security model for a static site, a data model for a product with no data)
-4. **Missing guidance:** Did you have to improvise because the framework didn't address something this product needed? That's a gap.
+| Stage | Focus |
+|-------|-------|
+| 0 (Intake) | Did shape/domain taxonomy fit? Were risk factors appropriate? |
+| 0.5 (Validation) | Was validation depth proportionate to risk? |
+| 1 (Discovery) | Was question count proportionate? Were the right topics covered? |
+| 2 (Definition) | Were scope and technical decisions at the right level of detail? |
+| 3 (Artifacts) | Were the right artifacts generated? Were review findings appropriate? |
 
-**What to do with observations:**
+**What to do with findings:**
 
-- **Surface them to the user** as a brief note at each transition: "Framework note: [observation]." The user may have their own observations — invite them.
-- **Keep observations general.** "The artifact set assumes server-side logic; static sites don't benefit from a security model" is general. "Brooks's site doesn't need a security model" is specific. Record the former, not the latter.
-- **Propose framework updates** when observations are actionable. If you identify a change that would improve the framework for future products of any type, note it. If the user is working in the framework repo, offer to make the change. If not, record it as a framework observation for later.
-- **Automatically capture observations to the framework observation journal.** This is mandatory, not optional. See "Mandatory Observation Capture" below.
-
-**What NOT to do:**
-
-- Don't let reflection slow down a user who's eager to proceed. Keep it to 1-2 sentences per transition unless there's a significant finding.
-- Don't bring product-specific details into framework observations. The insight must generalize.
-- Don't accumulate observations silently — surface them as you go.
-
----
-
-### Mandatory Observation Capture
-
-At every stage transition, after completing the Framework Reflection Protocol assessment, write your observations to the framework observation journal. This is not optional — it's how the framework improves automatically.
-
-**Location:** In the Prawduct framework repo: `{prawduct-repo}/framework-observations/{YYYY-MM-DD}-{session-description}.yaml`
-
-**When working on a user's product** (session_type: product_use):
-- Create observation file in framework repo, NOT in user's project directory
-- Use generic session description (e.g., "product-session-1") or UUID, NOT product-specific names
-- Only record generalizable observations, never product-specific details
-
-**File naming:**
-- `{YYYY-MM-DD}-product-session-{uuid}.yaml` for product use sessions
-- `{YYYY-MM-DD}-{scenario-name}-eval.yaml` for evaluation runs
-- `{YYYY-MM-DD}-{topic}.yaml` for framework development
-
-**Required content:**
-```yaml
----
-observation_id: [generate a UUID]
-timestamp: [ISO-8601 format]
-session_type: product_use | evaluation | framework_dev
-session_context:
-  product_classification: [for product_use only]
-  scenario_name: [for evaluation only]
-  framework_version: [git SHA from `git rev-parse --short HEAD`]
-observations:
-  - type: proportionality | coverage | applicability | missing_guidance
-    stage: [0, 0.5, 1, 2, 3]
-    severity: note | warning | blocking
-    description: "[Generalized observation - NOT product-specific]"
-    evidence: "[What triggered this observation]"
-    proposed_action: "[What could address this]" | null
-    status: noted
-skills_affected: [list of skill files]
----
-```
-
-**See `framework-observations/schema.yaml` for complete schema and `framework-observations/README.md` for guidelines.**
-
-**CRITICAL - This is MANDATORY and BLOCKING:**
-- **You MUST create an observation file at EVERY stage transition, even if observations are minimal**
-- **Stage transition FAILS if observation file is not created** - verify file exists before proceeding
-- Observations must be generalized, not product-specific
-- This capture happens silently (no user notification unless severity: blocking)
-- Minimum: At least one observation per file, even if just noting "Stage N completed without significant concerns (type: proportionality, severity: note)"
-- When in doubt about whether an observation is significant, err on the side of capturing — low-signal observations can be filtered during pattern detection
-
-**Verification before proceeding:**
-After writing observation file, verify it exists:
-- For product sessions: Check that `{prawduct-repo}/framework-observations/{date}-product-session-*.yaml` was created
-- For evaluations: Check that `{prawduct-repo}/framework-observations/{date}-{scenario-name}-eval.yaml` was created
-- If file does NOT exist, STOP and create it before transitioning to next stage
+1. **Always** record a reflection entry in `change_log` (proves reflection happened):
+   - `what: "Framework reflection: Stage N (name) complete"`
+   - `why: "[assessment summary or 'no concerns']"`
+2. **If substantive findings exist**, write an observation file to `{prawduct-repo}/framework-observations/`. See `framework-observations/README.md` for substantiveness criteria and `schema.yaml` for the file format. Only create observation files when there's signal — not for "no concerns." Include only substantive observations in the file; non-substantive stage reflections are already recorded in `change_log`.
+   - **Write-access fallback:** Check whether the `framework-observations/` directory exists and is writable in the prawduct framework repo. If it is not accessible (e.g., the framework was loaded from a read-only location, or the session's working directory is the user's project with no path back to the framework repo), write observations to the user's project directory as `working-notes/framework-observations-{date}.yaml` instead. Note this in the `change_log` entry: `"Framework observations written to project working-notes (framework repo not accessible)."` These files should be transferred to the framework repo when next accessible.
+3. **Surface findings to the user** briefly: "Framework note: [observation]." Keep to 1-2 sentences unless there's a significant finding. Don't slow down an eager user.
+4. Keep all observations **general, not product-specific**. The insight must apply across products.
 
 ---
 
