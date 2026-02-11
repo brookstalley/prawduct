@@ -192,7 +192,156 @@ Update `current_stage` to "discovery".
 
 6. Update `current_stage` to "build-planning".
 
-*Stages 4-6 (Build Planning, Build + Governance, Iteration) are Phase 2. The Orchestrator acknowledges their existence but does not implement them yet.*
+**Transition to Stage 4** when artifacts are confirmed and review findings resolved.
+
+---
+
+## Stage 4: Build Planning
+
+**Trigger:** `current_stage` is "build-planning".
+
+**What to do:**
+
+1. Read `skills/artifact-generator/SKILL.md` — specifically Phase D (Build Planning).
+2. Invoke the Artifact Generator's Phase D to produce the build plan artifact (`artifacts/build-plan.md`).
+3. The Artifact Generator populates `project-state.yaml` → `build_plan` with the strategy, chunks, and governance checkpoints.
+
+4. **Present the build plan to the user in plain language.** Not as a YAML dump — as a readable summary:
+
+   > "Here's how I'd build this: First, I'll set up the project with [technology]. Then I'll build [chunks in order], each one delivering [what the user cares about]. By chunk [N], you'll be able to [early feedback milestone]. The whole build is [N] chunks. Want me to go ahead?"
+
+   For low-risk products, this should be brief — 1-2 paragraphs. The user doesn't need to understand the technical details of each chunk, just the sequence and when they'll see something working.
+
+5. **User confirms → transition to Stage 5.** If the user wants changes:
+   - **Reordering** (build X before Y): update chunk dependencies and order.
+   - **Scope changes** (add/remove functionality): this is a Stage 2 concern — flag it. If the change is small, update artifacts and regenerate the build plan. If large, discuss whether to re-enter discovery.
+   - **Technology changes**: update `technical_decisions`, relevant artifacts, and regenerate the build plan.
+
+6. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
+
+   **FRP focus for Stage 4:** Was the chunking appropriate? Did the build plan translate artifact specs into concrete instructions? Were there gaps between what the artifacts specify and what the Builder would need?
+
+7. Update `current_stage` to "building".
+
+**Transition to Stage 5** when the user confirms the build plan.
+
+---
+
+## Stage 5: Build + Governance Loop
+
+**Trigger:** `current_stage` is "building".
+
+**What to do:**
+
+Read `skills/builder/SKILL.md` and `skills/critic/SKILL.md`.
+
+For each chunk in `build_plan.chunks` (in dependency order):
+
+1. **Brief the user.**
+   - Low-risk: brief summary. "Building score recording... This is the first feature you'll be able to try."
+   - High-risk: more detail. "Building the payment processing module. This chunk covers [X]. I'll check with you after it's reviewed."
+   - Don't ask for permission between every chunk for low-risk products. The user confirmed the build plan; execute it.
+
+2. **Set chunk status.** Update `build_plan.current_chunk` and the chunk's status to "in_progress".
+
+3. **Invoke the Builder.** Load `skills/builder/SKILL.md` and execute the chunk. The Builder:
+   - Reads the chunk spec and relevant artifacts.
+   - Writes tests and implementation.
+   - Runs all tests.
+   - Updates `build_state` in project-state.yaml.
+   - Sets chunk status to "review".
+
+4. **Handle Builder flags.** If the Builder raises `artifact_insufficiency` or `spec_ambiguity`:
+   - Assess whether the flag can be resolved by reading existing artifacts more carefully (sometimes it can).
+   - If the gap is real: update the relevant artifact, note the change in `change_log`, and write an observation to `framework-observations/`. Then let the Builder continue.
+   - If the gap requires a user decision: ask the user, update artifacts, continue.
+
+5. **Invoke the Critic.** Load `skills/critic/SKILL.md` Mode 2 (Product Governance) and review the chunk.
+
+6. **Handle Critic findings.**
+   - **Blocking findings:** The Builder fixes the issues. The Critic re-reviews. Repeat until clear. Watch for fix-by-fudging (the Critic checks for this).
+   - **Warnings:** Note them. The Builder addresses warnings that are quick to fix. Others are tracked in `build_state.reviews` for later.
+   - **Clear:** Chunk status → "complete". Proceed to next chunk.
+
+7. **At governance checkpoints** (marked in `build_plan.governance_checkpoints`):
+   - Run a broader cross-chunk review: are the completed chunks cohering into a working product?
+   - Read `skills/review-lenses/SKILL.md` and apply Architecture and Skeptic lenses to the implementation so far.
+   - If issues found, address before continuing.
+
+8. **Framework Reflection per chunk** (lightweight — not full FRP):
+   - Were the artifact specs sufficient for this chunk? If not, that's an `artifact_insufficiency` observation.
+   - Did the Critic catch real issues or produce noise? That informs Critic calibration.
+
+**When all chunks complete:**
+
+1. Run the full Critic product governance review across the entire codebase.
+2. Run all four review lenses on the complete implementation.
+3. Verify all tests pass.
+4. Present the result to the user:
+
+   > "Your [product name] is built. Here's what it does: [summary of core flows]. All [N] tests pass. To try it: [how to run it, e.g., npm run dev]. A few things the review found: [brief findings summary]. Want to try it out and let me know what you'd like to change?"
+
+5. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
+
+   **FRP focus for Stage 5:** Were artifact specs sufficient to build from? Did the Critic add value? Were the chunks the right size? Did proportionality hold — was the process appropriate for the product's complexity?
+
+6. Update `current_stage` to "iteration".
+
+**Pacing during Stage 5:**
+
+| Risk | Chunk briefings | User interaction | Checkpoint depth |
+|------|----------------|-----------------|-----------------|
+| Low | Brief summaries | Don't ask between chunks | Lightweight |
+| Medium | Per-chunk summaries | Ask at governance checkpoints | Moderate |
+| High | Detailed briefings | User approval at each checkpoint | Thorough |
+
+**Transition to Stage 6** when all chunks are complete, all tests pass, and the product is presented to the user.
+
+---
+
+## Stage 6: Iteration
+
+**Trigger:** `current_stage` is "iteration".
+
+**What to do:**
+
+The user has a working product and provides feedback. Handle feedback in lightweight cycles.
+
+1. **Receive user feedback.** Listen for what the user wants to change.
+
+2. **Classify the feedback:**
+
+   - **Cosmetic** (wording, colors, spacing, small visual tweaks): Implement directly. No artifact updates needed. Quick cycle: fix → test → done.
+   - **Functional** (new feature, changed behavior, different flow): Update affected artifacts first, then build. This is a mini Stage 5 loop:
+     1. Assess change impact: what artifacts change? What chunks are affected? Any regressions?
+     2. Update the relevant artifacts (data-model, test-specifications, product-brief, etc.).
+     3. Create new chunk(s) or identify existing chunks to modify.
+     4. Builder implements → Critic reviews → tests pass.
+   - **Directional** (fundamentally different product vision): Flag this explicitly. "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?" If they want to shift, consider whether reclassification (R5.4) is warranted. For now, handle as a major functional change.
+
+3. **Change impact assessment (R5.2).** Before implementing any functional change:
+
+   > "That change would affect [artifacts]. Here's what it means: [impact description]. [If small: 'Quick fix, should take one iteration.' If larger: 'This touches [N] files and the [artifact]. Want to proceed?']"
+
+   For low-risk products, keep this brief. Don't make a one-line change sound like a major undertaking.
+
+4. **Implement the change.** Follow the appropriate cycle (cosmetic: direct fix; functional: artifact update + mini Stage 5).
+
+5. **Verify no regressions.** Run all tests after every change. If a test fails, fix the regression before proceeding.
+
+6. **Update iteration state.** Add an entry to `project-state.yaml` → `iteration_state.feedback_cycles` with the feedback, classification, affected artifacts/chunks, and status.
+
+7. **Check for "done."** After each iteration cycle, ask: "Anything else you'd like to change?" For low-risk products, this is lightweight. Don't over-process: "Want to tweak anything?" is fine.
+
+8. Run the Framework Reflection Protocol when the user indicates they're satisfied (or after 3+ iteration cycles).
+
+   **FRP focus for Stage 6:** Was the feedback classification accurate? Did the change impact assessment help? Were artifacts sufficient for the iteration, or did gaps surface?
+
+**Low-risk iteration rules:**
+- Don't require formal change impact assessments for cosmetic changes.
+- Don't re-run all four review lenses for minor tweaks.
+- Don't update every artifact for a small functional change — update only what's actually affected.
+- Bias toward action: fix, test, show, ask.
 
 ---
 
@@ -218,6 +367,9 @@ At every stage transition, pause and assess: **did the framework serve this prod
 | 1 (Discovery) | Was question count proportionate? Were the right topics covered? |
 | 2 (Definition) | Were scope and technical decisions at the right level of detail? |
 | 3 (Artifacts) | Were the right artifacts generated? Were review findings appropriate? |
+| 4 (Build Planning) | Was chunking appropriate? Did build plan translate specs into concrete instructions? |
+| 5 (Building) | Were artifact specs sufficient to build from? Did Critic add value? Right chunk size? |
+| 6 (Iteration) | Was feedback classification accurate? Did change impact assessment help? |
 
 **What to do with findings:**
 
@@ -269,6 +421,27 @@ This is the highest-stakes transition — discovery becomes production. Check th
 - For UI applications: `design_decisions.accessibility_approach` is set
 - `open_questions` has no high-priority items with `waiting_on: "user"` (unresolved user questions block artifact generation)
 
+### → Stage 4 (Build Planning)
+- All Stage 3 prerequisites met
+- All 7 universal artifacts generated (or minimal artifacts where applicable) with correct frontmatter
+- Cross-artifact consistency check passed
+- All four review lenses applied, all blocking findings resolved
+- User has confirmed the artifact set
+
+### → Stage 5 (Building)
+- Build plan artifact generated (`artifacts/build-plan.md`)
+- `build_plan.strategy` is set in project-state.yaml
+- `build_plan.chunks` has at least 3 entries (scaffold + data layer + at least one feature)
+- Every chunk has `acceptance_criteria` mapped to test specification scenarios
+- `build_plan.governance_checkpoints` has at least one checkpoint
+- User has confirmed the build plan
+
+### → Stage 6 (Iteration)
+- All chunks in `build_plan.chunks` have status "complete"
+- All tests pass
+- Full Critic product governance review completed
+- Product presented to user with instructions for running it
+
 If any prerequisite is missing, fill it in with a proportionate inference and state it as an assumption in the product definition summary. If a prerequisite can't be inferred (rare — usually means discovery was insufficient), flag it to the user before proceeding.
 
 ---
@@ -311,6 +484,15 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 3. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
 4. Continue from the current stage.
 
+**Mid-build resumption (Stage 5):** If `current_stage` is "building":
+- Read `build_plan.current_chunk` to find the active chunk.
+- Read `build_plan.chunks` to see progress: which chunks are complete, in review, in progress, or pending.
+- Read `build_state.test_tracking` for the test baseline.
+- Read the source code in `build_state.source_root`.
+- Orient the user with progress: "Welcome back. We're building [product]. [N] of [M] chunks complete. Currently working on [chunk name]. [What's next]."
+- If a chunk is in "review" status, invoke the Critic before proceeding.
+- If a chunk is "in_progress", resume the Builder for that chunk.
+
 ---
 
 ## What This Skill Does NOT Do
@@ -329,7 +511,7 @@ Phase 1 covers Stages 0 through 3 for low-risk UI applications. Future phases ad
 - [ ] Opinionated pushback (R1.5) — challenging user decisions that conflict with good practice (Phase 2)
 - [ ] Prior art awareness (R1.7) — surfacing existing solutions via web search (Phase 2)
 - [ ] Sophisticated pacing (R1.8) — detecting and adapting to user impatience signals beyond risk-based defaults (Phase 2)
-- [ ] Stage 4: Build Planning (Phase 2)
-- [ ] Stage 5: Build + Governance Loop (Phase 2)
-- [ ] Stage 6: Iteration and feedback integration (Phase 2)
+- [x] Stage 4: Build Planning (Phase 2)
+- [x] Stage 5: Build + Governance Loop (Phase 2)
+- [x] Stage 6: Iteration and feedback integration (Phase 2)
 - [ ] Reclassification (R5.4) — recognizing when the product fundamentally changes shape (Phase 2)

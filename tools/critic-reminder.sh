@@ -4,8 +4,8 @@
 #
 # Purpose: Enforces the governance philosophy "The Critic Is Not Optional"
 # by checking whether framework-modifying commits include evidence of
-# Critic review. Exits 1 when framework files are modified without
-# evidence of Critic review — this blocks pre-commit hooks intentionally.
+# Critic review. Exits 2 when framework files are modified without
+# evidence of Critic review — this blocks both git hooks and Claude Code hooks.
 #
 # Usage:
 #   ./tools/critic-reminder.sh              # Check staged changes
@@ -18,7 +18,12 @@
 #
 # Exit codes:
 #   0 — No framework files modified, or Critic evidence found
-#   1 — Framework files modified but no Critic evidence found (WARNING)
+#   2 — Framework files modified but no Critic evidence found (DENY)
+#
+# Exit code 2 is used because:
+#   - Claude Code hooks treat exit 2 as "deny" (blocks the tool call)
+#   - Git pre-commit hooks treat any non-zero as "reject"
+#   - So exit 2 works correctly in both contexts
 
 set -euo pipefail
 
@@ -95,6 +100,11 @@ fi
 
 if [[ "$critic_evidence" == true ]]; then
     echo "Critic evidence found. Governance review appears complete."
+    # Clean up the pending flag set by framework-edit-tracker.sh
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -n "$repo_root" ]]; then
+        rm -f "$repo_root/.claude/.critic-pending"
+    fi
     exit 0
 else
     echo "WARNING: Framework files were modified but no Critic review evidence found."
@@ -107,5 +117,5 @@ else
     echo ""
     echo "If you've already run the Critic, mention it in your commit message"
     echo "or create an observation file (framework-observations/{date}-*.yaml)."
-    exit 1
+    exit 2
 fi

@@ -16,6 +16,9 @@ Every framework session automatically writes observations to this directory. No 
 2. **Evaluation runs** — Framework findings extracted from eval-history/ results
 3. **Framework development** — Conversations about improving the framework itself
 4. **Manual capture** — `/observe "description"` command for ad-hoc observations
+5. **Builder flags** (Stage 5) — When the Builder encounters artifact insufficiency or spec ambiguity, it writes an observation. These are the highest-value observations: they reveal planning deficiencies that improve the Artifact Generator and templates.
+6. **Critic product governance** (Stage 5) — When the Critic identifies scope violations or spec compliance gaps, those findings are captured as observations.
+7. **Iteration cycles** (Stage 6) — When user feedback reveals gaps in the original artifacts or build plan, the pattern is captured for future improvement.
 
 ### Phase 2 (After Project Volume): Analysis
 Pattern detection runs periodically or on-demand:
@@ -45,8 +48,8 @@ session_context:
   scenario_name: [if evaluation]
   framework_version: git-sha
 observations:
-  - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction
-    stage: [0, 0.5, 1, 2, 3, or "meta"]
+  - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction | artifact_insufficiency | spec_ambiguity | deployment_friction | critic_gap
+    stage: [0, 0.5, 1, 2, 3, 4, 5, 6, or "meta"]
     severity: note | warning | blocking
     description: "Generalized statement (not product-specific)"
     evidence: "What triggered this observation"
@@ -110,6 +113,10 @@ framework-observations/{YYYY-MM-DD}-{short-description}.yaml
 - Framework required outputs that didn't apply to this product type
 - Concrete recurring patterns across multiple sessions
 - User corrected or challenged a framework assumption (signals a gap)
+- Builder flagged artifact insufficiency — a spec didn't specify something needed to build (type: `artifact_insufficiency`)
+- Builder flagged spec ambiguity — a spec could mean two things and Builder couldn't determine which (type: `spec_ambiguity`)
+- Deployment was harder than the operational spec suggested (type: `deployment_friction`)
+- Critic missed an issue that was found later during build or iteration (type: `critic_gap`)
 
 **Don't capture** (not substantive — no actionable framework change):
 - Generic approval: "Everything worked fine", "No concerns", "Process was smooth"

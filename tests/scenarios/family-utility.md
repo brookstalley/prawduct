@@ -93,6 +93,29 @@ To ensure repeatable evaluation, the following scripted responses define what th
 
 **General persona:** Enthusiastic but non-technical. Uses plain language. Doesn't volunteer technical requirements. Wants to get to building quickly. Does not push back on system recommendations.
 
+## Test Conversation (Build Phase — Stages 4-6)
+
+These scripted responses extend the test conversation for the build and iteration phases.
+
+**When asked to confirm the build plan:**
+> "Sounds good, let's build it."
+
+**When shown progress during building (chunk completion messages):**
+> [No response needed. Accept silently unless the system explicitly asks a question.]
+
+**When asked about a Builder flag (artifact insufficiency or spec ambiguity):**
+> "Whatever you think is best."
+>
+> Accept the system's recommendation. The test persona trusts the system's technical judgment.
+
+**When presented with the working product and asked to try it:**
+> "This is great! One thing though — can we make the leaderboard show who won the most games, not just total points?"
+
+**When asked about additional changes after the leaderboard iteration:**
+> "Nope, that's perfect. Thanks!"
+
+**General persona (continued):** Same as Stages 0-3 — enthusiastic, non-technical, cooperative. Doesn't push back on technical recommendations.
+
 ## Evaluation Rubric
 
 ### Domain Analyzer (C2)
@@ -241,12 +264,121 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - Values are specific, not generic ("family score-tracking app for board game nights" not "a utility application").
 - Scope decisions reflect the test conversation (score tracking and history in v1, fancier features deferred).
 
+### Build Plan (Stage 4)
+
+**Must-do:**
+
+- Generate a build plan with at least 4 chunks (scaffold + data layer + at least 2 feature chunks).
+- Every core flow from the Product Brief is mapped to at least one chunk.
+- Each chunk has acceptance criteria traceable to specific test specification scenarios.
+- Early feedback milestone identified by chunk 3 or earlier.
+- Scaffolding chunk specifies exact initialization commands (not "set up the project" — actual commands).
+- Dependency manifest packages are listed in the scaffold's install commands.
+- Build plan specifies concrete project structure (directory names, not just "organize by feature").
+- Governance checkpoints include at least one mid-build and one final review.
+
+**Must-not-do:**
+
+- Must not produce more than 8 chunks for this simple product.
+- Must not require the user to make technology decisions at this stage (those were decided in Stage 2).
+- Must not include chunks for features not in v1 scope.
+
+**Quality criteria:**
+
+- Chunk ordering makes sense: scaffold → data → features by user value → polish.
+- A Builder reading this plan could execute it without making decisions.
+- The plan is proportionate — not enterprise-grade build infrastructure for a family app.
+
+### Builder (Stage 5)
+
+**Must-do:**
+
+- Scaffold chunk works: `npm run dev` (or equivalent) starts the app, `npm test` (or equivalent) runs.
+- Code implements all core flows from the Product Brief: score recording, game history viewing, leaderboard.
+- Data entities in the code match the Data Model artifact: Player, Game, Score/Session entities (or equivalent).
+- Tests are written alongside each chunk, not all at the end.
+- All tests pass after every chunk (`npm test` exits 0).
+- App loads and is interactive in a browser when running locally.
+
+**Must-not-do:**
+
+- Must not choose technologies not specified in the build plan or dependency manifest.
+- Must not add features not in the chunk deliverables.
+- Must not delete or weaken tests from previous chunks.
+- Must not skip writing tests for a feature chunk.
+
+**Quality criteria:**
+
+- Code complexity is proportionate to the product's simplicity.
+- The app actually works: you can record scores, view history, see the leaderboard.
+- Test names are specific and descriptive (not "test1").
+
+### Critic Product Governance (Stage 5)
+
+**Must-do:**
+
+- Spec compliance check runs after each feature chunk (scaffold exempt from full compliance check).
+- Test count never decreases between chunks.
+- All core flows from the Product Brief have implementation evidence in `spec_compliance`.
+- At least one blocking finding is identified and resolved during the build (proves the Critic is checking).
+- Fix-by-fudging detection is active: if a test is weakened to pass, the Critic catches it.
+
+**Must-not-do:**
+
+- Must not produce more than 5 findings per chunk for this low-risk product.
+- Must not block on concerns disproportionate to the product's risk level.
+- Must not approve a chunk where specified requirements are missing without flagging.
+
+**Quality criteria:**
+
+- Findings are specific and actionable (not "code could be better").
+- The review cycle converges: blocking findings → fix → re-review → clear. Not infinite loops.
+- Process feels proportionate — the Critic helps, not obstructs.
+
+### Iteration (Stage 6)
+
+**Must-do:**
+
+- Leaderboard change ("show who won the most games, not just total points") is classified as **functional** (not cosmetic, not directional).
+- Change impact assessment is performed: identifies which artifacts are affected (at minimum: data-model, test-specifications, build-plan).
+- Affected artifacts are updated before implementation.
+- New test(s) written for the "most wins" leaderboard behavior.
+- Existing tests still pass (no regressions from the change).
+- The updated leaderboard works: shows game win counts, not just total points.
+
+**Must-not-do:**
+
+- Must not classify the leaderboard change as cosmetic (it changes data model and behavior).
+- Must not classify it as directional (it's a feature refinement, not a product pivot).
+- Must not implement without updating the test specification.
+- Must not break existing score recording or history functionality.
+
+**Quality criteria:**
+
+- The iteration cycle is efficient: one round of artifact update → build → review → done.
+- The user doesn't feel like they're going through a heavyweight change process for a simple request.
+- The change is handled proportionately to its actual scope.
+
 ## End-to-End Success Criteria
 
-The vertical slice succeeds for this scenario when:
+The scenario succeeds when:
+
+**Stages 0-3 (existing — no regression):**
 
 1. Starting from the input above, the system produces a populated `project-state.yaml` with classification, product definition, and scope decisions.
 2. All 7 universal artifacts are generated with correct frontmatter, internal consistency, and cross-references.
 3. Review Lenses produce specific, actionable findings with appropriate severity.
 4. The total output is proportionate to the product's simplicity — a reader should not think "this is way too much process for a family score tracker."
 5. A coding agent (or human developer) reading the output would have a clear, unambiguous starting point for building this app.
+
+**Stages 4-6 (new):**
+
+6. Build plan translates artifacts into concrete, executable instructions with appropriate chunking.
+7. App builds and runs locally — `npm run dev` (or equivalent) serves a working app.
+8. Core flows work in the running app: record scores for a game, view game history, see the leaderboard.
+9. All tests pass (`npm test` or equivalent exits 0).
+10. The Critic found and resolved at least one real issue during the build (not a false positive).
+11. User feedback ("most games won" leaderboard) handled in one iteration cycle without regressions.
+12. At least one framework observation captured during the build phase (artifact insufficiency, spec ambiguity, or other build-phase observation type).
+13. Process is proportionate to the product's simplicity — the build phase should not feel like building enterprise software.
+14. The Builder never made a technology decision outside its scope — every choice traces back to artifacts or build plan.

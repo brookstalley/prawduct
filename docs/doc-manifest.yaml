@@ -64,13 +64,23 @@ tier_1_documents:
     owner: framework
     last_validated: 2026-02-11
 
+  - path: skills/builder/SKILL.md
+    purpose: "LLM instructions for code generation: executes build plan chunks, writes tests, flags spec gaps"
+    owner: framework
+    last_validated: 2026-02-11
+
   - path: skills/critic/SKILL.md
-    purpose: "LLM instructions for framework governance and (future) product governance"
+    purpose: "LLM instructions for framework governance and product governance (spec compliance, test integrity, scope violation)"
     owner: framework
     last_validated: 2026-02-11
 
   - path: templates/project-state.yaml
-    purpose: "Template for user project master state file — all skills read/write this"
+    purpose: "Template for user project master state file — all skills read/write this (includes build_plan, build_state, iteration_state)"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: templates/build-plan.md
+    purpose: "Template for build plan artifact — concrete build instructions, chunking, scaffolding, governance checkpoints"
     owner: framework
     last_validated: 2026-02-11
 
@@ -81,6 +91,21 @@ tier_1_documents:
 
   - path: framework-observations/schema.yaml
     purpose: "YAML schema definition for observation entries"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: .claude/settings.json
+    purpose: "Project-level Claude Code settings: hooks for Critic governance enforcement (PreToolUse gate, PostToolUse advisory)"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: .claude/hooks/critic-gate.sh
+    purpose: "PreToolUse hook: blocks git commit when framework files are staged without Critic review evidence"
+    owner: framework
+    last_validated: 2026-02-11
+
+  - path: .claude/hooks/framework-edit-tracker.sh
+    purpose: "PostToolUse hook: reminds Claude to run Critic when framework files are edited, sets .critic-pending flag"
     owner: framework
     last_validated: 2026-02-11
 

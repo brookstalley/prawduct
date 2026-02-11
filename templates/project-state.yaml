@@ -222,3 +222,76 @@ current_stage: intake
 #   date: YYYY-MM-DD
 
 change_log: []
+
+# =============================================================================
+# BUILD PLAN
+# =============================================================================
+# Populated during Stage 4 (Build Planning) by the Artifact Generator Phase D.
+# Tracked during Stage 5 (Building) by the Orchestrator and Builder.
+
+build_plan:
+  # Build strategy. Values: feature-first, layer-first, hybrid.
+  # Feature-first: each chunk delivers one user-visible flow end-to-end.
+  # Layer-first: build infrastructure first, then features on top.
+  # Hybrid: scaffold first, then feature-first.
+  strategy: null
+
+  # Ordered build tasks. Each chunk is a unit of work the Builder executes.
+  # Chunks are executed in order, respecting depends_on.
+  chunks: []
+  #   - id: "chunk-01"
+  #     name: "Project scaffold"
+  #     description: "Initialize project, install dependencies, verify build and test"
+  #     depends_on: []
+  #     artifacts_consumed: [build-plan, dependency-manifest]
+  #     deliverables: ["package.json", "build config", "test runner"]
+  #     acceptance_criteria: ["npm install succeeds", "npm run dev starts", "npm test runs"]
+  #     status: pending  # pending | in_progress | review | complete | blocked
+
+  # Which chunk is currently being worked on.
+  current_chunk: null
+
+  # When full Critic reviews run (not just per-chunk).
+  # Each: { after_chunk, review_type (cross-chunk | full), rationale }
+  governance_checkpoints: []
+
+# =============================================================================
+# BUILD STATE
+# =============================================================================
+# Runtime tracking during Stage 5 (Building).
+# Updated by the Builder after each chunk.
+
+build_state:
+  # Where source code lives, relative to the project directory.
+  source_root: null  # e.g., "src/"
+
+  # Test tracking — updated after each chunk completes.
+  test_tracking:
+    test_count: 0
+    assertion_count: 0
+    test_files: []
+    # History per chunk: { chunk_id, tests_added, assertions_added, all_passing }
+    history: []
+
+  # Requirement → implementation tracking.
+  spec_compliance:
+    # Each: { requirement, status (implemented | partial | not-started), evidence }
+    requirements: []
+
+  # Critic review results during build.
+  # Each: { chunk_id, findings: [{ description, severity, status (open | resolved | deferred) }] }
+  reviews: []
+
+# =============================================================================
+# ITERATION STATE
+# =============================================================================
+# Stage 6 feedback cycles. Populated when user provides feedback on built product.
+
+iteration_state:
+  # Each feedback cycle:
+  #   feedback: string (what the user said)
+  #   classification: cosmetic | functional | directional
+  #   affected_artifacts: [artifact names that need updating]
+  #   affected_chunks: [chunk ids that need rework or new chunks]
+  #   status: received | assessing | implementing | complete
+  feedback_cycles: []

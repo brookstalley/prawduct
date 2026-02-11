@@ -12,7 +12,9 @@ The Orchestrator activates this skill:
   - **Phase A (Foundation):** Product and Design lenses review the Product Brief before dependent artifacts are generated. Focus: Is the vision clear? Are personas realistic? Are flows complete? Are all states considered?
   - **Phase B (Structure):** Architecture lens reviews the Data Model and NFRs against the Product Brief. Focus: Do entities cover the flows? Are NFRs realistic for the platform and risk level?
   - **Phase C (Integration):** All four lenses review the complete artifact set. This is where cross-cutting concerns (security coverage, test completeness, dependency justification, failure modes) get full evaluation.
-- During **Stage 5 (Build + Governance):** Architecture and Skeptic validate implementation. (Phase 2.)
+- During **Stage 4 (Build Planning):** Architecture lens reviews the build plan for feasibility and appropriate chunking. Skeptic lens checks for risks in the build ordering (e.g., late-stage dependencies, missing early feedback).
+- During **Stage 5 (Build + Governance):** At governance checkpoints, Architecture and Skeptic lenses validate the implementation so far. Architecture checks that the built code matches the designed structure. Skeptic checks for emerging risks (e.g., growing complexity, untested edge cases, drift from specs).
+- During **Stage 6 (Iteration):** Product lens evaluates change requests — is this what the user needs? Architecture lens evaluates blast radius — what does this change affect?
 
 When activated:
 
@@ -155,11 +157,30 @@ For a low-risk utility like a family score tracker, the review should be **propo
 - **Tone:** Helpful, not adversarial. The goal is to improve the product, not to demonstrate thoroughness.
 - **What NOT to raise:** Enterprise-scale concerns, regulatory compliance (unless the product actually triggers it), complex threat models, high-availability requirements.
 
+## Applying Lenses During Build (Stages 4-6)
+
+During build phases, the lenses serve a different purpose than during artifact generation. Rather than evaluating specifications, they evaluate implementation.
+
+**Stage 4 (Build Planning):**
+- **Architecture Lens:** Is the chunk ordering technically sound? Are dependencies between chunks correctly identified? Is the scaffold sufficient? Would a developer reading this plan get stuck?
+- **Skeptic Lens:** What's the riskiest chunk? What happens if a chunk fails or needs major rework? Is the early feedback milestone realistic?
+
+**Stage 5 (Governance Checkpoints):**
+- **Architecture Lens:** Does the built code match the data model? Are module boundaries respected? Is the code proportionately complex for the product's risk level?
+- **Skeptic Lens:** Are there emerging risks? Untested paths? Growing complexity that suggests the architecture needs adjustment?
+
+**Stage 6 (Iteration):**
+- **Product Lens:** Does this change request reflect what the user actually needs? Is it an improvement or scope creep?
+- **Architecture Lens:** What's the blast radius? What code, tests, and artifacts need to change? Is this change compatible with the existing architecture?
+
+**Proportionality in build-phase reviews:** Governance checkpoint reviews should be lighter than artifact reviews. The Critic handles per-chunk detail; the lenses provide a broader perspective at checkpoints. For low-risk products, 2-4 findings per checkpoint is appropriate.
+
 ## Extending This Skill
 
 Phase 1 applies all four lenses to universal artifacts for low-risk UI applications. Future phases add:
 
-- [ ] Shape-specific lens guidance: what each lens looks for in APIs, automations, multi-party platforms (Phase 2)
+- [x] Stage 4-6 lens application guidance (Phase 2)
+- [ ] Shape-specific lens guidance: what each lens looks for in APIs, automations, multi-party platforms (Phase 2 widening)
 - [ ] Variable-depth reviews: lighter review for routine artifact generation, deeper review for major scope changes (Phase 2)
 - [ ] Rotating emphasis: sometimes lead with security, sometimes with cost, to prevent blind spots (Phase 2)
 - [ ] Integration with Critic (C6): Review Lens findings feed into the Critic's continuous governance during build (Phase 2)

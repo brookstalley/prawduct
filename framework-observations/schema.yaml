@@ -73,21 +73,25 @@ observation_entry:
         type:
           type: string
           enum:
-            - proportionality    # Framework process felt disproportionate to product
-            - coverage           # Framework missed important topics
-            - applicability      # Framework required outputs that didn't apply
-            - missing_guidance   # Framework had no guidance for a situation
-            - rubric_issue       # Test scenario rubric has problems
-            - process_friction   # Evaluation or framework process has friction
+            - proportionality       # Framework process felt disproportionate to product
+            - coverage              # Framework missed important topics
+            - applicability         # Framework required outputs that didn't apply
+            - missing_guidance      # Framework had no guidance for a situation
+            - rubric_issue          # Test scenario rubric has problems
+            - process_friction      # Evaluation or framework process has friction
+            - artifact_insufficiency # Spec insufficient to build from — Builder had to flag
+            - spec_ambiguity        # Builder had to guess between interpretations of a spec
+            - deployment_friction   # Deployment harder than ops spec suggested
+            - critic_gap            # Critic missed something found later
           required: true
           description: "Category of observation"
 
         # Which stage of the framework process (if applicable)
         stage:
           type: string | integer
-          enum: [0, 0.5, 1, 2, 3, "meta"]
+          enum: [0, 0.5, 1, 2, 3, 4, 5, 6, "meta"]
           required: false
-          description: "Framework stage this relates to (0=intake, 0.5=validation, 1=discovery, 2=definition, 3=artifacts, meta=process itself)"
+          description: "Framework stage this relates to (0=intake, 0.5=validation, 1=discovery, 2=definition, 3=artifacts, 4=build-planning, 5=building, 6=iteration, meta=process itself)"
 
         # How important is this
         severity:

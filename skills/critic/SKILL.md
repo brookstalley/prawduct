@@ -127,27 +127,139 @@ If there are no findings, say so explicitly: "No issues found. Changes maintain 
 
 ## Mode 2: Product Governance
 
-*Phase 2 — not yet implemented.* This mode reviews implementation of user products against their specifications during the Build + Governance Loop (Stage 5).
+This mode reviews implementation of user products against their specifications during the Build + Governance Loop (Stage 5). It runs after each chunk the Builder completes and applies three checks: Spec Compliance, Test Integrity, and Scope Violation.
 
-When implemented, it will include the sub-components defined in `docs/high-level-design.md`:
+### When to Invoke
 
-- [ ] Spec Compliance Auditor — diff implementation against specification
-- [ ] Test Integrity Checker — monitor for corruption patterns (HR1)
-- [ ] Architectural Consistency Checker — validate against architecture artifact
-- [ ] Documentation Controller — enforce tier system, prevent orphans
-- [ ] Operational Readiness Checker — verify monitoring, recovery, alerting
+The Orchestrator invokes Product Governance after the Builder marks a chunk's status as "review" in `project-state.yaml`.
 
-The review cycle (defined in the HLD) watches specifically for "fix-by-fudging":
-- "Fixing" by weakening the check instead of fixing the code
-- "Fixing" by changing the spec to match the (wrong) implementation
-- "Fixing" by adding a workaround rather than addressing root cause
+### Inputs
+
+Read the following before running checks:
+
+1. `project-state.yaml` → `build_plan.chunks[current]` — what was supposed to be built
+2. `project-state.yaml` → `build_state` — test tracking, spec compliance, reviews
+3. `artifacts/build-plan.md` — concrete build instructions for this chunk
+4. `artifacts/data-model.md` — entity specifications
+5. `artifacts/test-specifications.md` — expected test scenarios
+6. `artifacts/security-model.md` — access patterns
+7. The source code and test files the Builder produced for this chunk
+
+### Check 1: Spec Compliance Auditor
+
+After each chunk, diff the implementation against artifact specifications.
+
+**Produce a checklist for every requirement this chunk addresses:**
+
+```
+| Requirement | Implemented? | Tested? | Discrepancy |
+|-------------|-------------|---------|-------------|
+| [from spec] | yes/no/partial | yes/no | [description or "none"] |
+```
+
+**Discrepancy handling:**
+- **Not implemented** (requirement in spec, not in code) → **BLOCKING**. The Builder must implement it. This enforces HR2 (No Silent Requirement Dropping).
+- **Not tested** (requirement implemented but no test covers it) → **WARNING**. The Builder should add a test.
+- **Spec ambiguous** (implementation chose one interpretation, spec allows multiple) → **NOTE**. Record as observation, accept the implementation if reasonable.
+- **Over-implemented** (code does more than spec requires) → **WARNING**. The Builder should not add features beyond the spec. Remove the excess or justify it.
+
+**What to check:**
+- Data entities match `data-model.md`: field names, types, relationships, constraints, state machines.
+- User flows match `product-brief.md`: the code implements what the flows describe.
+- Security patterns match `security-model.md`: access controls are present where specified.
+- Test scenarios match `test-specifications.md`: every scenario for this chunk has a corresponding test.
+
+### Check 2: Test Integrity Checker
+
+**Mechanical checks (not judgment — these are binary pass/fail):**
+
+- **Test count >= previous** → **BLOCKING** if violated. Test count must never decrease between chunks. Read `build_state.test_tracking.test_count` and compare to the post-chunk count.
+- **No test files deleted** → **BLOCKING** if violated. Compare `build_state.test_tracking.test_files` before and after.
+- **New tests added** → **WARNING** if no new tests were added for a chunk that delivers new functionality. The scaffold chunk is exempt.
+
+**Judgment checks:**
+- Tests verify **behavior**, not implementation. Tests that assert on internal variable names, private method calls, or data structure shapes (rather than user-visible behavior or API contracts) are a warning.
+- Tests cover **happy path + at least one error case** for each flow this chunk implements. Missing error case coverage is a warning.
+- Test names are **specific and descriptive**. `"test1"` or `"it works"` is a warning.
+
+### Check 3: Scope Violation
+
+This check catches the Builder making decisions that should have been made during planning (Stages 2-4).
+
+- **Did the Builder choose a technology not in the build plan or dependency manifest?** If the code imports a library not listed in `artifacts/dependency-manifest.yaml`, that's **BLOCKING**. Return to the Orchestrator to update the dependency manifest and build plan, then continue.
+- **Did the Builder make an architectural decision not in the artifacts?** If the code introduces a pattern, abstraction, or structural choice not described in `build-plan.md` or the other artifacts, that's **BLOCKING**. The planning phase was insufficient — flag as `artifact_insufficiency` observation.
+- **Did the Builder add functionality not in the chunk's deliverables?** Extra features, even useful ones, are **WARNING**. The build plan defines what gets built; additions should go through the Orchestrator.
+
+### Review Cycle
+
+1. Builder marks chunk status as "review" in `project-state.yaml`.
+2. Critic runs all three checks: Spec Compliance → Test Integrity → Scope Violation.
+3. **If BLOCKING findings exist:**
+   - Builder fixes the issues.
+   - Critic re-reviews — specifically watching for **fix-by-fudging**:
+     - Weakening a test to make it pass instead of fixing the code → **BLOCKING**
+     - Changing a spec to match wrong implementation instead of fixing the code → **BLOCKING**
+     - Adding a workaround instead of addressing root cause → **WARNING**
+   - Repeat until no blocking findings remain.
+4. **If no BLOCKING findings:** chunk status → "complete", proceed to next chunk.
+
+### Output Format
+
+```
+## Product Governance Review — Chunk [ID]: [Name]
+
+### Spec Compliance
+[Checklist table]
+
+### Test Integrity
+- Test count: [before] → [after] [PASS/FAIL]
+- Test files deleted: [none / list] [PASS/FAIL]
+- New tests added: [count] [PASS/WARNING]
+- Behavior vs. implementation testing: [assessment]
+- Error case coverage: [assessment]
+
+### Scope Violation
+- Unlisted dependencies: [none / list]
+- Unspecified patterns: [none / list]
+- Extra functionality: [none / list]
+
+### Findings
+
+#### [Finding Name]
+**Check:** [Spec Compliance | Test Integrity | Scope Violation]
+**Severity:** blocking | warning | note
+**Description:** [Specific observation]
+**Recommendation:** [What the Builder should do]
+
+### Summary
+[Total findings by severity. Whether the chunk passes review.]
+```
+
+### Recording Reviews
+
+After each review cycle, update `project-state.yaml` → `build_state.reviews` with:
+```yaml
+- chunk_id: "[current chunk]"
+  findings:
+    - description: "[finding]"
+      severity: blocking | warning | note
+      status: open | resolved | deferred
+```
+
+### Deferred Sub-Components (HR2)
+
+The following Critic sub-components are defined in the HLD but deferred within this Phase 2 implementation. They add low value for simple products (family utility PWA) and are needed when shapes widen:
+
+- [ ] Architectural Consistency Checker — validate module boundaries, dependency directions against architecture artifact
+- [ ] Documentation Controller — enforce tier system, prevent orphans, validate Source of Truth docs
+- [ ] Operational Readiness Checker — verify monitoring, recovery, alerting implementation matches ops spec
 
 ## Extending This Skill
 
 - [x] Framework Governance: generality, read-write chains, proportionality, coherence, clarity (Phase 2 start)
-- [ ] Product Governance: spec compliance + test integrity (Phase 2)
-- [ ] Product Governance: architectural consistency (Phase 2)
-- [ ] Product Governance: documentation controller (Phase 2)
-- [ ] Product Governance: operational readiness (Phase 2)
+- [x] Product Governance: spec compliance + test integrity + scope violation (Phase 2)
+- [ ] Product Governance: architectural consistency (Phase 2 widening)
+- [ ] Product Governance: documentation controller (Phase 2 widening)
+- [ ] Product Governance: operational readiness (Phase 2 widening)
 - [ ] Integration with Review Lenses: Critic findings feed back to Lenses for pattern detection (Phase 2)
 - [ ] Mechanical enforcement via tools/ scripts for checks that can be automated (Phase 2)

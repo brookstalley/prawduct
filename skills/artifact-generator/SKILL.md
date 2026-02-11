@@ -269,6 +269,58 @@ dependencies:
 
 **Key instruction:** Every dependency must have a justification. "It's popular" is not a justification. "It provides [specific capability] that we need for [specific feature], and the alternatives [X, Y] were rejected because [reasons]" is.
 
+### Phase D: Build Planning
+
+Phase D translates abstract technical decisions into concrete build instructions. This is the key bridge between "what to build" (artifacts from Phases A-C) and "how to build it" (executable instructions for the Builder).
+
+Phase D is invoked by the Orchestrator during Stage 4 (Build Planning), after Phase C artifacts have been reviewed and confirmed.
+
+#### Artifact: Build Plan
+
+**Reads from:** `project-state.yaml` → `technical_decisions`, `classification.risk_profile`; `artifacts/dependency-manifest.yaml`; `artifacts/operational-spec.md`; `artifacts/product-brief.md`; `artifacts/data-model.md`; `artifacts/test-specifications.md`
+
+**Frontmatter:**
+```yaml
+---
+artifact: build-plan
+version: 1
+depends_on:
+  - artifact: product-brief
+  - artifact: data-model
+  - artifact: test-specifications
+  - artifact: dependency-manifest
+  - artifact: operational-spec
+depended_on_by: []
+last_validated: null
+---
+```
+
+**What to produce:**
+
+1. **Concrete scaffolding instructions.** Read `technical_decisions` from project-state.yaml and `dependency-manifest.yaml`. Produce exact commands to initialize the project, install dependencies, and configure build tools. "React + Vite" in technical decisions becomes `npm create vite@latest project-name -- --template react` plus `npm install` with every package from the dependency manifest. The Builder executes these commands — it must not need to figure out which packages to install.
+
+2. **Concrete project structure.** Derive directory layout and module boundaries from the data model and product shape. For a UI app: component directories aligned to core flows, a data layer aligned to data model entities, test files alongside source. Name the directories explicitly.
+
+3. **Feature-first build chunks.** For UI applications, each chunk delivers one user-visible flow end-to-end (data + logic + UI + tests). For APIs, each chunk delivers one endpoint group. For pipelines, each chunk delivers one processing stage.
+
+   **Chunk ordering:**
+   - Chunk 01 is always the scaffold: project init, dependencies, build config, test runner, verification.
+   - Next: core data entities and storage layer — the foundation other features build on.
+   - Then: feature chunks ordered by user value (highest first). The first feature chunk should be the earliest point the user can interact with the product.
+   - Last: polish, edge cases, and cross-cutting concerns.
+
+4. **Acceptance criteria per chunk.** Map each chunk's acceptance criteria to specific test scenarios from `artifacts/test-specifications.md`. The criteria must be concrete and verifiable: "npm test passes," "recording a score for 3 players renders in the game view," not "scoring works."
+
+5. **Early feedback milestone.** Identify which chunk first lets the user interact with a working product. For most products, this should be chunk 3 or earlier. Mark this explicitly — the Orchestrator uses it for user communication.
+
+6. **Governance checkpoints.** Mark where the Critic runs a full cross-chunk review (not just per-chunk). At minimum: after the early feedback milestone and after all chunks complete.
+
+**Proportionality:** For a low-risk utility, expect 5-7 chunks. A complex platform may have 10-15. If a family score tracker has 12 chunks, the plan is over-engineered. If it has 2, the chunks are too large for meaningful governance.
+
+**The key test:** Could the Builder execute this plan without making any technology decisions? Every technology, library, directory name, and build command should be specified. If the Builder would need to choose between alternatives, the build plan is underspecified.
+
+**Update project-state.yaml:** After generating the build plan, populate `build_plan.strategy`, `build_plan.chunks` (with status "pending" for all), and `build_plan.governance_checkpoints`.
+
 ## Step 3: Validate Cross-Artifact Consistency (Phase C)
 
 After generating all Phase C artifacts, run the full cross-artifact consistency check. (Phase A and Phase B incremental checks are defined within their respective phases above.)
@@ -305,4 +357,4 @@ Phase 1 generates universal artifacts only. Future phases add:
 - [ ] Automation/Pipeline artifacts: pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec (Phase 2)
 - [ ] Multi-Party artifacts: per-party experience specs, party interaction model, migration/adoption plan (Phase 2)
 - [ ] Modular artifact updates: when a decision changes, update only affected artifacts rather than regenerating all (Phase 2)
-- [ ] Build ordering: produce an execution plan with dependency graph and parallelization opportunities (Phase 2)
+- [x] Build ordering (Phase D): produce an execution plan with dependency graph, feature-first chunking, and governance checkpoints (Phase 2)

@@ -44,8 +44,9 @@ The system consists of eight components organized into three layers: a **Convers
 
 Not all components are equally essential for a working v1:
 
-- **V1 Phase 1 (vertical slice):** C1 (Orchestrator), C2 (Domain Analyzer), C3 (Artifact Generator), C4 (Review Lenses), C5 (Project State), C6 framework governance mode, C8a (Observation Capture)
-- **V1 Phase 2 (widen):** C6 product governance mode (spec compliance, test integrity, architectural consistency), additional product shapes, mechanical tools
+- **V1 Phase 1 (vertical slice):** C1 (Orchestrator Stages 0-3), C2 (Domain Analyzer), C3 (Artifact Generator Phases A-C), C4 (Review Lenses), C5 (Project State), C6 framework governance mode, C8a (Observation Capture)
+- **V1 Phase 2 (build loop):** C1 (Orchestrator Stages 4-6), C3 (Artifact Generator Phase D — build planning), C3b (Builder — code generation from build plans), C6 product governance mode (spec compliance, test integrity, scope violation), build-phase observation types
+- **V1 Phase 2 (widen):** C6 remaining sub-components (architectural consistency, documentation controller, operational readiness), additional product shapes, mechanical tools
 - **V1.5:** C7 (Trajectory Monitor) — architecturally accommodate but implement after v1 validates
 - **V2:** C8 full (Learning System with pattern detection, validation, incorporation) — requires data from many projects; premature before user base exists
 

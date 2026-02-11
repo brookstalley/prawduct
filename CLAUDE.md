@@ -30,6 +30,7 @@ prawduct/
 │   ├── orchestrator/SKILL.md          # Conversation flow, stage management, user calibration
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
 │   ├── artifact-generator/SKILL.md    # How to produce each artifact type, format specs
+│   ├── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
 │   ├── critic/SKILL.md                # Framework self-governance + product build governance
 │   └── review-lenses/SKILL.md         # Four evaluation perspectives (product, design, arch, skeptic)
 ├── tools/                             # Deterministic scripts (mechanical enforcement)
@@ -54,6 +55,7 @@ prawduct/
 │   ├── nonfunctional-requirements.md  # Template: performance, cost, uptime, scalability
 │   ├── operational-spec.md            # Template: deployment, monitoring, alerting, recovery
 │   ├── dependency-manifest.yaml       # Template: external deps with justification
+│   ├── build-plan.md                  # Template: concrete build instructions, chunking, scaffolding
 │   ├── ui/                            # UI application shape
 │   │   ├── information-architecture.md
 │   │   ├── screen-spec.md             # Per-screen template (all states)
@@ -114,7 +116,9 @@ The rest of this file is for building Prawduct itself — the skills, templates,
 6. Apply the framework to itself. Every decision needs rationale. Every artifact needs tests. Documentation follows the tier system.
 
 ### After modifying skills, templates, or principles:
-Before committing changes to the framework, read `skills/critic/SKILL.md` and apply **Framework Governance mode** to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, and cross-skill inconsistencies. The Critic is the framework's self-governance mechanism — it enforces the same quality standards the framework applies to user products.
+**Critic governance is enforced mechanically.** A Claude Code hook blocks `git commit` when framework files are staged without Critic evidence, and edit hooks remind you as you modify framework files. But don't wait for the gate — run the Critic as a **separate, final step** in any multi-file framework change, not as a sub-step of another work item. The Critic should run after all modifications are complete and before reporting results to the user.
+
+To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 5 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, and cross-skill inconsistencies. Include "Framework Governance Review" in the commit message so the gate recognizes it.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 
@@ -146,7 +150,12 @@ Use the **family utility** test scenario (simple UI app, low risk). Build just e
 
 ### Phase 2: Widen
 
-- Extend the Critic (C6) with product governance mode (spec compliance, test integrity). Framework governance mode is already in Phase 1.
+- [x] Extend the Critic (C6) with product governance mode (spec compliance, test integrity, scope violation).
+- [x] Add Builder skill (C3b) for code generation from build plans.
+- [x] Extend Artifact Generator with Phase D (build planning) and build-plan template.
+- [x] Extend Orchestrator with Stages 4 (Build Planning), 5 (Build + Governance Loop), 6 (Iteration).
+- [x] Extend observation system for build-phase observation types.
+- [x] Extend family utility eval rubric for Stages 4-6.
 - Add product shapes one at a time (automation → API → multi-party), evaluating each against its test scenario rubric.
 - Add shape-specific artifacts and templates as each shape is added.
 - Build mechanical tools (`tools/`).

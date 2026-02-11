@@ -14,13 +14,18 @@ V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrappi
 
 **Phase 1 delivers:** Classification, discovery, product definition, artifact generation, review, and observation capture — for UI Application shape only, Stages 0-3. This validates the architecture end-to-end.
 
-**Deferred to Phase 2 (still v1, but requires Phase 1 validation first):**
+**Phase 2 in progress:**
+- R2.5 (Build Ordering) — implemented via Artifact Generator Phase D and build-plan template
+- R3.1-R3.2 (Automated Critic, Spec Compliance) — implemented via Critic product governance mode
+- R3.3 (Test Integrity) — implemented via Critic Test Integrity Checker
+- R4.1-R4.3 (Trajectory Management) — partially addressed via governance checkpoints and cross-chunk reviews in Stage 5; full C7 Trajectory Monitor deferred to v1.5
+- R5.1-R5.3 (Feedback Integration) — implemented via Orchestrator Stage 6 iteration loop
+
+**Deferred to Phase 2 widening (still v1, but requires build loop validation first):**
 - R1.5 (Opinionated Pushback) — requires Orchestrator sophistication beyond basic stage management
 - R1.7 (Prior Art Awareness) — requires web search integration; low risk to defer since it's additive
-- R2.5 (Build Ordering) — requires Stage 4, which depends on validated artifact generation
-- R3.1-R3.4, R3.7 (Product Governance) — Critic product mode requires working artifacts to govern against; can't validate before artifact generation works
-- R4.1-R4.3 (Trajectory Management) — requires Stage 5 build loop
-- R5.1-R5.3 (Feedback Integration) — requires Stage 6 iteration loop
+- R3.4 (Architectural Consistency) — Critic sub-component deferred; low value for simple products
+- R3.7 (Meta-Enforcement) — mechanical tools not yet built; Critic handles checks via LLM judgment for now
 - R7.2 (Product Diversity) — full shape coverage requires Phase 2 widening; UI Application is Phase 1
 
 **Rationale:** Building these before the end-to-end path validates risks wasting effort on components that might need redesign. The vertical slice principle ("Prove the Path Before Widening It") takes priority.
