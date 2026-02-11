@@ -47,6 +47,12 @@ documents:
     purpose: "Evaluation lifecycle: setup, execution, analysis, learning extraction, regression detection"
     last_reviewed: 2026-02-11
 
+  - path: docs/self-improvement-architecture.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Self-improvement system architecture: goal, philosophy, three-phase approach, critical requirements"
+    last_reviewed: 2026-02-11
+
   - path: CLAUDE.md
     tier: 1
     owner: framework-maintainer
