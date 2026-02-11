@@ -33,9 +33,10 @@ Across all stages, the Orchestrator:
 2. Follow the Domain Analyzer's classification process (Steps 1-4): classify shape, domain, and risk profile.
 3. The Domain Analyzer will confirm classification with the user in plain language. Wait for user confirmation.
 4. Update `project-state.yaml` with classification results and initial `user_expertise` inferences from the user's opening message.
-5. Update `current_stage` to "validation".
+5. **Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was classification proportionate? Did shape/domain taxonomy fit this product? Were risk factors appropriate? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+6. Update `current_stage` to "validation".
 
-**Transition to Stage 0.5** when classification is confirmed by the user.
+**Transition to Stage 0.5** when classification is confirmed by the user and observation capture is verified.
 
 ---
 
@@ -60,9 +61,11 @@ Evaluate whether this product warrants building. Depth depends on risk:
 - Read `skills/review-lenses/SKILL.md`. Apply the Product Lens and Skeptic Lens to evaluate: does this warrant building? Are there existing solutions? Is this feasible for LLM-assisted development? Is this actually one product?
 - Surface findings and discuss with user. The system must be willing to recommend not building.
 
+**Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was validation depth proportionate to risk? Did we ask the right feasibility questions? Were there validation concerns we missed? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+
 Update `current_stage` to "discovery".
 
-**Transition to Stage 1** after validation completes (or is skipped for low-risk).
+**Transition to Stage 1** after validation completes (or is skipped for low-risk) and observation capture is verified.
 
 ---
 
@@ -106,9 +109,11 @@ Update `current_stage` to "discovery".
 
 6. **Re-evaluate risk profile.** Before transitioning, check whether discovery revealed complexity not apparent at classification time. The user's initial description may understate technical depth (e.g., "an app that plays sounds" may turn out to require real-time audio synthesis). If any risk factor has materially changed, update `classification.risk_profile` in `project-state.yaml`. If overall risk has increased, consider whether additional discovery is warranted before proceeding — but don't re-run discovery just because risk increased; only if the higher risk reveals gaps in what you've learned.
 
-7. Update `current_stage` to "definition".
+7. **Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was question count proportionate to risk? Did we ask about the right things? Did we miss important discovery areas? Was pacing appropriate for user expertise? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
 
-**Transition to Stage 2** when you have enough to define the product.
+8. Update `current_stage` to "definition".
+
+**Transition to Stage 2** when you have enough to define the product and observation capture is verified.
 
 ---
 
@@ -143,9 +148,13 @@ Update `current_stage` to "discovery".
 
    **For low-risk products:** Skip formal lens review at this stage. Your own review of `project-state.yaml` completeness (step 1) is sufficient. The full artifact review in Stage 3 will catch issues. If you notice obvious concerns while reviewing, surface them informally.
 
-5. When the user confirms, run the Stage Transition Protocol (see below), then update `current_stage` to "artifact-generation".
+5. When the user confirms, run the Stage Transition Protocol (see below) to verify prerequisites are met.
 
-**Transition to Stage 3** when the user confirms the product definition and the readiness check passes.
+6. **Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was product definition process proportionate? Did scope decisions feel right for this product? Were technical decisions made at appropriate level of detail? Did we capture user's intent accurately? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+
+7. Update `current_stage` to "artifact-generation".
+
+**Transition to Stage 3** when the user confirms the product definition, readiness check passes, and observation capture is verified.
 
 ---
 
@@ -178,7 +187,9 @@ Update `current_stage` to "discovery".
    **CRITICAL**: Review Lenses MUST run in all cases. If you are running a simulation or automated process, Review Lenses are still required. Skipping review = quality gate failure.
 
 4. Present a summary of the artifacts and all review findings to the user.
-5. Run Framework Reflection Protocol for Stage 3 and write observations (MANDATORY).
+
+5. **Run Framework Reflection Protocol and write observations (MANDATORY).** Assess: Was artifact generation proportionate to product complexity? Were review findings appropriate in number and severity? Did we generate the right artifacts for this shape? Were cross-references accurate? Write observations to `framework-observations/{YYYY-MM-DD}-{session-id}.yaml`. Verify observation file was created (BLOCKING).
+
 6. Update `current_stage` to "build-planning".
 
 *Stages 4-6 (Build Planning, Build + Governance, Iteration) are Phase 2. The Orchestrator acknowledges their existence but does not implement them yet.*

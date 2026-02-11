@@ -1,0 +1,48 @@
+---
+observation_id: f8d9a3e1-9c7b-4821-b6ef-2a5c8f4d3b1e
+timestamp: 2026-02-11T20:00:00Z
+session_type: framework_dev
+session_context:
+  activity: "Post-evaluation meta-review: analyzing missed opportunities in family-utility-2026-02-11 eval"
+  framework_version: 6096319
+observations:
+  - type: process_friction
+    stage: "meta"
+    severity: blocking
+    description: "Orchestrator skill documentation is inconsistent about Framework Reflection Protocol execution. The protocol section states reflection is MANDATORY at every stage transition, but only Stage 2 mentions 'Stage Transition Protocol' and only Stage 3 explicitly says 'Run Framework Reflection Protocol.' Stages 0, 0.5, and 1 have no mention of reflection in their step lists. This caused the evaluation run to only capture 1 observation (at Stage 3) instead of 5+ (one per stage transition)."
+    evidence: "family-utility-2026-02-11 evaluation produced observation file with only 1 observation at stage 3. Orchestrator skill lines 36, 63, 109 (stage 0, 0.5, 1 transitions) do not mention Framework Reflection Protocol. Only line 181 (stage 3) explicitly calls it out as MANDATORY. Framework Reflection Protocol section (line 188-220) says it's MANDATORY at every stage transition but this is not reflected in stage-specific instructions."
+    proposed_action: "Add explicit 'Run Framework Reflection Protocol and write observations (MANDATORY)' step to EVERY stage transition (Stages 0→0.5, 0.5→1, 1→2, 2→3). Make it a numbered step in each stage definition, not just a general principle in a separate section."
+    status: requires_pattern
+  - type: rubric_issue
+    stage: "meta"
+    severity: warning
+    description: "Evaluation methodology step 7 (verify observation capture) only checks if observation file exists, not whether observation capture was complete or substantive. This allowed an incomplete observation file (1 observation instead of 5+) to pass verification."
+    evidence: "evaluation-methodology.md line 183-190 says 'Verify that observation file exists' and 'If file exists: Review observations to ensure they're substantive' and 'Verify at least one observation per stage transition (5 transitions minimum)'. But the actual eval results (line 320) only verified existence: 'Observation capture file was created successfully.' The substantive check and count verification were not performed."
+    proposed_action: "Make observation verification more explicit and mechanical: '1. Count observations in file. Expected minimum: 5 for full run through stages. 2. Verify each observation has non-empty description and evidence. 3. Check that stages 0→0.5, 0.5→1, 1→2, 2→3 are each represented.' Convert from prose guidance to checklist."
+    status: requires_pattern
+  - type: coverage
+    stage: "meta"
+    severity: warning
+    description: "When coordinating work via subagent, the coordinating agent (me) did not apply sufficient critique to the subagent's output. I verified the observation file existed but did not check its completeness, despite the methodology specifying minimum observation counts."
+    evidence: "I read eval results showing 'Observation capture file was created successfully' and accepted this without reading the observation file itself to verify completeness. The methodology's verification steps were documented but I didn't execute all of them."
+    proposed_action: "When delegating evaluation to subagent: (1) After subagent completes, independently verify all methodology steps were followed, not just reported as complete. (2) Read observation file directly to verify count and substantiveness. (3) Compare to baseline eval's observation pattern if available."
+    status: noted
+  - type: missing_guidance
+    stage: "meta"
+    severity: note
+    description: "No guidance exists for how to coordinate evaluations via subagents. The methodology assumes single-agent execution. When work is delegated, verification responsibility shifts but this shift is not documented."
+    evidence: "evaluation-methodology.md describes the evaluation process but does not address delegation patterns. When I spawned a subagent to run the eval, I became a coordinator/verifier but had no explicit checklist for what to verify about the subagent's work."
+    proposed_action: "Consider adding 'Evaluation Delegation' section to methodology: when using subagents for evaluation, coordinating agent must verify (not just trust) that all steps were completed. Provide checklist of what to verify."
+    status: noted
+  - type: proportionality
+    stage: "meta"
+    severity: note
+    description: "The single observation captured was generic ('Stage 3 artifact generation completed without significant concerns'). Observation quality guidance says don't capture 'no concerns' observations, but there's no clear threshold for what constitutes substantive vs. generic."
+    evidence: "framework-observations/2026-02-11-family-utility-eval.yaml contains observation: 'Stage 3 artifact generation completed without significant concerns for low-risk utility.' This is close to 'no concerns' but includes detail about finding count. Unclear if this meets substantiveness bar."
+    proposed_action: "Clarify observation substantiveness criteria: An observation is substantive if it identifies a specific proportionality concern, coverage gap, or applicability mismatch. 'Everything worked fine' or 'No concerns' are not substantive unless they contradict an expectation (e.g., 'expected proportionality issue but system handled it well')."
+    status: noted
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+  - "docs/evaluation-methodology.md"
+  - "framework-observations/README.md"
+---

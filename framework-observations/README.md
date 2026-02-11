@@ -118,6 +118,36 @@ framework-observations/{YYYY-MM-DD}-{short-description}.yaml
 - User preferences that are product-specific ("User wanted SQLite")
 - Implementation details of user's product
 
+### Substantiveness Criteria
+
+An observation is **substantive** if it identifies a specific, actionable insight about the framework's behavior. Generic approval or "no concerns" observations dilute the signal and should not be captured.
+
+**Substantive observations identify:**
+- **Proportionality concerns**: Framework process felt too heavy or too light for the product
+- **Coverage gaps**: Framework missed important topics or questions for this product shape/domain
+- **Applicability mismatches**: Framework applied patterns that don't fit this product type
+- **Specific patterns**: Concrete recurring behaviors across multiple sessions
+- **Unexpected successes**: Framework handled something well despite expected difficulty (only if this contradicts a prior concern)
+
+**Not substantive (do NOT capture):**
+- Generic approval: "Everything worked fine", "No concerns", "Process was smooth"
+- Tautological observations: "Low-risk product had proportionate process" (this is the baseline expectation)
+- Vague assessments: "Framework could be better", "User seemed satisfied" (no actionable insight)
+- Restatements of framework design: "Framework asked discovery questions" (yes, that's what it does)
+
+**Examples:**
+
+| Observation | Substantive? | Why |
+|-------------|--------------|-----|
+| "Stage 3 artifact generation completed without significant concerns for low-risk utility." | **No** | Generic approval. If there are no concerns, don't capture. |
+| "Framework asked 12 discovery questions for low-risk utility, exceeding 5-8 guideline." | **Yes** | Specific proportionality concern with quantitative evidence. |
+| "Framework didn't ask about offline capabilities for media utility app despite user mentioning 'use while camping'." | **Yes** | Specific coverage gap with context. |
+| "Classification process felt appropriate." | **No** | Vague, no actionable insight. |
+| "Framework adapted vocabulary well to non-technical user." | **Only if unexpected** | If this contradicts a prior concern about vocabulary calibration, capture it. Otherwise it's baseline expectation. |
+| "Discovery questions were ordered by impact as expected." | **No** | Restatement of design. If ordering was POOR, that's an observation. |
+
+**When in doubt:** Ask "What would the framework do differently based on this observation?" If the answer is "nothing, it's already doing this correctly," don't capture.
+
 ### Generalization Principle
 
 Every observation description must be generalizable across products.

@@ -114,6 +114,51 @@ Before starting an evaluation:
    - **For simulation**: Capture generated project-state.yaml and artifacts/
    - **For interactive**: Additionally capture full conversation transcript with clear user/system turn boundaries
 
+### Delegation to Subagents (When Using Task Tool)
+
+When delegating evaluation execution to a subagent, the coordinating agent assumes a **verification role**. Delegation does not transfer verification responsibility.
+
+**Pre-delegation checklist:**
+- [ ] Subagent has access to all framework files (skills/, templates/, docs/, tests/scenarios/)
+- [ ] Subagent instructions include complete evaluation procedure (setup → execution → evaluation → recording → cleanup)
+- [ ] Subagent instructions specify BLOCKING nature of observation verification
+
+**Post-completion verification (MANDATORY):**
+
+The coordinating agent MUST independently verify these items. Do not trust subagent reports without verification:
+
+1. **[ ] Observation file exists and is complete**
+   - Read the file: `framework-observations/{scenario-name}-{YYYY-MM-DD}.yaml`
+   - Run observation verification checklist (see Recording Results § step 7)
+   - Count observations: minimum 5 expected
+   - Check stage coverage: verify all transitions represented
+   - If verification fails → evaluation is incomplete
+
+2. **[ ] Evaluation results file exists and is complete**
+   - Read the file: `eval-history/{scenario-name}-{YYYY-MM-DD}.md`
+   - Verify YAML frontmatter is complete (all required fields)
+   - Spot-check 3-5 rubric criteria have evidence recorded
+   - If incomplete → evaluation must be re-run
+
+3. **[ ] Artifacts were generated**
+   - Check that `/tmp/eval-{scenario}/project-state.yaml` was created (or cleanup already happened and results reference it)
+   - If artifacts don't exist and cleanup hasn't happened → execution incomplete
+
+4. **[ ] Baseline comparison (if regression check)**
+   - Compare current results to baseline pass/fail counts
+   - Check for regressions: previously-passing criteria now failing
+   - Document comparison in eval results
+
+**Why this matters:**
+- Subagents can execute procedures but may not fully enforce BLOCKING requirements
+- Observation capture is critical to the learning loop - incomplete capture breaks the system
+- Trust but verify: delegation is valuable but verification cannot be delegated
+
+**If verification fails:**
+- Document the failure in a new observation (type: process_friction, severity: blocking)
+- Decide: re-run evaluation with corrected subagent instructions, or complete missing steps manually
+- Update this guidance if a pattern of delegation failures emerges
+
 ### Evaluation Procedure
 
 **1. Evaluate project-state.yaml**
@@ -180,16 +225,41 @@ Before starting an evaluation:
    - Set status: noted for new findings, update existing observations if this is a regression check
    - This ensures eval findings feed the pattern detection system
 
-**7. Verify observation capture happened automatically**
-   - **BLOCKING CHECK**: Verify that `framework-observations/{scenario-name}-{YYYY-MM-DD}.yaml` exists
-   - If file does NOT exist, this indicates the observation capture system failed during the eval run
-   - If missing:
-     - Create observation entry manually documenting the capture failure
-     - Mark as severity: blocking, type: process_friction
-     - Investigation required: Why didn't automatic capture work?
-   - If file exists:
-     - Review observations to ensure they're substantive (not just "no concerns")
-     - Verify at least one observation per stage transition (0 → 0.5 → 1 → 2 → 3 = 5 transitions minimum)
+**7. Verify observation capture happened automatically (BLOCKING CHECKLIST)**
+
+   Execute ALL checks below. If ANY check fails, the evaluation is INCOMPLETE:
+
+   **File existence check:**
+   - [ ] File exists: `framework-observations/{scenario-name}-{YYYY-MM-DD}.yaml`
+   - If missing → **BLOCKING FAILURE**: Create observation documenting capture failure (severity: blocking, type: process_friction). Investigation required.
+
+   **If file exists, execute mechanical checks:**
+
+   - [ ] **Count observations**: Run `grep -c "^  - type:" framework-observations/{scenario-name}-{YYYY-MM-DD}.yaml`
+     - Expected minimum: **5 observations** (one per stage transition: 0→0.5, 0.5→1, 1→2, 2→3, completion)
+     - If count < 5 → **BLOCKING FAILURE**: Observation capture incomplete
+
+   - [ ] **Verify stage coverage**: Check that observations represent all stage transitions
+     - Read observation file and identify which stages are represented in evidence/description
+     - Required stages: 0→0.5 (classification), 0.5→1 (validation), 1→2 (discovery), 2→3 (definition), completion (artifact generation)
+     - If any stage missing → **BLOCKING FAILURE**: Observation capture incomplete
+
+   - [ ] **Check field completeness**: For each observation entry, verify:
+     - `type:` field is non-empty
+     - `description:` field is non-empty (not just whitespace)
+     - `evidence:` field is non-empty (not just whitespace)
+     - `severity:` field is set
+     - If any entry incomplete → **WARNING**: Record in meta-observations
+
+   - [ ] **Assess substantiveness**: Read each observation's description
+     - Substantive = identifies specific proportionality concern, coverage gap, applicability mismatch, or pattern
+     - Not substantive = "no concerns", "everything worked fine", generic approval without specifics
+     - If >50% observations are generic → **WARNING**: Record in meta-observations, consider interactive eval
+
+   **Record verification results:**
+   - Document in eval results which checks passed/failed
+   - If any BLOCKING failures → evaluation is incomplete, must re-run or investigate
+   - If WARNINGs → note in meta-observations section for future process improvement
 
 ### Cleanup
 
