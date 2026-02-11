@@ -545,6 +545,17 @@ When a skill is modified, all scenarios are re-evaluated. A regression is:
 
 This is judgment-based evaluation, not mechanical. But it has structure, and structure enables regression detection even for non-deterministic outputs. Over time, as patterns stabilize, some evaluations may become partially mechanizable (e.g., checking that specific keywords or topics appear in output).
 
+### Evaluation Lifecycle
+
+The complete evaluation process — from setup through execution, result recording, learning extraction, and regression detection — is documented in `docs/evaluation-methodology.md`. Key aspects:
+
+- **Simulation vs. Interactive**: Simulation (LLM plays test persona) is fast and covers mechanical criteria but cannot evaluate conversation quality. Interactive evaluation (human plays test persona) provides full transcript analysis but requires significantly more time.
+- **Learning Extraction**: A systematic process for transforming evaluation observations into framework improvements, with provenance tracking and "Learn Slowly" principles to avoid over-fitting to single instances.
+- **Meta-Learning**: After each evaluation, critique the evaluation process itself — rubric quality, scenario design, method choice, process friction. Each eval should make the next eval better.
+- **Recording Format**: Standardized YAML frontmatter enables machine-parseable regression detection across framework changes.
+
+For detailed procedures, decision matrices, and recording templates, see `docs/evaluation-methodology.md`.
+
 ---
 
 ## Bootstrapping: Vertical Slice Approach

@@ -78,6 +78,10 @@ prawduct/
 │       └── two-sided-marketplace.md   # Phase 2
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
+├── framework-observations/            # Automatic observation capture (Tier 1, append-only)
+│   ├── README.md                      # Observation system documentation
+│   ├── schema.yaml                    # Observation entry schema
+│   └── {date}-{description}.yaml      # Per-session observations
 ├── docs/                              # This project's own Tier 1 documentation
 │   ├── vision.md
 │   ├── requirements.md
@@ -125,8 +129,9 @@ Use the **family utility** test scenario (simple UI app, low risk). Build just e
 3. **C1: Orchestrator** (`skills/orchestrator/SKILL.md`) — Manage stages 0 → 0.5 → 1 → 2 for this one scenario.
 4. **C3: Artifact Generator** (`skills/artifact-generator/SKILL.md`) — Generate universal artifacts only (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest).
 5. **C4: Review Lenses** (`skills/review-lenses/SKILL.md`) — Apply all four lenses to the generated artifacts.
+6. **C8a: Observation Capture** (`framework-observations/`) — Automatic observation capture at stage transitions and during evaluation. This is minimal C8 (Observer only); pattern detection and incorporation are Phase 2/3.
 
-**Evaluate against the family utility test scenario rubric** (see `docs/high-level-design.md` § "Validation Strategy for Skills"). Phase 1 succeeds when the end-to-end flow produces useful, consistent output from a vague input.
+**Evaluate against the family utility test scenario rubric** (see `docs/high-level-design.md` § "Validation Strategy for Skills"). Phase 1 succeeds when the end-to-end flow produces useful, consistent output from a vague input and automatically captures observations for future pattern detection.
 
 ### Phase 2: Widen
 
@@ -140,7 +145,7 @@ Use the **family utility** test scenario (simple UI app, low risk). Build just e
 
 All v1 requirements, all five test scenarios passing, framework governing its own development.
 
-C7 (Trajectory Monitor) and C8 (Learning System) are post-v1. Accommodate them architecturally but don't build them yet.
+**C8a (Observation Capture)** is built in Phase 1 to start accumulating data. Full C7 (Trajectory Monitor) and C8 (Learning System with pattern detection, validation, incorporation) are v1.5/v2.
 
 ## Testing Strategy for This Project
 
@@ -153,6 +158,8 @@ Since this project is a framework of skills and tools (not a traditional applica
 ### Recording Evaluation Results
 
 Every evaluation run **must** produce a results file in `eval-history/` before the evaluation directory is cleaned up. This is not optional — unrecorded evaluations are wasted work.
+
+**For complete evaluation procedures** (setup, execution, analysis, learning extraction, regression detection), see `docs/evaluation-methodology.md`.
 
 **File naming:** `eval-history/{scenario-name}-{YYYY-MM-DD}.md` (e.g., `family-utility-2026-02-10.md`). If multiple runs happen on the same day, append a sequence number: `-2026-02-10-2.md`.
 
@@ -178,7 +185,9 @@ notes: ""                          # Free-form observations
 
 **Body:** Detailed pass/fail per rubric criterion with evidence, followed by issues found and skills updated.
 
-**Why this matters:** Eval history enables regression detection across framework changes. If a skill update improves C4 but regresses C2, the historical record makes that visible. The YAML frontmatter makes results machine-parseable for future tooling.
+**Observation extraction:** After recording eval results, framework findings are extracted and written to `framework-observations/` as structured observations. This feeds the pattern detection system. See `docs/evaluation-methodology.md` § "Recording Results" step 6 for the extraction procedure.
+
+**Why this matters:** Eval history enables regression detection across framework changes. If a skill update improves C4 but regresses C2, the historical record makes that visible. The YAML frontmatter makes results machine-parseable for future tooling. The observation journal enables automatic pattern detection across multiple evals and product sessions.
 
 ## Conventions
 

@@ -1,0 +1,58 @@
+---
+observation_id: 550e8400-e29b-41d4-a716-446655440003
+timestamp: 2026-02-11T19:00:00Z
+session_type: framework_dev
+session_context:
+  framework_version: ec28b2b
+observations:
+  - type: process_friction
+    stage: meta
+    severity: note
+    description: "Observation capture was made BLOCKING instead of optional. Stage transitions now fail if observation file is not created, preventing silent observation system failures."
+    evidence: "Updated Orchestrator skill § Framework Reflection Protocol to require observation file creation with verification step before stage transition. Changed language from 'you may skip creating a file' to 'You MUST create an observation file at EVERY stage transition' with verification requirement."
+    proposed_action: null
+    status: acted_on
+  - type: process_friction
+    stage: meta
+    severity: note
+    description: "Review Lenses execution was made MANDATORY in Stage 3 with explicit documentation requirements. Prevents quality gate being silently skipped during artifact generation."
+    evidence: "Updated Orchestrator skill § Stage 3 to mark Review Lenses as MANDATORY in all phases (A, B, C) with explicit 'Review Lenses MUST run in all cases' warning. Added requirement to document review findings. This addresses finding from background-pipeline eval where lenses weren't executed."
+    proposed_action: null
+    status: acted_on
+  - type: process_friction
+    stage: meta
+    severity: note
+    description: "Evaluation methodology updated to include observation capture verification as a blocking check. Prevents completing eval without confirming observation system worked."
+    evidence: "Added step 7 to evaluation methodology Recording Results section: 'Verify observation capture happened automatically' with blocking check for observation file existence. If file missing, manual creation required with investigation into why automatic capture failed. Also added prerequisite check to Pre-Eval Setup Checklist."
+    proposed_action: null
+    status: acted_on
+  - type: missing_guidance
+    stage: meta
+    severity: note
+    description: "Created mechanical validation scripts to automate schema, artifact structure, and observation file checks. Reduces manual verification burden and catches issues earlier in eval process."
+    evidence: "Created three validation scripts: (1) validate-eval-output.sh - orchestrates all checks with clear pass/fail reporting, (2) validate-schema.py - validates project-state.yaml structure and required fields, (3) check-artifacts.py - validates artifact frontmatter and presence of universal artifacts. All scripts tested against background-pipeline eval output."
+    proposed_action: "Integrate validation scripts into evaluation workflow: run mechanical validation BEFORE manual rubric evaluation to catch structural issues early. Add to evaluation methodology as recommended first step."
+    status: acted_on
+  - type: missing_guidance
+    stage: meta
+    severity: note
+    description: "Test scenario updated with Prerequisites section to prevent running Phase 2 scenarios against Phase 1 framework. Makes phase mismatch explicit and prevents wasted evaluation effort."
+    evidence: "Added Prerequisites section to background-data-pipeline scenario documenting required Phase 2 capabilities (automation discovery questions, shape-specific artifacts, operational evaluation). Marked with 'Do NOT run this scenario until' blocking conditions. Prevents repeat of Phase 2-on-Phase-1 mismatch discovered in today's eval."
+    proposed_action: "Apply Prerequisites pattern to all Phase 2+ scenarios (consumer-mobile-app, b2b-integration-api, two-sided-marketplace). Consider adding phase-gate check to validation script."
+    status: acted_on
+  - type: process_friction
+    stage: meta
+    severity: note
+    description: "Meta-learning loop successfully closed: identified observation capture failure in eval, implemented fixes within same session, documented implementation as new observations. Self-improvement system is now self-improving its self-improvement mechanism."
+    evidence: "Timeline: (1) 09:43 - Built observation capture system, (2) 10:19 - Ran eval that should have captured observations but didn't, (3) 10:35 - Manually created observations documenting the failure, (4) 11:00 - Implemented all fixes making capture blocking and verifiable, (5) 11:15 - Documenting fix implementation as observations. Full cycle from feature → failure → observation → fix → observation-of-fix in one session."
+    proposed_action: null
+    status: acted_on
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+  - "docs/evaluation-methodology.md"
+  - "scripts/validate-eval-output.sh"
+  - "scripts/validate-schema.py"
+  - "scripts/check-artifacts.py"
+  - "tests/scenarios/background-data-pipeline.md"
+  - "templates/doc-manifest.yaml"
+---

@@ -158,22 +158,28 @@ Update `current_stage` to "discovery".
 3. **Generate and review in phases.** Artifacts are generated in dependency order, with review lenses applied at dependency boundaries to catch errors before they propagate downstream. Follow the Artifact Generator's phased process:
 
    **Phase A — Foundation:** Generate the Product Brief.
-   - Apply the **Product and Design lenses** to the Product Brief.
+   - **MANDATORY**: Apply the **Product and Design lenses** to the Product Brief.
+   - Document review findings (record in project notes or separate review document)
    - If any blocking findings, resolve them before proceeding. The Product Brief is the foundation for all other artifacts — errors here infect everything.
 
    **Phase B — Structure:** Generate the Data Model and Non-Functional Requirements.
-   - Apply the **Architecture lens** to the Data Model, NFRs, and their relationship to the Product Brief.
+   - **MANDATORY**: Apply the **Architecture lens** to the Data Model, NFRs, and their relationship to the Product Brief.
+   - Document review findings
    - If any blocking findings, resolve them before proceeding.
 
-   **Phase C — Integration:** Generate the Security Model, Test Specifications, Operational Specification, and Dependency Manifest.
-   - Apply **all four lenses** across the complete artifact set.
+   **Phase C — Integration:** Generate the Security Model, Test Specifications, Operational Specification, Dependency Manifest, and any shape-specific artifacts.
+   - **MANDATORY**: Apply **all four lenses** across the complete artifact set.
    - The Artifact Generator runs a full cross-artifact consistency check at this stage.
+   - Document all review findings with severity levels (blocking / warning / note)
    - If any blocking findings, resolve them before presenting to the user.
 
    **Risk-proportionate compression:** For low-risk products, Phases A and B may be compressed into two checkpoints: Product Brief + review, then all remaining artifacts + full review. The foundation review (Product Brief) must never be skipped regardless of risk level.
 
+   **CRITICAL**: Review Lenses MUST run in all cases. If you are running a simulation or automated process, Review Lenses are still required. Skipping review = quality gate failure.
+
 4. Present a summary of the artifacts and all review findings to the user.
-5. Update `current_stage` to "build-planning".
+5. Run Framework Reflection Protocol for Stage 3 and write observations (MANDATORY).
+6. Update `current_stage` to "build-planning".
 
 *Stages 4-6 (Build Planning, Build + Governance, Iteration) are Phase 2. The Orchestrator acknowledges their existence but does not implement them yet.*
 
@@ -183,7 +189,13 @@ Update `current_stage` to "discovery".
 
 At every stage transition, pause and ask: **did the framework serve this product well in the stage just completed?** This is how the framework improves — not just through post-hoc evaluation, but through continuous self-critique during actual use.
 
-**When to reflect:** After completing each stage, before moving to the next. This is part of the stage transition, not a separate step the user needs to request.
+**When to reflect:** After completing each stage, BEFORE moving to the next. This is a MANDATORY part of the stage transition, not optional.
+
+**Process:**
+1. Assess the stage just completed (see "What to assess" below)
+2. Write observations to framework observation journal (MANDATORY - see "Mandatory Observation Capture" section)
+3. Verify observation file was created (BLOCKING - stage transition fails if not created)
+4. Then proceed to next stage
 
 **What to assess:**
 
@@ -197,12 +209,69 @@ At every stage transition, pause and ask: **did the framework serve this product
 - **Surface them to the user** as a brief note at each transition: "Framework note: [observation]." The user may have their own observations — invite them.
 - **Keep observations general.** "The artifact set assumes server-side logic; static sites don't benefit from a security model" is general. "Brooks's site doesn't need a security model" is specific. Record the former, not the latter.
 - **Propose framework updates** when observations are actionable. If you identify a change that would improve the framework for future products of any type, note it. If the user is working in the framework repo, offer to make the change. If not, record it as a framework observation for later.
+- **Automatically capture observations to the framework observation journal.** This is mandatory, not optional. See "Mandatory Observation Capture" below.
 
 **What NOT to do:**
 
 - Don't let reflection slow down a user who's eager to proceed. Keep it to 1-2 sentences per transition unless there's a significant finding.
 - Don't bring product-specific details into framework observations. The insight must generalize.
 - Don't accumulate observations silently — surface them as you go.
+
+---
+
+### Mandatory Observation Capture
+
+At every stage transition, after completing the Framework Reflection Protocol assessment, write your observations to the framework observation journal. This is not optional — it's how the framework improves automatically.
+
+**Location:** In the Prawduct framework repo: `{prawduct-repo}/framework-observations/{YYYY-MM-DD}-{session-description}.yaml`
+
+**When working on a user's product** (session_type: product_use):
+- Create observation file in framework repo, NOT in user's project directory
+- Use generic session description (e.g., "product-session-1") or UUID, NOT product-specific names
+- Only record generalizable observations, never product-specific details
+
+**File naming:**
+- `{YYYY-MM-DD}-product-session-{uuid}.yaml` for product use sessions
+- `{YYYY-MM-DD}-{scenario-name}-eval.yaml` for evaluation runs
+- `{YYYY-MM-DD}-{topic}.yaml` for framework development
+
+**Required content:**
+```yaml
+---
+observation_id: [generate a UUID]
+timestamp: [ISO-8601 format]
+session_type: product_use | evaluation | framework_dev
+session_context:
+  product_classification: [for product_use only]
+  scenario_name: [for evaluation only]
+  framework_version: [git SHA from `git rev-parse --short HEAD`]
+observations:
+  - type: proportionality | coverage | applicability | missing_guidance
+    stage: [0, 0.5, 1, 2, 3]
+    severity: note | warning | blocking
+    description: "[Generalized observation - NOT product-specific]"
+    evidence: "[What triggered this observation]"
+    proposed_action: "[What could address this]" | null
+    status: noted
+skills_affected: [list of skill files]
+---
+```
+
+**See `framework-observations/schema.yaml` for complete schema and `framework-observations/README.md` for guidelines.**
+
+**CRITICAL - This is MANDATORY and BLOCKING:**
+- **You MUST create an observation file at EVERY stage transition, even if observations are minimal**
+- **Stage transition FAILS if observation file is not created** - verify file exists before proceeding
+- Observations must be generalized, not product-specific
+- This capture happens silently (no user notification unless severity: blocking)
+- Minimum: At least one observation per file, even if just noting "Stage N completed without significant concerns (type: proportionality, severity: note)"
+- When in doubt about whether an observation is significant, err on the side of capturing — low-signal observations can be filtered during pattern detection
+
+**Verification before proceeding:**
+After writing observation file, verify it exists:
+- For product sessions: Check that `{prawduct-repo}/framework-observations/{date}-product-session-*.yaml` was created
+- For evaluations: Check that `{prawduct-repo}/framework-observations/{date}-{scenario-name}-eval.yaml` was created
+- If file does NOT exist, STOP and create it before transitioning to next stage
 
 ---
 

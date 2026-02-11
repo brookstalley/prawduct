@@ -39,11 +39,14 @@
 ### Recording results
 
 9. **Before cleanup**, write the evaluation results to `eval-history/family-utility-{YYYY-MM-DD}.md` in the prawduct repo. This file must include:
-   - YAML frontmatter with scenario name, date, evaluator type, framework version (git SHA), and pass/partial/fail/unable counts per component. See `CLAUDE.md` § "Recording Evaluation Results" for the required format.
+   - YAML frontmatter with scenario name, date, evaluator type, framework version (git SHA), and pass/partial/fail/unable counts per component.
    - Detailed pass/fail per rubric criterion with evidence.
    - Issues found and any skill updates made as a result.
+   - Meta-observations about the evaluation process itself.
 
    **This step is mandatory.** Unrecorded evaluations are wasted work — the results are needed to detect regressions across framework changes.
+
+   **For the complete recording format and evaluation procedures**, see `docs/evaluation-methodology.md`.
 
 ### Cleanup
 

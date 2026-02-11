@@ -41,6 +41,12 @@ documents:
     purpose: "Component architecture, interaction model, bootstrapping approach"
     last_reviewed: null
 
+  - path: docs/evaluation-methodology.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Evaluation lifecycle: setup, execution, analysis, learning extraction, regression detection"
+    last_reviewed: 2026-02-11
+
   - path: CLAUDE.md
     tier: 1
     owner: framework-maintainer
@@ -135,6 +141,12 @@ documents:
     purpose: "This file — documentation tracking manifest"
     last_reviewed: null
 
+  - path: templates/eval-result-template.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Copy-paste template for recording evaluation results with required YAML frontmatter"
+    last_reviewed: 2026-02-11
+
   # --- Tier 1: Test Scenarios ---
 
   - path: tests/scenarios/family-utility.md
@@ -153,6 +165,49 @@ documents:
     owner: framework-maintainer
     purpose: "Evaluation results with YAML frontmatter for regression tracking"
     last_reviewed: null
+
+  # --- Tier 1: Framework Observations ---
+  # Individual observation entries are not pre-registered here (they are append-only
+  # and follow a standard naming convention). The directory itself is tracked.
+  # See framework-observations/README.md for the observation capture system.
+
+  - path: framework-observations/
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Automatic observation capture for framework self-improvement"
+    last_reviewed: 2026-02-11
+
+  - path: framework-observations/README.md
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Observation system documentation and usage guidelines"
+    last_reviewed: 2026-02-11
+
+  - path: framework-observations/schema.yaml
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Observation entry schema definition"
+    last_reviewed: 2026-02-11
+
+  # --- Tier 1: Validation Scripts ---
+
+  - path: scripts/validate-eval-output.sh
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Mechanical validation for evaluation output (schema, artifacts, observations)"
+    last_reviewed: 2026-02-11
+
+  - path: scripts/validate-schema.py
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Python script to validate project-state.yaml schema compliance"
+    last_reviewed: 2026-02-11
+
+  - path: scripts/check-artifacts.py
+    tier: 1
+    owner: framework-maintainer
+    purpose: "Python script to validate artifact frontmatter and structure"
+    last_reviewed: 2026-02-11
 
   # Tier 3 documents live in working-notes/ and are not pre-registered.
   # They must include a creation date and expire after 2 weeks.

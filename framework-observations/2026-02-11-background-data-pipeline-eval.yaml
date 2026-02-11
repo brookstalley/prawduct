@@ -1,0 +1,59 @@
+---
+observation_id: 550e8400-e29b-41d4-a716-446655440002
+timestamp: 2026-02-11T18:30:00Z
+session_type: evaluation
+session_context:
+  scenario_name: background-data-pipeline
+  framework_version: ec28b2b
+observations:
+  - type: missing_guidance
+    stage: meta
+    severity: blocking
+    description: "Test scenario requires Phase 2 capabilities (automation-specific discovery questions and artifacts) but framework is Phase 1 (universal artifacts only). This creates a fundamental mismatch between test expectations and framework implementation."
+    evidence: "Scenario header marks Phase: 2. Domain Analyzer line 206 marks 'Automation/Pipeline (Phase 2)' with no discovery questions implemented. Artifact Generator line 32 says 'Shape-specific artifacts are added in Phase 2.' Yet scenario rubric requires pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec - all Phase 2 artifacts."
+    proposed_action: "Either: (1) Mark this scenario as Phase 2 baseline (don't run until automation support built), OR (2) Pull automation shape support into Phase 1 (add discovery questions and artifact templates), OR (3) Create simpler Phase 1 automation scenario without complex operational artifacts."
+    status: noted
+  - type: process_friction
+    stage: meta
+    severity: blocking
+    description: "Observation capture system was built but not invoked during evaluation run. The self-improvement loop we created is not automatically executing. This defeats the purpose of 'observation as side-effect.'"
+    evidence: "framework-observations/ directory shows only 3 files from earlier today (README, schema, meta-improvement-loop). No new observation file was created during the background-pipeline eval simulation, despite Orchestrator skill § Mandatory Observation Capture requiring observations at every stage transition. Task agent ran stages 0→3 but produced no observation outputs."
+    proposed_action: "Make observation capture BLOCKING not OPTIONAL: (1) Orchestrator skill should require verification that observation file was created before allowing stage transition, (2) Evaluation methodology should verify observation file exists before marking eval complete, (3) Investigate why Task agent didn't follow observation capture instruction."
+    status: noted
+  - type: missing_guidance
+    stage: 3
+    severity: warning
+    description: "Review Lenses were not executed during artifact generation stage despite Orchestrator § Stage 3 requiring review lens application in Phase C (all four lenses across complete artifact set)."
+    evidence: "All C4 rubric criteria marked UNABLE because Review Lenses not run. Task agent summary mentions artifact generation but no review findings. No review documentation in project-state.yaml or separate review file. Orchestrator skill § Stage 3 lines 159-171 specify phased review with lenses applied at dependency boundaries."
+    proposed_action: "Ensure Review Lenses are invoked in simulations: (1) Verify Orchestrator instructions are clear about review timing, (2) Add 'run review lenses' explicitly to Task agent prompts for simulations, (3) Consider making review a separate stage (3a) with clear entry criteria."
+    status: noted
+  - type: rubric_issue
+    stage: meta
+    severity: note
+    description: "Test scenario rubric has 102 criteria, of which 30 (29.4%) were unable to evaluate in simulation due to requiring transcript analysis (conversation quality, pacing, vocabulary calibration). This is a known simulation limitation but may indicate rubric is over-weighted toward interactive-only criteria."
+    evidence: "C1 Orchestrator: 9/14 criteria UNABLE. C2 Domain Analyzer: 9/27 criteria UNABLE. C4 Review Lenses: 7/7 UNABLE (lenses not run). End-to-end: 4/8 UNABLE. Total: 30/102 criteria unevaluable in simulation."
+    proposed_action: "Consider separating rubric into simulation-evaluable and interactive-only sections. Alternatively, set threshold: if >40% of rubric criteria require interactive eval, scenario should be marked 'interactive baseline required' to prevent misleading simulation results."
+    status: noted
+  - type: applicability
+    stage: 2
+    severity: note
+    description: "project-state.yaml includes design_decisions section (lines 266-270) with all null values for non-UI automation product. Question: should this section be absent entirely for non-UI products, or is null-valued presence acceptable?"
+    evidence: "C5 must-not-do criterion questioned whether design_decisions section should exist for automation products. Current behavior: section present with null values for information_architecture, interaction_patterns, accessibility_approach, visual_direction."
+    proposed_action: "Decision: Keep with null values. Rationale: Schema consistency valuable (all projects have same structure), null values clearly communicate 'not applicable' vs 'not yet decided', easier for tools to parse. Document in project-state template that design_decisions exists for all products but may be null for non-UI shapes."
+    status: acted_on
+  - type: rubric_issue
+    stage: meta
+    severity: note
+    description: "Rubric uses subjective terms like 'proportionate', 'substantive', 'actionable' without concrete examples or thresholds, making evaluation ambiguous."
+    evidence: "C3 quality criterion: 'Operational artifacts specific and actionable' - what's the bar for 'actionable'? C3 must-do: 'Monitoring spec is substantive' - what's substantive? Evaluator had to interpret these subjectively, reducing consistency across evaluators."
+    proposed_action: "Make rubric criteria more concrete with examples. Instead of 'substantive', specify: 'at least 3 alert conditions with specific triggers and thresholds, not generic recommendations.' Instead of 'proportionate', give examples: 'v1 scope has 4-8 items for low-risk, 8-15 for medium-risk.'"
+    status: noted
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+  - "skills/domain-analyzer/SKILL.md"
+  - "skills/artifact-generator/SKILL.md"
+  - "skills/review-lenses/SKILL.md"
+  - "tests/scenarios/background-data-pipeline.md"
+  - "docs/evaluation-methodology.md"
+  - "framework-observations/README.md"
+---

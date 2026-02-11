@@ -1,0 +1,183 @@
+# Framework Observation Schema
+#
+# This schema defines the structure of observation entries in framework-observations/.
+# Every observation file must conform to this schema.
+
+observation_entry:
+  # Unique identifier for this observation entry
+  observation_id:
+    type: string
+    format: uuid
+    required: true
+    description: "Unique identifier for this observation entry"
+
+  # When this observation was recorded
+  timestamp:
+    type: string
+    format: ISO-8601
+    required: true
+    description: "When this observation was captured (YYYY-MM-DDTHH:MM:SSZ)"
+
+  # What kind of framework session produced this observation
+  session_type:
+    type: string
+    enum:
+      - product_use      # Framework used to build a user's product
+      - evaluation       # Framework tested against a scenario rubric
+      - framework_dev    # Framework development/meta-improvement work
+    required: true
+    description: "Type of session that produced this observation"
+
+  # Context about the session
+  session_context:
+    type: object
+    required: true
+    description: "Metadata about the session"
+    fields:
+      # For product_use sessions
+      product_classification:
+        type: string
+        required_if: session_type == product_use
+        description: "Product shape classification (e.g., 'UI Application - Utility')"
+        examples:
+          - "UI Application - Utility"
+          - "Background Automation - Data Pipeline"
+          - "API - Integration Service"
+
+      # For evaluation sessions
+      scenario_name:
+        type: string
+        required_if: session_type == evaluation
+        description: "Name of the test scenario (matches tests/scenarios/{name}.md)"
+        examples:
+          - "family-utility"
+          - "background-data-pipeline"
+
+      # Always required
+      framework_version:
+        type: string
+        format: git-sha
+        required: true
+        description: "Git SHA of framework at time of observation (from git rev-parse --short HEAD)"
+
+  # The actual observations from this session
+  observations:
+    type: array
+    required: true
+    min_items: 1
+    description: "List of observations from this session"
+    items:
+      type: object
+      fields:
+        # What kind of observation is this
+        type:
+          type: string
+          enum:
+            - proportionality    # Framework process felt disproportionate to product
+            - coverage           # Framework missed important topics
+            - applicability      # Framework required outputs that didn't apply
+            - missing_guidance   # Framework had no guidance for a situation
+            - rubric_issue       # Test scenario rubric has problems
+            - process_friction   # Evaluation or framework process has friction
+          required: true
+          description: "Category of observation"
+
+        # Which stage of the framework process (if applicable)
+        stage:
+          type: string | integer
+          enum: [0, 0.5, 1, 2, 3, "meta"]
+          required: false
+          description: "Framework stage this relates to (0=intake, 0.5=validation, 1=discovery, 2=definition, 3=artifacts, meta=process itself)"
+
+        # How important is this
+        severity:
+          type: string
+          enum:
+            - note      # Minor observation, no immediate action needed
+            - warning   # Notable issue, should be addressed eventually
+            - blocking  # Serious problem preventing framework from working correctly
+          required: true
+          description: "Severity level of this observation"
+
+        # What was observed (must be generalized, not product-specific)
+        description:
+          type: string
+          required: true
+          description: "Generalized statement of what was observed (NOT product-specific)"
+          examples:
+            - "Framework didn't ask about offline/connectivity requirements for media-heavy utility apps"
+            - "Security model template assumes server-side logic; static sites don't need most sections"
+            - "Discovery questions for automation products didn't cover scheduling/triggering patterns"
+          anti_examples:
+            - "Brooks's sleep sound app needs offline playback"  # Too specific
+            - "User wanted SQLite"  # Product-specific preference
+            - "Family utility app has 5 sound categories"  # Implementation detail
+
+        # What triggered this observation
+        evidence:
+          type: string
+          required: true
+          description: "Specific evidence that triggered this observation"
+          examples:
+            - "User explicitly mentioned 'works offline' but framework never asked about connectivity"
+            - "Static site product required filling out 'API authentication' section despite having no backend"
+            - "Framework asked 8 discovery questions for a low-risk utility app (guideline is 1-2 rounds)"
+
+        # What could address this
+        proposed_action:
+          type: string | null
+          required: false
+          description: "Suggested action to address this observation (null if unclear)"
+          examples:
+            - "Add Tier 2 discovery question about connectivity requirements for media/content apps"
+            - "Make security model sections conditional based on product architecture"
+            - "Adjust discovery round count for low-risk products from 2-4 to 1-2"
+
+        # What's the current status of this observation
+        status:
+          type: string
+          enum:
+            - noted              # Observed, watching for pattern
+            - requires_pattern   # Seen 2-3 times, needs more data
+            - acted_on           # Skill updated to address this
+          required: true
+          default: noted
+          description: "Tracking status of this observation"
+
+  # Which skills this observation relates to
+  skills_affected:
+    type: array
+    required: true
+    min_items: 1
+    description: "List of skill files this observation relates to"
+    items:
+      type: string
+      format: file_path
+      examples:
+        - "skills/orchestrator/SKILL.md"
+        - "skills/domain-analyzer/SKILL.md"
+        - "skills/artifact-generator/SKILL.md"
+        - "skills/review-lenses/SKILL.md"
+        - "templates/security-model.md"
+        - "framework-observations/README.md"
+
+# Example observation entry
+example: |
+  ---
+  observation_id: 550e8400-e29b-41d4-a716-446655440000
+  timestamp: 2026-02-11T14:23:00Z
+  session_type: evaluation
+  session_context:
+    scenario_name: family-utility
+    framework_version: abc1234
+  observations:
+    - type: coverage
+      stage: 1
+      severity: warning
+      description: "Framework didn't ask about offline/connectivity requirements for media-heavy utility apps"
+      evidence: "User explicitly mentioned 'works offline' but framework never asked about connectivity during discovery"
+      proposed_action: "Add Tier 2 discovery question about connectivity requirements for media/content apps"
+      status: noted
+  skills_affected:
+    - "skills/domain-analyzer/SKILL.md"
+  ---
