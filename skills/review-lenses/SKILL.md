@@ -1,19 +1,19 @@
 # Review Lenses
 
-The Review Lenses provide multi-perspective evaluation of system output at every stage. They are four modes of critical thinking — Product, Design, Architecture, and Skeptic — applied to artifacts, decisions, and project state. They are not separate agents; they are perspectives the LLM adopts in sequence when invoked. The Review Lenses are invoked by the Orchestrator at stage transitions and at dependency boundaries during artifact generation.
+The Review Lenses provide multi-perspective evaluation of system output at every stage. They are five modes of critical thinking — Product, Design, Architecture, Skeptic, and Testing — applied to artifacts, decisions, and project state. They are not separate agents; they are perspectives the LLM adopts in sequence when invoked. The Review Lenses are invoked by the Orchestrator at stage transitions and at dependency boundaries during artifact generation.
 
 ## When You Are Activated
 
 The Orchestrator activates this skill:
 
 - During **Stage 0.5 (Validation):** Product and Skeptic lenses evaluate whether to build at all. (Medium/high-risk products only.)
-- During **Stage 2 (Product Definition):** All four lenses review crystallized decisions before artifact generation.
+- During **Stage 2 (Product Definition):** Product, Design, Architecture, and Skeptic lenses review crystallized decisions before artifact generation. (Testing Lens does not apply — no test specifications exist yet.)
 - During **Stage 3 (Artifact Generation):** Lenses are applied in phases as artifacts are generated, not as a single post-hoc review (see Orchestrator Stage 3):
   - **Phase A (Foundation):** Product and Design lenses review the Product Brief before dependent artifacts are generated. Focus: Is the vision clear? Are personas realistic? Are flows complete? Are all states considered?
   - **Phase B (Structure):** Architecture lens reviews the Data Model and NFRs against the Product Brief. Focus: Do entities cover the flows? Are NFRs realistic for the platform and risk level?
-  - **Phase C (Integration):** All four lenses review the complete artifact set. This is where cross-cutting concerns (security coverage, test completeness, dependency justification, failure modes) get full evaluation.
+  - **Phase C (Integration):** All five lenses review the complete artifact set. This is where cross-cutting concerns (security coverage, test completeness, dependency justification, failure modes) get full evaluation. The Testing Lens activates here — test specifications now exist and can be evaluated for comprehensiveness.
 - During **Stage 4 (Build Planning):** Architecture lens reviews the build plan for feasibility and appropriate chunking. Skeptic lens checks for risks in the build ordering (e.g., late-stage dependencies, missing early feedback).
-- During **Stage 5 (Build + Governance):** At governance checkpoints, Architecture and Skeptic lenses validate the implementation so far. Architecture checks that the built code matches the designed structure. Skeptic checks for emerging risks (e.g., growing complexity, untested edge cases, drift from specs).
+- During **Stage 5 (Build + Governance):** At governance checkpoints, Architecture, Skeptic, and Testing lenses validate the implementation so far. Architecture checks that the built code matches the designed structure. Skeptic checks for emerging risks (e.g., growing complexity, untested edge cases, drift from specs). Testing checks that implemented tests match specs and no coverage gaps have emerged.
 - During **Stage 6 (Iteration):** Product lens evaluates change requests — is this what the user needs? Architecture lens evaluates blast radius — what does this change affect?
 
 When activated:
@@ -42,7 +42,7 @@ For each lens, produce findings in this format:
 
 **Proportionality rule:** Severity must match the product's risk level. A note for a family utility might be a warning for a B2B platform. Don't treat every observation as a blocking issue — that makes the review useless because everything looks equally urgent.
 
-## The Four Lenses
+## The Five Lenses
 
 ### Product Lens
 
@@ -127,6 +127,38 @@ For each lens, produce findings in this format:
 
 **What this lens does NOT do:** It doesn't fix problems — it finds them. Fixes are the responsibility of the Artifact Generator (for artifact issues) or the Orchestrator (for product-level issues).
 
+### Testing Lens
+
+**Core question:** Are the test specifications comprehensive, proportionate, and traceable to identified risks?
+
+**When this lens applies:** Only when test specifications exist. This means Stage 3 Phase C (after Test Specifications are generated) and Stage 5 governance checkpoints. Does NOT apply in Stages 0-2, Stage 3 Phase A/B, or Stage 4.
+
+**What to evaluate:**
+
+- **Comprehensiveness:** Do test specs cover every core flow's happy path, error cases, and edge cases? For automations: does every pipeline stage have failure mode tests?
+- **Risk traceability:** Do test specs cover the risks and edge cases the Skeptic identified? Every Skeptic finding should be traceable to at least one test scenario.
+- **Failure mode coverage:** For each failure mode in the Failure Recovery Spec (automation) or implied by the architecture, is there a corresponding test?
+- **Proportionality:** Is test depth appropriate to product risk? A family utility needs fewer scenarios than a financial platform. Over-testing is waste; under-testing is risk.
+- **Specificity:** Are test scenarios concrete (setup, action, expected result) or generic ("test that it works")? Generic test scenarios provide false confidence.
+- **State coverage:** Are entity lifecycle transitions (from data model) tested, including invalid transitions?
+
+**Typical findings:**
+- Core flow X has happy-path test but no error case tests (warning)
+- Skeptic identified risk Y (e.g., "feed format changes") but no test scenario covers it (warning)
+- Failure Recovery Spec enumerates 8 failure modes but Test Specifications only cover 3 (blocking)
+- Test scenarios are generic ("verify filtering works") rather than concrete (warning)
+- Test depth disproportionate to risk — 40 test scenarios for a family utility (note)
+
+**Proportionality guidance by risk level:**
+
+| Risk | Expected findings | Blocking max |
+|------|------------------|--------------|
+| Low | 1-3 | 0-1 |
+| Medium | 2-5 | 0-2 |
+| High | 3-8 | 1-3 |
+
+**What this lens does NOT do:** It doesn't evaluate test *implementation* quality (code correctness, assertion strength) — that's the Critic's Test Integrity Checker during build. The Testing Lens evaluates whether the right things are *specified* for testing, not whether the tests themselves are well-written.
+
 ## Framework Proportionality Observations
 
 In addition to product-focused findings, every lens application should note whether the artifact being reviewed was **proportionate to the product's actual needs**. This is not a product finding — it's a framework observation that feeds back into framework improvement.
@@ -157,6 +189,59 @@ For a low-risk utility like a family score tracker, the review should be **propo
 - **Tone:** Helpful, not adversarial. The goal is to improve the product, not to demonstrate thoroughness.
 - **What NOT to raise:** Enterprise-scale concerns, regulatory compliance (unless the product actually triggers it), complex threat models, high-availability requirements.
 
+## Applying Lenses to Automation/Pipeline Products
+
+For automation/pipeline products, the lenses shift focus from user-facing concerns to operational concerns. The core question changes from "will users understand this?" to "will this run reliably unattended?"
+
+### Product Lens (Automation)
+
+- Does the automation scope match the real manual process it replaces? Is the boundary correct — not automating too much or too little?
+- Are the pipeline stages the right decomposition of the problem?
+- Are success criteria measurable for a headless system? ("Digest delivered by 7 AM" is measurable. "Works well" is not.)
+- Is the filtering/processing logic well-defined enough to implement, or is it vague ("interesting articles")?
+
+### Design Lens (Automation)
+
+The Design Lens has limited but real applicability for automations. It does NOT evaluate screens, navigation, or visual design. It evaluates:
+
+- **Configuration UX:** How does the operator change settings? Is the config format clear? Are error messages helpful when config is invalid?
+- **Output clarity:** Is the pipeline's output (Slack message, email digest, report) well-structured and easy to scan? Output format is the pipeline's "interface."
+- **Observability UX:** Can the operator easily check whether the pipeline is healthy? Is status information accessible without digging through logs?
+- **Error communication:** When something goes wrong, does the alert/notification make it clear what happened and what to do?
+
+### Architecture Lens (Automation)
+
+- **Stage isolation:** Can each pipeline stage fail independently without cascading? Is there appropriate error handling between stages?
+- **Deployment appropriateness:** Is the deployment model (serverless, cron job, container, etc.) appropriate for the pipeline's execution pattern and cost profile?
+- **Resource efficiency:** Will the pipeline consume reasonable compute, memory, and network resources for what it does? Any risk of runaway costs from a tight loop or unbounded data fetch?
+- **Operational complexity budget:** Is the infrastructure proportionate to the problem? A side project RSS aggregator doesn't need Kubernetes.
+
+### Skeptic Lens (Automation)
+
+The Skeptic Lens must always raise at least one finding in each of these two categories for automation products:
+
+- **Silent failure scenarios:** What happens when the pipeline fails and nobody notices? At least one finding must address how failures surface (or don't). Example: "If all RSS feeds return empty responses due to a format change, the pipeline will report 'no articles found' — indistinguishable from a day with genuinely no new content."
+- **External dependency resilience:** What happens when external services (APIs, feeds, delivery targets) are down, slow, or rate-limited? At least one finding must address external dependency failure. Example: "If Slack's API is rate-limited during morning peak, the digest may be delayed or lost with no retry."
+
+Additionally, look for:
+- **Configuration drift:** As the user changes config over time, what could go wrong? Could an invalid filter exclude everything?
+- **Cost creep:** Are there per-invocation costs (LLM API calls, data enrichment services) that could add up unexpectedly?
+
+### Testing Lens (Automation)
+
+In addition to the general Testing Lens criteria:
+
+- Every pipeline stage has at least one failure mode test.
+- **Silent failure detection:** A test that verifies the system distinguishes "ran successfully with no results" from "didn't run."
+- **Partial success:** A test that verifies behavior when some sources succeed and others fail.
+- **Configuration validation:** A test that verifies behavior with invalid or missing configuration.
+
+### Proportionality for Automation Reviews
+
+- **Total findings across all five lenses:** 8-15 for a low-medium risk automation. Fewer than 8 likely misses operational concerns. More than 15 is over-reviewing for a side project.
+- **Blocking findings:** 0-3 at most. The most likely blocking findings are: missing monitoring for silent failure, missing failure handling for a critical pipeline stage, or test specifications that don't cover failure modes.
+- **What NOT to raise:** UI/UX concerns about screens or navigation (there are none), multi-user collaboration features, enterprise-grade SLA requirements for a side project, visual design feedback.
+
 ## Applying Lenses During Build (Stages 4-6)
 
 During build phases, the lenses serve a different purpose than during artifact generation. Rather than evaluating specifications, they evaluate implementation.
@@ -168,6 +253,7 @@ During build phases, the lenses serve a different purpose than during artifact g
 **Stage 5 (Governance Checkpoints):**
 - **Architecture Lens:** Does the built code match the data model? Are module boundaries respected? Is the code proportionately complex for the product's risk level?
 - **Skeptic Lens:** Are there emerging risks? Untested paths? Growing complexity that suggests the architecture needs adjustment?
+- **Testing Lens:** Do implemented tests match the test specifications? Have new gaps emerged as the implementation revealed edge cases not anticipated in specs?
 
 **Stage 6 (Iteration):**
 - **Product Lens:** Does this change request reflect what the user actually needs? Is it an improvement or scope creep?
@@ -177,10 +263,14 @@ During build phases, the lenses serve a different purpose than during artifact g
 
 ## Extending This Skill
 
-Phase 1 applies all four lenses to universal artifacts for low-risk UI applications. Future phases add:
+Phase 1 applies four lenses to universal artifacts for low-risk UI applications. Phase 2 added the Testing Lens and automation/pipeline shape guidance. Future phases add:
 
 - [x] Stage 4-6 lens application guidance (Phase 2)
-- [ ] Shape-specific lens guidance: what each lens looks for in APIs, automations, multi-party platforms (Phase 2 widening)
+- [x] Testing Lens (5th lens): test specification comprehensiveness, risk traceability, failure mode coverage (Phase 2)
+- [ ] Shape-specific lens guidance:
+  - [x] Automation/Pipeline (Phase 2)
+  - [ ] API/Service (Phase 2 widening)
+  - [ ] Multi-party platforms (Phase 2 widening)
 - [ ] Variable-depth reviews: lighter review for routine artifact generation, deeper review for major scope changes (Phase 2)
 - [ ] Rotating emphasis: sometimes lead with security, sometimes with cost, to prevent blind spots (Phase 2)
 - [ ] Integration with Critic (C6): Review Lens findings feed into the Critic's continuous governance during build (Phase 2)

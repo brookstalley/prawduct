@@ -8,24 +8,18 @@ Prawduct is a framework that turns vague product ideas into well-built software.
 
 Route based on what the user says:
 
-**They describe a product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
-→ They want to USE Prawduct. Read `skills/orchestrator/SKILL.md` and follow its instructions. The Orchestrator handles everything from here — classification, discovery, product definition, artifact generation, and review. **Important:** The Orchestrator will set up a separate project directory for their files. Never write project output into this framework directory.
+**They describe a NEW product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
+→ They want to USE Prawduct to build something new. Read `skills/orchestrator/SKILL.md` and follow its instructions. The Orchestrator will set up a separate project directory for their files. It will not write new product output into an existing project's directory.
 
-**They reference framework internals or want to work on this project** ("fix the domain analyzer", "update the rubric", "work on Phase 2", "what should I work on next?", "run the eval", "I want to contribute"):
-→ They want to BUILD Prawduct itself. Follow the framework development instructions below. Use the V1 Build Order and current project state to orient.
-
-**Their intent is unclear** ("let's go!", "hello", "what can you do?"):
-→ Explain what Prawduct does and ask what they'd like to build. Something like:
-
-> "Prawduct helps turn a product idea into a clear, detailed build plan. Tell me what you want to build — even a rough idea is fine — and I'll guide you through some questions about who it's for and what matters most. Then I'll produce a set of artifacts (product brief, data model, security model, test specs, and more) that a developer or coding agent can use to start building. What would you like to build?"
-
-If they then describe a product, route to the Orchestrator. If they want to work on the framework, follow the framework development instructions.
+**Everything else** (framework dev, unclear intent, returning user, "fix the domain analyzer", "what should I work on next?", "hello", "what can you do?"):
+→ Read `skills/orchestrator/SKILL.md` and follow its instructions. The Orchestrator reads `project-state.yaml` at the repo root, performs Session Resumption, and enters Stage 6 iteration for framework development. For unclear intent, the Orchestrator naturally handles orientation — it sees the framework's project state and can explain what Prawduct does and what's in progress.
 
 ## Project Structure
 
 ```
 prawduct/
 ├── CLAUDE.md                          # You are here
+├── project-state.yaml                 # Framework's own project state (self-hosted)
 ├── skills/                            # LLM instruction sets (your behavior)
 │   ├── orchestrator/SKILL.md          # Conversation flow, stage management, user calibration
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
@@ -105,15 +99,9 @@ prawduct/
 
 ## Framework Development
 
-The rest of this file is for building Prawduct itself — the skills, templates, tools, and docs that make up the framework. If you're here to USE Prawduct to build a product, you don't need any of this; the Orchestrator skill handles it (see "When Someone Opens This Directory" above).
+Framework development is managed by the Orchestrator. The framework's own `project-state.yaml` at the repo root tracks its state — the framework is a product in Stage 6 (iteration). The Orchestrator handles session resumption, change classification, review, observation capture, and the Critic gate.
 
-### Getting started on framework development:
-1. Read `docs/principles.md` — these are your hard rules. Never violate them.
-2. Read `docs/requirements.md` — focus on [v1] tagged items.
-3. Read `docs/high-level-design.md` — understand the components and their interactions.
-4. Check the V1 Build Order (below) to understand the current phase and what's already been built. Compare it against the actual files in `skills/`, `templates/`, and `tests/scenarios/` to see the current state.
-5. To run an evaluation, see `tests/scenarios/` — each scenario has an Evaluation Procedure section with setup, run, and evaluation steps.
-6. Apply the framework to itself. Every decision needs rationale. Every artifact needs tests. Documentation follows the tier system.
+The V1 Build Order below provides build phase context. The Key Principles, Testing Strategy, and Conventions sections provide constraints the Orchestrator needs when making framework changes.
 
 ### After modifying skills, templates, or principles:
 **Critic governance is enforced mechanically.** A Claude Code hook blocks `git commit` when framework files are staged without Critic evidence, and edit hooks remind you as you modify framework files. But don't wait for the gate — run the Critic as a **separate, final step** in any multi-file framework change, not as a sub-step of another work item. The Critic should run after all modifications are complete and before reporting results to the user.
@@ -142,7 +130,7 @@ Use the **family utility** test scenario (simple UI app, low risk). Build just e
 2. **C2: Domain Analyzer** (`skills/domain-analyzer/SKILL.md`) — Classify "UI Application" + "Utility." Generate discovery questions for this combination only.
 3. **C1: Orchestrator** (`skills/orchestrator/SKILL.md`) — Manage stages 0 → 0.5 → 1 → 2 for this one scenario.
 4. **C3: Artifact Generator** (`skills/artifact-generator/SKILL.md`) — Generate universal artifacts only (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest).
-5. **C4: Review Lenses** (`skills/review-lenses/SKILL.md`) — Apply all four lenses to the generated artifacts.
+5. **C4: Review Lenses** (`skills/review-lenses/SKILL.md`) — Apply all five lenses to the generated artifacts (Testing Lens activates in Phase C).
 6. **C6: Critic — framework governance mode** (`skills/critic/SKILL.md`) — Apply to framework changes before committing. Product governance mode is Phase 2.
 7. **C8a: Observation Capture** (`framework-observations/`) — Automatic observation capture at stage transitions and during evaluation. This is minimal C8 (Observer only); pattern detection and incorporation are Phase 2/3.
 

@@ -145,7 +145,7 @@ Crystallize discovery into firm decisions:
 - Non-functional requirements (performance, cost, uptime, accessibility)
 - Regulatory constraints
 
-All four Review Lenses evaluate the product definition before proceeding.
+Product, Design, Architecture, and Skeptic lenses evaluate the product definition before proceeding. (Testing Lens does not apply — no test specifications exist yet.)
 
 Output: Finalized product decisions in Project State. Ready for artifact generation.
 
@@ -293,13 +293,13 @@ Dependency Manifest (universal)
 
 ### C4: Review Lenses
 
-**Purpose:** Multi-perspective validation applied to system output at every stage. Defined in principles.md (Product, Design, Architecture, Skeptic).
+**Purpose:** Multi-perspective validation applied to system output at every stage. Five lenses defined in principles.md (Product, Design, Architecture, Skeptic, Testing).
 
 **When they fire:**
 - **Stage 0.5 (Validation):** Product and Skeptic evaluate whether to build at all
 - **Stage 1 (Discovery):** Product and Skeptic check whether the right questions are being asked
-- **Stage 2 (Product Definition):** All four lenses review crystallized decisions
-- **Stage 3 (Artifact Generation):** All four lenses review artifacts before finalization
+- **Stage 2 (Product Definition):** Product, Design, Architecture, and Skeptic lenses review crystallized decisions
+- **Stage 3 (Artifact Generation):** All five lenses review artifacts before finalization (Testing Lens activates in Phase C when test specifications exist)
 - **Stage 5 (Build + Governance):** Architecture and Skeptic validate implementation
 - **Stage 6 (Iteration):** Product evaluates change requests; Architecture evaluates blast radius
 
@@ -572,7 +572,7 @@ Pick one product scenario (the family utility — a simple UI application with l
 2. **C2 (Domain Analyzer):** Classify "UI Application" + "Utility" domain. Generate discovery questions for this combination only.
 3. **C1 (Orchestrator):** Manage a discovery conversation for this one scenario. Handle stage transitions 0 → 0.5 → 1 → 2.
 4. **C3 (Artifact Generator):** Generate the universal artifact set (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest). Skip shape-specific artifacts initially.
-5. **C4 (Review Lenses):** Apply all four lenses to the generated artifacts. Evaluate whether findings are specific and actionable.
+5. **C4 (Review Lenses):** Apply all five lenses to the generated artifacts (Testing Lens in Phase C). Evaluate whether findings are specific and actionable.
 
 **Evaluate against the family utility test scenario rubric.** The vertical slice succeeds when:
 - The conversation flow produces a populated Project State from a vague input.

@@ -6,7 +6,7 @@ The Orchestrator manages the overall Prawduct process — from first user input 
 
 This is the default skill. When using Prawduct to build a user's product:
 
-1. **Establish the project directory.** All project output (`project-state.yaml`, `artifacts/`, `working-notes/`, `doc-manifest.yaml`) lives in a dedicated project directory — **never in the prawduct framework directory itself.** If the user has specified a project directory, use it. If the current working directory is clearly the user's project (not the prawduct repo), use that. Otherwise, ask where project files should go. When skills reference `project-state.yaml`, `artifacts/`, or `working-notes/`, those paths are in the project directory. When skills reference other skills (`skills/...`) or templates (`templates/...`), those are read from the prawduct framework directory.
+1. **Establish the project directory.** If `project-state.yaml` already exists in the current directory, that IS the project directory — the project may be the framework itself (self-hosted development) or a user project created in a previous session. If the user describes a NEW product and we're in an existing project's directory, create a separate directory for the new product — don't write new product output into an existing project's directory. If no `project-state.yaml` exists and the user has specified a project directory, use it. If the current working directory is clearly a project space (not the prawduct repo), use that. Otherwise, ask where project files should go. When skills reference `project-state.yaml`, `artifacts/`, or `working-notes/`, those paths are in the project directory. When skills reference other skills (`skills/...`) or templates (`templates/...`), those are read from the prawduct framework directory.
 2. Read `project-state.yaml` in the project directory. If it doesn't exist, this is a new project — copy the prawduct framework's `templates/project-state.yaml` to the project directory.
 3. Check `current_stage` to determine where we are.
 4. Follow the instructions for the current stage below.
@@ -144,7 +144,7 @@ Update `current_stage` to "discovery".
 
 4. **Review the product definition (risk-proportionate).**
 
-   **For medium and high-risk products:** Before presenting to the user, read `skills/review-lenses/SKILL.md` and apply all four lenses to the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins.
+   **For medium and high-risk products:** Before presenting to the user, read `skills/review-lenses/SKILL.md` and apply the Product, Design, Architecture, and Skeptic lenses to the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins. (The Testing Lens does not apply at this stage — no test specifications exist yet.)
 
    **For low-risk products:** Skip formal lens review at this stage. Your own review of `project-state.yaml` completeness (step 1) is sufficient. The full artifact review in Stage 3 will catch issues. If you notice obvious concerns while reviewing, surface them informally.
 
@@ -177,7 +177,7 @@ Update `current_stage` to "discovery".
    - If any blocking findings, resolve them before proceeding.
 
    **Phase C — Integration:** Generate the Security Model, Test Specifications, Operational Specification, Dependency Manifest, and any shape-specific artifacts.
-   - **MANDATORY**: Apply **all four lenses** across the complete artifact set.
+   - **MANDATORY**: Apply **all five lenses** (Product, Design, Architecture, Skeptic, Testing) across the complete artifact set. The Testing Lens activates here — test specifications now exist and should be evaluated for comprehensiveness, risk traceability, and failure mode coverage.
    - The Artifact Generator runs a full cross-artifact consistency check at this stage.
    - Document all review findings with severity levels (blocking / warning / note)
    - If any blocking findings, resolve them before presenting to the user.
@@ -265,7 +265,7 @@ For each chunk in `build_plan.chunks` (in dependency order):
 
 7. **At governance checkpoints** (marked in `build_plan.governance_checkpoints`):
    - Run a broader cross-chunk review: are the completed chunks cohering into a working product?
-   - Read `skills/review-lenses/SKILL.md` and apply Architecture and Skeptic lenses to the implementation so far.
+   - Read `skills/review-lenses/SKILL.md` and apply Architecture, Skeptic, and Testing lenses to the implementation so far. (Testing Lens verifies implemented tests match specs and no coverage gaps have emerged.)
    - If issues found, address before continuing.
 
 8. **Framework Reflection per chunk** (lightweight — not full FRP):
@@ -275,11 +275,11 @@ For each chunk in `build_plan.chunks` (in dependency order):
 **When all chunks complete:**
 
 1. Run the full Critic product governance review across the entire codebase.
-2. Run all four review lenses on the complete implementation.
+2. Run all five review lenses on the complete implementation.
 3. Verify all tests pass.
 4. Present the result to the user:
 
-   > "Your [product name] is built. Here's what it does: [summary of core flows]. All [N] tests pass. To try it: [how to run it, e.g., npm run dev]. A few things the review found: [brief findings summary]. Want to try it out and let me know what you'd like to change?"
+   > "Your [product name] is built. Here's what it does: [summary of core flows]. All [N] tests pass. To try it: [how to verify it works — e.g., run the product, execute a test scenario, or try a workflow]. A few things the review found: [brief findings summary]. Want to try it out and let me know what you'd like to change?"
 
 5. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 
@@ -311,10 +311,10 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 2. **Classify the feedback:**
 
-   - **Cosmetic** (wording, colors, spacing, small visual tweaks): Implement directly. No artifact updates needed. Quick cycle: fix → test → done.
+   - **Cosmetic** (wording, formatting, minor adjustments that don't change behavior or contracts): Implement directly. No artifact updates needed. Quick cycle: fix → test → done.
    - **Functional** (new feature, changed behavior, different flow): Update affected artifacts first, then build. This is a mini Stage 5 loop:
-     1. Assess change impact: what artifacts change? What chunks are affected? Any regressions?
-     2. Update the relevant artifacts (data-model, test-specifications, product-brief, etc.).
+     1. Assess change impact: what artifacts change? What chunks are affected? Any regressions? Consult `artifact_manifest` to identify affected artifacts.
+     2. Update the relevant artifacts (whichever are affected — see `artifact_manifest`).
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
    - **Directional** (fundamentally different product vision): Flag this explicitly. "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?" If they want to shift, consider whether reclassification (R5.4) is warranted. For now, handle as a major functional change.
@@ -425,7 +425,7 @@ This is the highest-stakes transition — discovery becomes production. Check th
 - All Stage 3 prerequisites met
 - All 7 universal artifacts generated (or minimal artifacts where applicable) with correct frontmatter
 - Cross-artifact consistency check passed
-- All four review lenses applied, all blocking findings resolved
+- All five review lenses applied (Testing Lens in Phase C), all blocking findings resolved
 - User has confirmed the artifact set
 
 ### → Stage 5 (Building)
@@ -480,7 +480,7 @@ Update `user_expertise` with evidence after each conversational exchange. Early 
 If `project-state.yaml` exists and `current_stage` is not "intake", this is a returning session:
 
 1. Read `project-state.yaml` to understand current state.
-2. Read any existing artifacts in the `artifacts/` directory.
+2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory.
 3. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
 4. Continue from the current stage.
 

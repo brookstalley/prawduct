@@ -85,6 +85,11 @@ Catches: boundary violations, inappropriate coupling, premature optimization, mi
 
 Catches: missing edge cases, security gaps, abuse vectors, performance cliffs, cold-start problems, single points of failure, unrealistic assumptions, regulatory blindness, vendor dependency risks.
 
+### The Testing Lens
+*Are the test specifications comprehensive? Do they cover the risks the Skeptic identified? Is every failure mode testable? Is test depth proportionate to product risk? Are test scenarios concrete or hand-wavy?*
+
+Catches: untested failure modes, Skeptic findings with no corresponding tests, generic test scenarios that provide false confidence, disproportionate test depth (over-testing low-risk products, under-testing high-risk ones), missing state transition coverage. Applies only when test specifications exist (Stage 3 Phase C onward).
+
 ## Discovery Principles
 
 ### Ask the Fewest Questions That Most Change the Project

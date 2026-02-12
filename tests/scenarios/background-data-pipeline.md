@@ -3,16 +3,11 @@
 ## Prerequisites
 
 **This scenario requires Phase 2 framework capabilities:**
-- ✗ **BLOCKED**: Domain Analyzer must have automation/pipeline discovery questions (currently marked Phase 2, not implemented)
-- ✗ **BLOCKED**: Artifact Generator must support automation-specific artifacts (pipeline architecture, scheduling, monitoring, failure recovery, configuration specs)
-- ✗ **BLOCKED**: Review Lenses must be able to evaluate operational concerns for headless systems
+- ✓ Domain Analyzer has automation/pipeline discovery questions (Tier 1-3)
+- ✓ Artifact Generator supports automation-specific artifacts (pipeline architecture, scheduling, monitoring, failure recovery, configuration specs)
+- ✓ Review Lenses can evaluate operational concerns for headless systems (automation-specific lens guidance + Testing Lens)
 
-**Do NOT run this scenario until:**
-1. Domain Analyzer skill includes Tier 1-3 discovery questions for Automation/Pipeline shape
-2. Artifact Generator skill includes automation-specific artifact templates
-3. Above capabilities tested and validated
-
-**Current status**: Phase 1 framework (family-utility vertical slice only). This scenario is for Phase 2 baseline establishment.
+**Current status**: Ready for Phase 2 baseline evaluation.
 
 ---
 

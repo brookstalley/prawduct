@@ -1,0 +1,433 @@
+# Project State — Prawduct Framework (Self-Hosted)
+#
+# The framework IS a product in Stage 6 (iteration). This file tracks its own
+# state using the same structure it prescribes for user products.
+#
+# Tier: 1 (Source of Truth)
+# Owner: Orchestrator (C1) manages; all skills may read/write their sections.
+
+# =============================================================================
+# CLASSIFICATION
+# =============================================================================
+
+classification:
+  domain: developer-tool
+
+  shape: hybrid
+  sub_shapes: [automation-pipeline, api-service]
+  # Rationale: Prawduct is an LLM instruction framework (automation-like: runs
+  # within an LLM session, processes inputs through stages, produces artifacts)
+  # that also defines contracts consumed by other skills (API-like: skill
+  # interaction model, artifact format spec, project-state schema).
+
+  risk_profile:
+    overall: medium
+    factors:
+      - factor: downstream-impact
+        level: high
+        rationale: "Bad framework advice propagates to every product built with it. A flawed discovery question or missing governance check affects all downstream users."
+      - factor: technical-complexity
+        level: medium
+        rationale: "Multi-skill coordination, cross-artifact consistency, and self-referential governance (framework governs its own development) introduce real complexity."
+      - factor: data-sensitivity
+        level: low
+        rationale: "Framework itself handles no user data. Products built with it may, but that's governed per-product."
+      - factor: failure-impact
+        level: medium
+        rationale: "Framework failure means bad product specs, not data loss or safety incidents. But bad specs waste significant user time."
+
+# =============================================================================
+# PRODUCT DEFINITION
+# =============================================================================
+
+product_definition:
+  vision: "A framework that turns vague product ideas into well-built software by guiding structured discovery, producing agent-executable build plans, and enforcing quality throughout development."
+
+  goals:
+    - "End-to-end flow from vague input to useful build plan for all five product shapes"
+    - "Framework governs its own development through its own process (eat your own cooking)"
+    - "Observation capture fires automatically at every stage transition — no manual reminders needed"
+    - "Review Lenses produce specific, actionable findings across all product shapes"
+
+  users:
+    personas:
+      - name: "Product Builder"
+        description: "Someone with a product idea who wants to build it with LLM assistance. Ranges from non-technical to expert."
+        technical_level: varies
+        primary_needs:
+          - "Turn a vague idea into a concrete, buildable plan"
+          - "Get product thinking they don't have (architecture, security, accessibility, operations)"
+          - "Build with quality governance that catches issues early"
+        constraints:
+          - "Patience varies — some want thorough discovery, some want to build immediately"
+          - "Expertise varies across all dimensions"
+      - name: "Framework Developer"
+        description: "Someone contributing to Prawduct itself — improving skills, templates, tools, or docs."
+        technical_level: advanced
+        primary_needs:
+          - "Understand what to work on next (build order, phase status)"
+          - "Make changes governed by the framework's own quality process"
+          - "Capture observations that improve the framework over time"
+        constraints:
+          - "Must follow the framework's own principles while changing them"
+
+  core_flows:
+    - name: "Discovery to Build Plan"
+      description: "User describes a product idea; framework classifies, discovers, defines, generates artifacts, and produces a build plan."
+      priority: must-have
+    - name: "Build with Governance"
+      description: "Builder executes build plan chunks; Critic reviews each chunk; tests enforced throughout."
+      priority: must-have
+    - name: "Framework Self-Improvement"
+      description: "Framework development follows the same Orchestrator process, capturing observations and running Critic governance."
+      priority: must-have
+
+  scope:
+    v1:
+      - "All five product shapes (UI, API, automation, multi-party, hybrid)"
+      - "Full stage pipeline (0 through 6)"
+      - "Five review lenses with shape-appropriate application"
+      - "Critic with framework governance and product governance modes"
+      - "Builder skill for code generation from build plans"
+      - "Observation capture at every stage transition"
+      - "Five test scenarios with evaluation rubrics"
+      - "Self-hosted framework development via Orchestrator"
+    accommodate:
+      - "Agent agnosticism (R7.3) — artifact formats designed for any LLM agent"
+      - "Mechanical tools infrastructure (tools/ directory exists, scripts planned)"
+    later:
+      - item: "C7 Trajectory Monitor as dedicated component"
+        rationale: "Simple heuristics in v1 suffice; dedicated component needs usage data to calibrate triggers"
+      - item: "C8 full Learning System (pattern detection, validation, incorporation)"
+        rationale: "Requires observation volume from many projects; premature before user base exists"
+      - item: "Multi-user collaboration"
+        rationale: "Current design assumes single user; team scenarios need real usage to inform design"
+    never:
+      - item: "Code generation without governance"
+        rationale: "Violates core thesis — ungoverned code generation is the problem we're solving"
+      - item: "Prescriptive technology choices"
+        rationale: "Framework learns questions and problems, not solutions (Learning Principle: Learn Questions, Not Answers)"
+
+  platform: "CLI (Claude Code) — runs within LLM sessions"
+
+  nonfunctional:
+    performance: "Conversational responsiveness — each stage transition should feel immediate to the user"
+    scalability: "One project at a time per session; framework improvements benefit all future sessions"
+    uptime: "Not applicable — runs within user's local LLM session"
+    cost_constraints: "Zero operational cost — framework is instruction files, not infrastructure"
+
+  regulatory: []
+  cost_estimates:
+    - item: "LLM inference (borne by user)"
+      estimated_monthly_cost: "Varies by usage"
+      notes: "Framework itself has no cost; users pay for Claude API/subscription"
+
+# =============================================================================
+# TECHNICAL DECISIONS
+# =============================================================================
+
+technical_decisions:
+  architecture:
+    - decision: "Skills as LLM instruction sets (SKILL.md files) operating within a single LLM context"
+      rationale: "Simplest possible architecture — no infrastructure, no services, no coordination protocol. Skills switch context within one session."
+      alternatives_considered: ["Multi-agent with separate LLM calls per skill", "Plugin architecture with tool registration"]
+      date: 2026-02-01
+    - decision: "File-based persistence in project directory"
+      rationale: "Human-readable, version-controllable, requires no infrastructure. Reversible — can migrate to structured store later."
+      alternatives_considered: ["Database-backed state", "In-memory with export"]
+      date: 2026-02-01
+  technology:
+    - decision: "Markdown with YAML frontmatter for artifacts"
+      rationale: "Readable by humans and LLMs. Frontmatter enables mechanical dependency tracking."
+      alternatives_considered: ["Pure YAML", "JSON", "Structured markdown without frontmatter"]
+      date: 2026-02-01
+    - decision: "YAML for project state"
+      rationale: "Supports partial resolution (null values), comments, and human readability."
+      alternatives_considered: ["JSON (no comments)", "TOML (less familiar for complex nesting)"]
+      date: 2026-02-01
+  data_model: []
+  integrations: []
+  operational:
+    - decision: "Git-based version control for all framework files"
+      rationale: "Natural fit — framework is text files. Git provides history, branching, and collaboration."
+      alternatives_considered: ["None — git is the obvious choice"]
+      date: 2026-02-01
+
+# =============================================================================
+# DESIGN DECISIONS
+# =============================================================================
+# Framework is not a UI product, but has design decisions about its interface
+# (conversation design, output format, skill organization).
+
+design_decisions:
+  information_architecture: []
+  interaction_patterns:
+    - decision: "Conversational interface managed by Orchestrator"
+      rationale: "Natural fit for LLM-based tool. Orchestrator manages flow, other skills provide specialized behavior."
+      date: 2026-02-01
+  accessibility_approach: "Framework outputs (artifacts, project state) are plain text — inherently accessible. Conversation adapts to user expertise level."
+  visual_direction: null  # Not applicable — no visual interface
+
+# =============================================================================
+# ARTIFACT MANIFEST
+# =============================================================================
+# Maps framework docs to their artifact roles. These are the framework's own
+# artifacts — the equivalent of what user projects store in artifacts/.
+
+artifact_manifest:
+  artifacts:
+    # Core documentation (product definition role)
+    - name: vision
+      file_path: docs/vision.md
+      role: product-brief
+      version: 1
+      depends_on: []
+      depended_on_by: [requirements, high-level-design]
+      last_validated: 2026-02-11
+      tier: 1
+    - name: requirements
+      file_path: docs/requirements.md
+      role: requirements
+      version: 1
+      depends_on: [vision]
+      depended_on_by: [high-level-design, principles]
+      last_validated: 2026-02-11
+      tier: 1
+    - name: high-level-design
+      file_path: docs/high-level-design.md
+      role: architecture
+      version: 1
+      depends_on: [vision, requirements, principles]
+      depended_on_by: [orchestrator, domain-analyzer, artifact-generator, review-lenses, critic, builder]
+      last_validated: 2026-02-11
+      tier: 1
+    - name: principles
+      file_path: docs/principles.md
+      role: principles
+      version: 1
+      depends_on: [vision]
+      depended_on_by: [high-level-design, orchestrator, domain-analyzer, artifact-generator, review-lenses, critic, builder]
+      last_validated: 2026-02-11
+      tier: 1
+
+    # Skills (built component role)
+    - name: orchestrator
+      file_path: skills/orchestrator/SKILL.md
+      role: built-component
+      version: 2
+      depends_on: [high-level-design, principles]
+      depended_on_by: []
+      last_validated: 2026-02-11
+      tier: 1
+    - name: domain-analyzer
+      file_path: skills/domain-analyzer/SKILL.md
+      role: built-component
+      version: 2
+      depends_on: [high-level-design, principles]
+      depended_on_by: [orchestrator]
+      last_validated: 2026-02-11
+      tier: 1
+    - name: artifact-generator
+      file_path: skills/artifact-generator/SKILL.md
+      role: built-component
+      version: 2
+      depends_on: [high-level-design, principles]
+      depended_on_by: [orchestrator]
+      last_validated: 2026-02-11
+      tier: 1
+    - name: review-lenses
+      file_path: skills/review-lenses/SKILL.md
+      role: built-component
+      version: 2
+      depends_on: [high-level-design, principles]
+      depended_on_by: [orchestrator]
+      last_validated: 2026-02-11
+      tier: 1
+    - name: critic
+      file_path: skills/critic/SKILL.md
+      role: built-component
+      version: 2
+      depends_on: [high-level-design, principles]
+      depended_on_by: [orchestrator]
+      last_validated: 2026-02-11
+      tier: 1
+    - name: builder
+      file_path: skills/builder/SKILL.md
+      role: built-component
+      version: 1
+      depends_on: [high-level-design, principles]
+      depended_on_by: [orchestrator]
+      last_validated: 2026-02-11
+      tier: 1
+
+    # Templates (built component role — the framework's "features")
+    - name: project-state-template
+      file_path: templates/project-state.yaml
+      role: built-component
+      version: 1
+      depends_on: [high-level-design]
+      depended_on_by: [orchestrator, artifact-generator, critic]
+      last_validated: 2026-02-11
+      tier: 1
+    - name: ui-templates
+      file_path: templates/ui/
+      role: built-component
+      version: 1
+      depends_on: [artifact-generator]
+      depended_on_by: []
+      last_validated: 2026-02-11
+      tier: 1
+    - name: automation-templates
+      file_path: templates/automation/
+      role: built-component
+      version: 1
+      depends_on: [artifact-generator]
+      depended_on_by: []
+      last_validated: 2026-02-11
+      tier: 1
+    - name: api-templates
+      file_path: templates/api/
+      role: built-component
+      version: 1
+      depends_on: [artifact-generator]
+      depended_on_by: []
+      last_validated: 2026-02-11
+      tier: 1
+
+    # Test scenarios (test specification role)
+    - name: family-utility-scenario
+      file_path: tests/scenarios/family-utility.md
+      role: test-specification
+      version: 2
+      depends_on: [orchestrator, domain-analyzer, artifact-generator, review-lenses]
+      depended_on_by: []
+      last_validated: 2026-02-11
+      tier: 1
+    - name: background-data-pipeline-scenario
+      file_path: tests/scenarios/background-data-pipeline.md
+      role: test-specification
+      version: 1
+      depends_on: [orchestrator, domain-analyzer, artifact-generator, review-lenses]
+      depended_on_by: []
+      last_validated: 2026-02-11
+      tier: 1
+
+# =============================================================================
+# DEPENDENCY GRAPH
+# =============================================================================
+
+dependency_graph:
+  - decision_id: skill-interaction-model
+    description: "Skills operate as LLM instruction sets within single context"
+    affects_decisions: []
+    affects_artifacts: [orchestrator, domain-analyzer, artifact-generator, review-lenses, critic, builder]
+  - decision_id: file-based-persistence
+    description: "Project state and artifacts stored as files in project directory"
+    affects_decisions: []
+    affects_artifacts: [project-state-template, orchestrator]
+
+# =============================================================================
+# OPEN QUESTIONS
+# =============================================================================
+
+open_questions:
+  - question: "How should observation capture work when framework repo isn't writable?"
+    blocking: "Observation capture in non-local deployment scenarios"
+    waiting_on: research
+    priority: medium
+    raised_at_stage: iteration
+  - question: "What product shapes beyond the five defined does the taxonomy need?"
+    blocking: "Full product diversity coverage (R7.2)"
+    waiting_on: research
+    priority: low
+    raised_at_stage: iteration
+
+# =============================================================================
+# USER EXPERTISE PROFILE
+# =============================================================================
+# For framework development, the "user" is the framework developer.
+
+user_expertise:
+  product_thinking: advanced
+  technical_depth: advanced
+  design_sensibility: intermediate
+  domain_knowledge: advanced
+  operational_awareness: intermediate
+  evidence:
+    - dimension: product_thinking
+      signal: "Designed self-referential governance system with explicit principles"
+      inferred_from: "Framework architecture and principles docs"
+    - dimension: technical_depth
+      signal: "Multi-skill coordination design, artifact dependency model"
+      inferred_from: "High-level design document"
+
+# =============================================================================
+# PROCESS STATE
+# =============================================================================
+
+current_stage: iteration
+
+# =============================================================================
+# CHANGE LOG
+# =============================================================================
+
+change_log:
+  - what: "Phase 1 complete: vertical slice through family utility scenario"
+    why: "Proved end-to-end path from vague input through artifact generation with review"
+    blast_radius: "All skills, templates, project-state schema"
+    classification: functional
+    date: 2026-02-01
+  - what: "Phase 2 build loop: added Stages 4-6, Builder skill, Critic product governance"
+    why: "Extended framework from discovery-only to full build-and-iterate cycle"
+    blast_radius: "Orchestrator, Artifact Generator, new Builder skill, Critic, family utility eval rubric"
+    classification: functional
+    date: 2026-02-10
+  - what: "Phase 2 widening: added automation shape with Testing Lens"
+    why: "First shape beyond UI Application — templates, domain analyzer extensions, review lens additions"
+    blast_radius: "Domain Analyzer, Artifact Generator, Review Lenses, new automation templates, background-data-pipeline scenario"
+    classification: functional
+    date: 2026-02-11
+  - what: "Self-hosted framework development via Orchestrator"
+    why: "Framework development now routes through the Orchestrator (Session Resumption, Stage 6 iteration) instead of a separate checklist. Solves the observation capture gap — FRP fires at stage transitions regardless of whether the project is a user product or the framework itself."
+    blast_radius: "CLAUDE.md routing, Orchestrator project directory logic and Session Resumption, framework development workflow"
+    classification: functional
+    date: 2026-02-11
+
+# =============================================================================
+# BUILD PLAN
+# =============================================================================
+# Framework build plan is tracked in CLAUDE.md V1 Build Order.
+# Not duplicated here — the Orchestrator reads both.
+
+build_plan:
+  strategy: hybrid
+  chunks: []
+  current_chunk: null
+  governance_checkpoints: []
+
+# =============================================================================
+# BUILD STATE
+# =============================================================================
+
+build_state:
+  source_root: "."
+
+  test_tracking:
+    test_count: 2
+    assertion_count: 0  # Scenario-based evaluation, not unit tests
+    test_files:
+      - tests/scenarios/family-utility.md
+      - tests/scenarios/background-data-pipeline.md
+    history: []
+
+  spec_compliance:
+    requirements: []
+
+  reviews: []
+
+# =============================================================================
+# ITERATION STATE
+# =============================================================================
+
+iteration_state:
+  feedback_cycles: []
