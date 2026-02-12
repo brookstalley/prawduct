@@ -54,7 +54,7 @@ observations:
     description: "Generalized statement (not product-specific)"
     evidence: "What triggered this observation"
     proposed_action: "What could address this" | null
-    status: noted | requires_pattern | acted_on
+    status: noted | triaged | requires_pattern | acted_on
 skills_affected: [list of skill files this relates to]
 ---
 ```
@@ -106,6 +106,26 @@ framework-observations/{YYYY-MM-DD}-{short-description}.yaml
 ## Observation Capture Guidelines
 
 **Core heuristic:** Would this observation change what the framework does for future products? If not, don't capture it.
+
+## Status Lifecycle
+
+Observations progress through these statuses:
+
+```
+noted → triaged → acted_on
+  │        │
+  │        └→ Decision recorded in project-state.yaml observation_backlog
+  │           with priority (next / soon / deferred) and rationale
+  │
+  └→ requires_pattern (if seen 2-3 times, needs more data before action)
+```
+
+- **noted**: Initial state. Observation captured, watching for recurrence.
+- **triaged**: Reviewed and prioritized. Decision recorded in `project-state.yaml` → `observation_backlog` with priority and rationale. The observation won't be forgotten.
+- **requires_pattern**: Seen multiple times but not yet enough data to act. Continues accumulating evidence.
+- **acted_on**: A skill or artifact has been modified to address this observation. The commit references the observation.
+
+The Orchestrator's Session Resumption checks `observation_backlog` and surfaces items with `priority: next` to the user.
 
 **Capture** (substantive — identifies something the framework should do differently):
 - Framework process felt disproportionate to product complexity (with specifics)

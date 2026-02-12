@@ -142,6 +142,7 @@ observation_entry:
           type: string
           enum:
             - noted              # Observed, watching for pattern
+            - triaged            # Reviewed, decision recorded in observation_backlog
             - requires_pattern   # Seen 2-3 times, needs more data
             - acted_on           # Skill updated to address this
           required: true

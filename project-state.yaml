@@ -387,6 +387,11 @@ change_log:
     blast_radius: "Domain Analyzer, Artifact Generator, Review Lenses, new automation templates, background-data-pipeline scenario"
     classification: functional
     date: 2026-02-11
+  - what: "Observation triage process + eval fixes from family-utility eval run 3"
+    why: "Observations were captured but had no process for being tracked or surfaced. Added observation_backlog to project-state.yaml, triage step to evaluation methodology, Session Resumption surfaces pending items. Fixed family-utility scenario (novel game timer iteration request), softened Critic criterion for low-risk products, formalized two-phase eval approach."
+    blast_radius: "project-state.yaml schema, Orchestrator Session Resumption, evaluation-methodology.md, family-utility scenario rubric, observation file statuses"
+    classification: functional
+    date: 2026-02-11
   - what: "Self-hosted framework development via Orchestrator"
     why: "Framework development now routes through the Orchestrator (Session Resumption, Stage 6 iteration) instead of a separate checklist. Solves the observation capture gap — FRP fires at stage transitions regardless of whether the project is a user product or the framework itself."
     blast_radius: "CLAUDE.md routing, Orchestrator project directory logic and Session Resumption, framework development workflow"
@@ -431,3 +436,21 @@ build_state:
 
 iteration_state:
   feedback_cycles: []
+
+# =============================================================================
+# OBSERVATION BACKLOG
+# =============================================================================
+# Observations triaged from framework-observations/ that need action.
+# Session Resumption surfaces items with priority: next.
+# Items removed when acted on; deferred items reviewed periodically.
+
+observation_backlog:
+  last_triage: 2026-02-11
+  items:
+    - observation_file: "framework-observations/2026-02-11-family-utility-eval-full.yaml"
+      type: critic_gap
+      summary: "Critic missed scope addition outside chunk deliverables"
+      target_files: ["skills/critic/SKILL.md"]
+      priority: deferred
+      rationale: "Single instance, note severity. Revisit if recurs in future evals."
+      added: 2026-02-11

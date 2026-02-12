@@ -481,8 +481,9 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 
 1. Read `project-state.yaml` to understand current state.
 2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory.
-3. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
-4. Continue from the current stage.
+3. Check `observation_backlog` in `project-state.yaml`. If items with `priority: next` exist, include them in your orientation: "There are N pending observations queued for implementation: [summaries]. Want to address those, or work on something else?"
+4. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
+5. Continue from the current stage.
 
 **Mid-build resumption (Stage 5):** If `current_stage` is "building":
 - Read `build_plan.current_chunk` to find the active chunk.

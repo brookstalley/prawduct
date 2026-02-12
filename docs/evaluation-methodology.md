@@ -148,6 +148,34 @@ Delegation does not transfer verification responsibility. The coordinating agent
 
 If verification fails, document the failure as an observation (type: process_friction) and either re-run or complete missing steps manually.
 
+### Two-Phase Evaluation (Recommended for Build Stages)
+
+When evaluating scenarios that include build stages (Stages 4-6), use a two-phase approach. This is driven by a practical constraint: subagents launched via the Task tool may not have permission to execute runtime commands (npm install, npm test, npm run dev) in temporary directories.
+
+**Phase 1: Document Generation (Stages 0-4)**
+- Delegatable to a subagent via Task tool
+- Covers: classification, discovery, definition, artifact generation, build planning
+- Produces: project-state.yaml, all artifacts, build plan
+- Subagent can scaffold the project (mkdir, file writes) but should stop before runtime commands
+
+**Phase 2: Build + Iteration (Stages 5-6)**
+- Must run in the main conversation with runtime access
+- Covers: Builder execution, Critic governance, iteration cycles
+- Requires: node/npm (or equivalent runtime) available and functional
+
+**Pre-Phase-2 checklist:**
+- [ ] Verify runtime is available: `node --version && npm --version`
+- [ ] Verify Phase 1 output is complete: project-state.yaml, artifacts/, build plan
+- [ ] Verify scaffold from Phase 1 (if any) is intact in the eval directory
+
+**Handoff procedure:**
+1. Phase 1 subagent completes and returns
+2. Main conversation reads all Phase 1 output from the eval directory
+3. Main conversation resumes from Stage 5 (or wherever Phase 1 left off)
+4. Main conversation completes Stages 5-6 with full runtime access
+
+**Efficiency note:** This approach typically covers ~88% of rubric criteria (all mechanical + build criteria). The remaining ~12% are conversation-quality criteria that require interactive evaluation regardless of phase structure.
+
 ### Evaluation Procedure
 
 **1. Evaluate project-state.yaml**
@@ -285,6 +313,13 @@ This process transforms evaluation observations into framework improvements. Bas
    - Commit message: "Fix {issue} found in {scenario} eval: {what changed}"
    - Reference eval result file in commit message: "See eval-history/{scenario}-{date}.md Issue N"
    - Update eval result's `skills_updated` field with file path and brief change description
+
+**5b. Triage remaining observations into `observation_backlog`**
+   - For each observation NOT immediately acted on, add to `project-state.yaml` → `observation_backlog`
+   - Assign priority: `next` (implement soon), `soon` (next few sessions), or `deferred` (watch for pattern)
+   - Include rationale for the priority decision
+   - Update observation status from `noted` to `triaged`
+   - This ensures no observations are forgotten — they're either acted on or tracked
 
 **6. Document deferred decisions**
    - Create/update working note: `working-notes/{scenario}-learnings-{date}.md`

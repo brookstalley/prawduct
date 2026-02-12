@@ -109,9 +109,9 @@ These scripted responses extend the test conversation for the build and iteratio
 > Accept the system's recommendation. The test persona trusts the system's technical judgment.
 
 **When presented with the working product and asked to try it:**
-> "This is great! One thing though — can we make the leaderboard show who won the most games, not just total points?"
+> "This is great! One thing though — can you add a way to time our games? It would be fun to see how long each game takes."
 
-**When asked about additional changes after the leaderboard iteration:**
+**When asked about additional changes after the timer iteration:**
 > "Nope, that's perfect. Thanks!"
 
 **General persona (continued):** Same as Stages 0-3 — enthusiastic, non-technical, cooperative. Doesn't push back on technical recommendations.
@@ -320,7 +320,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - Spec compliance check runs after each feature chunk (scaffold exempt from full compliance check).
 - Test count never decreases between chunks.
 - All core flows from the Product Brief have implementation evidence in `spec_compliance`.
-- At least one blocking finding is identified and resolved during the build (proves the Critic is checking).
+- Critic actively reviews each feature chunk with substantive evidence of review. For medium/high-risk products, at least one blocking or warning finding expected. For low-risk products, note-only findings are acceptable if the build is clean.
 - Fix-by-fudging detection is active: if a test is weakened to pass, the Critic catches it.
 
 **Must-not-do:**
@@ -339,19 +339,19 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-do:**
 
-- Leaderboard change ("show who won the most games, not just total points") is classified as **functional** (not cosmetic, not directional).
+- Game timer request ("add a way to time our games") is classified as **functional** (not cosmetic, not directional).
 - Change impact assessment is performed: identifies which artifacts are affected (at minimum: data-model, test-specifications, build-plan).
-- Affected artifacts are updated before implementation.
-- New test(s) written for the "most wins" leaderboard behavior.
+- Affected artifacts are updated before implementation (data model needs duration/timer field, test specs need timer scenarios).
+- New test(s) written for game timer behavior (start timer, stop timer, duration recorded with game session).
 - Existing tests still pass (no regressions from the change).
-- The updated leaderboard works: shows game win counts, not just total points.
+- The timer feature works: user can time a game session and see the duration in game history.
 
 **Must-not-do:**
 
-- Must not classify the leaderboard change as cosmetic (it changes data model and behavior).
-- Must not classify it as directional (it's a feature refinement, not a product pivot).
-- Must not implement without updating the test specification.
-- Must not break existing score recording or history functionality.
+- Must not classify the timer request as cosmetic (it adds a new data field and new UI behavior).
+- Must not classify it as directional (it's a feature addition, not a product pivot).
+- Must not implement without updating the data model and test specification.
+- Must not break existing score recording, history, or leaderboard functionality.
 
 **Quality criteria:**
 
@@ -377,8 +377,8 @@ The scenario succeeds when:
 7. App builds and runs locally — `npm run dev` (or equivalent) serves a working app.
 8. Core flows work in the running app: record scores for a game, view game history, see the leaderboard.
 9. All tests pass (`npm test` or equivalent exits 0).
-10. The Critic found and resolved at least one real issue during the build (not a false positive).
-11. User feedback ("most games won" leaderboard) handled in one iteration cycle without regressions.
+10. The Critic actively reviewed each feature chunk with substantive findings (any severity acceptable for low-risk).
+11. User feedback (game timer feature) handled in one iteration cycle without regressions.
 12. At least one framework observation captured during the build phase (artifact insufficiency, spec ambiguity, or other build-phase observation type).
 13. Process is proportionate to the product's simplicity — the build phase should not feel like building enterprise software.
 14. The Builder never made a technology decision outside its scope — every choice traces back to artifacts or build plan.
