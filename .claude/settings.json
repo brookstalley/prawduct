@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "clear|startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "rm -f .claude/.orchestrator-activated"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",

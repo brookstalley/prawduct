@@ -10,6 +10,12 @@
 # during Session Resumption (or new-project activation). This hook verifies
 # that marker exists and is recent (created within the last 12 hours).
 #
+# Marker lifecycle:
+#   Created:  Orchestrator activation (step 3) or Session Resumption (step 1)
+#   Read:     This hook, on every Edit/Write to framework files
+#   Deleted:  On /clear (SessionStart hook), new startup (SessionStart hook),
+#             or successful commit (critic-gate.sh cleanup)
+#
 # Hook protocol:
 #   - Reads JSON from stdin (tool_name, tool_input with file_path)
 #   - exit 0: allow the tool call
