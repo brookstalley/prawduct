@@ -33,14 +33,14 @@ observations:
     description: "No guidance exists for how to coordinate evaluations via subagents. The methodology assumes single-agent execution. When work is delegated, verification responsibility shifts but this shift is not documented."
     evidence: "evaluation-methodology.md describes the evaluation process but does not address delegation patterns. When I spawned a subagent to run the eval, I became a coordinator/verifier but had no explicit checklist for what to verify about the subagent's work."
     proposed_action: "Consider adding 'Evaluation Delegation' section to methodology: when using subagents for evaluation, coordinating agent must verify (not just trust) that all steps were completed. Provide checklist of what to verify."
-    status: noted
+    status: acted_on
   - type: proportionality
     stage: "meta"
     severity: note
     description: "The single observation captured was generic ('Stage 3 artifact generation completed without significant concerns'). Observation quality guidance says don't capture 'no concerns' observations, but there's no clear threshold for what constitutes substantive vs. generic."
     evidence: "framework-observations/2026-02-11-family-utility-eval.yaml contains observation: 'Stage 3 artifact generation completed without significant concerns for low-risk utility.' This is close to 'no concerns' but includes detail about finding count. Unclear if this meets substantiveness bar."
     proposed_action: "Clarify observation substantiveness criteria: An observation is substantive if it identifies a specific proportionality concern, coverage gap, or applicability mismatch. 'Everything worked fine' or 'No concerns' are not substantive unless they contradict an expectation (e.g., 'expected proportionality issue but system handled it well')."
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/SKILL.md"
   - "docs/evaluation-methodology.md"

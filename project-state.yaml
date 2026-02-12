@@ -454,3 +454,38 @@ observation_backlog:
       priority: deferred
       rationale: "Single instance, note severity. Revisit if recurs in future evals."
       added: 2026-02-11
+    - observation_file: "framework-observations/2026-02-11-automation-shape-testing-lens.yaml"
+      type: coverage
+      summary: "UI vocabulary bias in universal artifact descriptions"
+      target_files: ["skills/domain-analyzer/SKILL.md", "skills/artifact-generator/SKILL.md"]
+      priority: deferred
+      rationale: "Applicable when adding API/Service and Multi-Party shapes. Not blocking current work."
+      added: 2026-02-11
+    - observation_file: "framework-observations/2026-02-11-automation-shape-testing-lens.yaml"
+      type: process_friction
+      summary: "Self-review rigor — Critic self-review may lack adversarial rigor"
+      target_files: ["skills/critic/SKILL.md"]
+      priority: deferred
+      rationale: "Can't address until independent reviewer available. Watch for pattern."
+      added: 2026-02-11
+    - observation_file: "framework-observations/2026-02-11-background-data-pipeline-eval.yaml"
+      type: rubric_issue
+      summary: "29% UNABLE criteria in simulation — rubric over-weighted toward interactive"
+      target_files: ["tests/scenarios/background-data-pipeline.md"]
+      priority: deferred
+      rationale: "Rubric improvement guidance. Address when refining scenario rubrics."
+      added: 2026-02-11
+    - observation_file: "framework-observations/2026-02-11-background-data-pipeline-eval.yaml"
+      type: rubric_issue
+      summary: "Subjective rubric terms ('proportionate', 'substantive', 'actionable') lack thresholds"
+      target_files: ["tests/scenarios/background-data-pipeline.md"]
+      priority: deferred
+      rationale: "Rubric improvement guidance. Concrete examples needed but not blocking."
+      added: 2026-02-11
+    - observation_file: "framework-observations/2026-02-11-documentation-consolidation-pattern.yaml"
+      type: process_friction
+      summary: "Doc layering bloat — appending sections instead of restructuring"
+      target_files: ["skills/orchestrator/SKILL.md"]
+      priority: deferred
+      rationale: "Partially fixed by restructuring in recent commits. Review if recurs."
+      added: 2026-02-11

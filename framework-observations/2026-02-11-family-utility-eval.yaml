@@ -12,7 +12,7 @@ observations:
     description: "Stage 3 artifact generation completed without significant concerns for low-risk utility. All 7 universal artifacts generated with appropriate depth. Review lenses produced 13 findings (0 blocking, 3 warning, 10 note) which is within the 5-12 guideline but at the upper end."
     evidence: "Generated Product Brief, Data Model, Security Model, Test Specifications, NFRs, Operational Spec, and Dependency Manifest. Security Model and Operational Spec were appropriately minimal for local-first architecture. Review process was proportionate."
     proposed_action: null
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/artifact-generator/SKILL.md"
   - "skills/review-lenses/SKILL.md"

@@ -11,7 +11,7 @@ observations:
     description: "Documentation fixes that layer new sections on top of existing prose instead of restructuring create repetition, contradiction, and bloat. This pattern recurs when changes are made under time pressure."
     evidence: "Commit e13949a added Mandatory Observation Capture section (lines 233-286) alongside existing Framework Reflection Protocol (lines 199-230) in Orchestrator, creating 88 lines for one concept. Line 278 says capture 'Stage N completed without significant concerns'; README line 142 says that exact pattern is NOT substantive — a direct contradiction."
     proposed_action: "When modifying documentation, restructure rather than layer. Replace the section, don't append alongside it."
-    status: noted
+    status: triaged
 
   - type: process_friction
     stage: "meta"
@@ -19,7 +19,7 @@ observations:
     description: "Skipping the Critic before committing framework changes allows exactly the problems the Critic is designed to catch: contradictions, duplication, and disproportionate additions."
     evidence: "Commit e13949a modified Orchestrator, README, and evaluation methodology without running Framework Governance review. The Critic's Check 4 (Skill Coherence) and Check 3 (Proportionality) would have caught the contradiction and duplication."
     proposed_action: "Enforce Critic review as a pre-commit step for framework changes, not a suggestion."
-    status: noted
+    status: acted_on
 
   - type: process_friction
     stage: "meta"
@@ -27,7 +27,7 @@ observations:
     description: "Conflating 'reflection happened' with 'observation file created' forces production of low-signal observation files. Reflection and observation capture are distinct: reflection should always happen, observation files should only exist for substantive findings."
     evidence: "Orchestrator line 278 instructs creating observations even if 'no significant concerns'. This conflicts with README substantiveness criteria and produces noise that dilutes pattern detection."
     proposed_action: "Use change_log as proof reflection happened (always written). Only create observation files for substantive findings."
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/SKILL.md"
   - "skills/critic/SKILL.md"

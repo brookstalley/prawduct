@@ -7,10 +7,10 @@
 # affected skills, applies pattern detection thresholds, and produces
 # a summary report.
 #
-# Thresholds (from framework-observations/README.md):
-#   1 occurrence  = noted (watch for recurrence)
-#   2-3           = requires_pattern (flag for review)
-#   4+            = pattern detected (propose skill update)
+# Tiered thresholds (from framework-observations/README.md):
+#   Meta (process_friction, rubric_issue):           2+ = pattern detected
+#   Build-phase (artifact_insufficiency, etc.):      3+ = pattern detected
+#   Product behavior (coverage, proportionality...): 4+ = pattern detected
 #
 # Usage:
 #   ./tools/observation-analysis.sh                    # Full report
@@ -88,16 +88,41 @@ echo ""
 echo "By Observation Type"
 echo "-------------------"
 # Dynamic: extract observation types from data
-obs_types=$(grep -h "    type:" "${obs_files_filtered[@]}" 2>/dev/null | sed 's/.*type: //' | sort -u)
+obs_types=$(grep -h "  - type:" "${obs_files_filtered[@]}" 2>/dev/null | sed 's/.*type: //' | sort -u)
 for otype in $obs_types; do
     count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
     if [[ "$count" -gt 0 ]]; then
-        threshold="noted"
-        if [[ "$count" -ge 4 ]]; then
-            threshold="PATTERN DETECTED"
-        elif [[ "$count" -ge 2 ]]; then
-            threshold="requires_pattern"
-        fi
+        # Tiered thresholds: meta/process types act faster
+        case "$otype" in
+            process_friction|rubric_issue)
+                # Meta observations — act at 2+
+                if [[ "$count" -ge 2 ]]; then
+                    threshold="PATTERN DETECTED (meta)"
+                else
+                    threshold="noted"
+                fi
+                ;;
+            artifact_insufficiency|spec_ambiguity|deployment_friction|critic_gap)
+                # Build-phase observations — act at 3+
+                if [[ "$count" -ge 3 ]]; then
+                    threshold="PATTERN DETECTED (build)"
+                elif [[ "$count" -ge 2 ]]; then
+                    threshold="requires_pattern"
+                else
+                    threshold="noted"
+                fi
+                ;;
+            *)
+                # Product behavior observations — act at 4+
+                if [[ "$count" -ge 4 ]]; then
+                    threshold="PATTERN DETECTED"
+                elif [[ "$count" -ge 2 ]]; then
+                    threshold="requires_pattern"
+                else
+                    threshold="noted"
+                fi
+                ;;
+        esac
         echo "  $otype: $count ($threshold)"
     fi
 done
@@ -137,7 +162,7 @@ echo ""
 # --- Status tracking ---
 echo "By Status"
 echo "---------"
-for status in noted requires_pattern acted_on; do
+for status in noted triaged requires_pattern acted_on; do
     count=$(count_matches "status: $status" "${obs_files_filtered[@]}")
     if [[ "$count" -gt 0 ]]; then
         echo "  $status: $count"
@@ -148,18 +173,46 @@ echo ""
 # --- Patterns (2+ occurrences) ---
 if [[ "$MODE" == "--patterns-only" || "$MODE" == "--full" ]]; then
     echo "=========================================="
-    echo " Patterns Requiring Review (2+ occurrences)"
+    echo " Patterns Requiring Review (tiered thresholds)"
     echo "=========================================="
     echo ""
 
     found_pattern=false
 
-    for otype in proportionality coverage applicability missing_guidance rubric_issue process_friction; do
+    # Meta observations (threshold: 2+)
+    for otype in process_friction rubric_issue; do
         count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
         if [[ "$count" -ge 2 ]]; then
             found_pattern=true
-            echo "--- $otype ($count occurrences) ---"
-            # Show descriptions for this type
+            echo "--- $otype ($count occurrences, meta threshold: 2+) ---"
+            grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
+                grep "description:" | \
+                sed 's/.*description: /  /' | \
+                head -10
+            echo ""
+        fi
+    done
+
+    # Build-phase observations (threshold: 3+)
+    for otype in artifact_insufficiency spec_ambiguity deployment_friction critic_gap; do
+        count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
+        if [[ "$count" -ge 3 ]]; then
+            found_pattern=true
+            echo "--- $otype ($count occurrences, build threshold: 3+) ---"
+            grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
+                grep "description:" | \
+                sed 's/.*description: /  /' | \
+                head -10
+            echo ""
+        fi
+    done
+
+    # Product behavior observations (threshold: 4+)
+    for otype in proportionality coverage applicability missing_guidance; do
+        count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
+        if [[ "$count" -ge 4 ]]; then
+            found_pattern=true
+            echo "--- $otype ($count occurrences, product threshold: 4+) ---"
             grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
                 grep "description:" | \
                 sed 's/.*description: /  /' | \
@@ -169,7 +222,7 @@ if [[ "$MODE" == "--patterns-only" || "$MODE" == "--full" ]]; then
     done
 
     if [[ "$found_pattern" == false ]]; then
-        echo "  No patterns detected yet (all types have <2 occurrences)."
+        echo "  No patterns detected yet (all types below their tier threshold)."
         echo ""
     fi
 fi
@@ -204,15 +257,17 @@ fi
 # are written to the project's working-notes/framework-observations-*.yaml.
 # Alert if any exist so they can be transferred.
 fallback_files=()
+shopt -s nullglob
 for dir in ../*/working-notes . working-notes; do
     if [[ -d "$dir" ]]; then
-        for f in "$dir"/framework-observations-*.yaml 2>/dev/null; do
+        for f in "$dir"/framework-observations-*.yaml; do
             if [[ -f "$f" ]]; then
                 fallback_files+=("$f")
             fi
         done
     fi
 done
+shopt -u nullglob
 
 if [[ ${#fallback_files[@]} -gt 0 ]]; then
     echo ""

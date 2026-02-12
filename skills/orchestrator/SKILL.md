@@ -481,7 +481,10 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 
 1. Read `project-state.yaml` to understand current state.
 2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory.
-3. Check `observation_backlog` in `project-state.yaml`. If items with `priority: next` exist, include them in your orientation: "There are N pending observations queued for implementation: [summaries]. Want to address those, or work on something else?"
+3. Check `observation_backlog` in `project-state.yaml`:
+   - If items with `priority: next` exist, include them in your orientation: "There are N pending observations queued for implementation: [summaries]. Want to address those, or work on something else?"
+   - If `last_triage` is more than 2 weeks old, mention it: "Observation triage is overdue (last: [date])."
+   - If any `deferred` items have `added` dates more than 4 weeks old, suggest reviewing them: "N deferred observations are over 4 weeks old and may warrant re-evaluation."
 4. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
 5. Continue from the current stage.
 

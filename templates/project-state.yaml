@@ -295,3 +295,21 @@ iteration_state:
   #   affected_chunks: [chunk ids that need rework or new chunks]
   #   status: received | assessing | implementing | complete
   feedback_cycles: []
+
+# =============================================================================
+# OBSERVATION BACKLOG (Framework Development Only)
+# =============================================================================
+# Used when this project-state.yaml tracks a framework that captures observations.
+# User projects typically don't need this section.
+# Uncomment and populate when using Prawduct for framework self-development.
+#
+# observation_backlog:
+#   last_triage: YYYY-MM-DD
+#   items:
+#     - observation_file: "framework-observations/YYYY-MM-DD-description.yaml"
+#       type: string  # observation type from schema
+#       summary: string  # one-line description
+#       target_files: [string]  # files that would need to change
+#       priority: next | soon | deferred
+#       rationale: string  # why this priority
+#       added: YYYY-MM-DD

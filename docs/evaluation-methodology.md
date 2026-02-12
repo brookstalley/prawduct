@@ -263,9 +263,17 @@ When using interactive evaluation, follow these procedures for conversation-qual
    - [ ] If no observation file exists, check `change_log` reflection entries — did any identify concerns that warranted capture? (See `framework-observations/README.md` capture criteria.) If so, note as a warning.
    - If warnings → record in meta-observations for process improvement
 
+**8. Learning loop health check (post-eval)**
+
+   After recording results and verifying observation capture, check the health of the learning loop itself:
+
+   - [ ] **Pattern threshold check:** Run `./tools/observation-analysis.sh --patterns-only`. If any observation types have crossed their tier threshold (meta: 2+, build-phase: 3+, product: 4+) and are not yet tracked in `observation_backlog`, add them.
+   - [ ] **Stale `noted` check:** If any observations have `status: noted` and are more than 2 weeks old, they should be triaged — update to `triaged` or `acted_on` and add to `observation_backlog` if deferred.
+   - [ ] **Update `last_triage`:** Set `observation_backlog.last_triage` to today's date in `project-state.yaml`.
+
 ### Cleanup
 
-**After results are recorded, observations extracted, observation capture verified, and all committed to the prawduct repo:**
+**After results are recorded, observations extracted, observation capture verified, learning loop health checked, and all committed to the prawduct repo:**
 
 ```bash
 rm -rf /tmp/eval-{scenario}
