@@ -28,7 +28,10 @@ prawduct/
 │   ├── critic/SKILL.md                # Framework self-governance + product build governance
 │   └── review-lenses/SKILL.md         # Five evaluation perspectives (product, design, arch, skeptic, testing)
 ├── tools/                             # Deterministic scripts (mechanical enforcement)
-│   ├── critic-reminder.sh             # Warn if Critic not run before framework commits
+│   ├── capture-observation.sh         # Create schema-compliant observation files from CLI args
+│   ├── record-critic-findings.sh      # Record structured Critic findings for commit gate
+│   ├── session-health-check.sh        # Session orientation: patterns, backlog, stale items
+│   ├── critic-reminder.sh             # Verify Critic evidence before framework commits
 │   ├── observation-analysis.sh        # Parse observations, detect patterns, produce summary
 │   ├── test-integrity-checker.sh      # [planned Phase 2] Monitor test count, assertion trends
 │   ├── doc-architecture-validator.sh  # [planned Phase 2] Enforce tier system, manifest compliance
@@ -89,8 +92,8 @@ prawduct/
 │   └── {date}-{description}.yaml      # Per-session observations
 ├── .claude/                           # Claude Code integration (hooks, settings)
 │   ├── hooks/
-│   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without Critic review
-│   │   └── framework-edit-tracker.sh  # PostToolUse hook: reminds to run Critic on framework edits
+│   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
+│   │   └── framework-edit-tracker.sh  # PostToolUse hook: tracks edits in .session-edits.json, escalating reminders
 │   ├── settings.json                  # Project-level Claude Code settings
 │   └── settings.local.json            # Local overrides (not committed)
 ├── docs/                              # This project's own Tier 1 documentation
@@ -117,7 +120,7 @@ The Framework Status section below provides build context. The Key Principles, T
 
 **For directional or multi-file changes (3+ framework files):** Follow the Directional Change Protocol in `skills/orchestrator/SKILL.md`. This requires a written plan, plan-stage Critic review before implementation, per-phase lightweight reviews, and a final full Critic review. The protocol ensures governance is proportionate to change impact — not just a rubber stamp at the end.
 
-To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 7 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, cross-skill inconsistencies, cumulative skill health drift, and learning system impact. Include "Framework Governance Review" in the commit message so the gate recognizes it.
+To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 7 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, cross-skill inconsistencies, cumulative skill health drift, and learning system impact. After review, run `tools/record-critic-findings.sh` to record structured findings — the commit gate verifies this file exists with all 7 checks and coverage of all staged files. Include "Framework Governance Review" in the commit message.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 
@@ -138,17 +141,18 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (framework + product governance), Review Lenses (all five)
 - Concern-based classification: human_interface and unattended_operation concerns fully supported with templates; all 7 concerns detectable
 - Observation capture system with triage and session resumption integration
+- Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation report)
+- Hardened commit gate: verifies structured Critic findings (`.critic-findings.json`) with all 7 checks and staged file coverage, escalating edit tracker with per-file tracking
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
 - Deepen remaining concerns: api_surface, multi_party (with templates and test scenario rubrics)
-- Build mechanical enforcement tools (`tools/`)
 - Orchestrator sophistication: opinionated pushback (R1.5), prior art awareness (R1.7), pacing sensitivity (R1.8), reclassification (R5.4)
 - Remaining test scenarios: consumer-mobile-app, b2b-integration-api, two-sided-marketplace
 - Full V1 validation: all scenarios passing end-to-end
 
-**C8 (Learning System):** Observation Capture (C8a) is active. Full pattern detection and incorporation (C7, C8b) are v1.5/v2 scope — they require observation volume from many projects.
+**C8 (Learning System):** Observation Capture (C8a) is active with mechanical tooling. Full pattern detection and incorporation (C7, C8b) are v1.5/v2 scope — they require observation volume from many projects.
 
 ## Testing Strategy for This Project
 

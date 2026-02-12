@@ -1,2 +1,4 @@
 .claude/settings.local.json
 .claude/.critic-pending
+.claude/.critic-findings.json
+.claude/.session-edits.json

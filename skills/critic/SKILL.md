@@ -174,6 +174,8 @@ The learning system depends on a complete chain: observable areas → observatio
 
 If there are no findings, say so explicitly: "No issues found. Changes maintain generality, completeness, proportionality, coherence, clarity, cumulative health, and learning integration."
 
+**Record findings for the commit gate:** After completing your review, run `tools/record-critic-findings.sh` with your results. The commit gate verifies structured findings exist — without this, the commit will be blocked. Pass all reviewed files via `--files` and one `--check` per Critic check with its severity and a one-sentence summary.
+
 ## Mode 2: Product Governance
 
 This mode reviews implementation of user products against their specifications during the Build + Governance Loop (Stage 5). It runs after each chunk the Builder completes and applies three checks: Spec Compliance, Test Integrity, and Scope Violation.

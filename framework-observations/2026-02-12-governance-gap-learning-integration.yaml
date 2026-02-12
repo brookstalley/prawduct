@@ -1,60 +1,32 @@
-observation_id: "2026-02-12-governance-gap-learning-integration"
-timestamp: "2026-02-12"
+---
+observation_id: d4e5f6a7-b8c9-4d0e-a1f2-3c4d5e6f7a8b
+timestamp: 2026-02-12T12:00:00Z
 session_type: framework_dev
-framework_version: "git:HEAD"
-
+session_context:
+  framework_version: ce5593e
 observations:
   - type: process_friction
+    stage: meta
     severity: blocking
-    description: >
-      A 17-file, 6-phase framework reform (concern-based classification) was implemented
-      without plan-stage Critic review, per-phase review, or observation capture. The Critic
-      ran once at the end, reviewing finished work as a rubber stamp. The learning system was
-      restructured (new concern dimensions, new observation type) without verifying it remained
-      intact. Root cause: governance checked changes for quality but not for learning system impact.
-    skills_affected:
-      - critic
-      - orchestrator
+    description: "A 17-file, 6-phase framework reform (concern-based classification) was implemented without plan-stage Critic review, per-phase review, or observation capture. The Critic ran once at the end, reviewing finished work as a rubber stamp. The learning system was restructured (new concern dimensions, new observation type) without verifying it remained intact. Root cause: governance checked changes for quality but not for learning system impact."
     evidence: "Concern-based classification reform committed without any governance until final review. No observations captured during implementation. Learning system modifications went unreviewed."
-    proposed_action: >
-      Added Critic Check 7 (Learning Integration), Directional Change Protocol in Orchestrator,
-      6th FRP dimension (Learning completeness), and documented as Failure Mode 6. These three
-      mechanisms reinforce each other: Check 7 catches learning gaps in any review, DCP ensures
-      multi-file changes get governance throughout implementation, and FRP dimension 6 surfaces
-      learning gaps at every stage transition.
+    proposed_action: "Added Critic Check 7 (Learning Integration), Directional Change Protocol in Orchestrator, 6th FRP dimension (Learning completeness), and documented as Failure Mode 6. These three mechanisms reinforce each other: Check 7 catches learning gaps in any review, DCP ensures multi-file changes get governance throughout implementation, and FRP dimension 6 surfaces learning gaps at every stage transition."
     status: acted_on
-
   - type: structural_critique
+    stage: meta
     severity: warning
-    description: >
-      The Critic's check count has changed three times (5 -> 6 -> 7) and each time required
-      updating hardcoded numbers in hook scripts and CLAUDE.md. The fix for hooks was to use
-      generic "all checks" language, which prevents future staleness. CLAUDE.md still uses a
-      specific count ("all 7 checks") because specificity is appropriate for the entry-point doc,
-      but this will need updating if checks are added again.
-    skills_affected:
-      - critic
+    description: "The Critic's check count has changed three times (5 -> 6 -> 7) and each time required updating hardcoded numbers in hook scripts and CLAUDE.md. The fix for hooks was to use generic 'all checks' language, which prevents future staleness. CLAUDE.md still uses a specific count ('all 7 checks') because specificity is appropriate for the entry-point doc, but this will need updating if checks are added again."
     evidence: "critic-reminder.sh had 'all 5 checks', critic-gate.sh had 'all 5 checks' — both were already stale before this change added Check 7."
-    proposed_action: >
-      Hook scripts now use generic "all checks". Monitor CLAUDE.md for staleness if Critic
-      checks are added or removed in the future.
+    proposed_action: "Hook scripts now use generic 'all checks'. Monitor CLAUDE.md for staleness if Critic checks are added or removed in the future."
     status: acted_on
-
   - type: process_friction
+    stage: meta
     severity: note
-    description: >
-      The Directional Change Protocol was designed retroactively — after discovering the gap,
-      not before. The protocol would have caught the concern-based classification issues if it
-      had existed. This validates the protocol's design but also demonstrates that governance
-      gaps are only visible after they cause harm. The meta-observation system (FM5, Requirement 3)
-      is the safety net for discovering governance gaps, but prevention would require governance
-      to periodically audit itself — which is what the Structural Critique Protocol already does.
-    skills_affected:
-      - orchestrator
+    description: "The Directional Change Protocol was designed retroactively — after discovering the gap, not before. The protocol would have caught the concern-based classification issues if it had existed. This validates the protocol's design but also demonstrates that governance gaps are only visible after they cause harm."
     evidence: "Self-application test: applying DCP to the concern-based classification reform retroactively confirms it would have caught the governance gap at plan stage."
-    proposed_action: >
-      No additional action needed. The Structural Critique Protocol already covers periodic
-      self-audit of governance structures. The DCP + Check 7 + FRP dimension 6 close the
-      specific gap. Future structural critiques should include governance process itself as
-      an area to audit.
+    proposed_action: "No additional action needed. The Structural Critique Protocol already covers periodic self-audit of governance structures. The DCP + Check 7 + FRP dimension 6 close the specific gap."
     status: noted
+skills_affected:
+  - "skills/critic/SKILL.md"
+  - "skills/orchestrator/SKILL.md"
+---

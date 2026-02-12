@@ -400,8 +400,7 @@ At every stage transition, pause and assess: **did the framework serve this prod
 1. **Always** record a reflection entry in `change_log` (proves reflection happened):
    - `what: "Framework reflection: Stage N (name) complete"`
    - `why: "[assessment summary or 'no concerns']"`
-2. **If substantive findings exist**, write an observation file to `{prawduct-repo}/framework-observations/`. See `framework-observations/README.md` for substantiveness criteria and `schema.yaml` for the file format. Only create observation files when there's signal — not for "no concerns." Include only substantive observations in the file; non-substantive stage reflections are already recorded in `change_log`.
-   - **Write-access fallback:** Check whether the `framework-observations/` directory exists and is writable in the prawduct framework repo. If it is not accessible (e.g., the framework was loaded from a read-only location, or the session's working directory is the user's project with no path back to the framework repo), write observations to the user's project directory as `working-notes/framework-observations-{date}.yaml` instead. Note this in the `change_log` entry: `"Framework observations written to project working-notes (framework repo not accessible)."` These files should be transferred to the framework repo when next accessible.
+2. **If substantive findings exist**, run `tools/capture-observation.sh` with your findings. The tool handles schema compliance, UUIDs, timestamps, git SHAs, and write-access fallback automatically. Only create observations when there's signal — not for "no concerns." Non-substantive stage reflections are already recorded in `change_log`. See `framework-observations/README.md` for substantiveness criteria.
 3. **If documentation is stale, update it in this session — don't defer.** Documentation drift compounds: a stale doc misleads the next session, which produces more stale docs. File creation, capability changes, and structural additions are the most common triggers.
 4. **Surface findings to the user** briefly: "Framework note: [observation]." Keep to 1-2 sentences unless there's a significant finding. Don't slow down an eager user.
 5. Keep all observations **general, not product-specific**. The insight must apply across products.
@@ -511,10 +510,7 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 1. Read `project-state.yaml` to understand current state.
 2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory.
 3. **Check documentation health (framework dev sessions only).** For sessions where the project IS the prawduct framework: quick-scan `docs/doc-manifest.yaml` for any `last_validated` date older than 30 days. If found, mention it during orientation: "N Tier 1 docs haven't been validated in over 30 days: [list]. Worth a freshness check?" This is lightweight — don't block the session, just surface the signal.
-4. Check `observation_backlog` in `project-state.yaml`:
-   - If items with `priority: next` exist, include them in your orientation: "There are N pending observations queued for implementation: [summaries]. Want to address those, or work on something else?"
-   - If `last_triage` is more than 2 weeks old, mention it: "Observation triage is overdue (last: [date])."
-   - If any `deferred` items have `added` dates more than 4 weeks old, suggest reviewing them: "N deferred observations are over 4 weeks old and may warrant re-evaluation."
+4. **Run session health check:** Run `tools/session-health-check.sh` and include relevant findings in your orientation. The tool reports observation patterns above threshold, priority:next backlog items, overdue triage, stale deferred items, and untransferred fallback observation files.
 5. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
 6. Continue from the current stage.
 

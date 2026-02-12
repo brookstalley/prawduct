@@ -78,44 +78,126 @@ for f in "${modified_framework_files[@]}"; do
 done
 echo ""
 
-# Check for Critic evidence in commit message or recent log
-critic_evidence=false
+# --- Check for structured Critic findings (primary path) ---
 
-if [[ -n "$commit_msg" ]]; then
-    if echo "$commit_msg" | grep -qi -e "critic" -e "framework governance" -e "governance review"; then
-        critic_evidence=true
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+critic_evidence=false
+findings_file=""
+
+if [[ -n "$repo_root" ]]; then
+    findings_file="$repo_root/.claude/.critic-findings.json"
+fi
+
+if [[ -n "$findings_file" && -f "$findings_file" ]]; then
+    # Check 1: Was the findings file modified within the last 2 hours?
+    if [[ "$(uname)" == "Darwin" ]]; then
+        file_age_seconds=$(( $(date +%s) - $(stat -f %m "$findings_file") ))
+    else
+        file_age_seconds=$(( $(date +%s) - $(stat -c %Y "$findings_file") ))
+    fi
+    max_age_seconds=$((2 * 60 * 60))  # 2 hours
+
+    if [[ "$file_age_seconds" -le "$max_age_seconds" ]]; then
+        # Check 2: Does it contain all 7 checks?
+        check_count=$(python3 -c "
+import json, sys
+try:
+    with open('$findings_file') as f:
+        data = json.load(f)
+    print(data.get('total_checks', 0))
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+        if [[ "$check_count" -eq 7 ]]; then
+            # Check 3: Do reviewed_files cover all staged framework files?
+            reviewed_files=$(python3 -c "
+import json
+try:
+    with open('$findings_file') as f:
+        data = json.load(f)
+    for f in data.get('reviewed_files', []):
+        print(f)
+except:
+    pass
+" 2>/dev/null || echo "")
+
+            all_covered=true
+            for f in "${modified_framework_files[@]}"; do
+                if ! echo "$reviewed_files" | grep -qF "$f"; then
+                    all_covered=false
+                    echo "WARNING: Staged file '$f' not in Critic reviewed_files list."
+                fi
+            done
+
+            if [[ "$all_covered" == true ]]; then
+                critic_evidence=true
+                echo "Structured Critic findings verified: all 7 checks present, all staged files reviewed."
+            else
+                echo "WARNING: Critic findings exist but don't cover all staged framework files."
+                echo "Re-run the Critic with all files, or add missing files to the review."
+            fi
+        else
+            echo "WARNING: Critic findings file has $check_count/7 checks. All 7 required."
+        fi
+    else
+        echo "WARNING: Critic findings are stale (older than 2 hours). Re-run the Critic."
     fi
 fi
 
-# Also check recent observation files for framework_dev type with today's date
-today=$(date +%Y-%m-%d)
-if ls framework-observations/"${today}"*.yaml >/dev/null 2>&1; then
-    for obs_file in framework-observations/"${today}"*.yaml; do
-        if grep -q "session_type: framework_dev" "$obs_file" 2>/dev/null; then
-            critic_evidence=true
-            break
+# --- Fallback: keyword in commit message + observation file (deprecated, backward compatible) ---
+
+if [[ "$critic_evidence" == false ]]; then
+    keyword_found=false
+    obs_found=false
+
+    if [[ -n "$commit_msg" ]]; then
+        if echo "$commit_msg" | grep -qi -e "critic" -e "framework governance" -e "governance review"; then
+            keyword_found=true
         fi
-    done
+    fi
+
+    today=$(date +%Y-%m-%d)
+    if ls framework-observations/"${today}"*.yaml >/dev/null 2>&1; then
+        for obs_file in framework-observations/"${today}"*.yaml; do
+            if grep -q "session_type: framework_dev" "$obs_file" 2>/dev/null; then
+                obs_found=true
+                break
+            fi
+        done
+    fi
+
+    if [[ "$keyword_found" == true && "$obs_found" == true ]]; then
+        critic_evidence=true
+        echo "Critic evidence found via fallback (keyword + observation file)."
+        echo "NOTE: This fallback path is deprecated. Use tools/record-critic-findings.sh for structured evidence."
+    elif [[ "$keyword_found" == true ]]; then
+        critic_evidence=true
+        echo "Critic evidence found via commit message keyword."
+        echo "NOTE: This fallback path is deprecated. Use tools/record-critic-findings.sh for structured evidence."
+    fi
 fi
 
+# --- Result ---
+
 if [[ "$critic_evidence" == true ]]; then
-    echo "Critic evidence found. Governance review appears complete."
-    # Clean up the pending flag set by framework-edit-tracker.sh
-    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    # Clean up pending flags
     if [[ -n "$repo_root" ]]; then
         rm -f "$repo_root/.claude/.critic-pending"
     fi
     exit 0
 else
-    echo "WARNING: Framework files were modified but no Critic review evidence found."
     echo ""
-    echo "The governance philosophy states: 'The Critic Is Not Optional.'"
-    echo "Before committing, run Framework Governance mode:"
-    echo "  1. Read skills/critic/SKILL.md"
-    echo "  2. Apply all checks to your changes"
+    echo "BLOCKED: Framework files were modified but no Critic review evidence found."
+    echo ""
+    echo "To unblock, run the Critic and record findings:"
+    echo "  1. Read skills/critic/SKILL.md and apply Framework Governance mode (all 7 checks)"
+    echo "  2. Run: tools/record-critic-findings.sh --files 'file1,file2' --check 'Name:sev:summary' (x7)"
     echo "  3. Include 'Framework Governance Review' in commit message"
     echo ""
-    echo "If you've already run the Critic, mention it in your commit message"
-    echo "or create an observation file (framework-observations/{date}-*.yaml)."
+    echo "The commit gate verifies:"
+    echo "  - .claude/.critic-findings.json exists and is < 2 hours old"
+    echo "  - All 7 Critic checks are recorded"
+    echo "  - All staged framework files appear in reviewed_files"
     exit 2
 fi
