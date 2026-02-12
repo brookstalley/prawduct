@@ -51,25 +51,25 @@ prawduct/
 │   ├── operational-spec.md            # Template: deployment, monitoring, alerting, recovery
 │   ├── dependency-manifest.yaml       # Template: external deps with justification
 │   ├── build-plan.md                  # Template: concrete build instructions, chunking, scaffolding
-│   ├── ui/                            # [planned] UI application shape
+│   ├── human-interface/               # [planned] human_interface concern (screen type)
 │   │   ├── information-architecture.md
 │   │   ├── screen-spec.md             # Per-screen template (all states)
 │   │   ├── design-direction.md
 │   │   ├── accessibility-spec.md
 │   │   ├── localization-requirements.md
 │   │   └── onboarding-spec.md
-│   ├── api/                           # [planned] API/service shape
+│   ├── api-surface/                   # [planned] api_surface concern
 │   │   ├── api-contract.md            # Per-endpoint template
 │   │   ├── integration-guide.md
 │   │   ├── versioning-strategy.md
 │   │   └── sla-definition.md
-│   ├── automation/                    # Automation/pipeline shape
+│   ├── unattended-operation/          # unattended_operation concern
 │   │   ├── pipeline-architecture.md
 │   │   ├── scheduling-spec.md
 │   │   ├── monitoring-alerting-spec.md
 │   │   ├── failure-recovery-spec.md
 │   │   └── configuration-spec.md
-│   └── multi-party/                   # [planned] Multi-party platform shape
+│   └── multi-party/                   # [planned] multi_party concern
 │       ├── party-experience-spec.md   # Per-party template
 │       ├── party-interaction-model.md
 │       └── migration-adoption-plan.md
@@ -115,7 +115,9 @@ The Framework Status section below provides build context. The Key Principles, T
 ### After modifying skills, templates, or principles:
 **Critic governance is enforced mechanically.** A Claude Code hook blocks `git commit` when framework files are staged without Critic evidence, and edit hooks remind you as you modify framework files. But don't wait for the gate — run the Critic as a **separate, final step** in any multi-file framework change, not as a sub-step of another work item. The Critic should run after all modifications are complete and before reporting results to the user.
 
-To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 6 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, cross-skill inconsistencies, and cumulative skill health drift. Include "Framework Governance Review" in the commit message so the gate recognizes it.
+**For directional or multi-file changes (3+ framework files):** Follow the Directional Change Protocol in `skills/orchestrator/SKILL.md`. This requires a written plan, plan-stage Critic review before implementation, per-phase lightweight reviews, and a final full Critic review. The protocol ensures governance is proportionate to change impact — not just a rubber stamp at the end.
+
+To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 7 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, cross-skill inconsistencies, cumulative skill health drift, and learning system impact. Include "Framework Governance Review" in the commit message so the gate recognizes it.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 
@@ -129,18 +131,18 @@ These are the ones most likely to be violated under pressure:
 
 ## Framework Status
 
-The framework follows a vertical-slice build approach (see `docs/high-level-design.md` § "Bootstrapping: Vertical Slice Approach"). Core infrastructure is built; widening to remaining product shapes is in progress.
+The framework follows a vertical-slice build approach (see `docs/high-level-design.md` § "Bootstrapping: Vertical Slice Approach"). Core infrastructure is built; deepening remaining product concerns is in progress.
 
 **Built and operational:**
 - Full stage pipeline: Stages 0-6 (Intake through Iteration)
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (framework + product governance), Review Lenses (all five)
-- Product shapes: UI Application (universal templates), Background Automation (with shape-specific templates)
+- Concern-based classification: human_interface and unattended_operation concerns fully supported with templates; all 7 concerns detectable
 - Observation capture system with triage and session resumption integration
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
-- Widen to remaining shapes: API/Service, Multi-Party Platform (with templates and test scenario rubrics)
+- Deepen remaining concerns: api_surface, multi_party (with templates and test scenario rubrics)
 - Build mechanical enforcement tools (`tools/`)
 - Orchestrator sophistication: opinionated pushback (R1.5), prior art awareness (R1.7), pacing sensitivity (R1.8), reclassification (R5.4)
 - Remaining test scenarios: consumer-mobile-app, b2b-integration-api, two-sided-marketplace

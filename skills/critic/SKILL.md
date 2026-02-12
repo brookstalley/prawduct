@@ -44,6 +44,7 @@ Apply these checks to every framework modification. Each check is a thinking pri
 - If a modification adds a specific concern as an enumerated item (e.g., "check for identity fragility," "ask about sync model"), it fails this check. The fix is to strengthen the general thinking principle that should have caught the concern.
 - If a modification strengthens a general principle so the LLM naturally surfaces the concern for any relevant product, it passes.
 - **Test:** Mentally apply the modified skill to three very different products (e.g., a family utility, a B2B API, a data pipeline). Does the modification help with all three, or only the product that triggered it?
+- **Scope note:** This check applies to the framework's structural decisions (how skills are organized, what categories drive routing, what dimensions exist in the taxonomy), not only to individual changes within those structures. If the framework's own architecture relies on enumerated categories where dimensional approaches would generalize better, that is itself a generality violation — even if it predates the Critic.
 
 **Discriminating test:** Apply the modification to three products from the test scenarios (e.g., family utility, B2B API, data pipeline). If it actively misleads for any product → **blocking**. If it's less useful for some but not harmful → **warning**. If it's slightly specific but doesn't harm generality → **note**.
 
@@ -129,6 +130,27 @@ Apply these checks to every framework modification. Each check is a thinking pri
 - Voice inconsistency within the same section → **note**
 - Overall length growing without clear justification → **note**
 
+#### Check 7: Learning Integration
+
+**Principle:** The framework must improve itself automatically through normal use (`docs/self-improvement-architecture.md`)
+
+**Ask:** Does this change preserve the framework's ability to learn and improve?
+
+The learning system depends on a complete chain: observable areas → observation capture → pattern detection → incorporation. Changes that create new observable areas, modify capture points, or affect evaluation scenarios can silently break this chain.
+
+**What to check:**
+
+- **New observable areas:** Does this change create something that could work poorly in ways the framework should detect? If so, are observation types and capture criteria updated to cover it?
+- **Modified capture points:** Does this change alter how observations are captured, triaged, or stored? If so, are all existing capture paths still complete?
+- **Evaluation scenario impact:** Does this change affect what evaluation scenarios should test? If so, are rubrics updated or flagged for update?
+- **FRP dimension impact:** Does this change affect what the Framework Reflection Protocol should assess? If so, are FRP dimensions still accurate?
+- **Observability path:** For any new capability or structural change — if it fails subtly, can the observation system detect that failure? If not, there's a blind spot.
+
+**Severity guide:**
+- New capability with no observability path → **blocking** (creates a blind spot the learning system can't detect)
+- Modified capture points not updated → **warning** (existing learning may degrade)
+- Change that may benefit from a new eval scenario → **note** (improvement opportunity, not a gap)
+
 ### Output Format
 
 ```
@@ -150,7 +172,7 @@ Apply these checks to every framework modification. Each check is a thinking pri
 
 **Proportionality for minor changes:** For minor changes (typos, formatting, small clarifications that don't change instructional logic), a quick assessment across all checks is sufficient. Full-depth analysis is required for changes that modify instructional behavior, add new instructions, or change cross-skill contracts.
 
-If there are no findings, say so explicitly: "No issues found. Changes maintain generality, completeness, proportionality, coherence, clarity, and cumulative health."
+If there are no findings, say so explicitly: "No issues found. Changes maintain generality, completeness, proportionality, coherence, clarity, cumulative health, and learning integration."
 
 ## Mode 2: Product Governance
 
@@ -277,7 +299,7 @@ After each review cycle, update `project-state.yaml` → `build_state.reviews` w
 
 ### Deferred Sub-Components (HR2)
 
-The following Critic sub-components are defined in the HLD but deferred within this Phase 2 implementation. They add low value for simple products (family utility PWA) and are needed when shapes widen:
+The following Critic sub-components are defined in the HLD but deferred within this Phase 2 implementation. They add low value for simple products (family utility PWA) and are needed when concern coverage deepens:
 
 - [ ] Architectural Consistency Checker — validate module boundaries, dependency directions against architecture artifact
 - [ ] Documentation Controller — enforce tier system, prevent orphans, validate Source of Truth docs
@@ -285,7 +307,7 @@ The following Critic sub-components are defined in the HLD but deferred within t
 
 ## Extending This Skill
 
-- [x] Framework Governance: generality, read-write chains, proportionality, coherence, clarity, cumulative health (Phase 2 start)
+- [x] Framework Governance: generality, read-write chains, proportionality, coherence, clarity, cumulative health, learning integration (Phase 2 start)
 - [x] Product Governance: spec compliance + test integrity + scope violation (Phase 2)
 - [ ] Product Governance: architectural consistency (Phase 2 widening)
 - [ ] Product Governance: documentation controller (Phase 2 widening)

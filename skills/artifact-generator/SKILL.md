@@ -1,6 +1,6 @@
 # Artifact Generator
 
-The Artifact Generator produces the build plan artifacts for a user's product. It selects the appropriate artifact set based on product shape, generates each artifact from decisions in Project State, enforces cross-artifact consistency, and declares dependencies between artifacts. It is invoked by the Orchestrator during Stage 3 (Artifact Generation).
+The Artifact Generator produces the build plan artifacts for a user's product. It selects the appropriate artifact set based on product concerns, generates each artifact from decisions in Project State, enforces cross-artifact consistency, and declares dependencies between artifacts. It is invoked by the Orchestrator during Stage 3 (Artifact Generation).
 
 ## When You Are Activated
 
@@ -9,15 +9,15 @@ The Orchestrator activates this skill when `current_stage` is "artifact-generati
 When activated:
 
 1. Read `project-state.yaml` in the user's project directory — it must have classification, product definition, and scope decisions populated.
-2. Determine which artifacts to generate based on the product's shape.
+2. Determine which artifacts to generate based on the product's active concerns.
 3. Generate artifacts in phased dependency order, writing files to the `artifacts/` directory within the user's project directory. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the project directory.
 4. Update `project-state.yaml` → `artifact_manifest` with each generated artifact.
 
 ## Step 1: Select Artifact Set
 
-Based on `classification.shape`, select the artifacts to generate:
+Read `classification.concerns` from project-state.yaml. Generate the universal artifact set plus any concern-triggered artifacts.
 
-**Universal artifacts (all shapes):**
+**Universal artifacts (all products):**
 
 | Artifact | File | Purpose |
 |----------|------|---------|
@@ -29,7 +29,7 @@ Based on `classification.shape`, select the artifacts to generate:
 | Operational Specification | `artifacts/operational-spec.md` | Deployment, monitoring, alerting, recovery, backup |
 | Dependency Manifest | `artifacts/dependency-manifest.yaml` | External deps with justification |
 
-**Automation/Pipeline artifacts (when `classification.shape` is "automation" or "pipeline"):**
+**When `concerns.unattended_operation` is active:**
 
 | Artifact | File | Purpose |
 |----------|------|---------|
@@ -39,12 +39,22 @@ Based on `classification.shape`, select the artifacts to generate:
 | Failure Recovery | `artifacts/failure-recovery-spec.md` | Per-stage failure handling, retry logic, partial success |
 | Configuration | `artifacts/configuration-spec.md` | Configurable parameters, mechanism, validation, secrets |
 
-**Notes for automation artifacts:**
-- "Core Flows" in the Product Brief become pipeline stages for automations. Frame them as processing stages (fetch, filter, format, deliver), not user actions.
+**Notes for `unattended_operation` artifacts:**
+- "Core Flows" in the Product Brief become pipeline stages. Frame them as processing stages (fetch, filter, format, deliver), not user actions.
 - The Data Model captures processed entities (e.g., Article, FilterCriteria, Source), not UI entities.
 - NFRs emphasize runtime constraints (execution window, cost per run) and operational requirements over user-facing performance.
 
-**Other shapes:** UI Application, API/Service, and Multi-Party Platform shape-specific artifacts are added as each shape is implemented in Phase 2.
+**When `concerns.human_interface` (type: screen) is active:**
+
+UI-specific artifacts (information architecture, screen specs, design direction, accessibility spec, onboarding spec) are generated when implemented. Use templates from `templates/human-interface/`.
+
+**When `concerns.api_surface` is active:**
+
+API-specific artifacts (API contracts, integration guide, versioning strategy, SLA definition) are generated when implemented. Use templates from `templates/api-surface/`.
+
+**When `concerns.multi_party` is active:**
+
+Multi-party artifacts (per-party experience specs, party interaction model, migration/adoption plan) are generated when implemented. Use templates from `templates/multi-party/`.
 
 ### Applicability Assessment
 
@@ -285,9 +295,9 @@ dependencies:
 
 **Key instruction:** Every dependency must have a justification. "It's popular" is not a justification. "It provides [specific capability] that we need for [specific feature], and the alternatives [X, Y] were rejected because [reasons]" is.
 
-### Phase C: Automation/Pipeline Artifacts
+### Phase C: Unattended Operation Artifacts
 
-When `classification.shape` is "automation" or "pipeline", generate these shape-specific artifacts alongside the universal Phase C artifacts. Use the corresponding templates from `templates/automation/`.
+When `concerns.unattended_operation` is active, generate these concern-specific artifacts alongside the universal Phase C artifacts. Use the corresponding templates from `templates/unattended-operation/`.
 
 #### Artifact: Pipeline Architecture
 
@@ -463,7 +473,7 @@ last_validated: null
 
 2. **Concrete project structure.** Derive directory layout and module boundaries from the data model and product shape. For a UI app: component directories aligned to core flows, a data layer aligned to data model entities, test files alongside source. Name the directories explicitly.
 
-3. **Feature-first build chunks.** For UI applications, each chunk delivers one user-visible flow end-to-end (data + logic + UI + tests). For APIs, each chunk delivers one endpoint group. For pipelines, each chunk delivers one processing stage end-to-end (input + processing + output + tests for that stage).
+3. **Feature-first build chunks.** For products with `human_interface`, each chunk delivers one user-visible flow end-to-end (data + logic + UI + tests). For products with `api_surface`, each chunk delivers one endpoint group. For products with `unattended_operation`, each chunk delivers one processing stage end-to-end (input + processing + output + tests for that stage).
 
    **Chunk ordering (general):**
    - Chunk 01 is always the scaffold: project init, dependencies, build config, test runner, verification.
@@ -471,14 +481,14 @@ last_validated: null
    - Then: feature chunks ordered by user value (highest first). The first feature chunk should be the earliest point the user can interact with the product.
    - Last: polish, edge cases, and cross-cutting concerns.
 
-   **Chunk ordering (Automation/Pipeline):**
+   **Chunk ordering (when `unattended_operation` is active):**
    - Chunk 01: scaffold (project init, dependencies, config loading, test runner).
    - Chunk 02: data entities and any persistence layer (article model, source model, etc.).
    - Chunk 03: first pipeline stage — typically the data fetch stage, since everything downstream depends on it.
    - Subsequent chunks: additional pipeline stages in data flow order (parse → filter → format → deliver).
    - Output delivery chunk: connects the pipeline to its destination (Slack, email, file, etc.).
    - Final chunks: integration (end-to-end pipeline run), monitoring/alerting implementation, configuration management.
-   - The early feedback milestone for a pipeline is when the first end-to-end run produces visible output (even if filtering or formatting is basic).
+   - The early feedback milestone for an unattended system is when the first end-to-end run produces visible output (even if filtering or formatting is basic).
 
 4. **Acceptance criteria per chunk.** Map each chunk's acceptance criteria to specific test scenarios from `artifacts/test-specifications.md`. The criteria must be concrete and verifiable: "npm test passes," "recording a score for 3 players renders in the game view," not "scoring works."
 
@@ -503,7 +513,7 @@ After generating all Phase C artifacts, run the full cross-artifact consistency 
 - **Security coverage:** Every access pattern implied by the Product Brief is addressed in the Security Model.
 - **Dependency coverage:** Every external service or library mentioned in any artifact appears in the Dependency Manifest.
 
-**Additional consistency checks for Automation/Pipeline products:**
+**Additional consistency checks when `concerns.unattended_operation` is active:**
 
 - **Stage coverage:** Every processing stage in the Pipeline Architecture has a corresponding failure handling entry in the Failure Recovery Spec and at least one test scenario in the Test Specifications.
 - **Monitoring coverage:** Every health metric in the Monitoring & Alerting Spec corresponds to an observable aspect of the pipeline (stage completion, output delivery, source availability).
@@ -530,11 +540,11 @@ artifacts:
 
 ## Extending This Skill
 
-Phase 1 generates universal artifacts only. Future phases add:
+Phase 1 generates universal artifacts only. Concern-specific artifacts are added as each concern is implemented:
 
-- [ ] UI Application artifacts: information architecture, screen specs, design direction, accessibility spec, onboarding spec (Phase 2)
-- [ ] API/Service artifacts: API contracts, integration guide, versioning strategy, SLA definition (Phase 2)
-- [x] Automation/Pipeline artifacts: pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec (Phase 2)
-- [ ] Multi-Party artifacts: per-party experience specs, party interaction model, migration/adoption plan (Phase 2)
+- [ ] `human_interface` (screen) artifacts: information architecture, screen specs, design direction, accessibility spec, onboarding spec (Phase 2)
+- [ ] `api_surface` artifacts: API contracts, integration guide, versioning strategy, SLA definition (Phase 2)
+- [x] `unattended_operation` artifacts: pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec (Phase 2)
+- [ ] `multi_party` artifacts: per-party experience specs, party interaction model, migration/adoption plan (Phase 2)
 - [ ] Modular artifact updates: when a decision changes, update only affected artifacts rather than regenerating all (Phase 2)
 - [x] Build ordering (Phase D): produce an execution plan with dependency graph, feature-first chunking, and governance checkpoints (Phase 2)

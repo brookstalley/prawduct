@@ -13,12 +13,21 @@
 classification:
   domain: developer-tool
 
-  shape: hybrid
-  sub_shapes: [automation-pipeline, api-service]
-  # Rationale: Prawduct is an LLM instruction framework (automation-like: runs
-  # within an LLM session, processes inputs through stages, produces artifacts)
-  # that also defines contracts consumed by other skills (API-like: skill
-  # interaction model, artifact format spec, project-state schema).
+  concerns:
+    human_interface: null  # Framework has no user-facing UI (conversation is LLM-mediated)
+    unattended_operation:
+      trigger: event-driven
+      # Rationale: Prawduct runs within an LLM session, processes inputs through
+      # stages, produces artifacts. The "trigger" is user input, but the processing
+      # pipeline (classify → discover → define → generate → build) is automated.
+    api_surface:
+      consumers: internal
+      # Rationale: Skills define contracts consumed by other skills (skill
+      # interaction model, artifact format spec, project-state schema).
+    multi_party: null
+    constrained_environment: null
+    external_integrations: null
+    sensitive_data: null
 
   risk_profile:
     overall: medium
@@ -44,7 +53,7 @@ product_definition:
   vision: "A framework that turns vague product ideas into well-built software by guiding structured discovery, producing agent-executable build plans, and enforcing quality throughout development."
 
   goals:
-    - "End-to-end flow from vague input to useful build plan for all five product shapes"
+    - "End-to-end flow from vague input to useful build plan for any combination of product concerns"
     - "Framework governs its own development through its own process (eat your own cooking)"
     - "Observation capture fires automatically at every stage transition — no manual reminders needed"
     - "Review Lenses produce specific, actionable findings across all product shapes"
@@ -84,9 +93,9 @@ product_definition:
 
   scope:
     v1:
-      - "All five product shapes (UI, API, automation, multi-party, hybrid)"
+      - "All seven product concerns (human_interface, unattended_operation, api_surface, multi_party, constrained_environment, external_integrations, sensitive_data)"
       - "Full stage pipeline (0 through 6)"
-      - "Five review lenses with shape-appropriate application"
+      - "Five review lenses with concern-appropriate application"
       - "Critic with framework governance and product governance modes"
       - "Builder skill for code generation from build plans"
       - "Observation capture at every stage transition"
@@ -277,8 +286,8 @@ artifact_manifest:
       depended_on_by: []
       last_validated: 2026-02-11
       tier: 1
-    - name: automation-templates
-      file_path: templates/automation/
+    - name: unattended-operation-templates
+      file_path: templates/unattended-operation/
       role: built-component
       version: 1
       depends_on: [artifact-generator]
@@ -344,7 +353,7 @@ open_questions:
     waiting_on: research
     priority: medium
     raised_at_stage: iteration
-  - question: "What product shapes beyond the five defined does the taxonomy need?"
+  - question: "What product concerns beyond the seven defined does the taxonomy need?"
     blocking: "Full product diversity coverage (R7.2)"
     waiting_on: research
     priority: low
@@ -405,6 +414,11 @@ change_log:
     blast_radius: "CLAUDE.md routing, Orchestrator project directory logic and Session Resumption, framework development workflow"
     classification: functional
     date: 2026-02-11
+  - what: "Replaced product shape taxonomy with concern-based classification"
+    why: "Fixed shapes (UI Application, API, Automation, Multi-Party, Hybrid) violated 'Generality Over Enumeration' principle. Products like earbud firmware, browser extensions, smart contracts don't fit any shape. Replaced with 7 composable concern dimensions (human_interface, unattended_operation, api_surface, multi_party, constrained_environment, external_integrations, sensitive_data) that combine freely. Added Structural Critique Protocol to catch similar foundational issues."
+    blast_radius: "Domain Analyzer, Artifact Generator, Review Lenses, Orchestrator, Critic, project-state schema, high-level design, principles, all test scenarios, CLAUDE.md, observation schema"
+    classification: directional
+    date: 2026-02-12
 
 # =============================================================================
 # BUILD PLAN
@@ -417,16 +431,16 @@ build_plan:
   # remaining_work is manually maintained during Stage 6 iteration.
   # Remove items as they are completed; add items as new work is identified.
   remaining_work:
-    - item: "Add API/Service product shape"
-      description: "Extend Domain Analyzer, add API templates, add b2b-integration-api test scenario rubric"
-    - item: "Add Multi-Party Platform product shape"
-      description: "Extend Domain Analyzer, add multi-party templates, add two-sided-marketplace test scenario rubric"
+    - item: "Deepen api_surface concern"
+      description: "Full-depth discovery questions, API-specific templates, b2b-integration-api test scenario rubric"
+    - item: "Deepen multi_party concern"
+      description: "Full-depth discovery questions, multi-party templates, two-sided-marketplace test scenario rubric"
     - item: "Build mechanical enforcement tools"
       description: "Planned tools: test-integrity-checker, doc-architecture-validator, boundary-checker, spec-compliance-diff, docs-freshness-checker"
     - item: "Orchestrator sophistication"
       description: "Opinionated pushback (R1.5), prior art awareness (R1.7), pacing sensitivity (R1.8), reclassification (R5.4)"
     - item: "Remaining test scenarios"
-      description: "consumer-mobile-app (needs shape work first)"
+      description: "consumer-mobile-app, b2b-integration-api, two-sided-marketplace"
     - item: "Full V1 validation"
       description: "All scenarios passing end-to-end, framework fully self-governing"
   chunks: []

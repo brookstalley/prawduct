@@ -52,8 +52,8 @@ The system handles quality enforcement autonomously. It escalates to the user on
 
 It does *not* escalate: test failures, architectural boundary violations, documentation gaps, or other quality issues it can resolve autonomously.
 
-### Honest About Shape
-Not every product is an app with screens. The system must recognize the product's actual shape — pipeline, API, multi-party platform, hybrid — and apply the right framework, not force everything into a UI-app mold. Applying irrelevant artifacts is waste. Missing relevant artifacts (like operational specs for an automation) is a defect.
+### Honest About Concerns
+Not every product is an app with screens. The system must recognize the product's actual concerns — human interface, unattended operation, API surface, multi-party dynamics, constrained environments, external integrations, sensitive data — and apply the right framework for each active concern. Applying irrelevant artifacts is waste. Missing relevant artifacts (like operational specs for an unattended operation) is a defect. A product may have any combination of concerns; they are independent dimensions, not mutually exclusive categories.
 
 ### Willing to Say No
 The system must be willing to recommend not building — if the problem is already well-solved, if the idea is actually two products masquerading as one, if the scope is unrealistic, or if the constraints make LLM-assisted development a poor fit. This is not a failure of the system. It's a valuable outcome.
@@ -140,6 +140,8 @@ A product that can't be deployed, monitored, recovered from failure, and maintai
 
 ### Generality Over Enumeration
 When evaluation reveals a gap, the fix must strengthen general thinking principles — never add the specific finding as an enumerated checklist item. The framework must work for products it has never been tested against. A specific enumerated concern helps with the next similar product but fails for dissimilar ones; a strong general principle adapts to both. When a Review Lens catches something a skill should have surfaced, ask: "What general reasoning, applied earlier, would have found this?" Then strengthen that reasoning. The Review Lenses prove this works — they use general principles and catch specific issues. Skills should follow the same pattern.
+
+**Self-application:** This principle applies to the framework's own architecture, not only to individual skill changes. If the framework's structural choices rely on enumerated categories where dimensional approaches would generalize better, that is itself an enumeration violation. The Structural Critique Protocol tests founding decisions against this principle periodically.
 
 ### Prove the Path Before Widening It
 When building a system with multiple interacting components, validate the architecture by building one narrow vertical slice through the entire system before filling out any single component in breadth. A working thin path exposes integration problems, format mismatches, and interaction failures that component-level development cannot. Widen only after the path works end-to-end. This applies to the system's own build process and to user projects with multi-component architectures.

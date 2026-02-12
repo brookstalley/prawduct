@@ -208,6 +208,25 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 
 ---
 
+## Inductive vs Deductive Learning
+
+The Phase 1-3 architecture is **inductive**: observations accumulate → patterns emerge → changes proposed. This works well for behavioral issues (proportionality drift, coverage gaps, process friction) because they produce repeated observations that cross detection thresholds.
+
+But some framework problems are **structural** — they don't produce repeated observations because the failure mode is invisible from inside the system. Example: if the framework classifies products into fixed categories, no individual product session will observe "this should use dimensions instead of categories." Each session either fits a category or gets classified as ambiguous. The structural issue only becomes visible through deductive analysis: applying the framework's own principles (Generality Over Enumeration) to its own architecture.
+
+**The gap:** Inductive learning requires volume. Deductive analysis requires principles + research → questioning. Phase 1-3 handles the first. The Structural Critique Protocol (see `skills/orchestrator/SKILL.md` § "Structural Critique Protocol") handles the second.
+
+**How they complement each other:**
+
+| Approach | Catches | Evidence source | Threshold |
+|----------|---------|----------------|-----------|
+| Inductive (observations → patterns) | Behavioral drift, proportionality issues, coverage gaps, process friction | Product sessions, evaluations | 2-4+ occurrences depending on type |
+| Deductive (principles → questioning) | Structural violations, taxonomy problems, architectural misalignment | Framework principles + external research | Periodic review (every 3 evals or on request) |
+
+Both feed the same action pipeline: observations → triage → skill updates → Critic governance → commit. The difference is how the observation is generated, not how it's processed.
+
+---
+
 ## Critical Requirements
 
 ### Requirement 1: Reflection Must Be Blocking
@@ -336,6 +355,23 @@ Automatic skill updates without validation are dangerous. The system must valida
 **Safeguard**: Every framework development session captures observations, including observations about the observation system
 
 **Learning**: Meta-level observation required. "Apply framework to itself" extends to self-improvement system.
+
+### Failure Mode 6: Learning Infrastructure Modified Without Learning Review
+
+**Symptom**: Changes affect observation capture, evaluation scenarios, or FRP dimensions, but the learning system itself is not reviewed for completeness.
+
+**Root cause**: Critic checks didn't include learning system impact. Governance reviewed changes for generality, coherence, and proportionality — but not for whether the learning pipeline remained intact.
+
+**Discovered**: 2026-02-12 during concern-based classification implementation. A 17-file, 6-phase reform restructured concern dimensions and added new observation types without anyone verifying the learning system remained complete. The Critic ran once at the end as a rubber stamp.
+
+**Fix**: Three reinforcing mechanisms:
+- Critic Check 7 (Learning Integration): Explicitly checks whether changes preserve the framework's ability to learn
+- Directional Change Protocol: Multi-file changes get plan-stage Critic review before implementation and per-phase lightweight reviews during implementation
+- FRP dimension 6 (Learning completeness): Every stage transition assesses whether new areas are observable
+
+**Safeguard**: Check 7 makes "no observability path" a blocking finding. Changes that create blind spots in the learning system cannot pass governance review.
+
+**Learning**: Governance that doesn't review its own governance creates blind spots. The Critic checked whether changes were well-made but not whether they preserved the system's ability to detect future problems. A meta-governance gap: the learning system was the one thing that couldn't observe its own modification.
 
 ---
 

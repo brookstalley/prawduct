@@ -112,7 +112,7 @@ else
     echo "The governance philosophy states: 'The Critic Is Not Optional.'"
     echo "Before committing, run Framework Governance mode:"
     echo "  1. Read skills/critic/SKILL.md"
-    echo "  2. Apply all 5 checks to your changes"
+    echo "  2. Apply all checks to your changes"
     echo "  3. Include 'Framework Governance Review' in commit message"
     echo ""
     echo "If you've already run the Critic, mention it in your commit message"

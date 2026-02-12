@@ -86,7 +86,7 @@ For each lens, produce findings in this format:
 
 **What this lens does NOT do:** It doesn't evaluate whether the *right* thing is being built (that's Product) or whether the architecture supports it (that's Architecture).
 
-**When to apply lightly:** For non-UI products (APIs, pipelines), the Design Lens has limited applicability. Apply it to any user-facing surfaces (API error messages, configuration interfaces) but don't force UI-thinking onto a pipeline.
+**When to apply lightly:** For products without `human_interface` (APIs, unattended systems), the Design Lens has limited applicability. Apply it to any user-facing surfaces (API error messages, configuration interfaces) but don't force UI-thinking onto a system with no user interface.
 
 ### Architecture Lens
 
@@ -192,27 +192,58 @@ For a low-risk utility like a family score tracker, the review should be **propo
 - **Tone:** Helpful, not adversarial. The goal is to improve the product, not to demonstrate thoroughness.
 - **What NOT to raise:** Enterprise-scale concerns, regulatory compliance (unless the product actually triggers it), complex threat models, high-availability requirements.
 
-## Applying Lenses to Automation/Pipeline Products
+## Concern-Specific Lens Adjustments
 
-The following adjustments modify the general five-lens process described above for automation/pipeline products. Read the general lens descriptions first.
+The following adjustments modify the general five-lens process described above when specific concerns are active. Read the general lens descriptions first. Multiple adjustments may apply simultaneously when a product has multiple active concerns.
 
-For automation/pipeline products, the lenses shift focus from user-facing concerns to operational concerns. The core question changes from "will users understand this?" to "will this run reliably unattended?"
+### When `unattended_operation` Is Active
 
-### Automation Adjustments by Lens
+The lenses shift focus from user-facing concerns to operational concerns. The core question changes from "will users understand this?" to "will this run reliably unattended?"
 
-| Lens | Automation-specific focus |
-|------|--------------------------|
+| Lens | Adjustment |
+|------|------------|
 | **Product** | Evaluate automation scope vs. the manual process it replaces (boundary correctness). Check that success criteria are measurable for a headless system ("Digest delivered by 7 AM" not "Works well"). Check filtering/processing logic is concrete enough to implement. |
-| **Design** | Does NOT evaluate screens or visual design. Evaluates: configuration UX (clear format, helpful error messages), output clarity (the pipeline's output IS its interface), observability UX (can the operator check health without digging through logs?), and error communication (do alerts explain what happened and what to do?). |
+| **Design** | Does NOT evaluate screens or visual design (unless `human_interface` is also active). Evaluates: configuration UX (clear format, helpful error messages), output clarity (the system's output IS its interface), observability UX (can the operator check health without digging through logs?), and error communication (do alerts explain what happened and what to do?). |
 | **Architecture** | Evaluate stage isolation (can stages fail independently?), deployment appropriateness for the execution pattern and cost profile, resource efficiency (runaway cost risk from tight loops or unbounded fetches?), and operational complexity budget (infrastructure proportionate to problem?). |
-| **Skeptic** | **Must always raise at least one silent-failure finding** (what happens when the pipeline fails and nobody notices?) **and at least one external-dependency-resilience finding** (what happens when services are down, slow, or rate-limited?). Also look for: configuration drift risk and cost creep from per-invocation API costs. |
-| **Testing** | In addition to general criteria: every pipeline stage needs at least one failure mode test. Required automation-specific tests: silent failure detection (distinguish "no results" from "didn't run"), partial success (some sources fail, others succeed), and configuration validation (invalid/missing config). |
+| **Skeptic** | **Must always raise at least one silent-failure finding** (what happens when the system fails and nobody notices?) **and at least one external-dependency-resilience finding** (what happens when services are down, slow, or rate-limited?). Also look for: configuration drift risk and cost creep from per-invocation API costs. |
+| **Testing** | In addition to general criteria: every processing stage needs at least one failure mode test. Required tests: silent failure detection (distinguish "no results" from "didn't run"), partial success (some sources fail, others succeed), and configuration validation (invalid/missing config). |
 
-### Proportionality for Automation Reviews
+**Proportionality:** 8-15 total findings for a low-medium risk unattended system. Fewer than 8 likely misses operational concerns. More than 15 is over-reviewing for a side project. Blocking findings: 0-3 at most. **What NOT to raise:** UI/UX concerns about screens or navigation (unless `human_interface` is also active), multi-user collaboration features, enterprise-grade SLA requirements for a side project.
 
-- **Total findings across all five lenses:** 8-15 for a low-medium risk automation. Fewer than 8 likely misses operational concerns. More than 15 is over-reviewing for a side project.
-- **Blocking findings:** 0-3 at most. The most likely blocking findings are: missing monitoring for silent failure, missing failure handling for a critical pipeline stage, or test specifications that don't cover failure modes.
-- **What NOT to raise:** UI/UX concerns about screens or navigation (there are none), multi-user collaboration features, enterprise-grade SLA requirements for a side project, visual design feedback.
+### When `api_surface` Is Active
+
+| Lens | Adjustment |
+|------|------------|
+| **Product** | Evaluate whether API operations map to real consumer use cases. Check that API boundaries are well-defined. |
+| **Design** | Evaluates API ergonomics: consistent naming, clear error messages, predictable pagination, sensible defaults. |
+| **Architecture** | Evaluate versioning strategy, backward compatibility approach, rate limiting design, authentication mechanism appropriateness. |
+| **Skeptic** | Raise breaking-change risk, consumer migration burden, rate limit abuse scenarios, and API misuse potential. |
+| **Testing** | Contract tests, error response format consistency, backward compatibility tests, rate limiting behavior tests. |
+
+### When `multi_party` Is Active
+
+| Lens | Adjustment |
+|------|------------|
+| **Product** | Evaluate each party's needs independently. Check that no party is treated as an afterthought. |
+| **Architecture** | Evaluate trust boundaries between parties. Data isolation between parties is critical — one party's data must not leak to another unless explicitly designed. |
+| **Skeptic** | Raise cross-party data leakage, privilege escalation between party types, and what happens when parties conflict. |
+| **Testing** | Per-party test coverage: each party type's flows are tested. Cross-party interaction tests: what happens at trust boundaries. |
+
+### When `constrained_environment` Is Active
+
+| Lens | Adjustment |
+|------|------------|
+| **Architecture** | Evaluate resource usage against environment constraints. Memory budgets, CPU limits, storage constraints must be explicit in the design. |
+| **Skeptic** | Raise resource exhaustion scenarios, what happens when approaching limits, graceful degradation under constraint. |
+| **Testing** | Resource budget verification tests. Behavior-under-constraint tests. |
+
+### When `sensitive_data` Is Active
+
+| Lens | Adjustment |
+|------|------------|
+| **Architecture** | Evaluate data storage encryption, access control granularity, audit logging, data retention and deletion capabilities. |
+| **Skeptic** | Raise data breach scenarios, insider threat scenarios, data retention compliance, cross-border data transfer implications. |
+| **Testing** | Access control tests (verify unauthorized access is denied), data lifecycle tests (verify deletion actually removes data), audit trail tests. |
 
 ## Applying Lenses During Build (Stages 4-6)
 
@@ -235,14 +266,16 @@ During build phases, the lenses serve a different purpose than during artifact g
 
 ## Extending This Skill
 
-Phase 1 applies four lenses to universal artifacts for low-risk UI applications. Phase 2 added the Testing Lens and automation/pipeline shape guidance. Future phases add:
+Phase 1 applies four lenses to universal artifacts for low-risk products. Phase 2 added the Testing Lens and concern-specific lens adjustments. Future phases add:
 
 - [x] Stage 4-6 lens application guidance (Phase 2)
 - [x] Testing Lens (5th lens): test specification comprehensiveness, risk traceability, failure mode coverage (Phase 2)
-- [ ] Shape-specific lens guidance:
-  - [x] Automation/Pipeline (Phase 2)
-  - [ ] API/Service (Phase 2 widening)
-  - [ ] Multi-party platforms (Phase 2 widening)
+- Concern-specific lens adjustments:
+  - [x] `unattended_operation` (Phase 2)
+  - [x] `api_surface` — initial adjustments
+  - [x] `multi_party` — initial adjustments
+  - [x] `constrained_environment` — initial adjustments
+  - [x] `sensitive_data` — initial adjustments
 - [ ] Variable-depth reviews: lighter review for routine artifact generation, deeper review for major scope changes (Phase 2)
 - [ ] Rotating emphasis: sometimes lead with security, sometimes with cost, to prevent blind spots (Phase 2)
 - [ ] Integration with Critic (C6): Review Lens findings feed into the Critic's continuous governance during build (Phase 2)

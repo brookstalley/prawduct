@@ -2,7 +2,7 @@
 
 ## Scenario Overview
 
-- **Shape:** UI Application
+- **Primary concerns:** `human_interface` (type: screen, platform: mobile)
 - **Domain:** Utility
 - **Risk Level:** Low
 - **Phase:** 1 (vertical slice scenario)
@@ -122,7 +122,7 @@ These scripted responses extend the test conversation for the build and iteratio
 
 **Must-do:**
 
-- Classify shape as UI Application.
+- Detect `human_interface` concern (type: screen, platform: mobile).
 - Classify domain as Utility (Entertainment/Utility also acceptable).
 - Assign low risk profile.
 - Ask about core users (who in the family, how many, ages relevant?).
@@ -236,7 +236,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 **Must-do (content after Stages 0-2):**
 
 - `classification.domain`: populated ("utility" or "entertainment/utility").
-- `classification.shape`: "ui-application".
+- `classification.concerns.human_interface`: not null, with type "screen" and platform indicating mobile.
 - `classification.risk_profile.overall`: "low".
 - `classification.risk_profile.factors`: at least 2 evaluated factors with rationale.
 - `product_definition.vision`: a clear, specific one-sentence description (not generic).
@@ -254,7 +254,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-not-do:**
 
-- Must not leave classification fields null after Stage 0.
+- Must not leave `classification.concerns` with no active concerns after Stage 0.
 - Must not add regulatory constraints for this scenario.
 - Must not set `risk_profile.overall` above "low" for this scenario.
 

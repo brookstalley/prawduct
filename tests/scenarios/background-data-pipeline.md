@@ -13,11 +13,11 @@
 
 ## Scenario Overview
 
-- **Shape:** Automation / Pipeline
+- **Primary concerns:** `unattended_operation` (trigger: scheduled), `external_integrations` (RSS feeds, Slack API)
 - **Domain:** Productivity / Content Curation
 - **Risk Level:** Low-Medium
-- **Phase:** 2 (product shape diversity)
-- **Purpose:** Tests automation/pipeline classification, operational-first discovery, and verification that the system does NOT ask about UIs, screens, or navigation for headless systems. Tests technical user calibration.
+- **Phase:** 2 (product concern diversity)
+- **Purpose:** Tests `unattended_operation` concern detection, operational-first discovery, and verification that the system does NOT ask about UIs, screens, or navigation for headless systems. Tests technical user calibration.
 
 ## Test Persona
 
@@ -152,7 +152,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 **Must-do:**
 
-- Classify shape as Automation / Pipeline (not UI Application, not API/Service).
+- Detect `unattended_operation` concern (trigger: scheduled) and `external_integrations` concern. Must NOT detect `human_interface`.
 - Classify domain as Productivity or Content Curation (or similar).
 - Assign low-medium risk profile (operational failure matters, but impact is limited — affects one person's side project, not a business-critical system).
 - Ask about data sources and their reliability.
@@ -166,7 +166,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 **Must-not-do:**
 
-- Must not classify as UI Application.
+- Must not detect `human_interface` concern.
 - Must not ask about screens, navigation, user flows, or UI design.
 - Must not ask about onboarding experience, accessibility, or visual design.
 - Must not ask about authentication or user authorization (single-user automation).
@@ -280,7 +280,9 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 **Must-do (content after Stages 0-2):**
 
 - `classification.domain`: populated ("productivity" or "content-curation" or similar).
-- `classification.shape`: "automation" or "pipeline" (not "ui-application").
+- `classification.concerns.unattended_operation`: not null, with trigger "scheduled".
+- `classification.concerns.external_integrations`: not null.
+- `classification.concerns.human_interface`: null (this is a headless system).
 - `classification.risk_profile.overall`: "low" or "medium" (either is acceptable with rationale).
 - `classification.risk_profile.factors`: at least 3 evaluated factors with rationale. Must include operational factors (failure impact, cost of operation, silent failure risk) not just user-facing factors.
 - `product_definition.vision`: a clear, specific one-sentence description.
@@ -297,8 +299,8 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-not-do:**
 
-- Must not classify shape as "ui-application."
-- Must not leave classification fields null after Stage 0.
+- Must not detect `human_interface` concern.
+- Must not leave `classification.concerns` with no active concerns after Stage 0.
 - Must not add UI/UX design decisions (no screens to design).
 - Must not set `risk_profile.overall` above "medium" for this scenario.
 
@@ -313,7 +315,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 The scenario succeeds when:
 
-1. The system correctly classifies this as an Automation/Pipeline, NOT a UI Application.
+1. The system correctly detects `unattended_operation` and `external_integrations` concerns, NOT `human_interface`.
 2. Discovery focuses on operational concerns (failure modes, monitoring, cost, scheduling) rather than UI/UX concerns.
 3. Automation-specific artifacts (pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec) are generated.
 4. UI-specific artifacts (IA, screen specs, design direction, accessibility, onboarding) are NOT generated.

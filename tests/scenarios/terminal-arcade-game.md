@@ -19,10 +19,10 @@
 
 ## Scenario Overview
 
-- **Shape:** UI Application (Terminal/TUI)
+- **Primary concerns:** `human_interface` (type: terminal)
 - **Domain:** Entertainment
 - **Risk Level:** Low-Medium
-- **Phase:** 2 (product shape diversity)
+- **Phase:** 2 (product concern diversity)
 - **Purpose:** Tests framework behavior with an unusual UI substrate (terminal, not web/mobile), real-time game loop architecture, cross-platform terminal compatibility, and entertainment domain handling. Exercises whether the system can bring game design expertise to a technical user who defers on design. Validates that the framework recognizes degenerate artifacts (security, ops) while taking genuine technical complexity seriously (real-time input, rendering, terminal abstraction).
 
 ## Why This Scenario Is Challenging
@@ -229,7 +229,7 @@ These scripted responses extend the test conversation for the build and iteratio
 
 **Must-do:**
 
-- Classify shape as UI Application (terminal/TUI variant — the system should note this is a terminal application, not a web or mobile UI).
+- Detect `human_interface` concern with type `terminal` (the system should note this is a terminal application, not a web or mobile UI).
 - Classify domain as Entertainment (Game also acceptable).
 - Assign low or low-medium risk profile (technical complexity of real-time game loop warrants medium on that factor, but low user count, no data sensitivity, no regulatory exposure).
 - Ask about or infer core gameplay (what happens in the game — the "Galaga loop").
@@ -240,7 +240,7 @@ These scripted responses extend the test conversation for the build and iteratio
 
 **Must-not-do:**
 
-- Must not classify as Automation/Pipeline or API/Service.
+- Must not detect `unattended_operation` or `api_surface` concerns.
 - Must not ask about authentication, authorization, or user accounts.
 - Must not ask about deployment infrastructure, monitoring, or alerting (this is a local terminal app).
 - Must not ask about regulatory or compliance requirements.
@@ -360,7 +360,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 **Must-do (content after Stages 0-2):**
 
 - `classification.domain`: "entertainment" (or "entertainment/gaming").
-- `classification.shape`: "ui-application" (with a note or sub-classification indicating terminal/TUI).
+- `classification.concerns.human_interface`: not null, with type "terminal".
 - `classification.risk_profile.overall`: "low" or "medium" (either acceptable if rationale is sound; "low" with technical-complexity factor at "medium" is ideal).
 - `classification.risk_profile.factors`: at least 3 evaluated factors with rationale. Must include `technical-complexity` rated medium (real-time game loop, cross-platform terminal I/O), `user-count` rated low, and `data-sensitivity` rated low.
 - `product_definition.vision`: a clear one-sentence description capturing the game's identity (not generic — should mention terminal, arcade, text-based).
@@ -378,8 +378,8 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-not-do:**
 
-- Must not classify shape as anything other than "ui-application" (terminal games are UI applications, just with a different rendering substrate).
-- Must not leave classification fields null after Stage 0.
+- Must not leave `classification.concerns` with no active concerns after Stage 0.
+- Must not detect `unattended_operation`, `api_surface`, or `multi_party` concerns.
 - Must not add regulatory constraints for this scenario.
 - Must not set `risk_profile.overall` above "medium" for this scenario.
 - Must not set `platform` to "web" or "mobile."

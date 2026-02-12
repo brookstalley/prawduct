@@ -38,11 +38,12 @@ observation_entry:
       product_classification:
         type: string
         required_if: session_type == product_use
-        description: "Product shape classification (e.g., 'UI Application - Utility')"
+        description: "Product concern summary (e.g., 'human_interface (screen) - Utility')"
         examples:
-          - "UI Application - Utility"
-          - "Background Automation - Data Pipeline"
-          - "API - Integration Service"
+          - "human_interface (screen) - Utility"
+          - "unattended_operation + external_integrations - Data Pipeline"
+          - "api_surface - Integration Service"
+          - "constrained_environment + human_interface (minimal) - Firmware"
 
       # For evaluation sessions
       scenario_name:
@@ -86,6 +87,7 @@ observation_entry:
             - skill_quality         # Skill instructions degraded in clarity, consistency, or proportionality
             - external_practice_drift  # Skill structure diverges from current LLM instruction best practices
             - documentation_drift  # Documentation (CLAUDE.md, Tier 1 docs) no longer matches implementation reality
+            - structural_critique  # Deductive analysis reveals a founding architectural decision violates principles
           required: true
           description: "Category of observation"
 

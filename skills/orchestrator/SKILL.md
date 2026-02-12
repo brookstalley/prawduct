@@ -39,7 +39,7 @@ Across all stages, the Orchestrator:
 **What to do:**
 
 1. Read `skills/domain-analyzer/SKILL.md`.
-2. Follow the Domain Analyzer's classification process (Steps 1-4): classify shape, domain, and risk profile.
+2. Follow the Domain Analyzer's classification process (Steps 1-4): detect concerns, classify domain, and assess risk profile.
 3. The Domain Analyzer will confirm classification with the user in plain language. Wait for user confirmation.
 4. Update `project-state.yaml` with classification results and initial `user_expertise` inferences from the user's opening message.
 5. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
@@ -81,7 +81,7 @@ Update `current_stage` to "discovery".
 **What to do:**
 
 1. Read `skills/domain-analyzer/SKILL.md`.
-2. Follow the Domain Analyzer's discovery question generation (Step 5): generate tiered questions appropriate to the product's shape, domain, and risk level.
+2. Follow the Domain Analyzer's discovery question generation (Step 5): generate tiered questions appropriate to the product's concerns, domain, and risk level.
 
 3. **Manage the conversation:**
 
@@ -324,7 +324,18 @@ The user has a working product and provides feedback. Handle feedback in lightwe
      2. Update the relevant artifacts (whichever are affected — see `artifact_manifest`).
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
-   - **Directional** (fundamentally different product vision): Flag this explicitly. "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?" If they want to shift, consider whether reclassification (R5.4) is warranted. For now, handle as a major functional change.
+   - **Directional** (fundamentally different product vision): Flag this explicitly. "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?" If they want to shift, consider whether reclassification (R5.4) is warranted. For framework development, follow the Directional Change Protocol below.
+
+   **Directional Change Protocol (framework development)**
+
+   This protocol triggers when a change is classified as **directional** OR modifies **3+ framework files** (skills, templates, docs). It ensures multi-file framework changes receive governance proportionate to their impact. Scale effort with change complexity, not file count alone — renaming a term across 5 files is less complex than restructuring 3 skills.
+
+   1. **Write a plan** in `working-notes/` describing the change, its motivation, affected files, and implementation phases.
+   2. **Plan-stage Critic review.** Before implementing, apply Critic Checks 1 (Generality), 2 (Read-Write Chain), 4 (Skill Coherence), and 7 (Learning Integration) to the plan. This catches structural problems before they're built.
+   3. **Address findings** from plan-stage review before implementing. Blocking findings must be resolved. Warnings should be addressed or explicitly accepted with rationale.
+   4. **Implement in phases.** For multi-phase changes, run a lightweight review between phases: Checks 2 (Read-Write Chain), 4 (Skill Coherence), and 7 (Learning Integration). Capture a brief observation after each phase noting what worked and what surprised you.
+   5. **Final Critic review.** After all changes are complete, run the full Framework Governance review (all checks).
+   6. **Session observation.** Write a `framework_dev` observation for the full implementation, covering what the change accomplished, what governance caught, and what (if anything) slipped through.
 
 3. **Change impact assessment (R5.2).** Before implementing any functional change:
 
@@ -358,7 +369,7 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 At every stage transition, pause and assess: **did the framework serve this product well in the stage just completed?**
 
-**Assess these five dimensions:**
+**Assess these six dimensions:**
 
 | Dimension | Question |
 |-----------|----------|
@@ -367,6 +378,7 @@ At every stage transition, pause and assess: **did the framework serve this prod
 | Applicability | Were any framework-required outputs inapplicable to this product? |
 | Missing guidance | Did you have to improvise because the framework lacked guidance? |
 | Documentation freshness | Did this stage create, modify, or reveal anything that makes existing documentation inaccurate — or expose content that has outlived its original purpose? |
+| Learning completeness | Did this stage create, modify, or remove anything that the observation system should track? Are all new areas observable? |
 
 **Documentation freshness covers two failure modes:** (1) Content that was true but is now wrong — facts changed, capabilities added, files created. (2) Content that is still technically true but serves the wrong purpose — roadmaps for completed work, build instructions for finished phases, temporary guidance that became permanent. Both make documentation misleading. The second is harder to detect because the content passes a "is this accurate?" check while failing a "does this still belong here?" check.
 
@@ -374,14 +386,14 @@ At every stage transition, pause and assess: **did the framework serve this prod
 
 | Stage | Focus |
 |-------|-------|
-| 0 (Intake) | Did shape/domain taxonomy fit? Were risk factors appropriate? Did classification add a new shape or domain not reflected in CLAUDE.md or skill descriptions? |
+| 0 (Intake) | Did concern detection cover this product adequately? Were risk factors appropriate? Did classification reveal a concern dimension not in the taxonomy? |
 | 0.5 (Validation) | Was validation depth proportionate to risk? |
 | 1 (Discovery) | Was question count proportionate? Were the right topics covered? |
 | 2 (Definition) | Were scope and technical decisions at the right level of detail? |
 | 3 (Artifacts) | Were the right artifacts generated? Were review findings appropriate? Do artifact descriptions in CLAUDE.md still match what was generated? |
 | 4 (Build Planning) | Was chunking appropriate? Did build plan translate specs into concrete instructions? |
 | 5 (Building) | Were artifact specs sufficient to build from? Did Critic add value? Right chunk size? Did the build reveal spec descriptions that don't match implementation? |
-| 6 (Iteration) | Was feedback classification accurate? Did change impact assessment help? Did feedback cycles change artifacts in ways not reflected in documentation? |
+| 6 (Iteration) | Was feedback classification accurate? Did change impact assessment help? Did feedback cycles change artifacts in ways not reflected in documentation? For framework dev: did changes preserve learning system completeness? |
 
 **What to do with findings:**
 
@@ -409,7 +421,7 @@ Before transitioning to any new stage, verify that the prerequisites for that st
 **Specific prerequisites by transition:**
 
 ### → Stage 0.5 (Validation)
-- `classification.shape` is set
+- `classification.concerns` has at least one non-null concern
 - `classification.domain` is set
 - `classification.risk_profile.overall` is set
 - `classification.risk_profile.factors` has at least 2 entries with rationale
@@ -435,7 +447,7 @@ This is the highest-stakes transition — discovery becomes production. Check th
 - `product_definition.goals` has at least 1 measurable success criterion
 - `product_definition.nonfunctional` has at least `performance` and `uptime` set
 - `technical_decisions` has at least one decision with rationale (the specific decisions needed depend on the product — check that every choice affecting implementation complexity has been made)
-- For UI applications: `design_decisions.accessibility_approach` is set
+- When `concerns.human_interface` is active: `design_decisions.accessibility_approach` is set
 - `open_questions` has no high-priority items with `waiting_on: "user"` (unresolved user questions block artifact generation)
 
 ### → Stage 4 (Build Planning)
@@ -536,4 +548,19 @@ Phase 1 covers Stages 0 through 3 for low-risk UI applications. Future phases ad
 - [x] Stage 4: Build Planning (Phase 2)
 - [x] Stage 5: Build + Governance Loop (Phase 2)
 - [x] Stage 6: Iteration and feedback integration (Phase 2)
-- [ ] Reclassification (R5.4) — recognizing when the product fundamentally changes shape (Phase 2)
+- [ ] Reclassification (R5.4) — recognizing when the product's active concerns fundamentally change (Phase 2)
+
+### Structural Critique Protocol
+
+Periodically (after every 3 evaluation runs, or on request), apply the framework's principles to its own founding architectural decisions — not just to incremental changes. This is a deductive process: start from principles and research, then question whether existing structures satisfy them.
+
+**Process:**
+
+1. For each major structural decision (concern taxonomy, stage progression, artifact selection, skill boundaries):
+   - Which principles governed this decision?
+   - Does it still satisfy them given current evidence?
+   - Would a different choice better satisfy them given what we now know?
+2. Record findings as `structural_critique` observations in `framework-observations/`.
+3. If a founding decision violates a principle, propose a change through the normal observation → triage → action cycle. Structural critiques do not bypass governance — they feed the same process with a different evidence source.
+
+**Why this exists:** The observation system is inductive (many observations → detect pattern → propose change). But some problems require deductive analysis (principles + research → questioning). A taxonomy built on enumerated categories might never accumulate observations saying "this should be dimensional" — the failure mode is invisible from inside the system. The Structural Critique Protocol fills this gap by periodically questioning foundations, not just changes.

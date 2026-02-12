@@ -25,13 +25,25 @@ classification:
   # May have multiple domains for hybrid products.
   domain: null
 
-  # Product shape. Values: ui-application, api-service, automation-pipeline,
-  # multi-party-platform, hybrid.
-  shape: null
-
-  # For hybrid products only: list the constituent shapes.
-  # Example: [ui-application, api-service]
-  sub_shapes: []
+  # Product concerns — independent dimensions detected from the user's description.
+  # These drive discovery questions, artifact selection, and review focus.
+  # A product may have any combination. null = not applicable.
+  # Each concern, when active, contains a map of relevant properties.
+  concerns:
+    # User-facing interface. type: screen|terminal|voice|spatial|minimal
+    human_interface: null
+    # Runs without user interaction. trigger: scheduled|event-driven|always-on
+    unattended_operation: null
+    # Exposes or consumes APIs. consumers: internal|external|both
+    api_surface: null
+    # Multiple distinct user types. parties: [list of distinct user types]
+    multi_party: null
+    # Runs in a limited environment. type: embedded|mobile-battery|browser-extension|serverless
+    constrained_environment: null
+    # Depends on external services. count: integer; types: [list]
+    external_integrations: null
+    # Handles sensitive information. categories: [PII, financial, health, etc.]
+    sensitive_data: null
 
   # Risk and complexity profile.
   risk_profile:
