@@ -311,6 +311,14 @@ artifact_manifest:
       depended_on_by: []
       last_validated: 2026-02-11
       tier: 1
+    - name: terminal-arcade-game-scenario
+      file_path: tests/scenarios/terminal-arcade-game.md
+      role: test-specification
+      version: 1
+      depends_on: [orchestrator, domain-analyzer, artifact-generator, review-lenses]
+      depended_on_by: []
+      last_validated: 2026-02-12
+      tier: 1
 
 # =============================================================================
 # DEPENDENCY GRAPH
@@ -401,11 +409,26 @@ change_log:
 # =============================================================================
 # BUILD PLAN
 # =============================================================================
-# Framework build plan is tracked in CLAUDE.md V1 Build Order.
-# Not duplicated here — the Orchestrator reads both.
+# The framework is in Stage 6 iteration. Remaining work is tracked here.
+# CLAUDE.md § "Framework Status" summarizes this; this file is the source of truth.
 
 build_plan:
-  strategy: hybrid
+  strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
+  # remaining_work is manually maintained during Stage 6 iteration.
+  # Remove items as they are completed; add items as new work is identified.
+  remaining_work:
+    - item: "Add API/Service product shape"
+      description: "Extend Domain Analyzer, add API templates, add b2b-integration-api test scenario rubric"
+    - item: "Add Multi-Party Platform product shape"
+      description: "Extend Domain Analyzer, add multi-party templates, add two-sided-marketplace test scenario rubric"
+    - item: "Build mechanical enforcement tools"
+      description: "Planned tools: test-integrity-checker, doc-architecture-validator, boundary-checker, spec-compliance-diff, docs-freshness-checker"
+    - item: "Orchestrator sophistication"
+      description: "Opinionated pushback (R1.5), prior art awareness (R1.7), pacing sensitivity (R1.8), reclassification (R5.4)"
+    - item: "Remaining test scenarios"
+      description: "consumer-mobile-app (needs shape work first)"
+    - item: "Full V1 validation"
+      description: "All scenarios passing end-to-end, framework fully self-governing"
   chunks: []
   current_chunk: null
   governance_checkpoints: []
@@ -418,11 +441,12 @@ build_state:
   source_root: "."
 
   test_tracking:
-    test_count: 2
+    test_count: 3
     assertion_count: 0  # Scenario-based evaluation, not unit tests
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md
+      - tests/scenarios/terminal-arcade-game.md
     history: []
 
   spec_compliance:

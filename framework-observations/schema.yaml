@@ -85,6 +85,7 @@ observation_entry:
             - critic_gap            # Critic missed something found later
             - skill_quality         # Skill instructions degraded in clarity, consistency, or proportionality
             - external_practice_drift  # Skill structure diverges from current LLM instruction best practices
+            - documentation_drift  # Documentation (CLAUDE.md, Tier 1 docs) no longer matches implementation reality
           required: true
           description: "Category of observation"
 

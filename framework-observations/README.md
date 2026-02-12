@@ -48,7 +48,7 @@ session_context:
   scenario_name: [if evaluation]
   framework_version: git-sha
 observations:
-  - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction | artifact_insufficiency | spec_ambiguity | deployment_friction | critic_gap | skill_quality | external_practice_drift
+  - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction | artifact_insufficiency | spec_ambiguity | deployment_friction | critic_gap | skill_quality | external_practice_drift | documentation_drift
     stage: [0, 0.5, 1, 2, 3, 4, 5, 6, or "meta"]
     severity: note | warning | blocking
     description: "Generalized statement (not product-specific)"
@@ -141,6 +141,11 @@ The Orchestrator's Session Resumption checks `observation_backlog` and surfaces 
 - Skill instructions have inconsistent voice or structure (type: `skill_quality`)
 - Skill sections contradict each other (type: `skill_quality`)
 - Skill structure diverges from current LLM instruction best practices documented in `docs/skill-authoring-guide.md` (type: `external_practice_drift`)
+- CLAUDE.md project structure doesn't match actual files on disk (type: `documentation_drift`)
+- Tier 1 document describes behavior that doesn't match implementation (type: `documentation_drift`)
+- Cross-references point to renamed, moved, or deleted content (type: `documentation_drift`)
+- Description of a component's capabilities is outdated, e.g., "four lenses" when five exist (type: `documentation_drift`)
+- Document contains planning artifacts that should have been converted to status descriptions after the planned work completed (type: `documentation_drift`)
 
 **Don't capture** (not substantive — no actionable framework change):
 - Generic approval: "Everything worked fine", "No concerns", "Process was smooth"
@@ -174,7 +179,7 @@ Never mark an observation as `acted_on` without a corresponding skill change com
 Thresholds are tiered by observation type. Meta/process observations need fewer occurrences to trigger action because they indicate systemic issues. Build-phase observations sit in between. Product behavior observations need the most data before generalizing.
 
 ### Meta observations (threshold: 2+)
-Types: `process_friction`, `rubric_issue`, `skill_quality`, `external_practice_drift`
+Types: `process_friction`, `rubric_issue`, `skill_quality`, `external_practice_drift`, `documentation_drift`
 
 These indicate problems with how the framework operates, not what it produces. Two occurrences is sufficient signal — process issues tend to be structural, not coincidental.
 

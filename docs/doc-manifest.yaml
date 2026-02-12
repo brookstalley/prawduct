@@ -4,9 +4,14 @@
 # Per HR6: every document must have a tier, an owner, and a location.
 # Per R3.5: exactly one canonical location per topic, no duplication.
 #
+# Enforcement: Session Resumption checks last_validated dates.
+# Any Tier 1 doc not validated in >30 days is flagged during framework dev sessions.
+# "Validated" means: confirmed content matches current implementation.
+# Update last_validated when you verify a document is current, not just when you edit it.
+#
 # Tier: 1 (Source of Truth)
 # Owner: Framework developers
-# Last updated: 2026-02-11
+# Last updated: 2026-02-12
 
 tier_1_documents:
   - path: docs/vision.md
@@ -37,17 +42,17 @@ tier_1_documents:
   - path: docs/doc-manifest.yaml
     purpose: "This file — registry of all Tier 1 documents"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-12
 
   - path: CLAUDE.md
-    purpose: "Entry point: routing, project structure, build order, conventions, eval recording format"
+    purpose: "Entry point: routing, project structure, framework status, conventions, eval recording format"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-12
 
   - path: skills/orchestrator/SKILL.md
     purpose: "LLM instructions for conversation flow, stage management, user calibration, framework reflection"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-12
 
   - path: skills/domain-analyzer/SKILL.md
     purpose: "LLM instructions for product classification, discovery questions, risk profiling"
@@ -60,9 +65,9 @@ tier_1_documents:
     last_validated: 2026-02-11
 
   - path: skills/review-lenses/SKILL.md
-    purpose: "LLM instructions for four-perspective evaluation (product, design, architecture, skeptic)"
+    purpose: "LLM instructions for five-perspective evaluation (product, design, architecture, skeptic, testing)"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-12
 
   - path: skills/builder/SKILL.md
     purpose: "LLM instructions for code generation: executes build plan chunks, writes tests, flags spec gaps"
@@ -72,7 +77,7 @@ tier_1_documents:
   - path: skills/critic/SKILL.md
     purpose: "LLM instructions for framework governance and product governance (spec compliance, test integrity, scope violation)"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-12
 
   - path: templates/project-state.yaml
     purpose: "Template for user project master state file — all skills read/write this (includes build_plan, build_state, iteration_state)"
@@ -87,12 +92,12 @@ tier_1_documents:
   - path: framework-observations/README.md
     purpose: "Documentation for the observation capture system: schema, guidelines, pattern detection thresholds"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-12
 
   - path: framework-observations/schema.yaml
     purpose: "YAML schema definition for observation entries"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-12
 
   - path: .claude/settings.json
     purpose: "Project-level Claude Code settings: hooks for Critic governance enforcement (PreToolUse gate, PostToolUse advisory)"
