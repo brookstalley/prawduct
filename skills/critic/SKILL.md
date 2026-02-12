@@ -45,6 +45,8 @@ Apply these checks to every framework modification. Each check is a thinking pri
 - If a modification strengthens a general principle so the LLM naturally surfaces the concern for any relevant product, it passes.
 - **Test:** Mentally apply the modified skill to three very different products (e.g., a family utility, a B2B API, a data pipeline). Does the modification help with all three, or only the product that triggered it?
 
+**Discriminating test:** Apply the modification to three products from the test scenarios (e.g., family utility, B2B API, data pipeline). If it actively misleads for any product → **blocking**. If it's less useful for some but not harmful → **warning**. If it's slightly specific but doesn't harm generality → **note**.
+
 **Severity guide:**
 - Enumerated concern that doesn't generalize → **blocking**
 - General principle that's worded in a way that favors one product type → **warning**
@@ -99,10 +101,32 @@ Apply these checks to every framework modification. Each check is a thinking pri
 - Instructions should be imperative ("do X") not descriptive ("the system does X").
 - Instructions should be unambiguous — if two reasonable LLMs might interpret the instruction differently and produce meaningfully different outputs, it's unclear.
 - Instructions should not contradict each other within or across skills.
+- Instructions should conform to the structural standards in `docs/skill-authoring-guide.md`. Specifically check for S1 violations (multi-level conditionals in prose), S2 violations (subjective thresholds without concrete definitions), and S6 violations (unresolved contradictions between sections).
 
 **Severity guide:**
 - Ambiguous instruction that could produce wrong behavior → **warning**
+- Structural standard violation (S1, S2, S6) → **warning**
 - Slightly unclear wording, unlikely to cause problems → **note**
+
+#### Check 6: Cumulative Health
+
+**Principle:** Skills are living documents that accumulate changes. Individual changes may each be sound, but their aggregate can degrade instruction quality.
+
+**Ask:** Is this skill, as a whole, still clear, proportionate, and internally consistent?
+
+**When it runs:** Only for substantial modifications (not typos/formatting). Evaluate the whole file, not just the diff.
+
+**What to evaluate:**
+- **Length proportionality:** Is the skill proportionate to its responsibility? A focused skill that has grown past its natural size may have accumulated redundancy or buried instructions.
+- **Voice consistency:** Are instructions consistently imperative throughout, or has the skill drifted between imperative, descriptive, and conditional?
+- **Structural clarity:** Are conditions and decisions easy to scan? Key signals: deeply nested conditions, decision points buried in paragraphs, checklists embedded in prose.
+- **Cross-section consistency:** Do different sections contradict each other? New sections added without restructuring can create internal conflicts.
+
+**Severity guide:**
+- Sections contradict each other → **warning**
+- Key instructions buried in paragraphs requiring re-reading → **warning**
+- Voice inconsistency within the same section → **note**
+- Overall length growing without clear justification → **note**
 
 ### Output Format
 
@@ -123,7 +147,9 @@ Apply these checks to every framework modification. Each check is a thinking pri
 [Total findings by severity. Whether the changes are ready to commit.]
 ```
 
-If there are no findings, say so explicitly: "No issues found. Changes maintain generality, completeness, proportionality, coherence, and clarity."
+**Proportionality for minor changes:** For minor changes (typos, formatting, small clarifications that don't change instructional logic), a quick assessment across all checks is sufficient. Full-depth analysis is required for changes that modify instructional behavior, add new instructions, or change cross-skill contracts.
+
+If there are no findings, say so explicitly: "No issues found. Changes maintain generality, completeness, proportionality, coherence, clarity, and cumulative health."
 
 ## Mode 2: Product Governance
 
@@ -258,7 +284,7 @@ The following Critic sub-components are defined in the HLD but deferred within t
 
 ## Extending This Skill
 
-- [x] Framework Governance: generality, read-write chains, proportionality, coherence, clarity (Phase 2 start)
+- [x] Framework Governance: generality, read-write chains, proportionality, coherence, clarity, cumulative health (Phase 2 start)
 - [x] Product Governance: spec compliance + test integrity + scope violation (Phase 2)
 - [ ] Product Governance: architectural consistency (Phase 2 widening)
 - [ ] Product Governance: documentation controller (Phase 2 widening)

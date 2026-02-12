@@ -83,6 +83,8 @@ observation_entry:
             - spec_ambiguity        # Builder had to guess between interpretations of a spec
             - deployment_friction   # Deployment harder than ops spec suggested
             - critic_gap            # Critic missed something found later
+            - skill_quality         # Skill instructions degraded in clarity, consistency, or proportionality
+            - external_practice_drift  # Skill structure diverges from current LLM instruction best practices
           required: true
           description: "Category of observation"
 

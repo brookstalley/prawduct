@@ -300,6 +300,14 @@ This process transforms evaluation observations into framework improvements. Bas
    - Is this one instance or a pattern? (Learn Slowly principle)
    - Does this violate a Hard Rule or just a quality standard?
 
+**2b. Assess skill instruction quality.** During evaluation, the evaluator follows skill instructions to produce outputs. After recording product-level results, assess the instructions themselves:
+   - Were any skill instructions ambiguous — did you have to guess the intent?
+   - Were any instructions hard to find — buried in paragraphs or nested conditionals?
+   - Did any instructions contradict each other?
+   - Did any skill feel disproportionately long for its purpose?
+
+   If yes to any: capture as observation (type: `skill_quality`, stage: "meta"). This ensures every evaluation run also audits instruction quality, catching cumulative drift that per-change reviews miss.
+
 **3. Generality test**
    - Mentally apply proposed fix to other product shapes
    - Check: Does this improve discovery for family-utility? Background pipeline? B2B API? Multi-party marketplace?
@@ -715,6 +723,42 @@ notes: ""                              # Free-form observations, limitations, co
 - [Should this have been interactive instead of simulation?]
 - [Which unable-to-evaluate criteria were most costly?]
 ```
+
+---
+
+## G. External Best Practice Review
+
+### Purpose
+
+Skill instructions are the framework's primary interface with LLMs. External research on prompt engineering and LLM instruction design evolves continuously. This section defines when and how to compare skills against current best practices, ensuring the framework doesn't drift from effective instruction patterns.
+
+### Review Triggers
+
+**Scheduled (during evaluation):** During any evaluation that includes step 2b (skill instruction quality assessment), additionally check standards S1-S6 from `docs/skill-authoring-guide.md` against the skills exercised in that evaluation. Record violations as observations (type: `external_practice_drift` or `skill_quality` depending on whether the issue is structural drift or general quality degradation).
+
+**Threshold (observation-driven):** When 2+ observations of type `skill_quality` or `external_practice_drift` accumulate against the same skill, trigger a focused review of that skill against all standards in the authoring guide.
+
+**Calendar (periodic):** Every 3 months — or after major model capability changes (new model family, significant behavior shifts) — conduct a full review of all skills against current external research. This involves:
+1. Gathering current best practices from authoritative sources (Anthropic docs, peer-reviewed prompt engineering research, major platform guides).
+2. Comparing gathered practices against `docs/skill-authoring-guide.md` standards.
+3. Updating the guide if new patterns are identified (add standards, update provenance links, revise thresholds).
+4. Auditing all skills against the updated guide.
+5. Recording findings as observations.
+6. Updating `Last external review` date in the authoring guide.
+
+### Procedure
+
+1. **Gather practices.** Consult current sources: Anthropic's prompt engineering documentation, industry guides from major LLM platforms, and any new research on instruction-following accuracy. Focus on structural patterns (how to write instructions) rather than domain-specific techniques.
+
+2. **Compare against guide.** For each gathered practice, check whether `docs/skill-authoring-guide.md` already covers it. If not, assess whether it's relevant to skill authoring (some practices apply to user-facing prompts but not to system instructions).
+
+3. **Update guide.** Add new standards or refine existing ones. Every standard must include: a concrete test, a "why" rationale, and a "derived from" provenance link.
+
+4. **Audit skills.** Apply updated standards to each skill file. Use the same severity framework as the Critic: blocking (would cause wrong behavior), warning (reduces instruction clarity), note (minor improvement opportunity).
+
+5. **Record observations.** Write findings to `framework-observations/` as type `external_practice_drift` with specific evidence and proposed actions.
+
+6. **Act on findings.** Follow the standard observation lifecycle: findings at meta threshold (2+) trigger skill updates through the normal learning extraction process (§ C).
 
 ---
 

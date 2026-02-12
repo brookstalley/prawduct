@@ -48,7 +48,7 @@ session_context:
   scenario_name: [if evaluation]
   framework_version: git-sha
 observations:
-  - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction | artifact_insufficiency | spec_ambiguity | deployment_friction | critic_gap
+  - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction | artifact_insufficiency | spec_ambiguity | deployment_friction | critic_gap | skill_quality | external_practice_drift
     stage: [0, 0.5, 1, 2, 3, 4, 5, 6, or "meta"]
     severity: note | warning | blocking
     description: "Generalized statement (not product-specific)"
@@ -137,6 +137,10 @@ The Orchestrator's Session Resumption checks `observation_backlog` and surfaces 
 - Builder flagged spec ambiguity — a spec could mean two things and Builder couldn't determine which (type: `spec_ambiguity`)
 - Deployment was harder than the operational spec suggested (type: `deployment_friction`)
 - Critic missed an issue that was found later during build or iteration (type: `critic_gap`)
+- Skill instructions have grown disproportionate to their responsibility (type: `skill_quality`)
+- Skill instructions have inconsistent voice or structure (type: `skill_quality`)
+- Skill sections contradict each other (type: `skill_quality`)
+- Skill structure diverges from current LLM instruction best practices documented in `docs/skill-authoring-guide.md` (type: `external_practice_drift`)
 
 **Don't capture** (not substantive — no actionable framework change):
 - Generic approval: "Everything worked fine", "No concerns", "Process was smooth"
@@ -144,6 +148,7 @@ The Orchestrator's Session Resumption checks `observation_backlog` and surfaces 
 - Restatements of design: "Framework asked discovery questions" (yes, that's what it does)
 - Product-specific details: user preferences, implementation choices, or anything that names a specific product
 - Vague assessments without actionable insight: "Framework could be better"
+- Subjective style preferences: "I'd write this differently" (no actionable framework change)
 
 **Examples:**
 
@@ -169,7 +174,7 @@ Never mark an observation as `acted_on` without a corresponding skill change com
 Thresholds are tiered by observation type. Meta/process observations need fewer occurrences to trigger action because they indicate systemic issues. Build-phase observations sit in between. Product behavior observations need the most data before generalizing.
 
 ### Meta observations (threshold: 2+)
-Types: `process_friction`, `rubric_issue`
+Types: `process_friction`, `rubric_issue`, `skill_quality`, `external_practice_drift`
 
 These indicate problems with how the framework operates, not what it produces. Two occurrences is sufficient signal — process issues tend to be structural, not coincidental.
 

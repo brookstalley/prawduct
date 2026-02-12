@@ -106,7 +106,7 @@ The V1 Build Order below provides build phase context. The Key Principles, Testi
 ### After modifying skills, templates, or principles:
 **Critic governance is enforced mechanically.** A Claude Code hook blocks `git commit` when framework files are staged without Critic evidence, and edit hooks remind you as you modify framework files. But don't wait for the gate — run the Critic as a **separate, final step** in any multi-file framework change, not as a sub-step of another work item. The Critic should run after all modifications are complete and before reporting results to the user.
 
-To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 5 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, and cross-skill inconsistencies. Include "Framework Governance Review" in the commit message so the gate recognizes it.
+To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 6 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, cross-skill inconsistencies, and cumulative skill health drift. Include "Framework Governance Review" in the commit message so the gate recognizes it.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 

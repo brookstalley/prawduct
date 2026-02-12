@@ -114,6 +114,11 @@ tier_1_documents:
     owner: framework
     last_validated: 2026-02-11
 
+  - path: docs/skill-authoring-guide.md
+    purpose: "Structural and health standards for writing LLM skill instructions, with provenance to external best practices"
+    owner: framework
+    last_validated: 2026-02-12
+
   - path: templates/eval-result-template.md
     purpose: "Template for recording evaluation results with YAML frontmatter and per-component rubric tables"
     owner: framework

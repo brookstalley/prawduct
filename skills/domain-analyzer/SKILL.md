@@ -64,7 +64,7 @@ Assess overall risk to determine discovery depth. Evaluate these factors:
 | **Regulatory exposure** | None | Basic privacy (GDPR email) | HIPAA, COPPA, PCI, SOX |
 | **Execution quality bar** | Functional is sufficient | Quality matters for credibility or retention | Quality is the primary differentiator or success factor |
 
-The execution quality bar captures products where the stakes aren't in data or infrastructure but in how well the thing is made. A personal site for a job search, a client-facing dashboard, or a consumer onboarding flow may be technically simple but have high consequences if the execution is mediocre. This factor doesn't inflate overall risk (it shouldn't trigger deeper discovery about architecture) but it should influence design attention and review emphasis.
+The execution quality bar captures products where the stakes aren't in data or infrastructure but in how well the thing is made. A personal site for a job search, a client-facing dashboard, or a consumer onboarding flow may be technically simple but have high consequences if the execution is mediocre.
 
 Overall risk is the highest level among factors that matter for this product. Don't inflate risk — a family app with no sensitive data is low risk even if the user is ambitious about features. Note: a high execution quality bar does not by itself raise overall risk level. It is tracked as a factor so that downstream stages (especially artifact generation and review) can calibrate design attention appropriately, but it does not drive discovery depth the way data sensitivity or technical complexity do.
 
@@ -112,9 +112,10 @@ Total discovery questions must be proportionate to risk:
 | Medium | 8-15 questions | 2-4 rounds |
 | High | 15-25 questions | 3-6 rounds |
 
-This is a budget, not a quota. Stop earlier if you have enough to define the product. Never pad questions to fill the budget.
+Two rules govern the budget:
 
-Proactive expertise items (Tier 3 and the Proactive Expertise section below) are surfaced as statements, inferences, or recommendations — not counted as questions against this budget. However, if you phrase a proactive item as a question (e.g., "When you say 'scores,' do you mean..."), it counts against the budget. Prefer inference-confirm framing: "I'm assuming 'scores' means point totals per game — sound right?"
+1. **The budget is a ceiling, not a quota.** Stop when you have enough to define the product. Never pad questions to fill the budget.
+2. **Proactive expertise counts against the budget only if phrased as a question.** Tier 3 items and Proactive Expertise items surfaced as statements, inferences, or recommendations are free. If you phrase one as a question (e.g., "When you say 'scores,' do you mean..."), it counts. Prefer inference-confirm framing: "I'm assuming 'scores' means point totals per game — sound right?"
 
 ### Discovery Questions: UI Application
 
@@ -147,16 +148,16 @@ Questions are tiered by decision impact. Start with Tier 1. Move to Tier 2 only 
 
 #### Tier 1 — Must Ask (highest impact on pipeline design)
 
-1. **Data sources and triggers:** What data does this consume, and what triggers processing? This determines the pipeline's input boundary, scheduling model, and external dependency surface. Frame around the user's language — "which sites/feeds/APIs" not "enumerate your data sources."
-2. **Processing logic:** What happens between input and output? What transformation, filtering, enrichment, or analysis occurs? This is the pipeline's core — get enough detail to identify distinct processing stages, but don't design the stages here.
-3. **Output and consumers:** Where does the result go, and who or what consumes it? This determines the output boundary, format requirements, and delivery reliability needs.
+1. **Data sources and triggers:** What data does this consume, and what triggers processing? Ask this to determine the pipeline's input boundary, scheduling model, and external dependency surface. Frame around the user's language — "which sites/feeds/APIs" not "enumerate your data sources."
+2. **Processing logic:** What happens between input and output? What transformation, filtering, enrichment, or analysis occurs? Ask this to identify distinct processing stages. Get enough detail to identify stages, but don't design them here.
+3. **Output and consumers:** Where does the result go, and who or what consumes it? Ask this to determine the output boundary, format requirements, and delivery reliability needs.
 
 #### Tier 2 — Ask If Not Already Inferable
 
-4. **Failure visibility:** How would you know if this stopped working? This surfaces the user's expectations about monitoring and is the entry point for the critical silent-failure concern. Many users haven't considered this — the question itself brings expertise.
-5. **Configuration and change frequency:** What aspects of this pipeline will need to change over time (sources, filters, schedule, output format)? How often? This drives configuration design complexity.
-6. **Cost and resource constraints:** What's the budget for running this? Any constraints on where it runs or what services it can use? Especially important for pipelines that may call paid APIs (LLMs, data enrichment services) on every run.
-7. **Data volume and throughput:** How much data flows through this per run? Is it 10 items or 10,000? This affects architecture choices (batch vs. stream, storage needs, timeout windows) but may be inferable from context.
+4. **Failure visibility:** How would you know if this stopped working? Ask this to surface monitoring expectations and introduce the critical silent-failure concern. Many users haven't considered this — the question itself brings expertise.
+5. **Configuration and change frequency:** What aspects of this pipeline will need to change over time (sources, filters, schedule, output format)? How often? Ask this to determine configuration design complexity.
+6. **Cost and resource constraints:** What's the budget for running this? Any constraints on where it runs or what services it can use? Ask this especially for pipelines that call paid APIs (LLMs, data enrichment services) on every run.
+7. **Data volume and throughput:** How much data flows through this per run? Is it 10 items or 10,000? Ask this to determine architecture choices (batch vs. stream, storage needs, timeout windows). May be inferable from context.
 
 #### Tier 3 — Surface as Considerations, Don't Ask
 
@@ -193,25 +194,14 @@ When domain-specific concerns apply, add them to the question set (within the bu
 
 ### Proactive Expertise
 
-After generating questions, identify considerations the user is unlikely to raise on their own. These depend on the user's inferred expertise level:
+After generating questions, identify considerations the user is unlikely to raise on their own. Adapt based on the user's inferred expertise level:
 
-**For non-technical users (inferred from plain language, no jargon, focus on "what" not "how"):**
-- Avoid architecture questions entirely. Make reasonable choices and state them as assumptions.
-- Frame technical decisions in user-facing terms: "Should this work without internet?" not "Do you need offline-first architecture with local-first sync?"
-- Help them think through their data model in concrete terms: "When you say 'scores,' do you mean just who won, or the actual point totals, or game-by-game history?"
-
-**For technical users (inferred from jargon, specific technology mentions, architecture opinions):**
-- Engage at their level but still lead with product questions, not technology questions.
-- Challenge technology assumptions if they seem premature: "You mentioned wanting to use [X] — let's nail down what the app needs to do first, then see if that's the right fit."
-
-**For automation products with non-technical users (inferred from plain language, focus on "what it should do"):**
-- Avoid infrastructure questions. Don't ask where it should be deployed or what scheduler to use.
-- Frame operationally: "How would you know if this stopped working?" not "What monitoring infrastructure do you need?"
-- Make deployment and scheduling decisions as assumptions and state them plainly.
-
-**For automation products with technical users (inferred from jargon, mentions of specific tools or services):**
-- Engage on infrastructure choices but don't assume ops/SRE expertise. A developer comfortable with APIs may not have experience with cron jobs, serverless functions, or monitoring tools.
-- Challenge premature infrastructure decisions the same way you would premature technology decisions: "You mentioned wanting to use [X] — let's nail down what the pipeline needs to do first."
+| User Profile | Directive |
+|-------------|-----------|
+| **Non-technical user** (plain language, no jargon, focus on "what" not "how") | Frame in user-facing terms, make tech decisions as assumptions. "Should this work without internet?" not "Do you need offline-first architecture?" Help them think through data model concretely: "When you say 'scores,' do you mean just who won, or point totals, or game-by-game history?" |
+| **Technical user** (jargon, specific technology mentions, architecture opinions) | Engage at their level but lead with product questions, not technology questions. Challenge premature technology assumptions: "You mentioned [X] — let's nail down what the app needs first, then see if that fits." |
+| **Non-technical + automation** (plain language, focus on "what it should do") | Avoid infrastructure questions. Frame operationally: "How would you know if this stopped working?" Make deployment and scheduling decisions as assumptions and state them plainly. |
+| **Technical + automation** (jargon, mentions of specific tools or services) | Engage on infrastructure but don't assume ops/SRE expertise. A developer comfortable with APIs may not have cron/serverless/monitoring experience. Challenge premature infrastructure decisions the same way: "Let's nail down what the pipeline needs first." |
 
 **For all users, regardless of expertise:**
 - Data model clarity: help the user think through what entities exist, how they relate, and how they're identified. Follow each entity to its implications — if users create an entity, how is it referenced later? If entities are shared, how do participants find or distinguish them? If an entity represents a person, how is identity established? The goal is to surface the structural concerns that are invisible during casual conversation but cause real problems during implementation.

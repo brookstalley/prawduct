@@ -45,11 +45,11 @@ For each chunk, follow these steps in order:
 
 ### Step 1: Read and Understand
 
-Read the chunk specification and all artifacts it consumes. Before writing any code, verify:
+Read the chunk specification and all artifacts it consumes. Before writing any code, verify all three conditions hold:
 
-- Every deliverable listed in the chunk is traceable to an artifact specification.
-- Every acceptance criterion has a corresponding test scenario in `test-specifications.md`.
-- No deliverable requires a decision not already made in the artifacts or build plan.
+1. Every deliverable listed in the chunk is traceable to an artifact specification.
+2. Every acceptance criterion has a corresponding test scenario in `test-specifications.md`.
+3. No deliverable requires a decision not already made in the artifacts or build plan.
 
 If any verification fails, raise a flag (see Flags above) and wait for resolution.
 
@@ -76,7 +76,7 @@ Write the implementation for this chunk, following the artifacts exactly:
 Run the full test suite (not just tests for this chunk). All tests must pass.
 
 - If a test from the current chunk fails, fix the implementation.
-- If a test from a previous chunk fails (regression), fix the regression before proceeding. Never disable or weaken a previous test to make a new chunk work (HR1).
+- If a test from a previous chunk fails (regression), fix the regression before proceeding. Never disable or weaken a previous test to make a new chunk work (HR1: No Test Corruption — see docs/principles.md).
 - If tests cannot pass because of an artifact gap, raise an `artifact_insufficiency` flag.
 
 ### Step 5: Update Project State
@@ -108,7 +108,7 @@ Do not write application code in the scaffold chunk. Its only deliverables are p
 
 ## Proportionality
 
-The Builder applies proportionality to **how** it builds, not **what** — the "what" comes from artifacts. Proportionality guidance by risk level:
+The Builder follows the build plan for **what** to build, and applies proportionality to **structural choices not specified in the plan** (file organization, abstraction depth, styling approach). Proportionality guidance by risk level:
 
 **Low-risk products (family utility, personal tool):**
 - Simple file structure. Flat is better than nested for small apps.

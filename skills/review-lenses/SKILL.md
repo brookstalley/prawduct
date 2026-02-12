@@ -194,50 +194,19 @@ For a low-risk utility like a family score tracker, the review should be **propo
 
 ## Applying Lenses to Automation/Pipeline Products
 
+The following adjustments modify the general five-lens process described above for automation/pipeline products. Read the general lens descriptions first.
+
 For automation/pipeline products, the lenses shift focus from user-facing concerns to operational concerns. The core question changes from "will users understand this?" to "will this run reliably unattended?"
 
-### Product Lens (Automation)
+### Automation Adjustments by Lens
 
-- Does the automation scope match the real manual process it replaces? Is the boundary correct — not automating too much or too little?
-- Are the pipeline stages the right decomposition of the problem?
-- Are success criteria measurable for a headless system? ("Digest delivered by 7 AM" is measurable. "Works well" is not.)
-- Is the filtering/processing logic well-defined enough to implement, or is it vague ("interesting articles")?
-
-### Design Lens (Automation)
-
-The Design Lens has limited but real applicability for automations. It does NOT evaluate screens, navigation, or visual design. It evaluates:
-
-- **Configuration UX:** How does the operator change settings? Is the config format clear? Are error messages helpful when config is invalid?
-- **Output clarity:** Is the pipeline's output (Slack message, email digest, report) well-structured and easy to scan? Output format is the pipeline's "interface."
-- **Observability UX:** Can the operator easily check whether the pipeline is healthy? Is status information accessible without digging through logs?
-- **Error communication:** When something goes wrong, does the alert/notification make it clear what happened and what to do?
-
-### Architecture Lens (Automation)
-
-- **Stage isolation:** Can each pipeline stage fail independently without cascading? Is there appropriate error handling between stages?
-- **Deployment appropriateness:** Is the deployment model (serverless, cron job, container, etc.) appropriate for the pipeline's execution pattern and cost profile?
-- **Resource efficiency:** Will the pipeline consume reasonable compute, memory, and network resources for what it does? Any risk of runaway costs from a tight loop or unbounded data fetch?
-- **Operational complexity budget:** Is the infrastructure proportionate to the problem? A side project RSS aggregator doesn't need Kubernetes.
-
-### Skeptic Lens (Automation)
-
-The Skeptic Lens must always raise at least one finding in each of these two categories for automation products:
-
-- **Silent failure scenarios:** What happens when the pipeline fails and nobody notices? At least one finding must address how failures surface (or don't). Example: "If all RSS feeds return empty responses due to a format change, the pipeline will report 'no articles found' — indistinguishable from a day with genuinely no new content."
-- **External dependency resilience:** What happens when external services (APIs, feeds, delivery targets) are down, slow, or rate-limited? At least one finding must address external dependency failure. Example: "If Slack's API is rate-limited during morning peak, the digest may be delayed or lost with no retry."
-
-Additionally, look for:
-- **Configuration drift:** As the user changes config over time, what could go wrong? Could an invalid filter exclude everything?
-- **Cost creep:** Are there per-invocation costs (LLM API calls, data enrichment services) that could add up unexpectedly?
-
-### Testing Lens (Automation)
-
-In addition to the general Testing Lens criteria:
-
-- Every pipeline stage has at least one failure mode test.
-- **Silent failure detection:** A test that verifies the system distinguishes "ran successfully with no results" from "didn't run."
-- **Partial success:** A test that verifies behavior when some sources succeed and others fail.
-- **Configuration validation:** A test that verifies behavior with invalid or missing configuration.
+| Lens | Automation-specific focus |
+|------|--------------------------|
+| **Product** | Evaluate automation scope vs. the manual process it replaces (boundary correctness). Check that success criteria are measurable for a headless system ("Digest delivered by 7 AM" not "Works well"). Check filtering/processing logic is concrete enough to implement. |
+| **Design** | Does NOT evaluate screens or visual design. Evaluates: configuration UX (clear format, helpful error messages), output clarity (the pipeline's output IS its interface), observability UX (can the operator check health without digging through logs?), and error communication (do alerts explain what happened and what to do?). |
+| **Architecture** | Evaluate stage isolation (can stages fail independently?), deployment appropriateness for the execution pattern and cost profile, resource efficiency (runaway cost risk from tight loops or unbounded fetches?), and operational complexity budget (infrastructure proportionate to problem?). |
+| **Skeptic** | **Must always raise at least one silent-failure finding** (what happens when the pipeline fails and nobody notices?) **and at least one external-dependency-resilience finding** (what happens when services are down, slow, or rate-limited?). Also look for: configuration drift risk and cost creep from per-invocation API costs. |
+| **Testing** | In addition to general criteria: every pipeline stage needs at least one failure mode test. Required automation-specific tests: silent failure detection (distinguish "no results" from "didn't run"), partial success (some sources fail, others succeed), and configuration validation (invalid/missing config). |
 
 ### Proportionality for Automation Reviews
 
