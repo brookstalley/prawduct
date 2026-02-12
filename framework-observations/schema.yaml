@@ -150,6 +150,7 @@ observation_entry:
             - triaged            # Reviewed, decision recorded in observation_backlog
             - requires_pattern   # Seen 2-3 times, needs more data
             - acted_on           # Skill updated to address this
+            - archived           # Terminal: file moved to archive/ directory
           required: true
           default: noted
           description: "Tracking status of this observation"

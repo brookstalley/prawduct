@@ -61,7 +61,7 @@ if not files:
     sys.exit(0)
 
 # Tiered thresholds
-META_TYPES = {'process_friction', 'rubric_issue'}
+META_TYPES = {'process_friction', 'rubric_issue', 'skill_quality', 'external_practice_drift', 'documentation_drift', 'structural_critique'}
 BUILD_TYPES = {'artifact_insufficiency', 'spec_ambiguity', 'deployment_friction', 'critic_gap'}
 
 def get_threshold(obs_type):
@@ -88,20 +88,20 @@ for f in files:
     except:
         continue
 
-# Group by type, filter to un-acted (noted or requires_pattern)
+# Group by type, filter to active (non-terminal: not acted_on or archived)
 from collections import defaultdict
 by_type = defaultdict(list)
 for obs in all_obs:
     status = obs.get('status', 'noted')
-    if status in ('noted', 'requires_pattern'):
+    if status not in ('acted_on', 'archived'):
         by_type[obs.get('type', 'unknown')].append(obs)
 
-# Find actionable patterns (count >= threshold for that type)
+# Find actionable patterns (active count >= threshold for that type)
 actionable = []
 for obs_type, observations in sorted(by_type.items()):
-    total_of_type = sum(1 for o in all_obs if o.get('type') == obs_type)
+    active_count = len(observations)
     threshold = get_threshold(obs_type)
-    if total_of_type >= threshold:
+    if active_count >= threshold:
         # Collect unique proposed actions and affected skills
         actions = []
         skills = set()
@@ -111,10 +111,11 @@ for obs_type, observations in sorted(by_type.items()):
                 actions.append(action)
             for s in obs.get('_skills', []):
                 skills.add(s)
+        total_of_type = sum(1 for o in all_obs if o.get('type') == obs_type)
         actionable.append({
             'type': obs_type,
+            'active': active_count,
             'total': total_of_type,
-            'unacted': len(observations),
             'threshold': threshold,
             'skills': sorted(skills),
             'actions': actions,
@@ -124,7 +125,7 @@ for obs_type, observations in sorted(by_type.items()):
 if actionable:
     for item in actionable:
         tier = 'meta' if item['type'] in META_TYPES else ('build' if item['type'] in BUILD_TYPES else 'product')
-        print(f\"  PATTERN: {item['type']} ({item['total']} total, {item['unacted']} un-acted, {tier} threshold: {item['threshold']}+)\")
+        print(f\"  PATTERN: {item['type']} ({item['active']} active of {item['total']} total, {tier} threshold: {item['threshold']}+)\")
         if item['skills']:
             print(f\"    Affected skills: {', '.join(item['skills'])}\")
         for action in item['actions']:
@@ -286,6 +287,118 @@ except:
     fi
 fi
 
+# --- 5. Infrastructure Health ---
+
+infra_warnings=0
+echo "## Infrastructure Health"
+
+infra_output=$(python3 -c "
+import yaml, os, sys, glob
+from datetime import datetime, timedelta
+
+obs_dir = '$OBS_DIR'
+archive_dir = os.path.join(obs_dir, 'archive')
+working_notes_dir = os.path.join('$REPO_ROOT', 'working-notes')
+warnings = 0
+
+# --- Observation directory ---
+active_files = [f for f in glob.glob(os.path.join(obs_dir, '*.yaml'))
+                if not f.endswith('schema.yaml')]
+archived_files = glob.glob(os.path.join(archive_dir, '*.yaml')) if os.path.isdir(archive_dir) else []
+
+print(f'  framework-observations/: {len(active_files)} active files, {len(archived_files)} archived')
+
+# Warn if too many active files
+if len(active_files) > 50:
+    print(f'  WARNING: {len(active_files)} active observation files (threshold: 50). Consider archiving resolved files.')
+    warnings += 1
+
+# --- Archive backlog ---
+archivable = 0
+for f in active_files:
+    try:
+        all_terminal = True
+        with open(f) as fh:
+            for doc in yaml.safe_load_all(fh):
+                if not doc or 'observations' not in doc:
+                    continue
+                for obs in doc.get('observations', []):
+                    status = obs.get('status', 'noted')
+                    if status not in ('acted_on', 'archived'):
+                        all_terminal = False
+                        break
+                if not all_terminal:
+                    break
+        if all_terminal:
+            archivable += 1
+    except:
+        continue
+
+if archivable > 0:
+    print(f'  WARNING: {archivable} file(s) ready to archive. Run: tools/update-observation-status.sh --archive-all')
+    warnings += 1
+
+# --- Stale observations ---
+oldest_unresolved = None
+stale_noted = 0
+now = datetime.now()
+for f in active_files:
+    try:
+        with open(f) as fh:
+            for doc in yaml.safe_load_all(fh):
+                if not doc or 'observations' not in doc:
+                    continue
+                timestamp = doc.get('timestamp', '')
+                if not timestamp:
+                    continue
+                try:
+                    obs_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).replace(tzinfo=None)
+                except:
+                    continue
+                for obs in doc.get('observations', []):
+                    status = obs.get('status', 'noted')
+                    if status == 'noted':
+                        age_days = (now - obs_date).days
+                        if age_days > 30:
+                            stale_noted += 1
+                        if oldest_unresolved is None or obs_date < oldest_unresolved:
+                            oldest_unresolved = obs_date
+    except:
+        continue
+
+if oldest_unresolved:
+    age = (now - oldest_unresolved).days
+    print(f'  Oldest un-resolved observation: {oldest_unresolved.strftime(\"%Y-%m-%d\")} ({age} days ago)')
+    if stale_noted > 0:
+        print(f'  WARNING: {stale_noted} observation(s) with status \"noted\" older than 30 days.')
+        warnings += 1
+
+# --- Working notes freshness ---
+if os.path.isdir(working_notes_dir):
+    wn_files = [f for f in os.listdir(working_notes_dir)
+                if os.path.isfile(os.path.join(working_notes_dir, f)) and f != '.gitkeep']
+    stale_wn = 0
+    for wf in wn_files:
+        wf_path = os.path.join(working_notes_dir, wf)
+        mtime = datetime.fromtimestamp(os.path.getmtime(wf_path))
+        if (now - mtime).days > 14:
+            stale_wn += 1
+    if wn_files:
+        print(f'  working-notes/: {len(wn_files)} file(s), {stale_wn} older than 14 days')
+        if stale_wn > 0:
+            print(f'  WARNING: {stale_wn} working note(s) older than 14 days. Incorporate into Tier 1 or delete.')
+            warnings += 1
+
+print(f'INFRASTRUCTURE_WARNINGS: {warnings}')
+" 2>/dev/null || echo "  (python3/yaml not available for infrastructure health check)
+INFRASTRUCTURE_WARNINGS: 0")
+
+# Display output, extract warning count
+echo "$infra_output" | grep -v "^INFRASTRUCTURE_WARNINGS:"
+infra_warnings=$(echo "$infra_output" | grep "^INFRASTRUCTURE_WARNINGS:" | head -1 | sed 's/.*: //')
+echo ""
+
 echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
+echo "INFRASTRUCTURE_WARNINGS: ${infra_warnings:-0}"
 echo ""
 echo "=========================================="

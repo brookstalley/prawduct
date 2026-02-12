@@ -54,7 +54,7 @@ observations:
     description: "Generalized statement (not product-specific)"
     evidence: "What triggered this observation"
     proposed_action: "What could address this" | null
-    status: noted | triaged | requires_pattern | acted_on
+    status: noted | triaged | requires_pattern | acted_on | archived
 skills_affected: [list of skill files this relates to]
 ---
 ```
@@ -63,7 +63,7 @@ See `schema.yaml` for the complete schema definition.
 
 ## Key Properties
 
-**Append-only:** Observations are never deleted, only status-updated
+**Lifecycle-managed:** Observations progress through statuses and are archived when resolved
 **Queryable:** YAML format enables grep, pattern detection, and future tooling
 **Versioned:** Git tracks when observations were added and what framework version produced them
 **Provenance:** Every observation links to session context, evidence, and git SHA
@@ -112,8 +112,8 @@ framework-observations/{YYYY-MM-DD}-{short-description}.yaml
 Observations progress through these statuses:
 
 ```
-noted → triaged → acted_on
-  │        │
+noted → triaged → acted_on → archived
+  │        │                     ↑
   │        └→ Decision recorded in project-state.yaml observation_backlog
   │           with priority (next / soon / deferred) and rationale
   │
@@ -124,8 +124,41 @@ noted → triaged → acted_on
 - **triaged**: Reviewed and prioritized. Decision recorded in `project-state.yaml` → `observation_backlog` with priority and rationale. The observation won't be forgotten.
 - **requires_pattern**: Seen multiple times but not yet enough data to act. Continues accumulating evidence.
 - **acted_on**: A skill or artifact has been modified to address this observation. The commit references the observation.
+- **archived**: Terminal state. File moved to `archive/` directory. Excluded from active analysis but preserved in git history.
 
 The Orchestrator's Session Resumption checks `observation_backlog` and surfaces items with `priority: next` to the user.
+
+## Archiving
+
+When all observations in a file reach terminal status (`acted_on`), the file is eligible for archiving. Archiving moves resolved files to `framework-observations/archive/`, keeping the active directory focused on observations that still need attention.
+
+**When to archive:**
+- After a skill update addresses all observations in a file and the commit is complete
+- During session health check, when the infrastructure health report shows archivable files
+- Periodically, as part of normal housekeeping
+
+**How to archive:**
+```bash
+# List files eligible for archiving
+tools/update-observation-status.sh --list-archivable
+
+# Archive all resolved files at once
+tools/update-observation-status.sh --archive-all
+
+# Archive a specific file
+tools/update-observation-status.sh --archive framework-observations/FILENAME.yaml
+```
+
+**What archiving does:**
+- Moves the file to `framework-observations/archive/`
+- Excludes it from `observation-analysis.sh` pattern counts and `session-health-check.sh` analysis
+- Preserves it in git history for provenance tracking
+- Does NOT delete the observation — it remains accessible via `archive/` or git log
+
+**What archiving requires:**
+- ALL observations in the file must be in terminal status (`acted_on` or `archived`)
+- Files with any observation in `noted`, `triaged`, or `requires_pattern` cannot be archived
+- Use `tools/update-observation-status.sh --file FILE --obs-index N --status acted_on` to update individual observations first
 
 **Capture** (substantive — identifies something the framework should do differently):
 - Framework process felt disproportionate to product complexity (with specifics)

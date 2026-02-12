@@ -32,7 +32,7 @@ if [[ ! -d "$OBS_DIR" ]]; then
 fi
 
 obs_files=("$OBS_DIR"/*.yaml)
-# Filter out schema.yaml
+# Filter out schema.yaml (archive/ is excluded by the non-recursive glob)
 obs_files_filtered=()
 for f in "${obs_files[@]}"; do
     basename=$(basename "$f")
@@ -84,67 +84,153 @@ for stype in $session_types; do
 done
 echo ""
 
-# --- By observation type ---
+# --- By observation type (active observations only for threshold detection) ---
 echo "By Observation Type"
 echo "-------------------"
 # Dynamic: extract observation types from data
 obs_types=$(grep -h "  - type:" "${obs_files_filtered[@]}" 2>/dev/null | sed 's/.*type: //' | sort -u)
-for otype in $obs_types; do
-    count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
-    if [[ "$count" -gt 0 ]]; then
-        # Tiered thresholds: meta/process types act faster
-        case "$otype" in
-            process_friction|rubric_issue)
-                # Meta observations — act at 2+
-                if [[ "$count" -ge 2 ]]; then
-                    threshold="PATTERN DETECTED (meta)"
-                else
-                    threshold="noted"
-                fi
-                ;;
-            artifact_insufficiency|spec_ambiguity|deployment_friction|critic_gap)
-                # Build-phase observations — act at 3+
-                if [[ "$count" -ge 3 ]]; then
-                    threshold="PATTERN DETECTED (build)"
-                elif [[ "$count" -ge 2 ]]; then
-                    threshold="requires_pattern"
-                else
-                    threshold="noted"
-                fi
-                ;;
-            *)
-                # Product behavior observations — act at 4+
-                if [[ "$count" -ge 4 ]]; then
-                    threshold="PATTERN DETECTED"
-                elif [[ "$count" -ge 2 ]]; then
-                    threshold="requires_pattern"
-                else
-                    threshold="noted"
-                fi
-                ;;
-        esac
-        echo "  $otype: $count ($threshold)"
-    fi
-done
+
+# Count active (non-terminal) observations per type using Python for accurate
+# per-observation status filtering. Terminal statuses (acted_on, archived) are
+# excluded from threshold counts to prevent already-fixed patterns from re-triggering.
+active_counts=$(python3 -c "
+import yaml, os, sys
+
+files = [$(printf '"%s",' "${obs_files_filtered[@]}")]
+active_by_type = {}
+total_by_type = {}
+
+for f in files:
+    if not os.path.isfile(f):
+        continue
+    try:
+        with open(f) as fh:
+            for doc in yaml.safe_load_all(fh):
+                if not doc or 'observations' not in doc:
+                    continue
+                for obs in doc.get('observations', []):
+                    otype = obs.get('type', 'unknown')
+                    status = obs.get('status', 'noted')
+                    total_by_type[otype] = total_by_type.get(otype, 0) + 1
+                    if status not in ('acted_on', 'archived'):
+                        active_by_type[otype] = active_by_type.get(otype, 0) + 1
+    except:
+        continue
+
+for otype in sorted(set(list(total_by_type.keys()) + list(active_by_type.keys()))):
+    total = total_by_type.get(otype, 0)
+    active = active_by_type.get(otype, 0)
+    print(f'{otype} {active} {total}')
+" 2>/dev/null)
+
+if [[ -n "$active_counts" ]]; then
+    while read -r otype active_count total_count; do
+        if [[ "$total_count" -gt 0 ]]; then
+            # Tiered thresholds applied to ACTIVE observations only
+            case "$otype" in
+                process_friction|rubric_issue|skill_quality|external_practice_drift|documentation_drift|structural_critique)
+                    # Meta observations — act at 2+
+                    if [[ "$active_count" -ge 2 ]]; then
+                        threshold="PATTERN DETECTED (meta)"
+                    else
+                        threshold="noted"
+                    fi
+                    ;;
+                artifact_insufficiency|spec_ambiguity|deployment_friction|critic_gap)
+                    # Build-phase observations — act at 3+
+                    if [[ "$active_count" -ge 3 ]]; then
+                        threshold="PATTERN DETECTED (build)"
+                    elif [[ "$active_count" -ge 2 ]]; then
+                        threshold="requires_pattern"
+                    else
+                        threshold="noted"
+                    fi
+                    ;;
+                *)
+                    # Product behavior observations — act at 4+
+                    if [[ "$active_count" -ge 4 ]]; then
+                        threshold="PATTERN DETECTED"
+                    elif [[ "$active_count" -ge 2 ]]; then
+                        threshold="requires_pattern"
+                    else
+                        threshold="noted"
+                    fi
+                    ;;
+            esac
+            if [[ "$active_count" -eq "$total_count" ]]; then
+                echo "  $otype: $total_count ($threshold)"
+            else
+                echo "  $otype: $active_count active of $total_count total ($threshold)"
+            fi
+        fi
+    done <<< "$active_counts"
+else
+    # Fallback: simple grep counts if python3/yaml unavailable
+    for otype in $obs_types; do
+        count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
+        if [[ "$count" -gt 0 ]]; then
+            echo "  $otype: $count (status filtering unavailable)"
+        fi
+    done
+fi
 echo ""
 
-# --- By affected skill ---
+# --- By affected skill (active observations only) ---
 echo "By Affected Skill"
 echo "------------------"
-# Extract all skills_affected entries and count
-grep -h "skills_affected" -A 20 "${obs_files_filtered[@]}" 2>/dev/null | \
-    grep -o '"[^"]*"' | \
-    sort | uniq -c | sort -rn | \
-    while read -r count skill; do
-        skill_clean=$(echo "$skill" | tr -d '"')
-        threshold="noted"
-        if [[ "$count" -ge 4 ]]; then
-            threshold="PATTERN DETECTED"
-        elif [[ "$count" -ge 2 ]]; then
-            threshold="requires_pattern"
-        fi
-        echo "  $count  $skill_clean ($threshold)"
-    done
+# Count skills affected by active (non-terminal) observations only
+skill_counts=$(python3 -c "
+import yaml, os
+
+files = [$(printf '"%s",' "${obs_files_filtered[@]}")]
+skill_counts = {}
+
+for f in files:
+    if not os.path.isfile(f):
+        continue
+    try:
+        with open(f) as fh:
+            for doc in yaml.safe_load_all(fh):
+                if not doc or 'observations' not in doc:
+                    continue
+                skills = doc.get('skills_affected', [])
+                has_active = any(
+                    obs.get('status', 'noted') not in ('acted_on', 'archived')
+                    for obs in doc.get('observations', [])
+                )
+                if has_active:
+                    for skill in skills:
+                        skill_counts[skill] = skill_counts.get(skill, 0) + 1
+    except:
+        continue
+
+for skill, count in sorted(skill_counts.items(), key=lambda x: -x[1]):
+    threshold = 'noted'
+    if count >= 4:
+        threshold = 'PATTERN DETECTED'
+    elif count >= 2:
+        threshold = 'requires_pattern'
+    print(f'  {count}  {skill} ({threshold})')
+" 2>/dev/null)
+
+if [[ -n "$skill_counts" ]]; then
+    echo "$skill_counts"
+else
+    # Fallback: grep-based counting (includes all statuses)
+    grep -h "skills_affected" -A 20 "${obs_files_filtered[@]}" 2>/dev/null | \
+        grep -o '"[^"]*"' | \
+        sort | uniq -c | sort -rn | \
+        while read -r count skill; do
+            skill_clean=$(echo "$skill" | tr -d '"')
+            threshold="noted"
+            if [[ "$count" -ge 4 ]]; then
+                threshold="PATTERN DETECTED"
+            elif [[ "$count" -ge 2 ]]; then
+                threshold="requires_pattern"
+            fi
+            echo "  $count  $skill_clean ($threshold) [status filtering unavailable]"
+        done
+fi
 echo ""
 
 # --- By stage ---
@@ -162,7 +248,7 @@ echo ""
 # --- Status tracking ---
 echo "By Status"
 echo "---------"
-for status in noted triaged requires_pattern acted_on; do
+for status in noted triaged requires_pattern acted_on archived; do
     count=$(count_matches "status: $status" "${obs_files_filtered[@]}")
     if [[ "$count" -gt 0 ]]; then
         echo "  $status: $count"
@@ -179,50 +265,106 @@ if [[ "$MODE" == "--patterns-only" || "$MODE" == "--full" ]]; then
 
     found_pattern=false
 
-    # Meta observations (threshold: 2+)
-    for otype in process_friction rubric_issue; do
-        count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
-        if [[ "$count" -ge 2 ]]; then
-            found_pattern=true
-            echo "--- $otype ($count occurrences, meta threshold: 2+) ---"
-            grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
-                grep "description:" | \
-                sed 's/.*description: /  /' | \
-                head -10
-            echo ""
-        fi
-    done
+    # Use Python to count only active (non-terminal) observations per type
+    # This prevents acted_on/archived observations from inflating pattern counts
+    pattern_data=$(python3 -c "
+import yaml, os, sys
 
-    # Build-phase observations (threshold: 3+)
-    for otype in artifact_insufficiency spec_ambiguity deployment_friction critic_gap; do
-        count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
-        if [[ "$count" -ge 3 ]]; then
-            found_pattern=true
-            echo "--- $otype ($count occurrences, build threshold: 3+) ---"
-            grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
-                grep "description:" | \
-                sed 's/.*description: /  /' | \
-                head -10
-            echo ""
-        fi
-    done
+META_TYPES = {'process_friction', 'rubric_issue', 'skill_quality', 'external_practice_drift', 'documentation_drift', 'structural_critique'}
+BUILD_TYPES = {'artifact_insufficiency', 'spec_ambiguity', 'deployment_friction', 'critic_gap'}
 
-    # Product behavior observations (threshold: 4+)
-    for otype in proportionality coverage applicability missing_guidance; do
-        count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
-        if [[ "$count" -ge 4 ]]; then
-            found_pattern=true
-            echo "--- $otype ($count occurrences, product threshold: 4+) ---"
-            grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
-                grep "description:" | \
-                sed 's/.*description: /  /' | \
-                head -10
-            echo ""
-        fi
-    done
+files = [$(printf '"%s",' "${obs_files_filtered[@]}")]
+active_by_type = {}
+descriptions_by_type = {}
+
+for f in files:
+    if not os.path.isfile(f):
+        continue
+    try:
+        with open(f) as fh:
+            for doc in yaml.safe_load_all(fh):
+                if not doc or 'observations' not in doc:
+                    continue
+                for obs in doc.get('observations', []):
+                    otype = obs.get('type', 'unknown')
+                    status = obs.get('status', 'noted')
+                    if status not in ('acted_on', 'archived'):
+                        active_by_type[otype] = active_by_type.get(otype, 0) + 1
+                        desc = obs.get('description', '')
+                        if desc:
+                            descriptions_by_type.setdefault(otype, []).append(desc)
+    except:
+        continue
+
+def get_threshold(t):
+    if t in META_TYPES: return 2
+    if t in BUILD_TYPES: return 3
+    return 4
+
+def get_tier(t):
+    if t in META_TYPES: return 'meta'
+    if t in BUILD_TYPES: return 'build'
+    return 'product'
+
+for otype in sorted(active_by_type.keys()):
+    count = active_by_type[otype]
+    threshold = get_threshold(otype)
+    if count >= threshold:
+        tier = get_tier(otype)
+        print(f'PATTERN:{otype}:{count}:{tier}:{threshold}')
+        for desc in descriptions_by_type.get(otype, [])[:10]:
+            print(f'DESC:{desc}')
+        print('END')
+" 2>/dev/null)
+
+    if [[ -n "$pattern_data" ]]; then
+        while IFS= read -r line; do
+            if [[ "$line" == PATTERN:* ]]; then
+                IFS=':' read -r _ otype count tier threshold <<< "$line"
+                found_pattern=true
+                echo "--- $otype ($count active occurrences, $tier threshold: ${threshold}+) ---"
+            elif [[ "$line" == DESC:* ]]; then
+                echo "  ${line#DESC:}"
+            elif [[ "$line" == "END" ]]; then
+                echo ""
+            fi
+        done <<< "$pattern_data"
+    else
+        # Fallback: use grep-based counting (includes all statuses)
+        for otype in process_friction rubric_issue; do
+            count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
+            if [[ "$count" -ge 2 ]]; then
+                found_pattern=true
+                echo "--- $otype ($count occurrences, meta threshold: 2+) [status filtering unavailable] ---"
+                grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
+                    grep "description:" | sed 's/.*description: /  /' | head -10
+                echo ""
+            fi
+        done
+        for otype in artifact_insufficiency spec_ambiguity deployment_friction critic_gap; do
+            count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
+            if [[ "$count" -ge 3 ]]; then
+                found_pattern=true
+                echo "--- $otype ($count occurrences, build threshold: 3+) [status filtering unavailable] ---"
+                grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
+                    grep "description:" | sed 's/.*description: /  /' | head -10
+                echo ""
+            fi
+        done
+        for otype in proportionality coverage applicability missing_guidance; do
+            count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
+            if [[ "$count" -ge 4 ]]; then
+                found_pattern=true
+                echo "--- $otype ($count occurrences, product threshold: 4+) [status filtering unavailable] ---"
+                grep -B1 -A3 "type: $otype" "${obs_files_filtered[@]}" 2>/dev/null | \
+                    grep "description:" | sed 's/.*description: /  /' | head -10
+                echo ""
+            fi
+        done
+    fi
 
     if [[ "$found_pattern" == false ]]; then
-        echo "  No patterns detected yet (all types below their tier threshold)."
+        echo "  No patterns detected yet (all active types below their tier threshold)."
         echo ""
     fi
 fi

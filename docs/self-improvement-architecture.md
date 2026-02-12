@@ -143,7 +143,7 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 
 **Location**: Framework repo, not user projects. Observations are about framework behavior, not product specifics.
 
-**Status tracking**: Each observation has `status: noted | requires_pattern | acted_on`
+**Status tracking**: Each observation has `status: noted | triaged | requires_pattern | acted_on | archived`
 
 **Provenance**: Links to session context, evidence, framework version (git SHA)
 
@@ -373,6 +373,23 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Learning**: Governance that doesn't review its own governance creates blind spots. The Critic checked whether changes were well-made but not whether they preserved the system's ability to detect future problems. A meta-governance gap: the learning system was the one thing that couldn't observe its own modification.
 
+### Failure Mode 7: Infrastructure Degrades Without Monitoring
+
+**Symptom**: Growing collections accumulate resolved items, analysis tools produce stale results, directory sizes grow without bound.
+
+**Root cause**: System monitors content health (are observations meaningful?) and change-time health (do changes preserve learning?) but not infrastructure health (is the plumbing degrading over time?). Critic Check 7 catches problems introduced by *changes* but not problems that emerge from *time passing* with no changes.
+
+**Discovered**: 2026-02-12. Observation directory had no archiving mechanism; `observation-analysis.sh` counted `acted_on` observations toward pattern thresholds, potentially re-triggering already-fixed patterns.
+
+**Fix**: Three reinforcing mechanisms:
+- Infrastructure health monitoring in `session-health-check.sh` checks lifecycle invariants (bounded growth, status progression, archive backlog, working notes freshness)
+- `tools/update-observation-status.sh` manages observation lifecycle transitions and archiving
+- Critic Check 7 extended to flag growing collections without lifecycle monitoring
+
+**Structural principle**: Invariants, not enumerations. Rather than listing every housekeeping task, define invariant properties (bounded growth, status progression, consistency) and monitor them generically. New collections get monitoring at creation time (Critic Check 7), existing collections get health-checked at session time (`session-health-check.sh`).
+
+**Learning**: Systems that monitor their outputs but not their infrastructure degrade silently. Time-based degradation (accumulation, staleness) requires different monitoring than change-based degradation (breaking modifications). Content health and infrastructure health are orthogonal concerns.
+
 ---
 
 ## Success Metrics
@@ -392,6 +409,7 @@ Automatic skill updates without validation are dangerous. The system must valida
 ✅ **Emerging patterns flagged for monitoring** (2-3 occurrences → `requires_pattern`)
 ✅ **Single instances noted but not acted on** (Learn Slowly enforced by thresholds)
 ✅ **Actionable patterns surfaced during session resumption** (via `session-health-check.sh`)
+✅ **Infrastructure health monitoring** (observation lifecycle, archive backlog, stale items, working notes freshness)
 ⬜ Fully automated periodic triggers (currently session-start only)
 ⬜ Pattern detection itself generates observations (meta-learning)
 
@@ -412,7 +430,7 @@ Automatic skill updates without validation are dangerous. The system must valida
 ⬜ Skill quality increases over time (measured via eval regression checks)
 ⬜ Observation → pattern → incorporation cycle runs automatically
 ⬜ System observes its own observation/learning failures (closes meta-loop)
-⬜ Knowledge curated (can shrink as well as grow)
+✅ Knowledge curated (can shrink as well as grow) [partial: archiving built, full retirement monitor deferred]
 
 ---
 

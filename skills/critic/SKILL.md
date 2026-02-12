@@ -145,10 +145,12 @@ The learning system depends on a complete chain: observable areas → observatio
 - **Evaluation scenario impact:** Does this change affect what evaluation scenarios should test? If so, are rubrics updated or flagged for update?
 - **FRP dimension impact:** Does this change affect what the Framework Reflection Protocol should assess? If so, are FRP dimensions still accurate?
 - **Observability path:** For any new capability or structural change — if it fails subtly, can the observation system detect that failure? If not, there's a blind spot.
+- **Growing collections:** Does this change create or extend a directory that accumulates files over time? If so, does it have: (a) a lifecycle with terminal states, (b) an archiving or retirement mechanism, (c) monitoring in `session-health-check.sh`? A growing collection without lifecycle monitoring is an infrastructure blind spot — it will degrade silently as items accumulate without bound. Examples: observation files, working notes, eval history, pattern reports.
 
 **Severity guide:**
 - New capability with no observability path → **blocking** (creates a blind spot the learning system can't detect)
 - Modified capture points not updated → **warning** (existing learning may degrade)
+- Growing collection without lifecycle monitoring → **warning** (infrastructure will degrade over time)
 - Change that may benefit from a new eval scenario → **note** (improvement opportunity, not a gap)
 
 ### Output Format
