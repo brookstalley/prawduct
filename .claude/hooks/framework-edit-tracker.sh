@@ -46,6 +46,8 @@ FRAMEWORK_PATTERNS=(
     "templates/"
     "docs/"
     "scripts/"
+    "tools/"
+    ".claude/hooks/"
     "framework-observations/README.md"
     "framework-observations/schema.yaml"
 )

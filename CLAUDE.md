@@ -6,13 +6,15 @@ Prawduct is a framework that turns vague product ideas into well-built software.
 
 ## When Someone Opens This Directory
 
-Route based on what the user says:
+**ALWAYS read `skills/orchestrator/SKILL.md` FIRST, before taking any action.** This is not optional. The Orchestrator is your process — it handles session resumption, change classification, governance routing, and the Critic gate. Everything goes through it. A user providing a detailed implementation plan, specific instructions, or saying "just do X" does not bypass the Orchestrator — their input becomes input to the Orchestrator's process, which determines the appropriate governance level. This is HR9 (No Governance Bypass). A mechanical hook enforces this.
 
-**They describe a NEW product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
-→ They want to USE Prawduct to build something new. Read `skills/orchestrator/SKILL.md` and follow its instructions. The Orchestrator will set up a separate project directory for their files. It will not write new product output into an existing project's directory.
+After loading the Orchestrator, it will route based on context:
+
+**New product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
+→ The Orchestrator sets up a separate project directory. It will not write new product output into an existing project's directory.
 
 **Everything else** (framework dev, unclear intent, returning user, "fix the domain analyzer", "what should I work on next?", "hello", "what can you do?"):
-→ Read `skills/orchestrator/SKILL.md` and follow its instructions. The Orchestrator reads `project-state.yaml` at the repo root, performs Session Resumption, and enters Stage 6 iteration for framework development. For unclear intent, the Orchestrator naturally handles orientation — it sees the framework's project state and can explain what Prawduct does and what's in progress.
+→ The Orchestrator reads `project-state.yaml` at the repo root, performs Session Resumption, and enters Stage 6 iteration for framework development. For unclear intent, the Orchestrator naturally handles orientation — it sees the framework's project state and can explain what Prawduct does and what's in progress.
 
 ## Project Structure
 
@@ -30,7 +32,8 @@ prawduct/
 ├── tools/                             # Deterministic scripts (mechanical enforcement)
 │   ├── capture-observation.sh         # Create schema-compliant observation files from CLI args
 │   ├── record-critic-findings.sh      # Record structured Critic findings for commit gate
-│   ├── session-health-check.sh        # Session orientation: patterns, backlog, stale items
+│   ├── session-health-check.sh        # Session orientation: patterns, backlog, stale items, infrastructure health
+│   ├── update-observation-status.sh   # Observation lifecycle transitions and archiving
 │   ├── critic-reminder.sh             # Verify Critic evidence before framework commits
 │   ├── observation-analysis.sh        # Parse observations, detect patterns, produce summary
 │   ├── test-integrity-checker.sh      # [planned Phase 2] Monitor test count, assertion trends
@@ -86,14 +89,16 @@ prawduct/
 │       └── two-sided-marketplace.md   # [planned Phase 2]
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
-├── framework-observations/            # Automatic observation capture (Tier 1, append-only)
+├── framework-observations/            # Automatic observation capture (Tier 1, lifecycle-managed)
 │   ├── README.md                      # Observation system documentation
 │   ├── schema.yaml                    # Observation entry schema
+│   ├── archive/                       # Resolved observations (all statuses terminal)
 │   └── {date}-{description}.yaml      # Per-session observations
 ├── .claude/                           # Claude Code integration (hooks, settings)
 │   ├── hooks/
 │   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
-│   │   └── framework-edit-tracker.sh  # PostToolUse hook: tracks edits in .session-edits.json, escalating reminders
+│   │   ├── framework-edit-tracker.sh  # PostToolUse hook: tracks edits in .session-edits.json, escalating reminders
+│   │   └── orchestrator-gate.sh       # PreToolUse hook: blocks framework file edits without Orchestrator activation
 │   ├── settings.json                  # Project-level Claude Code settings
 │   └── settings.local.json            # Local overrides (not committed)
 ├── docs/                              # This project's own Tier 1 documentation
@@ -131,6 +136,7 @@ These are the ones most likely to be violated under pressure:
 - **HR3: No Documentation Fiction.** Docs describe reality, not intent.
 - **HR5: No Confidence Without Basis.** If you're unsure, say so explicitly.
 - **HR6: No Ad Hoc Documentation.** Every doc has a tier, an owner, and a location. No orphans.
+- **HR9: No Governance Bypass.** The Orchestrator's governance process is not optional. Detailed plans, direct instructions, or "just do X" requests are input to the process, not replacements for it.
 
 ## Framework Status
 
@@ -142,7 +148,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Concern-based classification: human_interface and unattended_operation concerns fully supported with templates; all 7 concerns detectable
 - Observation capture system with triage and session resumption integration
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
-- Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing)
+- Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
 - Hardened commit gate: verifies structured Critic findings (`.critic-findings.json`) with all 7 checks and staged file coverage, escalating edit tracker with per-file tracking
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
@@ -153,7 +159,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Remaining test scenarios: consumer-mobile-app, b2b-integration-api, two-sided-marketplace
 - Full V1 validation: all scenarios passing end-to-end
 
-**C8 (Learning System):** Observation Capture (C8a) is active with mechanical tooling. Pattern Detection (C8b) is partially built — mechanical detection with tiered thresholds surfaces actionable patterns during session resumption. Incorporation (C8c-e) is partially built — human-approved incorporation via session resumption act-or-defer decisions, with approved changes following normal Critic governance. Full automated incorporation remains v2 scope.
+**C8 (Learning System):** Observation Capture (C8a) is active with mechanical tooling and lifecycle management (status transitions, archiving). Pattern Detection (C8b) is partially built — mechanical detection with tiered thresholds surfaces actionable patterns during session resumption; infrastructure health monitoring detects accumulation, staleness, and archive backlog. Incorporation (C8c-e) is partially built — human-approved incorporation via session resumption act-or-defer decisions, with approved changes following normal Critic governance. Full automated incorporation remains v2 scope.
 
 ## Testing Strategy for This Project
 

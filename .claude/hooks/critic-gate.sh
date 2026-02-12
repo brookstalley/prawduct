@@ -48,10 +48,11 @@ fi
 # It checks staged files against framework patterns and looks for evidence
 if "$repo_root/tools/critic-reminder.sh" 2>&1; then
     # Evidence found or no framework files staged — allow commit
-    # Clean up the pending flag, stale findings, and session edits
+    # Clean up the pending flag, stale findings, session edits, and orchestrator marker
     rm -f "$repo_root/.claude/.critic-pending"
     rm -f "$repo_root/.claude/.critic-findings.json"
     rm -f "$repo_root/.claude/.session-edits.json"
+    rm -f "$repo_root/.claude/.orchestrator-activated"
     exit 0
 else
     # Framework files staged without Critic evidence — deny commit

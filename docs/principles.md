@@ -30,6 +30,9 @@ For products with user interfaces, accessibility is a design and implementation 
 ### HR8: No Uncounted Costs
 Products that incur ongoing operational costs (hosting, API calls, LLM inference, third-party services) must have those costs identified and estimated during design. Discovering that a product costs $500/month to run after it's built is a design failure.
 
+### HR9: No Governance Bypass
+The Orchestrator's governance process is how all Prawduct-managed work happens — framework development and user product builds alike. Detailed instructions, implementation plans, or direct "just do X" requests do not exempt changes from governance. A user-provided plan is input to the Orchestrator's process, not a replacement for it. The Orchestrator determines the *level* of governance appropriate to the change (lightweight for cosmetic fixes, Directional Change Protocol for 3+ file changes, full Critic review for all framework modifications), but the *existence* of governance is non-negotiable.
+
 ## Governance Philosophy
 
 ### The Critic Is Not Optional

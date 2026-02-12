@@ -17,8 +17,9 @@ This is the default skill. When using Prawduct to build a user's product:
 
    **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, or `working-notes/`, those paths are in the project directory. When skills reference other skills (`skills/...`) or templates (`templates/...`), those are read from the prawduct framework directory.
 2. Read `project-state.yaml` in the project directory. If it doesn't exist, this is a new project — copy the prawduct framework's `templates/project-state.yaml` to the project directory.
-3. Check `current_stage` to determine where we are.
-4. Follow the instructions for the current stage below.
+3. **Activate governance.** Write the current ISO-8601 timestamp to `.claude/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The orchestrator-gate hook blocks framework file edits without this marker — see HR9.)
+4. Check `current_stage` to determine where we are.
+5. Follow the instructions for the current stage below.
 
 ## Core Responsibilities
 
@@ -507,10 +508,10 @@ Update `user_expertise` with evidence after each conversational exchange. Early 
 
 If `project-state.yaml` exists and `current_stage` is not "intake", this is a returning session:
 
-1. Read `project-state.yaml` to understand current state.
+1. Read `project-state.yaml` to understand current state. Refresh the governance marker (write current ISO-8601 timestamp to `.claude/.orchestrator-activated`) — this ensures the marker is fresh for this session even if a stale marker exists from a previous session.
 2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory.
 3. **Check documentation health (framework dev sessions only).** For sessions where the project IS the prawduct framework: quick-scan `docs/doc-manifest.yaml` for any `last_validated` date older than 30 days. If found, mention it during orientation: "N Tier 1 docs haven't been validated in over 30 days: [list]. Worth a freshness check?" This is lightweight — don't block the session, just surface the signal.
-4. **Run session health check:** Run `tools/session-health-check.sh` and include relevant findings in your orientation. The tool reports actionable observation patterns with proposed actions, priority:next backlog items, overdue triage, stale deferred items, and untransferred fallback observation files.
+4. **Run session health check:** Run `tools/session-health-check.sh` and include relevant findings in your orientation. The tool reports actionable observation patterns with proposed actions, priority:next backlog items, overdue triage, stale deferred items, untransferred fallback observation files, and infrastructure health (observation archive backlog, stale observations, working notes freshness). Infrastructure warnings are informational — mention them if present (e.g., "4 resolved observation files are ready to archive. Run `tools/update-observation-status.sh --archive-all` to clean up.") but don't interrupt workflow for them.
 4a. **Surface actionable patterns (framework dev sessions only).** When the project IS the prawduct framework and `PATTERNS_REQUIRING_ACTION > 0`, present actionable patterns to the user during orientation:
    - For each pattern: synthesize the proposed actions into a concrete recommendation naming affected skill files. Don't dump raw observation text — distill it.
    - Present as: "The learning system detected N patterns requiring action: [brief summary per pattern with recommendation]."

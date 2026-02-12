@@ -9,6 +9,15 @@
             "command": ".claude/hooks/critic-gate.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/orchestrator-gate.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [

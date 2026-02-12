@@ -114,6 +114,11 @@ tier_1_documents:
     owner: framework
     last_validated: 2026-02-11
 
+  - path: .claude/hooks/orchestrator-gate.sh
+    purpose: "PreToolUse hook: blocks framework file edits without Orchestrator activation (HR9 enforcement)"
+    owner: framework
+    last_validated: 2026-02-12
+
   - path: docs/self-improvement-architecture.md
     purpose: "Self-improvement system design: observation-as-side-effect philosophy, three-phase architecture (C8), failure modes"
     owner: framework
