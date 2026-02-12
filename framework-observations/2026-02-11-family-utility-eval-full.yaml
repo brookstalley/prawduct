@@ -1,0 +1,71 @@
+---
+observation_id: b3f7c821-9d4e-4a2b-8e6f-3c5d7a9b1f24
+timestamp: 2026-02-11T23:30:00Z
+session_type: evaluation
+session_context:
+  scenario_name: family-utility
+  framework_version: 530e2d8
+  eval_run: 3
+  previous_eval: family-utility-2026-02-11-2
+observations:
+  - type: artifact_quality_signal
+    stage: 5
+    severity: note
+    description: "Builder anticipated Stage 6 iteration request because the product brief already specified 'who wins most often.' This means artifact quality was high enough that the Builder built the right thing on the first pass, but it also means the iteration process was never truly stress-tested."
+    evidence: "getWinsLeaderboard exists in db.js from chunk-02. Leaderboard.jsx has 'Most Wins' toggle from chunk-05. The Stage 6 request ('show who won the most games') is already covered. iteration_state.feedback_cycles[0] notes pre-implementation."
+    proposed_action: "Change the family-utility scenario's Stage 6 iteration request to something genuinely absent from the product brief (e.g., 'Can you add a timer to track game duration?' or 'Can we delete a game from the history?'). This ensures the iteration process is actually exercised."
+    status: noted
+
+  - type: rubric_issue
+    stage: 5
+    severity: warning
+    description: "Criterion 'at least one blocking finding identified and resolved' is too strict for low-risk products with clear artifacts. When the Builder correctly implements well-structured artifacts, zero blocking findings is a success signal, not a failure."
+    evidence: "Critic produced only note-severity findings across all chunks. All 5 core flows implemented correctly on first pass. 53 tests pass. The criterion scores FAIL despite the product being well-built. Previous eval (2026-02-11-2) had the same issue."
+    proposed_action: "Soften the rubric criterion to 'Critic actively reviews each feature chunk with evidence' or 'At least one finding of any severity is identified.' Alternatively, make the blocking-finding requirement conditional on risk profile (medium/high only)."
+    status: noted
+
+  - type: process_friction
+    stage: "meta"
+    severity: warning
+    description: "Subagent launched via Task tool was denied bash permission for npm commands in /tmp. Build had to be completed in the main conversation. This is the same issue observed in the previous eval."
+    evidence: "Background agent completed Stages 0-4 (all artifacts, build plan, scaffold, data layer) but was blocked on npm install/test/dev. Main conversation took over for Stages 5-6."
+    proposed_action: "Document in evaluation-methodology.md that Stages 5-6 (requiring runtime) should be executed in the main conversation, not delegated to subagents. The two-phase approach (subagent for Stages 0-4, main for 5-6) is effective and should be formalized."
+    status: noted
+
+  - type: process_improvement
+    stage: "meta"
+    severity: note
+    description: "Node.js availability resolved 25 of 33 previously UNABLE criteria. The pre-eval runtime check works. Remaining 8 UNABLE are inherent to simulation (7 conversation-quality, 1 never-triggered)."
+    evidence: "Previous eval: 79 PASS, 6 PARTIAL, 5 FAIL, 33 UNABLE. Current eval: 108 PASS, 4 PARTIAL, 3 FAIL, 8 UNABLE. Delta: +29 PASS, -2 PARTIAL, -2 FAIL, -25 UNABLE."
+    proposed_action: "The 7 transcript-dependent criteria can only be resolved by interactive eval or transcript capture. Consider whether the cost of interactive eval is justified for the marginal 7 criteria, or whether 88% coverage (108/123) is sufficient for simulation-based runs."
+    status: noted
+
+  - type: critic_gap
+    stage: 5
+    severity: note
+    description: "Critic did not flag getWinsLeaderboard as a scope addition during chunk-05 review. The build plan specified 'rankings by total points' for chunk-05, but the Builder added wins leaderboard from the product brief. The Critic should have noted this as a scope expansion even if not blocking."
+    evidence: "build_state.spec_compliance shows getWinsLeaderboard implemented. Build plan chunk-05 deliverables: 'Leaderboard component with rankings by total points, filter by game.' The Critic's chunk-05 review did not flag the addition."
+    proposed_action: "Review whether the Critic's scope-violation detection is sensitive enough. The Critic should note when a chunk implements more than its deliverables specify, even if the addition is correct per the product brief. This is a traceability concern, not a quality concern."
+    status: noted
+
+  - type: scenario_design
+    stage: 6
+    severity: warning
+    description: "The family-utility scenario's Stage 6 iteration request ('show who won the most games, not just total points') is derivable from the product brief's leaderboard flow ('who wins most often'). This means the iteration is pre-addressed during the build, preventing the iteration process from being exercised."
+    evidence: "Product brief core flow 5: 'see who has the highest total points per game, who wins most often.' Stage 6 request: 'show who won the most games, not just total points.' The Builder implements both during chunk-05 because the brief specifies both."
+    proposed_action: "Update family-utility.md to use an iteration request that is genuinely novel — something not in the product brief or test specifications. Candidates: 'Add a timer for game duration,' 'Add ability to delete a game session,' 'Show a chart of scores over time.'"
+    status: noted
+
+  - type: proportionality
+    stage: 5
+    severity: note
+    description: "The two-phase eval approach (subagent for document generation, main conversation for runtime) worked well. Total eval time ~45 minutes covering 108/123 criteria (88%). Artifact quality was high enough that the Builder produced correct code with minimal iteration."
+    evidence: "53 tests pass. App builds and serves. All 5 core flows implemented. No test failures during build (only one test needed adjustment for HTML number input behavior). Code is ~1000 LOC with clean separation."
+    proposed_action: "Formalize the two-phase eval approach in evaluation-methodology.md as the recommended method for simulation-based evals that include build stages."
+    status: noted
+
+skills_affected:
+  - "tests/scenarios/family-utility.md"
+  - "skills/critic/SKILL.md"
+  - "docs/evaluation-methodology.md"
+---
