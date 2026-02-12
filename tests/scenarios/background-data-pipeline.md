@@ -152,120 +152,120 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 **Must-do:**
 
-- Detect `unattended_operation` concern (trigger: scheduled) and `external_integrations` concern. Must NOT detect `human_interface`.
-- Classify domain as Productivity or Content Curation (or similar).
-- Assign low-medium risk profile (operational failure matters, but impact is limited — affects one person's side project, not a business-critical system).
-- Ask about data sources and their reliability.
-- Ask about filtering/processing logic.
-- Ask about failure scenarios and how failures should be surfaced.
-- Ask about scheduling/trigger frequency.
-- Ask about cost sensitivity or infrastructure constraints.
-- Surface monitoring and alerting as a consideration (pipeline runs unattended — how do you know it's working?).
-- Surface configuration management (filter criteria will change over time — how is that handled?).
-- Limit total discovery questions to 8-12 for this risk level (more than low-risk family utility, fewer than a high-risk B2B platform).
+- `[simulation]` Detect `unattended_operation` concern (trigger: scheduled) and `external_integrations` concern. Must NOT detect `human_interface`.
+- `[simulation]` Classify domain as Productivity or Content Curation (or similar).
+- `[simulation]` Assign low-medium risk profile (operational failure matters, but impact is limited — affects one person's side project, not a business-critical system).
+- `[interactive]` Ask about data sources and their reliability.
+- `[interactive]` Ask about filtering/processing logic.
+- `[interactive]` Ask about failure scenarios and how failures should be surfaced.
+- `[interactive]` Ask about scheduling/trigger frequency.
+- `[interactive]` Ask about cost sensitivity or infrastructure constraints.
+- `[interactive]` Surface monitoring and alerting as a consideration (pipeline runs unattended — how do you know it's working?).
+- `[interactive]` Surface configuration management (filter criteria will change over time — how is that handled?).
+- `[interactive]` Limit total discovery questions to 8-12 for this risk level (more than low-risk family utility, fewer than a high-risk B2B platform).
 
 **Must-not-do:**
 
-- Must not detect `human_interface` concern.
-- Must not ask about screens, navigation, user flows, or UI design.
-- Must not ask about onboarding experience, accessibility, or visual design.
-- Must not ask about authentication or user authorization (single-user automation).
-- Must not ask about real-time interactivity or multi-user collaboration.
-- Must not ask about API contracts or external consumers (the pipeline consumes APIs but doesn't expose one).
-- Must not recommend not building (this is a clear, solvable problem).
-- Must not generate more than 15 discovery questions total.
+- `[simulation]` Must not detect `human_interface` concern.
+- `[interactive]` Must not ask about screens, navigation, user flows, or UI design.
+- `[interactive]` Must not ask about onboarding experience, accessibility, or visual design.
+- `[interactive]` Must not ask about authentication or user authorization (single-user automation).
+- `[interactive]` Must not ask about real-time interactivity or multi-user collaboration.
+- `[interactive]` Must not ask about API contracts or external consumers (the pipeline consumes APIs but doesn't expose one).
+- `[interactive]` Must not recommend not building (this is a clear, solvable problem).
+- `[interactive]` Must not generate more than 15 discovery questions total.
 
 **Quality criteria:**
 
-- Questions prioritize operational concerns (failure modes, monitoring, cost) over feature details.
-- Questions recognize user's technical competence (use appropriate terminology, don't over-explain basics).
-- Questions surface considerations user hasn't raised (alerting, silent failure, rate limits from sources, cost of LLM-based filtering if applicable).
-- Inferences are made about technical choices the user hasn't specified (deployment target, data storage) and confirmed.
+- `[hybrid]` Questions prioritize operational concerns (failure modes, monitoring, cost) over feature details.
+- `[interactive]` Questions recognize user's technical competence (use appropriate terminology, don't over-explain basics).
+- `[interactive]` Questions surface considerations user hasn't raised (alerting, silent failure, rate limits from sources, cost of LLM-based filtering if applicable).
+- `[hybrid]` Inferences are made about technical choices the user hasn't specified (deployment target, data storage) and confirmed.
 
 ### Orchestrator (C1)
 
 **Must-do:**
 
-- Progress through stages 0 → 0.5 → 1 → 2 without excessive back-and-forth.
-- Infer technical user from input vocabulary (RSS, Slack, pipeline, monitoring).
-- Use technical terminology appropriately (don't avoid it, but don't assume deep ops expertise either).
-- Confirm classification in clear language: "This is an automation pipeline that runs on a schedule, not something with a user interface. Sound right?"
-- Make reasonable assumptions about technical choices (deployment, infrastructure, storage) and state them explicitly.
-- Recognize when discovery is "good enough" — this is a medium-complexity automation, not a critical system.
+- `[interactive]` Progress through stages 0 → 0.5 → 1 → 2 without excessive back-and-forth.
+- `[hybrid]` Infer technical user from input vocabulary (RSS, Slack, pipeline, monitoring).
+- `[interactive]` Use technical terminology appropriately (don't avoid it, but don't assume deep ops expertise either).
+- `[interactive]` Confirm classification in clear language: "This is an automation pipeline that runs on a schedule, not something with a user interface. Sound right?"
+- `[hybrid]` Make reasonable assumptions about technical choices (deployment, infrastructure, storage) and state them explicitly.
+- `[interactive]` Recognize when discovery is "good enough" — this is a medium-complexity automation, not a critical system.
 
 **Must-not-do:**
 
-- Must not conduct more than 3-4 rounds of discovery questions for this risk level.
-- Must not over-explain basic technical concepts (RSS, webhooks, cron jobs) to a technical user.
-- Must not ask the user to choose between infrastructure options they haven't researched (AWS vs. GCP vs. DigitalOcean — system should make a recommendation with rationale).
-- Must not skip operational concerns because the product is "just a side project."
+- `[interactive]` Must not conduct more than 3-4 rounds of discovery questions for this risk level.
+- `[interactive]` Must not over-explain basic technical concepts (RSS, webhooks, cron jobs) to a technical user.
+- `[interactive]` Must not ask the user to choose between infrastructure options they haven't researched (AWS vs. GCP vs. DigitalOcean — system should make a recommendation with rationale).
+- `[hybrid]` Must not skip operational concerns because the product is "just a side project."
 
 **Quality criteria:**
 
-- Vocabulary matches user's technical level (technical but pragmatic, not enterprise-ops speak).
-- Discovery depth is proportionate (more than family utility, less than B2B platform).
-- Operational concerns (monitoring, failure recovery, cost) are raised proactively, not only when user asks.
-- Stage transitions are natural and clearly communicated.
+- `[interactive]` Vocabulary matches user's technical level (technical but pragmatic, not enterprise-ops speak).
+- `[interactive]` Discovery depth is proportionate (more than family utility, less than B2B platform).
+- `[interactive]` Operational concerns (monitoring, failure recovery, cost) are raised proactively, not only when user asks.
+- `[interactive]` Stage transitions are natural and clearly communicated.
 
 ### Artifact Generator (C3)
 
 **Must-do:**
 
-- Produce all 7 universal artifacts: product brief, data model, security model, test specifications, non-functional requirements, operational spec, dependency manifest.
-- Produce automation-specific artifacts: pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec.
-- All artifacts have correct YAML frontmatter with dependency declarations.
-- Pipeline architecture includes: data sources (RSS feeds, sites), processing stages (fetch, filter, format), output (Slack posting), scheduling trigger.
-- Data model includes: Article entity (title, URL, source, timestamp, topics), FilterCriteria entity (topics of interest, exclusions), perhaps SourceFeed entity.
-- Security model addresses: Slack webhook authentication, RSS source trust (malicious feeds?), rate limiting to external services. Proportionate to risk (no enterprise auth needed).
-- Test specifications include concrete scenarios for each pipeline stage: "Given feed X returns articles A, B, C and filter criteria includes topic Y, verify only articles matching Y are selected." Include failure scenarios: "Given feed X is unreachable, verify pipeline logs error and continues with other feeds."
-- NFRs include: cost constraints (free tier preferred), runtime performance (morning digest ready by 7 AM), and acceptable latency for Slack posting.
-- Operational spec includes: deployment target (likely serverless function or cron job on cheap VPS), monitoring (how to detect silent failure), alerting (where to send alerts — probably Slack itself or email), failure recovery (retry logic, dead letter handling).
-- Monitoring/alerting spec is substantive (not just "add logging") — what metrics matter (successful runs, article count per run, feed fetch failures, filter match rate), what constitutes alertable failure.
-- Failure recovery spec addresses: individual feed failure (continue with others), Slack API failure (retry? queue for later?), filtering service failure, partial failures.
-- Configuration spec addresses: how filter criteria and source list are updated (config file? environment variables? simple admin UI?).
-- Dependency manifest includes: RSS parsing library, Slack API/webhook client, LLM API if used for filtering, cron/scheduler, and justifications.
+- `[simulation]` Produce all 7 universal artifacts: product brief, data model, security model, test specifications, non-functional requirements, operational spec, dependency manifest.
+- `[simulation]` Produce automation-specific artifacts: pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec.
+- `[simulation]` All artifacts have correct YAML frontmatter with dependency declarations.
+- `[simulation]` Pipeline architecture includes: data sources (RSS feeds, sites), processing stages (fetch, filter, format), output (Slack posting), scheduling trigger.
+- `[simulation]` Data model includes: Article entity (title, URL, source, timestamp, topics), FilterCriteria entity (topics of interest, exclusions), perhaps SourceFeed entity.
+- `[simulation]` Security model addresses: Slack webhook authentication, RSS source trust (malicious feeds?), rate limiting to external services. Proportionate to risk (no enterprise auth needed).
+- `[simulation]` Test specifications include concrete scenarios for each pipeline stage: "Given feed X returns articles A, B, C and filter criteria includes topic Y, verify only articles matching Y are selected." Include failure scenarios: "Given feed X is unreachable, verify pipeline logs error and continues with other feeds."
+- `[simulation]` NFRs include: cost constraints (free tier preferred), runtime performance (morning digest ready by 7 AM), and acceptable latency for Slack posting.
+- `[simulation]` Operational spec includes: deployment target (likely serverless function or cron job on cheap VPS), monitoring (how to detect silent failure), alerting (where to send alerts — probably Slack itself or email), failure recovery (retry logic, dead letter handling).
+- `[simulation]` Monitoring/alerting spec is substantive (not just "add logging") — what metrics matter (successful runs, article count per run, feed fetch failures, filter match rate), what constitutes alertable failure.
+- `[simulation]` Failure recovery spec addresses: individual feed failure (continue with others), Slack API failure (retry? queue for later?), filtering service failure, partial failures.
+- `[simulation]` Configuration spec addresses: how filter criteria and source list are updated (config file? environment variables? simple admin UI?).
+- `[simulation]` Dependency manifest includes: RSS parsing library, Slack API/webhook client, LLM API if used for filtering, cron/scheduler, and justifications.
 
 **Must-not-do:**
 
-- Must not generate UI-specific artifacts (IA, screen specs, design direction, accessibility, onboarding).
-- Must not generate API/Service artifacts (API contracts, integration guide, versioning strategy, SLA definition).
-- Must not generate multi-party artifacts.
-- Must not over-engineer the security model (no user auth, no complex authorization).
-- Must not specify enterprise-grade operational requirements disproportionate to a side project (99.99% uptime SLA, 24/7 on-call, multi-region redundancy).
+- `[simulation]` Must not generate UI-specific artifacts (IA, screen specs, design direction, accessibility, onboarding).
+- `[simulation]` Must not generate API/Service artifacts (API contracts, integration guide, versioning strategy, SLA definition).
+- `[simulation]` Must not generate multi-party artifacts.
+- `[simulation]` Must not over-engineer the security model (no user auth, no complex authorization).
+- `[simulation]` Must not specify enterprise-grade operational requirements disproportionate to a side project (99.99% uptime SLA, 24/7 on-call, multi-region redundancy).
 
 **Quality criteria:**
 
-- Artifacts are internally consistent (entities in data model appear in test specs, pipeline architecture stages match test scenarios).
-- Cross-references between artifacts are accurate.
-- Operational artifacts (monitoring, alerting, failure recovery) are specific and actionable, not generic (e.g., "alert when no articles posted for 2 consecutive days" not "implement monitoring").
-- A coding agent reading these artifacts could build the pipeline without ambiguity about what happens in each failure mode.
-- Complexity is proportionate to the product (this is a side project, not a mission-critical system, but operational concerns are still addressed seriously).
+- `[simulation]` Artifacts are internally consistent (entities in data model appear in test specs, pipeline architecture stages match test scenarios).
+- `[simulation]` Cross-references between artifacts are accurate.
+- `[simulation]` Operational artifacts (monitoring, alerting, failure recovery) are specific and actionable, not generic (e.g., "alert when no articles posted for 2 consecutive days" not "implement monitoring").
+- `[simulation]` A coding agent reading these artifacts could build the pipeline without ambiguity about what happens in each failure mode.
+- `[simulation]` Complexity is proportionate to the product (this is a side project, not a mission-critical system, but operational concerns are still addressed seriously).
 
 ### Review Lenses (C4)
 
 **Must-do:**
 
-- Product Lens: confirms this solves a real problem (manual curation is tedious), scope is appropriate (single-user automation is right-sized).
-- Design Lens: acknowledges this is a headless pipeline and evaluates configuration UX (how does Alex tune filters?) and output format (Slack message clarity). Does NOT evaluate screens/navigation/visual design.
-- Architecture Lens: evaluates pipeline stages (fetch, filter, post), failure isolation (one feed failure shouldn't kill whole run), and deployment choice (serverless vs. cron job trade-offs).
-- Skeptic Lens: raises at least one realistic concern. Examples: "What happens if a feed changes format and parsing breaks?" "How do you know if the filter criteria are too restrictive and you're missing good content?" "What if Slack's API rate limits you?"
-- Each finding has a specific recommendation, not just an observation.
-- Each finding has a severity level (blocking / warning / note).
+- `[simulation]` Product Lens: confirms this solves a real problem (manual curation is tedious), scope is appropriate (single-user automation is right-sized).
+- `[simulation]` Design Lens: acknowledges this is a headless pipeline and evaluates configuration UX (how does Alex tune filters?) and output format (Slack message clarity). Does NOT evaluate screens/navigation/visual design.
+- `[simulation]` Architecture Lens: evaluates pipeline stages (fetch, filter, post), failure isolation (one feed failure shouldn't kill whole run), and deployment choice (serverless vs. cron job trade-offs).
+- `[simulation]` Skeptic Lens: raises at least one realistic concern. Examples: "What happens if a feed changes format and parsing breaks?" "How do you know if the filter criteria are too restrictive and you're missing good content?" "What if Slack's API rate limits you?"
+- `[simulation]` Each finding has a specific recommendation, not just an observation.
+- `[simulation]` Each finding has a severity level (blocking / warning / note).
 
 **Must-not-do:**
 
-- Must not raise UI/UX concerns about screens or navigation (there are none).
-- Must not raise concerns about multi-user access or collaboration features (single user).
-- Must not block on concerns disproportionate to the risk level (this is a side project, not infrastructure).
-- Must not produce vague findings ("consider edge cases").
+- `[simulation]` Must not raise UI/UX concerns about screens or navigation (there are none).
+- `[simulation]` Must not raise concerns about multi-user access or collaboration features (single user).
+- `[simulation]` Must not block on concerns disproportionate to the risk level (this is a side project, not infrastructure).
+- `[simulation]` Must not produce vague findings ("consider edge cases").
 
 **Quality criteria:**
 
-- Findings are specific and actionable.
-- Operational findings are concrete (e.g., "monitoring spec doesn't address how to detect when all feeds are timing out simultaneously").
-- Severity ratings are proportionate to the product's risk level.
-- Addressing the findings would measurably improve the artifacts.
-- Total findings in the 8-15 range for low-medium risk (more than low-risk family utility, fewer than a high-risk platform).
+- `[simulation]` Findings are specific and actionable.
+- `[simulation]` Operational findings are concrete (e.g., "monitoring spec doesn't address how to detect when all feeds are timing out simultaneously").
+- `[simulation]` Severity ratings are proportionate to the product's risk level.
+- `[simulation]` Addressing the findings would measurably improve the artifacts.
+- `[simulation]` Total findings in the 8-15 range for low-medium risk (more than low-risk family utility, fewer than a high-risk platform).
 
 ### Project State (C5)
 
@@ -273,53 +273,53 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-do (structural):**
 
-- All populated fields use correct types per the template schema.
-- No fields added that don't exist in the template schema.
-- Risk factors include rationale, not just a level.
+- `[simulation]` All populated fields use correct types per the template schema.
+- `[simulation]` No fields added that don't exist in the template schema.
+- `[simulation]` Risk factors include rationale, not just a level.
 
 **Must-do (content after Stages 0-2):**
 
-- `classification.domain`: populated ("productivity" or "content-curation" or similar).
-- `classification.concerns.unattended_operation`: not null, with trigger "scheduled".
-- `classification.concerns.external_integrations`: not null.
-- `classification.concerns.human_interface`: null (this is a headless system).
-- `classification.risk_profile.overall`: "low" or "medium" (either is acceptable with rationale).
-- `classification.risk_profile.factors`: at least 3 evaluated factors with rationale. Must include operational factors (failure impact, cost of operation, silent failure risk) not just user-facing factors.
-- `product_definition.vision`: a clear, specific one-sentence description.
-- `product_definition.users.personas`: at least one persona (Alex Chen or equivalent).
-- `product_definition.core_flows`: replaced by or adapted to pipeline stages (data fetch, filtering, output posting) — at least 3 stages.
-- `product_definition.scope.v1`: at least 4 concrete items (basic filtering, Slack posting, error logging, configurable sources).
-- `product_definition.scope.later`: at least 1 item explicitly deferred (e.g., web UI for configuration, multiple output channels, ML-based filtering).
-- `product_definition.platform`: populated with deployment target (serverless, VPS, cloud function).
-- `product_definition.nonfunctional`: at least performance, cost, and uptime populated. Proportionate to risk (not 99.99% uptime for a side project).
-- `technical_decisions`: at least deployment target, data storage (if any — might be stateless), scheduling mechanism, and Slack integration approach. Each with rationale.
-- `user_expertise`: at least `technical_depth` (medium-high), `product_thinking`, and `operational_awareness` inferred with evidence.
-- `current_stage`: "definition" or later.
-- `change_log`: at least 1 entry (initial classification).
+- `[simulation]` `classification.domain`: populated ("productivity" or "content-curation" or similar).
+- `[simulation]` `classification.concerns.unattended_operation`: not null, with trigger "scheduled".
+- `[simulation]` `classification.concerns.external_integrations`: not null.
+- `[simulation]` `classification.concerns.human_interface`: null (this is a headless system).
+- `[simulation]` `classification.risk_profile.overall`: "low" or "medium" (either is acceptable with rationale).
+- `[simulation]` `classification.risk_profile.factors`: at least 3 evaluated factors with rationale. Must include operational factors (failure impact, cost of operation, silent failure risk) not just user-facing factors.
+- `[simulation]` `product_definition.vision`: a clear, specific one-sentence description.
+- `[simulation]` `product_definition.users.personas`: at least one persona (Alex Chen or equivalent).
+- `[simulation]` `product_definition.core_flows`: replaced by or adapted to pipeline stages (data fetch, filtering, output posting) — at least 3 stages.
+- `[simulation]` `product_definition.scope.v1`: at least 4 concrete items (basic filtering, Slack posting, error logging, configurable sources).
+- `[simulation]` `product_definition.scope.later`: at least 1 item explicitly deferred (e.g., web UI for configuration, multiple output channels, ML-based filtering).
+- `[simulation]` `product_definition.platform`: populated with deployment target (serverless, VPS, cloud function).
+- `[simulation]` `product_definition.nonfunctional`: at least performance, cost, and uptime populated. Proportionate to risk (not 99.99% uptime for a side project).
+- `[simulation]` `technical_decisions`: at least deployment target, data storage (if any — might be stateless), scheduling mechanism, and Slack integration approach. Each with rationale.
+- `[simulation]` `user_expertise`: at least `technical_depth` (medium-high), `product_thinking`, and `operational_awareness` inferred with evidence.
+- `[simulation]` `current_stage`: "definition" or later.
+- `[simulation]` `change_log`: at least 1 entry (initial classification).
 
 **Must-not-do:**
 
-- Must not detect `human_interface` concern.
-- Must not leave `classification.concerns` with no active concerns after Stage 0.
-- Must not add UI/UX design decisions (no screens to design).
-- Must not set `risk_profile.overall` above "medium" for this scenario.
+- `[simulation]` Must not detect `human_interface` concern.
+- `[simulation]` Must not leave `classification.concerns` with no active concerns after Stage 0.
+- `[simulation]` Must not add UI/UX design decisions (no screens to design).
+- `[simulation]` Must not set `risk_profile.overall` above "medium" for this scenario.
 
 **Quality criteria:**
 
-- A reader of `project-state.yaml` alone can understand this is a background automation pipeline, not a UI application.
-- Values are specific, not generic ("daily RSS feed aggregation and filtering for tech newsletter curation" not "an automation product").
-- Scope decisions reflect the test conversation (basic filtering in v1, ML-based filtering deferred).
-- Operational considerations are captured in technical decisions (monitoring, failure handling, scheduling).
+- `[simulation]` A reader of `project-state.yaml` alone can understand this is a background automation pipeline, not a UI application.
+- `[simulation]` Values are specific, not generic ("daily RSS feed aggregation and filtering for tech newsletter curation" not "an automation product").
+- `[simulation]` Scope decisions reflect the test conversation (basic filtering in v1, ML-based filtering deferred).
+- `[simulation]` Operational considerations are captured in technical decisions (monitoring, failure handling, scheduling).
 
 ## End-to-End Success Criteria
 
 The scenario succeeds when:
 
-1. The system correctly detects `unattended_operation` and `external_integrations` concerns, NOT `human_interface`.
-2. Discovery focuses on operational concerns (failure modes, monitoring, cost, scheduling) rather than UI/UX concerns.
-3. Automation-specific artifacts (pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec) are generated.
-4. UI-specific artifacts (IA, screen specs, design direction, accessibility, onboarding) are NOT generated.
-5. The Orchestrator calibrates to a technical user (appropriate vocabulary, doesn't over-explain basics, but still surfaces operational expertise Alex lacks).
-6. Review Lenses evaluate operational concerns (failure isolation, monitoring effectiveness, configuration management) rather than UI/UX concerns.
-7. The total output is proportionate — more thorough than the low-risk family utility (because operational failure matters), but not as heavyweight as a business-critical system.
-8. A coding agent reading the output would have a clear, unambiguous plan for building a reliable background pipeline with proper monitoring and failure handling.
+1. `[simulation]` The system correctly detects `unattended_operation` and `external_integrations` concerns, NOT `human_interface`.
+2. `[interactive]` Discovery focuses on operational concerns (failure modes, monitoring, cost, scheduling) rather than UI/UX concerns.
+3. `[simulation]` Automation-specific artifacts (pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec) are generated.
+4. `[simulation]` UI-specific artifacts (IA, screen specs, design direction, accessibility, onboarding) are NOT generated.
+5. `[hybrid]` The Orchestrator calibrates to a technical user (appropriate vocabulary, doesn't over-explain basics, but still surfaces operational expertise Alex lacks).
+6. `[simulation]` Review Lenses evaluate operational concerns (failure isolation, monitoring effectiveness, configuration management) rather than UI/UX concerns.
+7. `[hybrid]` The total output is proportionate — more thorough than the low-risk family utility (because operational failure matters), but not as heavyweight as a business-critical system.
+8. `[simulation]` A coding agent reading the output would have a clear, unambiguous plan for building a reliable background pipeline with proper monitoring and failure handling.

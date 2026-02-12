@@ -141,7 +141,8 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (framework + product governance), Review Lenses (all five)
 - Concern-based classification: human_interface and unattended_operation concerns fully supported with templates; all 7 concerns detectable
 - Observation capture system with triage and session resumption integration
-- Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation report)
+- Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
+- Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing)
 - Hardened commit gate: verifies structured Critic findings (`.critic-findings.json`) with all 7 checks and staged file coverage, escalating edit tracker with per-file tracking
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
@@ -152,7 +153,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Remaining test scenarios: consumer-mobile-app, b2b-integration-api, two-sided-marketplace
 - Full V1 validation: all scenarios passing end-to-end
 
-**C8 (Learning System):** Observation Capture (C8a) is active with mechanical tooling. Full pattern detection and incorporation (C7, C8b) are v1.5/v2 scope — they require observation volume from many projects.
+**C8 (Learning System):** Observation Capture (C8a) is active with mechanical tooling. Pattern Detection (C8b) is partially built — mechanical detection with tiered thresholds surfaces actionable patterns during session resumption. Incorporation (C8c-e) is partially built — human-approved incorporation via session resumption act-or-defer decisions, with approved changes following normal Critic governance. Full automated incorporation remains v2 scope.
 
 ## Testing Strategy for This Project
 

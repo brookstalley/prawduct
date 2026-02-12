@@ -3,18 +3,26 @@ scenario: [scenario-name]              # e.g., family-utility, background-data-p
 date: YYYY-MM-DD                       # When evaluation was performed
 evaluator: [type]                      # claude-simulation | claude-interactive | human
 framework_version: [git-sha]           # Git SHA at eval time (git rev-parse --short HEAD)
+evaluation_approach:
+  mode: [simulation|interactive|hybrid] # Which eval mode was used
+  total_criteria: 0                    # Total rubric criteria evaluated
+  simulation_evaluable: 0             # Criteria annotated [simulation]
+  interactive_only: 0                 # Criteria annotated [interactive]
+  hybrid: 0                           # Criteria annotated [hybrid]
+  deferred: 0                         # Criteria skipped due to eval mode (interactive criteria in simulation run)
 result:
   pass: 0                              # Total criteria passed
   partial: 0                           # Partially met
   fail: 0                              # Failed
-  unable_to_evaluate: 0                # Could not assess (e.g., needs transcript)
+  deferred: 0                          # Skipped due to eval mode (not a failure)
+  unable_to_evaluate: 0                # Could not assess for non-mode reasons
   by_component:                        # Breakdown per component
-    C2_domain_analyzer: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    C1_orchestrator: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    C3_artifact_generator: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    C4_review_lenses: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    C5_project_state: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    end_to_end: { pass: 0, partial: 0, fail: 0, unable: 0 }
+    C2_domain_analyzer: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    C1_orchestrator: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    C3_artifact_generator: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    C4_review_lenses: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    C5_project_state: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    end_to_end: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
 skills_updated: []                     # List of modified skill files with brief change description
                                        # Example: { file: "skills/review-lenses/SKILL.md", change: "Made accessibility evaluation mandatory for UI apps" }
 notes: ""                              # Free-form observations, limitations, context
@@ -30,7 +38,7 @@ notes: ""                              # Free-form observations, limitations, co
 
 | # | Criterion | Result | Evidence |
 |---|-----------|--------|----------|
-| 1 | [Copy criterion from scenario rubric] | PASS/PARTIAL/FAIL/UNABLE | [Specific evidence from project-state.yaml or artifacts, or "Needs transcript"] |
+| 1 | [Copy criterion from scenario rubric] | PASS/PARTIAL/FAIL/DEFERRED/UNABLE | [Specific evidence, or "Deferred: interactive evaluation required"] |
 | 2 | [Criterion] | PASS | [Evidence] |
 
 ### Must-not-do
@@ -162,15 +170,15 @@ notes: ""                              # Free-form observations, limitations, co
 
 ## Summary
 
-| Component | Pass | Partial | Fail | Unable to Evaluate |
-|-----------|------|---------|------|--------------------|
-| C2 Domain Analyzer | 0 | 0 | 0 | 0 |
-| C1 Orchestrator | 0 | 0 | 0 | 0 |
-| C3 Artifact Generator | 0 | 0 | 0 | 0 |
-| C4 Review Lenses | 0 | 0 | 0 | 0 |
-| C5 Project State | 0 | 0 | 0 | 0 |
-| End-to-End | 0 | 0 | 0 | 0 |
-| **Total** | **0** | **0** | **0** | **0** |
+| Component | Pass | Partial | Fail | Deferred | Unable to Evaluate |
+|-----------|------|---------|------|----------|--------------------|
+| C2 Domain Analyzer | 0 | 0 | 0 | 0 | 0 |
+| C1 Orchestrator | 0 | 0 | 0 | 0 | 0 |
+| C3 Artifact Generator | 0 | 0 | 0 | 0 | 0 |
+| C4 Review Lenses | 0 | 0 | 0 | 0 | 0 |
+| C5 Project State | 0 | 0 | 0 | 0 | 0 |
+| End-to-End | 0 | 0 | 0 | 0 | 0 |
+| **Total** | **0** | **0** | **0** | **0** | **0** |
 
 ---
 

@@ -59,8 +59,10 @@ The framework has detailed test scenarios with structured rubrics and mandatory 
 
 **Hybrid approach**
 1. Run simulation first for mechanical criteria (fast, cheap)
-2. Identify "unable-to-evaluate" conversation criteria
-3. Run targeted interactive eval for those specific criteria only
+2. Criteria annotated `[interactive]` in the rubric are marked `DEFERRED` (not UNABLE) in simulation results
+3. After simulation, prompt user: "N criteria require interactive testing. Would you like to run interactive evaluation now?"
+4. If yes, run targeted interactive eval for `[interactive]` and `[hybrid]` criteria only
+5. Report simulation score separately from deferred count
 
 ### Decision Matrix
 
@@ -88,6 +90,23 @@ The framework has detailed test scenarios with structured rubrics and mandatory 
 | "User feels interrogated" | ✗ | ✓ | Subjective; transcript needed |
 
 **Recommendation**: Use simulation for most regression checks (covers ~60-80% of criteria). Reserve interactive for first baseline runs, when conversation-quality issues are suspected, and before major releases.
+
+### Eval Mode Annotations
+
+Each rubric criterion in `tests/scenarios/*.md` is annotated with an eval mode:
+
+| Annotation | Meaning | Simulation behavior |
+|------------|---------|-------------------|
+| `[simulation]` | Evaluable from file outputs (project-state.yaml, artifacts, code) | Evaluate normally |
+| `[interactive]` | Requires conversation transcript | Mark as `DEFERRED` (not UNABLE) |
+| `[hybrid]` | Partially evaluable from files, fully from transcript | Evaluate what's possible, note limitations |
+
+**Result categories** for annotated evaluations:
+- `PASS` / `PARTIAL` / `FAIL` — standard results
+- `DEFERRED` — criterion requires interactive evaluation; not counted as a failure
+- `UNABLE` — criterion cannot be evaluated for reasons other than eval mode (e.g., prerequisite not met)
+
+**Simulation run reporting**: Report simulation-evaluable results as the primary score. Report deferred count separately: "Simulation score: X/Y PASS (Z criteria deferred to interactive evaluation)." This distinguishes genuine failures from eval mode limitations.
 
 ---
 
@@ -561,18 +580,26 @@ scenario: background-data-pipeline     # Which test scenario was run
 date: 2026-02-11                       # When evaluation was performed
 evaluator: claude-simulation           # claude-simulation | claude-interactive | human
 framework_version: abc1234             # Git SHA at eval time
+evaluation_approach:
+  mode: simulation                     # simulation | interactive | hybrid
+  total_criteria: 0                    # Total rubric criteria
+  simulation_evaluable: 0             # [simulation] criteria
+  interactive_only: 0                 # [interactive] criteria
+  hybrid: 0                           # [hybrid] criteria
+  deferred: 0                         # Criteria skipped due to eval mode
 result:
   pass: 0                              # Total criteria passed
   partial: 0                           # Partially met
   fail: 0                              # Failed
-  unable_to_evaluate: 0                # Could not assess (e.g., needs transcript)
+  deferred: 0                          # Skipped due to eval mode (not a failure)
+  unable_to_evaluate: 0                # Could not assess for non-mode reasons
   by_component:                        # Breakdown per component
-    C2_domain_analyzer: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    C1_orchestrator: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    C3_artifact_generator: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    C4_review_lenses: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    C5_project_state: { pass: 0, partial: 0, fail: 0, unable: 0 }
-    end_to_end: { pass: 0, partial: 0, fail: 0, unable: 0 }
+    C2_domain_analyzer: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    C1_orchestrator: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    C3_artifact_generator: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    C4_review_lenses: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    C5_project_state: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
+    end_to_end: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
 skills_updated: []                     # List of modified skill files with brief change description
 notes: ""                              # Free-form observations, limitations, context
 ---

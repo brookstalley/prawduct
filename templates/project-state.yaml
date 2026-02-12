@@ -286,13 +286,40 @@ build_state:
     history: []
 
   # Requirement → implementation tracking.
+  # Updated by the Builder after each chunk with concrete evidence.
   spec_compliance:
-    # Each: { requirement, status (implemented | partial | not-started), evidence }
+    # Each entry traces a requirement to its implementation evidence:
+    #   requirement: string (from test-specifications.md)
+    #   source_section: string (which spec section this traces to)
+    #   status: implemented | partial | not-started
+    #   evidence: string (test file:line or specific behavior proof)
+    #   chunk_id: string (which chunk implemented this)
     requirements: []
 
   # Critic review results during build.
   # Each: { chunk_id, findings: [{ description, severity, status (open | resolved | deferred) }] }
   reviews: []
+
+# =============================================================================
+# REVIEW FINDINGS
+# =============================================================================
+# Structured record of Review Lens findings across all stages.
+# Written by the Orchestrator after each lens application (Stages 0.5-6).
+# Separate from build_state.reviews (which tracks Critic findings during Stage 5).
+# Review Lenses apply across stages — they're not build-phase-only.
+
+review_findings:
+  # Each entry records one lens application:
+  #   stage: string (e.g., "0.5", "2", "3-phase-a", "3-phase-c", "5-checkpoint-1")
+  #   phase: string | null (artifact generation phase if applicable: "A", "B", "C")
+  #   lens: string (product | design | architecture | skeptic | testing)
+  #   findings:
+  #     - finding: string (specific, concrete observation)
+  #       severity: blocking | warning | note
+  #       recommendation: string (what to do about it)
+  #       status: open | resolved | deferred
+  #       resolution: string | null (how it was resolved, if resolved)
+  entries: []
 
 # =============================================================================
 # ITERATION STATE

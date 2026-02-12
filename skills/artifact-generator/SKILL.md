@@ -76,7 +76,7 @@ Every artifact must follow the standard format defined in `docs/high-level-desig
 
 ### Phase A: Foundation
 
-Generate the Product Brief first. Every other artifact depends on it — errors here propagate into everything downstream. The Orchestrator applies review lenses after this phase before proceeding.
+Generate the Product Brief first. Every other artifact depends on it — errors here propagate into everything downstream. The Orchestrator applies review lenses after this phase and persists findings to `project-state.yaml` → `review_findings.entries` before proceeding.
 
 #### Artifact: Product Brief
 
@@ -114,7 +114,7 @@ last_validated: null
 
 ### Phase B: Structure
 
-Generate the Data Model and Non-Functional Requirements. Both depend primarily on the Product Brief. The Orchestrator applies review lenses after this phase before proceeding.
+Generate the Data Model and Non-Functional Requirements. Both depend primarily on the Product Brief. The Orchestrator applies review lenses after this phase and persists findings to `review_findings.entries` before proceeding.
 
 #### Artifact: Data Model
 
@@ -175,7 +175,7 @@ last_validated: null
 
 ### Phase C: Integration
 
-Generate the remaining artifacts. Each depends on one or more artifacts from earlier phases. The Orchestrator applies all five review lenses to the complete artifact set after this phase (the Testing Lens activates here, evaluating test specification comprehensiveness).
+Generate the remaining artifacts. Each depends on one or more artifacts from earlier phases. The Orchestrator applies all five review lenses to the complete artifact set after this phase (the Testing Lens activates here, evaluating test specification comprehensiveness) and persists all findings to `review_findings.entries`.
 
 #### Artifact: Security Model
 

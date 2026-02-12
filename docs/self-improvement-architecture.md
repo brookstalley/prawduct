@@ -95,13 +95,13 @@ Self-improvement has distinct layers that require different capabilities and dif
 - Analyze accumulated observations for patterns
 - Requires multiple observations to detect signal vs noise
 - Applies thresholds (1 occurrence = noted, 4+ = pattern detected)
-- **Status**: Not built yet (need observation data first)
+- **Status**: PARTIALLY BUILT. Detection is mechanical via `tools/observation-analysis.sh` with tiered thresholds. `tools/session-health-check.sh` surfaces actionable patterns (with proposed actions, affected skills, and un-acted counts) automatically during session resumption. Patterns are presented to the user for action-or-defer decisions. What remains: fully automated periodic detection triggers (currently runs on session start, not on a schedule or after N observations).
 
 **Phase 3: Incorporation** (Build after validation infrastructure)
 - Proposes skill updates based on detected patterns
 - Validates proposed changes against principles and historical projects
 - Requires human approval before merging
-- **Status**: Not built yet (need pattern detection first)
+- **Status**: PARTIALLY BUILT. Human-approved incorporation via session resumption: actionable patterns are presented with concrete recommendations, user approves or defers, approved changes follow normal Stage 6 governance (Critic review, commit gate). What remains: automated change proposal generation, validation pipeline (consistency/specificity/reversibility/adversarial gates), provenance tracking from observation IDs through to skill changes.
 
 ### Why Capture Must Be Phase 1
 
@@ -147,7 +147,7 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 
 **Provenance**: Links to session context, evidence, framework version (git SHA)
 
-### C8b: Pattern Extractor (Phase 2 - NOT BUILT)
+### C8b: Pattern Extractor (Phase 2 - PARTIALLY BUILT)
 
 **Purpose**: Periodic analysis of accumulated observations to identify statistically meaningful patterns.
 
@@ -387,18 +387,22 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 ### Phase 2 Success (Pattern Detection)
 
-⬜ Pattern reports generated periodically without manual invocation
-⬜ Patterns show statistical significance (4+ occurrences across sessions)
-⬜ Emerging patterns flagged for monitoring (2-3 occurrences)
-⬜ Single instances noted but not acted on (Learn Slowly)
+✅ **Pattern reports generated mechanically** (`tools/observation-analysis.sh` with tiered thresholds)
+✅ **Patterns show statistical significance** (tiered: meta 2+, build 3+, product 4+)
+✅ **Emerging patterns flagged for monitoring** (2-3 occurrences → `requires_pattern`)
+✅ **Single instances noted but not acted on** (Learn Slowly enforced by thresholds)
+✅ **Actionable patterns surfaced during session resumption** (via `session-health-check.sh`)
+⬜ Fully automated periodic triggers (currently session-start only)
 ⬜ Pattern detection itself generates observations (meta-learning)
 
 ### Phase 3 Success (Incorporation)
 
-⬜ Skill changes proposed automatically from detected patterns
-⬜ All proposed changes pass validation pipeline
+✅ **Actionable patterns presented with concrete recommendations** (session resumption step 4a)
+✅ **Human approval required** (user decides act-now or defer during orientation)
+✅ **Approved changes follow normal governance** (Stage 6 + Critic review)
+⬜ Automated skill change proposal generation from patterns
+⬜ Validation pipeline (consistency, specificity, reversibility, adversarial)
 ⬜ Provenance maintained (observation IDs → pattern → skill change)
-⬜ Human approval required and tracked
 ⬜ Adversarial testing shows improvement (or flags regression)
 ⬜ Retired learnings documented with rationale
 

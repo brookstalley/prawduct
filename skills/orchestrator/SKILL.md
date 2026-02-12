@@ -176,18 +176,18 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 
    **Phase A — Foundation:** Generate the Product Brief.
    - **MANDATORY**: Apply the **Product and Design lenses** to the Product Brief.
-   - Document review findings (record in project notes or separate review document)
+   - After each lens application, update `project-state.yaml` → `review_findings.entries` with structured findings (stage, phase, lens, findings with severity/recommendation/status).
    - If any blocking findings, resolve them before proceeding. The Product Brief is the foundation for all other artifacts — errors here infect everything.
 
    **Phase B — Structure:** Generate the Data Model and Non-Functional Requirements.
    - **MANDATORY**: Apply the **Architecture lens** to the Data Model, NFRs, and their relationship to the Product Brief.
-   - Document review findings
+   - After each lens application, update `project-state.yaml` → `review_findings.entries` with structured findings.
    - If any blocking findings, resolve them before proceeding.
 
    **Phase C — Integration:** Generate the Security Model, Test Specifications, Operational Specification, Dependency Manifest, and any shape-specific artifacts.
    - **MANDATORY**: Apply **all five lenses** (Product, Design, Architecture, Skeptic, Testing) across the complete artifact set. The Testing Lens activates here — test specifications now exist and should be evaluated for comprehensiveness, risk traceability, and failure mode coverage.
    - The Artifact Generator runs a full cross-artifact consistency check at this stage.
-   - Document all review findings with severity levels (blocking / warning / note)
+   - After each lens application, update `project-state.yaml` → `review_findings.entries` with structured findings (severity: blocking / warning / note).
    - If any blocking findings, resolve them before presenting to the user.
 
    **Risk-proportionate phasing:**
@@ -510,7 +510,13 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 1. Read `project-state.yaml` to understand current state.
 2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory.
 3. **Check documentation health (framework dev sessions only).** For sessions where the project IS the prawduct framework: quick-scan `docs/doc-manifest.yaml` for any `last_validated` date older than 30 days. If found, mention it during orientation: "N Tier 1 docs haven't been validated in over 30 days: [list]. Worth a freshness check?" This is lightweight — don't block the session, just surface the signal.
-4. **Run session health check:** Run `tools/session-health-check.sh` and include relevant findings in your orientation. The tool reports observation patterns above threshold, priority:next backlog items, overdue triage, stale deferred items, and untransferred fallback observation files.
+4. **Run session health check:** Run `tools/session-health-check.sh` and include relevant findings in your orientation. The tool reports actionable observation patterns with proposed actions, priority:next backlog items, overdue triage, stale deferred items, and untransferred fallback observation files.
+4a. **Surface actionable patterns (framework dev sessions only).** When the project IS the prawduct framework and `PATTERNS_REQUIRING_ACTION > 0`, present actionable patterns to the user during orientation:
+   - For each pattern: synthesize the proposed actions into a concrete recommendation naming affected skill files. Don't dump raw observation text — distill it.
+   - Present as: "The learning system detected N patterns requiring action: [brief summary per pattern with recommendation]."
+   - User decides: **act now** (triggers a Stage 6 change with normal Critic governance) or **defer** (pattern stays in backlog, resurfaces only if further observations accumulate).
+   - Deferred patterns are not re-presented every session — only when new observations are added to an already-actionable pattern type.
+   - This step does NOT apply to user product sessions. Product sessions focus on building, not framework meta-improvement.
 5. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
 6. Continue from the current stage.
 

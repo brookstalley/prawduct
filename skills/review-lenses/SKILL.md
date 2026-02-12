@@ -42,6 +42,8 @@ For each lens, produce findings in this format:
 
 **Proportionality rule:** Severity must match the product's risk level. A note for a family utility might be a warning for a B2B platform. Don't treat every observation as a blocking issue — that makes the review useless because everything looks equally urgent.
 
+**Persistence:** After producing findings, the invoking skill (typically the Orchestrator) must record them in `project-state.yaml` → `review_findings.entries`. Each entry includes: `stage`, `phase` (if during artifact generation), `lens`, and `findings[]` (each with `finding`, `severity`, `recommendation`, `status`, `resolution`). This establishes a durable record — findings that vanish into narrative cannot be tracked, trended, or verified as resolved.
+
 ## The Five Lenses
 
 ### Product Lens

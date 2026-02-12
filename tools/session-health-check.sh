@@ -7,14 +7,15 @@
 # findings without requiring manual inspection.
 #
 # Reports:
-#   - Pattern analysis summary (types above threshold)
+#   - Actionable patterns with proposed actions and affected skills
 #   - priority: next backlog items
 #   - Overdue triage (>2 weeks since last_triage)
 #   - Stale deferred items (>4 weeks)
 #   - Untransferred fallback observation files
 #
 # Usage:
-#   tools/session-health-check.sh
+#   tools/session-health-check.sh                  # Full report
+#   tools/session-health-check.sh --actionable-only # Only patterns needing action
 #
 # Exit codes:
 #   0 — Report produced (even if empty)
@@ -22,6 +23,7 @@
 
 set -uo pipefail
 
+MODE="${1:---full}"
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 if [[ -z "$REPO_ROOT" ]]; then
     echo "Error: Not in a git repository." >&2
@@ -29,31 +31,124 @@ if [[ -z "$REPO_ROOT" ]]; then
 fi
 
 PROJECT_STATE="$REPO_ROOT/project-state.yaml"
-OBS_ANALYSIS="$REPO_ROOT/tools/observation-analysis.sh"
+OBS_DIR="$REPO_ROOT/framework-observations"
 
-echo "=========================================="
-echo " Session Health Check"
-echo " $(date +%Y-%m-%d)"
-echo "=========================================="
+if [[ "$MODE" != "--actionable-only" ]]; then
+    echo "=========================================="
+    echo " Session Health Check"
+    echo " $(date +%Y-%m-%d)"
+    echo "=========================================="
+    echo ""
+fi
+
+# --- 1. Actionable pattern analysis (parse observation files directly) ---
+
+actionable_output=$(python3 -c "
+import yaml, os, sys, glob
+
+obs_dir = '$OBS_DIR'
+if not os.path.isdir(obs_dir):
+    print('  (framework-observations/ not found)')
+    print('PATTERNS_REQUIRING_ACTION: 0')
+    sys.exit(0)
+
+files = sorted(glob.glob(os.path.join(obs_dir, '*.yaml')))
+files = [f for f in files if not f.endswith('schema.yaml')]
+
+if not files:
+    print('  No observation files found.')
+    print('PATTERNS_REQUIRING_ACTION: 0')
+    sys.exit(0)
+
+# Tiered thresholds
+META_TYPES = {'process_friction', 'rubric_issue'}
+BUILD_TYPES = {'artifact_insufficiency', 'spec_ambiguity', 'deployment_friction', 'critic_gap'}
+
+def get_threshold(obs_type):
+    if obs_type in META_TYPES:
+        return 2
+    elif obs_type in BUILD_TYPES:
+        return 3
+    else:
+        return 4
+
+# Collect all observations (handle multi-document YAML files)
+all_obs = []
+for f in files:
+    try:
+        with open(f) as fh:
+            for data in yaml.safe_load_all(fh):
+                if not data or 'observations' not in data:
+                    continue
+                skills = data.get('skills_affected', [])
+                for obs in data.get('observations', []):
+                    obs['_file'] = os.path.basename(f)
+                    obs['_skills'] = skills
+                    all_obs.append(obs)
+    except:
+        continue
+
+# Group by type, filter to un-acted (noted or requires_pattern)
+from collections import defaultdict
+by_type = defaultdict(list)
+for obs in all_obs:
+    status = obs.get('status', 'noted')
+    if status in ('noted', 'requires_pattern'):
+        by_type[obs.get('type', 'unknown')].append(obs)
+
+# Find actionable patterns (count >= threshold for that type)
+actionable = []
+for obs_type, observations in sorted(by_type.items()):
+    total_of_type = sum(1 for o in all_obs if o.get('type') == obs_type)
+    threshold = get_threshold(obs_type)
+    if total_of_type >= threshold:
+        # Collect unique proposed actions and affected skills
+        actions = []
+        skills = set()
+        for obs in observations:
+            action = obs.get('proposed_action')
+            if action:
+                actions.append(action)
+            for s in obs.get('_skills', []):
+                skills.add(s)
+        actionable.append({
+            'type': obs_type,
+            'total': total_of_type,
+            'unacted': len(observations),
+            'threshold': threshold,
+            'skills': sorted(skills),
+            'actions': actions,
+        })
+
+# Output
+if actionable:
+    for item in actionable:
+        tier = 'meta' if item['type'] in META_TYPES else ('build' if item['type'] in BUILD_TYPES else 'product')
+        print(f\"  PATTERN: {item['type']} ({item['total']} total, {item['unacted']} un-acted, {tier} threshold: {item['threshold']}+)\")
+        if item['skills']:
+            print(f\"    Affected skills: {', '.join(item['skills'])}\")
+        for action in item['actions']:
+            print(f'    -> {action}')
+        print()
+else:
+    print('  No patterns above threshold with un-acted observations.')
+    print()
+
+print(f'PATTERNS_REQUIRING_ACTION: {len(actionable)}')
+" 2>/dev/null || echo "  (python3/yaml not available for pattern analysis)
+PATTERNS_REQUIRING_ACTION: 0")
+
+# Extract the count for use by callers
+patterns_count=$(echo "$actionable_output" | grep "^PATTERNS_REQUIRING_ACTION:" | head -1 | sed 's/.*: //')
+
+echo "## Actionable Observation Patterns"
+echo "$actionable_output" | grep -v "^PATTERNS_REQUIRING_ACTION:"
 echo ""
 
-# --- 1. Pattern analysis (delegate to observation-analysis.sh) ---
-
-if [[ -x "$OBS_ANALYSIS" ]]; then
-    patterns=$("$OBS_ANALYSIS" --patterns-only 2>/dev/null || echo "")
-    if echo "$patterns" | grep -q "PATTERN DETECTED"; then
-        echo "## Observation Patterns"
-        echo "$patterns" | grep -A5 "PATTERN DETECTED"
-        echo ""
-    else
-        echo "## Observation Patterns"
-        echo "  No patterns above threshold."
-        echo ""
-    fi
-else
-    echo "## Observation Patterns"
-    echo "  (observation-analysis.sh not found)"
-    echo ""
+# If --actionable-only, skip non-pattern sections
+if [[ "$MODE" == "--actionable-only" ]]; then
+    echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
+    exit 0
 fi
 
 # --- 2. Backlog status from project-state.yaml ---
@@ -191,4 +286,6 @@ except:
     fi
 fi
 
+echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
+echo ""
 echo "=========================================="

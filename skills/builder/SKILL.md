@@ -84,7 +84,15 @@ Run the full test suite (not just tests for this chunk). All tests must pass.
 Update `project-state.yaml`:
 
 - `build_state.test_tracking`: update `test_count`, `assertion_count`, `test_files`, and add a `history` entry for this chunk.
-- `build_state.spec_compliance.requirements`: update status for any requirements this chunk implements. Set `evidence` to the test file or behavior that proves implementation.
+- `build_state.spec_compliance.requirements`: update with concrete evidence for each requirement this chunk implements. Each entry must follow this format:
+  ```yaml
+  - requirement: "Record scores for multiple players in a game session"  # from test-specifications.md
+    source_section: "Core Flow: Score Recording, Scenario 1"  # which spec section
+    status: implemented  # implemented | partial | not-started
+    evidence: "tests/score-recording.test.js:45 — 'records score for 3-player game'"  # test file:line
+    chunk_id: "chunk-03"  # which chunk implemented this
+  ```
+  The `evidence` field must reference a specific test file and line (or behavior) that proves implementation. "Tests pass" is not evidence — the specific test name and location is.
 - `build_plan.chunks[current].status`: set to `"review"`.
 
 ### Step 6: Hand Off to Critic
