@@ -129,6 +129,7 @@ last_validated: null
 - **Relationships:** How entities relate (one-to-many, many-to-many, etc.).
 - **State machines:** If any entity has lifecycle states (e.g., a game session: setup → in-progress → completed), document the valid transitions.
 - **Constraints:** Validation rules, uniqueness requirements, required fields.
+- **Experience-critical parameters:** If an entity has fields whose values directly shape the user experience (visual layout proportions, timing intervals, difficulty curves, animation speeds), those values should be specified as concrete fields with constraints and defaults — not left as implementation details. The test: could two different Builders implement this data model and produce noticeably different user experiences? If so, the divergence points need explicit specification.
 
 **Key instruction:** The entities must be traceable back to the Product Brief. If the Product Brief mentions "scores," there must be a Score entity (or equivalent). If there's no entity for something the user talked about, something is missing.
 
@@ -437,7 +438,7 @@ Phase D is invoked by the Orchestrator during Stage 4 (Build Planning), after Ph
 
 #### Artifact: Build Plan
 
-**Reads from:** `project-state.yaml` → `technical_decisions`, `classification.risk_profile`; `artifacts/dependency-manifest.yaml`; `artifacts/operational-spec.md`; `artifacts/product-brief.md`; `artifacts/data-model.md`; `artifacts/test-specifications.md`
+**Reads from:** `project-state.yaml` → `technical_decisions`, `classification.risk_profile`; `artifacts/dependency-manifest.yaml`; `artifacts/operational-spec.md`; `artifacts/product-brief.md`; `artifacts/data-model.md`; `artifacts/test-specifications.md`; `artifacts/nonfunctional-requirements.md`
 
 **Frontmatter:**
 ```yaml
@@ -448,6 +449,7 @@ depends_on:
   - artifact: product-brief
   - artifact: data-model
   - artifact: test-specifications
+  - artifact: nonfunctional-requirements
   - artifact: dependency-manifest
   - artifact: operational-spec
 depended_on_by: []
@@ -485,6 +487,8 @@ last_validated: null
 6. **Governance checkpoints.** Mark where the Critic runs a full cross-chunk review (not just per-chunk). At minimum: after the early feedback milestone and after all chunks complete.
 
 **Proportionality:** For a low-risk utility, expect 5-7 chunks. A complex platform may have 10-15. If a family score tracker has 12 chunks, the plan is over-engineered. If it has 2, the chunks are too large for meaningful governance.
+
+**NFR technique traceability:** For every NFR that constrains *how* something is built (not just performance targets), the build plan must include a concrete implementation instruction in the relevant chunk. NFR targets ("30 FPS", "under 2 second startup") become chunk acceptance criteria. NFR techniques ("dirty-rect rendering", "connection pooling", "batch processing") become chunk implementation instructions with enough detail that the Builder doesn't need to choose an approach. If the NFR says "only redraw changed portions," the chunk must say "track changed positions and redraw only those; do not clear the full screen each frame." The test: if the Builder follows the chunk instructions literally, will the NFR technique be implemented?
 
 **The key test:** Could the Builder execute this plan without making any technology decisions? Every technology, library, directory name, and build command should be specified. If the Builder would need to choose between alternatives, the build plan is underspecified.
 

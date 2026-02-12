@@ -1,0 +1,72 @@
+---
+observation_id: "e7a3f2c1-8b4d-4f6e-9c1a-2d3e5f7a8b9c"
+timestamp: "2026-02-12T14:00:00Z"
+session_type: evaluation
+session_context:
+  scenario_name: terminal-arcade-game
+  framework_version: a7b2df1
+observations:
+  - type: coverage
+    stage: 1
+    severity: note
+    description: "Entertainment domain overlay in Domain Analyzer lacks structured game design guidance. Game design expertise (difficulty curves, wave design, scoring feel, game states) was contributed successfully but relied on general LLM knowledge rather than framework-guided proactive expertise items."
+    evidence: "Domain Analyzer Entertainment overlay has only two items: 'Ask what makes it fun' and 'If competitive: how are disputes handled?' The system contributed difficulty progression, wave design, visual feedback, and game state management proactively, but these weren't surfaced by structured guidance — they came from general game design knowledge."
+    proposed_action: "Monitor across future entertainment/game evaluations. If game design expertise contributions are inconsistent, consider adding game-specific proactive expertise items (difficulty curves, game state design, visual feedback/juice, progression systems) while maintaining generality."
+    status: noted
+
+  - type: applicability
+    stage: 3
+    severity: note
+    description: "UI Application discovery questions reference web/mobile concepts (touch targets, responsive layout, browser APIs) that required mental translation for terminal platform. The general principles adapted naturally, but the specific examples lean web/mobile."
+    evidence: "Tier 1 question 3 references 'phone, computer, both' and 'dark room, noisy commute, wet hands in a kitchen.' For a terminal game, these device-centric framings don't apply — the relevant context is terminal emulator type and SSH scenarios. The system adapted without asking wrong questions, but the skill text could be more platform-neutral."
+    proposed_action: "Consider restructuring UI Application Tier 1 question 3 around the general concept of 'usage context and platform constraints' rather than device-specific examples. The current phrasing is fine for web/mobile but less natural for terminal, desktop, or embedded UI."
+    status: noted
+
+  - type: coverage
+    stage: 3
+    severity: note
+    description: "Review Lens findings during artifact generation were not persisted as a structured document. Findings were applied in-process (influencing artifact content) but not recorded for traceability."
+    evidence: "No review findings document exists in the artifacts directory. The rubric criterion 'each finding has specific recommendation and severity' was met in-process but findings were not preserved as a durable artifact."
+    proposed_action: "Consider whether Review Lens findings should be recorded as a structured document (e.g., artifacts/review-findings.md) or in project-state.yaml. The Orchestrator skill says findings are 'surfaced to the user' but doesn't specify persistence format. This may be intentional (findings are consumed and applied, not stored) or a gap."
+    status: noted
+
+  - type: proportionality
+    stage: 5
+    severity: note
+    description: "Building a fully functional real-time game in a simulation evaluation is the most time-intensive eval step. The architecture and test quality can be validated, but gameplay feel, visual rendering quality, and responsive controls cannot be verified without interactive testing."
+    evidence: "Builder rubric has 3 criteria marked 'unable to evaluate' (player rendering responsiveness, cross-platform behavior, gameplay feel). These are arguably the most important criteria for a game product — they address whether the product achieves its core goal."
+    proposed_action: "Consider adding a rubric annotation for criteria that require interactive evaluation. For simulation evals, these should be flagged as 'requires-interactive' rather than 'unable' so regression tracking can distinguish between simulation limitations and genuine failures."
+    status: noted
+
+  - type: coverage
+    stage: 5
+    severity: warning
+    description: "Critic's spec compliance check omits NFRs entirely. Implementation can violate NFR techniques (rendering strategy, caching approach, data access pattern) without being caught. The Critic's Mode 2 Inputs list and 'What to check' list had no reference to nonfunctional-requirements.md."
+    evidence: "renderer.py:98 does print(self.term.clear) every frame, violating the NFR dirty-rect rendering specification. Critic reviewed all chunks without flagging this because nonfunctional-requirements.md was not in its input list."
+    proposed_action: "Add nonfunctional-requirements.md to Critic Mode 2 Inputs. Add NFR technique compliance to 'What to check' list alongside data-model, product-brief, security-model, and test-specifications checks."
+    status: acted_on
+
+  - type: coverage
+    stage: 4
+    severity: warning
+    description: "Build plan generation doesn't ensure NFR techniques are translated into chunk-level instructions. There is a gap between 'what to achieve' (NFR targets and techniques) and 'how to build it' (build plan chunk instructions). NFR targets become acceptance criteria but NFR techniques are dropped."
+    evidence: "NFR artifact specifies dirty-rect rendering. Build plan Chunk 02 says 'screen clear' — the technique constraint was lost in translation from NFR to build plan. The Builder followed the build plan literally and implemented full-screen clear."
+    proposed_action: "Add NFR technique traceability instruction to Artifact Generator Phase D. For every NFR that constrains how something is built, the build plan must include a concrete implementation instruction in the relevant chunk."
+    status: acted_on
+
+  - type: coverage
+    stage: 3
+    severity: warning
+    description: "Product definitions referencing external products ('X-style', 'like X') propagate ambiguity into data models and build plans when the referenced aspects aren't decomposed into concrete specifications. Downstream artifacts inherit the vagueness, and the Builder makes subjective interpretation decisions."
+    evidence: "Product brief says 'Galaga-style' without defining formation geometry (spacing, width relative to play area, column count). Data model has formation_pattern: str with no spacing parameters. waves.py implemented spacing_x=3, spacing_y=2 — a reasonable guess that produced a cramped ~18-char formation in an 80+ char terminal."
+    proposed_action: "Strengthen Product Lens to flag external product references without decomposition as a warning. Strengthen Design Lens to check that referenced visual styles have concrete parameters. Add experience-critical parameters guidance to Artifact Generator data model instructions."
+    status: acted_on
+
+skills_affected:
+  - "skills/domain-analyzer/SKILL.md"
+  - "skills/review-lenses/SKILL.md"
+  - "skills/orchestrator/SKILL.md"
+  - "skills/artifact-generator/SKILL.md"
+  - "skills/critic/SKILL.md"
+  - "tests/scenarios/terminal-arcade-game.md"
+---

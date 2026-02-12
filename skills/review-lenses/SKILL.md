@@ -61,6 +61,7 @@ For each lens, produce findings in this format:
 - Core flow doesn't address primary persona need (blocking)
 - Success criteria are vague or unmeasurable (warning)
 - Vision statement is generic, could describe many products (note)
+- Product definition references an external product or style ("like X", "X-style") without decomposing it into concrete, buildable specifications (warning). The specific borrowed aspects must be defined — otherwise every downstream artifact inherits the ambiguity and the Builder makes subjective interpretation decisions.
 
 **What this lens does NOT do:** It doesn't evaluate technical feasibility (that's Architecture) or what could go wrong (that's Skeptic).
 
@@ -75,6 +76,7 @@ For each lens, produce findings in this format:
 - Accessibility: for UI applications, always produce a finding about accessibility. If accessibility has been addressed, acknowledge it as a note. If it hasn't been considered, raise it as a warning. Check: keyboard navigation, screen reader support, color contrast, touch target sizes — at the level of "has this been thought about," not a full audit.
 - Onboarding: does a new user know what to do?
 - Consistency: are interaction patterns consistent across flows?
+- Visual/interaction identity: If the product references another product's visual style or interaction pattern, are the specific elements defined concretely enough to implement without subjective judgment? Layout proportions, spacing ratios, animation timing, and similar parameters should be specified, not assumed.
 
 **Typical findings:**
 - Empty state not addressed — user sees a blank screen (warning)
@@ -140,6 +142,7 @@ For each lens, produce findings in this format:
 - **Failure mode coverage:** For each failure mode in the Failure Recovery Spec (automation) or implied by the architecture, is there a corresponding test?
 - **Proportionality:** Is test depth appropriate to product risk? A family utility needs fewer scenarios than a financial platform. Over-testing is waste; under-testing is risk.
 - **Specificity:** Are test scenarios concrete (setup, action, expected result) or generic ("test that it works")? Generic test scenarios provide false confidence.
+- **Experiential proxy coverage:** For products with experiential quality requirements (visual aesthetics, responsiveness, timing feel), are there test scenarios for measurable proxies of the experiential goals? If NFRs specify render efficiency, a test should verify no full-screen redraws during normal operation. If a visual layout has proportional requirements, a test should verify the proportions mathematically. Not all UX quality is testable, but the testable proxies should be specified.
 - **State coverage:** Are entity lifecycle transitions (from data model) tested, including invalid transitions?
 
 **Typical findings:**
@@ -247,7 +250,7 @@ In addition to the general Testing Lens criteria:
 During build phases, the lenses serve a different purpose than during artifact generation. Rather than evaluating specifications, they evaluate implementation.
 
 **Stage 4 (Build Planning):**
-- **Architecture Lens:** Is the chunk ordering technically sound? Are dependencies between chunks correctly identified? Is the scaffold sufficient? Would a developer reading this plan get stuck?
+- **Architecture Lens:** Is the chunk ordering technically sound? Are dependencies between chunks correctly identified? Is the scaffold sufficient? Would a developer reading this plan get stuck? Does the build plan faithfully translate all artifact specifications into build instructions? Specifically: are NFR technique requirements (not just targets) reflected as concrete instructions in the relevant chunks? Are data model constraints and experience-critical parameters reflected in chunk deliverables?
 - **Skeptic Lens:** What's the riskiest chunk? What happens if a chunk fails or needs major rework? Is the early feedback milestone realistic?
 
 **Stage 5 (Governance Checkpoints):**

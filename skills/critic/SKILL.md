@@ -143,7 +143,8 @@ Read the following before running checks:
 4. `artifacts/data-model.md` — entity specifications
 5. `artifacts/test-specifications.md` — expected test scenarios
 6. `artifacts/security-model.md` — access patterns
-7. The source code and test files the Builder produced for this chunk
+7. `artifacts/nonfunctional-requirements.md` — performance targets and implementation technique constraints
+8. The source code and test files the Builder produced for this chunk
 
 ### Check 1: Spec Compliance Auditor
 
@@ -167,6 +168,7 @@ After each chunk, diff the implementation against artifact specifications.
 - Data entities match `data-model.md`: field names, types, relationships, constraints, state machines.
 - User flows match `product-brief.md`: the code implements what the flows describe.
 - Security patterns match `security-model.md`: access controls are present where specified.
+- Non-functional techniques match `nonfunctional-requirements.md`: any NFR that specifies an implementation approach (rendering strategy, caching approach, data access pattern) is implemented as specified. NFR performance targets are verifiable via tests or acceptance criteria.
 - Test scenarios match `test-specifications.md`: every scenario for this chunk has a corresponding test.
 
 ### Check 2: Test Integrity Checker
