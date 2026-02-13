@@ -6,7 +6,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.claude/.orchestrator-activated"
+            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.claude/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.claude/.product-session.json"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/product-governance-prompt.sh"
           }
         ]
       }
@@ -38,6 +49,26 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/framework-edit-tracker.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/product-governance-tracker.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/product-governance-stop.sh"
           }
         ]
       }

@@ -180,7 +180,7 @@ try:
     import re
 
     # Find all status lines within observation entries (indented)
-    pattern = r'(      status: )(\w+)'
+    pattern = r'( {4,}status: )(\w+)'
     matches = list(re.finditer(pattern, content))
 
     if $obs_index >= len(matches):

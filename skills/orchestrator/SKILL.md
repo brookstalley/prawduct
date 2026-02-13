@@ -18,8 +18,26 @@ This is the default skill. When using Prawduct to build a user's product:
    **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, or `working-notes/`, those paths are in the project directory. When skills reference other skills (`skills/...`) or templates (`templates/...`), those are read from the prawduct framework directory.
 2. Read `project-state.yaml` in the project directory. If it doesn't exist, this is a new project — copy the prawduct framework's `templates/project-state.yaml` to the project directory.
 3. **Activate governance.** Write the current ISO-8601 timestamp to `.claude/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The orchestrator-gate hook blocks framework file edits without this marker — see HR9.)
-4. Check `current_stage` to determine where we are.
-5. Follow the instructions for the current stage below.
+4. **Initialize product governance tracking (non-framework projects only).** If the project directory is NOT the prawduct framework directory, create `.claude/.product-session.json` to enable mechanical governance enforcement:
+   ```json
+   {
+     "product_dir": "/absolute/path/to/product",
+     "current_stage": "<current_stage from project-state.yaml>",
+     "session_started": "<current ISO-8601 timestamp>",
+     "governance_state": {
+       "chunks_completed_without_review": 0,
+       "last_critic_review_chunk": null,
+       "last_frp_stage": "<current_stage>",
+       "stage_transitions_without_frp": 0,
+       "observations_captured_this_session": 0,
+       "product_files_changed": 0,
+       "governance_checkpoints_due": []
+     }
+   }
+   ```
+   This file is read by three mechanical hooks (product-governance-tracker, product-governance-stop, product-governance-prompt) that inject governance reminders and block completion when critical debt exists. The SessionStart hook clears it on `/clear` or new startup.
+5. Check `current_stage` to determine where we are.
+6. Follow the instructions for the current stage below.
 
 ## Core Responsibilities
 
@@ -267,8 +285,9 @@ For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step
    - **Blocking findings:** The Builder fixes the issues. The Critic re-reviews. Repeat until clear. Watch for fix-by-fudging (the Critic checks for this).
    - **Warnings:** Note them. The Builder addresses warnings that are quick to fix. Others are tracked in `build_state.reviews` for later.
    - **Clear:** Chunk status → "complete". Proceed to next chunk.
+   - **Update governance tracking:** After Critic review, update `.claude/.product-session.json` → `governance_state.chunks_completed_without_review` to 0 and set `last_critic_review_chunk` to the reviewed chunk name. (The PostToolUse hook also derives this mechanically from project-state.yaml, but explicit updates ensure consistency.)
 
-7. **Lightweight reflection.** Were the artifact specs sufficient for this chunk? If not, that's an `artifact_insufficiency` observation. Did the Critic catch real issues or produce noise? That informs Critic calibration.
+7. **Lightweight reflection.** Were the artifact specs sufficient for this chunk? If not, that's an `artifact_insufficiency` observation. Did the Critic catch real issues or produce noise? That informs Critic calibration. After capturing any observations, increment `.claude/.product-session.json` → `governance_state.observations_captured_this_session`.
 
 ### Governance checkpoints
 
@@ -403,6 +422,7 @@ At every stage transition, pause and assess: **did the framework serve this prod
 1. **Always** record a reflection entry in `change_log` (proves reflection happened):
    - `what: "Framework reflection: Stage N (name) complete"`
    - `why: "[assessment summary or 'no concerns']"`
+   - **Update governance tracking (product builds only):** After recording the FRP, update `.claude/.product-session.json` → `governance_state.last_frp_stage` to the current stage and reset `stage_transitions_without_frp` to 0.
 2. **If substantive findings exist**, run `tools/capture-observation.sh` with your findings. The tool handles schema compliance, UUIDs, timestamps, git SHAs, and write-access fallback automatically. Only create observations when there's signal — not for "no concerns." Non-substantive stage reflections are already recorded in `change_log`. See `framework-observations/README.md` for substantiveness criteria.
 3. **If documentation is stale, update it in this session — don't defer.** Documentation drift compounds: a stale doc misleads the next session, which produces more stale docs. File creation, capability changes, and structural additions are the most common triggers.
 4. **Surface findings to the user** briefly: "Framework note: [observation]." Keep to 1-2 sentences unless there's a significant finding. Don't slow down an eager user.
@@ -522,6 +542,8 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
    - This step does NOT apply to user product sessions. Product sessions focus on building, not framework meta-improvement.
 5. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
 6. Continue from the current stage.
+
+**Product governance session recovery:** If the project is NOT the prawduct framework and `.claude/.product-session.json` does not exist, recreate it from `project-state.yaml` state (derive `chunks_completed_without_review` from chunks with status "complete"/"review" that lack entries in `build_state.reviews`). This handles cases where the session file was cleared but a product build is active.
 
 **Mid-build resumption (Stage 5):** If `current_stage` is "building":
 - Read `build_plan.current_chunk` to find the active chunk.
