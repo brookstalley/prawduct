@@ -1,0 +1,19 @@
+---
+observation_id: 421d96d0-ca0d-4313-9b0f-f0c247cf6d87
+timestamp: 2026-02-13T18:54:39Z
+session_type: framework_dev
+session_context:
+  framework_version: dc6ba28
+observations:
+  - type: governance_compliance
+    stage: meta
+    severity: warning
+    description: "Framework governance enforcement had a structural asymmetry: product governance had three hook layers (PostToolUse tracker, UserPromptSubmit context injection, Stop blocker) while framework governance had only two (PostToolUse tracker, commit gate). The missing continuous visibility and session completion blocking caused the LLM to treat Critic review as optional for small framework changes, asking the user instead of running it automatically."
+    evidence: "When making two small framework file changes, the LLM asked Want me to run Framework Governance now instead of running it automatically. Root cause: Orchestrator had explicit governance only for 3+ files (Directional Change Protocol) with nothing for 1-2 files, and no mechanical enforcement pushed back during the session."
+    proposed_action: "Added framework-governance-stop.sh and framework-governance-prompt.sh hooks, explicit governance table in Orchestrator for all change sizes, governance_compliance observation type, and automatic invocation rubric criteria."
+    status: acted_on
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+  - "skills/critic/SKILL.md"
+  - ".claude/hooks/framework-edit-tracker.sh"
+---

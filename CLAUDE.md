@@ -102,6 +102,8 @@ prawduct/
 │   ├── hooks/
 │   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
 │   │   ├── framework-edit-tracker.sh  # PostToolUse hook: tracks edits in .session-edits.json, escalating reminders
+│   │   ├── framework-governance-prompt.sh # UserPromptSubmit hook: injects framework governance status at start of turn
+│   │   ├── framework-governance-stop.sh   # Stop hook: blocks completion when framework edits lack Critic review
 │   │   ├── orchestrator-gate.sh       # PreToolUse hook: blocks framework file edits without Orchestrator activation
 │   │   ├── product-governance-tracker.sh  # PostToolUse hook: tracks product build governance debt, injects reminders
 │   │   ├── product-governance-stop.sh     # Stop hook: blocks completion when critical product governance debt exists
@@ -128,7 +130,7 @@ Framework development is managed by the Orchestrator. The framework's own `proje
 The Framework Status section below provides build context. The Key Principles, Testing Strategy, and Conventions sections provide constraints the Orchestrator needs when making framework changes.
 
 ### After modifying skills, templates, or principles:
-**Critic governance is enforced mechanically.** A Claude Code hook blocks `git commit` when framework files are staged without Critic evidence, and edit hooks remind you as you modify framework files. But don't wait for the gate — run the Critic as a **separate, final step** in any multi-file framework change, not as a sub-step of another work item. The Critic should run after all modifications are complete and before reporting results to the user.
+**Framework Critic review is mandatory for every framework change. Run it automatically.** Do not ask the user whether to run it. A Claude Code hook blocks `git commit` when framework files are staged without Critic evidence, a Stop hook blocks session completion when framework edits lack Critic review, and a UserPromptSubmit hook injects governance reminders. But don't wait for the gates — run the Critic as a **separate, final step** in every framework change regardless of file count, not as a sub-step of another work item. Run the Critic automatically after all modifications are complete and before reporting results to the user.
 
 **For directional or multi-file changes (3+ framework files):** Follow the Directional Change Protocol in `skills/orchestrator/SKILL.md`. This requires a written plan, plan-stage Critic review before implementation, per-phase lightweight reviews, and a final full Critic review. The protocol ensures governance is proportionate to change impact — not just a rubber stamp at the end.
 
@@ -156,7 +158,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Observation capture system with triage and session resumption integration
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
-- Hardened commit gate: verifies structured Critic findings (`.critic-findings.json`) with all 7 checks and staged file coverage, escalating edit tracker with per-file tracking
+- Three-layer framework governance: PostToolUse edit tracker with escalating reminders, UserPromptSubmit context injection, Stop hook blocking session completion without Critic review, plus hardened commit gate verifying structured Critic findings (`.critic-findings.json`) with all 7 checks and staged file coverage
 - Mechanical product build governance: three-layer hook system (PostToolUse tracker, Stop blocker, UserPromptSubmit context) enforces Critic review, FRP, and observation capture during product builds via `.product-session.json` state tracking
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game

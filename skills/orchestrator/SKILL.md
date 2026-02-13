@@ -361,6 +361,15 @@ The user has a working product and provides feedback. Handle feedback in lightwe
    5. **Final Critic review.** After all changes are complete, run the full Framework Governance review (all checks).
    6. **Session observation.** Write a `framework_dev` observation for the full implementation, covering what the change accomplished, what governance caught, and what (if anything) slipped through.
 
+   **Framework change governance (all sizes)**
+
+   Every framework file change requires Critic review before committing, regardless of file count. This is automatic — do not ask the user whether to run it.
+
+   | Change size | Protocol |
+   |---|---|
+   | 1-2 framework files | Implement changes → run Framework Governance (all 7 checks) → record findings → commit |
+   | 3+ files or directional | Follow Directional Change Protocol above |
+
 3. **Change impact assessment (R5.2).** Before implementing any functional change:
 
    > "That change would affect [artifacts]. Here's what it means: [impact description]. [If small: 'Quick fix, should take one iteration.' If larger: 'This touches [N] files and the [artifact]. Want to proceed?']"
@@ -381,11 +390,12 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
    **FRP focus for Stage 6:** Was the feedback classification accurate? Did the change impact assessment help? Were artifacts sufficient for the iteration, or did gaps surface?
 
-**Low-risk iteration rules:**
+**Low-risk product iteration rules (not framework changes):**
 - Don't require formal change impact assessments for cosmetic changes.
 - Don't re-run all four review lenses for minor tweaks.
 - Don't update every artifact for a small functional change — update only what's actually affected.
 - Bias toward action: fix, test, show, ask.
+- Framework changes always require Critic review regardless of size.
 
 ---
 

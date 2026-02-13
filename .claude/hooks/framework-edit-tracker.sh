@@ -48,6 +48,7 @@ FRAMEWORK_PATTERNS=(
     "scripts/"
     "tools/"
     ".claude/hooks/"
+    ".claude/settings.json"
     "framework-observations/README.md"
     "framework-observations/schema.yaml"
 )

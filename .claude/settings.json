@@ -1,6 +1,6 @@
 {
   "companyAnnouncements": [
-    "\u001b[1;34m ▗▟███▙▖\u001b[0m    \u001b[1mPrawduct\u001b[0m\n\u001b[1;34m ▐▘ █ ▝▌\u001b[0m    Product development framework\n\u001b[1;34m ▝▜███▛▘\u001b[0m    Describe an idea or say hello"
+    "\u001b[1;34m ▗▟███▙▖\u001b[0m    \u001b[1mPrawduct\u001b[0m\n\u001b[1;34m ▐▘ █ ▝▌\u001b[0m    \u001b[2mProduct development framework\u001b[0m\n\u001b[1;34m ▝▜███▛▘\u001b[0m    \u001b[2mDescribe an idea or say hello\u001b[0m"
   ],
   "hooks": {
     "SessionStart": [
@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.claude/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.claude/.product-session.json"
+            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.claude/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.claude/.product-session.json \"$CLAUDE_PROJECT_DIR\"/.claude/.session-edits.json"
           }
         ]
       }
@@ -21,6 +21,15 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/product-governance-prompt.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/framework-governance-prompt.sh"
           }
         ]
       }
@@ -72,6 +81,15 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/product-governance-stop.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/framework-governance-stop.sh"
           }
         ]
       }

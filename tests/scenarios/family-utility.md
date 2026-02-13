@@ -321,6 +321,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` Test count never decreases between chunks.
 - `[simulation]` All core flows from the Product Brief have implementation evidence in `spec_compliance`.
 - `[simulation]` Critic actively reviews each feature chunk with substantive evidence of review. For medium/high-risk products, at least one blocking or warning finding expected. For low-risk products, note-only findings are acceptable if the build is clean.
+- `[simulation]` Critic review was invoked automatically as part of the process, not prompted by user request. The system must not ask "Want me to run the Critic?" — it runs it proactively.
 - `[simulation]` Fix-by-fudging detection is active: if a test is weakened to pass, the Critic catches it.
 
 **Must-not-do:**
