@@ -52,6 +52,15 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/orchestrator-gate.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/product-chunk-gate.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [

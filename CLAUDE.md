@@ -105,6 +105,7 @@ prawduct/
 │   │   ├── framework-governance-prompt.sh # UserPromptSubmit hook: injects framework governance status at start of turn
 │   │   ├── framework-governance-stop.sh   # Stop hook: blocks completion when framework edits lack Critic review
 │   │   ├── orchestrator-gate.sh       # PreToolUse hook: blocks framework file edits without Orchestrator activation
+│   │   ├── product-chunk-gate.sh       # PreToolUse hook: blocks product file edits when chunks lack Critic review
 │   │   ├── product-governance-tracker.sh  # PostToolUse hook: tracks product build governance debt, injects reminders
 │   │   ├── product-governance-stop.sh     # Stop hook: blocks completion when critical product governance debt exists
 │   │   └── product-governance-prompt.sh   # UserPromptSubmit hook: injects governance status at start of turn
@@ -159,7 +160,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
 - Three-layer framework governance: PostToolUse edit tracker with escalating reminders, UserPromptSubmit context injection, Stop hook blocking session completion without Critic review, plus hardened commit gate verifying structured Critic findings (`.critic-findings.json`) with all 7 checks and staged file coverage
-- Mechanical product build governance: three-layer hook system (PostToolUse tracker, Stop blocker, UserPromptSubmit context) enforces Critic review, FRP, and observation capture during product builds via `.product-session.json` state tracking
+- Mechanical product build governance: four-layer hook system — PreToolUse chunk gate (blocks product file edits when chunks lack Critic review), PostToolUse tracker (accumulates governance state), Stop blocker (blocks session completion), UserPromptSubmit context (injects governance reminders) — enforces Critic review, FRP, and observation capture during product builds via `.product-session.json` state tracking
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 

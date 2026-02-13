@@ -35,7 +35,7 @@ This is the default skill. When using Prawduct to build a user's product:
      }
    }
    ```
-   This file is read by three mechanical hooks (product-governance-tracker, product-governance-stop, product-governance-prompt) that inject governance reminders and block completion when critical debt exists. The SessionStart hook clears it on `/clear` or new startup.
+   This file is read by four mechanical hooks (product-chunk-gate, product-governance-tracker, product-governance-stop, product-governance-prompt) that block product file edits when chunks lack review, inject governance reminders, and block session completion when critical debt exists. The SessionStart hook clears it on `/clear` or new startup.
 5. Check `current_stage` to determine where we are.
 6. Follow the instructions for the current stage below.
 

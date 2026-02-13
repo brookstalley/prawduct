@@ -23,12 +23,14 @@ set -euo pipefail
 
 # --- Fast path: check for active product session ---
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-if [[ -z "$REPO_ROOT" ]]; then
+# $CLAUDE_PROJECT_DIR is set by Claude Code to the directory where it was launched.
+# We use this instead of git rev-parse because the product directory may not be a
+# git repo, but the session file always lives in the framework's .claude/ directory.
+if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
     exit 0
 fi
 
-SESSION_FILE="$REPO_ROOT/.claude/.product-session.json"
+SESSION_FILE="$CLAUDE_PROJECT_DIR/.claude/.product-session.json"
 if [[ ! -f "$SESSION_FILE" ]]; then
     exit 0
 fi
