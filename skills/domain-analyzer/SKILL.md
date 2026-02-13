@@ -1,6 +1,6 @@
 # Domain Analyzer
 
-The Domain Analyzer classifies product ideas by domain and concerns, generates context-appropriate discovery questions prioritized by decision impact, profiles risk and complexity, and surfaces expertise the user hasn't raised. It is invoked by the Orchestrator during intake (Stage 0) and discovery (Stage 1).
+The Domain Analyzer classifies product ideas by structural characteristics and domain, generates context-appropriate discovery questions prioritized by decision impact, profiles risk and complexity, and surfaces expertise the user hasn't raised. It is invoked by the Orchestrator during intake (Stage 0) and discovery (Stage 1).
 
 ## When You Are Activated
 
@@ -12,27 +12,38 @@ The Orchestrator activates this skill when:
 
 When activated, read the current `project-state.yaml` in the user's project directory before doing anything else.
 
-## Step 1: Detect Product Concerns
+## Step 1: Detect Structural Characteristics
 
-Analyze the user's description for concern signals. A product may have **any combination** of concerns — they are independent dimensions, not mutually exclusive categories.
+Analyze the user's description for structural signals. A product may have **any combination** of structural characteristics — they are independent architectural facts, not mutually exclusive categories. Each characteristic triggers fundamentally different artifact needs.
 
-| Concern | Signals in user's description |
-|---------|-------------------------------|
-| **`human_interface`** | "app," "screen," "page," "button," "user sees," "dashboard," "terminal," "voice," visual elements, mobile, website. Set `type` to: `screen` (web/mobile/desktop), `terminal` (CLI/TUI), `voice`, `spatial` (VR/AR), or `minimal` (LEDs, buttons, indicators). |
-| **`unattended_operation`** | "automatically," "every day," "monitor," "scrape," "runs in background," "cron," "pipeline," "scheduled." Set `trigger` to: `scheduled`, `event-driven`, or `always-on`. |
-| **`api_surface`** | "API," "endpoint," "integration," "consumer," "webhook," "other systems call," "SDK." Set `consumers` to: `internal`, `external`, or `both`. |
-| **`multi_party`** | Distinct user types interacting: "buyers and sellers," "teachers and students," "admin panel," multiple distinct roles. Set `parties` to the list of distinct user types. |
-| **`constrained_environment`** | "embedded," "firmware," "plugin," "extension," "browser extension," "serverless," "offline-only," limited resources. Set `type` to: `embedded`, `mobile-battery`, `browser-extension`, `serverless`, or other descriptor. |
-| **`external_integrations`** | External services, APIs, data sources, third-party dependencies mentioned. Set `count` to estimated number and `types` to list. |
-| **`sensitive_data`** | "health data," "payments," "children," "PII," "financial," "medical," regulatory keywords. Set `categories` to list (e.g., PII, financial) and `regulatory` to applicable regulations. |
+| Structural Characteristic | Signals in user's description | Why structural |
+|---------------------------|-------------------------------|----------------|
+| **`has_human_interface`** | "app," "screen," "page," "button," "user sees," "dashboard," "terminal," "voice," visual elements, mobile, website. Set `modality` to: `screen` (web/mobile/desktop), `terminal` (CLI/TUI), `voice`, `spatial` (VR/AR), or `minimal` (LEDs, buttons, indicators). Set `platform` if apparent (mobile, web, desktop, cross-platform). | UI products need screen specs, IA, design direction, accessibility, onboarding |
+| **`runs_unattended`** | "automatically," "every day," "monitor," "scrape," "runs in background," "cron," "pipeline," "scheduled." Set `trigger` to: `scheduled`, `event-driven`, or `always-on`. | Unattended systems need monitoring, alerting, failure recovery, scheduling specs |
+| **`exposes_programmatic_interface`** | "API," "endpoint," "integration," "consumer," "webhook," "other systems call," "SDK." Set `consumers` to: `internal`, `external`, or `both`. | APIs need contracts, versioning, consumer docs, SLA definitions |
+| **`has_multiple_party_types`** | Distinct user types interacting: "buyers and sellers," "teachers and students," "admin panel," multiple distinct roles. Set `parties` to the list of distinct user types. | Multi-party products need per-party specs, trust boundary analysis |
+| **`handles_sensitive_data`** | "health data," "payments," "children," "PII," "financial," "medical," regulatory keywords. Set `categories` to list (e.g., PII, financial) and `regulatory` to applicable regulations. | Changes security depth, may trigger regulatory artifacts |
 
-**When no concerns are clearly signaled:** Ask one clarifying question focused on what the product *does* (not what category it fits). The answer will reveal concerns naturally.
+**What is NOT structural:** Properties like "constrained environment" (nearly everything has some constraints) and "external integrations" (nearly everything integrates with something) are not architectural facts that change artifact needs. They are domain-specific characteristics that the dynamic discovery process handles naturally.
 
-Write detected concerns to `project-state.yaml` → `classification.concerns`. Set each active concern to a map of its properties. Leave inactive concerns as `null`.
+**When no structural characteristics are clearly signaled:** Ask one clarifying question focused on what the product *does* (not what category it fits). The answer will reveal structural characteristics naturally.
 
-**In conversation, describe the product naturally.** "This sounds like a background automation that fetches data and posts to Slack" is good communication. These natural descriptions are not stored as a classification field — concerns are the only routing key.
+Write detected structural characteristics to `project-state.yaml` → `classification.structural`. Set each active characteristic to a map of its properties. Leave inactive characteristics as `null`.
 
-**Coverage:** This skill has full discovery depth for `human_interface` and `unattended_operation` concerns, plus initial question sets for all other concerns.
+### Identify Domain-Specific Characteristics
+
+After detecting structural characteristics, identify what makes THIS product unique in its domain. These are not from a predefined list — they emerge from the user's description and your domain knowledge.
+
+**Examples of domain characteristics:**
+- For a realtime audio processor: "realtime audio processing" → implications: latency budgets, lock-free audio thread, buffer management
+- For a blockchain dApp: "smart contract execution" → implications: gas optimization, upgrade patterns, transaction finality
+- For a family game score tracker: "casual family gaming context" → implications: simplicity emphasis, game-night physical setting, mixed-age users
+- For an embedded firmware project: "constrained hardware environment" → implications: memory budgets, power management, watchdog timers
+- For a data pipeline with external APIs: "external service integration" → implications: rate limiting, resilience patterns, credential management
+
+Write domain characteristics to `project-state.yaml` → `classification.domain_characteristics`. Each entry has a `characteristic` (short description) and `implications` (list of what it means for this product).
+
+**In conversation, describe the product naturally.** "This sounds like a background automation that fetches data and posts to Slack" is good communication. Structural characteristics are the routing key; domain characteristics provide session-resumption context.
 
 ## Step 2: Classify the Domain
 
@@ -73,11 +84,11 @@ The execution quality bar captures products where the stakes aren't in data or i
 
 Overall risk is the highest level among factors that matter for this product. Don't inflate risk — a family app with no sensitive data is low risk even if the user is ambitious about features. Note: a high execution quality bar does not by itself raise overall risk level. It is tracked as a factor so that downstream stages (especially artifact generation and review) can calibrate design attention appropriately, but it does not drive discovery depth the way data sensitivity or technical complexity do.
 
-### Concern-Specific Risk Factor Interpretation
+### Structural-Characteristic Risk Factor Interpretation
 
-Risk factors read differently depending on the product's active concerns. Apply these adjustments when the corresponding concern is active:
+Risk factors read differently depending on the product's active structural characteristics. Apply these adjustments when the corresponding characteristic is active:
 
-**When `unattended_operation` is active:**
+**When `runs_unattended` is active:**
 
 | Factor | Adjustment |
 |--------|------------|
@@ -85,20 +96,14 @@ Risk factors read differently depending on the product's active concerns. Apply 
 | **Technical complexity** | For unattended systems, complexity is driven by integration count (number of external sources/services) more than algorithm complexity. Each external dependency is a failure point. |
 | **Operational maturity** | How experienced is the user with running unattended systems? A developer building their first pipeline needs more operational guidance than an SRE. Factor this into guidance depth, not risk level. |
 
-**When `sensitive_data` is active:**
+**When `handles_sensitive_data` is active:**
 
 | Factor | Adjustment |
 |--------|------------|
 | **Data sensitivity** | Automatically medium or higher. The specific categories and regulatory applicability determine the exact level. |
 | **Regulatory exposure** | Check whether the data categories trigger specific regulations (HIPAA for health, COPPA for children, PCI for payments, GDPR for EU personal data). |
 
-**When `constrained_environment` is active:**
-
-| Factor | Adjustment |
-|--------|------------|
-| **Technical complexity** | Constrained environments impose hard limits (memory, CPU, power, storage) that make otherwise-simple features technically complex. Weight this higher than the feature set alone suggests. |
-
-**When `multi_party` is active:**
+**When `has_multiple_party_types` is active:**
 
 | Factor | Adjustment |
 |--------|------------|
@@ -114,9 +119,9 @@ Present the classification in plain language. Do not require the user to underst
 
 **Good:** "This sounds like a family app for tracking board game scores — a straightforward utility with pretty low stakes. Does that capture it?"
 
-**Bad:** "I've classified this as a UI Application in the Utility domain with a low risk profile. Please confirm."
+**Bad:** "I've classified this as having has_human_interface structural characteristic in the Utility domain with a low risk profile. Please confirm."
 
-If the user corrects you, update the classification and re-evaluate. If the correction changes the active concerns, note that discovery questions will change accordingly.
+If the user corrects you, update the classification and re-evaluate. If the correction changes the active structural characteristics, note that discovery questions will change accordingly.
 
 ## Step 5: Generate Discovery Questions
 
@@ -143,186 +148,83 @@ Two rules govern the budget:
 1. **The budget is a ceiling, not a quota.** Stop when you have enough to define the product. Never pad questions to fill the budget.
 2. **Proactive expertise counts against the budget only if phrased as a question.** Tier 3 items and Proactive Expertise items surfaced as statements, inferences, or recommendations are free. If you phrase one as a question (e.g., "When you say 'scores,' do you mean..."), it counts. Prefer inference-confirm framing: "I'm assuming 'scores' means point totals per game — sound right?"
 
-### Discovery Questions: Universal
+### Universal Discovery Dimensions
 
-These questions apply to **all products** regardless of which concerns are active. They are the highest-priority questions in any discovery session.
+These 9 dimensions MUST be explored for every product. For each dimension, generate 1-3 questions specific to THIS product using your domain knowledge. Not every dimension needs a direct question — some can be covered by inference, and the budget constrains total questions. But every dimension must be considered, and gaps should be noted.
 
-#### Tier 1 — Must Ask
+#### 1. Users and Stakeholders
+Who uses this? How many? What's their expertise? What's their context?
 
-1. **Users:** Who exactly uses this? How many people? Is this just for you, or does it need to work for others?
-2. **Core experience:** What's the single most important thing that happens? This might be something the user actively does ("tracks scores," "sends a message"), something the system does unattended ("monitors feeds," "processes data"), or something the system creates for the user ("generates a playlist," "produces a calming environment"). The answer shapes everything.
-3. **Current process:** How do you do this today? What specifically is broken or annoying about that?
+#### 2. Core Experience
+What's the single most important thing that happens? This might be something the user actively does ("tracks scores"), something the system does unattended ("monitors feeds"), or something the system creates ("generates a playlist"). The answer shapes everything.
 
-#### Tier 2 — Ask If Not Already Inferable
+#### 3. Data and Persistence
+Does the data matter long-term? What entities exist? How do they relate? Is each session independent or does state accumulate?
 
-4. **Data persistence:** Does the data matter long-term, or is each session/run independent?
-5. **Success image:** When you imagine this working perfectly, what does that look like? (Helps surface unstated requirements.)
+#### 4. Security and Access
+Who can access what? How are users identified? What happens if unauthorized access occurs? Depth is proportionate to risk — a family app needs simple identification, not OAuth.
 
-### Discovery Questions: Human Interface
+#### 5. Failure Modes and Recovery
+What happens when things go wrong? What's the worst failure? How would you know something failed? What's the recovery path?
 
-**Activate when:** `concerns.human_interface` is not null.
+#### 6. Performance and Resource Constraints
+What are the latency, throughput, or resource expectations? Are there hard limits (memory, CPU, cost, bandwidth)?
 
-#### Tier 1 — Must Ask
+#### 7. Operational Lifecycle
+How is this deployed? Updated? Monitored? What does day-2 operation look like?
 
-1. **Platform and context:** Where do people use this? Phone? Computer? Terminal? Include the physical context — not just the device but the conditions: dark room, noisy commute, wet hands in a kitchen, glancing while driving. Physical context drives design constraints (brightness, touch target size, audio behavior, screen-off operation) as much as platform choice does. Frame in context: "At the game table? In bed? At a desk?"
+#### 8. Dependencies and Integration Points
+What external services, APIs, or systems does this depend on? What happens when they're down?
 
-#### Tier 2 — Ask If Not Already Inferable
+#### 9. Regulatory and Compliance
+Are there regulations that apply? Even if the user isn't sure, surface likely regulations based on data types and user demographics.
 
-2. **Sharing/multi-user:** Do users need to see each other's data? Can multiple people interact with the same data?
+### Structural Amplification Rules
 
-#### Tier 3 — Surface as Considerations, Don't Ask
+Each structural characteristic amplifies specific universal dimensions. When a structural characteristic is active, the amplified dimensions require deeper exploration — more questions, more proactive expertise, and more explicit artifact coverage.
 
-3. **Offline use:** If the context suggests use in places without reliable internet (game nights, outdoors, travel), surface offline capability as a design consideration.
-4. **Simplicity bias:** For utility products, proactively recommend simplicity. "Keeping it dead simple usually matters more than having lots of features. I'd suggest we keep v1 to just [core action] and see if you want more after using it."
-5. **Empty state:** The product before any data exists — what does a new user see? This matters for first-run experience and should be addressed in artifacts.
+**When `runs_unattended` is active — amplify:**
+- **Failure modes (dimension 5):** Silent failure is the default mode for unattended systems. The most dangerous failure is one nobody notices. Always surface this: "Systems that run in the background can fail silently — you won't notice until the output stops appearing. I'll make sure monitoring and alerting are addressed in the design."
+- **Operational lifecycle (dimension 7):** Monitoring, alerting, scheduling, log access, and diagnostics are core features, not afterthoughts. Even a side project benefits from thinking about this upfront.
+- **Dependencies (dimension 8):** Each external dependency is a failure point. Rate limits and transient failures are inevitable. Surface idempotency — if the system might run twice, will it produce duplicate output?
 
-### Discovery Questions: Unattended Operation
+**When `has_human_interface` is active — amplify:**
+- **Users (dimension 1):** Physical context matters — not just the device but the conditions: dark room, noisy commute, wet hands in a kitchen, glancing while driving. Frame in context: "At the game table? In bed? At a desk?"
+- **Core experience (dimension 2):** Interaction patterns, empty states, first-run experience. What does the product look like before any data exists?
+- **Performance (dimension 6):** Responsiveness expectations. For games: frame rate. For apps: perceived latency. For terminals: rendering speed.
 
-**Activate when:** `concerns.unattended_operation` is not null.
+**When `exposes_programmatic_interface` is active — amplify:**
+- **Users (dimension 1):** Consumer types — internal services, external developers, partners, the public. This determines documentation needs and backward compatibility requirements.
+- **Core experience (dimension 2):** API operations as use cases, not endpoints. Error handling and how consumers experience failures.
+- **Dependencies (dimension 8):** Backward compatibility is a dependency — existing consumers depend on the current contract.
 
-#### Tier 1 — Must Ask
+**When `has_multiple_party_types` is active — amplify:**
+- **Users (dimension 1):** Each party's needs must be discovered independently. Don't conflate distinct user types.
+- **Security (dimension 4):** Trust boundaries between parties. One party's data must not leak to another unless explicitly designed.
+- **Data (dimension 3):** Cross-party data isolation. Even non-sensitive data becomes sensitive across party boundaries.
 
-1. **Data sources and triggers:** What data does this consume, and what triggers processing? Frame around the user's language — "which sites/feeds/APIs" not "enumerate your data sources."
-2. **Processing logic:** What happens between input and output? What transformation, filtering, enrichment, or analysis occurs? Get enough detail to identify stages, but don't design them here.
-3. **Output and consumers:** Where does the result go, and who or what consumes it? Determines the output boundary, format requirements, and delivery reliability needs.
+**When `handles_sensitive_data` is active — amplify:**
+- **Security (dimension 4):** Data classification, lifecycle (collection, storage, access, deletion), breach scenarios.
+- **Regulatory (dimension 9):** Specific regulations triggered by data categories. Even if the user isn't sure, surface likely regulations.
+- **Data (dimension 3):** Data minimization — collect only what's needed. Audit trails for access to sensitive data.
 
-#### Tier 2 — Ask If Not Already Inferable
+### Dynamic Domain-Specific Questions
 
-4. **Failure visibility:** How would you know if this stopped working? Surfaces monitoring expectations and introduces the critical silent-failure concern. Many users haven't considered this — the question itself brings expertise.
-5. **Configuration and change frequency:** What aspects will need to change over time (sources, filters, schedule, output format)? How often? Determines configuration design complexity.
-6. **Cost and resource constraints:** What's the budget for running this? Any constraints on where it runs or what services it can use? Especially important for systems that call paid APIs on every run.
-7. **Data volume and throughput:** How much data flows through per run? 10 items or 10,000? Determines architecture choices (batch vs. stream, storage needs, timeout windows). May be inferable from context.
+After considering the universal dimensions and structural amplifications, generate questions specific to THIS product's domain using your own knowledge. These are not from a predefined list — they come from understanding what matters in the product's specific domain.
 
-#### Tier 3 — Surface as Considerations, Don't Ask
+**How to generate domain-specific questions:**
 
-8. **Silent failure is the default mode.** For any unattended system, the most dangerous failure is one nobody notices. Surface this explicitly: "Systems that run in the background can fail silently — you won't notice until the output stops appearing. I'll make sure monitoring and alerting are addressed in the design."
-9. **Idempotency.** If the system might run twice (retry, manual trigger, scheduler hiccup), will it produce duplicate output? Surface this as a design consideration.
-10. **Rate limiting and external service resilience.** If the system calls external APIs or scrapes websites, rate limits and transient failures are inevitable. Surface this as a design consideration.
-11. **Operational lifecycle.** Unattended systems need deployment, monitoring, log access, and a way to diagnose problems. Even a side project benefits from thinking about this upfront.
+1. Consider what the product's domain_characteristics imply. A realtime audio processor needs questions about latency budgets and codec selection. A blockchain dApp needs questions about gas optimization. A family game tracker needs questions about simplicity and game-night context.
 
-### Discovery Questions: API Surface
+2. Draw on your knowledge of what goes wrong in this domain. What are the common failure modes? What do practitioners in this domain wish they'd thought about earlier?
 
-**Activate when:** `concerns.api_surface` is not null.
+3. Consider domain-specific quality dimensions. For entertainment: what makes it fun? For productivity: what saves time? For automation: what makes it reliable?
 
-#### Tier 1 — Must Ask
+**Question tiering for all questions (universal and domain-specific):**
 
-1. **Consumers:** Who or what calls this API? Internal services, external developers, partners, or the public? This determines documentation needs, backward compatibility requirements, and SLA expectations.
-2. **Core operations:** What are the primary things consumers do through the API? Frame as use cases, not endpoints.
-3. **Data contracts:** What data goes in and comes out? What format (REST/JSON, GraphQL, gRPC, etc.)? What are the key entities?
-
-#### Tier 2 — Ask If Not Already Inferable
-
-4. **Versioning:** How will the API evolve without breaking existing consumers? Surface if the user hasn't considered this.
-5. **Error handling:** What should consumers see when things go wrong? Consistent error format, meaningful error codes, retry guidance.
-6. **Rate limiting and quotas:** Do consumers need limits? How should throttling be communicated?
-
-#### Tier 3 — Surface as Considerations, Don't Ask
-
-7. **Backward compatibility.** API changes must not break existing consumers. Surface this as a design constraint.
-8. **Consumer onboarding.** New consumers need documentation, sandbox/test environments, and examples. Surface this as an artifact need.
-9. **Idempotency.** For mutation operations, repeated calls should produce the same result. Surface for any API handling payments, state changes, or side effects.
-
-### Discovery Questions: Multi-Party
-
-**Activate when:** `concerns.multi_party` is not null.
-
-#### Tier 1 — Must Ask
-
-1. **Party identification:** Who are the distinct user types? What makes them distinct? Each party's needs must be discovered independently.
-2. **Per-party needs:** For each party type: what do they need from the system? What do they see? What can they do? Ask about each party separately — don't conflate.
-3. **Party interactions:** How do the parties affect each other? What can one party do that impacts another? Where are the trust boundaries?
-
-#### Tier 2 — Ask If Not Already Inferable
-
-4. **Power dynamics:** Is the relationship symmetric (peer-to-peer) or asymmetric (admin/user, seller/buyer)? Who has authority over shared resources?
-5. **Onboarding per party:** How does each party type get started? Do they all arrive the same way?
-
-#### Tier 3 — Surface as Considerations, Don't Ask
-
-6. **Trust boundaries.** Each party should only see and modify what they're authorized to. Surface this as a security and data model consideration.
-7. **Cross-party testing.** Each party combination creates interaction scenarios that need testing. Surface the combinatorial complexity.
-
-### Discovery Questions: External Integrations
-
-**Activate when:** `concerns.external_integrations` is not null.
-
-These questions often overlap with `unattended_operation` — when both are active, consolidate rather than asking twice.
-
-#### Tier 1 — Must Ask (if not already covered by other concerns)
-
-1. **Integration inventory:** What external services, APIs, or data sources does this depend on? Get a list with access methods.
-
-#### Tier 2 — Ask If Not Already Inferable
-
-2. **Reliability expectations:** How reliable are these external services? What happens when they're down?
-3. **Cost per call:** Are any of these pay-per-use? What's the expected volume and cost?
-
-#### Tier 3 — Surface as Considerations, Don't Ask
-
-4. **Rate limiting.** External APIs have rate limits. Surface this if the product makes many calls.
-5. **Fallback behavior.** What does the product do when an external service is unavailable? Degrade gracefully or fail explicitly?
-
-### Discovery Questions: Constrained Environment
-
-**Activate when:** `concerns.constrained_environment` is not null.
-
-#### Tier 1 — Must Ask
-
-1. **Host system constraints:** What does the host environment provide and limit? Memory, CPU, storage, power, network access, filesystem access, display capabilities.
-2. **Host system APIs:** What interfaces does the host environment expose? What can the product access and what is sandboxed or restricted?
-
-#### Tier 2 — Ask If Not Already Inferable
-
-3. **Update mechanism:** How does the product get updated in this environment? App store review? OTA? Manual flash?
-4. **Failure behavior:** What happens when the product fails in this constrained environment? Can the user restart it easily? Is there a watchdog?
-
-#### Tier 3 — Surface as Considerations, Don't Ask
-
-5. **Resource budgets.** Constrained environments require explicit resource budgets (memory ceiling, CPU duty cycle, power budget). Surface this as an NFR need.
-6. **Testing in-situ.** Testing in the actual constrained environment is harder than testing on a development machine. Surface this as a testing strategy consideration.
-
-### Discovery Questions: Sensitive Data
-
-**Activate when:** `concerns.sensitive_data` is not null.
-
-#### Tier 1 — Must Ask
-
-1. **Data classification:** What specific types of sensitive data are involved? (PII, financial, health, children's data, credentials, etc.)
-2. **Regulatory applicability:** Are there specific regulations that apply? (GDPR, HIPAA, COPPA, PCI-DSS, SOX, etc.) Even if the user isn't sure, surface likely regulations based on the data types.
-
-#### Tier 2 — Ask If Not Already Inferable
-
-3. **Data lifecycle:** How is sensitive data collected, stored, accessed, and eventually deleted? Who has access?
-4. **Breach scenario:** What happens if this data is exposed? What's the impact on users?
-
-#### Tier 3 — Surface as Considerations, Don't Ask
-
-5. **Data minimization.** Collect only what's needed. Surface this as a design principle.
-6. **Audit trails.** Access to sensitive data should be logged. Surface if the data categories warrant it.
-
-### Discovery Questions: Domain-Specific Overlays
-
-When domain-specific concerns apply, add them to the question set (within the budget):
-
-**Utility domain:**
-- Emphasize simplicity. Resist feature accumulation.
-- Ask about the "moment of use" — when and where does the user reach for this?
-
-**Entertainment domain:**
-- Ask what makes it fun or engaging. Utility is necessary but not sufficient.
-- If competitive: how are disputes handled?
-
-**Automation domain:**
-- Emphasize reliability over features. A pipeline that runs correctly every time is more valuable than one with sophisticated features that occasionally breaks.
-- Ask about the "what if it breaks" moment — how quickly would you notice, and what's the impact?
-
-**Productivity + Automation overlap:**
-- The pipeline exists to save time. Quantify the current manual effort to calibrate how much automation complexity is justified.
-- If the pipeline feeds into a manual step (review, approval, editing), the output format and clarity are critical — the pipeline's "UX" is its output.
-
-**Content + Automation overlap:**
-- Content pipelines curate, filter, or aggregate. The key question is filtering quality — false positives (noise) vs. false negatives (missed items).
-- Content changes over time. How does the pipeline adapt to evolving sources and shifting interests?
+- **Tier 1 — Must Ask:** Questions whose answers fundamentally change the product. Ask these directly.
+- **Tier 2 — Ask If Not Already Inferable:** Questions that matter but may be answerable from context. Ask only if you can't infer.
+- **Tier 3 — Surface as Considerations, Don't Ask:** Insights the user hasn't raised. Surface as statements or recommendations, not questions. These don't count against the question budget.
 
 ### Proactive Expertise
 
@@ -348,7 +250,8 @@ After classification and discovery, produce:
 
    **After Stage 0 (classification):**
    - `classification.domain`
-   - `classification.concerns` (each active concern with its properties; inactive concerns as null)
+   - `classification.structural` (each active characteristic with its properties; inactive characteristics as null)
+   - `classification.domain_characteristics` (list of identified domain-specific characteristics with implications)
    - `classification.risk_profile.overall`
    - `classification.risk_profile.factors` (each with level and rationale)
    - `current_stage`: update to "discovery"
@@ -371,29 +274,24 @@ After classification and discovery, produce:
    - What remains open
    - Whether discovery is sufficient to proceed to product definition, or more questions are needed
    - Any concerns to surface (from proactive expertise)
+   - **Coverage assessment:** For each of the 9 Universal Discovery Dimensions, briefly note whether it has adequate coverage from what was learned. Flag underexplored dimensions.
 
 ## Extending This Skill
 
-Remaining concern deepening work is tracked in `project-state.yaml` → `build_plan.remaining_work`.
+### When refining structural characteristics:
 
-### When adding a new concern, add:
+- `coverage` observations → a structural characteristic's amplification rules missed something important → strengthen the amplification rules.
+- `applicability` observations → a structural characteristic triggered content that didn't apply → refine signal detection or amplification rules.
+- `proportionality` observations → a structural characteristic added disproportionate weight → recalibrate amplification depth.
 
-1. Signal row in the Step 1 concern detection table.
-2. Concern-specific risk factors in Step 3 (if the concern changes how risk factors read).
-3. Discovery question section (tiered by impact) — a new "Discovery Questions: [Concern]" section.
-4. Domain overlays relevant to that concern (if applicable).
-5. A test scenario rubric in `tests/scenarios/` that exercises the concern.
+### When structural characteristics should be split, merged, or added:
 
-### When refining an existing concern:
+- **Split:** If pattern detection reveals that a characteristic is really two distinct dimensions (different products activate it for different reasons, triggering different artifacts), split it.
+- **Merge:** If two characteristics always co-occur and never independently add value, merge them.
+- **Add:** If 2+ occurrences of `missing_guidance` observations point to a product needing artifacts that no existing structural characteristic triggers, a new structural characteristic may be needed. The bar is high — the new characteristic must trigger fundamentally different artifact needs, not just different questions.
+- **Retire:** If a characteristic never triggers across many sessions, or its artifacts are always better handled by dynamic domain adaptation, retire it. "Nothing Is Permanent" (principles.md) applies.
 
-- `coverage` observations → the concern's questions missed something important → add or strengthen questions.
-- `applicability` observations → the concern triggered content that didn't apply → refine signal detection or question applicability.
-- `proportionality` observations → the concern added disproportionate weight → recalibrate question depth.
+### When improving dynamic generation:
 
-### When concerns should be split, merged, or retired:
-
-- **Split:** If pattern detection reveals that a concern is really two distinct dimensions (different products activate it for different reasons, triggering different questions), split it.
-- **Merge:** If two concerns always co-occur and never independently add value, merge them.
-- **Retire:** If a concern never triggers across many sessions, or its content is always better handled by a combination of other concerns, retire it. "Nothing Is Permanent" (principles.md) applies.
-
-Threshold for adding a new concern: 2+ occurrences of `missing_guidance` observations pointing to the same unrecognized dimension. A single unusual product is not sufficient.
+- If the LLM consistently misses important domain-specific questions for a particular domain, consider whether the amplification rules for the relevant structural characteristic need strengthening, or whether the proactive expertise guidance needs domain-specific examples.
+- Do NOT add hardcoded question banks for specific domains. The architecture's strength is that the LLM generates questions from its own domain knowledge. Hardcoded questions create an enumeration that can't cover all domains.
