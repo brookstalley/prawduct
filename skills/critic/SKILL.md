@@ -317,4 +317,4 @@ The following Critic sub-components are defined in the HLD but deferred within t
 - [ ] Product Governance: documentation controller (Phase 2 widening)
 - [ ] Product Governance: operational readiness (Phase 2 widening)
 - [ ] Integration with Review Lenses: Critic findings feed back to Lenses for pattern detection (Phase 2)
-- [ ] Mechanical enforcement via tools/ scripts for checks that can be automated (Phase 2)
+- [x] Mechanical enforcement via Claude Code hooks for governance checks (product-governance-tracker.sh, product-governance-stop.sh, product-governance-prompt.sh for product builds; critic-gate.sh, framework-edit-tracker.sh, orchestrator-gate.sh for framework governance)

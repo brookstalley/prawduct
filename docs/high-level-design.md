@@ -46,7 +46,7 @@ Not all components are equally essential for a working v1:
 
 - **V1 Phase 1 (vertical slice):** C1 (Orchestrator Stages 0-3), C2 (Domain Analyzer), C3 (Artifact Generator Phases A-C), C4 (Review Lenses), C5 (Project State), C6 framework governance mode, C8a (Observation Capture)
 - **V1 Phase 2 (build loop):** C1 (Orchestrator Stages 4-6), C3 (Artifact Generator Phase D — build planning), C3b (Builder — code generation from build plans), C6 product governance mode (spec compliance, test integrity, scope violation), build-phase observation types
-- **V1 Phase 2 (widen):** C6 remaining sub-components (architectural consistency, documentation controller, operational readiness), additional product shapes, mechanical tools
+- **V1 Phase 2 (widen):** C6 remaining sub-components (architectural consistency, documentation controller, operational readiness), additional product shapes, mechanical tools (governance enforcement hooks now built — see C6 section; remaining sub-check tools still deferred)
 - **V1.5:** C7 (Trajectory Monitor) — architecturally accommodate but implement after v1 validates
 - **V2:** C8 full (Learning System with pattern detection, validation, incorporation) — requires data from many projects; premature before user base exists
 
@@ -419,6 +419,8 @@ Project State
    - "Fixing" by adding a workaround rather than addressing root cause
 6. Proceed to next chunk or re-enter step 4
 
+**Mechanical enforcement:** Beyond the LLM-driven review cycle, governance is enforced mechanically via Claude Code hooks that operate independent of LLM judgment. Framework governance uses commit gate hooks (`critic-gate.sh`, `framework-edit-tracker.sh`, `orchestrator-gate.sh`) that block commits without Critic evidence and track edits with escalating reminders. Product governance uses session tracking hooks (`product-governance-tracker.sh`, `product-governance-stop.sh`, `product-governance-prompt.sh`) that maintain `.product-session.json` state to track governance debt — advisory for soft items (observation capture reminders), blocking for critical items (unreviewed chunks, overdue governance checkpoints).
+
 ### C7: Trajectory Monitor
 
 **Purpose:** Manages the project's trajectory — detecting drift, triggering holistic reviews, resisting entropy. [v1.5 — simple heuristics in v1, dedicated component later]
@@ -471,7 +473,7 @@ The LLM operates under one skill's instructions at a time. The Orchestrator (C1)
 - **Skill switching:** The Orchestrator loads another skill's instructions when entering that skill's domain (e.g., loads Domain Analyzer instructions during classification). The Orchestrator's framing context persists.
 - **Shared state via files:** Project State (C5) is a YAML file in the project directory. All skills read from and write to this shared state. This is the primary coordination mechanism.
 - **Artifact I/O:** Generated artifacts are markdown files with YAML frontmatter. Skills produce and consume these files.
-- **Tool invocation:** Mechanical tools (test integrity checker, boundary checker, etc.) are shell scripts invoked by the LLM during governance phases. Their output feeds back into the LLM's evaluation.
+- **Tool invocation:** Mechanical tools include both shell scripts invoked by the LLM during governance phases and Claude Code hooks that fire automatically on tool use events, providing enforcement independent of LLM judgment. Script output feeds back into the LLM's evaluation; hook output is injected as advisory messages or blocks operations directly.
 
 ### Persistence Model (V1)
 

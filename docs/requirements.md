@@ -25,7 +25,7 @@ V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrappi
 - R1.5 (Opinionated Pushback) — requires Orchestrator sophistication beyond basic stage management
 - R1.7 (Prior Art Awareness) — requires web search integration; low risk to defer since it's additive
 - R3.4 (Architectural Consistency) — Critic sub-component deferred; low value for simple products
-- R3.7 (Meta-Enforcement) — mechanical tools not yet built; Critic handles checks via LLM judgment for now
+- R3.7 (Meta-Enforcement) — partially implemented: product governance hooks enforce Critic review and governance checkpoints mechanically (PostToolUse tracking, Stop blocking, UserPromptSubmit context injection); remaining sub-checks (architectural consistency, operational readiness) still LLM-judgment-only
 - R7.2 (Product Diversity) — full shape coverage requires Phase 2 widening; UI Application is Phase 1
 
 **Rationale:** Building these before the end-to-end path validates risks wasting effort on components that might need redesign. The vertical slice principle ("Prove the Path Before Widening It") takes priority.
