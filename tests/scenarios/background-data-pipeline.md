@@ -13,11 +13,11 @@
 
 ## Scenario Overview
 
-- **Primary concerns:** `unattended_operation` (trigger: scheduled), `external_integrations` (RSS feeds, Slack API)
+- **Primary structural:** `runs_unattended` (trigger: scheduled); **Domain characteristics:** external service integration (RSS feeds, Slack API)
 - **Domain:** Productivity / Content Curation
 - **Risk Level:** Low-Medium
-- **Phase:** 2 (product concern diversity)
-- **Purpose:** Tests `unattended_operation` concern detection, operational-first discovery, and verification that the system does NOT ask about UIs, screens, or navigation for headless systems. Tests technical user calibration.
+- **Phase:** 2 (structural characteristic diversity)
+- **Purpose:** Tests `runs_unattended` structural characteristic detection, operational-first discovery, and verification that the system does NOT ask about UIs, screens, or navigation for headless systems. Tests technical user calibration and dynamic domain depth for external integrations.
 
 ## Test Persona
 
@@ -152,7 +152,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 **Must-do:**
 
-- `[simulation]` Detect `unattended_operation` concern (trigger: scheduled) and `external_integrations` concern. Must NOT detect `human_interface`.
+- `[simulation]` Detect `runs_unattended` structural characteristic (trigger: scheduled). Must NOT detect `has_human_interface`. Must identify external service integration (RSS feeds, Slack API) as a domain characteristic.
 - `[simulation]` Classify domain as Productivity or Content Curation (or similar).
 - `[simulation]` Assign low-medium risk profile (operational failure matters, but impact is limited — affects one person's side project, not a business-critical system).
 - `[interactive]` Ask about data sources and their reliability.
@@ -166,7 +166,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 **Must-not-do:**
 
-- `[simulation]` Must not detect `human_interface` concern.
+- `[simulation]` Must not detect `has_human_interface` structural characteristic.
 - `[interactive]` Must not ask about screens, navigation, user flows, or UI design.
 - `[interactive]` Must not ask about onboarding experience, accessibility, or visual design.
 - `[interactive]` Must not ask about authentication or user authorization (single-user automation).
@@ -280,9 +280,9 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 **Must-do (content after Stages 0-2):**
 
 - `[simulation]` `classification.domain`: populated ("productivity" or "content-curation" or similar).
-- `[simulation]` `classification.concerns.unattended_operation`: not null, with trigger "scheduled".
-- `[simulation]` `classification.concerns.external_integrations`: not null.
-- `[simulation]` `classification.concerns.human_interface`: null (this is a headless system).
+- `[simulation]` `classification.structural.runs_unattended`: not null, with trigger "scheduled".
+- `[simulation]` `classification.structural.has_human_interface`: null (this is a headless system).
+- `[simulation]` `classification.domain_characteristics`: includes external service integration (RSS feeds, Slack API).
 - `[simulation]` `classification.risk_profile.overall`: "low" or "medium" (either is acceptable with rationale).
 - `[simulation]` `classification.risk_profile.factors`: at least 3 evaluated factors with rationale. Must include operational factors (failure impact, cost of operation, silent failure risk) not just user-facing factors.
 - `[simulation]` `product_definition.vision`: a clear, specific one-sentence description.
@@ -299,8 +299,8 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-not-do:**
 
-- `[simulation]` Must not detect `human_interface` concern.
-- `[simulation]` Must not leave `classification.concerns` with no active concerns after Stage 0.
+- `[simulation]` Must not detect `has_human_interface` structural characteristic.
+- `[simulation]` Must not leave `classification.structural` with no active structural characteristics after Stage 0.
 - `[simulation]` Must not add UI/UX design decisions (no screens to design).
 - `[simulation]` Must not set `risk_profile.overall` above "medium" for this scenario.
 
@@ -315,7 +315,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 The scenario succeeds when:
 
-1. `[simulation]` The system correctly detects `unattended_operation` and `external_integrations` concerns, NOT `human_interface`.
+1. `[simulation]` The system correctly detects `runs_unattended` structural characteristic and identifies external service integration as a domain characteristic, NOT `has_human_interface`.
 2. `[interactive]` Discovery focuses on operational concerns (failure modes, monitoring, cost, scheduling) rather than UI/UX concerns.
 3. `[simulation]` Automation-specific artifacts (pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec) are generated.
 4. `[simulation]` UI-specific artifacts (IA, screen specs, design direction, accessibility, onboarding) are NOT generated.

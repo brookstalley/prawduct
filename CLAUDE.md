@@ -61,25 +61,25 @@ prawduct/
 │   ├── operational-spec.md            # Template: deployment, monitoring, alerting, recovery
 │   ├── dependency-manifest.yaml       # Template: external deps with justification
 │   ├── build-plan.md                  # Template: concrete build instructions, chunking, scaffolding
-│   ├── human-interface/               # [planned] human_interface concern (screen type)
+│   ├── human-interface/               # [planned] has_human_interface structural characteristic (modality: screen)
 │   │   ├── information-architecture.md
 │   │   ├── screen-spec.md             # Per-screen template (all states)
 │   │   ├── design-direction.md
 │   │   ├── accessibility-spec.md
 │   │   ├── localization-requirements.md
 │   │   └── onboarding-spec.md
-│   ├── api-surface/                   # [planned] api_surface concern
+│   ├── api-surface/                   # [planned] exposes_programmatic_interface structural characteristic
 │   │   ├── api-contract.md            # Per-endpoint template
 │   │   ├── integration-guide.md
 │   │   ├── versioning-strategy.md
 │   │   └── sla-definition.md
-│   ├── unattended-operation/          # unattended_operation concern
+│   ├── unattended-operation/          # runs_unattended structural characteristic
 │   │   ├── pipeline-architecture.md
 │   │   ├── scheduling-spec.md
 │   │   ├── monitoring-alerting-spec.md
 │   │   ├── failure-recovery-spec.md
 │   │   └── configuration-spec.md
-│   └── multi-party/                   # [planned] multi_party concern
+│   └── multi-party/                   # [planned] has_multiple_party_types structural characteristic
 │       ├── party-experience-spec.md   # Per-party template
 │       ├── party-interaction-model.md
 │       └── migration-adoption-plan.md
@@ -149,12 +149,12 @@ These are the ones most likely to be violated under pressure:
 
 ## Framework Status
 
-The framework follows a vertical-slice build approach (see `docs/high-level-design.md` § "Bootstrapping: Vertical Slice Approach"). Core infrastructure is built; deepening remaining product concerns is in progress.
+The framework follows a vertical-slice build approach (see `docs/high-level-design.md` § "Bootstrapping: Vertical Slice Approach"). Core infrastructure is built; structural characteristics cover artifact routing and dynamic domain depth provides domain-specific discovery.
 
 **Built and operational:**
 - Full stage pipeline: Stages 0-6 (Intake through Iteration)
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (framework + product governance), Review Lenses (all five)
-- Concern-based classification: human_interface and unattended_operation concerns fully supported with templates; all 7 concerns detectable
+- Two-layer classification: 5 structural characteristics for artifact routing (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth via Universal Discovery Dimensions and Structural Amplification Rules; has_human_interface and runs_unattended fully supported with templates
 - Observation capture system with triage and session resumption integration
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
@@ -164,7 +164,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
-- **v1-widen (15 items):** Deepen api_surface and multi_party concerns with templates and scenarios; create human_interface templates; Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic sub-components and Review Lenses integration; Builder multi-concern patterns; mechanical sub-check tools; consumer-mobile-app scenario
+- **v1-widen (14 items):** Create has_human_interface, exposes_programmatic_interface, and has_multiple_party_types templates; Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic sub-components and Review Lenses integration; Builder structural-characteristic chunk patterns; mechanical sub-check tools; consumer-mobile-app scenario
 - **v1-validation (3 items):** Full V1 validation (all scenarios end-to-end); Builder parallel execution and incremental builds
 - **v1.5 (5 items):** C7 Trajectory Monitor; regulatory discovery; cost awareness; accessibility enforcement; agent agnosticism
 

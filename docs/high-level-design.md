@@ -54,50 +54,55 @@ The Trajectory Monitor's triggers (R4.2) can be handled by simple heuristics in 
 
 ---
 
-## Product Concern Taxonomy
+## Product Classification: Structural Characteristics + Dynamic Domain Depth
 
-Products are classified by their active **concerns** — independent dimensions that drive discovery questions, artifact selection, and governance focus. A product may have any combination of concerns. This replaces a fixed shape taxonomy (UI Application, API, Automation, Multi-Party, Hybrid) with composable dimensions that handle products the framework has never seen.
+Product classification uses a two-layer architecture that separates structural routing (what artifacts to generate) from domain-specific depth (what questions to ask).
 
-### Concerns
+### Structural Characteristics (5, stable, enumerable)
 
-| Concern | What it triggers | Example signals |
-|---------|-----------------|-----------------|
-| **`human_interface`** | UX questions, screen/interaction specs, accessibility | "app," "screen," "button," "terminal," "voice," "dashboard" |
-| **`unattended_operation`** | Scheduling, monitoring, failure recovery specs; silent-failure review mandate | "automatically," "every day," "cron," "background," "pipeline" |
-| **`api_surface`** | API contracts, integration guide, versioning, SLAs | "API," "endpoint," "webhook," "consumers," "SDK" |
-| **`multi_party`** | Per-party specs, interaction model, trust boundaries | "buyers and sellers," "admin panel," distinct user types interacting |
-| **`constrained_environment`** | Resource budget questions, host system constraints | "embedded," "firmware," "plugin," "extension," "browser extension," "offline" |
-| **`external_integrations`** | Resilience questions, rate limiting, cost awareness | External services, APIs, data sources mentioned |
-| **`sensitive_data`** | Security depth, regulatory discovery, data classification | "health data," "payments," "children," "PII," "financial" |
+Each structural characteristic triggers fundamentally different artifact needs. A product may have any combination.
 
-### How Concerns Differ from Shapes
+| Characteristic | What it triggers | Why structural |
+|----------------|-----------------|----------------|
+| **`has_human_interface`** | Screen specs, IA, design direction, accessibility, onboarding | UI products need a fundamentally different artifact set than headless systems |
+| **`runs_unattended`** | Scheduling, monitoring, failure recovery, configuration specs | Unattended systems need operational artifacts that interactive products don't |
+| **`exposes_programmatic_interface`** | API contracts, integration guide, versioning, SLAs | APIs need consumer-facing artifacts with backward compatibility constraints |
+| **`has_multiple_party_types`** | Per-party specs, interaction model, trust boundaries | Multi-party products need per-party analysis and trust boundary artifacts |
+| **`handles_sensitive_data`** | Deepened security model, potential regulatory artifacts | Sensitive data changes the depth and scope of security-related artifacts |
 
-Shapes were mutually exclusive categories — a product was either a "UI Application" or an "Automation," and hybrids required special handling. Concerns are independent dimensions that combine freely:
+**What is NOT structural:** Properties like "constrained environment" and "external integrations" are not structural — they don't trigger fundamentally different artifact sets. They are domain-specific characteristics handled by the dynamic depth layer.
 
-- A **family score tracker** has `human_interface` (screen, mobile) — that's it.
-- A **background data pipeline** has `unattended_operation` + `external_integrations`.
-- A **monitoring dashboard** has `human_interface` (screen) + `unattended_operation` + `external_integrations`.
-- An **earbud firmware** has `constrained_environment` (embedded) + `human_interface` (minimal: LEDs, buttons).
-- A **two-sided marketplace** has `human_interface` (screen) + `multi_party` + `api_surface` + `sensitive_data` (payments).
+### Dynamic Domain Depth (unbounded, LLM-generated)
 
-No product needs a special "hybrid" designation — it simply has the concerns it has.
+Domain-specific discovery depth is generated dynamically by the LLM using its own knowledge, guided by:
 
-### Common Concern Bundles
+1. **9 Universal Discovery Dimensions** — categories that must be explored for every product: users, core experience, data, security, failure modes, performance, operational lifecycle, dependencies, regulatory.
+2. **Structural Amplification Rules** — each structural characteristic amplifies specific dimensions (e.g., `runs_unattended` amplifies failure modes, operational lifecycle, and dependencies).
+3. **Domain Characteristics** — LLM-identified properties specific to this product's domain, persisted in `classification.domain_characteristics` for session resumption context.
 
-For communication with users, familiar patterns still have natural names. The Orchestrator uses these in conversation — "this sounds like a background automation" — but they are not stored fields. They are just shorthand:
+This replaces hardcoded per-concern question banks with a system where the LLM generates domain-appropriate questions for any product — including products the framework has never seen (embedded firmware, blockchain dApps, realtime audio, etc.) — without framework changes.
 
-- "UI Application" ≈ `human_interface` (screen) as the primary concern
-- "Automation / Pipeline" ≈ `unattended_operation` + `external_integrations`
-- "API / Service" ≈ `api_surface` as the primary concern
-- "Multi-Party Platform" ≈ `multi_party` + `human_interface` + often `sensitive_data`
+### How This Differs from the Previous Concern System
 
-### Concern Detection
+The previous system had 7 enumerated concerns, each with hardcoded question banks. This created an enumeration that could never cover all product domains. The new architecture separates the two jobs the concern system was doing:
 
-The Domain Analyzer (C2) detects concerns during intake based on signals in the user's description. Multiple concerns may be detected simultaneously. When no clear signals exist for any concern, the Domain Analyzer asks a clarifying question.
+1. **Structural routing** (small, stable set) — determines what artifacts to generate.
+2. **Domain-specific depth** (unbounded, dynamic) — determines what questions to ask.
 
-### Concern Evolution
+Examples of how products classify:
 
-The 7 concerns are the starting set. The self-improvement loop applies: `missing_guidance` observations pointing to an unrecognized dimension (2+ occurrences) are candidates for a new concern. Existing concerns are refined through `coverage` and `applicability` observations. The Structural Critique Protocol reviews the concern set periodically.
+- A **family score tracker**: structural = `has_human_interface` (screen, mobile). Domain characteristics: casual family gaming context, simplicity emphasis.
+- A **background data pipeline**: structural = `runs_unattended` (scheduled). Domain characteristics: external service integration, content curation.
+- An **earbud firmware**: structural = `has_human_interface` (minimal). Domain characteristics: constrained hardware environment, Bluetooth connectivity, power management.
+- A **two-sided marketplace**: structural = `has_human_interface` (screen) + `has_multiple_party_types` + `exposes_programmatic_interface` + `handles_sensitive_data`. Domain characteristics: payment processing, trust/reputation system.
+
+### Structural Characteristic Detection
+
+The Domain Analyzer (C2) detects structural characteristics during intake based on signals in the user's description. Multiple characteristics may be detected simultaneously. Domain characteristics are identified in the same step.
+
+### Structural Characteristic Evolution
+
+The 5 characteristics are designed to be stable. Adding a new structural characteristic requires evidence that it triggers fundamentally different artifact needs not served by existing characteristics (2+ `missing_guidance` observations). The bar is high — the architecture's strength is that domain-specific depth is dynamic, so most "missing" coverage is better addressed by improving amplification rules or proactive expertise, not by adding structural characteristics. The Structural Critique Protocol reviews the characteristic set periodically.
 
 ---
 
@@ -107,7 +112,7 @@ The 7 concerns are the starting set. The self-improvement loop applies: `missing
 **Owner:** Orchestrator (C1) + Domain Analyzer (C2)
 
 1. User provides raw input
-2. Domain Analyzer classifies domain and detects concerns
+2. Domain Analyzer classifies domain and detects structural characteristics
 3. Orchestrator begins expertise calibration from initial input signals
 4. System confirms classification with user: "This sounds like a location-based social app for mobile. Is that right?"
 
@@ -120,7 +125,7 @@ Product Lens and Skeptic Lens evaluate before deep discovery begins:
 - Is this feasible for LLM-assisted development?
 - Are there obvious regulatory or legal constraints?
 
-If concerns arise, surface them to user. Possible outcomes: proceed, refine scope, pivot, or recommend not building.
+If concerns arise, surface them to user. Possible outcomes: proceed, refine scope, pivot, or advise against building (but respect the user's decision if they want to proceed).
 
 ### Stage 1: Discovery
 **Owner:** Orchestrator (C1) + Domain Analyzer (C2)
@@ -129,7 +134,7 @@ Dynamic questioning based on classification. Discovery depth calibrated to produ
 
 Domain Analyzer provides:
 - Archetype-specific critical questions (prioritized by impact)
-- Concern-specific technical questions
+- Structurally-amplified and dynamically-generated domain-specific questions
 - Risk and complexity profile
 - Considerations the user hasn't raised
 
@@ -160,7 +165,7 @@ Output: Finalized product decisions in Project State. Ready for artifact generat
 ### Stage 3: Artifact Generation
 **Owner:** Artifact Generator (C3) + Review Lenses (C4)
 
-Generate the concern-appropriate artifact set. Each artifact:
+Generate the structurally-appropriate artifact set. Each artifact:
 - Is reviewed by all relevant lenses before finalization
 - States its dependencies on other artifacts explicitly
 - Is version-tracked in Project State (C5)
@@ -224,7 +229,7 @@ User sees built artifact, reacts, requests changes. Orchestrator classifies:
 
 **Design considerations:**
 - Must handle scattered, contradictory, or uncertain users gracefully
-- Must know when "good enough" discovery has occurred — this threshold varies by concern set and risk level
+- Must know when "good enough" discovery has occurred — this threshold varies by structural characteristics and risk level
 - Stage transitions are fuzzy: discovery and definition interleave, building and iteration overlap
 - Must handle "just build it" users by accelerating with explicit assumptions, not by skipping governance
 
@@ -233,15 +238,15 @@ User sees built artifact, reacts, requests changes. Orchestrator classifies:
 **Purpose:** Classifies the product and activates relevant lines of inquiry. The system's product knowledge encoded as principles, not encyclopedia entries.
 
 **Key responsibilities:**
-- Product classification: domain (social, marketplace, B2B, utility, etc.) and concerns (human_interface, unattended_operation, api_surface, multi_party, constrained_environment, external_integrations, sensitive_data)
+- Product classification: domain (social, marketplace, B2B, utility, etc.), structural characteristics (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data), and domain-specific characteristics
 - Risk and complexity profiling per archetype
-- Discovery question generation, prioritized by impact
+- Dynamic discovery question generation from universal dimensions, structural amplification rules, and LLM domain knowledge
 - Proactive expertise: considerations the user is unlikely to raise, given their expertise profile
 - Prior art awareness: surface existing solutions in the space (using web search when needed)
 - Regulatory flag detection: identify when domain or features trigger regulatory requirements
 
 **Knowledge structure:**
-Principles tagged to archetypes and concerns. Examples:
+Principles tagged to structural characteristics and domain patterns. Examples:
 - [network effects] "Products with network effects must address the cold-start problem."
 - [user content] "Any product where users generate content must have a moderation strategy."
 - [location] "Location-based products must address privacy, battery impact, and precision."
@@ -257,10 +262,10 @@ Principles also fire on feature detection: adding messaging to any product trigg
 
 ### C3: Artifact Generator
 
-**Purpose:** Produces the build plan artifacts. Selects the appropriate artifact set based on product concerns and generates each artifact from the decisions in Project State.
+**Purpose:** Produces the build plan artifacts. Selects the appropriate artifact set based on structural characteristics and domain analysis, and generates each artifact from the decisions in Project State.
 
 **Key responsibilities:**
-- Artifact set selection based on product concerns (see Product Concern Taxonomy)
+- Artifact set selection based on structural characteristics (see Product Classification section)
 - Generation of each artifact with cross-references and dependency declarations
 - Consistency enforcement across artifacts (data model matches API contracts matches screen specs)
 - Build ordering with dependency graph and early-feedback milestones
@@ -272,17 +277,19 @@ Principles also fire on feature detection: adding messaging to any product trigg
 Product Brief (universal)
     │
     ├──► Information Architecture        API Contracts              Pipeline Architecture
-    │    (human_interface: screen)        (api_surface)              (unattended_operation)
-    │         │                                  │                          │
+    │    (has_human_interface: screen)     (exposes_programmatic_     (runs_unattended)
+    │         │                           interface)                       │
     │         ▼                                  ▼                          ▼
     │    Screen Specs                    Integration Guide          Scheduling Spec
-    │    (human_interface: screen)        (api_surface)              (unattended_operation)
+    │    (has_human_interface: screen)     (exposes_programmatic_     (runs_unattended)
+    │         │                           interface)                       │
     │         │                                  │                          │
     ├──► Data Model (universal) ◄────────────────┤                          │
     │         │                                  │                          │
     ▼         ▼                                  ▼                          ▼
 Security Model (universal)              SLA Definition             Monitoring Spec
-    │                                    (api_surface)              (unattended_operation)
+    │                                    (exposes_programmatic_     (runs_unattended)
+    │                                     interface)
     ▼
 Non-Functional Requirements (universal)
     │
@@ -333,7 +340,7 @@ Dependency Manifest (universal)
 Project State
 ├── Classification
 │   ├── Domain(s)
-│   ├── Concerns (independent dimensions)
+│   ├── Structural characteristics + domain characteristics
 │   └── Risk profile
 ├── Product Definition
 │   ├── Vision & goals (resolved/open)
@@ -529,13 +536,13 @@ Each skill is tested against a defined set of product scenarios. For each scenar
 
 ### Minimum Test Scenarios
 
-Five scenarios that cover the product concern taxonomy:
+Five scenarios that cover the structural characteristics and domain types:
 
-1. **Consumer mobile app** (primary concerns: `human_interface`) — tests screen-related discovery, accessibility, onboarding, platform considerations.
-2. **Background data pipeline** (primary concerns: `unattended_operation`, `external_integrations`) — tests operational concerns, monitoring, failure recovery, cost awareness. Tests that the system does *not* ask about screens or navigation.
-3. **B2B integration API** (primary concerns: `api_surface`, `sensitive_data`) — tests contract design, versioning, consumer needs, SLAs. Tests expertise calibration for a technical user.
-4. **Simple family utility** (primary concerns: `human_interface`, low risk) — tests pacing sensitivity, scope restraint. The system should *not* interrogate this the same way it interrogates a B2B platform.
-5. **Two-sided marketplace** (primary concerns: `multi_party`, `human_interface`, `api_surface`, `sensitive_data`) — tests multi-party discovery, per-party needs, cross-party interactions, trust boundaries.
+1. **Consumer mobile app** (primary structural: `has_human_interface`, modality: screen) — tests screen-related discovery, accessibility, onboarding, platform considerations.
+2. **Background data pipeline** (primary structural: `runs_unattended`, trigger: scheduled) — tests operational concerns, monitoring, failure recovery, cost awareness. Tests that the system does *not* ask about screens or navigation.
+3. **B2B integration API** (primary structural: `exposes_programmatic_interface`, `handles_sensitive_data`) — tests contract design, versioning, consumer needs, SLAs. Tests expertise calibration for a technical user.
+4. **Simple family utility** (primary structural: `has_human_interface`, low risk) — tests pacing sensitivity, scope restraint. The system should *not* interrogate this the same way it interrogates a B2B platform.
+5. **Two-sided marketplace** (primary structural: `has_multiple_party_types`, `has_human_interface`, `exposes_programmatic_interface`, `handles_sensitive_data`) — tests multi-party discovery, per-party needs, cross-party interactions, trust boundaries.
 
 ### Evaluation Isolation
 
@@ -583,7 +590,7 @@ Pick one product scenario (the family utility — a simple UI application with l
 1. **C5 (Project State):** Define the schema first — everything else reads/writes this. Validate that the structure captures what discovery and artifact generation need.
 2. **C2 (Domain Analyzer):** Classify "UI Application" + "Utility" domain. Generate discovery questions for this combination only.
 3. **C1 (Orchestrator):** Manage a discovery conversation for this one scenario. Handle stage transitions 0 → 0.5 → 1 → 2.
-4. **C3 (Artifact Generator):** Generate the universal artifact set (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest). Skip concern-specific artifacts initially.
+4. **C3 (Artifact Generator):** Generate the universal artifact set (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest). Skip structurally-triggered artifacts initially.
 5. **C4 (Review Lenses):** Apply all five lenses to the generated artifacts (Testing Lens in Phase C). Evaluate whether findings are specific and actionable.
 
 **Evaluate against the family utility test scenario rubric.** The vertical slice succeeds when:
@@ -594,13 +601,13 @@ Pick one product scenario (the family utility — a simple UI application with l
 
 **What this proves:** That the skill interaction model works, that the artifact format is adequate, that Project State captures enough, and that the end-to-end flow produces something useful.
 
-**What this defers:** Other product concerns, concern-specific artifacts, the Critic (C6), pacing sensitivity, prior art search, expertise calibration beyond basic, and mechanical tools.
+**What this defers:** Other structural characteristics, structurally-triggered artifacts, the Critic (C6), pacing sensitivity, prior art search, expertise calibration beyond basic, and mechanical tools.
 
 ### Phase 2: Widen Based on Phase 1 Findings
 
 Phase 1 validated the architecture. Phase 2 widening has delivered:
 
-- `unattended_operation` concern with full-depth discovery, 5 templates, domain overlays, and test scenario rubric (background-data-pipeline).
+- `runs_unattended` structural characteristic with full-depth discovery, 5 templates, and test scenario rubric (background-data-pipeline).
 - Critic (C6) with framework governance (7 checks) and product governance (spec compliance, test integrity, scope violation).
 - Mechanical governance hooks: commit gate, edit tracker, orchestrator gate, product governance tracker/stop/prompt.
 - Builder with chunk execution, scaffolding, proportionality, and artifact insufficiency flagging.
@@ -609,12 +616,13 @@ Phase 1 validated the architecture. Phase 2 widening has delivered:
 
 Remaining Phase 2 widening (tracked in `project-state.yaml` → `remaining_work`, phase: v1-widen):
 
-- Deepen api_surface and multi_party concerns (discovery, templates, test scenarios).
-- Create human_interface templates (6 templates).
+- Create `has_human_interface` templates (6 templates for modality: screen).
+- Create `exposes_programmatic_interface` templates (4 templates).
+- Create `has_multiple_party_types` templates (3 templates).
 - Orchestrator sophistication: pushback, prior art, pacing, reclassification.
 - Critic sub-components: architectural consistency, documentation controller, operational readiness.
 - Critic-Review Lenses integration; Review Lenses variable-depth and rotating emphasis.
-- Builder multi-concern chunk patterns; Domain Analyzer additional overlays.
+- Builder structural-characteristic chunk patterns.
 - Mechanical sub-check tools (5 scripts).
 
 ### Phase 3: Full V1
@@ -659,7 +667,7 @@ Spans C1, C2, C3, C4. The system maintains a multi-dimensional expertise profile
 Decision changes flow: Project State (C5) identifies affected decisions and artifacts → Artifact Generator (C3) updates affected artifacts → Build Governance (C6) re-validates affected implementation → Trajectory Monitor (C7) assesses whether change patterns suggest deeper issues.
 
 ### Feedback Integration
-User reacts to build → Orchestrator (C1) classifies feedback → if directional, Domain Analyzer (C2) re-evaluates → if reclassification, discovery reopens for changed concerns → Project State (C5) updates → change propagation follows.
+User reacts to build → Orchestrator (C1) classifies feedback → if directional, Domain Analyzer (C2) re-evaluates → if reclassification, discovery reopens for changed structural characteristics → Project State (C5) updates → change propagation follows.
 
 ### Cost Tracking
 Surfaces during discovery (C2 flags cost-relevant design choices), quantified during artifact generation (C3 includes cost estimates in operational spec), monitored during build (C6 checks for cost-relevant deviations), validated during trajectory review (C7 catches cost drift).
@@ -680,6 +688,6 @@ These are acknowledged gaps that require further work. Per our own principles, w
 ### Open
 
 4. **Multi-user collaboration.** Current design assumes single user. Team scenarios need coordination design. [v1.5 or later — no user projects to learn from yet.]
-5. **Product concerns we haven't tested.** Games, content platforms, developer tools, IoT-adjacent, data-intensive products. The concern taxonomy may need new dimensions. [Will surface during Phase 2 widening via `missing_guidance` observations. The concern model is designed to evolve — see Product Concern Taxonomy § Concern Evolution.]
+5. **Structural characteristics we haven't tested.** The 5 structural characteristics cover artifact routing, but domain-specific depth is dynamic and untested across diverse domains (games, content platforms, developer tools, IoT-adjacent, data-intensive products). [Will surface during Phase 2 widening via `missing_guidance` observations. Dynamic domain depth should naturally adapt — that's the design — but verification is needed.]
 6. **Minimum viable Critic.** What's the smallest useful Critic for v1? Likely: spec compliance + test integrity + doc controller. Architectural consistency and operational readness can follow. [Deferred to Phase 2 of bootstrapping.]
 8. **Observation capture during product sessions requires framework repo write access.** The Orchestrator instructs writing observation files to `{prawduct-repo}/framework-observations/`, but during product sessions the LLM may be working in a different directory without access to the framework repo. V1 mitigation: fallback to writing observations in the user's project `working-notes/` for manual transfer. Proper fix: a mechanism (MCP server, post-session hook, or shared observation store) that doesn't require direct filesystem access to the framework repo. [Will surface during real product usage.]

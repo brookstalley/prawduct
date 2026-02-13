@@ -13,21 +13,25 @@
 classification:
   domain: developer-tool
 
-  concerns:
-    human_interface: null  # Framework has no user-facing UI (conversation is LLM-mediated)
-    unattended_operation:
+  structural:
+    has_human_interface: null  # Framework has no user-facing UI (conversation is LLM-mediated)
+    runs_unattended:
       trigger: event-driven
       # Rationale: Prawduct runs within an LLM session, processes inputs through
       # stages, produces artifacts. The "trigger" is user input, but the processing
       # pipeline (classify → discover → define → generate → build) is automated.
-    api_surface:
+    exposes_programmatic_interface:
       consumers: internal
       # Rationale: Skills define contracts consumed by other skills (skill
       # interaction model, artifact format spec, project-state schema).
-    multi_party: null
-    constrained_environment: null
-    external_integrations: null
-    sensitive_data: null
+    has_multiple_party_types: null
+    handles_sensitive_data: null
+
+  domain_characteristics:
+    - characteristic: "LLM instruction framework"
+      implications: ["skills are instructions not code", "non-deterministic output", "single-context execution model"]
+    - characteristic: "self-referential governance"
+      implications: ["framework governs its own development", "Critic reviews Critic changes", "circular dependency risk"]
 
   risk_profile:
     overall: medium
@@ -93,7 +97,7 @@ product_definition:
 
   scope:
     v1:
-      - "All seven product concerns (human_interface, unattended_operation, api_surface, multi_party, constrained_environment, external_integrations, sensitive_data)"
+      - "Five structural characteristics (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth"
       - "Full stage pipeline (0 through 6)"
       - "Five review lenses with concern-appropriate application"
       - "Critic with framework governance and product governance modes"
@@ -353,7 +357,7 @@ open_questions:
     waiting_on: research
     priority: medium
     raised_at_stage: iteration
-  - question: "What product concerns beyond the seven defined does the taxonomy need?"
+  - question: "Does the 5-structural-characteristic set adequately route artifact needs for all product types?"
     blocking: "Full product diversity coverage (R7.2)"
     waiting_on: research
     priority: low
@@ -424,6 +428,11 @@ change_log:
     blast_radius: "project-state.yaml, CLAUDE.md, docs/requirements.md, docs/high-level-design.md, all 6 skill SKILL.md files"
     classification: directional
     date: 2026-02-13
+  - what: "Replaced concern enumeration with structural characteristics + dynamic domain depth"
+    why: "7 hardcoded concerns violated 'Generality Over Enumeration' — the concern system did two different jobs (structural artifact routing and domain-specific depth) and the domain-specific half couldn't scale to cover all product types. Replaced with 5 stable structural characteristics for artifact routing and dynamic LLM-generated questions guided by 9 universal discovery dimensions and structural amplification rules. Eliminated 4 remaining_work items (deepen api_surface, deepen multi_party, additional domain overlays, open question about concern coverage). Domain-specific depth now comes from the LLM's own knowledge, not hardcoded question banks."
+    blast_radius: "All 6 skills, templates/project-state.yaml, project-state.yaml, docs/high-level-design.md, CLAUDE.md, all 3 test scenarios"
+    classification: directional
+    date: 2026-02-13
 
 # =============================================================================
 # BUILD PLAN
@@ -438,24 +447,24 @@ build_plan:
   # Skill "Extending This Skill" sections provide guidance on HOW to extend
   # each skill; this list tracks WHAT remains and WHEN (by phase).
   remaining_work:
-    # --- v1-widen (15 items) ---
-    - item: "Deepen api_surface concern"
-      description: "Full-depth discovery questions, 4 API-specific templates (api-contract, integration-guide, versioning-strategy, sla-definition), b2b-integration-api test scenario rubric"
+    # --- v1-widen (12 items) ---
+    - item: "Create exposes_programmatic_interface templates"
+      description: "4 API-specific templates (api-contract, integration-guide, versioning-strategy, sla-definition), b2b-integration-api test scenario rubric"
       phase: v1-widen
       requirements: [R2.1, R7.2]
-      skill: domain-analyzer
-    - item: "Deepen multi_party concern"
-      description: "Full-depth discovery questions, 3 multi-party templates (party-experience-spec, party-interaction-model, migration-adoption-plan), two-sided-marketplace test scenario rubric"
+      skill: artifact-generator
+    - item: "Create has_multiple_party_types templates"
+      description: "3 multi-party templates (party-experience-spec, party-interaction-model, migration-adoption-plan), two-sided-marketplace test scenario rubric"
       phase: v1-widen
       requirements: [R2.1, R7.2]
-      skill: domain-analyzer
-    - item: "Create human_interface templates"
+      skill: artifact-generator
+    - item: "Create has_human_interface templates"
       description: "6 templates: information-architecture, screen-spec, design-direction, accessibility-spec, localization-requirements, onboarding-spec"
       phase: v1-widen
       requirements: [R2.1]
       skill: artifact-generator
     - item: "consumer-mobile-app test scenario"
-      description: "Test scenario rubric exercising human_interface concern with mobile-specific constraints"
+      description: "Test scenario rubric exercising has_human_interface (modality: screen, platform: mobile) with mobile-specific constraints; also tests dynamic domain generation"
       phase: v1-widen
       requirements: [R7.2]
     - item: "Orchestrator: opinionated pushback"
@@ -474,7 +483,7 @@ build_plan:
       requirements: [R1.8]
       skill: orchestrator
     - item: "Orchestrator: reclassification"
-      description: "Recognize when product's active concerns fundamentally change during build, triggering re-evaluation of artifacts and discovery"
+      description: "Recognize when product's structural characteristics fundamentally change during build, triggering re-evaluation of artifacts and discovery"
       phase: v1-widen
       requirements: [R5.4]
       skill: orchestrator
@@ -493,16 +502,11 @@ build_plan:
       phase: v1-widen
       requirements: [R3.1]
       skill: review-lenses
-    - item: "Builder: multi-concern patterns"
-      description: "Concern-specific chunk patterns for API endpoints, pipeline stages, and multi-party flows"
+    - item: "Builder: structural-characteristic chunk patterns"
+      description: "Characteristic-specific chunk patterns for API endpoints, pipeline stages, and multi-party flows"
       phase: v1-widen
       requirements: [R7.2]
       skill: builder
-    - item: "Domain Analyzer: additional domain overlays"
-      description: "Domain overlays beyond utility, entertainment, automation, productivity for broader product coverage"
-      phase: v1-widen
-      requirements: [R7.2]
-      skill: domain-analyzer
     - item: "Artifact Generator: modular artifact updates"
       description: "When a decision changes, update only affected artifacts rather than regenerating all"
       phase: v1-widen
