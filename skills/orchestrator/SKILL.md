@@ -326,6 +326,11 @@ When all chunks are complete:
 
 7. Update `current_stage` to "iteration".
 
+8. **Compact project state.** Archive completed build entries to keep project-state.yaml readable:
+   - Chunks: compact completed entries to `{id, name, status}`. Full details preserved in `artifacts/build-plan.md`.
+   - Reviews: compact reviews with all findings resolved/deferred to `{chunk_id, summary, deferred_items}`.
+   - Review findings: compact resolved entries to `{stage, lens, summary, deferred_count}`. Preserve entries with deferred findings in full.
+
 **Transition to Stage 6** when all chunks are complete, all tests pass, and the product is presented to the user.
 
 ---
@@ -348,9 +353,27 @@ The user has a working product and provides feedback. Handle feedback in lightwe
      2. Update the relevant artifacts (whichever are affected — see `artifact_manifest`).
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
-   - **Directional** (fundamentally different product vision): Flag this explicitly. "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?" If they want to shift, consider whether reclassification of structural characteristics (R5.4) is warranted. For framework development, follow the Directional Change Protocol below.
+   - **Directional** (fundamentally different product vision): Follow the Product Directional Change Protocol below. For framework development, follow the Framework Directional Change Protocol below.
 
-   **Directional Change Protocol (framework development)**
+   **Product Directional Change Protocol**
+
+   This protocol handles directional changes to user products — when the user fundamentally changes the product vision during iteration.
+
+   1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?"
+   2. **Reclassification check.** Consider whether reclassification of structural characteristics (R5.4) is warranted. If the product's fundamental nature has changed, re-run classification.
+   3. **Impact assessment.** Which artifacts are invalidated vs. still valid? Which chunks need rework? Consult `artifact_manifest` to map the blast radius.
+   4. **Update artifacts and implement.** Follow the functional change path at artifact-generation scale: update affected artifacts → create/modify chunks → Builder implements → Critic reviews (including Directional Change Review — see `skills/critic/SKILL.md` Mode 2).
+   5. **Post-shift retrospective.** After implementation completes, answer three questions:
+
+      a. **Discovery adequacy:** Did original discovery surface the considerations that led to this shift? If not, what question or dimension would have surfaced it earlier? (Produces `coverage` or `missing_guidance` observation.)
+
+      b. **Artifact resilience:** How much rework did this require? Were artifact boundaries right — did the change propagate cleanly, or did tightly-coupled artifacts force unnecessary rework? (Produces `artifact_insufficiency` observation if artifacts were too coupled.)
+
+      c. **Generalization:** Does this finding apply only to this product, or does it reveal a gap that would affect other products built with the framework? If it reveals a general gap, the observation should target the framework skill or template, not the product.
+
+      Record substantive findings via `tools/capture-observation.sh` with `session_type: product_use`. Record summary in change_log `retrospective` field.
+
+   **Framework Directional Change Protocol**
 
    This protocol triggers when a change is classified as **directional** OR modifies **3+ framework files** (skills, templates, docs). It ensures multi-file framework changes receive governance proportionate to their impact. Scale effort with change complexity, not file count alone — renaming a term across 5 files is less complex than restructuring 3 skills.
 
@@ -360,6 +383,19 @@ The user has a working product and provides feedback. Handle feedback in lightwe
    4. **Implement in phases.** For multi-phase changes, run a lightweight review between phases: Checks 2 (Read-Write Chain), 4 (Skill Coherence), and 7 (Learning Integration). Capture a brief observation after each phase noting what worked and what surprised you.
    5. **Final Critic review.** After all changes are complete, run the full Framework Governance review (all checks).
    6. **Session observation.** Write a `framework_dev` observation for the full implementation, covering what the change accomplished, what governance caught, and what (if anything) slipped through.
+   7. **Post-change retrospective.** After the final Critic review passes, answer three questions:
+
+      a. **Detection:** Could the framework's learning system have caught the problem this change addresses? If not, what's missing — an observation type, a trigger, a Structural Critique dimension, an FRP focus area?
+
+      b. **Process:** What did the implementation process reveal about framework gaps beyond the change itself? (Governance gaps, documentation drift, skill coherence issues discovered along the way.)
+
+      c. **Architecture:** Does this change create new areas the learning system can't observe? (New capability without observability = blind spot.)
+
+      d. **Generalization:** Does this fix apply only to the context where the problem was discovered, or does the same gap exist in analogous contexts? If found in the framework path, does the product path have the same gap? If found in one skill, do similar skills need the same fix? Instance-specific fixes that don't generalize are Failure Mode 9 (see `docs/self-improvement-architecture.md`).
+
+      Capture each substantive finding as an observation using `tools/capture-observation.sh`. Use type `structural_critique` for detection/architecture findings, `process_friction` for process findings. If no substantive findings exist, record that in the change_log entry: "Retrospective: no findings."
+
+      This step is not optional. The Critic validates quality; the retrospective captures learning. Both are required.
 
    **Framework change governance (all sizes)**
 
@@ -382,7 +418,7 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 5. **Verify no regressions.** Run all tests after every change. If a test fails, fix the regression before proceeding.
 
-6. **Update iteration state.** Add an entry to `project-state.yaml` → `iteration_state.feedback_cycles` with the feedback, classification, affected artifacts/chunks, and status.
+6. **Update iteration state.** Add an entry to `project-state.yaml` → `iteration_state.feedback_cycles` with the feedback, classification, affected artifacts/chunks, and status. If `feedback_cycles` has more than 10 completed entries, compact completed entries to `{feedback (first sentence), classification, status}`. If `change_log` has more than 20 entries, summarize older entries — keep the 10 most recent plus a summary block; preserve directional entries and retrospectives verbatim.
 
 7. **Check for "done."** After each iteration cycle, ask: "Anything else you'd like to change?" For low-risk products, this is lightweight. Don't over-process: "Want to tweak anything?" is fine.
 
@@ -614,7 +650,9 @@ When adding new Orchestrator capabilities:
 
 ### Structural Critique Protocol
 
-Periodically (after every 3 evaluation runs, or on request), apply the framework's principles to its own founding architectural decisions — not just to incremental changes. This is a deductive process: start from principles and research, then question whether existing structures satisfy them.
+Apply the framework's principles to its own founding architectural decisions — not just to incremental changes. This is a deductive process: start from principles and research, then question whether existing structures satisfy them.
+
+**Triggers:** After every 3 evaluation runs, after every directional change, or on request. The post-change retrospective (Directional Change Protocol step 7) includes a targeted structural critique: does the change's motivation reveal that the learning system failed to detect a principle violation? If yes, this is a signal that the Structural Critique Protocol's triggers or dimensions need expansion.
 
 **Process:**
 

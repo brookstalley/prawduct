@@ -227,6 +227,10 @@ current_stage: intake
 #   blast_radius: string (what else is affected)
 #   classification: cosmetic | functional | directional
 #   date: YYYY-MM-DD
+#   retrospective: string | null  # For directional changes: key learnings from
+#     the post-change retrospective (DCP step 7). Summarizes detection gaps,
+#     process findings, and architecture observations. Not required for cosmetic
+#     or functional changes. Populated by the Directional Change Protocol.
 #
 # Also records framework reflections at each stage transition:
 #   what: "Framework reflection: Stage N (name) complete"
@@ -234,6 +238,11 @@ current_stage: intake
 #   blast_radius: "none"
 #   classification: cosmetic
 #   date: YYYY-MM-DD
+#
+# LIFECYCLE: When entries exceed 20, the Orchestrator compacts older entries —
+# keeps the 10 most recent plus a summary block. Directional entries and their
+# retrospectives are preserved verbatim; cosmetic/functional entries are
+# condensed to: {what (first sentence), classification, date}.
 
 change_log: []
 
@@ -252,6 +261,10 @@ build_plan:
 
   # Ordered build tasks. Each chunk is a unit of work the Builder executes.
   # Chunks are executed in order, respecting depends_on.
+  #
+  # LIFECYCLE: At build completion (Stage 5→6 transition), the Orchestrator
+  # compacts completed chunks to {id, name, status}. Full details are preserved
+  # in artifacts/build-plan.md and git history.
   chunks: []
   #   - id: "chunk-01"
   #     name: "Project scaffold"
@@ -300,6 +313,10 @@ build_state:
 
   # Critic review results during build.
   # Each: { chunk_id, findings: [{ description, severity, status (open | resolved | deferred) }] }
+  #
+  # LIFECYCLE: At build completion (Stage 5→6 transition), the Orchestrator
+  # compacts reviews with all findings resolved/deferred to
+  # {chunk_id, summary, deferred_items}. Full details preserved in git history.
   reviews: []
 
 # =============================================================================
@@ -321,6 +338,10 @@ review_findings:
   #       recommendation: string (what to do about it)
   #       status: open | resolved | deferred
   #       resolution: string | null (how it was resolved, if resolved)
+  #
+  # LIFECYCLE: At build completion (Stage 5→6 transition), the Orchestrator
+  # compacts resolved entries to summary form: {stage, lens, summary, deferred_count}.
+  # Entries with deferred findings are preserved in full.
   entries: []
 
 # =============================================================================
@@ -335,6 +356,9 @@ iteration_state:
   #   affected_artifacts: [artifact names that need updating]
   #   affected_chunks: [chunk ids that need rework or new chunks]
   #   status: received | assessing | implementing | complete
+  #
+  # LIFECYCLE: After every 10 completed cycles, the Orchestrator compacts
+  # completed entries to {feedback (first sentence), classification, status}.
   feedback_cycles: []
 
 # =============================================================================

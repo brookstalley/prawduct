@@ -1,0 +1,17 @@
+---
+observation_id: d49f068e-bbf5-47c2-89db-c1e1cf1057ef
+timestamp: 2026-02-13T20:40:37Z
+session_type: framework_dev
+session_context:
+  framework_version: 0d68d45
+observations:
+  - type: structural_critique
+    stage: 6
+    severity: warning
+    description: "Structural Critique Protocol existed but never fired during the weeks that concern enumeration violated Generality Over Enumeration. Trigger cadence (every 3 evaluation runs) was too low — effectively never. No directional-change trigger existed. The inductive observation system could not detect this because each product either fits a concern or does not — no repeated failure signal accumulates. Only deductive analysis (principles applied to architecture) could catch it."
+    evidence: "Concern enumeration violated Generality for weeks. Zero Structural Critique observations exist in framework-observations/. The protocol was added 2026-02-12 but triggered zero times before the user identified the problem."
+    proposed_action: "Structural Critique Protocol now triggers after directional changes (not just every 3 evals). Future consideration: session-count trigger (every N sessions) in addition to eval-count trigger."
+    status: noted
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+---

@@ -433,6 +433,12 @@ change_log:
     blast_radius: "All 6 skills, templates/project-state.yaml, project-state.yaml, docs/high-level-design.md, CLAUDE.md, all 3 test scenarios"
     classification: directional
     date: 2026-02-13
+    retrospective: "Concern enumeration violated Generality for weeks undetected. Root cause: Structural Critique Protocol trigger cadence too low (every 3 evals, effectively never), Directional Change Protocol had no learning step. The 17-file reform produced zero captured learnings until the user asked. Fix: retrospective step added to DCP, Structural Critique triggers expanded to include directional changes. Key insight: governance (Critic) validates quality but retrospective captures learning — both required for framework development."
+  - what: "Added post-change retrospective to Directional Change Protocol and expanded Structural Critique triggers"
+    why: "The DCP had governance (Critic review) but no learning step. A 17-file architectural reform produced zero captured learnings. The Structural Critique Protocol trigger cadence (every 3 evals) was too low to catch structural violations. Added DCP step 7 (mandatory retrospective with three questions: detection, process, architecture), expanded SCP triggers to include directional changes, added retrospective field to change_log schema, and documented framework development learning path in self-improvement-architecture.md."
+    blast_radius: "skills/orchestrator/SKILL.md, templates/project-state.yaml, project-state.yaml, docs/self-improvement-architecture.md, framework-observations/ (3 new observations)"
+    classification: functional
+    date: 2026-02-13
 
 # =============================================================================
 # BUILD PLAN

@@ -398,7 +398,100 @@ echo "$infra_output" | grep -v "^INFRASTRUCTURE_WARNINGS:"
 infra_warnings=$(echo "$infra_output" | grep "^INFRASTRUCTURE_WARNINGS:" | head -1 | sed 's/.*: //')
 echo ""
 
+# --- 6. Project State File Health ---
+
+state_warnings=0
+if [[ -f "$PROJECT_STATE" ]]; then
+    echo "## Project State Health"
+
+    state_health_output=$(python3 -c "
+import yaml, sys
+
+state_file = '$PROJECT_STATE'
+warnings = 0
+
+try:
+    with open(state_file) as f:
+        data = yaml.safe_load(f)
+    with open(state_file) as f:
+        total_lines = sum(1 for _ in f)
+
+    print(f'  Total lines: {total_lines}')
+
+    # Count entries in growing sections
+    sections = {}
+
+    # change_log
+    cl = data.get('change_log', []) or []
+    cl_complete = sum(1 for _ in cl)  # all entries count, no terminal status
+    sections['change_log'] = {'total': len(cl), 'compactable': max(0, len(cl) - 10)}
+
+    # build_plan.chunks
+    bp = data.get('build_plan', {}) or {}
+    chunks = bp.get('chunks', []) or []
+    chunks_complete = sum(1 for c in chunks if c.get('status') == 'complete')
+    sections['build_plan.chunks'] = {'total': len(chunks), 'compactable': chunks_complete}
+
+    # build_state.reviews
+    bs = data.get('build_state', {}) or {}
+    reviews = bs.get('reviews', []) or []
+    reviews_resolved = sum(1 for r in reviews
+                          if all(f.get('status') in ('resolved', 'deferred')
+                                 for f in r.get('findings', [])))
+    sections['build_state.reviews'] = {'total': len(reviews), 'compactable': reviews_resolved}
+
+    # review_findings.entries
+    rf = data.get('review_findings', {}) or {}
+    rf_entries = rf.get('entries', []) or []
+    rf_resolved = sum(1 for e in rf_entries
+                      if all(f.get('status') in ('resolved', 'deferred')
+                             for f in e.get('findings', [])))
+    sections['review_findings.entries'] = {'total': len(rf_entries), 'compactable': rf_resolved}
+
+    # iteration_state.feedback_cycles
+    it = data.get('iteration_state', {}) or {}
+    fc = it.get('feedback_cycles', []) or []
+    fc_complete = sum(1 for c in fc if c.get('status') == 'complete')
+    sections['iteration_state.feedback_cycles'] = {'total': len(fc), 'compactable': fc_complete}
+
+    # Report
+    growing_lines = 0
+    for name, info in sections.items():
+        if info['total'] > 0:
+            print(f\"  {name}: {info['total']} entries ({info['compactable']} compaction-eligible)\")
+            growing_lines += info['total'] * 5  # rough estimate: ~5 lines per entry
+
+    # Threshold checks
+    if sections['change_log']['total'] > 20:
+        print(f\"  WARNING: change_log has {sections['change_log']['total']} entries (threshold: 20). Compact older entries.\")
+        warnings += 1
+
+    for name, info in sections.items():
+        if info['compactable'] > 20:
+            print(f\"  WARNING: {name} has {info['compactable']} compaction-eligible entries (threshold: 20).\")
+            warnings += 1
+
+    if growing_lines > 300:
+        print(f'  WARNING: Growing sections estimated at ~{growing_lines} lines (threshold: 300). Consider compaction.')
+        warnings += 1
+
+    if all(info['total'] == 0 for info in sections.values()):
+        print('  All growing sections empty (new or compacted project).')
+
+except Exception as e:
+    print(f'  (Could not analyze project state: {e})')
+
+print(f'STATE_WARNINGS: {warnings}')
+" 2>/dev/null || echo "  (python3/yaml not available for project state analysis)
+STATE_WARNINGS: 0")
+
+    echo "$state_health_output" | grep -v "^STATE_WARNINGS:"
+    state_warnings=$(echo "$state_health_output" | grep "^STATE_WARNINGS:" | head -1 | sed 's/.*: //')
+    echo ""
+fi
+
 echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
 echo "INFRASTRUCTURE_WARNINGS: ${infra_warnings:-0}"
+echo "STATE_WARNINGS: ${state_warnings:-0}"
 echo ""
 echo "=========================================="

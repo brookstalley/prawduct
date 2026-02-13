@@ -146,7 +146,7 @@ The learning system depends on a complete chain: observable areas → observatio
 - **Evaluation scenario impact:** Does this change affect what evaluation scenarios should test? If so, are rubrics updated or flagged for update?
 - **FRP dimension impact:** Does this change affect what the Framework Reflection Protocol should assess? If so, are FRP dimensions still accurate?
 - **Observability path:** For any new capability or structural change — if it fails subtly, can the observation system detect that failure? If not, there's a blind spot.
-- **Growing collections:** Does this change create or extend a directory that accumulates files over time? If so, does it have: (a) a lifecycle with terminal states, (b) an archiving or retirement mechanism, (c) monitoring in `session-health-check.sh`? A growing collection without lifecycle monitoring is an infrastructure blind spot — it will degrade silently as items accumulate without bound. Examples: observation files, working notes, eval history, pattern reports.
+- **Growing collections:** Does this change create or extend a collection that accumulates entries — whether a directory of files or a section within a file (like `project-state.yaml`) that accumulates array entries? If so, does it have: (a) a lifecycle with terminal states, (b) a compaction or archiving mechanism, (c) monitoring in `session-health-check.sh`? A growing collection without lifecycle monitoring is an infrastructure blind spot — it will degrade silently as items accumulate without bound. Examples: observation files, working notes, eval history, pattern reports (directories); change_log, chunks, reviews, review_findings, feedback_cycles (file sections in project-state.yaml).
 
 **Severity guide:**
 - New capability with no observability path → **blocking** (creates a blind spot the learning system can't detect)
@@ -259,7 +259,30 @@ This check catches the Builder making decisions that should have been made durin
    - Repeat until no blocking findings remain.
 4. **If no BLOCKING findings:** chunk status → "complete", proceed to next chunk.
 
-### Output Format
+### Directional Change Review
+
+This review is invoked by the Orchestrator after all chunks from a product directional change are complete — not after each individual chunk (per-chunk checks still apply during the build).
+
+**When to invoke:** The Orchestrator's Product Directional Change Protocol invokes this after step 4 (implementation) and before step 5 (retrospective). After the retrospective completes, a lightweight re-check verifies retrospective completeness.
+
+**What to check:**
+
+- **Artifact consistency:** Were all affected artifacts updated before building? Check `artifact_manifest` for version bumps on affected artifacts. If implementation references artifact content that wasn't updated → **BLOCKING** (building from stale specs).
+- **Retrospective completeness:** Did the Orchestrator run the post-shift retrospective (discovery adequacy, artifact resilience, generalization)? Check `change_log` for a directional entry with a `retrospective` field. If missing → **WARNING**.
+- **Observation capture:** Were substantive findings captured as observations? If the retrospective identified gaps but no observation files were created → **WARNING**.
+- **Regression check:** Do pre-existing tests still pass? A directional change should not break previously-passing tests → **BLOCKING** if violated (enforces HR1: No Test Corruption).
+
+**Output format:** Add a "Directional Change Review" section to the output, only included when reviewing a directional change:
+
+```
+### Directional Change Review
+- Artifact consistency: [PASS / list of stale artifacts]
+- Retrospective completeness: [PASS / MISSING]
+- Observation capture: [PASS / findings without observations]
+- Regression check: [PASS / list of broken tests]
+```
+
+### Per-Chunk Output Format
 
 ```
 ## Product Governance Review — Chunk [ID]: [Name]

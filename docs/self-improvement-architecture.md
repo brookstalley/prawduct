@@ -4,7 +4,7 @@
 
 **Tier**: 1 (Source of Truth)
 **Owner**: Framework maintainers
-**Last updated**: 2026-02-11
+**Last updated**: 2026-02-13
 
 ---
 
@@ -221,9 +221,59 @@ But some framework problems are **structural** — they don't produce repeated o
 | Approach | Catches | Evidence source | Threshold |
 |----------|---------|----------------|-----------|
 | Inductive (observations → patterns) | Behavioral drift, proportionality issues, coverage gaps, process friction | Product sessions, evaluations | 2-4+ occurrences depending on type |
-| Deductive (principles → questioning) | Structural violations, taxonomy problems, architectural misalignment | Framework principles + external research | Periodic review (every 3 evals or on request) |
+| Deductive (principles → questioning) | Structural violations, taxonomy problems, architectural misalignment | Framework principles + external research | Periodic review (every 3 evals, after directional changes, or on request) |
 
 Both feed the same action pipeline: observations → triage → skill updates → Critic governance → commit. The difference is how the observation is generated, not how it's processed.
+
+---
+
+## Learning from Framework Development
+
+### The Gap This Section Addresses
+
+The learning system's Phase 1 (capture) was designed for **product sessions**: observations at stage transitions, FRP at stage gates, observation files for substantive findings. This works because product development follows a predictable stage progression with natural reflection points.
+
+**Framework development is different.** It happens in Stage 6 iteration, governed by the Directional Change Protocol (DCP). The DCP had governance (Critic review validates quality) but no learning step. A massive architectural reform could pass all Critic checks while producing zero captured learnings. Quality and learning are orthogonal — a change can be well-made without anyone asking "what did we learn from making it?"
+
+### The Fix: Post-Change Retrospective
+
+The DCP now includes a mandatory step 7 (post-change retrospective) that asks three questions after every directional change:
+
+1. **Detection:** Could the learning system have caught the problem this change addresses? If not, what's missing?
+2. **Process:** What did the implementation process reveal about framework gaps beyond the change itself?
+3. **Architecture:** Does this change create new areas the learning system can't observe?
+
+Substantive findings become observation files (via `capture-observation.sh`). The change_log entry includes a `retrospective` field summarizing key learnings for session-resumption visibility.
+
+### The Feedback Loop
+
+The retrospective creates a self-reinforcing cycle:
+
+```
+Directional change completes
+  → Critic validates quality (step 5)
+  → Retrospective captures learning (step 7)
+  → Structural Critique Protocol triggers (expanded trigger)
+  → Observations feed pattern detection
+  → Patterns improve future detection
+```
+
+The Structural Critique Protocol now triggers after directional changes (not just every 3 evals). If a retrospective reveals that the learning system failed to detect a principle violation, that's a signal to expand the Structural Critique's dimensions or the observation system's coverage.
+
+### Two Parallel Capture Paths
+
+| Path | Triggers | Captures | Mechanism |
+|------|----------|----------|-----------|
+| Product sessions | Stage transitions | Behavioral observations, coverage gaps, proportionality issues | FRP + observation capture (automatic, blocking) |
+| Framework development | Directional changes | Detection gaps, process gaps, architecture blind spots | DCP step 7 retrospective (mandatory) |
+
+Both paths feed the same downstream pipeline: observations → pattern detection → incorporation. The difference is the trigger and the questions asked, not the output format or processing.
+
+### Why This Matters
+
+The concern enumeration violated Generality Over Enumeration for weeks. The Structural Critique Protocol existed but never fired (trigger cadence too low). The 17-file structural characteristics reform produced zero captured learnings until the user asked. The learning system had a blind spot for its own development process.
+
+The retrospective closes this gap. It can't prevent architectural mistakes, but it ensures that every directional change — the kind most likely to reveal systemic issues — produces structured learnings that feed back into the system.
 
 ---
 
@@ -389,6 +439,34 @@ Automatic skill updates without validation are dangerous. The system must valida
 **Structural principle**: Invariants, not enumerations. Rather than listing every housekeeping task, define invariant properties (bounded growth, status progression, consistency) and monitor them generically. New collections get monitoring at creation time (Critic Check 7), existing collections get health-checked at session time (`session-health-check.sh`).
 
 **Learning**: Systems that monitor their outputs but not their infrastructure degrade silently. Time-based degradation (accumulation, staleness) requires different monitoring than change-based degradation (breaking modifications). Content health and infrastructure health are orthogonal concerns.
+
+### Failure Mode 8: Directional Changes Produce No Learnings
+
+**Symptom**: A large, multi-file framework change completes with full Critic review but zero captured observations or retrospective findings.
+
+**Root cause**: The Directional Change Protocol had governance (Critic review, step 5) but no learning step. Governance validates quality; it doesn't ask "what did we learn?" The FRP fires at product stage transitions, not after framework changes. Framework development had a blind spot: quality without learning.
+
+**Discovered**: 2026-02-13. The 17-file structural characteristics reform produced 6 commits, 1 Critic review, and 0 observations until the user explicitly asked for retrospective.
+
+**Fix**: DCP step 7 (post-change retrospective) makes learning a required side-effect of directional changes. Three mandatory questions (detection, process, architecture) produce structured observations. The change_log `retrospective` field makes learnings visible during session resumption.
+
+**Safeguard**: The retrospective step is documented as "not optional" in the DCP. The Structural Critique Protocol now triggers after directional changes, providing a second learning opportunity.
+
+**Learning**: Governance and learning are orthogonal. A change can pass all quality checks while producing zero insights. The Critic asks "is this well-made?" The retrospective asks "what did we learn from making it?" Both questions are necessary; neither implies the other.
+
+### Failure Mode 9: Instance-Specific Fixes Don't Generalize
+
+**Symptom**: A problem is discovered in one context (e.g., framework development) and fixed only there. The same gap in analogous contexts (e.g., product development) goes unnoticed until someone stumbles on it independently.
+
+**Root cause**: No step in the fix process prompts checking whether the fix applies more broadly. The retrospective asks "what did we learn?" but not "where else does this apply?"
+
+**Discovered**: 2026-02-13. The DCP retrospective (step 7) was added for framework development after discovering governance without learning. The same gap — directional changes without retrospective — existed on the product path but wasn't checked because the fix was scoped to where the problem was found.
+
+**Fix**: Generalization question (d) added to both the framework DCP retrospective and the new Product Directional Change Protocol retrospective: "Does this fix apply only to the context where the problem was discovered, or does the same gap exist in analogous contexts?" Every retrospective now explicitly prompts checking parallel paths.
+
+**Safeguard**: The generalization question is structural — it's part of every retrospective, not a one-time check. Critic Check 7 (Learning Integration) extended to cover in-file growing collections (same principle: check for the general pattern, not just the specific instance).
+
+**Learning**: Fixing an instance without checking for the general pattern is a form of silent requirement dropping (HR2) at the meta level. The fix was correct but incomplete. Retrospectives that ask "what did we learn?" without asking "where else does this apply?" will systematically produce instance-specific fixes.
 
 ---
 

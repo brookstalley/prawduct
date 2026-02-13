@@ -1,0 +1,18 @@
+---
+observation_id: f1f43452-eed1-4b69-b78a-66cd405084a7
+timestamp: 2026-02-13T20:40:57Z
+session_type: framework_dev
+session_context:
+  framework_version: 0d68d45
+observations:
+  - type: structural_critique
+    stage: 6
+    severity: warning
+    description: "The learning system (FRP, observation capture, pattern detection) was designed for product stage transitions. Framework development happens in Stage 6 iteration using the Directional Change Protocol, which had governance (Critic) but no learning (retrospective). The FRP fires at product stages, not after framework changes. This means the framework could govern its own quality but not learn from its own development process. Governance and learning are orthogonal — a change can pass all Critic checks while producing zero learnings."
+    evidence: "The FRP dimensions (proportionality, coverage, applicability, missing guidance, documentation freshness, learning completeness) fire at stage transitions during product builds. Framework development uses DCP which had steps 1-6 ending at session observation. No step asked the three retrospective questions (detection, process, architecture). The learning system had a blind spot for its own development."
+    proposed_action: "DCP step 7 (retrospective) closes the gap for directional changes. The retrospective creates a feedback loop: directional changes trigger structural critiques which may reveal learning system gaps which improve future detection. For smaller framework changes, the existing observation capture step in the Critic workflow is sufficient."
+    status: noted
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+  - "docs/self-improvement-architecture.md"
+---
