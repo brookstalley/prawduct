@@ -88,7 +88,7 @@ For each lens, produce findings in this format:
 
 **What this lens does NOT do:** It doesn't evaluate whether the *right* thing is being built (that's Product) or whether the architecture supports it (that's Architecture).
 
-**When to apply lightly:** For products without `human_interface` (APIs, unattended systems), the Design Lens has limited applicability. Apply it to any user-facing surfaces (API error messages, configuration interfaces) but don't force UI-thinking onto a system with no user interface.
+**When to apply lightly:** For products without `has_human_interface` (APIs, unattended systems), the Design Lens has limited applicability. Apply it to any user-facing surfaces (API error messages, configuration interfaces) but don't force UI-thinking onto a system with no user interface.
 
 ### Architecture Lens
 
@@ -194,35 +194,25 @@ For a low-risk utility like a family score tracker, the review should be **propo
 - **Tone:** Helpful, not adversarial. The goal is to improve the product, not to demonstrate thoroughness.
 - **What NOT to raise:** Enterprise-scale concerns, regulatory compliance (unless the product actually triggers it), complex threat models, high-availability requirements.
 
-## Concern-Specific Lens Adjustments
+## Structural-Characteristic Lens Adjustments
 
-The following adjustments modify the general five-lens process described above when specific concerns are active. Read the general lens descriptions first. Multiple adjustments may apply simultaneously when a product has multiple active concerns.
+The following adjustments modify the general five-lens process described above when specific structural characteristics are active. Read the general lens descriptions first. Multiple adjustments may apply simultaneously when a product has multiple active structural characteristics.
 
-### When `unattended_operation` Is Active
+### When `runs_unattended` Is Active
 
 The lenses shift focus from user-facing concerns to operational concerns. The core question changes from "will users understand this?" to "will this run reliably unattended?"
 
 | Lens | Adjustment |
 |------|------------|
 | **Product** | Evaluate automation scope vs. the manual process it replaces (boundary correctness). Check that success criteria are measurable for a headless system ("Digest delivered by 7 AM" not "Works well"). Check filtering/processing logic is concrete enough to implement. |
-| **Design** | Does NOT evaluate screens or visual design (unless `human_interface` is also active). Evaluates: configuration UX (clear format, helpful error messages), output clarity (the system's output IS its interface), observability UX (can the operator check health without digging through logs?), and error communication (do alerts explain what happened and what to do?). |
+| **Design** | Does NOT evaluate screens or visual design (unless `has_human_interface` is also active). Evaluates: configuration UX (clear format, helpful error messages), output clarity (the system's output IS its interface), observability UX (can the operator check health without digging through logs?), and error communication (do alerts explain what happened and what to do?). |
 | **Architecture** | Evaluate stage isolation (can stages fail independently?), deployment appropriateness for the execution pattern and cost profile, resource efficiency (runaway cost risk from tight loops or unbounded fetches?), and operational complexity budget (infrastructure proportionate to problem?). |
 | **Skeptic** | **Must always raise at least one silent-failure finding** (what happens when the system fails and nobody notices?) **and at least one external-dependency-resilience finding** (what happens when services are down, slow, or rate-limited?). Also look for: configuration drift risk and cost creep from per-invocation API costs. |
 | **Testing** | In addition to general criteria: every processing stage needs at least one failure mode test. Required tests: silent failure detection (distinguish "no results" from "didn't run"), partial success (some sources fail, others succeed), and configuration validation (invalid/missing config). |
 
-**Proportionality:** 8-15 total findings for a low-medium risk unattended system. Fewer than 8 likely misses operational concerns. More than 15 is over-reviewing for a side project. Blocking findings: 0-3 at most. **What NOT to raise:** UI/UX concerns about screens or navigation (unless `human_interface` is also active), multi-user collaboration features, enterprise-grade SLA requirements for a side project.
+**Proportionality:** 8-15 total findings for a low-medium risk unattended system. Fewer than 8 likely misses operational concerns. More than 15 is over-reviewing for a side project. Blocking findings: 0-3 at most. **What NOT to raise:** UI/UX concerns about screens or navigation (unless `has_human_interface` is also active), multi-user collaboration features, enterprise-grade SLA requirements for a side project.
 
-### When `api_surface` Is Active
-
-| Lens | Adjustment |
-|------|------------|
-| **Product** | Evaluate whether API operations map to real consumer use cases. Check that API boundaries are well-defined. |
-| **Design** | Evaluates API ergonomics: consistent naming, clear error messages, predictable pagination, sensible defaults. |
-| **Architecture** | Evaluate versioning strategy, backward compatibility approach, rate limiting design, authentication mechanism appropriateness. |
-| **Skeptic** | Raise breaking-change risk, consumer migration burden, rate limit abuse scenarios, and API misuse potential. |
-| **Testing** | Contract tests, error response format consistency, backward compatibility tests, rate limiting behavior tests. |
-
-### When `multi_party` Is Active
+### When `has_multiple_party_types` Is Active
 
 | Lens | Adjustment |
 |------|------------|
@@ -231,21 +221,19 @@ The lenses shift focus from user-facing concerns to operational concerns. The co
 | **Skeptic** | Raise cross-party data leakage, privilege escalation between party types, and what happens when parties conflict. |
 | **Testing** | Per-party test coverage: each party type's flows are tested. Cross-party interaction tests: what happens at trust boundaries. |
 
-### When `constrained_environment` Is Active
+### Dynamic Lens Adaptation
 
-| Lens | Adjustment |
-|------|------------|
-| **Architecture** | Evaluate resource usage against environment constraints. Memory budgets, CPU limits, storage constraints must be explicit in the design. |
-| **Skeptic** | Raise resource exhaustion scenarios, what happens when approaching limits, graceful degradation under constraint. |
-| **Testing** | Resource budget verification tests. Behavior-under-constraint tests. |
+For structural characteristics not listed above (`has_human_interface`, `exposes_programmatic_interface`, `handles_sensitive_data`) and for domain-specific characteristics, the lenses adapt dynamically using the LLM's domain knowledge rather than hardcoded adjustment tables.
 
-### When `sensitive_data` Is Active
+**When adapting lenses dynamically:**
 
-| Lens | Adjustment |
-|------|------------|
-| **Architecture** | Evaluate data storage encryption, access control granularity, audit logging, data retention and deletion capabilities. |
-| **Skeptic** | Raise data breach scenarios, insider threat scenarios, data retention compliance, cross-border data transfer implications. |
-| **Testing** | Access control tests (verify unauthorized access is denied), data lifecycle tests (verify deletion actually removes data), audit trail tests. |
+1. Read `classification.structural` and `classification.domain_characteristics` from project-state.yaml.
+2. For each active structural characteristic or domain characteristic, consider what each lens should pay special attention to. Examples:
+   - A product with `exposes_programmatic_interface` → Architecture lens evaluates versioning strategy and backward compatibility; Skeptic raises breaking-change risk; Testing checks contract consistency.
+   - A product with `handles_sensitive_data` → Architecture evaluates encryption and access control; Skeptic raises breach and compliance scenarios; Testing verifies access controls and data lifecycle.
+   - A product with domain characteristic "constrained hardware environment" → Architecture evaluates resource budgets; Skeptic raises resource exhaustion; Testing checks behavior under constraint.
+   - A product with domain characteristic "realtime audio processing" → Architecture evaluates latency paths; Skeptic raises buffer underrun scenarios; Testing checks timing guarantees.
+3. Apply these adaptations with the same severity and proportionality standards as the hardcoded adjustments above.
 
 ## Applying Lenses During Build (Stages 4-6)
 
@@ -272,11 +260,12 @@ Remaining lens enhancements are tracked in `project-state.yaml` → `build_plan.
 
 When modifying existing lenses:
 - Each lens has a "What it evaluates" list — update this when the lens's scope changes.
-- Each lens has concern-specific adjustments — add new concern blocks following the pattern of existing ones.
+- For structural characteristics with hardcoded lens adjustments (`runs_unattended`, `has_multiple_party_types`), update those tables directly.
+- For other characteristics, the Dynamic Lens Adaptation section handles adaptation without hardcoded tables.
 - Maintain severity guide consistency (blocking / warning / note) across all lenses.
 
 When adding a new lens:
 1. Define: purpose, when it fires (which stages), what it evaluates, severity guide.
 2. Add it to the "When they fire" table in `docs/high-level-design.md` § C4.
-3. Add concern-specific adjustments if the lens evaluates differently for different concerns.
+3. If the lens needs structural-characteristic-specific adjustments with detailed operational guidance (like `runs_unattended`), add a hardcoded table. Otherwise, the Dynamic Lens Adaptation section covers it.
 4. Update evaluation scenario rubrics to include the new lens's expected findings.

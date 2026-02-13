@@ -41,10 +41,10 @@ Apply these checks to every framework modification. Each check is a thinking pri
 
 **Ask:** Does this change work for products the framework has never seen?
 
-- If a modification adds a specific concern as an enumerated item (e.g., "check for identity fragility," "ask about sync model"), it fails this check. The fix is to strengthen the general thinking principle that should have caught the concern.
-- If a modification strengthens a general principle so the LLM naturally surfaces the concern for any relevant product, it passes.
+- If a modification adds a specific concern as an enumerated item (e.g., "check for identity fragility," "ask about sync model") rather than strengthening the dynamic generation system, it fails this check. The fix is to strengthen the general thinking principle or amplification rule that should have caught the concern.
+- If a modification strengthens a general principle or structural amplification rule so the LLM naturally surfaces the concern for any relevant product, it passes.
 - **Test:** Mentally apply the modified skill to three very different products (e.g., a family utility, a B2B API, a data pipeline). Does the modification help with all three, or only the product that triggered it?
-- **Scope note:** This check applies to the framework's structural decisions (how skills are organized, what categories drive routing, what dimensions exist in the taxonomy), not only to individual changes within those structures. If the framework's own architecture relies on enumerated categories where dimensional approaches would generalize better, that is itself a generality violation — even if it predates the Critic.
+- **Scope note:** This check applies to the framework's structural decisions (how skills are organized, what characteristics drive routing, what dimensions exist in the taxonomy), not only to individual changes within those structures. The framework uses 5 structural characteristics for artifact routing and dynamic generation for domain-specific depth. Changes that add hardcoded domain-specific question banks violate this principle — domain-specific depth should come from the LLM's own knowledge guided by universal dimensions and amplification rules.
 
 **Discriminating test:** Apply the modification to three products from the test scenarios (e.g., family utility, B2B API, data pipeline). If it actively misleads for any product → **blocking**. If it's less useful for some but not harmful → **warning**. If it's slightly specific but doesn't harm generality → **note**.
 

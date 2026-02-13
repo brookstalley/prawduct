@@ -58,7 +58,7 @@ Across all stages, the Orchestrator:
 **What to do:**
 
 1. Read `skills/domain-analyzer/SKILL.md`.
-2. Follow the Domain Analyzer's classification process (Steps 1-4): detect concerns, classify domain, and assess risk profile.
+2. Follow the Domain Analyzer's classification process (Steps 1-4): detect structural characteristics, identify domain-specific characteristics, classify domain, and assess risk profile.
 3. The Domain Analyzer will confirm classification with the user in plain language. Wait for user confirmation.
 4. Update `project-state.yaml` with classification results and initial `user_expertise` inferences from the user's opening message.
 5. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
@@ -83,7 +83,7 @@ Skip formal validation. These products are low-stakes and the user's enthusiasm 
 Quick check: Is this a solved problem? Is this one product or multiple? Any obvious feasibility concerns? Surface findings briefly. If the user wants to proceed, proceed.
 
 **High-risk products:**
-Read `skills/review-lenses/SKILL.md`. Apply the Product Lens and Skeptic Lens to evaluate: does this warrant building? Are there existing solutions? Is this feasible for LLM-assisted development? Is this actually one product? Surface findings and discuss with user. The system must be willing to recommend not building.
+Read `skills/review-lenses/SKILL.md`. Apply the Product Lens and Skeptic Lens to evaluate: does this warrant building? Are there existing solutions? Is this feasible for LLM-assisted development? Is this actually one product? Surface findings and discuss with user. If the assessment raises serious concerns, advise clearly — but if the user wants to proceed after hearing the risks, help them build the best version possible.
 
 Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 
@@ -100,7 +100,7 @@ Update `current_stage` to "discovery".
 **What to do:**
 
 1. Read `skills/domain-analyzer/SKILL.md`.
-2. Follow the Domain Analyzer's discovery question generation (Step 5): generate tiered questions appropriate to the product's concerns, domain, and risk level.
+2. Follow the Domain Analyzer's discovery question generation (Step 5): generate tiered questions appropriate to the product's structural characteristics, domain characteristics, and risk level.
 
 3. **Manage the conversation:**
 
@@ -348,7 +348,7 @@ The user has a working product and provides feedback. Handle feedback in lightwe
      2. Update the relevant artifacts (whichever are affected — see `artifact_manifest`).
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
-   - **Directional** (fundamentally different product vision): Flag this explicitly. "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?" If they want to shift, consider whether reclassification (R5.4) is warranted. For framework development, follow the Directional Change Protocol below.
+   - **Directional** (fundamentally different product vision): Flag this explicitly. "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?" If they want to shift, consider whether reclassification of structural characteristics (R5.4) is warranted. For framework development, follow the Directional Change Protocol below.
 
    **Directional Change Protocol (framework development)**
 
@@ -420,7 +420,7 @@ At every stage transition, pause and assess: **did the framework serve this prod
 
 | Stage | Focus |
 |-------|-------|
-| 0 (Intake) | Did concern detection cover this product adequately? Were risk factors appropriate? Did classification reveal a concern dimension not in the taxonomy? |
+| 0 (Intake) | Did structural characteristic detection cover this product adequately? Were domain-specific characteristics identified? Were risk factors appropriate? Did classification reveal a gap in the structural characteristic set? |
 | 0.5 (Validation) | Was validation depth proportionate to risk? |
 | 1 (Discovery) | Was question count proportionate? Were the right topics covered? |
 | 2 (Definition) | Were scope and technical decisions at the right level of detail? |
@@ -455,7 +455,7 @@ Before transitioning to any new stage, verify that the prerequisites for that st
 **Specific prerequisites by transition:**
 
 ### → Stage 0.5 (Validation)
-- `classification.concerns` has at least one non-null concern
+- `classification.structural` has at least one non-null structural characteristic
 - `classification.domain` is set
 - `classification.risk_profile.overall` is set
 - `classification.risk_profile.factors` has at least 2 entries with rationale
@@ -481,8 +481,9 @@ This is the highest-stakes transition — discovery becomes production. Check th
 - `product_definition.goals` has at least 1 measurable success criterion
 - `product_definition.nonfunctional` has at least `performance` and `uptime` set
 - `technical_decisions` has at least one decision with rationale (the specific decisions needed depend on the product — check that every choice affecting implementation complexity has been made)
-- When `concerns.human_interface` is active: `design_decisions.accessibility_approach` is set
+- When `structural.has_human_interface` is active: `design_decisions.accessibility_approach` is set
 - `open_questions` has no high-priority items with `waiting_on: "user"` (unresolved user questions block artifact generation)
+- `classification.domain_characteristics` is populated (at least 1 entry)
 
 ### → Stage 4 (Build Planning)
 - All Stage 3 prerequisites met
@@ -617,7 +618,7 @@ Periodically (after every 3 evaluation runs, or on request), apply the framework
 
 **Process:**
 
-1. For each major structural decision (concern taxonomy, stage progression, artifact selection, skill boundaries):
+1. For each major structural decision (structural characteristic taxonomy, stage progression, artifact selection, skill boundaries):
    - Which principles governed this decision?
    - Does it still satisfy them given current evidence?
    - Would a different choice better satisfy them given what we now know?

@@ -169,6 +169,6 @@ Resume from the current chunk. If the current chunk's status is "review," wait f
 Remaining Builder enhancements are tracked in `project-state.yaml` → `build_plan.remaining_work`.
 
 When adding new chunk patterns (e.g., for API endpoints, pipeline stages, multi-party flows):
-1. Add a section under the chunk execution instructions describing the concern-specific pattern.
-2. The pattern should specify: how to read concern-specific artifacts, what test patterns apply, and how chunk acceptance criteria map to concern-specific specs.
-3. Concern-specific chunks follow the same general cycle (read specs → write tests → implement → verify → update state).
+1. Add a section under the chunk execution instructions describing the structural-characteristic-specific pattern.
+2. The pattern should specify: how to read characteristic-specific artifacts, what test patterns apply, and how chunk acceptance criteria map to characteristic-specific specs.
+3. Characteristic-specific chunks follow the same general cycle (read specs → write tests → implement → verify → update state).
