@@ -12,7 +12,8 @@
 #
 # Marker lifecycle:
 #   Created:  Orchestrator activation (step 3) or Session Resumption (step 1)
-#   Read:     This hook, on every Edit/Write to framework files
+#   Read:     This hook (PreToolUse, on every Edit/Write to framework files)
+#             and framework-governance-prompt.sh (UserPromptSubmit, proactive check)
 #   Deleted:  On /clear (SessionStart hook), new startup (SessionStart hook),
 #             or successful commit (critic-gate.sh cleanup)
 #

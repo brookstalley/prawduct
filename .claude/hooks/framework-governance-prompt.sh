@@ -2,9 +2,12 @@
 #
 # framework-governance-prompt.sh — UserPromptSubmit hook for framework governance
 #
-# Fires when the user sends a message. Checks .session-edits.json for framework
-# file edits and .critic-findings.json for Critic coverage. Injects governance
-# context so Claude runs the Critic automatically instead of asking.
+# Fires when the user sends a message. Two responsibilities:
+# 1. If the Orchestrator hasn't been activated yet, injects a strong instruction
+#    to activate it before doing anything else (proactive HR9 enforcement).
+# 2. If framework files have been edited, checks .session-edits.json and
+#    .critic-findings.json for Critic coverage. Injects governance context so
+#    Claude runs the Critic automatically instead of asking.
 #
 # Hook protocol:
 #   - Reads JSON from stdin (user prompt data)
@@ -13,20 +16,34 @@
 
 set -euo pipefail
 
-# --- Fast path: check for session edits ---
+# --- Resolve repo root ---
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 if [[ -z "$REPO_ROOT" ]]; then
     exit 0
 fi
 
+# Consume stdin (required by hook protocol)
+cat > /dev/null
+
+# --- Check Orchestrator activation ---
+
+MARKER="$REPO_ROOT/.claude/.orchestrator-activated"
+if [[ ! -f "$MARKER" ]]; then
+    python3 -c "
+import json
+msg = 'ORCHESTRATOR NOT ACTIVATED. Before doing anything else, you MUST read skills/orchestrator/SKILL.md and follow its activation process (step 3: write timestamp to .claude/.orchestrator-activated). This is HR9 — no governance bypass. Do this now, before responding to the user\\'s request.'
+print(json.dumps({'additionalContext': msg}))
+" 2>/dev/null
+    exit 0
+fi
+
+# --- Fast path: check for session edits ---
+
 SESSION_EDITS="$REPO_ROOT/.claude/.session-edits.json"
 if [[ ! -f "$SESSION_EDITS" ]]; then
     exit 0
 fi
-
-# Consume stdin (required by hook protocol)
-cat > /dev/null
 
 # --- Check governance coverage ---
 
