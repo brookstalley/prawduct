@@ -419,6 +419,11 @@ change_log:
     blast_radius: "Domain Analyzer, Artifact Generator, Review Lenses, Orchestrator, Critic, project-state schema, high-level design, principles, all test scenarios, CLAUDE.md, observation schema"
     classification: directional
     date: 2026-02-12
+  - what: "Consolidated work tracking into project-state.yaml remaining_work"
+    why: "Work tracking was scattered across 8+ files with partial conflicts. Made remaining_work the canonical tracker with 23 phased items (v1-widen, v1-validation, v1.5). Converted skill 'Extending This Skill' sections from feature roadmaps to extension guidance. Fixed staleness in requirements.md and high-level-design.md."
+    blast_radius: "project-state.yaml, CLAUDE.md, docs/requirements.md, docs/high-level-design.md, all 6 skill SKILL.md files"
+    classification: directional
+    date: 2026-02-13
 
 # =============================================================================
 # BUILD PLAN
@@ -428,21 +433,122 @@ change_log:
 
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
-  # remaining_work is manually maintained during Stage 6 iteration.
+  # remaining_work is the canonical tracker for what remains to build.
   # Remove items as they are completed; add items as new work is identified.
+  # Skill "Extending This Skill" sections provide guidance on HOW to extend
+  # each skill; this list tracks WHAT remains and WHEN (by phase).
   remaining_work:
+    # --- v1-widen (15 items) ---
     - item: "Deepen api_surface concern"
-      description: "Full-depth discovery questions, API-specific templates, b2b-integration-api test scenario rubric"
+      description: "Full-depth discovery questions, 4 API-specific templates (api-contract, integration-guide, versioning-strategy, sla-definition), b2b-integration-api test scenario rubric"
+      phase: v1-widen
+      requirements: [R2.1, R7.2]
+      skill: domain-analyzer
     - item: "Deepen multi_party concern"
-      description: "Full-depth discovery questions, multi-party templates, two-sided-marketplace test scenario rubric"
-    - item: "Build mechanical enforcement tools"
-      description: "Planned tools: test-integrity-checker, doc-architecture-validator, boundary-checker, spec-compliance-diff, docs-freshness-checker"
-    - item: "Orchestrator sophistication"
-      description: "Opinionated pushback (R1.5), prior art awareness (R1.7), pacing sensitivity (R1.8), reclassification (R5.4)"
-    - item: "Remaining test scenarios"
-      description: "consumer-mobile-app, b2b-integration-api, two-sided-marketplace"
+      description: "Full-depth discovery questions, 3 multi-party templates (party-experience-spec, party-interaction-model, migration-adoption-plan), two-sided-marketplace test scenario rubric"
+      phase: v1-widen
+      requirements: [R2.1, R7.2]
+      skill: domain-analyzer
+    - item: "Create human_interface templates"
+      description: "6 templates: information-architecture, screen-spec, design-direction, accessibility-spec, localization-requirements, onboarding-spec"
+      phase: v1-widen
+      requirements: [R2.1]
+      skill: artifact-generator
+    - item: "consumer-mobile-app test scenario"
+      description: "Test scenario rubric exercising human_interface concern with mobile-specific constraints"
+      phase: v1-widen
+      requirements: [R7.2]
+    - item: "Orchestrator: opinionated pushback"
+      description: "Challenge user decisions that conflict with good practice; requires calibrated confidence and domain knowledge"
+      phase: v1-widen
+      requirements: [R1.5]
+      skill: orchestrator
+    - item: "Orchestrator: prior art awareness"
+      description: "Surface existing solutions via web search during Stage 0-1; additive capability"
+      phase: v1-widen
+      requirements: [R1.7]
+      skill: orchestrator
+    - item: "Orchestrator: pacing sensitivity"
+      description: "Detect and adapt to user impatience signals beyond risk-based defaults"
+      phase: v1-widen
+      requirements: [R1.8]
+      skill: orchestrator
+    - item: "Orchestrator: reclassification"
+      description: "Recognize when product's active concerns fundamentally change during build, triggering re-evaluation of artifacts and discovery"
+      phase: v1-widen
+      requirements: [R5.4]
+      skill: orchestrator
+    - item: "Critic: remaining product governance sub-components"
+      description: "Architectural Consistency Checker, Documentation Controller, Operational Readiness Checker — needed when concern coverage deepens beyond simple products"
+      phase: v1-widen
+      requirements: [R3.4, R3.5]
+      skill: critic
+    - item: "Critic-Review Lenses integration"
+      description: "Critic findings feed back to Review Lenses for pattern detection; Review Lens findings feed into Critic's continuous governance during build"
+      phase: v1-widen
+      requirements: [R3.1]
+      skill: critic
+    - item: "Review Lenses: variable-depth and rotating emphasis"
+      description: "Lighter review for routine artifact generation, deeper for major scope changes; rotating lead lens (security, cost, etc.) to prevent blind spots"
+      phase: v1-widen
+      requirements: [R3.1]
+      skill: review-lenses
+    - item: "Builder: multi-concern patterns"
+      description: "Concern-specific chunk patterns for API endpoints, pipeline stages, and multi-party flows"
+      phase: v1-widen
+      requirements: [R7.2]
+      skill: builder
+    - item: "Domain Analyzer: additional domain overlays"
+      description: "Domain overlays beyond utility, entertainment, automation, productivity for broader product coverage"
+      phase: v1-widen
+      requirements: [R7.2]
+      skill: domain-analyzer
+    - item: "Artifact Generator: modular artifact updates"
+      description: "When a decision changes, update only affected artifacts rather than regenerating all"
+      phase: v1-widen
+      requirements: [R2.4]
+      skill: artifact-generator
+    - item: "Mechanical sub-check tools"
+      description: "5 planned scripts: test-integrity-checker, doc-architecture-validator, boundary-checker, spec-compliance-diff, docs-freshness-checker"
+      phase: v1-widen
+      requirements: [R3.7]
+    # --- v1-validation (3 items) ---
     - item: "Full V1 validation"
-      description: "All scenarios passing end-to-end, framework fully self-governing"
+      description: "All scenarios passing end-to-end evaluation rubrics, framework fully self-governing"
+      phase: v1-validation
+      requirements: [R7.2]
+    - item: "Builder: parallel chunk execution"
+      description: "Execute independent chunks in parallel for faster builds"
+      phase: v1-validation
+      skill: builder
+    - item: "Builder: incremental builds"
+      description: "When artifacts change mid-build, identify affected chunks and re-execute only those"
+      phase: v1-validation
+      skill: builder
+    # --- v1.5 (5 items) ---
+    - item: "C7 Trajectory Monitor as dedicated component"
+      description: "Full trajectory management beyond governance checkpoints and cross-chunk reviews; dedicated monitoring component"
+      phase: v1.5
+      requirements: [R4.1, R4.2, R4.3]
+    - item: "Regulatory and compliance discovery"
+      description: "Domain-specific regulatory requirements surfaced during discovery (HIPAA, GDPR, PCI-DSS, etc.)"
+      phase: v1.5
+      requirements: [R1.9]
+      skill: domain-analyzer
+    - item: "Cost awareness in artifacts"
+      description: "Artifacts include cost estimates and tradeoff analysis for infrastructure and operational decisions"
+      phase: v1.5
+      requirements: [R2.6]
+      skill: artifact-generator
+    - item: "Accessibility enforcement in Critic"
+      description: "Critic checks accessibility requirements are met in human_interface products"
+      phase: v1.5
+      requirements: [R3.8]
+      skill: critic
+    - item: "Agent agnosticism"
+      description: "Skills and artifacts work with LLM agents beyond Claude; reduce Claude-specific assumptions"
+      phase: v1.5
+      requirements: [R7.3]
   chunks: []
   current_chunk: null
   governance_checkpoints: []

@@ -598,17 +598,28 @@ Pick one product scenario (the family utility — a simple UI application with l
 
 ### Phase 2: Widen Based on Phase 1 Findings
 
-After Phase 1 validates (or forces revision of) the architecture:
+Phase 1 validated the architecture. Phase 2 widening has delivered:
 
-- Add product concerns one at a time (unattended_operation, then api_surface, then multi_party), evaluating against their respective test scenario rubrics.
-- Add concern-specific artifacts as each concern is implemented.
-- Build mechanical tools (test integrity, doc validation, boundary checking).
-- Build the Critic (C6) — start with spec compliance + test integrity.
-- Add sophistication to the Orchestrator (pacing, expertise calibration, pushback).
+- `unattended_operation` concern with full-depth discovery, 5 templates, domain overlays, and test scenario rubric (background-data-pipeline).
+- Critic (C6) with framework governance (7 checks) and product governance (spec compliance, test integrity, scope violation).
+- Mechanical governance hooks: commit gate, edit tracker, orchestrator gate, product governance tracker/stop/prompt.
+- Builder with chunk execution, scaffolding, proportionality, and artifact insufficiency flagging.
+- Stages 4-6 (Build Planning, Build + Governance, Iteration) across Orchestrator, Builder, and Critic.
+- Terminal arcade game test scenario (entertainment domain, creative product handling).
+
+Remaining Phase 2 widening (tracked in `project-state.yaml` → `remaining_work`, phase: v1-widen):
+
+- Deepen api_surface and multi_party concerns (discovery, templates, test scenarios).
+- Create human_interface templates (6 templates).
+- Orchestrator sophistication: pushback, prior art, pacing, reclassification.
+- Critic sub-components: architectural consistency, documentation controller, operational readiness.
+- Critic-Review Lenses integration; Review Lenses variable-depth and rotating emphasis.
+- Builder multi-concern chunk patterns; Domain Analyzer additional overlays.
+- Mechanical sub-check tools (5 scripts).
 
 ### Phase 3: Full V1
 
-All v1 requirements implemented, all five test scenarios passing evaluation rubrics, the system used to govern its own development. The "compiler compiles itself" test: take Prawduct's own product idea through the full framework and evaluate whether the resulting build plan would produce this system.
+All v1 requirements implemented, all six test scenarios passing evaluation rubrics, the system used to govern its own development. The "compiler compiles itself" test: take Prawduct's own product idea through the full framework and evaluate whether the resulting build plan would produce this system.
 
 ---
 

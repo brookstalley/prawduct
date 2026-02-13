@@ -567,15 +567,13 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 
 ## Extending This Skill
 
-Phase 1 covers Stages 0 through 3 for low-risk UI applications. Future phases add:
+Remaining Orchestrator capabilities are tracked in `project-state.yaml` → `build_plan.remaining_work`.
 
-- [ ] Opinionated pushback (R1.5) — challenging user decisions that conflict with good practice (Phase 2)
-- [ ] Prior art awareness (R1.7) — surfacing existing solutions via web search (Phase 2)
-- [ ] Sophisticated pacing (R1.8) — detecting and adapting to user impatience signals beyond risk-based defaults (Phase 2)
-- [x] Stage 4: Build Planning (Phase 2)
-- [x] Stage 5: Build + Governance Loop (Phase 2)
-- [x] Stage 6: Iteration and feedback integration (Phase 2)
-- [ ] Reclassification (R5.4) — recognizing when the product's active concerns fundamentally change (Phase 2)
+When adding new Orchestrator capabilities:
+- Modify the relevant stage section or add a new one.
+- Update the Stage Transition Protocol if the capability changes stage prerequisites.
+- Update the Expertise Calibration section if the capability changes how user behavior is interpreted.
+- Add test scenario criteria in `tests/scenarios/` if the capability is observable during evaluation.
 
 ### Structural Critique Protocol
 

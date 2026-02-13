@@ -374,23 +374,7 @@ After classification and discovery, produce:
 
 ## Extending This Skill
 
-This skill currently has discovery depth for these concerns:
-
-- [x] `human_interface` — full depth (Phase 1)
-  - [x] Utility domain overlay
-  - [x] Entertainment domain overlay (partial)
-  - [ ] Other domain overlays (Phase 2)
-- [x] `unattended_operation` — full depth (Phase 2)
-  - [x] Automation domain overlay
-  - [x] Productivity + Automation overlay
-  - [x] Content + Automation overlay
-  - [x] Concern-specific risk factor interpretation
-  - [x] Concern-specific proactive expertise
-- [x] `api_surface` — initial question set
-- [x] `multi_party` — initial question set
-- [x] `external_integrations` — initial question set
-- [x] `constrained_environment` — initial question set
-- [x] `sensitive_data` — initial question set
+Remaining concern deepening work is tracked in `project-state.yaml` → `build_plan.remaining_work`.
 
 ### When adding a new concern, add:
 

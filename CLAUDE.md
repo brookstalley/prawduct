@@ -158,10 +158,9 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
-- Deepen remaining concerns: api_surface, multi_party (with templates and test scenario rubrics)
-- Orchestrator sophistication: opinionated pushback (R1.5), prior art awareness (R1.7), pacing sensitivity (R1.8), reclassification (R5.4)
-- Remaining test scenarios: consumer-mobile-app, b2b-integration-api, two-sided-marketplace
-- Full V1 validation: all scenarios passing end-to-end
+- **v1-widen (15 items):** Deepen api_surface and multi_party concerns with templates and scenarios; create human_interface templates; Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic sub-components and Review Lenses integration; Builder multi-concern patterns; mechanical sub-check tools; consumer-mobile-app scenario
+- **v1-validation (3 items):** Full V1 validation (all scenarios end-to-end); Builder parallel execution and incremental builds
+- **v1.5 (5 items):** C7 Trajectory Monitor; regulatory discovery; cost awareness; accessibility enforcement; agent agnosticism
 
 **C8 (Learning System):** Observation Capture (C8a) is active with mechanical tooling and lifecycle management (status transitions, archiving). Pattern Detection (C8b) is partially built — mechanical detection with tiered thresholds surfaces actionable patterns during session resumption; infrastructure health monitoring detects accumulation, staleness, and archive backlog. Incorporation (C8c-e) is partially built — human-approved incorporation via session resumption act-or-defer decisions, with approved changes following normal Critic governance. Full automated incorporation remains v2 scope.
 

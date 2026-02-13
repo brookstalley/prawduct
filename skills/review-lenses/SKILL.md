@@ -268,16 +268,15 @@ During build phases, the lenses serve a different purpose than during artifact g
 
 ## Extending This Skill
 
-Phase 1 applies four lenses to universal artifacts for low-risk products. Phase 2 added the Testing Lens and concern-specific lens adjustments. Future phases add:
+Remaining lens enhancements are tracked in `project-state.yaml` → `build_plan.remaining_work`.
 
-- [x] Stage 4-6 lens application guidance (Phase 2)
-- [x] Testing Lens (5th lens): test specification comprehensiveness, risk traceability, failure mode coverage (Phase 2)
-- Concern-specific lens adjustments:
-  - [x] `unattended_operation` (Phase 2)
-  - [x] `api_surface` — initial adjustments
-  - [x] `multi_party` — initial adjustments
-  - [x] `constrained_environment` — initial adjustments
-  - [x] `sensitive_data` — initial adjustments
-- [ ] Variable-depth reviews: lighter review for routine artifact generation, deeper review for major scope changes (Phase 2)
-- [ ] Rotating emphasis: sometimes lead with security, sometimes with cost, to prevent blind spots (Phase 2)
-- [ ] Integration with Critic (C6): Review Lens findings feed into the Critic's continuous governance during build (Phase 2)
+When modifying existing lenses:
+- Each lens has a "What it evaluates" list — update this when the lens's scope changes.
+- Each lens has concern-specific adjustments — add new concern blocks following the pattern of existing ones.
+- Maintain severity guide consistency (blocking / warning / note) across all lenses.
+
+When adding a new lens:
+1. Define: purpose, when it fires (which stages), what it evaluates, severity guide.
+2. Add it to the "When they fire" table in `docs/high-level-design.md` § C4.
+3. Add concern-specific adjustments if the lens evaluates differently for different concerns.
+4. Update evaluation scenario rubrics to include the new lens's expected findings.

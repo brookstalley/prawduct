@@ -8,27 +8,31 @@ Not everything below is v1. Our own principles demand we scope ourselves. Requir
 - **[v1.5]** — Build soon after v1 validates, architecturally accommodate now
 - **[v2]** — Important but can wait for real usage data
 
-### Phase 1 vs Phase 2 (HR2 Compliance)
+### Build Phase Status (HR2 Compliance)
 
-V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrapping"). Some [v1] requirements are deferred to Phase 2 of the build because the vertical slice only proves one path (family utility, Stages 0-3). Per HR2, these deferrals are documented here rather than silently dropped.
+V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrapping"). Per HR2, requirement status is tracked here to ensure nothing is silently dropped.
 
-**Phase 1 delivers:** Classification, discovery, product definition, artifact generation, review, and observation capture — for UI Application shape only, Stages 0-3. This validates the architecture end-to-end.
+**Phase 1 delivered:** Classification, discovery, product definition, artifact generation, review, and observation capture — for human_interface concern only, Stages 0-3. Validated the architecture end-to-end.
 
-**Phase 2 in progress:**
+**Phase 2 delivered:**
 - R2.5 (Build Ordering) — implemented via Artifact Generator Phase D and build-plan template
 - R3.1-R3.2 (Automated Critic, Spec Compliance) — implemented via Critic product governance mode
 - R3.3 (Test Integrity) — implemented via Critic Test Integrity Checker
+- R3.7 (Meta-Enforcement) — partially implemented: product governance hooks enforce Critic review and governance checkpoints mechanically (PostToolUse tracking, Stop blocking, UserPromptSubmit context injection); remaining mechanical sub-checks tracked in `project-state.yaml` → `remaining_work`
 - R4.1-R4.3 (Trajectory Management) — partially addressed via governance checkpoints and cross-chunk reviews in Stage 5; full C7 Trajectory Monitor deferred to v1.5
 - R5.1-R5.3 (Feedback Integration) — implemented via Orchestrator Stage 6 iteration loop
+- Stages 4-6 (Build Planning, Build + Governance, Iteration) — implemented across Orchestrator, Builder, Critic
+- `unattended_operation` concern — full depth with templates, domain overlays, discovery questions
 
-**Deferred to Phase 2 widening (still v1, but requires build loop validation first):**
-- R1.5 (Opinionated Pushback) — requires Orchestrator sophistication beyond basic stage management
-- R1.7 (Prior Art Awareness) — requires web search integration; low risk to defer since it's additive
-- R3.4 (Architectural Consistency) — Critic sub-component deferred; low value for simple products
-- R3.7 (Meta-Enforcement) — partially implemented: product governance hooks enforce Critic review and governance checkpoints mechanically (PostToolUse tracking, Stop blocking, UserPromptSubmit context injection); remaining sub-checks (architectural consistency, operational readiness) still LLM-judgment-only
-- R7.2 (Product Diversity) — full shape coverage requires Phase 2 widening; UI Application is Phase 1
-
-**Rationale:** Building these before the end-to-end path validates risks wasting effort on components that might need redesign. The vertical slice principle ("Prove the Path Before Widening It") takes priority.
+**Remaining v1 work** (canonical tracker: `project-state.yaml` → `build_plan.remaining_work`):
+- R1.5 (Opinionated Pushback), R1.7 (Prior Art Awareness), R1.8 (Pacing Sensitivity) — Orchestrator sophistication
+- R2.1 (Artifact Coverage) — api_surface, multi_party, and human_interface templates
+- R2.4 (Modular Updates) — update affected artifacts only, not regenerate all
+- R3.1 (Critic-Review Lenses Integration) — bidirectional findings flow
+- R3.4, R3.5 (Architectural Consistency, Documentation Controller, Operational Readiness) — Critic sub-components
+- R3.7 (Meta-Enforcement) — remaining mechanical sub-check tools
+- R5.4 (Reclassification) — concern change detection during build
+- R7.2 (Product Diversity) — api_surface, multi_party concern deepening; additional test scenarios
 
 ---
 

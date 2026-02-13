@@ -166,10 +166,9 @@ Resume from the current chunk. If the current chunk's status is "review," wait f
 
 ## Extending This Skill
 
-- [x] Core chunk execution: read specs, write tests, implement, verify, update state (Phase 2)
-- [x] Scaffolding special case (Phase 2)
-- [x] Proportionality by risk level (Phase 2)
-- [x] Artifact insufficiency and spec ambiguity flagging (Phase 2)
-- [ ] Multi-shape Builder patterns: API endpoint chunks, pipeline stage chunks, multi-party flows (Phase 2 widening)
-- [ ] Parallel chunk execution for independent chunks (Phase 3)
-- [ ] Incremental builds: when artifacts change mid-build, identify affected chunks (Phase 3)
+Remaining Builder enhancements are tracked in `project-state.yaml` → `build_plan.remaining_work`.
+
+When adding new chunk patterns (e.g., for API endpoints, pipeline stages, multi-party flows):
+1. Add a section under the chunk execution instructions describing the concern-specific pattern.
+2. The pattern should specify: how to read concern-specific artifacts, what test patterns apply, and how chunk acceptance criteria map to concern-specific specs.
+3. Concern-specific chunks follow the same general cycle (read specs → write tests → implement → verify → update state).

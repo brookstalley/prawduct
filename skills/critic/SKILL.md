@@ -301,20 +301,17 @@ After each review cycle, update `project-state.yaml` → `build_state.reviews` w
       status: open | resolved | deferred
 ```
 
-### Deferred Sub-Components (HR2)
-
-The following Critic sub-components are defined in the HLD but deferred within this Phase 2 implementation. They add low value for simple products (family utility PWA) and are needed when concern coverage deepens:
-
-- [ ] Architectural Consistency Checker — validate module boundaries, dependency directions against architecture artifact
-- [ ] Documentation Controller — enforce tier system, prevent orphans, validate Source of Truth docs
-- [ ] Operational Readiness Checker — verify monitoring, recovery, alerting implementation matches ops spec
-
 ## Extending This Skill
 
-- [x] Framework Governance: generality, read-write chains, proportionality, coherence, clarity, cumulative health, learning integration (Phase 2 start)
-- [x] Product Governance: spec compliance + test integrity + scope violation (Phase 2)
-- [ ] Product Governance: architectural consistency (Phase 2 widening)
-- [ ] Product Governance: documentation controller (Phase 2 widening)
-- [ ] Product Governance: operational readiness (Phase 2 widening)
-- [ ] Integration with Review Lenses: Critic findings feed back to Lenses for pattern detection (Phase 2)
-- [x] Mechanical enforcement via Claude Code hooks for governance checks (product-governance-tracker.sh, product-governance-stop.sh, product-governance-prompt.sh for product builds; critic-gate.sh, framework-edit-tracker.sh, orchestrator-gate.sh for framework governance)
+Remaining governance sub-components and enhancements are tracked in `project-state.yaml` → `build_plan.remaining_work`.
+
+When adding new product governance checks:
+1. Add a "Check N: [Name]" section under Mode 2, following the pattern of Checks 1-3.
+2. Define mechanical checks (binary pass/fail) separately from judgment checks.
+3. Add the check to the Review Cycle (step 2).
+4. Update the Output Format template to include the new check's section.
+
+When adding new framework governance checks:
+1. Add a "Check N: [Name]" section under Mode 1, following the pattern of Checks 1-7.
+2. Update `tools/record-critic-findings.sh` REQUIRED_CHECKS array to include the new check name.
+3. Update the commit gate expectations if the check changes what should block commits.

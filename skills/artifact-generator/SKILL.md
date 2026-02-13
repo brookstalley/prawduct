@@ -544,11 +544,11 @@ artifacts:
 
 ## Extending This Skill
 
-Phase 1 generates universal artifacts only. Concern-specific artifacts are added as each concern is implemented:
+Remaining artifact template work is tracked in `project-state.yaml` → `build_plan.remaining_work`.
 
-- [ ] `human_interface` (screen) artifacts: information architecture, screen specs, design direction, accessibility spec, onboarding spec (Phase 2)
-- [ ] `api_surface` artifacts: API contracts, integration guide, versioning strategy, SLA definition (Phase 2)
-- [x] `unattended_operation` artifacts: pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec (Phase 2)
-- [ ] `multi_party` artifacts: per-party experience specs, party interaction model, migration/adoption plan (Phase 2)
-- [ ] Modular artifact updates: when a decision changes, update only affected artifacts rather than regenerating all (Phase 2)
-- [x] Build ordering (Phase D): produce an execution plan with dependency graph, feature-first chunking, and governance checkpoints (Phase 2)
+When adding concern-specific artifacts:
+1. Create a templates directory under `templates/` named for the concern (e.g., `templates/api-surface/`).
+2. Add one template per artifact, following the YAML frontmatter format defined in `docs/high-level-design.md` § "Artifact Format (V1)".
+3. Add the concern's artifact list to this skill's Phase C section, following the pattern of the `unattended_operation` artifacts block.
+4. Update the artifact dependency model if the new artifacts have cross-concern dependencies.
+5. Register the template directory in `docs/doc-manifest.yaml`.
