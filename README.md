@@ -4,7 +4,7 @@ Prawduct turns product ideas into quality software.
 
 LLM code generation is great. But product thinking is often missing — it's easy to go from "I need an app that does X" straight to code, without thinking about about users, edge cases, failure modes, and what "done" looks like. Prawduct fills that gap. It's the senior product thinker, software architect, and quality guardian that guides the entire process from idea through working, tested code.
 
-Prawduct is designed to support everything from multi-tier web applications to headless utility scripts. Extensive internal reflection extracts learnings that improve the framework for future usage.
+Prawduct is designed to support everything from multi-tier web applications to headless utility scripts. Extensive internal reflection extracts learnings that improve the framework for future usage -- Prawduct itself is built using Prawduct, and it is maintained and improved using its own framework.
 
 ## Getting Started
 
@@ -24,6 +24,7 @@ You describe what you want to build. The framework takes it from there:
 - **Produces structured specifications** covering design, data, security, testing, operations, and dependencies — the artifacts that make code generation successful
 - **Builds the product in governed chunks** — every piece reviewed against specs, every test verified, every dependency justified
 - **Catches the things that usually go wrong** — requirements that silently vanish, tests that get weakened to pass, architecture that erodes over time, documentation that contradicts itself
+- **Observes its own operation and improves** — Prawduct runs internal critiques frequently, observing where the framework is not working as well as it should. These observations are stored, and can be used when applying Prawduct to itself.
 
 The discovery process is a conversation. It adapts to you — a simple data cleaning utility gets lighter treatment than a B2B API handling financial transactions. Whether you bring a rough napkin sketch or a detailed spec, the framework meets you where you are and fills in what you don't have.
 
