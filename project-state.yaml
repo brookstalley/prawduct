@@ -282,13 +282,13 @@ artifact_manifest:
       depended_on_by: [orchestrator, artifact-generator, critic]
       last_validated: 2026-02-11
       tier: 1
-    - name: ui-templates
-      file_path: templates/ui/
+    - name: human-interface-templates
+      file_path: templates/human-interface/
       role: built-component
       version: 1
       depends_on: [artifact-generator]
       depended_on_by: []
-      last_validated: 2026-02-11
+      last_validated: 2026-02-13
       tier: 1
     - name: unattended-operation-templates
       file_path: templates/unattended-operation/
@@ -434,6 +434,11 @@ change_log:
     classification: directional
     date: 2026-02-13
     retrospective: "Concern enumeration violated Generality for weeks undetected. Root cause: Structural Critique Protocol trigger cadence too low (every 3 evals, effectively never), Directional Change Protocol had no learning step. The 17-file reform produced zero captured learnings until the user asked. Fix: retrospective step added to DCP, Structural Critique triggers expanded to include directional changes. Key insight: governance (Critic) validates quality but retrospective captures learning — both required for framework development."
+  - what: "Created has_human_interface (modality: screen) templates and integrated into artifact generator, review lenses, and test scenario"
+    why: "Products with has_human_interface were detected and classified but had no artifact templates. Added 6 templates (information-architecture, screen-spec, design-direction, accessibility-spec, localization-requirements, onboarding-spec), full Phase C artifact generation instructions, chunk ordering for build planning, cross-artifact consistency checks, hardcoded lens adjustments, and updated family-utility rubric from must-not-do to must-do with proportionality criteria."
+    blast_radius: "templates/human-interface/ (6 new), skills/artifact-generator/SKILL.md, skills/review-lenses/SKILL.md, tests/scenarios/family-utility.md, CLAUDE.md, project-state.yaml, docs/high-level-design.md, docs/doc-manifest.yaml"
+    classification: functional
+    date: 2026-02-13
   - what: "Added post-change retrospective to Directional Change Protocol and expanded Structural Critique triggers"
     why: "The DCP had governance (Critic review) but no learning step. A 17-file architectural reform produced zero captured learnings. The Structural Critique Protocol trigger cadence (every 3 evals) was too low to catch structural violations. Added DCP step 7 (mandatory retrospective with three questions: detection, process, architecture), expanded SCP triggers to include directional changes, added retrospective field to change_log schema, and documented framework development learning path in self-improvement-architecture.md."
     blast_radius: "skills/orchestrator/SKILL.md, templates/project-state.yaml, project-state.yaml, docs/self-improvement-architecture.md, framework-observations/ (3 new observations)"
@@ -453,7 +458,7 @@ build_plan:
   # Skill "Extending This Skill" sections provide guidance on HOW to extend
   # each skill; this list tracks WHAT remains and WHEN (by phase).
   remaining_work:
-    # --- v1-widen (12 items) ---
+    # --- v1-widen (13 items) ---
     - item: "Create exposes_programmatic_interface templates"
       description: "4 API-specific templates (api-contract, integration-guide, versioning-strategy, sla-definition), b2b-integration-api test scenario rubric"
       phase: v1-widen
@@ -463,11 +468,6 @@ build_plan:
       description: "3 multi-party templates (party-experience-spec, party-interaction-model, migration-adoption-plan), two-sided-marketplace test scenario rubric"
       phase: v1-widen
       requirements: [R2.1, R7.2]
-      skill: artifact-generator
-    - item: "Create has_human_interface templates"
-      description: "6 templates: information-architecture, screen-spec, design-direction, accessibility-spec, localization-requirements, onboarding-spec"
-      phase: v1-widen
-      requirements: [R2.1]
       skill: artifact-generator
     - item: "consumer-mobile-app test scenario"
       description: "Test scenario rubric exercising has_human_interface (modality: screen, platform: mobile) with mobile-specific constraints; also tests dynamic domain generation"

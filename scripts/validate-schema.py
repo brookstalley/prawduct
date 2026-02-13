@@ -49,8 +49,8 @@ def validate_schema(project_state_path):
         # Check classification fields
         if 'domain' not in data['classification'] or not data['classification']['domain']:
             failures.append("classification.domain is missing or null")
-        if 'shape' not in data['classification'] or not data['classification']['shape']:
-            failures.append("classification.shape is missing or null")
+        if 'structural' not in data['classification'] or not data['classification']['structural']:
+            failures.append("classification.structural is missing or null")
         if 'risk_profile' not in data['classification']:
             failures.append("classification.risk_profile is missing")
         elif 'overall' not in data['classification']['risk_profile']:

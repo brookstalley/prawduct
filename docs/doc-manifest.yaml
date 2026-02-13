@@ -169,8 +169,12 @@ tier_1_directories:
     naming: "{scenario-name}.md"
 
   - path: templates/
-    purpose: "Artifact templates (product-brief, data-model, security-model, etc.) and shape-specific templates — instructional, copied into user projects"
+    purpose: "Artifact templates (product-brief, data-model, security-model, etc.) and structural-characteristic-specific templates — instructional, copied into user projects"
     note: "project-state.yaml and eval-result-template.md are listed individually above; remaining templates are tracked as a directory"
+
+  - path: templates/human-interface/
+    purpose: "6 templates for has_human_interface (modality: screen): information-architecture, screen-spec, design-direction, accessibility-spec, localization-requirements, onboarding-spec"
+    naming: "{artifact-name}.md"
 
   - path: scripts/
     purpose: "Eval/validation helper scripts (validate-eval-output.sh, validate-schema.py, check-artifacts.py)"

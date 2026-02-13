@@ -616,7 +616,6 @@ Phase 1 validated the architecture. Phase 2 widening has delivered:
 
 Remaining Phase 2 widening (tracked in `project-state.yaml` → `remaining_work`, phase: v1-widen):
 
-- Create `has_human_interface` templates (6 templates for modality: screen).
 - Create `exposes_programmatic_interface` templates (4 templates).
 - Create `has_multiple_party_types` templates (3 templates).
 - Orchestrator sophistication: pushback, prior art, pacing, reclassification.

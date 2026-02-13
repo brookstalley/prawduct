@@ -212,6 +212,20 @@ The lenses shift focus from user-facing concerns to operational concerns. The co
 
 **Proportionality:** 8-15 total findings for a low-medium risk unattended system. Fewer than 8 likely misses operational concerns. More than 15 is over-reviewing for a side project. Blocking findings: 0-3 at most. **What NOT to raise:** UI/UX concerns about screens or navigation (unless `has_human_interface` is also active), multi-user collaboration features, enterprise-grade SLA requirements for a side project.
 
+### When `has_human_interface` (modality: screen) Is Active
+
+The lenses shift to emphasize user-facing quality: visual consistency, interaction completeness, accessibility, and state coverage. The Design Lens gets full engagement (not the light-touch treatment it receives for non-UI products).
+
+| Lens | Adjustment |
+|------|------------|
+| **Product** | Evaluate whether screen flows map completely to core user needs. Check that every persona has a clear path through the interface. Check that v1 scope translates to a coherent set of screens (not a grab-bag of disconnected views). |
+| **Design** | **Full engagement** (not the reduced mode used for non-UI products). Evaluate: visual consistency across screens (Design Direction tokens applied uniformly), interaction patterns consistent across flows (same gesture = same result everywhere), empty states designed (not blank screens), error states helpful (not generic "something went wrong"), information hierarchy clear (primary content visually dominant). For games: evaluate game feel, visual feedback, and state clarity instead of form-and-navigation patterns. |
+| **Architecture** | Evaluate navigation architecture (can flows reach all screens?), data flow efficiency (are screens fetching data they don't need?), component reuse (are similar patterns implemented consistently?), and state management (can the UI reliably reflect data state across screens?). |
+| **Skeptic** | **Must always raise at least one accessibility finding** (what happens for users with disabilities — screen reader support, contrast, motor impairments?) **and at least one offline/degraded finding** (what happens with slow network, no network, partial data?). Also look for: platform-specific gotchas (iOS vs. Android behavior differences), screen state gaps (states that can occur but aren't designed), and cognitive load concerns (too many actions on one screen, unclear navigation). |
+| **Testing** | In addition to general criteria: every screen state (empty, loading, populated, error) needs at least one test scenario. Required tests: first-run experience (empty state → first action → populated state), navigation completeness (every screen reachable), and accessibility verification (contrast ratios, touch targets, screen reader labels). For each screen, at least one happy-path and one error-state test. |
+
+**Proportionality:** 6-12 total findings for a low-risk UI product. The Design Lens naturally produces more findings for screen-based products — that's expected. Blocking findings: 0-2 at most for low-risk. **What NOT to raise:** Backend/infrastructure concerns beyond what's needed to serve the UI, enterprise-grade performance optimization for a family app, complex state management patterns for simple products, concerns that apply only to non-UI products (pipeline stages, cron schedules).
+
 ### When `has_multiple_party_types` Is Active
 
 | Lens | Adjustment |
@@ -223,7 +237,7 @@ The lenses shift focus from user-facing concerns to operational concerns. The co
 
 ### Dynamic Lens Adaptation
 
-For structural characteristics not listed above (`has_human_interface`, `exposes_programmatic_interface`, `handles_sensitive_data`) and for domain-specific characteristics, the lenses adapt dynamically using the LLM's domain knowledge rather than hardcoded adjustment tables.
+For structural characteristics not listed above (`exposes_programmatic_interface`, `handles_sensitive_data`) and for domain-specific characteristics, the lenses adapt dynamically using the LLM's domain knowledge rather than hardcoded adjustment tables.
 
 **When adapting lenses dynamically:**
 

@@ -185,12 +185,20 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[simulation]` Operational spec is simple (single deployment target, basic backup).
 - `[simulation]` Dependency manifest is minimal (no unnecessary third-party services).
 
+**Must-do (UI artifacts):**
+
+- `[simulation]` Produce all 6 human-interface artifacts: information-architecture, screen-specs, design-direction, accessibility-spec, localization-requirements, onboarding-spec.
+- `[simulation]` All human-interface artifacts have correct YAML frontmatter with dependency declarations matching the template schemas.
+- `[simulation]` Human-interface artifacts are proportionate to a low-risk family utility — information architecture should fit on 1 page, screen specs should be half a page per screen, design direction half a page, accessibility a third of a page, localization a quarter page, onboarding half a page.
+- `[simulation]` Screen inventory covers only screens that serve core flows (no invented admin screens, no settings complexity).
+- `[simulation]` Every core flow from the Product Brief maps to a screen sequence in the information architecture.
+
 **Must-not-do:**
 
-- `[simulation]` Must not generate UI-shape-specific artifacts (IA, screen specs, design direction, etc.) — those are Phase 2.
 - `[simulation]` Must not generate API, automation, or multi-party artifacts.
 - `[simulation]` Must not over-engineer the security model.
 - `[simulation]` Must not specify enterprise-grade operational requirements.
+- `[simulation]` Must not over-engineer human-interface artifacts (no full WCAG audit plan, no complex localization for an English-only family app, no elaborate onboarding for a simple utility).
 
 **Quality criteria:**
 

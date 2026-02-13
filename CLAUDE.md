@@ -61,7 +61,7 @@ prawduct/
 │   ├── operational-spec.md            # Template: deployment, monitoring, alerting, recovery
 │   ├── dependency-manifest.yaml       # Template: external deps with justification
 │   ├── build-plan.md                  # Template: concrete build instructions, chunking, scaffolding
-│   ├── human-interface/               # [planned] has_human_interface structural characteristic (modality: screen)
+│   ├── human-interface/               # has_human_interface structural characteristic (modality: screen)
 │   │   ├── information-architecture.md
 │   │   ├── screen-spec.md             # Per-screen template (all states)
 │   │   ├── design-direction.md
@@ -164,7 +164,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
-- **v1-widen (14 items):** Create has_human_interface, exposes_programmatic_interface, and has_multiple_party_types templates; Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic sub-components and Review Lenses integration; Builder structural-characteristic chunk patterns; mechanical sub-check tools; consumer-mobile-app scenario
+- **v1-widen (13 items):** Create exposes_programmatic_interface and has_multiple_party_types templates; Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic sub-components and Review Lenses integration; Builder structural-characteristic chunk patterns; mechanical sub-check tools; consumer-mobile-app scenario; modular artifact updates
 - **v1-validation (3 items):** Full V1 validation (all scenarios end-to-end); Builder parallel execution and incremental builds
 - **v1.5 (5 items):** C7 Trajectory Monitor; regulatory discovery; cost awareness; accessibility enforcement; agent agnosticism
 

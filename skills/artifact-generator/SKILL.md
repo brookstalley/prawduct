@@ -46,7 +46,19 @@ Read `classification.structural` and `classification.domain_characteristics` fro
 
 **When `structural.has_human_interface` (modality: screen) is active:**
 
-UI-specific artifacts (information architecture, screen specs, design direction, accessibility spec, onboarding spec) are generated when implemented. Use templates from `templates/human-interface/`.
+| Artifact | File | Purpose |
+|----------|------|---------|
+| Information Architecture | `artifacts/information-architecture.md` | Screen inventory, navigation structure, user flows, information hierarchy |
+| Screen Specifications | `artifacts/screen-specs.md` | Per-screen layout, data display, user actions, states (all screens in one file) |
+| Design Direction | `artifacts/design-direction.md` | Visual identity, color, typography, spacing, component patterns |
+| Accessibility Spec | `artifacts/accessibility-spec.md` | Compliance level, keyboard nav, screen reader, contrast, focus management |
+| Localization Requirements | `artifacts/localization-requirements.md` | Target locales, string externalization, RTL support, formatting |
+| Onboarding Spec | `artifacts/onboarding-spec.md` | First-run experience, empty states, permission requests, progressive disclosure |
+
+**Notes for `has_human_interface` artifacts:**
+- "Core Flows" in the Product Brief become screen sequences. Frame them as user journeys through screens (view → act → navigate), not abstract processes.
+- The Data Model captures user-facing entities (e.g., Player, Game, Score) that appear on screens. Every data element in the Screen Spec must trace to a Data Model entity.
+- NFRs emphasize user-facing performance (load time, interaction responsiveness, animation smoothness) and platform-specific constraints.
 
 **When `structural.exposes_programmatic_interface` is active:**
 
@@ -452,6 +464,199 @@ last_validated: null
 - **Configuration changes:** How changes are applied (restart, hot-reload, between runs).
 - **Secrets management:** How API keys and tokens are stored and rotated. Proportionate — env vars are fine for side projects.
 
+### Phase C: Human Interface Artifacts
+
+When `structural.has_human_interface` (modality: screen) is active, generate these structurally-triggered artifacts alongside the universal Phase C artifacts. Use the corresponding templates from `templates/human-interface/`.
+
+#### Artifact: Information Architecture
+
+**Reads from:** Product Brief (screens implied by core flows, personas, platform), `project-state.yaml` → `product_definition`
+
+**Frontmatter:**
+```yaml
+---
+artifact: information-architecture
+version: 1
+depends_on:
+  - artifact: product-brief
+depended_on_by:
+  - artifact: screen-spec
+  - artifact: localization-requirements
+  - artifact: onboarding-spec
+  - artifact: accessibility-spec
+last_validated: null
+---
+```
+
+**Content must include:**
+- **Screen inventory:** Every distinct screen with purpose, primary persona(s), entry points, and priority.
+- **Navigation structure:** Primary pattern (tab bar, drawer, stack), hierarchy, persistent vs. contextual elements, back/escape behavior.
+- **User flows:** For each core flow, the screen sequence from start to completion — starting screen, actions, transitions, ending state.
+- **Information hierarchy:** Per-screen priority ranking of content, actions, and status indicators.
+- **Screen states:** For each screen, the empty, loading, populated, and error states.
+- **Boundaries:** What the interface does NOT include.
+
+**Key instruction:** Every core flow from the Product Brief must map to a screen sequence. If a flow can't be traced through specific screens, the screen inventory is incomplete.
+
+**Proportionality:** For a low-risk utility, 1-2 pages. For a complex multi-screen app, proportionally more. If you're documenting 20 screens for a family score tracker, recalibrate.
+
+#### Artifact: Screen Specifications
+
+**Reads from:** Information Architecture (screen inventory, flows), Data Model (entities displayed), `project-state.yaml` → `product_definition`
+
+**Frontmatter:**
+```yaml
+---
+artifact: screen-spec
+version: 1
+depends_on:
+  - artifact: information-architecture
+  - artifact: data-model
+depended_on_by:
+  - artifact: onboarding-spec
+  - artifact: accessibility-spec
+  - artifact: test-specifications
+last_validated: null
+---
+```
+
+**Content must include (per screen):**
+- **Purpose:** One sentence — why this screen exists.
+- **Layout:** Spatial arrangement of content and controls. For cross-platform products, describe shared layout intent first, then per-platform differences.
+- **Data displayed:** Each data element with source entity/field from the Data Model, display format, and update behavior.
+- **User actions:** Each action with trigger, result, and validation behavior.
+- **States:** Empty, loading, populated, error, and any screen-specific states.
+- **Navigation:** Entry points, exit points, back behavior.
+
+**Key instruction:** Every data element must trace to a Data Model entity. Every action must trace to a core flow step. If a data element or action can't be traced, the upstream artifacts are incomplete.
+
+**Proportionality:** For a low-risk utility, half a page per screen. Don't pad with implementation details the Builder doesn't need.
+
+#### Artifact: Design Direction
+
+**Reads from:** Product Brief (product identity, platform, personas), `project-state.yaml` → `design_decisions`
+
+**Frontmatter:**
+```yaml
+---
+artifact: design-direction
+version: 1
+depends_on:
+  - artifact: product-brief
+depended_on_by:
+  - artifact: onboarding-spec
+  - artifact: accessibility-spec
+last_validated: null
+---
+```
+
+**Content must include:**
+- **Visual identity:** Style reference, mood, constraints.
+- **Color:** Concrete hex values for primary, secondary, background, text, and semantic colors (error/warning/success).
+- **Typography:** Font families, sizes (heading/body/caption), weights.
+- **Spacing & layout:** Base spacing unit, margins, content width, touch target minimums.
+- **Component patterns:** Reusable elements (buttons, inputs, cards, navigation, feedback). For cross-platform products, shared design tokens first, then per-platform patterns.
+- **Motion & transitions:** Screen transitions, feedback animations, duration guidelines, reduced motion behavior.
+- **Platform conventions:** Which conventions to follow, intentional deviations with rationale.
+
+**Key instruction:** Concrete enough that the Builder doesn't make aesthetic choices. Specific colors, fonts, spacing — not "clean and modern." If two Builders reading this spec would produce visually different products, it's underspecified.
+
+**Proportionality:** For a low-risk utility, half a page. For a consumer product with brand requirements, proportionally more.
+
+#### Artifact: Accessibility Spec
+
+**Reads from:** Screen Specifications (elements needing accessibility), Design Direction (color/contrast, motion), NFRs (platform requirements)
+
+**Frontmatter:**
+```yaml
+---
+artifact: accessibility-spec
+version: 1
+depends_on:
+  - artifact: screen-spec
+  - artifact: design-direction
+  - artifact: nonfunctional-requirements
+depended_on_by:
+  - artifact: test-specifications
+last_validated: null
+---
+```
+
+**Content must include:**
+- **Target compliance level:** WCAG level, platform guidelines, or game accessibility guidelines.
+- **Keyboard navigation:** Tab order, shortcuts, focus indicators, trap prevention.
+- **Screen reader support:** Semantic structure, labels, alt text, dynamic announcements.
+- **Color & contrast:** Minimum ratios, non-color state indicators, colorblind safety.
+- **Focus management:** Initial focus, modal focus, dynamic content focus, restoration.
+- **Touch targets:** Minimum sizes per platform, spacing, gesture alternatives.
+- **Reduced motion:** What changes, how to detect preference.
+- **Platform-specific guidance:** Platform accessibility features to support.
+
+**Key instruction:** Requirements must be testable. "Accessible" is not a requirement. "4.5:1 contrast ratio for body text" is. Every requirement in this spec should be verifiable during build.
+
+**Proportionality:** For a low-risk utility, a third of a page covering compliance target and key requirements. Don't write a full WCAG audit plan for a family app.
+
+#### Artifact: Localization Requirements
+
+**Reads from:** Information Architecture (screens with text), Product Brief (target audience, locale)
+
+**Frontmatter:**
+```yaml
+---
+artifact: localization-requirements
+version: 1
+depends_on:
+  - artifact: information-architecture
+  - artifact: product-brief
+depended_on_by:
+  - artifact: test-specifications
+last_validated: null
+---
+```
+
+**Content must include:**
+- **Target locales:** Primary locale and any additional locales. Whether localization is planned for later (affects string externalization now).
+- **String externalization:** Whether strings are externalized, file format, key naming convention, interpolation format.
+- **RTL support:** Whether required, and if so, layout and text considerations.
+- **Date/time/number formatting:** Locale-aware or fixed, specific format decisions.
+- **Locale-specific adjustments:** Text expansion accommodation, cultural considerations.
+- **Pluralization:** Strategy for handling plural forms.
+
+**Key instruction:** "English only" is valid but must be explicit. The Builder must know whether to externalize strings even for a single-locale product — if localization is planned later, externalize now.
+
+**Proportionality:** For a low-risk personal utility with a single locale, a quarter page. State "English only, no localization planned, strings inline" and move on.
+
+#### Artifact: Onboarding Spec
+
+**Reads from:** Information Architecture (screen inventory, flows), Screen Specifications (states, layout), Design Direction (visual patterns)
+
+**Frontmatter:**
+```yaml
+---
+artifact: onboarding-spec
+version: 1
+depends_on:
+  - artifact: information-architecture
+  - artifact: screen-spec
+  - artifact: design-direction
+depended_on_by:
+  - artifact: test-specifications
+last_validated: null
+---
+```
+
+**Content must include:**
+- **First-run experience:** What happens on first launch — setup steps, initial screen, path to core value. For cross-platform products, describe per-platform first-run paths (e.g., iOS: App Store → launch → permissions; Web: landing page → sign up → email verify).
+- **Progressive disclosure:** What's visible immediately vs. discovered later, how advanced features are surfaced.
+- **Empty states:** Per-screen empty state message (specific text), call to action, visual treatment.
+- **Permission requests:** Each permission with when requested, user-facing explanation, denied behavior, re-prompt policy.
+- **Tutorial approach:** Method (tooltips, walkthrough, none), which features, skippability, repeat access.
+- **Return-user experience:** State restoration, change indicators, re-engagement (if applicable).
+
+**Key instruction:** Onboarding is a core flow, not an afterthought. Every permission request must specify what happens when denied. The first-run experience should reach core value as fast as possible.
+
+**Proportionality:** For a low-risk utility, half a page. "No tutorial needed, clear empty states, no permissions required" may be the entire spec.
+
 ### Phase D: Build Planning
 
 Phase D translates abstract technical decisions into concrete build instructions. This is the key bridge between "what to build" (artifacts from Phases A-C) and "how to build it" (executable instructions for the Builder).
@@ -502,6 +707,14 @@ last_validated: null
    - Final chunks: integration (end-to-end pipeline run), monitoring/alerting implementation, configuration management.
    - The early feedback milestone for an unattended system is when the first end-to-end run produces visible output (even if filtering or formatting is basic).
 
+   **Chunk ordering (when `has_human_interface` is active):**
+   - Chunk 01: scaffold (project init, dependencies, build config, test runner, dev server).
+   - Chunk 02: data entities + UI shell with navigation skeleton (app chrome, empty screens wired together).
+   - Chunk 03: first user-visible flow end-to-end (data + logic + UI + tests) — this is the early feedback milestone.
+   - Subsequent chunks: remaining core flows in priority order. Each chunk delivers one flow end-to-end (screen + data + tests).
+   - Late chunks: design polish (applying design direction tokens), accessibility implementation (from accessibility spec), onboarding implementation (from onboarding spec).
+   - The early feedback milestone for a screen-based product is when the user can complete one core flow visually in the running app.
+
 4. **Acceptance criteria per chunk.** Map each chunk's acceptance criteria to specific test scenarios from `artifacts/test-specifications.md`. The criteria must be concrete and verifiable: "npm test passes," "recording a score for 3 players renders in the game view," not "scoring works."
 
 5. **Early feedback milestone.** Identify which chunk first lets the user interact with a working product. For most products, this should be chunk 3 or earlier. Mark this explicitly — the Orchestrator uses it for user communication.
@@ -533,6 +746,14 @@ After generating all Phase C artifacts, run the full cross-artifact consistency 
 - **Monitoring coverage:** Every health metric in the Monitoring & Alerting Spec corresponds to an observable aspect of the pipeline (stage completion, output delivery, source availability).
 - **Configuration coverage:** Every aspect of the pipeline that the user said would change (source list, filter criteria, schedule) appears as a configuration item in the Configuration Spec.
 - **Failure-to-test traceability:** Every failure mode in the Failure Recovery Spec has a corresponding test scenario in the Test Specifications. This is a direct input to the Testing Lens's evaluation.
+
+**Additional consistency checks when `structural.has_human_interface` is active:**
+
+- **Screen coverage:** Every screen in the Information Architecture has a corresponding section in the Screen Specifications. Every core flow from the Product Brief maps to a screen sequence in the Information Architecture.
+- **Data display traceability:** Every data element shown in Screen Specifications traces to a Data Model entity. If a screen displays data that doesn't exist in the Data Model, the Data Model is incomplete.
+- **Accessibility coverage:** Every interactive element type in the Screen Specifications (buttons, inputs, navigation) has corresponding accessibility requirements in the Accessibility Spec. Color values in the Design Direction meet the contrast ratios specified in the Accessibility Spec.
+- **State coverage:** Every screen state defined in the Information Architecture (empty, loading, populated, error) has a corresponding specification in Screen Specifications with specific content/behavior.
+- **Onboarding-to-screen traceability:** Every screen referenced in the Onboarding Spec (first-run, empty states, permission request contexts) exists in the Information Architecture and has a corresponding Screen Specification.
 
 If any inconsistency is found, fix it before presenting artifacts to the user.
 
