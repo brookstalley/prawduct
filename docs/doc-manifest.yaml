@@ -44,6 +44,11 @@ tier_1_documents:
     owner: framework
     last_validated: 2026-02-12
 
+  - path: README.md
+    purpose: "Human-facing project overview: what Prawduct does, what it produces, how to get started"
+    owner: framework
+    last_validated: 2026-02-13
+
   - path: CLAUDE.md
     purpose: "Entry point: routing, project structure, framework status, conventions, eval recording format"
     owner: framework

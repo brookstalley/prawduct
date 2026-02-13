@@ -29,6 +29,7 @@ set -euo pipefail
 
 FRAMEWORK_PATTERNS=(
     "CLAUDE.md"
+    "README.md"
     "skills/"
     "templates/"
     "docs/"

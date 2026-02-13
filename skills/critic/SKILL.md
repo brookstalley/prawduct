@@ -89,6 +89,7 @@ Apply these checks to every framework modification. Each check is a thinking pri
 - If a principle changes, do the skills that reference it still comply?
 - If a skill declares dependency structures (artifact dependency chains, stage ordering, risk levels), do those structures actually influence the skill's process behavior? A dependency chain that exists only in metadata but doesn't affect generation ordering, review timing, or validation gates is inert structure — it looks rigorous but has no operational effect. This is a subtle form of documentation fiction (HR3). The test: remove the declared structure. Does the process behave any differently? If not, either the structure is unnecessary or the process is ignoring information it should use.
 - When CLAUDE.md is modified or when new files are added to the framework, verify that CLAUDE.md's project structure tree includes all files that actually exist (and doesn't list files that don't). CLAUDE.md is the entry point for every session — stale structure descriptions mislead from the first instruction.
+- When README.md or other external-facing documentation is modified, verify that capability claims match what the framework actually implements. Cross-reference assertions about features, artifacts, and processes against the skills, templates, and tools that exist on disk. A README that describes planned work as built violates HR3 (No Documentation Fiction).
 
 **Severity guide:**
 - Cross-skill contract broken → **blocking**

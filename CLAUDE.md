@@ -23,6 +23,7 @@ After loading the Orchestrator, it will route based on context:
 
 ```
 prawduct/
+├── README.md                          # Human-facing project overview and getting started
 ├── CLAUDE.md                          # You are here
 ├── project-state.yaml                 # Framework's own project state (self-hosted)
 ├── skills/                            # LLM instruction sets (your behavior)
