@@ -16,7 +16,7 @@ Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 2. Open the directory in Claude Code
 3. Say hello
 
-The framework handles orientation and routing from there.
+The framework handles onboarding from there.
 
 ## What It Does
 
