@@ -66,6 +66,8 @@ Before generating each artifact, briefly assess whether it is **substantively ap
 
 **When to use minimal vs. full:** The test is simple: if you find yourself writing sentences that say "not applicable," "none," or "this product doesn't have [X]" for most sections of the artifact, it should be minimal. If any section has substantive content, generate the full artifact.
 
+**Truly minimal products:** When a product has no persistence, no authentication, no networking, and is single-user local, the Orchestrator may approve generating only Product Brief, Test Specifications, and Dependency Manifest. The remaining universal artifacts (Data Model, Security Model, NFRs, Operational Spec) would each be minimal artifacts documenting absence — generating and reviewing them adds governance overhead without proportionate value. If any of these dimensions is present (even lightly), generate the full set with applicability assessment as above.
+
 **The Product Brief and Test Specifications are never minimal.** Every product has users, flows, and testable behavior. If you think the Product Brief is inapplicable, the product definition is incomplete — go back to discovery.
 
 ## Step 2: Generate Artifacts in Phases
@@ -499,6 +501,8 @@ last_validated: null
 **Proportionality:** For a low-risk utility, expect 5-7 chunks. A complex platform may have 10-15. If a family score tracker has 12 chunks, the plan is over-engineered. If it has 2, the chunks are too large for meaningful governance.
 
 **NFR technique traceability:** For every NFR that constrains *how* something is built (not just performance targets), the build plan must include a concrete implementation instruction in the relevant chunk. NFR targets ("30 FPS", "under 2 second startup") become chunk acceptance criteria. NFR techniques ("dirty-rect rendering", "connection pooling", "batch processing") become chunk implementation instructions with enough detail that the Builder doesn't need to choose an approach. If the NFR says "only redraw changed portions," the chunk must say "track changed positions and redraw only those; do not clear the full screen each frame." The test: if the Builder follows the chunk instructions literally, will the NFR technique be implemented?
+
+**Platform-specific scaffolding constraints:** Some platforms impose structural constraints that affect testability, packaging, or distribution. The build plan must account for these in the scaffolding and packaging instructions — the Builder should not need to discover them mid-build. Examples of what to check: Does the target platform's build system allow test targets to import executable targets? (If not, the scaffold must split into library + executable.) Does the target platform require a specific packaging format (app bundle, APK, installer) for features like system integration, launch-at-login, or background execution? If so, include packaging as an explicit scaffolding step or dedicated chunk.
 
 **The key test:** Could the Builder execute this plan without making any technology decisions? Every technology, library, directory name, and build command should be specified. If the Builder would need to choose between alternatives, the build plan is underspecified.
 

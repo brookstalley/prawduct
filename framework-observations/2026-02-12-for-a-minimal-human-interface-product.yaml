@@ -1,0 +1,19 @@
+---
+observation_id: 51d68053-0331-4f32-9869-155251471473
+timestamp: 2026-02-13T00:30:58Z
+session_type: product_use
+session_context:
+  product_classification: "human_interface (minimal) - Utility"
+  framework_version: 1fc9c2e
+observations:
+  - type: proportionality
+    stage: 3
+    severity: note
+    description: "For a minimal human_interface product (menu bar icon with dropdown), 5 of 7 universal artifacts were substantively minimal — Data Model, Security Model, NFRs, Operational Spec all mostly documented absence. The artifact selection process correctly generated minimal artifacts, but the effort of generating and reviewing 7 artifacts for a product with essentially no data, no security, no operations, and no scaling needs suggests the artifact set could be smarter about truly minimal products."
+    evidence: "Data Model had one runtime struct with 4 fields. Security Model was 6 lines of not applicable. Operational Spec was restart the app. NFRs were half a page. Only Product Brief and Test Specifications had substantive content."
+    proposed_action: "Consider a minimal product threshold where products below a certain complexity (e.g., no persistence, no auth, no network, single-user local) generate only Product Brief, Test Specifications, and Dependency Manifest. The others add governance overhead without proportionate value."
+    status: acted_on
+skills_affected:
+  - "skills/artifact-generator/SKILL.md"
+  - "skills/orchestrator/SKILL.md"
+---

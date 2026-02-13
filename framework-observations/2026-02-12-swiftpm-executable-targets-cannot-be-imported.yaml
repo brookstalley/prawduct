@@ -1,0 +1,19 @@
+---
+observation_id: 6d07b654-9dbb-4758-9f85-6f58b2adaa96
+timestamp: 2026-02-13T00:31:08Z
+session_type: product_use
+session_context:
+  product_classification: "human_interface (minimal) - Utility"
+  framework_version: 1fc9c2e
+observations:
+  - type: process_friction
+    stage: 5
+    severity: note
+    description: "SwiftPM executable targets cannot be imported by test targets due to the main.swift entry point. This required restructuring into a library + executable target pattern during scaffold (chunk 1), which was not anticipated by the build plan. The Builder skill and build plan template do not account for platform-specific project structure constraints."
+    evidence: "Initial scaffold used a single executable target. Tests could not @testable import it. Had to split into MoonPhaseKit (library) + MoonPhase (executable) to make the code testable."
+    proposed_action: "Add platform-specific scaffolding notes to the build plan template or Builder skill: Swift/macOS projects need library + executable split for testability. Similar patterns exist for other platforms (e.g., Android library modules)."
+    status: acted_on
+skills_affected:
+  - "skills/builder/SKILL.md"
+  - "skills/artifact-generator/SKILL.md"
+---

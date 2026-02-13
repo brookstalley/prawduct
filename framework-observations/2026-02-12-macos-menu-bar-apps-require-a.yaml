@@ -1,0 +1,19 @@
+---
+observation_id: 05d3f33a-2337-4e0a-aafe-6306b3c0c0dc
+timestamp: 2026-02-13T00:31:19Z
+session_type: product_use
+session_context:
+  product_classification: "human_interface (minimal) - Utility"
+  framework_version: 1fc9c2e
+observations:
+  - type: deployment_friction
+    stage: 5
+    severity: note
+    description: "macOS menu bar apps require a proper .app bundle with Info.plist and bundle identifier for ServiceManagement (launch-at-login) to function. The build plan specified LaunchAtLogin as an SPM dependency but the SwiftPM executable output is a bare binary, not a bundle. A post-build bundle assembly step was needed but not planned, leading to a separate user request after the build was complete."
+    evidence: "Launch at Login feature was specified in v1 scope and chunk 5, but the build plan did not include app bundle creation. The feature silently fails without a bundle identifier. User had to ask for the bundle as a follow-up."
+    proposed_action: "When the build plan targets macOS and uses ServiceManagement or other bundle-dependent APIs, include an explicit app bundle assembly chunk or step within the scaffold chunk. The operational spec should specify the packaging format."
+    status: acted_on
+skills_affected:
+  - "skills/artifact-generator/SKILL.md"
+  - "skills/builder/SKILL.md"
+---
