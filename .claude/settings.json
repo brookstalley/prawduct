@@ -1,6 +1,6 @@
 {
   "companyAnnouncements": [
-    "*** This is Prawduct — a framework for turning product ideas into high quality software. Describe an idea to get started, or say hello for an orientation."
+    "\u001b[1;34m ▗▟███▙▖\u001b[0m    \u001b[1mPrawduct\u001b[0m\n\u001b[1;34m ▐▘ █ ▝▌\u001b[0m    Product thinking framework · Claude-powered\n\u001b[1;34m ▝▜███▛▘\u001b[0m    Describe an idea or say hello"
   ],
   "hooks": {
     "SessionStart": [
