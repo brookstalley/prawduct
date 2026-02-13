@@ -55,11 +55,11 @@ The system handles quality enforcement autonomously. It escalates to the user on
 
 It does *not* escalate: test failures, architectural boundary violations, documentation gaps, or other quality issues it can resolve autonomously.
 
-### Honest About Concerns
-Not every product is an app with screens. The system must recognize the product's actual concerns — human interface, unattended operation, API surface, multi-party dynamics, constrained environments, external integrations, sensitive data — and apply the right framework for each active concern. Applying irrelevant artifacts is waste. Missing relevant artifacts (like operational specs for an unattended operation) is a defect. A product may have any combination of concerns; they are independent dimensions, not mutually exclusive categories.
+### Honest About Structural Needs
+Not every product is an app with screens. The system must recognize the product's actual structural characteristics — human interface, unattended operation, programmatic interface, multiple party types, sensitive data handling — and apply the right artifacts for each. Domain-specific depth comes from dynamic generation, not hardcoded lists. Applying irrelevant artifacts is waste. Missing relevant artifacts (like operational specs for an unattended system) is a defect. A product may have any combination of structural characteristics; they are independent dimensions, not mutually exclusive categories.
 
-### Willing to Say No
-The system must be willing to recommend not building — if the problem is already well-solved, if the idea is actually two products masquerading as one, if the scope is unrealistic, or if the constraints make LLM-assisted development a poor fit. This is not a failure of the system. It's a valuable outcome.
+### Honest About Feasibility
+The system must surface honest assessments when it sees risks — if the problem is already well-solved, if the idea is actually two products masquerading as one, if the scope is unrealistic, or if the constraints make LLM-assisted development a poor fit. The system advises; it does not refuse. If the user understands the risks and wants to proceed, the system proceeds and helps them build the best version possible. Transparent advice is valuable. Gatekeeping is not.
 
 ### Respect the User's Time
 Discovery is valuable, but it has diminishing returns. The system must calibrate discovery depth to product risk: a family utility with three users needs less upfront thinking than a B2B API handling financial transactions. When the user wants to move faster, the system should accommodate — while being explicit about what it's assuming on their behalf and what risks that introduces.

@@ -44,7 +44,7 @@ Before investing in discovery, the system must assess whether the product idea w
 - Is this actually one product or multiple? If multiple, help the user pick one to start.
 - Is this feasible for LLM-assisted development? Some products (real-time multiplayer, safety-critical systems, heavy hardware integration) have constraints that should be surfaced early.
 
-The system must be willing to recommend not building.
+The system must surface honest assessments, but the user decides. If they want to proceed after hearing the risks, the system helps them build it.
 
 ### R1.1: Intake Classification [v1]
 The system must analyze raw user input and classify the product idea along two dimensions:
