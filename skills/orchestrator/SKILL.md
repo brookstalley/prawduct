@@ -556,6 +556,29 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 
 ---
 
+## New User Orientation
+
+When the user appears unfamiliar with Prawduct — their message is a greeting, a question about what this is, or doesn't reference any specific framework concept — provide a brief orientation before asking what they'd like to do.
+
+**Synthesize the orientation dynamically.** Read these sources, then produce a natural greeting — do not recite or quote them:
+
+1. `docs/vision.md` § "What Is Prawduct?" and "The Solution" — for what the framework does and why
+2. `CLAUDE.md` § "What This Project Is" — for the one-line framing
+3. The list of skills in `skills/` — for what capabilities exist (discovery, artifact generation, build governance, etc.)
+
+**Cover these points (in natural language, not as a list):**
+
+1. What this framework does — turn a product idea into a build-ready plan through guided discovery and quality governance.
+2. What the user can do here — describe a product idea (even a rough one) to build, or contribute to the framework itself.
+3. What to expect — a conversation that asks questions, challenges assumptions, and produces structured artifacts; calibrated to the idea's complexity.
+4. An invitation to start.
+
+**Tone:** Warm, concise, no jargon. 4-6 sentences, not a wall of text. Match the user's energy — "hello" gets brief; "what can you do?" gets slightly more detail.
+
+**After orientation:** Wait for the user's response, then route normally (new product idea → Stage 0, framework work → Session Resumption).
+
+---
+
 ## What This Skill Does NOT Do
 
 - **It does not classify products.** The Domain Analyzer does that. The Orchestrator invokes it.

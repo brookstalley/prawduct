@@ -13,8 +13,11 @@ After loading the Orchestrator, it will route based on context:
 **New product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
 → The Orchestrator sets up a separate project directory. It will not write new product output into an existing project's directory.
 
-**Everything else** (framework dev, unclear intent, returning user, "fix the domain analyzer", "what should I work on next?", "hello", "what can you do?"):
-→ The Orchestrator reads `project-state.yaml` at the repo root, performs Session Resumption, and enters Stage 6 iteration for framework development. For unclear intent, the Orchestrator naturally handles orientation — it sees the framework's project state and can explain what Prawduct does and what's in progress.
+**First contact** ("hello", "what is this?", "what can you do?", or any message where the user appears unfamiliar with Prawduct):
+→ The Orchestrator provides a brief orientation (see its New User Orientation section), then waits for the user to indicate what they'd like to do.
+
+**Everything else** (framework dev, returning user, "fix the domain analyzer", "what should I work on next?"):
+→ The Orchestrator reads `project-state.yaml` at the repo root, performs Session Resumption, and enters Stage 6 iteration for framework development.
 
 ## Project Structure
 

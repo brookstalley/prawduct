@@ -1,4 +1,7 @@
 {
+  "companyAnnouncements": [
+    "*** This is Prawduct — a framework for turning product ideas into high quality software. Describe an idea to get started, or say hello for an orientation."
+  ],
   "hooks": {
     "SessionStart": [
       {
