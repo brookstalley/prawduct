@@ -1,6 +1,6 @@
 # Artifact Generator
 
-The Artifact Generator produces the build plan artifacts for a user's product. It selects the appropriate artifact set based on product concerns, generates each artifact from decisions in Project State, enforces cross-artifact consistency, and declares dependencies between artifacts. It is invoked by the Orchestrator during Stage 3 (Artifact Generation).
+The Artifact Generator produces the build plan artifacts for a user's product. It selects the appropriate artifact set based on structural characteristics and domain analysis, generates each artifact from decisions in Project State, enforces cross-artifact consistency, and declares dependencies between artifacts. It is invoked by the Orchestrator during Stage 3 (Artifact Generation).
 
 ## When You Are Activated
 
@@ -9,13 +9,13 @@ The Orchestrator activates this skill when `current_stage` is "artifact-generati
 When activated:
 
 1. Read `project-state.yaml` in the user's project directory — it must have classification, product definition, and scope decisions populated.
-2. Determine which artifacts to generate based on the product's active concerns.
+2. Determine which artifacts to generate based on the product's active structural characteristics and domain characteristics.
 3. Generate artifacts in phased dependency order, writing files to the `artifacts/` directory within the user's project directory. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the project directory.
 4. Update `project-state.yaml` → `artifact_manifest` with each generated artifact.
 
 ## Step 1: Select Artifact Set
 
-Read `classification.concerns` from project-state.yaml. Generate the universal artifact set plus any concern-triggered artifacts.
+Read `classification.structural` and `classification.domain_characteristics` from project-state.yaml. Generate the universal artifact set plus any structurally-triggered artifacts, then assess whether domain characteristics call for additional artifacts not covered by the standard set.
 
 **Universal artifacts (all products):**
 
@@ -29,7 +29,7 @@ Read `classification.concerns` from project-state.yaml. Generate the universal a
 | Operational Specification | `artifacts/operational-spec.md` | Deployment, monitoring, alerting, recovery, backup |
 | Dependency Manifest | `artifacts/dependency-manifest.yaml` | External deps with justification |
 
-**When `concerns.unattended_operation` is active:**
+**When `structural.runs_unattended` is active:**
 
 | Artifact | File | Purpose |
 |----------|------|---------|
@@ -39,22 +39,32 @@ Read `classification.concerns` from project-state.yaml. Generate the universal a
 | Failure Recovery | `artifacts/failure-recovery-spec.md` | Per-stage failure handling, retry logic, partial success |
 | Configuration | `artifacts/configuration-spec.md` | Configurable parameters, mechanism, validation, secrets |
 
-**Notes for `unattended_operation` artifacts:**
+**Notes for `runs_unattended` artifacts:**
 - "Core Flows" in the Product Brief become pipeline stages. Frame them as processing stages (fetch, filter, format, deliver), not user actions.
 - The Data Model captures processed entities (e.g., Article, FilterCriteria, Source), not UI entities.
 - NFRs emphasize runtime constraints (execution window, cost per run) and operational requirements over user-facing performance.
 
-**When `concerns.human_interface` (type: screen) is active:**
+**When `structural.has_human_interface` (modality: screen) is active:**
 
 UI-specific artifacts (information architecture, screen specs, design direction, accessibility spec, onboarding spec) are generated when implemented. Use templates from `templates/human-interface/`.
 
-**When `concerns.api_surface` is active:**
+**When `structural.exposes_programmatic_interface` is active:**
 
 API-specific artifacts (API contracts, integration guide, versioning strategy, SLA definition) are generated when implemented. Use templates from `templates/api-surface/`.
 
-**When `concerns.multi_party` is active:**
+**When `structural.has_multiple_party_types` is active:**
 
 Multi-party artifacts (per-party experience specs, party interaction model, migration/adoption plan) are generated when implemented. Use templates from `templates/multi-party/`.
+
+### Analysis-Driven Artifact Determination
+
+After selecting structurally-triggered artifacts, review `classification.domain_characteristics` for additional artifact needs not covered by templates. Domain characteristics may surface needs that don't fit existing structural categories but still warrant dedicated artifacts or deepened sections within standard artifacts.
+
+**Examples:**
+- A product with domain characteristic "constrained hardware environment" may need a resource budget artifact or a deepened NFR section covering memory ceilings, CPU duty cycles, and power budgets — even though `constrained_environment` is not a structural characteristic.
+- A product with domain characteristic "external service integration" may need deepened failure recovery and dependency sections — even when `runs_unattended` isn't active (e.g., an interactive app that calls external APIs).
+
+**Process:** For each domain characteristic, assess whether the universal + structurally-triggered artifacts adequately cover its implications. If not, either (a) add specific sections to existing artifacts addressing the gap, or (b) in rare cases, generate an additional artifact with justification. Prefer deepening existing artifacts over creating new ones.
 
 ### Applicability Assessment
 
@@ -299,7 +309,7 @@ dependencies:
 
 ### Phase C: Unattended Operation Artifacts
 
-When `concerns.unattended_operation` is active, generate these concern-specific artifacts alongside the universal Phase C artifacts. Use the corresponding templates from `templates/unattended-operation/`.
+When `structural.runs_unattended` is active, generate these structurally-triggered artifacts alongside the universal Phase C artifacts. Use the corresponding templates from `templates/unattended-operation/`.
 
 #### Artifact: Pipeline Architecture
 
@@ -475,7 +485,7 @@ last_validated: null
 
 2. **Concrete project structure.** Derive directory layout and module boundaries from the data model and product shape. For a UI app: component directories aligned to core flows, a data layer aligned to data model entities, test files alongside source. Name the directories explicitly.
 
-3. **Feature-first build chunks.** For products with `human_interface`, each chunk delivers one user-visible flow end-to-end (data + logic + UI + tests). For products with `api_surface`, each chunk delivers one endpoint group. For products with `unattended_operation`, each chunk delivers one processing stage end-to-end (input + processing + output + tests for that stage).
+3. **Feature-first build chunks.** For products with `has_human_interface`, each chunk delivers one user-visible flow end-to-end (data + logic + UI + tests). For products with `exposes_programmatic_interface`, each chunk delivers one endpoint group. For products with `runs_unattended`, each chunk delivers one processing stage end-to-end (input + processing + output + tests for that stage).
 
    **Chunk ordering (general):**
    - Chunk 01 is always the scaffold: project init, dependencies, build config, test runner, verification.
@@ -483,7 +493,7 @@ last_validated: null
    - Then: feature chunks ordered by user value (highest first). The first feature chunk should be the earliest point the user can interact with the product.
    - Last: polish, edge cases, and cross-cutting concerns.
 
-   **Chunk ordering (when `unattended_operation` is active):**
+   **Chunk ordering (when `runs_unattended` is active):**
    - Chunk 01: scaffold (project init, dependencies, config loading, test runner).
    - Chunk 02: data entities and any persistence layer (article model, source model, etc.).
    - Chunk 03: first pipeline stage — typically the data fetch stage, since everything downstream depends on it.
@@ -517,7 +527,7 @@ After generating all Phase C artifacts, run the full cross-artifact consistency 
 - **Security coverage:** Every access pattern implied by the Product Brief is addressed in the Security Model.
 - **Dependency coverage:** Every external service or library mentioned in any artifact appears in the Dependency Manifest.
 
-**Additional consistency checks when `concerns.unattended_operation` is active:**
+**Additional consistency checks when `structural.runs_unattended` is active:**
 
 - **Stage coverage:** Every processing stage in the Pipeline Architecture has a corresponding failure handling entry in the Failure Recovery Spec and at least one test scenario in the Test Specifications.
 - **Monitoring coverage:** Every health metric in the Monitoring & Alerting Spec corresponds to an observable aspect of the pipeline (stage completion, output delivery, source availability).
@@ -546,9 +556,9 @@ artifacts:
 
 Remaining artifact template work is tracked in `project-state.yaml` → `build_plan.remaining_work`.
 
-When adding concern-specific artifacts:
-1. Create a templates directory under `templates/` named for the concern (e.g., `templates/api-surface/`).
+When adding structurally-triggered artifacts:
+1. Create a templates directory under `templates/` named for the structural characteristic (e.g., `templates/api-surface/`).
 2. Add one template per artifact, following the YAML frontmatter format defined in `docs/high-level-design.md` § "Artifact Format (V1)".
-3. Add the concern's artifact list to this skill's Phase C section, following the pattern of the `unattended_operation` artifacts block.
-4. Update the artifact dependency model if the new artifacts have cross-concern dependencies.
+3. Add the structural characteristic's artifact list to this skill's Phase C section, following the pattern of the `runs_unattended` artifacts block.
+4. Update the artifact dependency model if the new artifacts have cross-characteristic dependencies.
 5. Register the template directory in `docs/doc-manifest.yaml`.
