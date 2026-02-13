@@ -97,7 +97,16 @@ Update `project-state.yaml`:
 
 ### Step 6: Hand Off to Critic
 
-The Orchestrator invokes the Critic's product governance mode to review this chunk. The Builder does not review its own work.
+**STOP. Do not proceed to the next chunk.** The Orchestrator invokes the Critic's product governance mode to review this chunk before any further work begins. The Builder does not review its own work.
+
+This is not optional — skipping Critic review removes the quality gate that catches issues before they propagate across chunks. If time pressure or product simplicity tempts you to skip this step, apply proportionality to the *depth* of the review (a low-risk product gets a lighter review), but never reduce it to zero.
+
+At a minimum, the Critic must verify:
+- Tests pass and cover the chunk's acceptance criteria
+- Implementation matches artifact specifications (no silent requirement drops — HR2)
+- No regressions in previous chunks' tests (HR1)
+
+The Orchestrator also runs governance checkpoints at the midpoint and end of the build (see Orchestrator SKILL.md § Stage 5). These are separate from per-chunk reviews and must also occur.
 
 ## Scaffolding (Chunk 01)
 

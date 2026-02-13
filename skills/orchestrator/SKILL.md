@@ -282,9 +282,11 @@ At points marked in `build_plan.governance_checkpoints`, run a broader cross-chu
 
 | Risk | Chunk briefings | User interaction | Checkpoint depth |
 |------|----------------|-----------------|-----------------|
-| Low | Brief summaries | Don't ask between chunks | Lightweight |
+| Low | Brief summaries | Don't ask between chunks | Lightweight (but not zero) |
 | Medium | Per-chunk summaries | Ask at governance checkpoints | Moderate |
 | High | Detailed briefings | User approval at each checkpoint | Thorough |
+
+"Lightweight" means the Critic review is shorter and focuses on the minimum checks (tests pass, specs matched, no regressions) — it does **not** mean the Critic is skipped. Every chunk gets a Critic review. Every governance checkpoint gets a cross-chunk review. Zero review is never appropriate regardless of risk level.
 
 ### Build completion
 
