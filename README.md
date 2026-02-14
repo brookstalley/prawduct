@@ -2,9 +2,9 @@
 
 Prawduct turns product ideas into quality software.
 
-LLM code generation is great. But it's so easy to go from "I need an app that does X" straight to code, without apply product thinking. Who are the users? What are the edge cases, failure modes, and what "done" looks like? What needs to be tested, and how?
+LLM code generation is great. But it's so easy to go from "I need an app that does X" right to code, without applying product thinking. Who are the users? What are the edge cases, failure modes, and what does "done" look like? What needs to be tested, and how? And how do you ensure ongoing development adheres to best practices in product, architecyure, engineering, and testing?
 
-Prawduct fills that gap. It's the senior product thinker, software architect, and quality guardian that guides the entire process from idea through working, tested code.
+Prawduct fills those gaps. It's the senior product thinker, the software architect, and the quality guardian that guides the entire process from idea through working, tested code... and then to iteration and improvement. 
 
 Prawduct is designed to support everything from multi-user web applications to headless utility scripts. Extensive internal reflection extracts learnings that improve the framework for future usage -- Prawduct itself is built using Prawduct, and it is maintained and improved using its own framework.
 
