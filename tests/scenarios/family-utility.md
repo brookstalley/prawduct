@@ -88,6 +88,9 @@ To ensure repeatable evaluation, the following scripted responses define what th
 **When asked about current process / how they do it now:**
 > "We just use pen and paper. It works fine but we lose the paper and there's no history."
 
+**When asked about app name or visual style:**
+> "We've been calling it 'Score Night' in our house. I'd love it to feel fun and colorful — nothing too serious. Like a board game, not a spreadsheet."
+
 **When asked about anything not covered above:**
 > Give a brief, non-technical, cooperative answer consistent with the persona: an enthusiastic, non-technical parent who wants something simple for family game nights.
 
@@ -129,6 +132,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[interactive]` Ask about the core action (what does "track scores" mean — per-game results, running leaderboards, both?).
 - `[interactive]` Ask about platform (phone at the table, web at home, both?).
 - `[interactive]` Surface data persistence as a consideration (do historical scores matter, or is it session-by-session?).
+- `[interactive]` Surface product identity as a consideration (what is the app called, what should it feel like?).
 - `[simulation]` Limit total discovery questions to 5-8 for this risk level.
 
 **Must-not-do:**

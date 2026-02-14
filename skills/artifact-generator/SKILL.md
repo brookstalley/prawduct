@@ -124,6 +124,7 @@ last_validated: null
 
 **Content must include:**
 - **Vision:** One clear sentence (from `product_definition.vision`).
+- **Identity:** Product name and character. For user-facing products: visual style, mood, personality. For tools and automations: name and interaction personality. Drawn from `product_definition.product_identity`. If the user has not expressed identity preferences, state that explicitly rather than inventing defaults.
 - **Users & Personas:** Who uses this, their needs, constraints, technical level. Drawn from `product_definition.users.personas`.
 - **Core Flows:** What users do, in priority order. Drawn from `product_definition.core_flows`.
 - **Success Criteria:** How we know this worked. Drawn from `product_definition.goals`.
@@ -534,7 +535,9 @@ last_validated: null
 
 #### Artifact: Design Direction
 
-**Reads from:** Product Brief (product identity, platform, personas), `project-state.yaml` → `design_decisions`
+**Reads from:** Product Brief (Identity section — product name, personality, visual preferences), `project-state.yaml` → `design_decisions.visual_direction`
+
+When the user expressed identity preferences in the Product Brief, translate them into concrete design tokens (colors, typography choices, component personality). When they didn't, choose a style appropriate to the platform and domain, state it as a design choice with rationale, and flag that identity was inferred rather than expressed.
 
 **Frontmatter:**
 ```yaml
@@ -686,7 +689,7 @@ last_validated: null
 
 **What to produce:**
 
-1. **Concrete scaffolding instructions.** Read `technical_decisions` from project-state.yaml and `dependency-manifest.yaml`. Produce exact commands to initialize the project, install dependencies, and configure build tools. "React + Vite" in technical decisions becomes `npm create vite@latest project-name -- --template react` plus `npm install` with every package from the dependency manifest. The Builder executes these commands — it must not need to figure out which packages to install.
+1. **Concrete scaffolding instructions.** Read `technical_decisions` from project-state.yaml and `dependency-manifest.yaml`. Produce exact commands to initialize the project, install dependencies, and configure build tools. "React + Vite" in technical decisions becomes `npm create vite@latest project-name -- --template react` plus `npm install` with every package from the dependency manifest. The Builder executes these commands — it must not need to figure out which packages to install. Use the product name from the Product Brief's Identity section for project naming (package.json name, app title, directory name). If no name was provided, derive one from the product vision.
 
 2. **Concrete project structure.** Derive directory layout and module boundaries from the data model and product shape. For a UI app: component directories aligned to core flows, a data layer aligned to data model entities, test files alongside source. Name the directories explicitly.
 

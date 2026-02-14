@@ -133,6 +133,9 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 **When asked about change frequency / how often the logic needs updating:**
 > "Probably tweak the topic filters every few weeks as my interests shift. The source list changes maybe once a month."
 
+**When asked about what to call the pipeline:**
+> "I've been calling it 'morning digest' in my head. Something like 'digest-bot' or 'feed-filter' would work too. Not picky about the name."
+
 **When asked about access / who needs to configure or maintain this:**
 > "Just me. Nobody else needs to touch it."
 

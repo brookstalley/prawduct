@@ -28,6 +28,15 @@ last_validated: null
 <!-- One clear sentence: what this product is and why it exists.
      Source: project-state.yaml → product_definition.vision -->
 
+## Identity
+
+<!-- What is this product called? What is its character?
+     For user-facing products: visual style, mood, personality.
+     For tools and automations: name and interaction personality.
+     If the user has not expressed identity preferences, state that
+     explicitly rather than inventing defaults.
+     Source: project-state.yaml → product_definition.product_identity -->
+
 ## Users & Personas
 
 <!-- Who uses this product? For each persona, describe:

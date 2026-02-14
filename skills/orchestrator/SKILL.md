@@ -155,7 +155,7 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 4. Make `product_definition.scope` decisions explicit: what's in v1, what's accommodated but not built, what's deferred to later (with rationale), and what's out of scope entirely (with rationale). Every feature discussed should land in exactly one bucket.
 5. Set `product_definition.nonfunctional` values proportionate to the product's risk level.
 6. Populate `technical_decisions` with proportionate architecture choices. Every decision must include rationale and alternatives considered (HR4). The guiding principle: **identify every architectural choice that would significantly affect implementation complexity, cost, or user experience if decided differently.** For low-risk products, make these decisions as assumptions and state them plainly. For higher-risk products, surface the tradeoffs. Common decisions include data storage, deployment target, and key technology choices — but don't limit yourself to a fixed checklist. If the product's nature raises architectural questions (e.g., how data stays in sync, how identity works, how components communicate), those are technical decisions too.
-7. For UI applications, set basic `design_decisions`: at minimum, `accessibility_approach` (even "standard platform accessibility" is fine for low-risk) and general `interaction_patterns` (e.g., "mobile-first, touch-friendly").
+7. For UI applications, set basic `design_decisions`: at minimum, `accessibility_approach` (even "standard platform accessibility" is fine for low-risk) and general `interaction_patterns` (e.g., "mobile-first, touch-friendly"). Also set `visual_direction` — translate `product_definition.product_identity.personality` and `visual_preferences` into a concrete direction. If the user expressed preferences ("playful," "clean and minimal," "dark and moody"), translate those into a direction the Design Direction artifact can build on. If no preferences were expressed, choose a style appropriate to the platform and domain and state it as a design choice with rationale. Even for low-risk products, a one-line `visual_direction` prevents the Builder from guessing.
 8. Populate `product_definition.cost_estimates` with at least a rough hosting/operational cost expectation, even if the answer is "$0 — free tier."
 
 ### Review (risk-proportionate)
@@ -168,7 +168,7 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 
 1. **Present the product definition to the user** in plain language. Not as a YAML dump — as a readable summary:
 
-   > "Here's what I think we're building: **[vision]**. The main users are **[personas]**. In v1, you'll be able to **[core flows]**. I'm deferring **[later items]** for now because **[rationale]**. A few assumptions I'm making: **[technical/design assumptions]**. Does this capture what you're going for?"
+   > "Here's what I think we're building: **[product name]** — **[vision]**. The main users are **[personas]**. In v1, you'll be able to **[core flows]**. I'm deferring **[later items]** for now because **[rationale]**. A few assumptions I'm making: **[technical/design assumptions]**. Does this capture what you're going for?"
 
 2. **Let the user react.** If they correct or add:
    - **Cosmetic changes** (wording, minor adjustments): update and proceed.

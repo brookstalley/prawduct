@@ -151,6 +151,9 @@ To ensure repeatable evaluation, the following scripted responses define what Jo
 **When asked about controls / input:**
 > "Arrow keys left and right to move your ship. Space to fire. That's it. Maybe 'q' to quit and 'p' to pause, but keep it minimal."
 
+**When asked about the game name:**
+> "I've been thinking of calling it 'Terminal Invaders' — kind of a nod to Space Invaders but with the terminal twist. Open to other ideas though."
+
 **When asked about visual approach / graphics:**
 > "All text. The ship could be something like `^` or `▲`, enemies could be different characters depending on type, bullets are `|` or `·`. Use ANSI colors — green for the player, red for enemies, yellow for bullets, whatever looks good. The frame border could be box-drawing characters. I trust your judgment on the specifics."
 

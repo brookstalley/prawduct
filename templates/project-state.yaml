@@ -100,6 +100,19 @@ product_definition:
     # Each: { item, rationale }
     never: []
 
+  # Product identity — name and creative direction.
+  # Discovered during Stage 1, crystallized in Stage 2.
+  # Feeds Product Brief identity section and design_decisions.visual_direction.
+  product_identity:
+    # What the product is called. Even a working name is better than none.
+    name: null
+    # Brand personality, mood, character — the user's creative vision.
+    # null for products where personality is not relevant (internal tools, pipelines).
+    personality: null
+    # Any expressed preferences about look, feel, or visual style.
+    # null for products without a visual interface.
+    visual_preferences: null
+
   # Where this runs.
   # Examples: "mobile (iOS + Android)", "web", "desktop", "CLI"
   platform: null

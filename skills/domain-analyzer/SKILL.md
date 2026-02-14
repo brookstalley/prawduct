@@ -150,7 +150,7 @@ Two rules govern the budget:
 
 ### Universal Discovery Dimensions
 
-These 9 dimensions MUST be explored for every product. For each dimension, generate 1-3 questions specific to THIS product using your domain knowledge. Not every dimension needs a direct question — some can be covered by inference, and the budget constrains total questions. But every dimension must be considered, and gaps should be noted.
+These 10 dimensions MUST be explored for every product. For each dimension, generate 1-3 questions specific to THIS product using your domain knowledge. Not every dimension needs a direct question — some can be covered by inference, and the budget constrains total questions. But every dimension must be considered, and gaps should be noted.
 
 #### 1. Users and Stakeholders
 Who uses this? How many? What's their expertise? What's their context?
@@ -179,6 +179,14 @@ What external services, APIs, or systems does this depend on? What happens when 
 #### 9. Regulatory and Compliance
 Are there regulations that apply? Even if the user isn't sure, surface likely regulations based on data types and user demographics.
 
+#### 10. Product Identity
+What is this product called? What's its character? Every product has an identity —
+the name users know it by. For user-facing products, identity extends to visual style,
+mood, and the feeling the product projects. For tools and automations, it may be just
+a name and interaction personality. Identity preferences are creative choices where the
+user is the expert — prefer asking over inferring, especially for user-facing products
+where identity shapes the experience.
+
 ### Structural Amplification Rules
 
 Each structural characteristic amplifies specific universal dimensions. When a structural characteristic is active, the amplified dimensions require deeper exploration — more questions, more proactive expertise, and more explicit artifact coverage.
@@ -192,6 +200,7 @@ Each structural characteristic amplifies specific universal dimensions. When a s
 - **Users (dimension 1):** Physical context matters — not just the device but the conditions: dark room, noisy commute, wet hands in a kitchen, glancing while driving. Frame in context: "At the game table? In bed? At a desk?"
 - **Core experience (dimension 2):** Interaction patterns, empty states, first-run experience. What does the product look like before any data exists?
 - **Performance (dimension 6):** Responsiveness expectations. For games: frame rate. For apps: perceived latency. For terminals: rendering speed.
+- **Product Identity (dimension 10):** Visual identity matters most for user-facing products — style, mood, color direction, and personality directly shape how the product feels. Surface these early; they're harder to change after build starts.
 
 **When `exposes_programmatic_interface` is active — amplify:**
 - **Users (dimension 1):** Consumer types — internal services, external developers, partners, the public. This determines documentation needs and backward compatibility requirements.
@@ -265,6 +274,9 @@ After classification and discovery, produce:
    - `product_definition.scope.v1`: items confirmed for v1
    - `product_definition.scope.later`: items explicitly deferred
    - `product_definition.platform`: where the product runs
+   - `product_definition.product_identity.name`: what the product is called (even a working name)
+   - `product_definition.product_identity.personality`: brand personality, mood, character (null if not relevant)
+   - `product_definition.product_identity.visual_preferences`: any expressed preferences about look, feel, or visual style (null for products without a visual interface)
    - `product_definition.nonfunctional`: any NFRs surfaced (proportionate to risk)
    - `user_expertise`: updated with evidence from conversation
    - `open_questions`: anything that needs more user input before artifact generation
@@ -274,7 +286,7 @@ After classification and discovery, produce:
    - What remains open
    - Whether discovery is sufficient to proceed to product definition, or more questions are needed
    - Any concerns to surface (from proactive expertise)
-   - **Coverage assessment:** For each of the 9 Universal Discovery Dimensions, briefly note whether it has adequate coverage from what was learned. Flag underexplored dimensions.
+   - **Coverage assessment:** For each of the 10 Universal Discovery Dimensions, briefly note whether it has adequate coverage from what was learned. Flag underexplored dimensions.
 
 ## Extending This Skill
 

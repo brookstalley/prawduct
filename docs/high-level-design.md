@@ -76,7 +76,7 @@ Each structural characteristic triggers fundamentally different artifact needs. 
 
 Domain-specific discovery depth is generated dynamically by the LLM using its own knowledge, guided by:
 
-1. **9 Universal Discovery Dimensions** — categories that must be explored for every product: users, core experience, data, security, failure modes, performance, operational lifecycle, dependencies, regulatory.
+1. **10 Universal Discovery Dimensions** — categories that must be explored for every product: users, core experience, data, security, failure modes, performance, operational lifecycle, dependencies, regulatory, product identity.
 2. **Structural Amplification Rules** — each structural characteristic amplifies specific dimensions (e.g., `runs_unattended` amplifies failure modes, operational lifecycle, and dependencies).
 3. **Domain Characteristics** — LLM-identified properties specific to this product's domain, persisted in `classification.domain_characteristics` for session resumption context.
 
