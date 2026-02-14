@@ -25,7 +25,7 @@ You describe what you want to build. The framework takes it from there:
 - **Asks the questions you didn't know to ask** — about your users, their workflows, edge cases, failure modes, product scope, and security
 - **Produces structured specifications** covering design, data, security, testing, operations, and dependencies — the artifacts that make code generation successful
 - **Builds the product in governed chunks** — every piece reviewed against specs, every test verified, every dependency justified
-- **Catches the things that usually go wrong** — requirements that silently vanish, tests that get weakened to pass, architecture that erodes over time, documentation that contradicts itself
+- **Catches the things that usually go wrong** — requirements that silently vanish, tests that get hacked to pass, architecture that erodes over time, documentation that contradicts itself
 - **Observes its own operation and improves** — Prawduct runs internal critiques frequently, observing where the framework is not working as well as it should. These observations are stored, and can be used when applying Prawduct to itself.
 
 The discovery process is a conversation. It adapts to you — a simple data cleaning utility gets lighter treatment than a B2B API handling financial transactions. Whether you bring a rough napkin sketch or a detailed spec, the framework meets you where you are and fills in what you don't have.
