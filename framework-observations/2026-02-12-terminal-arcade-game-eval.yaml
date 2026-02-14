@@ -12,7 +12,7 @@ observations:
     description: "Entertainment domain overlay in Domain Analyzer lacks structured game design guidance. Game design expertise (difficulty curves, wave design, scoring feel, game states) was contributed successfully but relied on general LLM knowledge rather than framework-guided proactive expertise items."
     evidence: "Domain Analyzer Entertainment overlay has only two items: 'Ask what makes it fun' and 'If competitive: how are disputes handled?' The system contributed difficulty progression, wave design, visual feedback, and game state management proactively, but these weren't surfaced by structured guidance — they came from general game design knowledge."
     proposed_action: "Monitor across future entertainment/game evaluations. If game design expertise contributions are inconsistent, consider adding game-specific proactive expertise items (difficulty curves, game state design, visual feedback/juice, progression systems) while maintaining generality."
-    status: noted
+    status: triaged
 
   - type: applicability
     stage: 3
@@ -20,7 +20,7 @@ observations:
     description: "UI Application discovery questions reference web/mobile concepts (touch targets, responsive layout, browser APIs) that required mental translation for terminal platform. The general principles adapted naturally, but the specific examples lean web/mobile."
     evidence: "Tier 1 question 3 references 'phone, computer, both' and 'dark room, noisy commute, wet hands in a kitchen.' For a terminal game, these device-centric framings don't apply — the relevant context is terminal emulator type and SSH scenarios. The system adapted without asking wrong questions, but the skill text could be more platform-neutral."
     proposed_action: "Consider restructuring UI Application Tier 1 question 3 around the general concept of 'usage context and platform constraints' rather than device-specific examples. The current phrasing is fine for web/mobile but less natural for terminal, desktop, or embedded UI."
-    status: noted
+    status: triaged
 
   - type: coverage
     stage: 3
@@ -28,7 +28,7 @@ observations:
     description: "Review Lens findings during artifact generation were not persisted as a structured document. Findings were applied in-process (influencing artifact content) but not recorded for traceability."
     evidence: "No review findings document exists in the artifacts directory. The rubric criterion 'each finding has specific recommendation and severity' was met in-process but findings were not preserved as a durable artifact."
     proposed_action: "Consider whether Review Lens findings should be recorded as a structured document (e.g., artifacts/review-findings.md) or in project-state.yaml. The Orchestrator skill says findings are 'surfaced to the user' but doesn't specify persistence format. This may be intentional (findings are consumed and applied, not stored) or a gap."
-    status: noted
+    status: triaged
 
   - type: proportionality
     stage: 5
@@ -36,7 +36,7 @@ observations:
     description: "Building a fully functional real-time game in a simulation evaluation is the most time-intensive eval step. The architecture and test quality can be validated, but gameplay feel, visual rendering quality, and responsive controls cannot be verified without interactive testing."
     evidence: "Builder rubric has 3 criteria marked 'unable to evaluate' (player rendering responsiveness, cross-platform behavior, gameplay feel). These are arguably the most important criteria for a game product — they address whether the product achieves its core goal."
     proposed_action: "Consider adding a rubric annotation for criteria that require interactive evaluation. For simulation evals, these should be flagged as 'requires-interactive' rather than 'unable' so regression tracking can distinguish between simulation limitations and genuine failures."
-    status: noted
+    status: triaged
 
   - type: coverage
     stage: 5

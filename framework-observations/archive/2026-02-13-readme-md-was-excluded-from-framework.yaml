@@ -11,7 +11,7 @@ observations:
     description: "README.md was excluded from FRAMEWORK_PATTERNS in critic-reminder.sh, meaning README modifications triggered zero governance review. This allowed HR3 violations (documentation fiction) in external-facing documentation: false claims about discovery topics, misleading framing of concern-specific templates, and fictional multi-user contribution workflows."
     evidence: "README.md line 21 claimed discovery covers accessibility and test methodology — domain analyzer covers neither. Line 41 implied per-concern template libraries exist — only unattended-operation has templates on disk. Lines 50-55 described multi-user contribution workflow — project-state.yaml explicitly says single-user."
     proposed_action: "Added README.md to FRAMEWORK_PATTERNS and extended Critic Check 4 with external-facing doc claim verification. Future: planned docs-freshness-checker.sh and spec-compliance-diff.sh tools would further close this gap."
-    status: noted
+    status: acted_on
 skills_affected:
   - "tools/critic-reminder.sh"
   - "skills/critic/SKILL.md"

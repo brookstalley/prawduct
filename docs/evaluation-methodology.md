@@ -287,7 +287,7 @@ When using interactive evaluation, follow these procedures for conversation-qual
    After recording results and verifying observation capture, check the health of the learning loop itself:
 
    - [ ] **Pattern threshold check:** Run `./tools/observation-analysis.sh --patterns-only`. If any observation types have crossed their tier threshold (meta: 2+, build-phase: 3+, product: 4+) and are not yet tracked in `observation_backlog`, add them.
-   - [ ] **Stale `noted` check:** If any observations have `status: noted` and are more than 2 weeks old, they should be triaged — update to `triaged` or `acted_on` and add to `observation_backlog` if deferred.
+   - [ ] **Stale `noted` check:** If any observations have `status: noted` and are more than 2 days old, they should be triaged — update to `triaged` or `acted_on` and add to `observation_backlog` if deferred.
    - [ ] **Update `last_triage`:** Set `observation_backlog.last_triage` to today's date in `project-state.yaml`.
 
 ### Cleanup

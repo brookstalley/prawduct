@@ -12,7 +12,7 @@ observations:
     description: "Product governance hooks track state (stage transitions without FRP, chunks without Critic review) but lack mechanical enforcement between build chunks. The hooks inject reminders and block session completion, but during extended builds with context compaction, the accumulated governance debt was never enforced mid-session — all 7 chunks completed without a single Critic review or FRP."
     evidence: ".product-session.json showed 8 stage transitions without FRP, 0 Critic reviews, and 0 observations after building all 7 chunks of a product. The PostToolUse tracker correctly counted the debt, but no hook mechanically blocked chunk progression. Context compaction likely dropped the reminder context."
     proposed_action: "Consider adding a PreToolUse hook that blocks file creation in chunk N+1 directories when chunk N has unreviewed governance debt, similar to how the framework commit gate blocks git commit without Critic evidence. Alternatively, require explicit chunk-boundary acknowledgment."
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/builder/SKILL.md"
   - "skills/critic/SKILL.md"

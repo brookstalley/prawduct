@@ -11,7 +11,7 @@ observations:
     description: "The Directional Change Protocol had no learning step. It validated quality (Critic review) but never asked 'what did we learn?' A 17-file architectural reform (structural characteristics replacement) produced 6 commits, 1 Critic review, and zero captured learnings until the user explicitly asked for retrospective. The protocol ended at step 6 (session observation) with no structured reflection on detection gaps, process gaps, or architecture blind spots."
     evidence: "Structural characteristics change: 17 files modified, 6 commits, 1 final Critic review. framework-observations/ contains zero observations from that change. The user had to ask 3 explicit retrospective questions to surface any learnings."
     proposed_action: "Step 7 (post-change retrospective) added to Directional Change Protocol. Retrospective field added to change_log schema for directional entries. Both make learning a required side-effect of directional changes, not an opt-in activity."
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/SKILL.md"
 ---

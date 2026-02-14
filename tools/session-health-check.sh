@@ -9,7 +9,7 @@
 # Reports:
 #   - Actionable patterns with proposed actions and affected skills
 #   - priority: next backlog items
-#   - Overdue triage (>2 weeks since last_triage)
+#   - Overdue triage (>2 days since last_triage)
 #   - Stale deferred items (>4 weeks)
 #   - Untransferred fallback observation files
 #
@@ -193,7 +193,7 @@ try:
         else:
             triage_date = datetime.combine(last_triage, datetime.min.time())
         age_days = (datetime.now() - triage_date).days
-        if age_days > 14:
+        if age_days > 2:
             print(f'  WARNING: Observation triage overdue (last: {last_triage}, {age_days} days ago)')
         else:
             print(f'  Last triage: {last_triage} ({age_days} days ago)')

@@ -38,7 +38,7 @@ observations:
     description: "Node.js availability resolved 25 of 33 previously UNABLE criteria. The pre-eval runtime check works. Remaining 8 UNABLE are inherent to simulation (7 conversation-quality, 1 never-triggered)."
     evidence: "Previous eval: 79 PASS, 6 PARTIAL, 5 FAIL, 33 UNABLE. Current eval: 108 PASS, 4 PARTIAL, 3 FAIL, 8 UNABLE. Delta: +29 PASS, -2 PARTIAL, -2 FAIL, -25 UNABLE."
     proposed_action: "The 7 transcript-dependent criteria can only be resolved by interactive eval or transcript capture. Consider whether the cost of interactive eval is justified for the marginal 7 criteria, or whether 88% coverage (108/123) is sufficient for simulation-based runs."
-    status: noted
+    status: acted_on
 
   - type: critic_gap
     stage: 5

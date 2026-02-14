@@ -26,7 +26,7 @@ observations:
     description: "When coordinating work via subagent, the coordinating agent (me) did not apply sufficient critique to the subagent's output. I verified the observation file existed but did not check its completeness, despite the methodology specifying minimum observation counts."
     evidence: "I read eval results showing 'Observation capture file was created successfully' and accepted this without reading the observation file itself to verify completeness. The methodology's verification steps were documented but I didn't execute all of them."
     proposed_action: "When delegating evaluation to subagent: (1) After subagent completes, independently verify all methodology steps were followed, not just reported as complete. (2) Read observation file directly to verify count and substantiveness. (3) Compare to baseline eval's observation pattern if available."
-    status: noted
+    status: triaged
   - type: missing_guidance
     stage: "meta"
     severity: note

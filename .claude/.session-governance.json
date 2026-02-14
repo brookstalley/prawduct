@@ -1,57 +1,22 @@
 {
-  "product_dir": "/Users/brookstalley/source/prawduct",
-  "current_stage": "iteration",
-  "session_started": "2026-02-14T00:00:00Z",
   "framework_edits": {
     "files": [
       {
-        "path": "tools/compact-project-state.py",
-        "first_modified": "2026-02-14T21:49:06Z",
-        "last_modified": "2026-02-14T22:02:17Z",
-        "edit_count": 4
-      },
-      {
-        "path": "tools/compact-project-state.sh",
-        "first_modified": "2026-02-14T21:49:21Z",
-        "last_modified": "2026-02-14T21:49:21Z",
-        "edit_count": 1
-      },
-      {
         "path": "tools/session-health-check.sh",
-        "first_modified": "2026-02-14T21:49:35Z",
-        "last_modified": "2026-02-14T21:49:35Z",
-        "edit_count": 1
+        "first_modified": "2026-02-14T22:26:58Z",
+        "last_modified": "2026-02-14T22:26:59Z",
+        "edit_count": 2
       },
       {
-        "path": "skills/orchestrator/SKILL.md",
-        "first_modified": "2026-02-14T21:49:43Z",
-        "last_modified": "2026-02-14T21:49:57Z",
-        "edit_count": 3
-      },
-      {
-        "path": "templates/project-state.yaml",
-        "first_modified": "2026-02-14T21:50:04Z",
-        "last_modified": "2026-02-14T21:50:04Z",
-        "edit_count": 1
-      },
-      {
-        "path": "CLAUDE.md",
-        "first_modified": "2026-02-14T21:50:13Z",
-        "last_modified": "2026-02-14T21:50:13Z",
+        "path": "docs/evaluation-methodology.md",
+        "first_modified": "2026-02-14T22:27:01Z",
+        "last_modified": "2026-02-14T22:27:01Z",
         "edit_count": 1
       }
     ],
-    "total_edits": 11
+    "total_edits": 3
   },
   "governance_state": {
-    "chunks_completed_without_review": 0,
-    "last_critic_review_chunk": null,
-    "last_frp_stage": "iteration",
-    "stage_transitions_without_frp": 0,
-    "observations_captured_this_session": 0,
-    "product_files_changed": 1,
-    "governance_checkpoints_due": [],
-    "last_product_file_edit": "2026-02-14T21:48:12Z",
-    "last_updated": "2026-02-14T22:02:17Z"
+    "last_updated": "2026-02-14T22:27:01Z"
   }
 }

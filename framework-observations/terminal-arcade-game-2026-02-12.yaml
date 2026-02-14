@@ -12,7 +12,7 @@ observations:
     description: "Several Builder and Orchestrator rubric criteria are inherently unable-to-evaluate in simulation evaluations. These criteria address gameplay feel, conversational naturalness, and cross-platform behavior — experiential qualities that require interactive testing. The rubric does not distinguish between simulation-evaluable and interactive-only criteria."
     evidence: "9 criteria marked UNABLE across Builder (3: player rendering, gameplay feel, cross-platform), Orchestrator (3: technical terminology naturalness, over-explaining, process weight), Iteration (1: high score visual integration), and Review Lenses (1: finding count). These were all simulation limitations, not framework failures, but they are indistinguishable from genuine gaps in the eval results."
     proposed_action: "Annotate rubric criteria with evaluation method requirement (simulation-ok vs requires-interactive). This would allow simulation evals to skip interactive-only criteria cleanly and track them separately for follow-up interactive evaluation."
-    status: noted
+    status: triaged
 
   - type: process_friction
     stage: 5
@@ -20,7 +20,7 @@ observations:
     description: "build_state.spec_compliance and build_state.reviews arrays remain empty after completing all 7 build chunks and a Stage 6 iteration. Governance checkpoints are defined but compliance tracking is not structured per-chunk in the project state file."
     evidence: "project-state.yaml has spec_compliance.requirements: [] and reviews: [] despite 7 completed build chunks with 224 tests and two defined governance checkpoints. Compliance was demonstrated through test suite growth (0->28->71->108->148->175->200->224) but not through structured per-chunk compliance records."
     proposed_action: "Consider whether Builder/Critic should populate spec_compliance and reviews entries in project-state.yaml after each chunk. This would provide audit trail without adding significant process weight. Watch for a second instance before acting."
-    status: noted
+    status: triaged
 
   - type: coverage
     stage: 3
@@ -36,7 +36,7 @@ observations:
     description: "C5 rubric criterion specifies user_expertise.domain_knowledge should be 'basic' for this scenario, but the test persona (Jordan Reyes) references Galaga mechanics accurately, which demonstrates more than 'basic' domain knowledge. The system assigned 'intermediate' which is defensible."
     evidence: "Rubric says domain_knowledge at basic (entertainment/game design is not their expertise). project-state.yaml has domain_knowledge: intermediate with evidence 'References Galaga by name and describes its mechanics accurately.' The persona knows what makes Galaga fun but cannot design difficulty curves — this is between basic and intermediate."
     proposed_action: "Consider updating the rubric to specify 'basic to intermediate' for domain_knowledge in this scenario, or add anchor examples to the expertise calibration scale to clarify the boundary between basic and intermediate domain knowledge."
-    status: noted
+    status: triaged
 
   - type: proportionality
     stage: 5
@@ -44,7 +44,7 @@ observations:
     description: "Game codebase reached 19 source files and 2182 lines for a terminal arcade game. While each module has a clear responsibility matching the build plan architecture, the module count is on the high end for a 'weekend fun project.' The framework's thoroughness in artifact generation drives implementation thoroughness."
     evidence: "Build plan specifies 17 source files in its project structure. Implementation has 19 (adding game.py and highscores.py). 14 test files with 224 tests. The per-module line count is reasonable (50-200 lines each), but the total investment is more 'well-engineered side project' than 'quick weekend hack.' This matches the framework's approach but may slightly overweight process for the risk level."
     proposed_action: "Monitor across evaluations. If low-risk products consistently produce more code than expected for their scope, consider whether the framework's artifact thoroughness is driving unnecessary implementation complexity."
-    status: noted
+    status: triaged
 
 skills_affected:
   - "tests/scenarios/terminal-arcade-game.md"

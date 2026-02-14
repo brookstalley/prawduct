@@ -450,6 +450,11 @@ change_log:
     classification: directional
     date: 2026-02-14
     retrospective: "Detection: The 'Eat Your Own Cooking' violation (parallel governance stacks) was visible for weeks but not detected by the learning system because observation types didn't include 'architectural inconsistency with stated principles.' The Structural Critique Protocol could have caught this but its trigger cadence (every 3 evals) was too low. Process: The phased implementation (hooks → Critic → artifacts → docs) worked well — each phase was independently testable. The Critic review found 4 stale cross-references, confirming that documentation freshness checks catch real issues. Architecture: The unified governance state (.session-governance.json) creates a single point of failure — if the state file is corrupted, all governance tracking is lost. The previous dual-file approach had natural redundancy. Mitigation: SessionStart cleanup creates a fresh file each session, limiting blast radius. Generalization: This pattern (parallel implementations for 'framework' and 'product' that should be unified) should be checked whenever new framework capabilities are added — does the capability apply identically to both contexts?"
+  - what: "Observation triage and threshold change: archived 11 resolved files, triaged 18 noted observations, reduced triage overdue threshold from 14 days to 2 days"
+    why: "27 active observation files with 67 observations had accumulated. 11 files were fully resolved but unarchived. 18 observations in noted status needed triage. The 14-day triage threshold was too long for the framework's rapid development pace — observations were going stale before being triaged."
+    blast_radius: "framework-observations/ (18 status transitions, 11 files archived), project-state.yaml (last_triage, 10 new backlog items), tools/session-health-check.sh (threshold), docs/evaluation-methodology.md (threshold)"
+    classification: process
+    date: 2026-02-14
 
 # =============================================================================
 # BUILD PLAN
@@ -605,7 +610,7 @@ iteration_state:
 # Items removed when acted on; deferred items reviewed periodically.
 
 observation_backlog:
-  last_triage: 2026-02-11
+  last_triage: 2026-02-14
   items:
     - observation_file: "framework-observations/2026-02-11-family-utility-eval-full.yaml"
       type: critic_gap
@@ -649,3 +654,73 @@ observation_backlog:
       priority: deferred
       rationale: "Partially fixed by restructuring in recent commits. Review if recurs."
       added: 2026-02-11
+    - observation_file: "framework-observations/2026-02-11-eval-coordination-meta-learning.yaml"
+      type: coverage
+      summary: "Subagent coordination rigor — eval delegation lacks verification enforcement"
+      target_files: ["docs/evaluation-methodology.md"]
+      priority: deferred
+      rationale: "Niche issue; will resurface if it recurs in future evaluations."
+      added: 2026-02-14
+    - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
+      type: coverage
+      summary: "Game design guidance gap — no entertainment domain depth"
+      target_files: ["skills/domain-analyzer/SKILL.md"]
+      priority: deferred
+      rationale: "Address when adding entertainment domain depth or dynamic domain generation improvements."
+      added: 2026-02-14
+    - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
+      type: applicability
+      summary: "UI discovery questions reference web/mobile — inapplicable to terminal games"
+      target_files: ["skills/domain-analyzer/SKILL.md"]
+      priority: deferred
+      rationale: "Address with consumer-mobile-app scenario which will test modality-appropriate discovery."
+      added: 2026-02-14
+    - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
+      type: coverage
+      summary: "Review Lens findings not persisted to project-state.yaml"
+      target_files: ["skills/review-lenses/SKILL.md", "skills/orchestrator/SKILL.md"]
+      priority: deferred
+      rationale: "Related to existing Critic-Review Lenses integration backlog item."
+      added: 2026-02-14
+    - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
+      type: proportionality
+      summary: "Simulation eval time disproportionate for simple products"
+      target_files: ["docs/evaluation-methodology.md"]
+      priority: deferred
+      rationale: "Address when refining evaluation methodology for efficiency."
+      added: 2026-02-14
+    - observation_file: "framework-observations/2026-02-12-the-human-interface-concern-type-minimal.yaml"
+      type: coverage
+      summary: "Minimal UI coverage gap — has_human_interface needs deeper modality support"
+      target_files: ["skills/domain-analyzer/SKILL.md", "templates/human-interface/"]
+      priority: deferred
+      rationale: "Address when deepening has_human_interface modalities beyond screen."
+      added: 2026-02-14
+    - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
+      type: rubric_issue
+      summary: "UNABLE criteria in simulation — rubric criteria not evaluable in simulation mode"
+      target_files: ["tests/scenarios/terminal-arcade-game.md"]
+      priority: deferred
+      rationale: "Existing backlog pattern (rubric_issue). Address in rubric refinement pass."
+      added: 2026-02-14
+    - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
+      type: process_friction
+      summary: "Empty spec_compliance/reviews in eval project-state — Builder governance gaps"
+      target_files: ["skills/builder/SKILL.md", "skills/critic/SKILL.md"]
+      priority: deferred
+      rationale: "Address when Builder governance matures."
+      added: 2026-02-14
+    - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
+      type: rubric_issue
+      summary: "domain_knowledge rubric criterion mismatch — game-specific knowledge scoring"
+      target_files: ["tests/scenarios/terminal-arcade-game.md"]
+      priority: deferred
+      rationale: "Rubric refinement; address alongside other rubric_issue items."
+      added: 2026-02-14
+    - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
+      type: proportionality
+      summary: "Game codebase size disproportionate — eval methodology needs size guidance"
+      target_files: ["docs/evaluation-methodology.md"]
+      priority: deferred
+      rationale: "Eval methodology refinement; address when adding eval efficiency improvements."
+      added: 2026-02-14

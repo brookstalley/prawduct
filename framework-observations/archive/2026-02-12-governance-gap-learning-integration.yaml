@@ -25,7 +25,7 @@ observations:
     description: "The Directional Change Protocol was designed retroactively — after discovering the gap, not before. The protocol would have caught the concern-based classification issues if it had existed. This validates the protocol's design but also demonstrates that governance gaps are only visible after they cause harm."
     evidence: "Self-application test: applying DCP to the concern-based classification reform retroactively confirms it would have caught the governance gap at plan stage."
     proposed_action: "No additional action needed. The Structural Critique Protocol already covers periodic self-audit of governance structures. The DCP + Check 7 + FRP dimension 6 close the specific gap."
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/critic/SKILL.md"
   - "skills/orchestrator/SKILL.md"
