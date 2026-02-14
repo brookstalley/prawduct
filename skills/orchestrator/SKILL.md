@@ -330,10 +330,8 @@ When all chunks are complete:
 
 7. Update `current_stage` to "iteration".
 
-8. **Compact project state.** Archive completed build entries to keep project-state.yaml readable:
-   - Chunks: compact completed entries to `{id, name, status}`. Full details preserved in `artifacts/build-plan.md`.
-   - Reviews: compact reviews with all findings resolved/deferred to `{chunk_id, summary, deferred_items}`.
-   - Review findings: compact resolved entries to `{stage, lens, summary, deferred_count}`. Preserve entries with deferred findings in full.
+8. **Compact project state.** Run `tools/compact-project-state.sh` to archive completed build entries.
+   Verify with `--dry-run` first if the project has deferred findings to preserve.
 
 **Transition to Stage 6** when all chunks are complete, all tests pass, and the product is presented to the user.
 
@@ -408,7 +406,7 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 5. **Verify no regressions.** Run all tests after every change. If a test fails, fix the regression before proceeding.
 
-6. **Update iteration state.** Add an entry to `project-state.yaml` → `iteration_state.feedback_cycles` with the feedback, classification, affected artifacts/chunks, and status. If `feedback_cycles` has more than 10 completed entries, compact completed entries to `{feedback (first sentence), classification, status}`. If `change_log` has more than 20 entries, summarize older entries — keep the 10 most recent plus a summary block; preserve directional entries and retrospectives verbatim.
+6. **Update iteration state.** Add an entry to `project-state.yaml` → `iteration_state.feedback_cycles` with the feedback, classification, affected artifacts/chunks, and status. Run `tools/compact-project-state.sh --section change_log --section feedback_cycles` if session-health-check reports state warnings.
 
 7. **Check for "done."** After each iteration cycle, ask: "Anything else you'd like to change?" For low-risk products, this is lightweight. Don't over-process: "Want to tweak anything?" is fine.
 
@@ -573,7 +571,8 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory.
 3. **Check documentation health.** For projects that have a `docs/doc-manifest.yaml`: quick-scan for any `last_validated` date older than 30 days. If found, mention it during orientation: "N Tier 1 docs haven't been validated in over 30 days: [list]. Worth a freshness check?" This is lightweight — don't block the session, just surface the signal.
 4. **Run session health check:** Run `tools/session-health-check.sh` and include relevant findings in your orientation. The tool reports actionable observation patterns with proposed actions, priority:next backlog items, overdue triage, stale deferred items, untransferred fallback observation files, and infrastructure health (observation archive backlog, stale observations, working notes freshness). Infrastructure warnings are informational — mention them if present (e.g., "4 resolved observation files are ready to archive. Run `tools/update-observation-status.sh --archive-all` to clean up.") but don't interrupt workflow for them.
-4a. **Surface actionable patterns.** When `PATTERNS_REQUIRING_ACTION > 0`, present actionable patterns to the user during orientation:
+4a. **Handle state warnings.** If the health check reports `STATE_WARNINGS > 0`, run `tools/compact-project-state.sh --dry-run` and present the preview to the user. Compact with their approval.
+4b. **Surface actionable patterns.** When `PATTERNS_REQUIRING_ACTION > 0`, present actionable patterns to the user during orientation:
    - For each pattern: synthesize the proposed actions into a concrete recommendation naming affected skill files. Don't dump raw observation text — distill it.
    - Present as: "The learning system detected N patterns requiring action: [brief summary per pattern with recommendation]."
    - User decides: **act now** (triggers a Stage 6 change with normal Critic governance) or **defer** (pattern stays in backlog, resurfaces only if further observations accumulate).

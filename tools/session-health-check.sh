@@ -488,6 +488,9 @@ STATE_WARNINGS: 0")
 
     echo "$state_health_output" | grep -v "^STATE_WARNINGS:"
     state_warnings=$(echo "$state_health_output" | grep "^STATE_WARNINGS:" | head -1 | sed 's/.*: //')
+    if [[ "${state_warnings:-0}" -gt 0 ]]; then
+        echo "  ACTION: Run 'tools/compact-project-state.sh --dry-run' to preview compaction."
+    fi
     echo ""
 fi
 

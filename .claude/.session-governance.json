@@ -1,100 +1,57 @@
 {
+  "product_dir": "/Users/brookstalley/source/prawduct",
+  "current_stage": "iteration",
+  "session_started": "2026-02-14T00:00:00Z",
   "framework_edits": {
     "files": [
       {
-        "path": "skills/orchestrator/SKILL.md",
-        "first_modified": "2026-02-14T20:50:47Z",
-        "last_modified": "2026-02-14T21:23:49Z",
-        "edit_count": 7
-      },
-      {
-        "path": "skills/critic/SKILL.md",
-        "first_modified": "2026-02-14T20:53:57Z",
-        "last_modified": "2026-02-14T20:53:57Z",
-        "edit_count": 1
-      },
-      {
-        "path": "tools/record-critic-findings.sh",
-        "first_modified": "2026-02-14T20:54:29Z",
-        "last_modified": "2026-02-14T20:54:29Z",
-        "edit_count": 1
-      },
-      {
-        "path": "tools/critic-reminder.sh",
-        "first_modified": "2026-02-14T20:54:35Z",
-        "last_modified": "2026-02-14T21:07:15Z",
-        "edit_count": 5
-      },
-      {
-        "path": "templates/project-state.yaml",
-        "first_modified": "2026-02-14T20:55:45Z",
-        "last_modified": "2026-02-14T20:55:45Z",
-        "edit_count": 1
-      },
-      {
-        "path": "templates/product-brief.md",
-        "first_modified": "2026-02-14T20:56:27Z",
-        "last_modified": "2026-02-14T20:56:53Z",
-        "edit_count": 2
-      },
-      {
-        "path": "templates/data-model.md",
-        "first_modified": "2026-02-14T20:56:37Z",
-        "last_modified": "2026-02-14T20:56:37Z",
-        "edit_count": 1
-      },
-      {
-        "path": "skills/artifact-generator/SKILL.md",
-        "first_modified": "2026-02-14T20:58:04Z",
-        "last_modified": "2026-02-14T20:58:04Z",
-        "edit_count": 1
-      },
-      {
-        "path": "CLAUDE.md",
-        "first_modified": "2026-02-14T20:58:27Z",
-        "last_modified": "2026-02-14T21:01:52Z",
-        "edit_count": 5
-      },
-      {
-        "path": "docs/high-level-design.md",
-        "first_modified": "2026-02-14T21:02:08Z",
-        "last_modified": "2026-02-14T21:02:30Z",
-        "edit_count": 3
-      },
-      {
-        "path": "docs/self-improvement-architecture.md",
-        "first_modified": "2026-02-14T21:02:35Z",
-        "last_modified": "2026-02-14T21:07:21Z",
+        "path": "tools/compact-project-state.py",
+        "first_modified": "2026-02-14T21:49:06Z",
+        "last_modified": "2026-02-14T22:02:17Z",
         "edit_count": 4
       },
       {
-        "path": "docs/doc-manifest.yaml",
-        "first_modified": "2026-02-14T21:03:05Z",
-        "last_modified": "2026-02-14T21:03:55Z",
-        "edit_count": 6
-      },
-      {
-        "path": ".claude/hooks/critic-gate.sh",
-        "first_modified": "2026-02-14T21:07:11Z",
-        "last_modified": "2026-02-14T21:07:11Z",
+        "path": "tools/compact-project-state.sh",
+        "first_modified": "2026-02-14T21:49:21Z",
+        "last_modified": "2026-02-14T21:49:21Z",
         "edit_count": 1
       },
       {
         "path": "tools/session-health-check.sh",
-        "first_modified": "2026-02-14T21:07:27Z",
-        "last_modified": "2026-02-14T21:07:27Z",
+        "first_modified": "2026-02-14T21:49:35Z",
+        "last_modified": "2026-02-14T21:49:35Z",
         "edit_count": 1
       },
       {
-        "path": "framework-observations/schema.yaml",
-        "first_modified": "2026-02-14T21:23:42Z",
-        "last_modified": "2026-02-14T21:23:42Z",
+        "path": "skills/orchestrator/SKILL.md",
+        "first_modified": "2026-02-14T21:49:43Z",
+        "last_modified": "2026-02-14T21:49:57Z",
+        "edit_count": 3
+      },
+      {
+        "path": "templates/project-state.yaml",
+        "first_modified": "2026-02-14T21:50:04Z",
+        "last_modified": "2026-02-14T21:50:04Z",
+        "edit_count": 1
+      },
+      {
+        "path": "CLAUDE.md",
+        "first_modified": "2026-02-14T21:50:13Z",
+        "last_modified": "2026-02-14T21:50:13Z",
         "edit_count": 1
       }
     ],
-    "total_edits": 40
+    "total_edits": 11
   },
   "governance_state": {
-    "last_updated": "2026-02-14T21:23:49Z"
+    "chunks_completed_without_review": 0,
+    "last_critic_review_chunk": null,
+    "last_frp_stage": "iteration",
+    "stage_transitions_without_frp": 0,
+    "observations_captured_this_session": 0,
+    "product_files_changed": 1,
+    "governance_checkpoints_due": [],
+    "last_product_file_edit": "2026-02-14T21:48:12Z",
+    "last_updated": "2026-02-14T22:02:17Z"
   }
 }

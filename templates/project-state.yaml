@@ -11,6 +11,7 @@
 # the discovery process. Fields start as null and are filled as decisions
 # are made. Partially-populated state is normal and expected throughout
 # discovery — the system works productively with incomplete state.
+# Compaction: tools/compact-project-state.sh implements LIFECYCLE rules mechanically.
 
 # =============================================================================
 # CLASSIFICATION

@@ -49,6 +49,8 @@ prawduct/
 │   ├── update-observation-status.sh   # Observation lifecycle transitions and archiving
 │   ├── critic-reminder.sh             # Verify Critic evidence before framework commits
 │   ├── observation-analysis.sh        # Parse observations, detect patterns, produce summary
+│   ├── compact-project-state.py       # Mechanical compaction of growing project-state.yaml sections per LIFECYCLE rules
+│   ├── compact-project-state.sh       # Bash wrapper for compact-project-state.py
 │   ├── test-integrity-checker.sh      # [planned Phase 2] Monitor test count, assertion trends
 │   ├── doc-architecture-validator.sh  # [planned Phase 2] Enforce tier system, manifest compliance
 │   ├── boundary-checker.sh            # [planned Phase 2] Verify architectural boundary respect
