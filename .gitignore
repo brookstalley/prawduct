@@ -3,3 +3,4 @@
 .claude/.critic-findings.json
 .claude/.session-edits.json
 .claude/.orchestrator-activated
+.claude/.session-governance.json
