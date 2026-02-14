@@ -159,7 +159,8 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 **Built and operational:**
 - Full stage pipeline: Stages 0-6 (Intake through Iteration)
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (context-sensitive governance), Review Lenses (all five)
-- Two-layer classification: 5 structural characteristics for artifact routing (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth via Universal Discovery Dimensions and Structural Amplification Rules; has_human_interface and runs_unattended fully supported with templates
+- Two-layer classification: 5 structural characteristics for artifact routing (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth via Universal Discovery Dimensions and Structural Amplification Rules
+- Three-layer artifact generation: amplification rules (what to generate) + process constraints (quality properties) + optional template reference (proven structures). All 5 characteristics have amplification rules and process constraints; has_human_interface and runs_unattended additionally have templates as structural reference
 - Observation capture system with triage and session resumption integration; observation backlog available for all projects (not framework-only)
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
@@ -168,7 +169,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
-- **v1-widen (13 items):** Create exposes_programmatic_interface and has_multiple_party_types templates; Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic sub-components and Review Lenses integration; Builder structural-characteristic chunk patterns; mechanical sub-check tools; consumer-mobile-app scenario; modular artifact updates
+- **v1-widen (8 items):** Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic-Review Lenses integration; Review Lenses variable-depth and rotating emphasis; consumer-mobile-app scenario; Artifact Generator modular artifact updates
 - **v1-validation (3 items):** Full V1 validation (all scenarios end-to-end); Builder parallel execution and incremental builds
 - **v1.5 (5 items):** C7 Trajectory Monitor; regulatory discovery; cost awareness; accessibility enforcement; agent agnosticism
 

@@ -59,6 +59,8 @@ After each chunk, diff the implementation against artifact specifications.
 - Non-functional techniques match `nonfunctional-requirements.md`: any NFR that specifies an implementation approach (rendering strategy, caching approach, data access pattern) is implemented as specified. NFR performance targets are verifiable via tests or acceptance criteria.
 - Test scenarios match `test-specifications.md`: every scenario for this chunk has a corresponding test.
 - **Builder recorded spec compliance:** Verify that `build_state.spec_compliance.requirements` contains entries with `chunk_id` matching the current chunk. If not, that is a **WARNING**.
+- **Process constraint verification:** Verify that all process constraints for active structural characteristics (defined in Artifact Generator's "Structural Amplification Rules for Artifact Generation" section) are satisfied in generated artifacts and implementation. For example: if `runs_unattended` is active, verify every pipeline stage has failure handling; if `has_human_interface` is active, verify all user-facing states are specified.
+- **Operational readiness** (when `runs_unattended` or `exposes_programmatic_interface` is active): Verify monitoring is implemented (not just specified), failure recovery paths are tested, alerting thresholds are configured, deployment procedure is documented and reproducible. Missing operational implementation for an active operational characteristic is a **WARNING**.
 
 ### Check 2: Test Integrity
 
@@ -90,6 +92,7 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - Does this change stay within the stated scope? Changes that drift into adjacent areas without acknowledging the expanded scope are a warning.
 - A new question added to discovery must be worth the user patience it costs.
 - A new artifact section must carry its weight — does it prevent a real problem or just demonstrate thoroughness?
+- **Documentation integrity:** Verify documents follow the tier system (Tier 1/2/3), no orphan documents exist in canonical space, Source of Truth docs match implementation. If a change modifies behavior, verify that any documentation describing that behavior is updated in the same change. Orphan documents (not tracked in doc-manifest.yaml or artifact_manifest) in canonical directories are a **WARNING**.
 
 ### Check 4: Proportionality
 
@@ -107,7 +110,7 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 
 **Applies:** Always. The specific focus depends on context.
 
-**For product builds:** Are the artifacts internally consistent? Do changes to one artifact cascade correctly to dependent artifacts? Does implementation match specs?
+**For product builds:** Are the artifacts internally consistent? Do changes to one artifact cascade correctly to dependent artifacts? Does implementation match specs? **Architectural consistency:** Verify module boundaries match the architecture artifact, dependency directions are respected (no imports against the designed dependency flow), and data flow matches designed patterns. Implementation that contradicts the architecture artifact is **BLOCKING**.
 
 **For skill/instruction changes:** Does this change maintain the skill's internal logic and its contracts with other skills?
 
@@ -310,7 +313,14 @@ After each review cycle, update `project-state.yaml` → `build_state.reviews` w
 
 ## Extending This Skill
 
-When adding new checks:
+**Prefer strengthening existing checks over adding new enumerated sub-components.** The 9 checks are general-purpose — when a new concern surfaces, first ask whether an existing check can absorb it by expanding its scope. Architectural consistency is part of Coherence (Check 5), not a separate checker. Operational readiness is part of Spec Compliance (Check 1), not a separate checker. Documentation integrity is part of Scope Discipline (Check 3), not a separate checker. New checks should only be added when a concern is genuinely orthogonal to all existing checks.
+
+When strengthening an existing check:
+1. Add the new concern to the check's "What to check" or description section.
+2. Specify when the concern applies (which structural characteristics, stages, or contexts).
+3. Define severity guidelines consistent with the check's existing severity approach.
+
+When adding a genuinely new check:
 1. Add a "Check N: [Name]" section following the pattern of existing checks.
 2. Add the check to the Applicability table.
 3. Define mechanical checks (binary pass/fail) separately from judgment checks.

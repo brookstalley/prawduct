@@ -89,7 +89,11 @@ Update `build_state.test_tracking`: `test_count`, `assertion_count`, `test_files
 
 **Step 5b: Spec compliance — MANDATORY**
 
-Update `build_state.spec_compliance.requirements` with concrete evidence for each requirement this chunk implements. **This step enforces HR3 (No Documentation Fiction) — claiming governance without recording evidence is documentation fiction.** Each entry must follow this format:
+Update `build_state.spec_compliance.requirements` with evidence for each requirement this chunk implements. **This step enforces HR3 (No Documentation Fiction) — claiming governance without recording evidence is documentation fiction.**
+
+**Format by risk level:**
+
+For **medium and high-risk** products, use per-requirement entries with specific test evidence:
 
 ```yaml
 - requirement: "Record scores for multiple players in a game session"  # from test-specifications.md
@@ -100,6 +104,21 @@ Update `build_state.spec_compliance.requirements` with concrete evidence for eac
 ```
 
 The `evidence` field must reference a specific test file and line (or behavior) that proves implementation. "Tests pass" is not evidence — the specific test name and location is.
+
+For **low-risk** products, a chunk-level compliance summary is acceptable:
+
+```yaml
+- chunk_id: "chunk-03"
+  requirements_implemented:
+    - "Record scores for multiple players"
+    - "Display running totals"
+  test_coverage: "tests/score-recording.test.js (3 tests covering all requirements)"
+  status: implemented
+```
+
+The chunk-level format is lighter but still proves that requirements were tracked and tested. It must list the specific requirements addressed (not "all requirements") and reference the test file(s) providing coverage.
+
+**The key constraint (all risk levels):** Every requirement this chunk addresses must appear in spec_compliance. Missing entries mean the Critic cannot verify compliance — the Builder's claim of "done" has no evidence trail. The Critic checks for this and flags its absence as a WARNING.
 
 **Step 5c: Chunk status**
 
@@ -180,7 +199,8 @@ Resume from the current chunk. If the current chunk's status is "review," wait f
 
 Remaining Builder enhancements are tracked in `project-state.yaml` → `build_plan.remaining_work`.
 
-When adding new chunk patterns (e.g., for API endpoints, pipeline stages, multi-party flows):
-1. Add a section under the chunk execution instructions describing the structural-characteristic-specific pattern.
-2. The pattern should specify: how to read characteristic-specific artifacts, what test patterns apply, and how chunk acceptance criteria map to characteristic-specific specs.
-3. Characteristic-specific chunks follow the same general cycle (read specs → write tests → implement → verify → update state).
+**Structural-characteristic chunk patterns** are defined in the Artifact Generator's Phase D section (chunk ordering by characteristic). The Builder follows these patterns — it does not define them. The Builder's responsibility is to execute whatever chunk pattern the build plan specifies, using the same general cycle for all characteristics: read specs → write tests → implement → verify → update state.
+
+When extending Builder capabilities:
+- Improvements to chunk execution process apply to all characteristics equally.
+- If a characteristic needs special handling during build (e.g., specific test patterns for API contracts), add guidance to the relevant step of the chunk execution process, not as a separate characteristic-specific section.

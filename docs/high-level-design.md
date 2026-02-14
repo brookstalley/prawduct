@@ -46,7 +46,7 @@ Not all components are equally essential for a working v1:
 
 - **V1 Phase 1 (vertical slice):** C1 (Orchestrator Stages 0-3), C2 (Domain Analyzer), C3 (Artifact Generator Phases A-C), C4 (Review Lenses), C5 (Project State), C6 governance checks (Scope Discipline, Proportionality, Coherence, Learning/Observability, Generality, Instruction Clarity, Cumulative Health), C8a (Observation Capture)
 - **V1 Phase 2 (build loop):** C1 (Orchestrator Stages 4-6), C3 (Artifact Generator Phase D — build planning), C3b (Builder — code generation from build plans), C6 build-stage checks (Spec Compliance, Test Integrity added to always-applicable checks), build-phase observation types
-- **V1 Phase 2 (widen):** C6 remaining sub-components (architectural consistency, documentation controller, operational readiness), additional product shapes, mechanical tools (unified governance hooks now built — see C6 section; remaining sub-check tools still deferred)
+- **V1 Phase 2 (widen):** Orchestrator sophistication (pushback, prior art, pacing, reclassification), Critic-Review Lenses integration, Review Lenses variable-depth and rotating emphasis, additional test scenarios, Artifact Generator modular updates
 - **V1.5:** C7 (Trajectory Monitor) — architecturally accommodate but implement after v1 validates
 - **V2:** C8 full (Learning System with pattern detection, validation, incorporation) — requires data from many projects; premature before user base exists
 
@@ -64,11 +64,13 @@ Each structural characteristic triggers fundamentally different artifact needs. 
 
 | Characteristic | What it triggers | Why structural |
 |----------------|-----------------|----------------|
-| **`has_human_interface`** | Screen specs, IA, design direction, accessibility, onboarding | UI products need a fundamentally different artifact set than headless systems |
+| **`has_human_interface`** | Interface structure, interaction specs, design direction, accessibility, onboarding (modality-dependent) | Products with user-facing interfaces need a fundamentally different artifact set than headless systems |
 | **`runs_unattended`** | Scheduling, monitoring, failure recovery, configuration specs | Unattended systems need operational artifacts that interactive products don't |
-| **`exposes_programmatic_interface`** | API contracts, integration guide, versioning, SLAs | APIs need consumer-facing artifacts with backward compatibility constraints |
-| **`has_multiple_party_types`** | Per-party specs, interaction model, trust boundaries | Multi-party products need per-party analysis and trust boundary artifacts |
-| **`handles_sensitive_data`** | Deepened security model, potential regulatory artifacts | Sensitive data changes the depth and scope of security-related artifacts |
+| **`exposes_programmatic_interface`** | API contracts, versioning strategy, consumer documentation | APIs need consumer-facing artifacts with backward compatibility constraints |
+| **`has_multiple_party_types`** | Per-party experience specs, interaction model, trust boundaries | Multi-party products need per-party analysis and trust boundary artifacts |
+| **`handles_sensitive_data`** | Deepened security model, data lifecycle, audit requirements | Sensitive data changes the depth and scope of security-related artifacts |
+
+Each characteristic uses a three-layer approach for artifact generation: **amplification rules** (what to generate), **process constraints** (quality properties that must hold), and **template reference** (optional proven structures). Templates are an optimization for well-tested modalities, not a requirement. Characteristics without templates use amplification rules + process constraints to guide dynamic generation.
 
 **What is NOT structural:** Properties like "constrained environment" and "external integrations" are not structural — they don't trigger fundamentally different artifact sets. They are domain-specific characteristics handled by the dynamic depth layer.
 
@@ -384,36 +386,15 @@ Project State
 
 **Purpose:** Automated quality enforcement during development. The embodiment of the Hard Rules from principles.md.
 
-**Sub-components:**
+**Check architecture:** The Critic uses 9 general-purpose checks (Spec Compliance, Test Integrity, Scope Discipline, Proportionality, Coherence, Learning/Observability, Generality, Instruction Clarity, Cumulative Health) with an applicability table that determines which checks fire based on project context. Rather than enumerated sub-components, each check strengthens to absorb new concerns:
 
-**Spec Compliance Auditor**
-- After each work unit, diffs implementation against specification
-- Produces explicit checklist: specified → implemented → discrepancy
-- Discrepancies must be resolved: fix implementation or formally amend spec with rationale
+- **Spec Compliance** (Check 1): Diffs implementation against specs, produces requirement checklists. Also handles operational readiness verification (monitoring implemented, failure recovery tested, alerting configured) when `runs_unattended` or `exposes_programmatic_interface` is active. Verifies process constraints for active structural characteristics.
+- **Test Integrity** (Check 2): Monitors for corruption patterns, enforces test count trends, checks behavioral testing quality.
+- **Scope Discipline** (Check 3): Catches out-of-scope work, unlisted dependencies, unspecified patterns. Also handles documentation integrity (tier system compliance, no orphan documents, Source of Truth currency).
+- **Coherence** (Check 5): Artifact/skill internal consistency and cross-references. For product builds, also checks architectural consistency (module boundaries, dependency directions, data flow patterns match architecture artifact).
+- **Learning/Observability** (Check 6): Preserves the framework's ability to detect and learn from problems.
 
-**Test Integrity Checker**
-- Monitors for corruption patterns: deletion, commenting, assertion weakening, trivial assertions, testing mocks instead of behavior
-- Mechanical checks: test count trend, assertion count per test, coverage metrics
-- Flags all test modifications with explanation requirement
-- Enforces tests-alongside-implementation
-
-**Architectural Consistency Checker**
-- Validates implementation against architecture artifact
-- Checks: module boundary respect, dependency direction, data flow, separation of concerns
-- Flags violations with specific evidence
-
-**Documentation Controller**
-- Enforces Tier 1/2/3 system
-- Prevents ad hoc document creation in canonical doc space
-- Validates Source of Truth documents against implementation
-- Sweeps ephemeral documents for expiration
-- Maintains artifact manifest in Project State
-
-**Operational Readiness Checker** (for automations, APIs, and services)
-- Verifies monitoring is implemented, not just specified
-- Verifies failure recovery paths are tested
-- Verifies alerting thresholds are configured
-- Verifies deployment procedure is documented and reproducible
+This general-check approach follows the Generality Over Enumeration principle — new concerns strengthen existing checks rather than creating enumerated sub-components.
 
 **Review cycle:**
 1. Agent completes a defined work unit
@@ -616,13 +597,16 @@ Phase 1 validated the architecture. Phase 2 widening has delivered:
 
 Remaining Phase 2 widening (tracked in `project-state.yaml` → `remaining_work`, phase: v1-widen):
 
-- Create `exposes_programmatic_interface` templates (4 templates).
-- Create `has_multiple_party_types` templates (3 templates).
 - Orchestrator sophistication: pushback, prior art, pacing, reclassification.
-- Critic sub-components: architectural consistency, documentation controller, operational readiness.
 - Critic-Review Lenses integration; Review Lenses variable-depth and rotating emphasis.
-- Builder structural-characteristic chunk patterns.
-- Mechanical sub-check tools (5 scripts).
+- Artifact Generator modular artifact updates.
+- Consumer mobile app test scenario.
+
+Previously planned items absorbed into general capabilities:
+- `exposes_programmatic_interface` and `has_multiple_party_types` templates → replaced by three-layer artifact generation (amplification rules + process constraints + optional templates).
+- Critic sub-components → absorbed into existing general checks (Coherence, Spec Compliance, Scope Discipline).
+- Builder structural-characteristic chunk patterns → absorbed into Artifact Generator Phase D.
+- Mechanical sub-check tools → replaced by strengthening general Critic checks; mechanical enforcement via hooks is already built.
 
 ### Phase 3: Full V1
 
@@ -688,5 +672,5 @@ These are acknowledged gaps that require further work. Per our own principles, w
 
 4. **Multi-user collaboration.** Current design assumes single user. Team scenarios need coordination design. [v1.5 or later — no user projects to learn from yet.]
 5. **Structural characteristics we haven't tested.** The 5 structural characteristics cover artifact routing, but domain-specific depth is dynamic and untested across diverse domains (games, content platforms, developer tools, IoT-adjacent, data-intensive products). [Will surface during Phase 2 widening via `missing_guidance` observations. Dynamic domain depth should naturally adapt — that's the design — but verification is needed.]
-6. **Minimum viable Critic.** What's the smallest useful Critic for v1? Likely: spec compliance + test integrity + doc controller. Architectural consistency and operational readness can follow. [Deferred to Phase 2 of bootstrapping.]
+6. **~~Minimum viable Critic.~~** Resolved: The Critic uses 9 general-purpose checks with applicability determined by project context. Architectural consistency is part of Coherence (Check 5), operational readiness is part of Spec Compliance (Check 1), documentation integrity is part of Scope Discipline (Check 3). No enumerated sub-components needed.
 8. **Observation capture during product sessions requires framework repo write access.** The Orchestrator instructs writing observation files to `{prawduct-repo}/framework-observations/`, but during product sessions the LLM may be working in a different directory without access to the framework repo. V1 mitigation: fallback to writing observations in the user's project `working-notes/` for manual transfer. Proper fix: a mechanism (MCP server, post-session hook, or shared observation store) that doesn't require direct filesystem access to the framework repo. [Will surface during real product usage.]

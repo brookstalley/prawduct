@@ -181,11 +181,13 @@ Are there regulations that apply? Even if the user isn't sure, surface likely re
 
 #### 10. Product Identity
 What is this product called? What's its character? Every product has an identity —
-the name users know it by. For user-facing products, identity extends to visual style,
-mood, and the feeling the product projects. For tools and automations, it may be just
-a name and interaction personality. Identity preferences are creative choices where the
-user is the expert — prefer asking over inferring, especially for user-facing products
-where identity shapes the experience.
+the name users know it by. For products with user-facing surfaces (screens, terminals,
+voice, APIs), identity extends to the style, mood, and feeling the product projects —
+visual style for screen products, interaction personality for CLIs, tone for voice
+interfaces, API design voice for developer-facing products. For background systems
+and automations, it may be just a name and output formatting style. Identity
+preferences are creative choices where the user is the expert — prefer asking over
+inferring, especially for products where identity shapes the experience.
 
 ### Structural Amplification Rules
 
@@ -198,9 +200,9 @@ Each structural characteristic amplifies specific universal dimensions. When a s
 
 **When `has_human_interface` is active — amplify:**
 - **Users (dimension 1):** Physical context matters — not just the device but the conditions: dark room, noisy commute, wet hands in a kitchen, glancing while driving. Frame in context: "At the game table? In bed? At a desk?"
-- **Core experience (dimension 2):** Interaction patterns, empty states, first-run experience. What does the product look like before any data exists?
-- **Performance (dimension 6):** Responsiveness expectations. For games: frame rate. For apps: perceived latency. For terminals: rendering speed.
-- **Product Identity (dimension 10):** Visual identity matters most for user-facing products — style, mood, color direction, and personality directly shape how the product feels. Surface these early; they're harder to change after build starts.
+- **Core experience (dimension 2):** Interaction patterns, before-data states, first-use experience. What does the user encounter before any data exists? For screen products: empty screen states. For terminal products: initial prompt or display. For minimal interfaces: default indicator states.
+- **Performance (dimension 6):** Responsiveness expectations appropriate to the product's platform. For games: frame rate. For screen apps: perceived latency. For terminals: rendering speed. For firmware: response time to physical input.
+- **Product Identity (dimension 10):** Identity matters most for products with user-facing surfaces — style, mood, and personality directly shape how the product feels. For screen products: visual direction, color, typography. For terminal products: output formatting, interaction style. For minimal interfaces: feedback patterns, indicator behavior. Surface these early; they're harder to change after build starts.
 
 **When `exposes_programmatic_interface` is active — amplify:**
 - **Users (dimension 1):** Consumer types — internal services, external developers, partners, the public. This determines documentation needs and backward compatibility requirements.

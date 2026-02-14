@@ -72,23 +72,23 @@ For each lens, produce findings in this format:
 **Core question:** Is the experience intuitive? Are all states handled?
 
 **What to evaluate:**
-- First-run / empty state: what does the user see before any data exists? Is this addressed?
+- First-use / before-data state: what does the user encounter before any data exists? Is this addressed? (For screen products: empty screens. For terminals: initial prompts. For APIs: first-call responses. For automations: first-run output.)
 - Error states: what happens when things go wrong? Are errors helpful?
-- Loading states: if anything takes time, is the user informed?
-- Accessibility: for UI applications, always produce a finding about accessibility. If accessibility has been addressed, acknowledge it as a note. If it hasn't been considered, raise it as a warning. Check: keyboard navigation, screen reader support, color contrast, touch target sizes — at the level of "has this been thought about," not a full audit.
-- Onboarding: does a new user know what to do?
+- Loading / processing states: if anything takes time, is the user informed? (For screen products: loading indicators. For CLIs: progress output. For APIs: appropriate status codes and retry guidance.)
+- Accessibility: for products with user-facing surfaces, always produce a finding about accessibility. If accessibility has been addressed, acknowledge it as a note. If it hasn't been considered, raise it as a warning. Relevant checks depend on the surface: keyboard navigation and screen readers for screen products, clear output formatting for CLIs, descriptive error messages for APIs — at the level of "has this been thought about," not a full audit.
+- Onboarding: does a new user know what to do? For screen products: visual guidance. For CLIs: help text and examples. For APIs: getting-started documentation.
 - Consistency: are interaction patterns consistent across flows?
-- Visual/interaction identity: If the product references another product's visual style or interaction pattern, are the specific elements defined concretely enough to implement without subjective judgment? Layout proportions, spacing ratios, animation timing, and similar parameters should be specified, not assumed.
+- Design identity: If the product references another product's style or interaction pattern, are the specific elements defined concretely enough to implement without subjective judgment? Layout proportions, spacing ratios, animation timing, and similar parameters should be specified, not assumed.
 
 **Typical findings:**
-- Empty state not addressed — user sees a blank screen (warning)
+- Before-data state not addressed — user encounters an uninformative initial state (warning)
 - Error messages are generic "something went wrong" (warning)
-- No consideration of accessibility (warning for UI apps, note for utilities)
-- Flow requires user to already know how the app works (note)
+- No consideration of accessibility (warning for products with user-facing surfaces, note for pure backend)
+- Flow requires user to already know how the product works (note)
 
 **What this lens does NOT do:** It doesn't evaluate whether the *right* thing is being built (that's Product) or whether the architecture supports it (that's Architecture).
 
-**When to apply lightly:** For products without `has_human_interface` (APIs, unattended systems), the Design Lens has limited applicability. Apply it to any user-facing surfaces (API error messages, configuration interfaces) but don't force UI-thinking onto a system with no user interface.
+**When to apply lightly:** For products without `has_human_interface` (headless services, unattended systems), the Design Lens has limited applicability. Apply it to any user-facing surfaces (API error messages, configuration interfaces, CLI help text, log output formatting) but don't force screen-design thinking onto a system with no user-facing surface.
 
 ### Architecture Lens
 
@@ -212,19 +212,19 @@ The lenses shift focus from user-facing concerns to operational concerns. The co
 
 **Proportionality:** 8-15 total findings for a low-medium risk unattended system. Fewer than 8 likely misses operational concerns. More than 15 is over-reviewing for a side project. Blocking findings: 0-3 at most. **What NOT to raise:** UI/UX concerns about screens or navigation (unless `has_human_interface` is also active), multi-user collaboration features, enterprise-grade SLA requirements for a side project.
 
-### When `has_human_interface` (modality: screen) Is Active
+### When `has_human_interface` Is Active
 
-The lenses shift to emphasize user-facing quality: visual consistency, interaction completeness, accessibility, and state coverage. The Design Lens gets full engagement (not the light-touch treatment it receives for non-UI products).
+The lenses shift to emphasize user-facing quality: interaction completeness, accessibility, and state coverage. The Design Lens gets full engagement (not the light-touch treatment it receives for products without user-facing surfaces). Adapt the specific checks to the product's modality (screen, terminal, voice, spatial, minimal).
 
 | Lens | Adjustment |
 |------|------------|
-| **Product** | Evaluate whether screen flows map completely to core user needs. Check that every persona has a clear path through the interface. Check that v1 scope translates to a coherent set of screens (not a grab-bag of disconnected views). |
-| **Design** | **Full engagement** (not the reduced mode used for non-UI products). Evaluate: visual consistency across screens (Design Direction tokens applied uniformly), interaction patterns consistent across flows (same gesture = same result everywhere), empty states designed (not blank screens), error states helpful (not generic "something went wrong"), information hierarchy clear (primary content visually dominant). For games: evaluate game feel, visual feedback, and state clarity instead of form-and-navigation patterns. |
-| **Architecture** | Evaluate navigation architecture (can flows reach all screens?), data flow efficiency (are screens fetching data they don't need?), component reuse (are similar patterns implemented consistently?), and state management (can the UI reliably reflect data state across screens?). |
-| **Skeptic** | **Must always raise at least one accessibility finding** (what happens for users with disabilities — screen reader support, contrast, motor impairments?) **and at least one offline/degraded finding** (what happens with slow network, no network, partial data?). Also look for: platform-specific gotchas (iOS vs. Android behavior differences), screen state gaps (states that can occur but aren't designed), and cognitive load concerns (too many actions on one screen, unclear navigation). |
-| **Testing** | In addition to general criteria: every screen state (empty, loading, populated, error) needs at least one test scenario. Required tests: first-run experience (empty state → first action → populated state), navigation completeness (every screen reachable), and accessibility verification (contrast ratios, touch targets, screen reader labels). For each screen, at least one happy-path and one error-state test. |
+| **Product** | Evaluate whether interface flows map completely to core user needs. Check that every persona has a clear path through the interface. Check that v1 scope translates to a coherent set of interface elements (not a grab-bag of disconnected surfaces). |
+| **Design** | **Full engagement** (not the reduced mode used for non-interface products). Evaluate: consistency across the interface (design tokens or patterns applied uniformly), interaction patterns consistent across flows (same action = same result everywhere), before-data states designed (not blank or uninformative), error states helpful (not generic), information hierarchy clear (primary content or actions dominant). For games: evaluate game feel, visual feedback, and state clarity instead of form-and-navigation patterns. For terminals: evaluate output clarity, command discoverability, and help quality. For minimal interfaces: evaluate feedback clarity and input acknowledgment. |
+| **Architecture** | Evaluate interface navigation architecture (can flows reach all interface elements?), data flow efficiency (is the interface fetching data it doesn't need?), component reuse (are similar patterns implemented consistently?), and state management (can the interface reliably reflect data state?). |
+| **Skeptic** | **Must always raise at least one accessibility finding** (what happens for users with disabilities — appropriate to the modality: screen readers and contrast for screens, output readability for terminals, alternative feedback for minimal interfaces) **and at least one degraded-conditions finding** (what happens with slow network, no network, partial data, or degraded hardware conditions?). Also look for: platform-specific gotchas, interface state gaps (states that can occur but aren't designed), and cognitive load concerns. |
+| **Testing** | In addition to general criteria: every user-facing element state needs at least one test scenario (states are modality-dependent — see Artifact Generator process constraints). Required tests: first-use experience (before-data state → first action → populated state), navigation completeness (every interface element reachable), and accessibility verification (appropriate to modality). For each major interface element, at least one happy-path and one error-state test. |
 
-**Proportionality:** 6-12 total findings for a low-risk UI product. The Design Lens naturally produces more findings for screen-based products — that's expected. Blocking findings: 0-2 at most for low-risk. **What NOT to raise:** Backend/infrastructure concerns beyond what's needed to serve the UI, enterprise-grade performance optimization for a family app, complex state management patterns for simple products, concerns that apply only to non-UI products (pipeline stages, cron schedules).
+**Proportionality:** 6-12 total findings for a low-risk product with a human interface. The Design Lens naturally produces more findings for interface-heavy products — that's expected. Blocking findings: 0-2 at most for low-risk. **What NOT to raise:** Backend/infrastructure concerns beyond what's needed to serve the interface, enterprise-grade performance optimization for a family app, complex state management patterns for simple products, concerns that apply only to non-interface products (pipeline stages, cron schedules).
 
 ### When `has_multiple_party_types` Is Active
 

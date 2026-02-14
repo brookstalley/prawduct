@@ -298,15 +298,6 @@ artifact_manifest:
       depended_on_by: []
       last_validated: 2026-02-11
       tier: 1
-    - name: api-templates
-      file_path: templates/api/
-      role: built-component
-      version: 1
-      depends_on: [artifact-generator]
-      depended_on_by: []
-      last_validated: 2026-02-11
-      tier: 1
-
     # Test scenarios (test specification role)
     - name: family-utility-scenario
       file_path: tests/scenarios/family-utility.md
@@ -455,6 +446,11 @@ change_log:
     blast_radius: "framework-observations/ (18 status transitions, 11 files archived), project-state.yaml (last_triage, 10 new backlog items), tools/session-health-check.sh (threshold), docs/evaluation-methodology.md (threshold)"
     classification: process
     date: 2026-02-14
+  - what: "Strengthened framework generality: three-layer artifact generation, absorbed Critic sub-components, vocabulary debiasing, Builder governance improvements"
+    why: "Several remaining_work items planned enumerated components (template directories per characteristic, named Critic sub-components) when the framework's own Generality Over Enumeration principle argues for strengthening general capabilities. Templates conflated two jobs (what to generate vs. quality properties) — separated into amplification rules + process constraints + optional template reference. Critic sub-components (Architectural Consistency, Documentation Controller, Operational Readiness) absorbed into existing checks. UI-centric vocabulary generalized for non-screen modalities. Builder spec_compliance made risk-proportionate."
+    blast_radius: "skills/artifact-generator/SKILL.md, skills/critic/SKILL.md, skills/review-lenses/SKILL.md, skills/domain-analyzer/SKILL.md, skills/builder/SKILL.md, templates/product-brief.md, project-state.yaml (remaining_work, artifact_manifest, observation_backlog, change_log), docs/high-level-design.md, CLAUDE.md"
+    classification: directional
+    date: 2026-02-14
 
 # =============================================================================
 # BUILD PLAN
@@ -469,17 +465,12 @@ build_plan:
   # Skill "Extending This Skill" sections provide guidance on HOW to extend
   # each skill; this list tracks WHAT remains and WHEN (by phase).
   remaining_work:
-    # --- v1-widen (13 items) ---
-    - item: "Create exposes_programmatic_interface templates"
-      description: "4 API-specific templates (api-contract, integration-guide, versioning-strategy, sla-definition), b2b-integration-api test scenario rubric"
-      phase: v1-widen
-      requirements: [R2.1, R7.2]
-      skill: artifact-generator
-    - item: "Create has_multiple_party_types templates"
-      description: "3 multi-party templates (party-experience-spec, party-interaction-model, migration-adoption-plan), two-sided-marketplace test scenario rubric"
-      phase: v1-widen
-      requirements: [R2.1, R7.2]
-      skill: artifact-generator
+    # --- v1-widen (8 items) ---
+    # Removed: "Create exposes_programmatic_interface templates" — replaced by amplification rules + process constraints in Artifact Generator
+    # Removed: "Create has_multiple_party_types templates" — replaced by amplification rules + process constraints in Artifact Generator
+    # Removed: "Critic: remaining product governance sub-components" — absorbed into existing checks (Coherence, Spec Compliance, Scope Discipline)
+    # Removed: "Builder: structural-characteristic chunk patterns" — absorbed into Artifact Generator Phase D
+    # Removed: "Mechanical sub-check tools" — enumerated scripts replaced by strengthening general Critic checks; mechanical enforcement via hooks is already built
     - item: "consumer-mobile-app test scenario"
       description: "Test scenario rubric exercising has_human_interface (modality: screen, platform: mobile) with mobile-specific constraints; also tests dynamic domain generation"
       phase: v1-widen
@@ -504,11 +495,6 @@ build_plan:
       phase: v1-widen
       requirements: [R5.4]
       skill: orchestrator
-    - item: "Critic: remaining product governance sub-components"
-      description: "Architectural Consistency Checker, Documentation Controller, Operational Readiness Checker — needed when concern coverage deepens beyond simple products"
-      phase: v1-widen
-      requirements: [R3.4, R3.5]
-      skill: critic
     - item: "Critic-Review Lenses integration"
       description: "Critic findings feed back to Review Lenses for pattern detection; Review Lens findings feed into Critic's continuous governance during build"
       phase: v1-widen
@@ -519,20 +505,11 @@ build_plan:
       phase: v1-widen
       requirements: [R3.1]
       skill: review-lenses
-    - item: "Builder: structural-characteristic chunk patterns"
-      description: "Characteristic-specific chunk patterns for API endpoints, pipeline stages, and multi-party flows"
-      phase: v1-widen
-      requirements: [R7.2]
-      skill: builder
     - item: "Artifact Generator: modular artifact updates"
       description: "When a decision changes, update only affected artifacts rather than regenerating all"
       phase: v1-widen
       requirements: [R2.4]
       skill: artifact-generator
-    - item: "Mechanical sub-check tools"
-      description: "5 planned scripts: test-integrity-checker, doc-architecture-validator, boundary-checker, spec-compliance-diff, docs-freshness-checker"
-      phase: v1-widen
-      requirements: [R3.7]
     # --- v1-validation (3 items) ---
     - item: "Full V1 validation"
       description: "All scenarios passing end-to-end evaluation rubrics, framework fully self-governing"
@@ -623,8 +600,8 @@ observation_backlog:
       type: coverage
       summary: "UI vocabulary bias in universal artifact descriptions"
       target_files: ["skills/domain-analyzer/SKILL.md", "skills/artifact-generator/SKILL.md"]
-      priority: deferred
-      rationale: "Applicable when adding API/Service and Multi-Party shapes. Not blocking current work."
+      priority: acted_on
+      rationale: "Addressed by vocabulary debiasing in generality strengthening change (2026-02-14). Generalized Product Identity dimension, Design Lens, has_human_interface amplification, product-brief template."
       added: 2026-02-11
     - observation_file: "framework-observations/2026-02-11-automation-shape-testing-lens.yaml"
       type: process_friction
@@ -672,8 +649,8 @@ observation_backlog:
       type: applicability
       summary: "UI discovery questions reference web/mobile — inapplicable to terminal games"
       target_files: ["skills/domain-analyzer/SKILL.md"]
-      priority: deferred
-      rationale: "Address with consumer-mobile-app scenario which will test modality-appropriate discovery."
+      priority: acted_on
+      rationale: "Addressed by vocabulary debiasing in generality strengthening change (2026-02-14). has_human_interface amplification now modality-general, not screen-specific."
       added: 2026-02-14
     - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
       type: coverage
@@ -693,8 +670,8 @@ observation_backlog:
       type: coverage
       summary: "Minimal UI coverage gap — has_human_interface needs deeper modality support"
       target_files: ["skills/domain-analyzer/SKILL.md", "templates/human-interface/"]
-      priority: deferred
-      rationale: "Address when deepening has_human_interface modalities beyond screen."
+      priority: acted_on
+      rationale: "Addressed by three-layer architecture in generality strengthening change (2026-02-14). Artifact Generator amplification rules now cover all modalities via dynamic generation; templates are optional reference for screen modality only."
       added: 2026-02-14
     - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
       type: rubric_issue
@@ -707,8 +684,8 @@ observation_backlog:
       type: process_friction
       summary: "Empty spec_compliance/reviews in eval project-state — Builder governance gaps"
       target_files: ["skills/builder/SKILL.md", "skills/critic/SKILL.md"]
-      priority: deferred
-      rationale: "Address when Builder governance matures."
+      priority: acted_on
+      rationale: "Addressed by Builder governance improvements in generality strengthening change (2026-02-14). Risk-proportionate spec_compliance format (low-risk gets chunk-level summary, medium/high gets per-requirement detail). Strengthened instructions and verification gate."
       added: 2026-02-14
     - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
       type: rubric_issue

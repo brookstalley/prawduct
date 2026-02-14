@@ -32,8 +32,11 @@ last_validated: null
 ## Identity
 
 <!-- What is this product called? What is its character?
-     For user-facing products: visual style, mood, personality.
-     For tools and automations: name and interaction personality.
+     For products with user-facing surfaces (screens, terminals, voice, APIs):
+     style, mood, personality — adapted to the modality. Visual style for
+     screen products, interaction personality for CLIs, tone for voice
+     interfaces, API design voice for developer-facing products.
+     For background systems and automations: name and output formatting style.
      If the user has not expressed identity preferences, state that
      explicitly rather than inventing defaults.
      Source: project-state.yaml → product_definition.product_identity -->
@@ -55,8 +58,11 @@ last_validated: null
      STRUCTURAL ADAPTATION:
      - When runs_unattended: frame as pipeline stages (fetch, filter, format, deliver)
        not user actions.
-     - When has_human_interface: frame as screen sequences (view → act → navigate)
-       showing user journeys through screens.
+     - When has_human_interface: frame as user journeys through the interface,
+       adapted to modality (screen sequences for screen products, command
+       sequences for terminals, interaction sequences for other modalities).
+     - When exposes_programmatic_interface: frame as API operations that serve
+       consumer use cases.
      Source: project-state.yaml → product_definition.core_flows -->
 
 ## Success Criteria

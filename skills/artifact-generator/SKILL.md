@@ -35,15 +35,96 @@ Read templates from `templates/unattended-operation/`. Generate: Pipeline Archit
 
 Notes for `runs_unattended`: "Core Flows" become pipeline stages. Data Model captures processed entities. NFRs emphasize runtime constraints and operational requirements.
 
-**When `structural.has_human_interface` (modality: screen) is active:**
+**When `structural.has_human_interface` is active:**
 
-Read templates from `templates/human-interface/`. Generate: Information Architecture, Screen Specifications, Design Direction, Accessibility Spec, Localization Requirements, Onboarding Spec.
+Consult the `has_human_interface` amplification rules (in the "Structural Amplification Rules for Artifact Generation" section below) to determine what artifacts to generate based on modality. For screen-modality products, read templates from `templates/human-interface/` as structural reference. For other modalities, generate appropriate artifacts guided by the amplification rules and constrained by the process constraints.
 
-Notes for `has_human_interface`: "Core Flows" become screen sequences. Data Model captures user-facing entities. NFRs emphasize user-facing performance.
+Notes for `has_human_interface`: "Core Flows" become user journeys through the interface (modality-dependent). Data Model captures user-facing entities. NFRs emphasize user-perceived performance.
 
-**When templates exist for a structural characteristic:** Read and follow the templates. They define structure, required sections, and generation guidance. Generate content from project-state.yaml following the template.
+**For all structural characteristics:** Consult the Structural Amplification Rules for Artifact Generation section below. When templates exist for the characteristic and modality, use them as structural reference. When templates don't exist, dynamically generate appropriate artifacts guided by the amplification rules and constrained by the process constraints. Either path produces valid artifacts — templates are an optimization for proven structures, not a requirement.
 
-**When templates don't exist for a structural characteristic** (e.g., `exposes_programmatic_interface`, `has_multiple_party_types`): Dynamically generate appropriate artifacts using the product's domain characteristics and your domain knowledge. The skill's structural routing pattern still applies — but instead of reading from pre-built templates, generate artifacts that match the characteristic's needs. Either path produces valid artifacts.
+## Structural Amplification Rules for Artifact Generation
+
+Each structural characteristic has three layers that guide artifact generation:
+
+1. **Amplification rules** — what additional artifact concerns to generate and how universal artifacts deepen.
+2. **Process constraints** — quality properties that must hold regardless of modality. The Critic and Review Lenses verify these.
+3. **Template reference** — when templates exist for this characteristic and modality, use them as structural reference; otherwise generate appropriate artifacts guided by the amplification rules and constrained by the process constraints.
+
+### `has_human_interface`
+
+**Amplification rules:** Generate interface structure artifact, interaction specifications, design direction, accessibility specification, onboarding specification. Specific artifacts depend on modality — screen-based products get IA and screen specs; terminal products get interaction model and display specs; minimal interfaces (firmware, LED panels) get input/output mapping and feedback specifications. The LLM determines appropriate artifacts for the modality using its own domain knowledge.
+
+Universal artifact deepening: Product Brief frames "Core Flows" as user journeys through the interface. Data Model captures user-facing entities with experience-critical parameters as concrete fields. NFRs emphasize user-perceived performance (responsiveness, frame rates, animation timing). Security Model addresses interface-specific concerns (session management, input validation, client-side data exposure).
+
+**Process constraints:**
+- Structure before details: interface structure (information architecture, interaction model, input/output mapping) must be complete before implementation specs.
+- All states specified: every user-facing element must specify its states (empty, loading, populated, error — or modality-appropriate equivalents such as idle/active/fault for firmware, or prompt/processing/result for CLIs).
+- Accessibility alongside design, not after (HR7).
+- Every interaction traces to a core flow; every data element traces to Data Model.
+- Experience-critical parameters concretely specified: frame rates, response times, animation timing, physical feedback characteristics — whatever is perceptible to the user and would diverge if left to implementation.
+
+**Template reference:** `templates/human-interface/` provides proven structure for screen-modality products. For other modalities, amplification rules + process constraints guide generation.
+
+### `runs_unattended`
+
+**Amplification rules:** Generate pipeline architecture, scheduling specification, monitoring & alerting, failure recovery, configuration specification. "Core Flows" become pipeline stages. Data Model captures processed entities. NFRs emphasize runtime constraints and operational requirements.
+
+Universal artifact deepening: Product Brief frames success criteria for headless operation ("digest delivered by 7 AM" not "works well"). Security Model addresses credential management for external services. Test Specs include silent-failure detection and partial-success scenarios.
+
+**Process constraints:**
+- Silent failure is default mode — monitoring must distinguish "no results" from "didn't run."
+- Every pipeline stage has failure handling and corresponding tests.
+- Every external dependency has resilience handling (retry, circuit break, fallback).
+- Idempotency: if the system runs twice, it must not produce duplicate output.
+- Configuration is validated at startup, not at first use.
+
+**Template reference:** `templates/unattended-operation/` provides proven structure.
+
+### `exposes_programmatic_interface`
+
+**Amplification rules:** Generate API contract artifact (operations, request/response shapes, error codes, auth, rate limits), versioning strategy section (in operational spec or standalone).
+
+Universal artifact deepening: Data Model gets API-facing schemas and request/response types. Security Model gets consumer authentication, rate limiting, API key management. Test Specs get contract testing and backward compatibility tests. NFRs get latency SLAs, throughput targets, availability guarantees. Operational Spec gets consumer impact analysis and deprecation procedures.
+
+**Process constraints:**
+- Every API operation traces to a core flow (operations serve use cases, not implementation convenience).
+- Every error code has a documented meaning and at least one test scenario.
+- Backward compatibility strategy is explicit before any versioning decisions.
+- Consumer experience is first-class: error messages are helpful, not just status codes.
+- Rate limiting and authentication are specified per-consumer-type, not globally.
+
+**Template reference:** None currently. Dynamic generation guided by amplification rules + process constraints.
+
+### `has_multiple_party_types`
+
+**Amplification rules:** Generate per-party experience specification (each party's flows, needs, constraints), party interaction model (how parties affect each other, trust boundaries, data visibility).
+
+Universal artifact deepening: Product Brief gets per-party personas and flows. Data Model gets party-scoped entities and cross-party trust boundaries. Security Model gets per-party access controls and cross-party data isolation. Test Specs get per-party flow tests and cross-party interaction tests.
+
+**Process constraints:**
+- Each party's needs discovered independently (don't conflate distinct user types).
+- Trust boundaries explicit: one party's data never leaks to another unless designed.
+- Cross-party interactions modeled bidirectionally (what A does affects B, and vice versa).
+- Every party has at least one complete flow from entry to core value.
+- Power asymmetries acknowledged (marketplace seller vs. buyer, teacher vs. student).
+
+**Template reference:** None currently. Dynamic generation guided by amplification rules + process constraints.
+
+### `handles_sensitive_data`
+
+**Amplification rules:** No additional standalone artifacts — deepens existing ones. Security Model gets data classification, lifecycle (collection → storage → access → deletion), breach scenarios, audit requirements. Data Model gets retention policies and access audit fields. Test Specs get access control verification and data lifecycle tests. Operational Spec gets audit logging, breach response procedures, data destruction verification.
+
+**Process constraints:**
+- Every sensitive entity has full lifecycle defined (how collected, stored, accessed, deleted).
+- Data minimization: justify what's collected; don't collect "just in case."
+- Access patterns have audit trails.
+- Retention policies have enforcement mechanisms (not just documentation).
+- Breach scenario is specified (what happens, who's notified, what's the recovery path).
+
+**Template reference:** None needed — deepening existing artifacts.
+
+---
 
 ### Analysis-Driven Artifact Determination
 
@@ -119,10 +200,14 @@ Read `templates/build-plan.md`. Generate from `project-state.yaml` → `technica
 
 2. **Concrete project structure.** Directory layout and module boundaries derived from the data model and product shape.
 
-3. **Feature-first build chunks.** Each chunk delivers one user-visible flow end-to-end (data + logic + UI + tests). Chunk ordering depends on structural characteristics:
+3. **Feature-first build chunks.** Each chunk delivers one user-visible flow end-to-end (data + logic + interface + tests). Chunk ordering depends on structural characteristics:
    - Chunk 01 is always scaffold: project init, dependencies, build config, test runner.
-   - When `has_human_interface`: UI shell with navigation → first user flow → remaining flows → polish.
+   - When `has_human_interface`: interface shell → first user flow end-to-end → remaining flows → polish. For screen-modality: navigation shell with routing. For terminal: display framework with input handling. For minimal: I/O initialization with feedback loop.
    - When `runs_unattended`: data entities → first pipeline stage → stages in flow order → output delivery → monitoring.
+   - When `exposes_programmatic_interface`: API scaffold → core data layer → first API operation end-to-end → remaining operations → consumer documentation/SDK.
+   - When `has_multiple_party_types`: shared data layer → first party's core flow → second party's core flow → cross-party interactions → trust boundary enforcement.
+   - When `handles_sensitive_data`: this doesn't change chunk order — it deepens chunks by adding audit logging, access control verification, and lifecycle management to the chunks where sensitive entities are implemented.
+   - When multiple characteristics are active, the ordering combines: start with whichever characteristic dominates the architecture (usually the primary structural characteristic), then interleave the others. The scaffold chunk accommodates all active characteristics.
    - Otherwise: core data entities → feature chunks by user value → polish.
 
 4. **Acceptance criteria per chunk.** Map to specific test scenarios from `artifacts/test-specifications.md`.
@@ -155,11 +240,27 @@ After generating all Phase C artifacts, run the full cross-artifact consistency 
 - Failure-to-test traceability: every failure mode has a test scenario.
 
 **When `structural.has_human_interface` is active:**
-- Screen coverage: every IA screen has a Screen Spec section. Every core flow maps to a screen sequence.
-- Data display traceability: every screen data element traces to a Data Model entity.
+- Interface structure coverage: every section of the interface structure (IA screens, interaction model elements, I/O mappings) has a corresponding specification. Every core flow maps to an interface sequence.
+- Data display traceability: every interface data element traces to a Data Model entity.
 - Accessibility coverage: every interactive element type has accessibility requirements.
-- State coverage: every screen state (empty, loading, populated, error) has a specification.
-- Onboarding-to-screen traceability: every onboarding-referenced screen exists.
+- State coverage: every user-facing element has all relevant states specified (empty, loading, populated, error — or modality-appropriate equivalents).
+- Onboarding-to-interface traceability: every onboarding-referenced element exists.
+
+**When `structural.exposes_programmatic_interface` is active:**
+- Operation coverage: every API operation traces to a core flow.
+- Error coverage: every error code has a documented meaning and at least one test scenario.
+- Versioning: backward compatibility strategy is documented.
+- Consumer documentation: every operation has consumer-facing documentation.
+
+**When `structural.has_multiple_party_types` is active:**
+- Party flow coverage: every party has at least one complete flow from entry to core value.
+- Trust boundary coverage: every cross-party interaction has trust boundary analysis.
+- Data isolation: party-scoped data access is documented and tested.
+
+**When `structural.handles_sensitive_data` is active:**
+- Lifecycle coverage: every sensitive entity has collection, storage, access, and deletion defined.
+- Audit coverage: every access pattern has an audit trail specified.
+- Retention enforcement: every retention policy has an enforcement mechanism.
 
 If any inconsistency is found, fix it before presenting artifacts to the user.
 
@@ -181,9 +282,24 @@ artifacts:
 
 ## Extending This Skill
 
-To add a new structural characteristic's artifacts:
-1. Create a templates directory under `templates/` named for the characteristic (e.g., `templates/api-surface/`).
-2. Add one template per artifact with YAML frontmatter, section structure, and generation guidance in HTML comments.
-3. The skill's existing structural routing will pick up templates automatically — no skill modifications needed for template-based characteristics.
-4. For characteristics without templates, the dynamic generation fallback handles artifact creation.
-5. Register the template directory in `docs/doc-manifest.yaml`.
+### Adding a new structural characteristic
+
+The three-layer architecture (amplification rules + process constraints + template reference) guides all artifact generation. Adding a new characteristic means:
+
+1. **Define amplification rules** in the "Structural Amplification Rules for Artifact Generation" section: what additional artifacts to generate and how universal artifacts deepen.
+2. **Define process constraints** that must hold regardless of modality or domain. These are quality properties the Critic and Review Lenses verify.
+3. **Optionally create templates** as reference material for well-tested modalities. Templates are an optimization for proven structures, not a requirement. A characteristic without templates uses amplification rules + process constraints to guide dynamic generation.
+4. **Add consistency checks** to Step 3 for the new characteristic.
+5. **Add chunk ordering** to Phase D for the new characteristic.
+6. Register any template directory in `docs/doc-manifest.yaml`.
+
+### Modifying existing characteristics
+
+- Strengthen amplification rules when observations show the LLM missing important artifact concerns.
+- Strengthen process constraints when observations show quality gaps the Critic should catch.
+- Add templates when a modality has been validated across multiple products and the templates would prevent common mistakes.
+- Templates should never be the only path — if templates were deleted, the amplification rules + process constraints should still produce adequate artifacts.
+
+### When artifacts change
+
+When a decision changes mid-build, update only affected artifacts rather than regenerating all. Consult the artifact dependency chain (frontmatter `depends_on` and `depended_on_by`) to identify the blast radius.
