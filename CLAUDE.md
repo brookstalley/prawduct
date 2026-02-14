@@ -38,9 +38,9 @@ prawduct/
 ├── skills/                            # LLM instruction sets (your behavior)
 │   ├── orchestrator/SKILL.md          # Conversation flow, stage management, user calibration
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
-│   ├── artifact-generator/SKILL.md    # How to produce each artifact type, format specs
+│   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency — format specs live in templates
 │   ├── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
-│   ├── critic/SKILL.md                # Framework self-governance + product build governance
+│   ├── critic/SKILL.md                # Context-sensitive governance: applies checks based on project state
 │   └── review-lenses/SKILL.md         # Five evaluation perspectives (product, design, arch, skeptic, testing)
 ├── tools/                             # Deterministic scripts (mechanical enforcement)
 │   ├── capture-observation.sh         # Create schema-compliant observation files from CLI args
@@ -110,14 +110,10 @@ prawduct/
 ├── .claude/                           # Claude Code integration (hooks, settings)
 │   ├── hooks/
 │   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
-│   │   ├── framework-edit-tracker.sh  # PostToolUse hook: tracks edits in .session-edits.json, escalating reminders
-│   │   ├── framework-governance-prompt.sh # UserPromptSubmit hook: injects framework governance status at start of turn
-│   │   ├── framework-governance-stop.sh   # Stop hook: blocks completion when framework edits lack Critic review
-│   │   ├── orchestrator-gate.sh       # PreToolUse hook: blocks framework file edits without Orchestrator activation
-│   │   ├── product-chunk-gate.sh       # PreToolUse hook: blocks product file edits when chunks lack Critic review
-│   │   ├── product-governance-tracker.sh  # PostToolUse hook: tracks product build governance debt, injects reminders
-│   │   ├── product-governance-stop.sh     # Stop hook: blocks completion when critical product governance debt exists
-│   │   ├── product-governance-prompt.sh   # UserPromptSubmit hook: injects governance status at start of turn
+│   │   ├── governance-gate.sh         # PreToolUse hook: blocks edits without Orchestrator activation or with chunk review debt
+│   │   ├── governance-tracker.sh      # PostToolUse hook: tracks all edits and governance debt in .session-governance.json
+│   │   ├── governance-prompt.sh       # UserPromptSubmit hook: injects governance status at start of turn
+│   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists
 │   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
 │   ├── settings.json                  # Project-level Claude Code settings
 │   └── settings.local.json            # Local overrides (not committed)
@@ -145,15 +141,15 @@ The Framework Status section below provides build context. The Key Principles, T
 
 **For directional or multi-file changes (3+ framework files):** Follow the Directional Change Protocol in `skills/orchestrator/SKILL.md`. This requires a written plan, plan-stage Critic review before implementation, per-phase lightweight reviews, and a final full Critic review. The protocol ensures governance is proportionate to change impact — not just a rubber stamp at the end.
 
-To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 7 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, cross-skill inconsistencies, cumulative skill health drift, and learning system impact. After review, run `tools/record-critic-findings.sh` to record structured findings — the commit gate verifies this file exists with all 7 checks and coverage of all staged files. Include "Framework Governance Review" in the commit message.
+To run the Critic: read `skills/critic/SKILL.md` and apply all applicable checks to your changes. The Critic determines which checks apply from context — always at least Scope Discipline, Proportionality, Coherence, and Learning/Observability; plus Generality, Instruction Clarity, and Cumulative Health for skill/template changes. After review, run `tools/record-critic-findings.sh` to record structured findings — the commit gate verifies this file exists with at least 6 checks and coverage of all staged files. Include "Governance Review" in the commit message.
 
 ## Product Build Governance (Compaction Recovery)
 
 If you are building a product and cannot remember governance procedures (e.g., after context compaction), follow these steps. **Skill files are always on disk — read them.**
 
-1. **After each chunk:** Read `skills/critic/SKILL.md` from disk and apply Mode 2 (Product Governance)
+1. **After each chunk:** Read `skills/critic/SKILL.md` from disk and apply all applicable checks (Spec Compliance, Test Integrity, Scope Discipline, and others based on context)
 2. **Record findings:** Add review entry to the product's `project-state.yaml` → `build_state.reviews`
-3. **Clear debt:** Update `.claude/.product-session.json` → `governance_state.chunks_completed_without_review` to 0
+3. **Clear debt:** Update `.claude/.session-governance.json` → `governance_state.chunks_completed_without_review` to 0
 4. **At governance checkpoints:** Read `skills/review-lenses/SKILL.md` from disk, apply Architecture + Skeptic + Testing lenses
 5. **At stage transitions:** Read `skills/orchestrator/SKILL.md` from disk and run the Framework Reflection Protocol
 6. **If hooks block your edits:** The hook message tells you which skill file to read. Read it from disk and follow its instructions.
@@ -177,13 +173,12 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 
 **Built and operational:**
 - Full stage pipeline: Stages 0-6 (Intake through Iteration)
-- All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (framework + product governance), Review Lenses (all five)
+- All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (context-sensitive governance), Review Lenses (all five)
 - Two-layer classification: 5 structural characteristics for artifact routing (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth via Universal Discovery Dimensions and Structural Amplification Rules; has_human_interface and runs_unattended fully supported with templates
-- Observation capture system with triage and session resumption integration
+- Observation capture system with triage and session resumption integration; observation backlog available for all projects (not framework-only)
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
-- Three-layer framework governance: PostToolUse edit tracker with escalating reminders, UserPromptSubmit context injection, Stop hook blocking session completion without Critic review, plus hardened commit gate verifying structured Critic findings (`.critic-findings.json`) with all 7 checks and staged file coverage
-- Mechanical product build governance: four-layer hook system — PreToolUse chunk gate (blocks product file edits when chunks lack Critic review), PostToolUse tracker (accumulates governance state), Stop blocker (blocks session completion), UserPromptSubmit context (injects governance reminders) — enforces Critic review, FRP, and observation capture during product builds via `.product-session.json` state tracking
+- Unified mechanical governance: 5 hooks (governance-gate, governance-tracker, governance-prompt, governance-stop, critic-gate) plus compact-governance-reinject for session recovery. Single `.session-governance.json` state file tracks both framework edits and product governance debt. Commit gate verifies structured Critic findings (`.critic-findings.json`) with at least 6 applicable checks and staged file coverage
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 

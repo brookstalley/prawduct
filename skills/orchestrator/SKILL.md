@@ -17,13 +17,17 @@ This is the default skill. When using Prawduct to build a user's product:
 
    **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, or `working-notes/`, those paths are in the project directory. When skills reference other skills (`skills/...`) or templates (`templates/...`), those are read from the prawduct framework directory.
 2. Read `project-state.yaml` in the project directory. If it doesn't exist, this is a new project — copy the prawduct framework's `templates/project-state.yaml` to the project directory.
-3. **Activate governance.** Write the current ISO-8601 timestamp to `.claude/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The orchestrator-gate hook blocks framework file edits without this marker — see HR9.)
-4. **Initialize product governance tracking (non-framework projects only).** If the project directory is NOT the prawduct framework directory, create `.claude/.product-session.json` to enable mechanical governance enforcement:
+3. **Activate governance.** Write the current ISO-8601 timestamp to `.claude/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The governance-gate hook blocks governed file edits without this marker — see HR9.)
+4. **Initialize governance tracking.** Create `.claude/.session-governance.json` to enable mechanical governance enforcement for all projects:
    ```json
    {
-     "product_dir": "/absolute/path/to/product",
+     "product_dir": "/absolute/path/to/project",
      "current_stage": "<current_stage from project-state.yaml>",
      "session_started": "<current ISO-8601 timestamp>",
+     "framework_edits": {
+       "files": [],
+       "total_edits": 0
+     },
      "governance_state": {
        "chunks_completed_without_review": 0,
        "last_critic_review_chunk": null,
@@ -35,7 +39,7 @@ This is the default skill. When using Prawduct to build a user's product:
      }
    }
    ```
-   This file is read by four mechanical hooks (product-chunk-gate, product-governance-tracker, product-governance-stop, product-governance-prompt) that block product file edits when chunks lack review, inject governance reminders, and block session completion when critical debt exists. The SessionStart hook clears it on `/clear` or new startup.
+   This file is read by unified mechanical hooks (governance-gate, governance-tracker, governance-stop, governance-prompt) that block file edits when chunks lack review, track framework edits for Critic coverage, inject governance reminders, and block session completion when critical debt exists. The SessionStart hook clears it on `/clear` or new startup.
 5. Check `current_stage` to determine where we are.
 6. Follow the instructions for the current stage below.
 
@@ -279,15 +283,15 @@ For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step
    - If the gap is real: update the relevant artifact, note the change in `change_log`, and write an observation to `framework-observations/`. Then let the Builder continue.
    - If the gap requires a user decision: ask the user, update artifacts, continue.
 
-5. **Invoke the Critic.** Load `skills/critic/SKILL.md` Mode 2 (Product Governance) and review the chunk.
+5. **Invoke the Critic.** Load `skills/critic/SKILL.md` and review the chunk (the Critic determines applicable checks from project context).
 
 6. **Handle Critic findings.**
    - **Blocking findings:** The Builder fixes the issues. The Critic re-reviews. Repeat until clear. Watch for fix-by-fudging (the Critic checks for this).
    - **Warnings:** Note them. The Builder addresses warnings that are quick to fix. Others are tracked in `build_state.reviews` for later.
    - **Clear:** Chunk status → "complete". Proceed to next chunk.
-   - **Update governance tracking:** After Critic review, update `.claude/.product-session.json` → `governance_state.chunks_completed_without_review` to 0 and set `last_critic_review_chunk` to the reviewed chunk name. (The PostToolUse hook also derives this mechanically from project-state.yaml, but explicit updates ensure consistency.)
+   - **Update governance tracking:** After Critic review, update `.claude/.session-governance.json` → `governance_state.chunks_completed_without_review` to 0 and set `last_critic_review_chunk` to the reviewed chunk name. (The PostToolUse hook also derives this mechanically from project-state.yaml, but explicit updates ensure consistency.)
 
-7. **Lightweight reflection.** Were the artifact specs sufficient for this chunk? If not, that's an `artifact_insufficiency` observation. Did the Critic catch real issues or produce noise? That informs Critic calibration. After capturing any observations, increment `.claude/.product-session.json` → `governance_state.observations_captured_this_session`.
+7. **Lightweight reflection.** Were the artifact specs sufficient for this chunk? If not, that's an `artifact_insufficiency` observation. Did the Critic catch real issues or produce noise? That informs Critic calibration. After capturing any observations, increment `.claude/.session-governance.json` → `governance_state.observations_captured_this_session`.
 
 ### Governance checkpoints
 
@@ -353,57 +357,43 @@ The user has a working product and provides feedback. Handle feedback in lightwe
      2. Update the relevant artifacts (whichever are affected — see `artifact_manifest`).
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
-   - **Directional** (fundamentally different product vision): Follow the Product Directional Change Protocol below. For framework development, follow the Framework Directional Change Protocol below.
+   - **Directional** (fundamentally different product vision, or 3+ file changes): Follow the Directional Change Protocol below.
 
-   **Product Directional Change Protocol**
+   **Directional Change Protocol**
 
-   This protocol handles directional changes to user products — when the user fundamentally changes the product vision during iteration.
+   This protocol triggers when a change is classified as **directional** OR modifies **3+ files**. It ensures multi-file changes receive governance proportionate to their impact. Scale effort with change complexity, not file count alone — renaming a term across 5 files is less complex than restructuring 3 skills.
 
    1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?"
-   2. **Reclassification check.** Consider whether reclassification of structural characteristics (R5.4) is warranted. If the product's fundamental nature has changed, re-run classification.
-   3. **Impact assessment.** Which artifacts are invalidated vs. still valid? Which chunks need rework? Consult `artifact_manifest` to map the blast radius.
-   4. **Update artifacts and implement.** Follow the functional change path at artifact-generation scale: update affected artifacts → create/modify chunks → Builder implements → Critic reviews (including Directional Change Review — see `skills/critic/SKILL.md` Mode 2).
-   5. **Post-shift retrospective.** After implementation completes, answer three questions:
+   2. **Reclassification check (product builds).** Consider whether reclassification of structural characteristics is warranted. If the product's fundamental nature has changed, re-run classification.
+   3. **Write a plan** in `working-notes/` describing the change, its motivation, affected files, and implementation phases.
+   4. **Plan-stage Critic review.** Before implementing, apply Critic checks for Generality, Coherence, and Learning/Observability to the plan. This catches structural problems before they're built.
+   5. **Address findings** from plan-stage review before implementing. Blocking findings must be resolved.
+   6. **Impact assessment.** Which artifacts/files are invalidated vs. still valid? Consult `artifact_manifest` to map the blast radius.
+   7. **Implement in phases.** For multi-phase changes, run a lightweight review between phases: Coherence and Learning/Observability checks. Capture a brief observation after each phase.
+   8. **Update artifacts and implement.** Update affected artifacts → create/modify chunks → Builder implements → Critic reviews (including Directional Change Review — see `skills/critic/SKILL.md`).
+   9. **Final Critic review.** After all changes are complete, run the full Critic review (all applicable checks).
+   10. **Session observation.** Write an observation for the full implementation, covering what the change accomplished, what governance caught, and what slipped through.
+   11. **Post-change retrospective.** After the final Critic review passes, answer four questions:
 
-      a. **Discovery adequacy:** Did original discovery surface the considerations that led to this shift? If not, what question or dimension would have surfaced it earlier? (Produces `coverage` or `missing_guidance` observation.)
+      a. **Detection:** Could the framework's learning system have caught the problem this change addresses? If not, what's missing?
 
-      b. **Artifact resilience:** How much rework did this require? Were artifact boundaries right — did the change propagate cleanly, or did tightly-coupled artifacts force unnecessary rework? (Produces `artifact_insufficiency` observation if artifacts were too coupled.)
+      b. **Process:** What did the implementation process reveal about gaps beyond the change itself?
 
-      c. **Generalization:** Does this finding apply only to this product, or does it reveal a gap that would affect other products built with the framework? If it reveals a general gap, the observation should target the framework skill or template, not the product.
+      c. **Architecture:** Does this change create new areas the learning system can't observe?
 
-      Record substantive findings via `tools/capture-observation.sh` with `session_type: product_use`. Record summary in change_log `retrospective` field.
+      d. **Generalization:** Does this fix apply only to where discovered, or does the same gap exist in analogous contexts? Instance-specific fixes that don't generalize are Failure Mode 9 (see `docs/self-improvement-architecture.md`).
 
-   **Framework Directional Change Protocol**
-
-   This protocol triggers when a change is classified as **directional** OR modifies **3+ framework files** (skills, templates, docs). It ensures multi-file framework changes receive governance proportionate to their impact. Scale effort with change complexity, not file count alone — renaming a term across 5 files is less complex than restructuring 3 skills.
-
-   1. **Write a plan** in `working-notes/` describing the change, its motivation, affected files, and implementation phases.
-   2. **Plan-stage Critic review.** Before implementing, apply Critic Checks 1 (Generality), 2 (Read-Write Chain), 4 (Skill Coherence), and 7 (Learning Integration) to the plan. This catches structural problems before they're built.
-   3. **Address findings** from plan-stage review before implementing. Blocking findings must be resolved. Warnings should be addressed or explicitly accepted with rationale.
-   4. **Implement in phases.** For multi-phase changes, run a lightweight review between phases: Checks 2 (Read-Write Chain), 4 (Skill Coherence), and 7 (Learning Integration). Capture a brief observation after each phase noting what worked and what surprised you.
-   5. **Final Critic review.** After all changes are complete, run the full Framework Governance review (all checks).
-   6. **Session observation.** Write a `framework_dev` observation for the full implementation, covering what the change accomplished, what governance caught, and what (if anything) slipped through.
-   7. **Post-change retrospective.** After the final Critic review passes, answer three questions:
-
-      a. **Detection:** Could the framework's learning system have caught the problem this change addresses? If not, what's missing — an observation type, a trigger, a Structural Critique dimension, an FRP focus area?
-
-      b. **Process:** What did the implementation process reveal about framework gaps beyond the change itself? (Governance gaps, documentation drift, skill coherence issues discovered along the way.)
-
-      c. **Architecture:** Does this change create new areas the learning system can't observe? (New capability without observability = blind spot.)
-
-      d. **Generalization:** Does this fix apply only to the context where the problem was discovered, or does the same gap exist in analogous contexts? If found in the framework path, does the product path have the same gap? If found in one skill, do similar skills need the same fix? Instance-specific fixes that don't generalize are Failure Mode 9 (see `docs/self-improvement-architecture.md`).
-
-      Capture each substantive finding as an observation using `tools/capture-observation.sh`. Use type `structural_critique` for detection/architecture findings, `process_friction` for process findings. If no substantive findings exist, record that in the change_log entry: "Retrospective: no findings."
+      Capture each substantive finding as an observation using `tools/capture-observation.sh`. If no substantive findings exist, record that in the change_log entry: "Retrospective: no findings."
 
       This step is not optional. The Critic validates quality; the retrospective captures learning. Both are required.
 
-   **Framework change governance (all sizes)**
+   **Change governance (all sizes)**
 
-   Every framework file change requires Critic review before committing, regardless of file count. This is automatic — do not ask the user whether to run it.
+   Every file change in a governed project requires Critic review before committing, regardless of file count. This is automatic — do not ask the user whether to run it.
 
    | Change size | Protocol |
    |---|---|
-   | 1-2 framework files | Implement changes → run Framework Governance (all 7 checks) → record findings → commit |
+   | 1-2 files | Implement changes → run Critic (all applicable checks) → record findings → commit |
    | 3+ files or directional | Follow Directional Change Protocol above |
 
 3. **Change impact assessment (R5.2).** Before implementing any functional change:
@@ -470,7 +460,7 @@ At every stage transition, pause and assess: **did the framework serve this prod
 1. **Always** record a reflection entry in `change_log` (proves reflection happened):
    - `what: "Framework reflection: Stage N (name) complete"`
    - `why: "[assessment summary or 'no concerns']"`
-   - **Update governance tracking (product builds only):** After recording the FRP, update `.claude/.product-session.json` → `governance_state.last_frp_stage` to the current stage and reset `stage_transitions_without_frp` to 0.
+   - **Update governance tracking (product builds only):** After recording the FRP, update `.claude/.session-governance.json` → `governance_state.last_frp_stage` to the current stage and reset `stage_transitions_without_frp` to 0.
 2. **If substantive findings exist**, run `tools/capture-observation.sh` with your findings. The tool handles schema compliance, UUIDs, timestamps, git SHAs, and write-access fallback automatically. Only create observations when there's signal — not for "no concerns." Non-substantive stage reflections are already recorded in `change_log`. See `framework-observations/README.md` for substantiveness criteria.
 3. **If documentation is stale, update it in this session — don't defer.** Documentation drift compounds: a stale doc misleads the next session, which produces more stale docs. File creation, capability changes, and structural additions are the most common triggers.
 4. **Surface findings to the user** briefly: "Framework note: [observation]." Keep to 1-2 sentences unless there's a significant finding. Don't slow down an eager user.
@@ -581,18 +571,17 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 
 1. Read `project-state.yaml` to understand current state. Refresh the governance marker (write current ISO-8601 timestamp to `.claude/.orchestrator-activated`) — this ensures the marker is fresh for this session even if a stale marker exists from a previous session.
 2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory.
-3. **Check documentation health (framework dev sessions only).** For sessions where the project IS the prawduct framework: quick-scan `docs/doc-manifest.yaml` for any `last_validated` date older than 30 days. If found, mention it during orientation: "N Tier 1 docs haven't been validated in over 30 days: [list]. Worth a freshness check?" This is lightweight — don't block the session, just surface the signal.
+3. **Check documentation health.** For projects that have a `docs/doc-manifest.yaml`: quick-scan for any `last_validated` date older than 30 days. If found, mention it during orientation: "N Tier 1 docs haven't been validated in over 30 days: [list]. Worth a freshness check?" This is lightweight — don't block the session, just surface the signal.
 4. **Run session health check:** Run `tools/session-health-check.sh` and include relevant findings in your orientation. The tool reports actionable observation patterns with proposed actions, priority:next backlog items, overdue triage, stale deferred items, untransferred fallback observation files, and infrastructure health (observation archive backlog, stale observations, working notes freshness). Infrastructure warnings are informational — mention them if present (e.g., "4 resolved observation files are ready to archive. Run `tools/update-observation-status.sh --archive-all` to clean up.") but don't interrupt workflow for them.
-4a. **Surface actionable patterns (framework dev sessions only).** When the project IS the prawduct framework and `PATTERNS_REQUIRING_ACTION > 0`, present actionable patterns to the user during orientation:
+4a. **Surface actionable patterns.** When `PATTERNS_REQUIRING_ACTION > 0`, present actionable patterns to the user during orientation:
    - For each pattern: synthesize the proposed actions into a concrete recommendation naming affected skill files. Don't dump raw observation text — distill it.
    - Present as: "The learning system detected N patterns requiring action: [brief summary per pattern with recommendation]."
    - User decides: **act now** (triggers a Stage 6 change with normal Critic governance) or **defer** (pattern stays in backlog, resurfaces only if further observations accumulate).
    - Deferred patterns are not re-presented every session — only when new observations are added to an already-actionable pattern type.
-   - This step does NOT apply to user product sessions. Product sessions focus on building, not framework meta-improvement.
 5. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
 6. Continue from the current stage.
 
-**Product governance session recovery:** If the project is NOT the prawduct framework and `.claude/.product-session.json` does not exist, recreate it from `project-state.yaml` state (derive `chunks_completed_without_review` from chunks with status "complete"/"review" that lack entries in `build_state.reviews`). This handles cases where the session file was cleared but a product build is active.
+**Governance session recovery:** If `.claude/.session-governance.json` does not exist but `current_stage` indicates an active build, recreate it from `project-state.yaml` state (derive `chunks_completed_without_review` from chunks with status "complete"/"review" that lack entries in `build_state.reviews`). This handles cases where the session file was cleared but a build is active.
 
 **Mid-build resumption (Stage 5):** If `current_stage` is "building":
 - Read `build_plan.current_chunk` to find the active chunk.
@@ -660,6 +649,7 @@ Apply the framework's principles to its own founding architectural decisions —
    - Which principles governed this decision?
    - Does it still satisfy them given current evidence?
    - Would a different choice better satisfy them given what we now know?
+   - Are there parallel implementations for different contexts (e.g., "framework" vs. "product") that should be unified? Parallel paths that diverge only in naming, not behavior, violate Eat Your Own Cooking.
 2. Record findings as `structural_critique` observations in `framework-observations/`.
 3. If a founding decision violates a principle, propose a change through the normal observation → triage → action cycle. Structural critiques do not bypass governance — they feed the same process with a different evidence source.
 

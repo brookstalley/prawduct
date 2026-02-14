@@ -1,0 +1,18 @@
+---
+observation_id: f7a1b2c3-d4e5-6789-abcd-ef0123456789
+timestamp: 2026-02-14T21:15:00Z
+session_type: framework_dev
+session_context:
+  framework_version: 9b5baf8
+observations:
+  - type: architectural_inconsistency
+    stage: meta
+    severity: warning
+    description: "Framework had parallel governance implementations for 'framework' and 'product' contexts (8 hooks in 2 stacks, 2 Critic modes, 2 state files) that violated 'Eat Your Own Cooking' for weeks. The observation system had no type for 'implementation contradicts stated principles' — only 'structural_critique' (founding decisions) and 'coverage' (missing topics). Architectural inconsistencies that develop incrementally as features are added fell through both categories."
+    evidence: "The parallel governance stacks were built across multiple sessions (2026-02-10 through 2026-02-12) without the observation system flagging that the framework was treating itself as special. The Structural Critique Protocol existed but its trigger cadence (every 3 evals) meant it never fired. The 'Eat Your Own Cooking' violation was only identified when the user explicitly analyzed the architecture."
+    proposed_action: "Added 'architectural_inconsistency' observation type to schema. This type captures cases where implementation contradicts the framework's own stated principles or patterns — distinct from structural_critique (which questions founding decisions) and coverage (which flags missing topics)."
+    status: acted_on
+skills_affected:
+  - "framework-observations/schema.yaml"
+  - "skills/critic/SKILL.md"
+---

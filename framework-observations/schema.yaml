@@ -88,6 +88,7 @@ observation_entry:
             - external_practice_drift  # Skill structure diverges from current LLM instruction best practices
             - documentation_drift  # Documentation (CLAUDE.md, Tier 1 docs) no longer matches implementation reality
             - structural_critique  # Deductive analysis reveals a founding architectural decision violates principles
+            - architectural_inconsistency  # Implementation contradicts the framework's own stated principles or patterns
             - governance_compliance  # Mandatory governance step treated as optional or invocation ambiguity
           required: true
           description: "Category of observation"

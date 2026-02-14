@@ -25,7 +25,8 @@ last_validated: null
 
 ## Vision
 
-<!-- One clear sentence: what this product is and why it exists.
+<!-- GENERATION GUIDANCE: One clear sentence from product_definition.vision.
+     This anchors every downstream artifact — errors here propagate everywhere.
      Source: project-state.yaml → product_definition.vision -->
 
 ## Identity
@@ -48,9 +49,14 @@ last_validated: null
 
 ## Core Flows
 
-<!-- What do users actually do, in priority order?
-     For each flow: name, description, and key steps.
-     Mark each as must-have or nice-to-have.
+<!-- GENERATION GUIDANCE: What users do, in priority order.
+     For each flow: name, description, and key steps. Mark must-have or nice-to-have.
+
+     STRUCTURAL ADAPTATION:
+     - When runs_unattended: frame as pipeline stages (fetch, filter, format, deliver)
+       not user actions.
+     - When has_human_interface: frame as screen sequences (view → act → navigate)
+       showing user journeys through screens.
      Source: project-state.yaml → product_definition.core_flows -->
 
 ## Success Criteria

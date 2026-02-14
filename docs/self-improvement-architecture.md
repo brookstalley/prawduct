@@ -237,11 +237,12 @@ The learning system's Phase 1 (capture) was designed for **product sessions**: o
 
 ### The Fix: Post-Change Retrospective
 
-The DCP now includes a mandatory step 7 (post-change retrospective) that asks three questions after every directional change:
+The DCP now includes a mandatory post-change retrospective that asks four questions after every directional change:
 
 1. **Detection:** Could the learning system have caught the problem this change addresses? If not, what's missing?
 2. **Process:** What did the implementation process reveal about framework gaps beyond the change itself?
 3. **Architecture:** Does this change create new areas the learning system can't observe?
+4. **Generalization:** Does this fix apply only to the context where the problem was discovered, or does the same gap exist in analogous contexts?
 
 Substantive findings become observation files (via `capture-observation.sh`). The change_log entry includes a `retrospective` field summarizing key learnings for session-resumption visibility.
 
@@ -415,11 +416,11 @@ Automatic skill updates without validation are dangerous. The system must valida
 **Discovered**: 2026-02-12 during concern-based classification implementation. A 17-file, 6-phase reform restructured concern dimensions and added new observation types without anyone verifying the learning system remained complete. The Critic ran once at the end as a rubber stamp.
 
 **Fix**: Three reinforcing mechanisms:
-- Critic Check 7 (Learning Integration): Explicitly checks whether changes preserve the framework's ability to learn
+- Critic Check 6 (Learning/Observability): Explicitly checks whether changes preserve the framework's ability to learn
 - Directional Change Protocol: Multi-file changes get plan-stage Critic review before implementation and per-phase lightweight reviews during implementation
 - FRP dimension 6 (Learning completeness): Every stage transition assesses whether new areas are observable
 
-**Safeguard**: Check 7 makes "no observability path" a blocking finding. Changes that create blind spots in the learning system cannot pass governance review.
+**Safeguard**: Check 6 makes "no observability path" a blocking finding. Changes that create blind spots in the learning system cannot pass governance review.
 
 **Learning**: Governance that doesn't review its own governance creates blind spots. The Critic checked whether changes were well-made but not whether they preserved the system's ability to detect future problems. A meta-governance gap: the learning system was the one thing that couldn't observe its own modification.
 
@@ -427,16 +428,16 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Symptom**: Growing collections accumulate resolved items, analysis tools produce stale results, directory sizes grow without bound.
 
-**Root cause**: System monitors content health (are observations meaningful?) and change-time health (do changes preserve learning?) but not infrastructure health (is the plumbing degrading over time?). Critic Check 7 catches problems introduced by *changes* but not problems that emerge from *time passing* with no changes.
+**Root cause**: System monitors content health (are observations meaningful?) and change-time health (do changes preserve learning?) but not infrastructure health (is the plumbing degrading over time?). Critic Check 6 catches problems introduced by *changes* but not problems that emerge from *time passing* with no changes.
 
 **Discovered**: 2026-02-12. Observation directory had no archiving mechanism; `observation-analysis.sh` counted `acted_on` observations toward pattern thresholds, potentially re-triggering already-fixed patterns.
 
 **Fix**: Three reinforcing mechanisms:
 - Infrastructure health monitoring in `session-health-check.sh` checks lifecycle invariants (bounded growth, status progression, archive backlog, working notes freshness)
 - `tools/update-observation-status.sh` manages observation lifecycle transitions and archiving
-- Critic Check 7 extended to flag growing collections without lifecycle monitoring
+- Critic Check 6 extended to flag growing collections without lifecycle monitoring
 
-**Structural principle**: Invariants, not enumerations. Rather than listing every housekeeping task, define invariant properties (bounded growth, status progression, consistency) and monitor them generically. New collections get monitoring at creation time (Critic Check 7), existing collections get health-checked at session time (`session-health-check.sh`).
+**Structural principle**: Invariants, not enumerations. Rather than listing every housekeeping task, define invariant properties (bounded growth, status progression, consistency) and monitor them generically. New collections get monitoring at creation time (Critic Check 6), existing collections get health-checked at session time (`session-health-check.sh`).
 
 **Learning**: Systems that monitor their outputs but not their infrastructure degrade silently. Time-based degradation (accumulation, staleness) requires different monitoring than change-based degradation (breaking modifications). Content health and infrastructure health are orthogonal concerns.
 
@@ -464,7 +465,7 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Fix**: Generalization question (d) added to both the framework DCP retrospective and the new Product Directional Change Protocol retrospective: "Does this fix apply only to the context where the problem was discovered, or does the same gap exist in analogous contexts?" Every retrospective now explicitly prompts checking parallel paths.
 
-**Safeguard**: The generalization question is structural — it's part of every retrospective, not a one-time check. Critic Check 7 (Learning Integration) extended to cover in-file growing collections (same principle: check for the general pattern, not just the specific instance).
+**Safeguard**: The generalization question is structural — it's part of every retrospective, not a one-time check. Critic Check 6 (Learning/Observability) extended to cover in-file growing collections (same principle: check for the general pattern, not just the specific instance).
 
 **Learning**: Fixing an instance without checking for the general pattern is a form of silent requirement dropping (HR2) at the meta level. The fix was correct but incomplete. Retrospectives that ask "what did we learn?" without asking "where else does this apply?" will systematically produce instance-specific fixes.
 

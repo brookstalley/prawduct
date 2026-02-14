@@ -1,0 +1,100 @@
+{
+  "framework_edits": {
+    "files": [
+      {
+        "path": "skills/orchestrator/SKILL.md",
+        "first_modified": "2026-02-14T20:50:47Z",
+        "last_modified": "2026-02-14T21:23:49Z",
+        "edit_count": 7
+      },
+      {
+        "path": "skills/critic/SKILL.md",
+        "first_modified": "2026-02-14T20:53:57Z",
+        "last_modified": "2026-02-14T20:53:57Z",
+        "edit_count": 1
+      },
+      {
+        "path": "tools/record-critic-findings.sh",
+        "first_modified": "2026-02-14T20:54:29Z",
+        "last_modified": "2026-02-14T20:54:29Z",
+        "edit_count": 1
+      },
+      {
+        "path": "tools/critic-reminder.sh",
+        "first_modified": "2026-02-14T20:54:35Z",
+        "last_modified": "2026-02-14T21:07:15Z",
+        "edit_count": 5
+      },
+      {
+        "path": "templates/project-state.yaml",
+        "first_modified": "2026-02-14T20:55:45Z",
+        "last_modified": "2026-02-14T20:55:45Z",
+        "edit_count": 1
+      },
+      {
+        "path": "templates/product-brief.md",
+        "first_modified": "2026-02-14T20:56:27Z",
+        "last_modified": "2026-02-14T20:56:53Z",
+        "edit_count": 2
+      },
+      {
+        "path": "templates/data-model.md",
+        "first_modified": "2026-02-14T20:56:37Z",
+        "last_modified": "2026-02-14T20:56:37Z",
+        "edit_count": 1
+      },
+      {
+        "path": "skills/artifact-generator/SKILL.md",
+        "first_modified": "2026-02-14T20:58:04Z",
+        "last_modified": "2026-02-14T20:58:04Z",
+        "edit_count": 1
+      },
+      {
+        "path": "CLAUDE.md",
+        "first_modified": "2026-02-14T20:58:27Z",
+        "last_modified": "2026-02-14T21:01:52Z",
+        "edit_count": 5
+      },
+      {
+        "path": "docs/high-level-design.md",
+        "first_modified": "2026-02-14T21:02:08Z",
+        "last_modified": "2026-02-14T21:02:30Z",
+        "edit_count": 3
+      },
+      {
+        "path": "docs/self-improvement-architecture.md",
+        "first_modified": "2026-02-14T21:02:35Z",
+        "last_modified": "2026-02-14T21:07:21Z",
+        "edit_count": 4
+      },
+      {
+        "path": "docs/doc-manifest.yaml",
+        "first_modified": "2026-02-14T21:03:05Z",
+        "last_modified": "2026-02-14T21:03:55Z",
+        "edit_count": 6
+      },
+      {
+        "path": ".claude/hooks/critic-gate.sh",
+        "first_modified": "2026-02-14T21:07:11Z",
+        "last_modified": "2026-02-14T21:07:11Z",
+        "edit_count": 1
+      },
+      {
+        "path": "tools/session-health-check.sh",
+        "first_modified": "2026-02-14T21:07:27Z",
+        "last_modified": "2026-02-14T21:07:27Z",
+        "edit_count": 1
+      },
+      {
+        "path": "framework-observations/schema.yaml",
+        "first_modified": "2026-02-14T21:23:42Z",
+        "last_modified": "2026-02-14T21:23:42Z",
+        "edit_count": 1
+      }
+    ],
+    "total_edits": 40
+  },
+  "governance_state": {
+    "last_updated": "2026-02-14T21:23:49Z"
+  }
+}

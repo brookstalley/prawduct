@@ -48,10 +48,11 @@ fi
 # It checks staged files against framework patterns and looks for evidence
 if "$repo_root/tools/critic-reminder.sh" 2>&1; then
     # Evidence found or no framework files staged — allow commit
-    # Clean up the pending flag, stale findings, session edits, and orchestrator marker
+    # Clean up governance state after successful commit
     rm -f "$repo_root/.claude/.critic-pending"
     rm -f "$repo_root/.claude/.critic-findings.json"
-    rm -f "$repo_root/.claude/.session-edits.json"
+    rm -f "$repo_root/.claude/.session-edits.json"        # legacy, remove if present
+    rm -f "$repo_root/.claude/.session-governance.json"
     rm -f "$repo_root/.claude/.orchestrator-activated"
     exit 0
 else
@@ -62,8 +63,8 @@ else
     echo "Framework files are staged but no Critic review evidence was found." >&2
     echo "Run the Critic as a standalone step:" >&2
     echo "  1. Read skills/critic/SKILL.md" >&2
-    echo "  2. Apply Framework Governance mode (all checks) to your changes" >&2
+    echo "  2. Apply all applicable checks to your changes" >&2
     echo "  3. Record findings, then retry the commit" >&2
-    echo "  4. Include 'Framework Governance Review' in the commit message" >&2
+    echo "  4. Include 'Governance Review' in the commit message" >&2
     exit 2
 fi

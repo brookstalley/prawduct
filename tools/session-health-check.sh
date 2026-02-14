@@ -269,14 +269,15 @@ fi
 
 # --- 4. Session edits pending review ---
 
-SESSION_EDITS="$REPO_ROOT/.claude/.session-edits.json"
-if [[ -f "$SESSION_EDITS" ]]; then
+SESSION_GOV="$REPO_ROOT/.claude/.session-governance.json"
+if [[ -f "$SESSION_GOV" ]]; then
     edit_count=$(python3 -c "
 import json
 try:
-    with open('$SESSION_EDITS') as f:
+    with open('$SESSION_GOV') as f:
         data = json.load(f)
-    print(len(data.get('files', [])))
+    fw = data.get('framework_edits', {})
+    print(len(fw.get('files', [])))
 except:
     print(0)
 " 2>/dev/null || echo "0")

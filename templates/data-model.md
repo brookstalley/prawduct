@@ -22,13 +22,20 @@ last_validated: null
 
 ## Entities
 
-<!-- For each entity, define:
+<!-- GENERATION GUIDANCE: Derive entities from the Product Brief's core flows and personas.
+     Every noun the user cares about should map to an entity here.
+
+     For each entity, define:
      - Name
      - Fields with types and constraints (required, unique, default, etc.)
      - Purpose: what this entity represents and why it exists
 
-     Entities are derived from the Product Brief's core flows and personas.
-     Every noun the user cares about should map to an entity here.
+     EXPERIENCE-CRITICAL PARAMETERS: If an entity has fields whose values directly
+     shape the user experience (visual layout proportions, timing intervals, difficulty
+     curves, animation speeds), those values must be specified as concrete fields with
+     constraints and defaults — not left as implementation details. Test: could two
+     Builders implement this data model and produce noticeably different UX? If so,
+     the divergence points need explicit specification.
 
      Example format:
      ### EntityName

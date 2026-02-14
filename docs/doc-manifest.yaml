@@ -30,9 +30,9 @@ tier_1_documents:
     last_validated: 2026-02-11
 
   - path: docs/high-level-design.md
-    purpose: "System architecture: components, stages, shape taxonomy, validation strategy, bootstrapping approach"
+    purpose: "System architecture: components, stages, structural characteristics, validation strategy, bootstrapping approach"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-14
 
   - path: docs/evaluation-methodology.md
     purpose: "How to run evaluations, extract learnings, detect regressions, and improve the eval process"
@@ -52,7 +52,7 @@ tier_1_documents:
   - path: CLAUDE.md
     purpose: "Entry point: routing, project structure, framework status, conventions, eval recording format"
     owner: framework
-    last_validated: 2026-02-12
+    last_validated: 2026-02-14
 
   - path: skills/orchestrator/SKILL.md
     purpose: "LLM instructions for conversation flow, stage management, user calibration, framework reflection"
@@ -65,9 +65,9 @@ tier_1_documents:
     last_validated: 2026-02-11
 
   - path: skills/artifact-generator/SKILL.md
-    purpose: "LLM instructions for producing build plan artifacts in dependency order"
+    purpose: "LLM instructions for artifact selection, phasing, and consistency — format specs live in templates"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-14
 
   - path: skills/review-lenses/SKILL.md
     purpose: "LLM instructions for five-perspective evaluation (product, design, architecture, skeptic, testing)"
@@ -80,9 +80,9 @@ tier_1_documents:
     last_validated: 2026-02-11
 
   - path: skills/critic/SKILL.md
-    purpose: "LLM instructions for framework governance and product governance (spec compliance, test integrity, scope violation)"
+    purpose: "LLM instructions for context-sensitive governance: 9 checks with applicability based on project state"
     owner: framework
-    last_validated: 2026-02-12
+    last_validated: 2026-02-14
 
   - path: templates/project-state.yaml
     purpose: "Template for user project master state file — all skills read/write this (includes build_plan, build_state, iteration_state)"
@@ -105,44 +105,44 @@ tier_1_documents:
     last_validated: 2026-02-12
 
   - path: .claude/settings.json
-    purpose: "Project-level Claude Code settings: hooks for framework governance (PreToolUse gate, PostToolUse advisory) and product governance (PostToolUse tracker, Stop blocker, UserPromptSubmit context, SessionStart cleanup)"
+    purpose: "Project-level Claude Code settings: unified governance hooks (PreToolUse gate, PostToolUse tracker, UserPromptSubmit context, Stop blocker, SessionStart cleanup)"
     owner: framework
-    last_validated: 2026-02-12
+    last_validated: 2026-02-14
 
   - path: .claude/hooks/critic-gate.sh
     purpose: "PreToolUse hook: blocks git commit when framework files are staged without Critic review evidence"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-14
 
-  - path: .claude/hooks/framework-edit-tracker.sh
-    purpose: "PostToolUse hook: reminds Claude to run Critic when framework files are edited, sets .critic-pending flag"
+  - path: .claude/hooks/governance-gate.sh
+    purpose: "PreToolUse hook: blocks edits without Orchestrator activation or with chunk review debt"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-14
 
-  - path: .claude/hooks/orchestrator-gate.sh
-    purpose: "PreToolUse hook: blocks framework file edits without Orchestrator activation (HR9 enforcement)"
+  - path: .claude/hooks/governance-tracker.sh
+    purpose: "PostToolUse hook: tracks all edits and governance debt in .session-governance.json with escalating reminders"
     owner: framework
-    last_validated: 2026-02-12
+    last_validated: 2026-02-14
 
-  - path: .claude/hooks/product-governance-tracker.sh
-    purpose: "PostToolUse hook: tracks product build governance debt in .product-session.json (chunks without review, stage transitions without FRP, observation capture)"
+  - path: .claude/hooks/governance-prompt.sh
+    purpose: "UserPromptSubmit hook: injects governance status at start of each turn"
     owner: framework
-    last_validated: 2026-02-12
+    last_validated: 2026-02-14
 
-  - path: .claude/hooks/product-governance-stop.sh
-    purpose: "Stop hook: blocks task completion when critical product governance debt exists (unreviewed chunks, overdue checkpoints)"
+  - path: .claude/hooks/governance-stop.sh
+    purpose: "Stop hook: blocks completion when critical governance debt exists (unreviewed chunks, overdue checkpoints, missing Critic review)"
     owner: framework
-    last_validated: 2026-02-12
+    last_validated: 2026-02-14
 
-  - path: .claude/hooks/product-governance-prompt.sh
-    purpose: "UserPromptSubmit hook: injects governance status context at start of each turn during product builds"
+  - path: .claude/hooks/compact-governance-reinject.sh
+    purpose: "SessionStart hook (compact): re-injects governance instructions after context compaction"
     owner: framework
-    last_validated: 2026-02-12
+    last_validated: 2026-02-14
 
   - path: docs/self-improvement-architecture.md
     purpose: "Self-improvement system design: observation-as-side-effect philosophy, three-phase architecture (C8), failure modes"
     owner: framework
-    last_validated: 2026-02-11
+    last_validated: 2026-02-14
 
   - path: docs/skill-authoring-guide.md
     purpose: "Structural and health standards for writing LLM skill instructions, with provenance to external best practices"

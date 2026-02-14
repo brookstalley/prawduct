@@ -375,19 +375,23 @@ iteration_state:
   feedback_cycles: []
 
 # =============================================================================
-# OBSERVATION BACKLOG (Framework Development Only)
+# OBSERVATION BACKLOG
 # =============================================================================
-# Used when this project-state.yaml tracks a framework that captures observations.
-# User projects typically don't need this section.
-# Uncomment and populate when using Prawduct for framework self-development.
+# Observation capture is available for any project. Observations about the build
+# process help the framework improve. This section tracks observations that have
+# been triaged but not yet incorporated.
 #
-# observation_backlog:
-#   last_triage: YYYY-MM-DD
-#   items:
-#     - observation_file: "framework-observations/YYYY-MM-DD-description.yaml"
-#       type: string  # observation type from schema
-#       summary: string  # one-line description
-#       target_files: [string]  # files that would need to change
-#       priority: next | soon | deferred
-#       rationale: string  # why this priority
-#       added: YYYY-MM-DD
+# For product builds: observations capture what worked and what didn't about the
+# framework's guidance — artifact gaps, missing discovery questions, governance
+# friction, etc. These feed back to improve the framework for all users.
+
+observation_backlog:
+  last_triage: null
+  items: []
+  #   - observation_file: "framework-observations/YYYY-MM-DD-description.yaml"
+  #     type: string  # observation type from schema
+  #     summary: string  # one-line description
+  #     target_files: [string]  # files that would need to change
+  #     priority: next | soon | deferred
+  #     rationale: string  # why this priority
+  #     added: YYYY-MM-DD

@@ -102,7 +102,7 @@ if [[ -n "$findings_file" && -f "$findings_file" ]]; then
     max_age_seconds=$((2 * 60 * 60))  # 2 hours
 
     if [[ "$file_age_seconds" -le "$max_age_seconds" ]]; then
-        # Check 2: Does it contain all 7 checks?
+        # Check 2: Does it contain at least 6 checks?
         check_count=$(python3 -c "
 import json, sys
 try:
@@ -113,7 +113,7 @@ except:
     print(0)
 " 2>/dev/null || echo "0")
 
-        if [[ "$check_count" -eq 7 ]]; then
+        if [[ "$check_count" -ge 6 ]]; then
             # Check 3: Do reviewed_files cover all staged framework files?
             reviewed_files=$(python3 -c "
 import json
@@ -136,13 +136,13 @@ except:
 
             if [[ "$all_covered" == true ]]; then
                 critic_evidence=true
-                echo "Structured Critic findings verified: all 7 checks present, all staged files reviewed."
+                echo "Structured Critic findings verified: $check_count checks present, all staged files reviewed."
             else
                 echo "WARNING: Critic findings exist but don't cover all staged framework files."
                 echo "Re-run the Critic with all files, or add missing files to the review."
             fi
         else
-            echo "WARNING: Critic findings file has $check_count/7 checks. All 7 required."
+            echo "WARNING: Critic findings file has $check_count checks. At least 6 required."
         fi
     else
         echo "WARNING: Critic findings are stale (older than 2 hours). Re-run the Critic."
@@ -195,13 +195,13 @@ else
     echo "BLOCKED: Framework files were modified but no Critic review evidence found."
     echo ""
     echo "To unblock, run the Critic and record findings:"
-    echo "  1. Read skills/critic/SKILL.md and apply Framework Governance mode (all 7 checks)"
-    echo "  2. Run: tools/record-critic-findings.sh --files 'file1,file2' --check 'Name:sev:summary' (x7)"
-    echo "  3. Include 'Framework Governance Review' in commit message"
+    echo "  1. Read skills/critic/SKILL.md and apply all applicable checks"
+    echo "  2. Run: tools/record-critic-findings.sh --files 'file1,file2' --check 'Name:sev:summary' (for each applicable check)"
+    echo "  3. Include 'Governance Review' in commit message"
     echo ""
     echo "The commit gate verifies:"
     echo "  - .claude/.critic-findings.json exists and is < 2 hours old"
-    echo "  - All 7 Critic checks are recorded"
+    echo "  - At least 6 Critic checks are recorded"
     echo "  - All staged framework files appear in reviewed_files"
     exit 2
 fi

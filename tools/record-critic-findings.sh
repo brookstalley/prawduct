@@ -6,16 +6,22 @@
 # The commit gate checks .claude/.critic-findings.json for structured findings
 # rather than relying on keyword matching in commit messages.
 #
+# The Critic applies context-dependent checks — not every check applies to every
+# review. The required minimum is 6 checks (the always-applicable checks), but
+# skill file reviews may include up to 9 checks.
+#
 # Usage:
 #   tools/record-critic-findings.sh \
 #     --files "skills/orchestrator/SKILL.md,skills/critic/SKILL.md" \
-#     --check "Generality:pass:No enumerated concerns added" \
-#     --check "Read-Write Chain:pass:All fields traced" \
+#     --check "Spec Compliance:not-applicable:No build-stage implementation to review" \
+#     --check "Test Integrity:not-applicable:No build-stage tests to review" \
+#     --check "Scope Discipline:pass:Changes stay within stated scope" \
 #     --check "Proportionality:pass:Change weight appropriate" \
-#     --check "Skill Coherence:warning:Stage 6 examples slightly outdated" \
+#     --check "Coherence:warning:Stage 6 examples slightly outdated" \
+#     --check "Learning/Observability:pass:Observation paths complete" \
+#     --check "Generality:pass:No enumerated concerns added" \
 #     --check "Instruction Clarity:pass:Instructions are imperative" \
-#     --check "Cumulative Health:pass:Skill length proportionate" \
-#     --check "Learning Integration:pass:Observation paths complete"
+#     --check "Cumulative Health:pass:Skill length proportionate"
 #
 # Exit codes:
 #   0 — Findings recorded to .claude/.critic-findings.json
@@ -24,18 +30,29 @@
 set -euo pipefail
 
 # --- Known Critic checks (from skills/critic/SKILL.md) ---
+# Checks 1-6 are always applicable. Checks 7-9 apply when reviewing skill/template files.
 
-REQUIRED_CHECKS=(
-    "Generality"
-    "Read-Write Chain"
+ALL_VALID_CHECKS=(
+    "Spec Compliance"
+    "Test Integrity"
+    "Scope Discipline"
     "Proportionality"
-    "Skill Coherence"
+    "Coherence"
+    "Learning/Observability"
+    "Generality"
     "Instruction Clarity"
     "Cumulative Health"
-    "Learning Integration"
 )
 
-VALID_SEVERITIES="pass note warning blocking"
+# Minimum required: the 4 always-applicable checks
+ALWAYS_APPLICABLE_CHECKS=(
+    "Scope Discipline"
+    "Proportionality"
+    "Coherence"
+    "Learning/Observability"
+)
+
+VALID_SEVERITIES="pass not-applicable note warning blocking"
 
 # --- Parse arguments ---
 
@@ -50,15 +67,15 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: tools/record-critic-findings.sh --files FILE_LIST --check CHECK_ENTRY [--check ...]"
             echo ""
             echo "Required:"
-            echo "  --files    Comma-separated list of all reviewed framework files"
+            echo "  --files    Comma-separated list of all reviewed files"
             echo "  --check    One per Critic check, format: 'CheckName:severity:summary'"
-            echo "             Must provide exactly 7 checks (one per Critic check)"
+            echo "             Must provide at least 6 checks (all applicable checks)"
             echo ""
-            echo "Check names: ${REQUIRED_CHECKS[*]}"
+            echo "Check names: ${ALL_VALID_CHECKS[*]}"
             echo "Severities: $VALID_SEVERITIES"
             echo ""
             echo "Example:"
-            echo "  --check 'Generality:pass:No enumerated concerns added'"
+            echo "  --check 'Scope Discipline:pass:Changes stay within stated scope'"
             exit 0
             ;;
         *)
@@ -75,8 +92,8 @@ errors=()
 
 [[ -z "$FILES" ]] && errors+=("--files is required")
 
-if [[ ${#CHECKS[@]} -ne 7 ]]; then
-    errors+=("Exactly 7 --check entries required (one per Critic check). Got ${#CHECKS[@]}.")
+if [[ ${#CHECKS[@]} -lt 6 ]]; then
+    errors+=("At least 6 --check entries required. Got ${#CHECKS[@]}.")
 fi
 
 # Parse and validate each check
@@ -97,14 +114,14 @@ for check_entry in "${CHECKS[@]}"; do
     # Validate check name
     if [[ -n "$check_name" ]]; then
         name_valid=false
-        for valid_name in "${REQUIRED_CHECKS[@]}"; do
+        for valid_name in "${ALL_VALID_CHECKS[@]}"; do
             if [[ "$check_name" == "$valid_name" ]]; then
                 name_valid=true
                 break
             fi
         done
         if [[ "$name_valid" == false ]]; then
-            errors+=("Invalid check name: '$check_name'. Valid: ${REQUIRED_CHECKS[*]}")
+            errors+=("Invalid check name: '$check_name'. Valid: ${ALL_VALID_CHECKS[*]}")
         fi
     fi
 
@@ -127,8 +144,8 @@ for check_entry in "${CHECKS[@]}"; do
     PARSED_SUMMARIES+=("$check_summary")
 done
 
-# Verify all required checks are present
-for required in "${REQUIRED_CHECKS[@]}"; do
+# Verify all always-applicable checks are present
+for required in "${ALWAYS_APPLICABLE_CHECKS[@]}"; do
     found=false
     for provided in "${PARSED_NAMES[@]}"; do
         if [[ "$provided" == "$required" ]]; then
@@ -137,7 +154,7 @@ for required in "${REQUIRED_CHECKS[@]}"; do
         fi
     done
     if [[ "$found" == false ]]; then
-        errors+=("Missing required check: '$required'")
+        errors+=("Missing required check: '$required' (always applicable)")
     fi
 done
 
@@ -205,16 +222,21 @@ while i + 2 < len(check_lines):
     })
     i += 3
 
-# Determine highest severity
-severity_order = {'pass': 0, 'note': 1, 'warning': 2, 'blocking': 3}
-max_sev = max(checks, key=lambda c: severity_order.get(c['severity'], 0))
+# Determine highest severity (excluding not-applicable)
+severity_order = {'not-applicable': -1, 'pass': 0, 'note': 1, 'warning': 2, 'blocking': 3}
+applicable_checks = [c for c in checks if c['severity'] != 'not-applicable']
+if applicable_checks:
+    max_sev = max(applicable_checks, key=lambda c: severity_order.get(c['severity'], 0))
+    highest = max_sev['severity']
+else:
+    highest = 'pass'
 
 output = {
     'timestamp': timestamp,
     'git_sha': git_sha,
     'reviewed_files': files,
     'checks': checks,
-    'highest_severity': max_sev['severity'],
+    'highest_severity': highest,
     'total_checks': len(checks)
 }
 
@@ -229,13 +251,14 @@ echo "Critic findings recorded to: $OUTPUT_FILE"
 echo ""
 echo "Summary:"
 echo "  Files reviewed: ${#FILE_ARRAY[@]}"
-echo "  Checks: ${#CHECKS[@]}/7"
+echo "  Checks: ${#CHECKS[@]}"
 for i in "${!PARSED_NAMES[@]}"; do
     sev="${PARSED_SEVERITIES[$i]}"
     marker="✓"
     if [[ "$sev" == "warning" ]]; then marker="⚠"; fi
     if [[ "$sev" == "blocking" ]]; then marker="✗"; fi
     if [[ "$sev" == "note" ]]; then marker="·"; fi
+    if [[ "$sev" == "not-applicable" ]]; then marker="—"; fi
     echo "  $marker ${PARSED_NAMES[$i]}: ${PARSED_SEVERITIES[$i]} — ${PARSED_SUMMARIES[$i]}"
 done
 

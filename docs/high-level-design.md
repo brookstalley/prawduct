@@ -44,9 +44,9 @@ The system consists of eight components organized into three layers: a **Convers
 
 Not all components are equally essential for a working v1:
 
-- **V1 Phase 1 (vertical slice):** C1 (Orchestrator Stages 0-3), C2 (Domain Analyzer), C3 (Artifact Generator Phases A-C), C4 (Review Lenses), C5 (Project State), C6 framework governance mode, C8a (Observation Capture)
-- **V1 Phase 2 (build loop):** C1 (Orchestrator Stages 4-6), C3 (Artifact Generator Phase D — build planning), C3b (Builder — code generation from build plans), C6 product governance mode (spec compliance, test integrity, scope violation), build-phase observation types
-- **V1 Phase 2 (widen):** C6 remaining sub-components (architectural consistency, documentation controller, operational readiness), additional product shapes, mechanical tools (governance enforcement hooks now built — see C6 section; remaining sub-check tools still deferred)
+- **V1 Phase 1 (vertical slice):** C1 (Orchestrator Stages 0-3), C2 (Domain Analyzer), C3 (Artifact Generator Phases A-C), C4 (Review Lenses), C5 (Project State), C6 governance checks (Scope Discipline, Proportionality, Coherence, Learning/Observability, Generality, Instruction Clarity, Cumulative Health), C8a (Observation Capture)
+- **V1 Phase 2 (build loop):** C1 (Orchestrator Stages 4-6), C3 (Artifact Generator Phase D — build planning), C3b (Builder — code generation from build plans), C6 build-stage checks (Spec Compliance, Test Integrity added to always-applicable checks), build-phase observation types
+- **V1 Phase 2 (widen):** C6 remaining sub-components (architectural consistency, documentation controller, operational readiness), additional product shapes, mechanical tools (unified governance hooks now built — see C6 section; remaining sub-check tools still deferred)
 - **V1.5:** C7 (Trajectory Monitor) — architecturally accommodate but implement after v1 validates
 - **V2:** C8 full (Learning System with pattern detection, validation, incorporation) — requires data from many projects; premature before user base exists
 
@@ -426,7 +426,7 @@ Project State
    - "Fixing" by adding a workaround rather than addressing root cause
 6. Proceed to next chunk or re-enter step 4
 
-**Mechanical enforcement:** Beyond the LLM-driven review cycle, governance is enforced mechanically via Claude Code hooks that operate independent of LLM judgment. Framework governance uses commit gate hooks (`critic-gate.sh`, `framework-edit-tracker.sh`, `orchestrator-gate.sh`) that block commits without Critic evidence and track edits with escalating reminders. Product governance uses session tracking hooks (`product-governance-tracker.sh`, `product-governance-stop.sh`, `product-governance-prompt.sh`) that maintain `.product-session.json` state to track governance debt — advisory for soft items (observation capture reminders), blocking for critical items (unreviewed chunks, overdue governance checkpoints).
+**Mechanical enforcement:** Beyond the LLM-driven review cycle, governance is enforced mechanically via Claude Code hooks that operate independent of LLM judgment. A unified hook system handles both framework and product governance through a single `.session-governance.json` state file: `governance-gate.sh` (PreToolUse — blocks edits without Orchestrator activation or with chunk review debt), `governance-tracker.sh` (PostToolUse — tracks all edits and governance debt with escalating reminders), `governance-prompt.sh` (UserPromptSubmit — injects governance status at start of each turn), `governance-stop.sh` (Stop — blocks session completion when critical governance debt exists), and `critic-gate.sh` (PreToolUse — blocks commits without structured Critic evidence). Advisory for soft items (observation capture reminders), blocking for critical items (unreviewed chunks, overdue governance checkpoints, missing Critic evidence).
 
 ### C7: Trajectory Monitor
 
@@ -608,8 +608,8 @@ Pick one product scenario (the family utility — a simple UI application with l
 Phase 1 validated the architecture. Phase 2 widening has delivered:
 
 - `runs_unattended` structural characteristic with full-depth discovery, 5 templates, and test scenario rubric (background-data-pipeline).
-- Critic (C6) with framework governance (7 checks) and product governance (spec compliance, test integrity, scope violation).
-- Mechanical governance hooks: commit gate, edit tracker, orchestrator gate, product governance tracker/stop/prompt.
+- Critic (C6) with context-sensitive governance (9 checks with applicability table: Spec Compliance, Test Integrity, Scope Discipline, Proportionality, Coherence, Learning/Observability, Generality, Instruction Clarity, Cumulative Health).
+- Unified mechanical governance hooks: governance-gate, governance-tracker, governance-prompt, governance-stop, critic-gate, compact-governance-reinject.
 - Builder with chunk execution, scaffolding, proportionality, and artifact insufficiency flagging.
 - Stages 4-6 (Build Planning, Build + Governance, Iteration) across Orchestrator, Builder, and Critic.
 - Terminal arcade game test scenario (entertainment domain, creative product handling).

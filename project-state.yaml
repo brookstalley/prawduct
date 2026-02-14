@@ -100,7 +100,7 @@ product_definition:
       - "Five structural characteristics (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth"
       - "Full stage pipeline (0 through 6)"
       - "Five review lenses with concern-appropriate application"
-      - "Critic with framework governance and product governance modes"
+      - "Critic with context-sensitive governance (9 checks, applicability based on project state)"
       - "Builder skill for code generation from build plans"
       - "Observation capture at every stage transition"
       - "Five test scenarios with evaluation rubrics"
@@ -444,6 +444,12 @@ change_log:
     blast_radius: "skills/orchestrator/SKILL.md, templates/project-state.yaml, project-state.yaml, docs/self-improvement-architecture.md, framework-observations/ (3 new observations)"
     classification: functional
     date: 2026-02-13
+  - what: "Unified governance and generalized artifact generation"
+    why: "Framework violated 'Eat Your Own Cooking' (separate governance paths for framework vs. product — 8 hooks in two parallel stacks, 2 Critic modes, 2 state files) and 'Generality Over Enumeration' (Artifact Generator hardcoded 575 lines of per-artifact format specs). Unified to: 5 hooks with single .session-governance.json state, 1 context-sensitive Critic with 9 checks and applicability table, Artifact Generator reduced from 789→189 lines by moving format specs to templates, observation backlog enabled for all projects, single Directional Change Protocol."
+    blast_radius: "All 6 skills, .claude/hooks/ (8 deleted, 4 created, 2 updated), .claude/settings.json, templates/project-state.yaml, templates/product-brief.md, templates/data-model.md, tools/record-critic-findings.sh, tools/critic-reminder.sh, docs/high-level-design.md, docs/self-improvement-architecture.md, docs/doc-manifest.yaml, CLAUDE.md, project-state.yaml"
+    classification: directional
+    date: 2026-02-14
+    retrospective: "Detection: The 'Eat Your Own Cooking' violation (parallel governance stacks) was visible for weeks but not detected by the learning system because observation types didn't include 'architectural inconsistency with stated principles.' The Structural Critique Protocol could have caught this but its trigger cadence (every 3 evals) was too low. Process: The phased implementation (hooks → Critic → artifacts → docs) worked well — each phase was independently testable. The Critic review found 4 stale cross-references, confirming that documentation freshness checks catch real issues. Architecture: The unified governance state (.session-governance.json) creates a single point of failure — if the state file is corrupted, all governance tracking is lost. The previous dual-file approach had natural redundancy. Mitigation: SessionStart cleanup creates a fresh file each session, limiting blast radius. Generalization: This pattern (parallel implementations for 'framework' and 'product' that should be unified) should be checked whenever new framework capabilities are added — does the capability apply identically to both contexts?"
 
 # =============================================================================
 # BUILD PLAN
