@@ -19,6 +19,15 @@ After loading the Orchestrator, it will route based on context:
 **Everything else** (framework dev, returning user, "fix the domain analyzer", "what should I work on next?"):
 → The Orchestrator reads `project-state.yaml` at the repo root, performs Session Resumption, and enters Stage 6 iteration for framework development.
 
+## Compact Instructions
+
+When compacting this conversation, preserve:
+- Which product is being built and its current stage/chunk
+- All governance debt (chunks without review, overdue checkpoints)
+- The instruction that skill files must be re-read from disk after compaction
+- Any blocking findings or unresolved review issues
+- The requirement to read skills/orchestrator/SKILL.md before taking action
+
 ## Project Structure
 
 ```
@@ -108,7 +117,8 @@ prawduct/
 │   │   ├── product-chunk-gate.sh       # PreToolUse hook: blocks product file edits when chunks lack Critic review
 │   │   ├── product-governance-tracker.sh  # PostToolUse hook: tracks product build governance debt, injects reminders
 │   │   ├── product-governance-stop.sh     # Stop hook: blocks completion when critical product governance debt exists
-│   │   └── product-governance-prompt.sh   # UserPromptSubmit hook: injects governance status at start of turn
+│   │   ├── product-governance-prompt.sh   # UserPromptSubmit hook: injects governance status at start of turn
+│   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
 │   ├── settings.json                  # Project-level Claude Code settings
 │   └── settings.local.json            # Local overrides (not committed)
 ├── docs/                              # This project's own Tier 1 documentation
@@ -136,6 +146,19 @@ The Framework Status section below provides build context. The Key Principles, T
 **For directional or multi-file changes (3+ framework files):** Follow the Directional Change Protocol in `skills/orchestrator/SKILL.md`. This requires a written plan, plan-stage Critic review before implementation, per-phase lightweight reviews, and a final full Critic review. The protocol ensures governance is proportionate to change impact — not just a rubber stamp at the end.
 
 To run the Critic: read `skills/critic/SKILL.md` and apply **Framework Governance mode** (all 7 checks) to your changes. This catches specificity leaks, broken read-write chains, disproportionate additions, cross-skill inconsistencies, cumulative skill health drift, and learning system impact. After review, run `tools/record-critic-findings.sh` to record structured findings — the commit gate verifies this file exists with all 7 checks and coverage of all staged files. Include "Framework Governance Review" in the commit message.
+
+## Product Build Governance (Compaction Recovery)
+
+If you are building a product and cannot remember governance procedures (e.g., after context compaction), follow these steps. **Skill files are always on disk — read them.**
+
+1. **After each chunk:** Read `skills/critic/SKILL.md` from disk and apply Mode 2 (Product Governance)
+2. **Record findings:** Add review entry to the product's `project-state.yaml` → `build_state.reviews`
+3. **Clear debt:** Update `.claude/.product-session.json` → `governance_state.chunks_completed_without_review` to 0
+4. **At governance checkpoints:** Read `skills/review-lenses/SKILL.md` from disk, apply Architecture + Skeptic + Testing lenses
+5. **At stage transitions:** Read `skills/orchestrator/SKILL.md` from disk and run the Framework Reflection Protocol
+6. **If hooks block your edits:** The hook message tells you which skill file to read. Read it from disk and follow its instructions.
+
+Hooks survive compaction but `additionalContext` does not. When a hook blocks or reminds you, it means governance procedures are needed — the skill files contain the full procedures.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 

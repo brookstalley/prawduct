@@ -12,6 +12,15 @@
             "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.claude/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.claude/.product-session.json \"$CLAUDE_PROJECT_DIR\"/.claude/.session-edits.json"
           }
         ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/compact-governance-reinject.sh"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [

@@ -48,17 +48,17 @@ items = []
 # Chunks without review
 chunks_without_review = gov.get('chunks_completed_without_review', 0)
 if chunks_without_review > 0:
-    items.append(f'{chunks_without_review} chunk(s) completed without Critic review — run Critic before proceeding')
+    items.append(f'{chunks_without_review} chunk(s) completed without Critic review — read skills/critic/SKILL.md from disk and apply Mode 2 (Product Governance) before proceeding')
 
 # Stage transitions without FRP
 stage_transitions = gov.get('stage_transitions_without_frp', 0)
 if stage_transitions > 0:
-    items.append(f'{stage_transitions} stage transition(s) without Framework Reflection')
+    items.append(f'{stage_transitions} stage transition(s) without Framework Reflection — read skills/orchestrator/SKILL.md from disk for the Framework Reflection Protocol')
 
 # Overdue checkpoints
 checkpoints_due = gov.get('governance_checkpoints_due', [])
 if checkpoints_due:
-    items.append(f'{len(checkpoints_due)} governance checkpoint(s) overdue')
+    items.append(f'{len(checkpoints_due)} governance checkpoint(s) overdue — read skills/review-lenses/SKILL.md from disk and apply Architecture + Skeptic + Testing lenses')
 
 # Observation reminder
 files_changed = gov.get('product_files_changed', 0)

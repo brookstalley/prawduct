@@ -106,12 +106,14 @@ if [[ -n "$result" && "$result" != "" ]]; then
     echo "" >&2
     echo "$result" >&2
     echo "" >&2
-    echo "Product file edits are blocked until governance debt is resolved." >&2
+    echo "Product file edits are BLOCKED until governance debt is resolved." >&2
     echo "" >&2
-    echo "To unblock:" >&2
-    echo "  1. Run Critic review (skills/critic/SKILL.md Mode 2) on completed chunks" >&2
-    echo "  2. Record findings in project-state.yaml build_state.reviews" >&2
-    echo "  3. Update .claude/.product-session.json governance_state.chunks_completed_without_review to 0" >&2
+    echo "To unblock — you MUST read the skill files from disk (they survive context compaction):" >&2
+    echo "  1. Read skills/critic/SKILL.md from disk NOW, then apply Mode 2 (Product Governance) to completed chunks" >&2
+    echo "  2. Record findings in project-state.yaml → build_state.reviews" >&2
+    echo "  3. Update .claude/.product-session.json → governance_state.chunks_completed_without_review to 0" >&2
+    echo "" >&2
+    echo "If you cannot remember governance procedures, skill files are always available on disk. Read them." >&2
     exit 2
 fi
 

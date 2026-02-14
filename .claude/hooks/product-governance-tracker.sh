@@ -115,7 +115,7 @@ try:
         # Get reviewed chunk names
         reviewed_chunks = set()
         for review in reviews:
-            chunk_name = review.get('chunk', '')
+            chunk_name = review.get('chunk', review.get('after_chunk', ''))
             if chunk_name:
                 reviewed_chunks.add(chunk_name)
 
@@ -133,7 +133,7 @@ try:
             chunks_str = ', '.join(unreviewed[:3])
             if len(unreviewed) > 3:
                 chunks_str += f' (+{len(unreviewed) - 3} more)'
-            messages.append(f'CRITIC REVIEW OVERDUE: {len(unreviewed)} chunk(s) completed without Critic review: {chunks_str}. Run Critic (skills/critic/SKILL.md Mode 2) before proceeding to next chunk.')
+            messages.append(f'CRITIC REVIEW OVERDUE: {len(unreviewed)} chunk(s) completed without Critic review: {chunks_str}. Read skills/critic/SKILL.md from disk NOW and apply Mode 2 (Product Governance) before proceeding to next chunk.')
         else:
             gov['chunks_completed_without_review'] = 0
 
@@ -155,7 +155,7 @@ try:
             stage_transitions = gov.get('stage_transitions_without_frp', 0) + 1
             gov['stage_transitions_without_frp'] = stage_transitions
             if stage_transitions >= 1:
-                messages.append(f'FRP OVERDUE: Stage transitioned to \"{current_stage}\" without Framework Reflection. Run the Framework Reflection Protocol (see Orchestrator SKILL.md).')
+                messages.append(f'FRP OVERDUE: Stage transitioned to \"{current_stage}\" without Framework Reflection. Read skills/orchestrator/SKILL.md from disk and run the Framework Reflection Protocol.')
 
         # Check governance checkpoints
         checkpoints = build_plan.get('governance_checkpoints', [])
@@ -169,13 +169,13 @@ try:
                 # Check if this checkpoint should have been triggered
                 if isinstance(trigger, int) and completed_chunk_count >= trigger:
                     overdue_checkpoints.append(f'after chunk {trigger}')
-                    messages.append(f'GOVERNANCE CHECKPOINT OVERDUE: Checkpoint after chunk {trigger} has not been completed. Run cross-chunk review (Architecture, Skeptic, Testing lenses).')
+                    messages.append(f'GOVERNANCE CHECKPOINT OVERDUE: Checkpoint after chunk {trigger} has not been completed. Read skills/review-lenses/SKILL.md from disk and run cross-chunk review (Architecture + Skeptic + Testing lenses).')
                 elif isinstance(trigger, str):
                     # Check if the named chunk is complete
                     for chunk in chunks:
                         if chunk.get('name', chunk.get('id', '')) == trigger and chunk.get('status') == 'complete':
                             overdue_checkpoints.append(f'after \"{trigger}\"')
-                            messages.append(f'GOVERNANCE CHECKPOINT OVERDUE: Checkpoint after \"{trigger}\" has not been completed. Run cross-chunk review.')
+                            messages.append(f'GOVERNANCE CHECKPOINT OVERDUE: Checkpoint after \"{trigger}\" has not been completed. Read skills/review-lenses/SKILL.md from disk and run cross-chunk review (Architecture + Skeptic + Testing lenses).')
                             break
 
         gov['governance_checkpoints_due'] = overdue_checkpoints
@@ -249,8 +249,12 @@ try:
 except:
     pass
 
+# Remind about chunk status updates every 10 product files
+if files_changed > 0 and files_changed % 10 == 0:
+    print(f'{files_changed} product files modified. Have you updated project-state.yaml chunk status? The governance gate requires chunk status updates to enforce Critic review. If a chunk is complete, mark it in project-state.yaml → build_plan.chunks.')
+
 # Remind about observations after 10+ files with zero captures
-if files_changed >= 10 and observations_count == 0:
+elif files_changed >= 10 and observations_count == 0:
     if files_changed % 5 == 0:  # Remind every 5 files after threshold
         print(f'{files_changed} product files modified with 0 framework observations captured. If the build revealed anything about the framework (artifact gaps, missing guidance, process friction), capture an observation via tools/capture-observation.sh.')
 " 2>/dev/null || echo "")
