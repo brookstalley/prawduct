@@ -12,7 +12,7 @@ Not everything below is v1. Our own principles demand we scope ourselves. Requir
 
 V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrapping"). Per HR2, requirement status is tracked here to ensure nothing is silently dropped.
 
-**Phase 1 delivered:** Classification, discovery, product definition, artifact generation, review, and observation capture — for human_interface concern only, Stages 0-3. Validated the architecture end-to-end.
+**Phase 1 delivered:** Classification, discovery, product definition, artifact generation, review, and observation capture — for has_human_interface structural characteristic only, Stages 0-3. Validated the architecture end-to-end.
 
 **Phase 2 delivered:**
 - R2.5 (Build Ordering) — implemented via Artifact Generator Phase D and build-plan template
@@ -22,7 +22,7 @@ V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrappi
 - R4.1-R4.3 (Trajectory Management) — partially addressed via governance checkpoints and cross-chunk reviews in Stage 5; full C7 Trajectory Monitor deferred to v1.5
 - R5.1-R5.3 (Feedback Integration) — implemented via Orchestrator Stage 6 iteration loop
 - Stages 4-6 (Build Planning, Build + Governance, Iteration) — implemented across Orchestrator, Builder, Critic
-- `unattended_operation` concern — full depth with templates, domain overlays, discovery questions
+- `runs_unattended` structural characteristic — full depth with templates, domain overlays, discovery questions
 
 **Remaining v1 work** (canonical tracker: `project-state.yaml` → `build_plan.remaining_work`):
 - R1.5 (Opinionated Pushback), R1.7 (Prior Art Awareness), R1.8 (Pacing Sensitivity) — Orchestrator sophistication
@@ -31,8 +31,8 @@ V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrappi
 - R3.1 (Critic-Review Lenses Integration) — bidirectional findings flow
 - R3.4, R3.5 (Architectural Consistency, Documentation Controller, Operational Readiness) — Critic sub-components
 - R3.7 (Meta-Enforcement) — remaining mechanical sub-check tools
-- R5.4 (Reclassification) — concern change detection during build
-- R7.2 (Product Diversity) — api_surface, multi_party concern deepening; additional test scenarios
+- R5.4 (Reclassification) — structural characteristic change detection during build
+- R7.2 (Product Diversity) — api_surface, multi_party structural characteristic deepening; additional test scenarios
 
 ---
 
@@ -49,7 +49,7 @@ The system must surface honest assessments, but the user decides. If they want t
 ### R1.1: Intake Classification [v1]
 The system must analyze raw user input and classify the product idea along two dimensions:
 - **Domain:** Social, marketplace, productivity, B2B, utility, content, automation, developer tool, etc.
-- **Product shape:** UI application, background automation/pipeline, API/service, multi-party platform, or hybrid. This classification determines which artifacts are relevant.
+- **Structural characteristics:** has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data. A product may have multiple active characteristics.
 
 Classification must not require the user to understand these categories.
 
@@ -79,10 +79,10 @@ For products in regulated domains or with specific legal requirements (health da
 
 ## R2: Artifact Generation
 
-### R2.1: Product-Shape-Appropriate Artifacts [v1]
-The system must produce artifacts appropriate to the product's shape. Not every product needs every artifact. The system must select from the full artifact menu based on what's relevant:
+### R2.1: Structurally-Appropriate Artifacts [v1]
+The system must produce artifacts appropriate to the product's structural characteristics. Not every product needs every artifact. The system must select from the full artifact menu based on what's relevant:
 
-**Universal artifacts (all product shapes):**
+**Universal artifacts (all products):**
 - Product brief (users, personas, core problem, success criteria)
 - Data model (entities, relationships, state machines, constraints)
 - Security model (authentication, authorization, data privacy, abuse prevention)
@@ -91,7 +91,7 @@ The system must produce artifacts appropriate to the product's shape. Not every 
 - Operational specification (deployment strategy, monitoring, alerting, logging, failure recovery, backup)
 - Dependency manifest (external services, APIs, libraries — with justification and version pinning)
 
-**UI application artifacts:**
+**has_human_interface artifacts:**
 - Information architecture (screens, navigation, content hierarchy)
 - Screen-by-screen specifications (all states: loading, empty, error, success, partial, offline where applicable)
 - Design direction (layout patterns, component inventory, interaction patterns, visual tone)
@@ -99,20 +99,20 @@ The system must produce artifacts appropriate to the product's shape. Not every 
 - Localization requirements (what needs translating, cultural considerations, locale-specific behavior)
 - Onboarding and first-run experience specification
 
-**API/service artifacts:**
+**exposes_programmatic_interface artifacts:**
 - API contracts (endpoints, request/response shapes, error codes, auth requirements, rate limits)
 - Integration guide (for consumers — how to authenticate, common patterns, error handling)
 - Sandbox/testing environment specification
 - Versioning strategy
 - SLA definition
 
-**Automation/pipeline artifacts:**
+**runs_unattended artifacts:**
 - Pipeline architecture (inputs, processing stages, outputs, scheduling)
 - Monitoring and alerting specification (what to watch, what constitutes failure, escalation)
 - Configuration specification (what's configurable, defaults, validation)
 - Failure and recovery specification (what happens when each stage fails, retry logic, dead letters)
 
-**Multi-party artifacts (products with distinct user types):**
+**has_multiple_party_types artifacts:**
 - Per-party experience specification (each party's flows, needs, and constraints)
 - Party interaction model (how parties affect each other, trust boundaries)
 - Migration/adoption plan (if replacing an existing process — how do parties transition?)
@@ -194,7 +194,7 @@ Before implementing a change, the system must assess and communicate its impact:
 The system must handle the reality that users change their minds, discover new requirements through usage, and evolve their vision — without treating every change as a crisis or requiring a full restart.
 
 ### R5.4: Reclassification [v1.5]
-When scope evolution fundamentally changes the product's nature (a cribbage app becomes a multi-game platform; a simple tool becomes a B2B service), the system must recognize the reclassification, re-run relevant discovery for the new product shape, and communicate what this means for the existing work.
+When scope evolution fundamentally changes the product's nature (a cribbage app becomes a multi-game platform; a simple tool becomes a B2B service), the system must recognize the reclassification, re-run relevant discovery for the new structural characteristics, and communicate what this means for the existing work.
 
 ## R6: Learning
 
@@ -219,7 +219,7 @@ Every incorporated learning must carry provenance and must be subject to retirem
 The system must function effectively for users ranging from non-technical to highly experienced, adapting language, depth, and involvement expectations dynamically.
 
 ### R7.2: Product Diversity [v1]
-The system must handle the full range of software product shapes: consumer mobile apps, web applications, background automations, APIs and services, B2B platforms, family utilities, developer tools, data pipelines, and hybrids. It must not be biased toward any particular product type.
+The system must handle the full range of software products across all structural characteristics: consumer mobile apps, web applications, background automations, APIs and services, B2B platforms, family utilities, developer tools, data pipelines, and products combining multiple characteristics. It must not be biased toward any particular product type.
 
 ### R7.3: Agent Agnosticism [v1.5]
 While the initial implementation targets Claude Code, the artifact formats and governance principles must be designed to be consumable by any competent LLM coding agent.

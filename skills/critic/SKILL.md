@@ -58,6 +58,7 @@ After each chunk, diff the implementation against artifact specifications.
 - Security patterns match `security-model.md`: access controls are present where specified.
 - Non-functional techniques match `nonfunctional-requirements.md`: any NFR that specifies an implementation approach (rendering strategy, caching approach, data access pattern) is implemented as specified. NFR performance targets are verifiable via tests or acceptance criteria.
 - Test scenarios match `test-specifications.md`: every scenario for this chunk has a corresponding test.
+- **Builder recorded spec compliance:** Verify that `build_state.spec_compliance.requirements` contains entries with `chunk_id` matching the current chunk. If not, that is a **WARNING**.
 
 ### Check 2: Test Integrity
 
@@ -238,7 +239,8 @@ If there are no findings, say so explicitly: "No issues found. Changes maintain 
      - Changing a spec to match wrong implementation instead of fixing the code → **BLOCKING**
      - Adding a workaround instead of addressing root cause → **WARNING**
    - Repeat until no blocking findings remain.
-4. **If no BLOCKING findings:** chunk status → "complete", proceed to next chunk.
+4. **Record findings in project state.** This step is mandatory for every chunk, regardless of whether findings exist. Update `project-state.yaml` → `build_state.reviews` with findings from this review cycle (see Recording Reviews below).
+5. **If no BLOCKING findings:** chunk status → "complete", proceed to next chunk.
 
 ### Directional Change Review
 
@@ -285,7 +287,9 @@ This review is invoked by the Orchestrator after all chunks from a directional c
 [Total findings by severity. Whether the chunk passes review.]
 ```
 
-### Recording Reviews
+### Recording Reviews — MANDATORY
+
+**Every review cycle must produce a `build_state.reviews` entry.** This is not optional — governance without an audit trail violates HR3 (No Documentation Fiction).
 
 After each review cycle, update `project-state.yaml` → `build_state.reviews` with:
 ```yaml
@@ -295,6 +299,14 @@ After each review cycle, update `project-state.yaml` → `build_state.reviews` w
       severity: blocking | warning | note
       status: open | resolved | deferred
 ```
+
+**When no findings exist**, record an empty-findings entry:
+```yaml
+- chunk_id: "[current chunk]"
+  findings: []
+```
+
+**Verification:** After recording, confirm that `build_state.reviews` contains an entry for the current chunk before proceeding.
 
 ## Extending This Skill
 

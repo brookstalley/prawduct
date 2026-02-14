@@ -50,12 +50,7 @@ prawduct/
 │   ├── critic-reminder.sh             # Verify Critic evidence before framework commits
 │   ├── observation-analysis.sh        # Parse observations, detect patterns, produce summary
 │   ├── compact-project-state.py       # Mechanical compaction of growing project-state.yaml sections per LIFECYCLE rules
-│   ├── compact-project-state.sh       # Bash wrapper for compact-project-state.py
-│   ├── test-integrity-checker.sh      # [planned Phase 2] Monitor test count, assertion trends
-│   ├── doc-architecture-validator.sh  # [planned Phase 2] Enforce tier system, manifest compliance
-│   ├── boundary-checker.sh            # [planned Phase 2] Verify architectural boundary respect
-│   ├── spec-compliance-diff.sh        # [planned Phase 2] Diff specifications against implementation
-│   └── docs-freshness-checker.sh      # [planned Phase 2] Diff CLAUDE.md tree against disk, check last_validated dates
+│   └── compact-project-state.sh       # Bash wrapper for compact-project-state.py
 ├── scripts/                           # Eval/validation helper scripts
 │   ├── validate-eval-output.sh        # Mechanical validation for evaluation output
 │   ├── validate-schema.py             # Validate project-state.yaml against template
@@ -79,29 +74,17 @@ prawduct/
 │   │   ├── accessibility-spec.md
 │   │   ├── localization-requirements.md
 │   │   └── onboarding-spec.md
-│   ├── api-surface/                   # [planned] exposes_programmatic_interface structural characteristic
-│   │   ├── api-contract.md            # Per-endpoint template
-│   │   ├── integration-guide.md
-│   │   ├── versioning-strategy.md
-│   │   └── sla-definition.md
-│   ├── unattended-operation/          # runs_unattended structural characteristic
-│   │   ├── pipeline-architecture.md
-│   │   ├── scheduling-spec.md
-│   │   ├── monitoring-alerting-spec.md
-│   │   ├── failure-recovery-spec.md
-│   │   └── configuration-spec.md
-│   └── multi-party/                   # [planned] has_multiple_party_types structural characteristic
-│       ├── party-experience-spec.md   # Per-party template
-│       ├── party-interaction-model.md
-│       └── migration-adoption-plan.md
+│   └── unattended-operation/          # runs_unattended structural characteristic
+│       ├── pipeline-architecture.md
+│       ├── scheduling-spec.md
+│       ├── monitoring-alerting-spec.md
+│       ├── failure-recovery-spec.md
+│       └── configuration-spec.md
 ├── tests/                             # Evaluation rubrics for skill validation
 │   └── scenarios/                     # Per-scenario test definitions (Tier 1)
 │       ├── family-utility.md          # Phase 1 vertical slice scenario
 │       ├── background-data-pipeline.md # Phase 2 scenario, used for observation testing
-│       ├── terminal-arcade-game.md    # Game design scenario, tests creative product handling
-│       ├── consumer-mobile-app.md     # [planned Phase 2]
-│       ├── b2b-integration-api.md     # [planned Phase 2]
-│       └── two-sided-marketplace.md   # [planned Phase 2]
+│       └── terminal-arcade-game.md    # Game design scenario, tests creative product handling
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
 ├── framework-observations/            # Automatic observation capture (Tier 1, lifecycle-managed)

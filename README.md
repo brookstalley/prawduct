@@ -52,7 +52,7 @@ The framework adapts to each product's shape — discovery depth, risk profiling
 
 ## Contributing
 
-The framework governs its own development using the same process it applies to user products. All framework changes go through a 7-check governance review (the Critic), and the framework captures structured observations about its own performance during use.
+The framework governs its own development using the same process it applies to user products. All framework changes go through a 9-check governance review (the Critic), and the framework captures structured observations about its own performance during use.
 
 See `docs/principles.md` for the hard rules that are never compromised.
 
