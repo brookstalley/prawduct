@@ -26,13 +26,16 @@ V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrappi
 
 **Remaining v1 work** (canonical tracker: `project-state.yaml` → `build_plan.remaining_work`):
 - R1.5 (Opinionated Pushback), R1.7 (Prior Art Awareness), R1.8 (Pacing Sensitivity) — Orchestrator sophistication
-- R2.1 (Artifact Coverage) — api_surface, multi_party, and human_interface templates
 - R2.4 (Modular Updates) — update affected artifacts only, not regenerate all
 - R3.1 (Critic-Review Lenses Integration) — bidirectional findings flow
-- R3.4, R3.5 (Architectural Consistency, Documentation Controller, Operational Readiness) — Critic sub-components
-- R3.7 (Meta-Enforcement) — remaining mechanical sub-check tools
 - R5.4 (Reclassification) — structural characteristic change detection during build
-- R7.2 (Product Diversity) — api_surface, multi_party structural characteristic deepening; additional test scenarios
+- R7.2 (Product Diversity) — additional test scenarios (consumer-mobile-app planned)
+
+**Delivered since Phase 2** (removed from remaining):
+- R2.1 (Artifact Coverage) — replaced by three-layer artifact generation (amplification rules + process constraints + optional templates). Per-characteristic template directories replaced by dynamic generation for all structural characteristics.
+- R3.4 (Architectural Consistency) — absorbed into Critic Check 5 (Coherence). Architectural consistency is verified as part of coherence checking, not a separate sub-component.
+- R3.5 (Documentation Integrity, Operational Readiness) — absorbed into Critic Checks 1 (Spec Compliance) and 3 (Scope Discipline). Documentation integrity is part of scope discipline; operational readiness is part of spec compliance for relevant structural characteristics.
+- R3.7 (Meta-Enforcement) — mechanical sub-check tools replaced by strengthening general Critic checks. Mechanical enforcement via unified governance hooks (governance-gate, governance-tracker, governance-prompt, governance-stop, critic-gate) is fully built.
 
 ---
 

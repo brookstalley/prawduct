@@ -94,7 +94,7 @@ Self-improvement has distinct layers that require different capabilities and dif
 **Phase 2: Pattern Detection** (Build after project volume)
 - Analyze accumulated observations for patterns
 - Requires multiple observations to detect signal vs noise
-- Applies thresholds (1 occurrence = noted, 4+ = pattern detected)
+- Applies tiered thresholds (meta 2+, build 3+, product 4+ occurrences to detect a pattern)
 - **Status**: PARTIALLY BUILT. Detection is mechanical via `tools/observation-analysis.sh` with tiered thresholds. `tools/session-health-check.sh` surfaces actionable patterns (with proposed actions, affected skills, and un-acted counts) automatically during session resumption. Patterns are presented to the user for action-or-defer decisions. What remains: fully automated periodic detection triggers (currently runs on session start, not on a schedule or after N observations).
 
 **Phase 3: Incorporation** (Build after validation infrastructure)
@@ -155,14 +155,14 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 - Parse all observation files
 - Group by (type + skills_affected)
 - Count occurrences across sessions
-- Apply thresholds:
+- Apply tiered thresholds:
   - 1 occurrence → status: noted (watch for recurrence)
-  - 2-3 occurrences → status: requires_pattern (flag for review)
-  - 4+ occurrences → pattern detected (propose action)
+  - 2-3 occurrences → status: emerging (flag for review)
+  - Threshold for pattern detection varies by type: meta 2+, build 3+, product 4+
 
-**Output**: Pattern reports in `pattern-reports/` with detected patterns, emerging patterns, single instances
+**Output**: Actionable patterns surfaced during session resumption via `tools/session-health-check.sh`, with proposed actions and affected skill files
 
-**Trigger**: Weekly cron OR after N new observations OR manually invoked
+**Trigger**: Session start (via `tools/session-health-check.sh`). Fully automated periodic triggers remain future work.
 
 **Principle**: Learn Slowly - requires strong evidence (multiple occurrences) before acting
 
@@ -214,7 +214,7 @@ The Phase 1-3 architecture is **inductive**: observations accumulate → pattern
 
 But some framework problems are **structural** — they don't produce repeated observations because the failure mode is invisible from inside the system. Example: if the framework classifies products into fixed categories, no individual product session will observe "this should use dimensions instead of categories." Each session either fits a category or gets classified as ambiguous. The structural issue only becomes visible through deductive analysis: applying the framework's own principles (Generality Over Enumeration) to its own architecture.
 
-**The gap:** Inductive learning requires volume. Deductive analysis requires principles + research → questioning. Phase 1-3 handles the first. The Structural Critique Protocol (see `skills/orchestrator/SKILL.md` § "Structural Critique Protocol") handles the second.
+**The gap:** Inductive learning requires volume. Deductive analysis requires principles + research → questioning. Phase 1-3 handles the first. The Structural Critique Protocol (see `skills/orchestrator/protocols.md` § "Structural Critique Protocol") handles the second.
 
 **How they complement each other:**
 
@@ -379,7 +379,7 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Root cause**: Skipping pattern detection, going straight from observation to incorporation.
 
-**Safeguard**: Learn Slowly principle enforced by thresholds (4+ occurrences required for pattern)
+**Safeguard**: Learn Slowly principle enforced by tiered thresholds (meta 2+, build 3+, product 4+ occurrences required for pattern detection)
 
 **Prevention**: Phase 2 pattern detection applies statistical significance, not anecdotes
 
@@ -572,23 +572,25 @@ The self-improvement system successfully improved itself:
 
 ### Phase 1 Completion
 
-- [ ] Run family-utility baseline to verify observation capture works automatically
-- [ ] Accumulate observations from multiple product sessions
-- [ ] Validate observation schema supports all needed observation types
-- [ ] Monitor observation file size/format for scalability
+- [x] Run family-utility baseline to verify observation capture works automatically
+- [x] Accumulate observations from multiple product sessions
+- [x] Validate observation schema supports all needed observation types
+- [x] Monitor observation file size/format for scalability (lifecycle management with archiving built)
 
 ### Phase 2: Pattern Detection
 
-- [ ] Build pattern-detector script (parse observations, group, apply thresholds)
-- [ ] Design pattern report format
-- [ ] Determine pattern detection triggers (weekly? after N observations? threshold-based?)
-- [ ] Validate pattern detection catches real patterns without false positives
+- [x] Build pattern-detector script (`tools/observation-analysis.sh` with tiered thresholds)
+- [x] Design pattern report format (surfaced via `tools/session-health-check.sh` during session resumption)
+- [x] Determine pattern detection triggers (session-start via session-health-check.sh)
+- [x] Validate pattern detection catches real patterns without false positives
+- [ ] Fully automated periodic triggers (beyond session-start)
+- [ ] Pattern detection itself generates observations (meta-learning)
 
 ### Phase 3: Incorporation
 
+- [x] Implement human approval workflow (act-or-defer during session resumption)
 - [ ] Build validation pipeline (4 gates: consistency, specificity, reversibility, adversarial)
-- [ ] Design skill change proposal format (with provenance)
-- [ ] Implement human approval workflow
+- [ ] Design skill change proposal format (with provenance from observation IDs)
 - [ ] Build adversarial testing (apply to historical evals, measure impact)
 - [ ] Design learning retirement process
 

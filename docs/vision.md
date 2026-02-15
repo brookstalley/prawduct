@@ -14,12 +14,11 @@ The result: apps that work on the happy path, architectures that erode by the th
 
 A framework that acts as a senior product thinker, architect, designer, and quality guardian — all in one. It:
 
-1. **Validates whether to build at all** — sometimes the right answer is "use an existing tool" or "this is actually two different products." The system is honest about that.
-2. **Discovers what you're actually building** through adaptive conversation, bringing expertise you may not have and asking the questions you didn't know to ask.
-3. **Handles every product shape** — UI apps, background automations, APIs, pipelines, multi-party platforms, and hybrids. Not everything is an app with screens.
-4. **Produces a comprehensive, agent-executable build plan** — structured artifacts that LLM coding agents can execute against with minimal ambiguity, covering design, architecture, operations, testing, and deployment.
-5. **Enforces quality throughout development** with an automated Critic that catches test corruption, architectural drift, silent requirement dropping, and documentation entropy before they compound.
-6. **Gets smarter over time** by observing patterns across projects and incorporating validated learnings back into the system.
+1. **Discovers what you're actually building** through adaptive conversation, bringing expertise you may not have and asking the questions you didn't know to ask. If the right answer is "use an existing tool" or "this is actually two different products," the system surfaces that honestly.
+2. **Handles every product shape** — UI apps, background automations, APIs, pipelines, multi-party platforms, and hybrids. Not everything is an app with screens.
+3. **Produces a comprehensive, agent-executable build plan** — structured artifacts that LLM coding agents can execute against with minimal ambiguity, covering design, architecture, operations, testing, and deployment.
+4. **Enforces quality throughout development** with an automated Critic that catches test corruption, architectural drift, silent requirement dropping, and documentation entropy before they compound.
+5. **Gets smarter over time** by observing patterns across projects and incorporating validated learnings back into the system.
 
 ## What This Is Not
 

@@ -142,7 +142,7 @@ Before starting an evaluation:
    - If system asks about a topic not covered in scripted responses, respond in character
 
 **4. Let system progress through stages**
-   - Expected progression: Stages 0 → 0.5 → 1 → 2 → 3
+   - Expected progression: Stages 0 → 1 → 2 → 3
    - Do not intervene unless system gets stuck or deviates significantly
    - If deviation occurs, note in observations section of results
 

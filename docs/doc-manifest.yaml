@@ -176,6 +176,10 @@ tier_1_directories:
     purpose: "6 templates for has_human_interface (modality: screen): information-architecture, screen-spec, design-direction, accessibility-spec, localization-requirements, onboarding-spec"
     naming: "{artifact-name}.md"
 
+  - path: templates/unattended-operation/
+    purpose: "5 templates for runs_unattended: pipeline-architecture, scheduling-spec, monitoring-alerting-spec, failure-recovery-spec, configuration-spec"
+    naming: "{artifact-name}.md"
+
   - path: scripts/
     purpose: "Eval/validation helper scripts (validate-eval-output.sh, validate-schema.py, check-artifacts.py)"
     note: "May be consolidated into tools/ in a future cleanup"

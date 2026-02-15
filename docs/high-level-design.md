@@ -118,17 +118,6 @@ The 5 characteristics are designed to be stable. Adding a new structural charact
 3. Orchestrator begins expertise calibration from initial input signals
 4. System confirms classification with user: "This sounds like a location-based social app for mobile. Is that right?"
 
-### Stage 0.5: Validation
-**Owner:** Orchestrator (C1) + Domain Analyzer (C2) + Review Lenses (C4)
-
-Product Lens and Skeptic Lens evaluate before deep discovery begins:
-- Does this warrant building? Are there existing solutions?
-- Is this one product or multiple?
-- Is this feasible for LLM-assisted development?
-- Are there obvious regulatory or legal constraints?
-
-If concerns arise, surface them to user. Possible outcomes: proceed, refine scope, pivot, or advise against building (but respect the user's decision if they want to proceed).
-
 ### Stage 1: Discovery
 **Owner:** Orchestrator (C1) + Domain Analyzer (C2)
 
@@ -315,7 +304,6 @@ Dependency Manifest (universal)
 **Purpose:** Multi-perspective validation applied to system output at every stage. Five lenses defined in principles.md (Product, Design, Architecture, Skeptic, Testing).
 
 **When they fire:**
-- **Stage 0.5 (Validation):** Product and Skeptic evaluate whether to build at all
 - **Stage 1 (Discovery):** Product and Skeptic check whether the right questions are being asked
 - **Stage 2 (Product Definition):** Product, Design, Architecture, and Skeptic lenses review crystallized decisions
 - **Stage 3 (Artifact Generation):** All five lenses review artifacts before finalization (Testing Lens activates in Phase C when test specifications exist)
@@ -570,7 +558,7 @@ Pick one product scenario (the family utility — a simple UI application with l
 
 1. **C5 (Project State):** Define the schema first — everything else reads/writes this. Validate that the structure captures what discovery and artifact generation need.
 2. **C2 (Domain Analyzer):** Classify "UI Application" + "Utility" domain. Generate discovery questions for this combination only.
-3. **C1 (Orchestrator):** Manage a discovery conversation for this one scenario. Handle stage transitions 0 → 0.5 → 1 → 2.
+3. **C1 (Orchestrator):** Manage a discovery conversation for this one scenario. Handle stage transitions 0 → 1 → 2.
 4. **C3 (Artifact Generator):** Generate the universal artifact set (product brief, data model, security model, test specs, NFRs, operational spec, dependency manifest). Skip structurally-triggered artifacts initially.
 5. **C4 (Review Lenses):** Apply all five lenses to the generated artifacts (Testing Lens in Phase C). Evaluate whether findings are specific and actionable.
 
