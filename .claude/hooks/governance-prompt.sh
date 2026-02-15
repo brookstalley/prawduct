@@ -102,7 +102,7 @@ if chunks_without_review > 0:
 
 stage_transitions = gov.get('stage_transitions_without_frp', 0)
 if stage_transitions > 0:
-    items.append(f'{stage_transitions} stage transition(s) without Framework Reflection — read skills/orchestrator/SKILL.md from disk for the Framework Reflection Protocol')
+    items.append(f'{stage_transitions} stage transition(s) without Framework Reflection — read skills/orchestrator/protocols.md from disk for the Framework Reflection Protocol')
 
 checkpoints_due = gov.get('governance_checkpoints_due', [])
 if checkpoints_due:

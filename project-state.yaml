@@ -227,11 +227,12 @@ artifact_manifest:
     - name: orchestrator
       file_path: skills/orchestrator/SKILL.md
       role: built-component
-      version: 2
+      version: 3
       depends_on: [high-level-design, principles]
       depended_on_by: []
-      last_validated: 2026-02-11
+      last_validated: 2026-02-15
       tier: 1
+      notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, protocols.md"
     - name: domain-analyzer
       file_path: skills/domain-analyzer/SKILL.md
       role: built-component
@@ -466,6 +467,16 @@ change_log:
     blast_radius: "working-notes/2026-02-15-closed-loop-testing-design.md (new), project-state.yaml (change_log)"
     classification: functional
     date: 2026-02-15
+  - what: "Move product outputs to .prawduct/ directory: all prawduct outputs (state, artifacts, observations, working notes) live in .prawduct/ within product repos"
+    why: "Phase 5 of user feedback overhaul. Users reported prawduct artifacts (project-state.yaml, artifacts/, working-notes/, framework-observations/) cluttering project roots. All product-side pravduct outputs now go in .prawduct/ subdirectory. Framework repo (self-hosted) unchanged — uses root-level files. Orchestrator detection checks .prawduct/ first with fallback to root for backward compatibility. Tools gain shared detection pattern. Session-governance.json gains product_output_dir field. Schema_version: 2 added to template for migration detection."
+    blast_radius: "skills/orchestrator/SKILL.md (detection, path resolution, session resumption), tools/session-health-check.sh, tools/compact-project-state.py, tools/capture-observation.sh, tools/observation-analysis.sh, skills/artifact-generator/SKILL.md, skills/builder/SKILL.md, templates/project-state.yaml, CLAUDE.md, project-state.yaml"
+    classification: directional
+    date: 2026-02-15
+  - what: "Decompose Orchestrator SKILL.md into main file + 5 sub-files for on-demand loading"
+    why: "Orchestrator at 634 lines exceeded skill-authoring-guide H1 guideline (300-600 lines) and was 1.9x the next-largest skill. Most content is stage-specific — Stage 5 execution doesn't need Stage 1 discovery rules. Decomposed into: SKILL.md (~156 lines, always loaded — activation, routing table, session resumption, orientation) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md (loaded per current_stage) + protocols.md (loaded on demand at stage boundaries). Reduces in-context lines from 634 to ~260 (main + one stage file) — a ~60% reduction. Governance gate unchanged: main SKILL.md whitelisted for pre-activation reads, sub-files gated behind activation (correct behavior)."
+    blast_radius: "skills/orchestrator/SKILL.md (rewritten), skills/orchestrator/stages-0-2.md (new), skills/orchestrator/stages-3-4.md (new), skills/orchestrator/stage-5-build.md (new), skills/orchestrator/stage-6-iteration.md (new), skills/orchestrator/protocols.md (new), CLAUDE.md (cross-references, project structure tree), project-state.yaml (change_log, artifact_manifest), docs/self-improvement-architecture.md (cross-reference), .claude/hooks/governance-prompt.sh (cross-reference)"
+    classification: directional
+    date: 2026-02-15
 
 # =============================================================================
 # BUILD PLAN
@@ -525,6 +536,10 @@ build_plan:
       phase: v1-widen
       requirements: [R2.4]
       skill: artifact-generator
+    - item: "Mechanical enforcement for DCP retrospective"
+      description: "DCP step 11 (post-change retrospective) has no mechanical enforcement and was skipped during a 10-file directional change. Add retrospective tracking to .session-governance.json (directional_changes_without_retrospective counter) and check in governance-stop hook. Same pattern as chunk-review gate: governance steps without hooks get skipped."
+      phase: v1-widen
+      skill: orchestrator
     # --- v1-validation (3 items) ---
     - item: "Full V1 validation"
       description: "All scenarios passing end-to-end evaluation rubrics, framework fully self-governing"
@@ -656,8 +671,8 @@ observation_backlog:
       type: process_friction
       summary: "Doc layering bloat — appending sections instead of restructuring"
       target_files: ["skills/orchestrator/SKILL.md"]
-      priority: deferred
-      rationale: "Partially fixed by restructuring in recent commits. Review if recurs."
+      priority: acted_on
+      rationale: "Addressed by Orchestrator decomposition (2026-02-15). SKILL.md reduced from 634→155 lines via extraction into 5 sub-files (stages-0-2, stages-3-4, stage-5-build, stage-6-iteration, protocols)."
       added: 2026-02-11
     - observation_file: "framework-observations/2026-02-11-eval-coordination-meta-learning.yaml"
       type: coverage

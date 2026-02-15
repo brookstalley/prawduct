@@ -11,13 +11,16 @@ Prawduct is a framework that turns vague product ideas into well-built software.
 After loading the Orchestrator, it will route based on context:
 
 **New product idea** ("I want to build an app that...", "let's make a tool for...", "I have an idea for..."):
-→ The Orchestrator sets up a separate project directory. It will not write new product output into an existing project's directory.
+→ The Orchestrator sets up a separate project directory with a `.prawduct/` subdirectory for all prawduct outputs. Product source code goes in the project root; prawduct artifacts, state, and observations go in `.prawduct/`.
+
+**Existing codebase** (CWD has source code but no prawduct files):
+→ The Orchestrator creates `.prawduct/` in the project, analyzes the codebase, and generates artifacts inside `.prawduct/`.
 
 **First contact** ("hello", "what is this?", "what can you do?", or any message where the user appears unfamiliar with Prawduct):
 → The Orchestrator provides a brief orientation (see its New User Orientation section), then waits for the user to indicate what they'd like to do.
 
 **Everything else** (framework dev, returning user, "fix the domain analyzer", "what should I work on next?"):
-→ The Orchestrator reads `project-state.yaml` at the repo root, performs Session Resumption, and enters Stage 6 iteration for framework development.
+→ The Orchestrator reads `project-state.yaml` (from `.prawduct/` for product repos, or repo root for the self-hosted framework), performs Session Resumption, and enters Stage 6 iteration for framework development.
 
 ## Compact Instructions
 
@@ -30,13 +33,34 @@ When compacting this conversation, preserve:
 
 ## Project Structure
 
+**Product repos** built with prawduct use this layout — all prawduct outputs live in `.prawduct/`:
+```
+my-product/
+├── .claude/                    # Claude Code config (must be at root)
+│   └── settings.json
+├── .prawduct/                  # All prawduct outputs (product root)
+│   ├── project-state.yaml
+│   ├── artifacts/
+│   ├── working-notes/
+│   └── framework-observations/
+├── CLAUDE.md                   # Bootstrap (must be at root)
+├── src/                        # Product source code
+└── ...
+```
+
+**The framework repo** (self-hosted) keeps prawduct files at the repo root:
 ```
 prawduct/
 ├── README.md                          # Human-facing project overview and getting started
 ├── CLAUDE.md                          # You are here
 ├── project-state.yaml                 # Framework's own project state (self-hosted)
 ├── skills/                            # LLM instruction sets (your behavior)
-│   ├── orchestrator/SKILL.md          # Conversation flow, stage management, user calibration
+│   ├── orchestrator/SKILL.md          # Activation, routing, session resumption (~156 lines always loaded)
+│   │   ├── stages-0-2.md             # Stages 0-2: Intake, Discovery, Definition
+│   │   ├── stages-3-4.md             # Stages 3-4: Artifact Generation, Build Planning
+│   │   ├── stage-5-build.md          # Stage 5: Build + Governance Loop
+│   │   ├── stage-6-iteration.md      # Stage 6: Iteration + Directional Change Protocol
+│   │   └── protocols.md              # FRP, Stage Transition, Expertise Calibration, Structural Critique
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
 │   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency — format specs live in templates
 │   ├── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
@@ -124,19 +148,19 @@ The Framework Status section below provides build context. The Key Principles, T
 ### After modifying skills, templates, or principles:
 **Framework Critic review is mandatory for every framework change. Run it automatically.** Do not ask the user whether to run it. A Claude Code hook blocks `git commit` when framework files are staged without Critic evidence, a Stop hook blocks session completion when framework edits lack Critic review, and a UserPromptSubmit hook injects governance reminders. But don't wait for the gates — run the Critic as a **separate, final step** in every framework change regardless of file count, not as a sub-step of another work item. Run the Critic automatically after all modifications are complete and before reporting results to the user.
 
-**For directional or multi-file changes (3+ framework files):** Follow the Directional Change Protocol in `skills/orchestrator/SKILL.md`. This requires a written plan, plan-stage Critic review before implementation, per-phase lightweight reviews, and a final full Critic review. The protocol ensures governance is proportionate to change impact — not just a rubber stamp at the end.
+**For directional or multi-file changes (3+ framework files):** Follow the Directional Change Protocol in `skills/orchestrator/stage-6-iteration.md`. This requires a written plan, plan-stage Critic review before implementation, per-phase lightweight reviews, and a final full Critic review. The protocol ensures governance is proportionate to change impact — not just a rubber stamp at the end.
 
 To run the Critic: read `skills/critic/SKILL.md` and apply all applicable checks to your changes. The Critic determines which checks apply from context — always at least Scope Discipline, Proportionality, Coherence, and Learning/Observability; plus Generality, Instruction Clarity, and Cumulative Health for skill/template changes. After review, run `tools/record-critic-findings.sh` to record structured findings — the commit gate verifies this file exists with at least 6 checks and coverage of all staged files. Include "Governance Review" in the commit message.
 
 ## Product Build Governance (Compaction Recovery)
 
-If you are building a product and cannot remember governance procedures (e.g., after context compaction), follow these steps. **Skill files are always on disk — read them.**
+If you are building a product and cannot remember governance procedures (e.g., after context compaction), follow these steps. **Skill files are always on disk — read them.** Product state files live in the **product root** (`.prawduct/` for product repos, repo root for the framework).
 
 1. **After each chunk:** Read `skills/critic/SKILL.md` from disk and apply all applicable checks (Spec Compliance, Test Integrity, Scope Discipline, and others based on context)
-2. **Record findings:** Add review entry to the product's `project-state.yaml` → `build_state.reviews`
+2. **Record findings:** Add review entry to the product's `project-state.yaml` → `build_state.reviews` (in the product root)
 3. **Clear debt:** Update `.claude/.session-governance.json` → `governance_state.chunks_completed_without_review` to 0
 4. **At governance checkpoints:** Read `skills/review-lenses/SKILL.md` from disk, apply Architecture + Skeptic + Testing lenses
-5. **At stage transitions:** Read `skills/orchestrator/SKILL.md` from disk and run the Framework Reflection Protocol
+5. **At stage transitions:** Read `skills/orchestrator/protocols.md` from disk and run the Framework Reflection Protocol
 6. **If hooks block your edits:** The hook message tells you which skill file to read. Read it from disk and follow its instructions.
 
 Hooks survive compaction but `additionalContext` does not. When a hook blocks or reminds you, it means governance procedures are needed — the skill files contain the full procedures.
@@ -159,6 +183,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 **Built and operational:**
 - Full stage pipeline: Stages 0-6 (Intake, Discovery, Definition, Artifact Generation, Build Planning, Building, Iteration — Stage 0.5 Validation removed; the framework trusts user intent)
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (context-sensitive governance), Review Lenses (all five)
+- Product output isolation: product repos use `.prawduct/` subdirectory for all prawduct outputs (state, artifacts, observations, working notes); source code stays at project root; framework repo uses root-level files (self-hosted). All tools detect `.prawduct/` first with fallback to root for backward compatibility.
 - Two-layer classification: 5 structural characteristics for artifact routing (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth via Universal Discovery Dimensions and Structural Amplification Rules
 - Three-layer artifact generation: amplification rules (what to generate) + process constraints (quality properties) + optional template reference (proven structures). All 5 characteristics have amplification rules and process constraints; has_human_interface and runs_unattended additionally have templates as structural reference
 - Observation capture system with triage and session resumption integration; observation backlog available for all projects (not framework-only)
