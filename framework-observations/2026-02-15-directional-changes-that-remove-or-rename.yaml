@@ -1,0 +1,17 @@
+---
+observation_id: f946259c-e1c2-47b4-a5bb-625c63b0f273
+timestamp: 2026-02-15T21:29:13Z
+session_type: framework_dev
+session_context:
+  framework_version: ef77820
+observations:
+  - type: coverage
+    severity: warning
+    description: "Directional changes that remove or rename concepts (Stage 0.5 removal, Critic sub-component absorption, three-layer artifact architecture) leave stale references in unchanged files. The Critic reviews staged files but does not grep the codebase for references to removed concepts. The FRP asks the right freshness question but relies on LLM memory of all references — unreliable in a 46KB HLD. Root cause: freshness checking is file-scoped, not concept-scoped. For directional changes, a concept-ripple check (grep for the removed/renamed term across the codebase) would catch the long tail of stale references in unchanged files."
+    evidence: "Stage 0.5 removed in user-feedback overhaul (2026-02-15) but references survived in high-level-design.md, evaluation-methodology.md, and vision.md. R3.4/R3.5 absorbed into Critic checks (2026-02-14) but requirements.md still listed them as remaining. Three-layer architecture replaced per-characteristic templates (2026-02-14) but requirements.md still referenced template work. All discovered during manual docs audit, not by any automated mechanism."
+    proposed_action: "Add a Coherence sub-check for directional changes: after implementation, grep the codebase for key terms that were removed or renamed. This is a mechanical step (grep) that complements the judgment-based FRP. Could be a Critic instruction addition or a mechanical tool."
+    status: noted
+skills_affected:
+  - "skills/critic/SKILL.md"
+  - "skills/orchestrator/protocols.md"
+---

@@ -1,0 +1,17 @@
+---
+observation_id: 8599e2b0-1992-49ea-8afc-815e5a2e5e7e
+timestamp: 2026-02-15T21:19:26Z
+session_type: framework_dev
+session_context:
+  framework_version: ef77820
+observations:
+  - type: process_friction
+    severity: note
+    description: "Skill file length exceeded H1 guideline (300-600 lines) for weeks without detection. The Orchestrator reached 634 lines before manual identification. The skill-authoring-guide defines H1 thresholds but session-health-check.sh has no mechanical check for skill file lengths. Pattern detection relies on human observation of symptoms (doc layering bloat) rather than measuring the metric directly."
+    evidence: "Orchestrator SKILL.md was 634 lines (1.9x next-largest skill) when decomposition was planned. Observation backlog had related 2026-02-11 entry about doc layering bloat but it was deferred."
+    proposed_action: "Add skill file length monitoring to session-health-check.sh: warn when any SKILL.md exceeds 400 lines (H1 lower bound for Complex), alert when exceeding 600 lines (H1 upper bound)."
+    status: noted
+skills_affected:
+  - "tools/session-health-check.sh"
+  - "docs/skill-authoring-guide.md"
+---
