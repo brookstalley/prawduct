@@ -189,16 +189,16 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 **Must-do:**
 
-- `[interactive]` Progress through stages 0 → 0.5 → 1 → 2 without excessive back-and-forth.
+- `[hybrid]` Progress through stages 0 → 0.5 → 1 → 2 without excessive back-and-forth (partially evaluable: change_log shows stage transitions).
 - `[hybrid]` Infer technical user from input vocabulary (RSS, Slack, pipeline, monitoring).
 - `[interactive]` Use technical terminology appropriately (don't avoid it, but don't assume deep ops expertise either).
 - `[interactive]` Confirm classification in clear language: "This is an automation pipeline that runs on a schedule, not something with a user interface. Sound right?"
 - `[hybrid]` Make reasonable assumptions about technical choices (deployment, infrastructure, storage) and state them explicitly.
-- `[interactive]` Recognize when discovery is "good enough" — this is a medium-complexity automation, not a critical system.
+- `[hybrid]` Recognize when discovery is "good enough" — this is a medium-complexity automation, not a critical system (partially evaluable: question count and artifact completeness visible in outputs).
 
 **Must-not-do:**
 
-- `[interactive]` Must not conduct more than 3-4 rounds of discovery questions for this risk level.
+- `[hybrid]` Must not conduct more than 3-4 rounds of discovery questions for this risk level (partially evaluable: change_log entries and question count in project-state).
 - `[interactive]` Must not over-explain basic technical concepts (RSS, webhooks, cron jobs) to a technical user.
 - `[interactive]` Must not ask the user to choose between infrastructure options they haven't researched (AWS vs. GCP vs. DigitalOcean — system should make a recommendation with rationale).
 - `[hybrid]` Must not skip operational concerns because the product is "just a side project."
@@ -206,8 +206,8 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 **Quality criteria:**
 
 - `[interactive]` Vocabulary matches user's technical level (technical but pragmatic, not enterprise-ops speak).
-- `[interactive]` Discovery depth is proportionate (more than family utility, less than B2B platform).
-- `[interactive]` Operational concerns (monitoring, failure recovery, cost) are raised proactively, not only when user asks.
+- `[interactive]` Discovery completes in 2-4 question rounds for low-medium risk.
+- `[hybrid]` Operational concerns (monitoring, failure recovery, cost) are raised proactively, not only when user asks (partially evaluable: artifact content covers operational topics).
 - `[interactive]` Stage transitions are natural and clearly communicated.
 
 ### Artifact Generator (C3)
@@ -223,7 +223,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[simulation]` Test specifications include concrete scenarios for each pipeline stage: "Given feed X returns articles A, B, C and filter criteria includes topic Y, verify only articles matching Y are selected." Include failure scenarios: "Given feed X is unreachable, verify pipeline logs error and continues with other feeds."
 - `[simulation]` NFRs include: cost constraints (free tier preferred), runtime performance (morning digest ready by 7 AM), and acceptable latency for Slack posting.
 - `[simulation]` Operational spec includes: deployment target (likely serverless function or cron job on cheap VPS), monitoring (how to detect silent failure), alerting (where to send alerts — probably Slack itself or email), failure recovery (retry logic, dead letter handling).
-- `[simulation]` Monitoring/alerting spec is substantive (not just "add logging") — what metrics matter (successful runs, article count per run, feed fetch failures, filter match rate), what constitutes alertable failure.
+- `[simulation]` Monitoring/alerting spec defines at least 3 alert conditions with specific triggers, thresholds, and notification channels — what metrics matter (successful runs, article count per run, feed fetch failures, filter match rate), what constitutes alertable failure.
 - `[simulation]` Failure recovery spec addresses: individual feed failure (continue with others), Slack API failure (retry? queue for later?), filtering service failure, partial failures.
 - `[simulation]` Configuration spec addresses: how filter criteria and source list are updated (config file? environment variables? simple admin UI?).
 - `[simulation]` Dependency manifest includes: RSS parsing library, Slack API/webhook client, LLM API if used for filtering, cron/scheduler, and justifications.
@@ -240,9 +240,9 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 - `[simulation]` Artifacts are internally consistent (entities in data model appear in test specs, pipeline architecture stages match test scenarios).
 - `[simulation]` Cross-references between artifacts are accurate.
-- `[simulation]` Operational artifacts (monitoring, alerting, failure recovery) are specific and actionable, not generic (e.g., "alert when no articles posted for 2 consecutive days" not "implement monitoring").
+- `[simulation]` Monitoring spec includes at least 3 named metrics with alert conditions; failure recovery spec covers at least 3 failure modes with specific recovery actions (e.g., "alert when no articles posted for 2 consecutive days" not "implement monitoring").
 - `[simulation]` A coding agent reading these artifacts could build the pipeline without ambiguity about what happens in each failure mode.
-- `[simulation]` Complexity is proportionate to the product (this is a side project, not a mission-critical system, but operational concerns are still addressed seriously).
+- `[simulation]` Total artifact pages 8-15 for low-medium risk; automation-specific artifacts (pipeline architecture, scheduling, monitoring, failure recovery, configuration) each 1-3 pages.
 
 ### Review Lenses (C4)
 
@@ -324,5 +324,5 @@ The scenario succeeds when:
 4. `[simulation]` UI-specific artifacts (IA, screen specs, design direction, accessibility, onboarding) are NOT generated.
 5. `[hybrid]` The Orchestrator calibrates to a technical user (appropriate vocabulary, doesn't over-explain basics, but still surfaces operational expertise Alex lacks).
 6. `[simulation]` Review Lenses evaluate operational concerns (failure isolation, monitoring effectiveness, configuration management) rather than UI/UX concerns.
-7. `[hybrid]` The total output is proportionate — more thorough than the low-risk family utility (because operational failure matters), but not as heavyweight as a business-critical system.
+7. `[hybrid]` Total artifact count is 12-17 (7 universal + 5 automation-specific) with total pages 8-15 — more thorough than the low-risk family utility, but not as heavyweight as a business-critical system.
 8. `[simulation]` A coding agent reading the output would have a clear, unambiguous plan for building a reliable background pipeline with proper monitoring and failure handling.

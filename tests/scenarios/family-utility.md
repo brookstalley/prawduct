@@ -171,7 +171,7 @@ These scripted responses extend the test conversation for the build and iteratio
 
 **Quality criteria:**
 
-- `[interactive]` Conversation feels proportionate to the product's simplicity.
+- `[interactive]` Discovery completes in 1-2 question rounds for this risk level.
 - `[interactive]` The user doesn't feel interrogated.
 - `[interactive]` Assumptions are stated clearly enough that the user can correct them.
 - `[interactive]` Stage transitions happen naturally, not abruptly.
@@ -209,7 +209,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[simulation]` Artifacts are internally consistent (entities in data model appear in test specs and security model).
 - `[simulation]` Cross-references between artifacts are accurate.
 - `[simulation]` A coding agent reading these artifacts could begin building without ambiguity.
-- `[simulation]` Complexity of artifacts is proportionate to the product.
+- `[simulation]` Universal artifacts total 3-8 pages; human-interface artifacts total 2-5 pages; no single artifact exceeds 3 pages.
 
 ### Review Lenses (C4)
 
@@ -332,7 +332,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` Spec compliance check runs after each feature chunk (scaffold exempt from full compliance check).
 - `[simulation]` Test count never decreases between chunks.
 - `[simulation]` All core flows from the Product Brief have implementation evidence in `spec_compliance`.
-- `[simulation]` Critic actively reviews each feature chunk with substantive evidence of review. For medium/high-risk products, at least one blocking or warning finding expected. For low-risk products, note-only findings are acceptable if the build is clean.
+- `[simulation]` Critic actively reviews each feature chunk with at least 2 specific findings per feature chunk (any severity), each with file/line references. For medium/high-risk products, at least one blocking or warning finding expected. For low-risk products, note-only findings are acceptable if the build is clean.
 - `[simulation]` Critic review was invoked automatically as part of the process, not prompted by user request. The system must not ask "Want me to run the Critic?" — it runs it proactively.
 - `[simulation]` Fix-by-fudging detection is active: if a test is weakened to pass, the Critic catches it.
 
@@ -370,7 +370,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 - `[simulation]` The iteration cycle is efficient: one round of artifact update → build → review → done.
 - `[hybrid]` The user doesn't feel like they're going through a heavyweight change process for a simple request.
-- `[simulation]` The change is handled proportionately to its actual scope.
+- `[simulation]` Iteration completes in one artifact-update → build → review cycle.
 
 ## End-to-End Success Criteria
 

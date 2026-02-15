@@ -284,7 +284,7 @@ These scripted responses extend the test conversation for the build and iteratio
 **Quality criteria:**
 
 - `[interactive]` Vocabulary matches the user's technical level (developer-to-developer conversation).
-- `[interactive]` Discovery depth is proportionate — explores the real unknowns (game design, terminal compatibility) without belaboring the obvious (it's a game, it runs in a terminal).
+- `[interactive]` Discovery completes in 2-3 question rounds — explores the real unknowns (game design, terminal compatibility) without belaboring the obvious (it's a game, it runs in a terminal).
 - `[interactive]` The system proactively contributes game design thinking the user defers on.
 - `[interactive]` Stage transitions happen naturally. The user shouldn't feel interrogated.
 - `[interactive]` The conversation acknowledges this is a fun creative project, not enterprise software.
@@ -320,7 +320,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[simulation]` Test specifications address the genuine difficulty of testing real-time game systems — they propose an abstraction or mocking strategy, not just "test that the game works."
 - `[simulation]` NFRs feel right for a terminal game — frame rate targets, input latency, terminal compatibility — not web or mobile metrics.
 - `[simulation]` A coding agent reading these artifacts would understand they're building a real-time game loop, not a request-response application.
-- `[simulation]` Artifact complexity is proportionate — this is a fun project with genuine technical depth, not enterprise software.
+- `[simulation]` Total artifact pages 6-12 for low-medium risk; security and operational specs each under 1 page.
 
 ### Review Lenses (C4)
 
@@ -375,7 +375,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` `product_definition.nonfunctional`: frame rate / rendering performance, input responsiveness, and terminal compatibility addressed. Not web-centric metrics.
 - `[simulation]` `technical_decisions`: at least one programming language/runtime decision, one terminal library decision, and one game loop architecture decision, each with rationale and alternatives considered.
 - `[simulation]` `design_decisions.accessibility_approach`: addresses terminal color accessibility (color fallback for limited terminals, visual distinguishability without color). NOT web accessibility (WCAG, screen readers are not applicable to a real-time terminal game).
-- `[simulation]` `user_expertise`: `technical_depth` at advanced (the user is a senior developer), `product_thinking` at basic-intermediate (they know what they want but defer on design details), `domain_knowledge` at basic (entertainment/game design is not their expertise).
+- `[simulation]` `user_expertise`: `technical_depth` at advanced (the user is a senior developer), `product_thinking` at basic-intermediate (they know what they want but defer on design details), `domain_knowledge` at basic or intermediate (persona references Galaga mechanics accurately but lacks game design expertise).
 - `[simulation]` `current_stage`: "definition" or later.
 - `[simulation]` `change_log`: at least 1 entry (initial classification).
 
@@ -429,7 +429,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 - `[simulation]` Scaffold chunk works: the specified run command starts the app, the test command runs.
 - `[simulation]` The game loop runs at a consistent frame rate in the terminal (not spinning the CPU at 100%, not rendering at 2fps).
-- `[simulation]` Player ship renders on screen and responds to arrow key input with perceptible responsiveness.
+- `[simulation]` Player ship renders on screen (verifiable via test assertion or code inspection showing render function) and responds to arrow key input.
 - `[simulation]` Enemies spawn in formation and exhibit at least basic movement patterns.
 - `[simulation]` Bullets fire from the player ship and travel upward. Enemy bullets travel downward (if enemy shooting is in v1 scope).
 - `[simulation]` Collision detection works: bullets destroy enemies, enemies (or enemy bullets) destroy the player.
@@ -451,7 +451,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Quality criteria:**
 
-- `[simulation]` The game feels like a game — responsive controls, smooth rendering, enemies that move interestingly.
+- `[simulation]` Game loop maintains 15+ FPS (measured by frame timing in tests or observing terminal output), controls respond within 1 frame, and enemies exhibit distinct movement patterns.
 - `[simulation]` Code architecture reflects a real-time game (game loop, update/render separation, entity management), not a web app retrofitted into a terminal.
 - `[simulation]` Test strategy handles the real-time nature of the game: game logic is testable separately from rendering, collision detection is tested with specific coordinates, game state transitions are tested.
 - `[simulation]` Code complexity is proportionate — clean, not over-abstracted, not enterprise-patterned.
@@ -463,7 +463,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` Spec compliance check runs after each feature chunk (scaffold exempt from full compliance check).
 - `[simulation]` Test count never decreases between chunks.
 - `[simulation]` All core flows from the Product Brief have implementation evidence in `spec_compliance`.
-- `[simulation]` Critic actively reviews each feature chunk with substantive evidence of review.
+- `[simulation]` Critic actively reviews each feature chunk with at least 2 specific findings per chunk (any severity), each referencing specific code or artifact locations.
 - `[simulation]` Critic review was invoked automatically as part of the process, not prompted by user request. The system must not ask "Want me to run the Critic?" — it runs it proactively.
 - `[simulation]` Fix-by-fudging detection is active: if a test is weakened to pass, the Critic catches it.
 
@@ -477,7 +477,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 - `[simulation]` Findings are game-relevant (collision edge cases, rendering issues, input handling concerns), not web-app-relevant.
 - `[simulation]` The review cycle converges: blocking findings → fix → re-review → clear. Not infinite loops.
-- `[simulation]` Process feels proportionate — the Critic helps quality without slowing down a fun project.
+- `[simulation]` Critic produces no more than 5 findings per chunk and review cycle converges within 2 iterations.
 
 ### Iteration (Stage 6)
 
@@ -504,7 +504,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` The iteration cycle is efficient: one round of artifact update → build → review → done.
 - `[simulation]` The file persistence approach is cross-platform (file paths work on macOS, Linux, Windows).
 - `[simulation]` The high score display integrates naturally into the game flow (shown at game over, accessible from title screen or similar).
-- `[simulation]` The change is handled proportionately — not a heavyweight process for adding a JSON file.
+- `[simulation]` Iteration completes in one artifact-update → build → review cycle.
 
 ## End-to-End Success Criteria
 

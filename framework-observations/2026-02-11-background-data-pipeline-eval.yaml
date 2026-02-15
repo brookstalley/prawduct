@@ -33,7 +33,7 @@ observations:
     description: "Test scenario rubric has 102 criteria, of which 30 (29.4%) were unable to evaluate in simulation due to requiring transcript analysis (conversation quality, pacing, vocabulary calibration). This is a known simulation limitation but may indicate rubric is over-weighted toward interactive-only criteria."
     evidence: "C1 Orchestrator: 9/14 criteria UNABLE. C2 Domain Analyzer: 9/27 criteria UNABLE. C4 Review Lenses: 7/7 UNABLE (lenses not run). End-to-end: 4/8 UNABLE. Total: 30/102 criteria unevaluable in simulation."
     proposed_action: "Consider separating rubric into simulation-evaluable and interactive-only sections. Alternatively, set threshold: if >40% of rubric criteria require interactive eval, scenario should be marked 'interactive baseline required' to prevent misleading simulation results."
-    status: triaged
+    status: acted_on
   - type: applicability
     stage: 2
     severity: note
@@ -47,7 +47,7 @@ observations:
     description: "Rubric uses subjective terms like 'proportionate', 'substantive', 'actionable' without concrete examples or thresholds, making evaluation ambiguous."
     evidence: "C3 quality criterion: 'Operational artifacts specific and actionable' - what's the bar for 'actionable'? C3 must-do: 'Monitoring spec is substantive' - what's substantive? Evaluator had to interpret these subjectively, reducing consistency across evaluators."
     proposed_action: "Make rubric criteria more concrete with examples. Instead of 'substantive', specify: 'at least 3 alert conditions with specific triggers and thresholds, not generic recommendations.' Instead of 'proportionate', give examples: 'v1 scope has 4-8 items for low-risk, 8-15 for medium-risk.'"
-    status: triaged
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/SKILL.md"
   - "skills/domain-analyzer/SKILL.md"

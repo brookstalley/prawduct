@@ -228,12 +228,12 @@ artifact_manifest:
     - name: orchestrator
       file_path: skills/orchestrator/SKILL.md
       role: built-component
-      version: 3
+      version: 4
       depends_on: [high-level-design, principles]
       depended_on_by: []
       last_validated: 2026-02-15
       tier: 1
-      notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, protocols.md"
+      notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, onboarding.md, protocols.md"
     - name: domain-analyzer
       file_path: skills/domain-analyzer/SKILL.md
       role: built-component
@@ -554,6 +554,27 @@ change_log:
       2 observation files
     classification: functional
     date: 2026-02-15
+  - what: 'Rubric refinement: replace subjective terms with concrete thresholds across all 3 test scenarios'
+    why: '4 rubric_issue observations (meta threshold: 2+) identified subjective terms (''proportionate'', ''substantive''),
+      simulation-mode eval gaps, and domain_knowledge criterion mismatch. Replaced with concrete page ranges, minimum finding
+      counts, FPS thresholds, round-count limits. Reclassified 4 background-data-pipeline C1 criteria from interactive→hybrid
+      where partially evaluable from project-state artifacts. Fixed terminal-arcade domain_knowledge to accept basic or
+      intermediate. All 4 observations transitioned to acted_on.'
+    blast_radius: tests/scenarios/family-utility.md, tests/scenarios/background-data-pipeline.md, tests/scenarios/terminal-arcade-game.md,
+      framework-observations/2026-02-11-background-data-pipeline-eval.yaml, framework-observations/terminal-arcade-game-2026-02-12.yaml,
+      project-state.yaml (observation_backlog, change_log)
+    classification: functional
+    date: 2026-02-15
+  - what: 'Implement Existing Project Onboarding Mode: 4-phase process for analyzing existing codebases'
+    why: 'Orchestrator condition 3 referenced Onboarding Mode with no implementation. Created skills/orchestrator/onboarding.md
+      with 4 phases: codebase analysis (tech stack, architecture, product understanding, structural characteristics, tests,
+      risk), user confirmation (blocking question with uncertainties), artifact generation (universal + characteristic-specific
+      + retroactive build plan in .prawduct/), and enter iteration. Added onboarding to SKILL.md routing table and condition 3.
+      Handles edge cases: monorepo, sparse codebase, large codebase sampling, projects with existing docs.'
+    blast_radius: skills/orchestrator/onboarding.md (new), skills/orchestrator/SKILL.md (routing table, condition 3), CLAUDE.md
+      (project structure), project-state.yaml (remaining_work, change_log)
+    classification: functional
+    date: 2026-02-15
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.
@@ -625,10 +646,7 @@ build_plan:
       description: "Dev-only MCP server baked into has_human_interface products exposing screenshot, navigate, interact, inspect, logs, state, accessibility audit, config, and seed data tools. Enables agent to verify UI output without human involvement. Phases: design → implement for React+Playwright → integrate with Builder → add visual verification to test specs and Critic."
       phase: v1-new
       skill: builder
-    - item: "Existing project onboarding"
-      description: "Reverse-engineer existing codebases into prawduct artifacts. Analyze structure/deps/tech stack to infer structural characteristics, extract product brief from docs/README, generate data-model and test-spec artifacts, infer current stage, produce project-state.yaml reflecting reality."
-      phase: v1-new
-      skill: orchestrator
+    # Removed: "Existing project onboarding" — implemented: onboarding.md with 4-phase process (codebase analysis, user confirmation, artifact generation, enter iteration) (2026-02-15)
     - item: "Old prawduct version detection and migration"
       description: "Detect old prawduct project-state.yaml schemas and artifact structures during Session Resumption. Enter migration mode to map old artifacts to current structure. Add version field to project-state.yaml template."
       phase: v1-new
@@ -724,15 +742,15 @@ observation_backlog:
       type: rubric_issue
       summary: "29% UNABLE criteria in simulation — rubric over-weighted toward interactive"
       target_files: ["tests/scenarios/background-data-pipeline.md"]
-      priority: deferred
-      rationale: "Rubric improvement guidance. Address when refining scenario rubrics."
+      priority: acted_on
+      rationale: "Addressed: reclassified 4 C1 criteria from interactive→hybrid, added concrete thresholds, added concrete end-to-end threshold (2026-02-15)."
       added: 2026-02-11
     - observation_file: "framework-observations/2026-02-11-background-data-pipeline-eval.yaml"
       type: rubric_issue
       summary: "Subjective rubric terms ('proportionate', 'substantive', 'actionable') lack thresholds"
       target_files: ["tests/scenarios/background-data-pipeline.md"]
-      priority: deferred
-      rationale: "Rubric improvement guidance. Concrete examples needed but not blocking."
+      priority: acted_on
+      rationale: "Addressed: replaced 'proportionate' with page ranges, 'substantive' with minimum counts, 'actionable' with specific metric/failure-mode counts across all 3 scenarios (2026-02-15)."
       added: 2026-02-11
     - observation_file: "framework-observations/2026-02-11-documentation-consolidation-pattern.yaml"
       type: process_friction
@@ -787,8 +805,8 @@ observation_backlog:
       type: rubric_issue
       summary: "UNABLE criteria in simulation — rubric criteria not evaluable in simulation mode"
       target_files: ["tests/scenarios/terminal-arcade-game.md"]
-      priority: deferred
-      rationale: "Existing backlog pattern (rubric_issue). Address in rubric refinement pass."
+      priority: acted_on
+      rationale: "Addressed: added concrete checks for Builder player rendering, replaced gameplay feel with 15+ FPS threshold, made Critic findings measurable (2026-02-15)."
       added: 2026-02-14
     - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
       type: process_friction
@@ -801,8 +819,8 @@ observation_backlog:
       type: rubric_issue
       summary: "domain_knowledge rubric criterion mismatch — game-specific knowledge scoring"
       target_files: ["tests/scenarios/terminal-arcade-game.md"]
-      priority: deferred
-      rationale: "Rubric refinement; address alongside other rubric_issue items."
+      priority: acted_on
+      rationale: "Addressed: changed domain_knowledge criterion from 'basic' to 'basic or intermediate' with rationale (2026-02-15)."
       added: 2026-02-14
     - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
       type: proportionality

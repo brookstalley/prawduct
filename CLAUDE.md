@@ -60,6 +60,7 @@ prawduct/
 │   │   ├── stages-3-4.md             # Stages 3-4: Artifact Generation, Build Planning
 │   │   ├── stage-5-build.md          # Stage 5: Build + Governance Loop
 │   │   ├── stage-6-iteration.md      # Stage 6: Iteration + Directional Change Protocol
+│   │   ├── onboarding.md            # Onboarding Mode: existing codebase → prawduct artifacts
 │   │   └── protocols.md              # FRP, Stage Transition, Expertise Calibration, Structural Critique
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
 │   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency — format specs live in templates

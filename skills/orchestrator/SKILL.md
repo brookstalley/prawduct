@@ -15,7 +15,7 @@ This is the default skill. When using Prawduct to build a user's product:
       a. YES + this is the prawduct framework repo → Self-hosted. The **product root** is the repo root. Proceed.
       b. YES + user describes a NEW product → Create a separate directory for the new product with `.prawduct/` inside it.
       c. YES + not a new product → Check `schema_version`. Current version: product root is the repo root (legacy layout). Old/missing version: enter Migration Mode (see Existing Project Onboarding section in working-notes). Legacy-layout products continue to work — migration to `.prawduct/` is offered in a future phase.
-   3. No `project-state.yaml` anywhere + CWD contains project signals (source code, package.json, Cargo.toml, go.mod, requirements.txt, etc.) and is NOT the prawduct repo → **Onboarding Mode**: create `.prawduct/` within CWD, analyze the existing codebase, and generate artifacts inside `.prawduct/`.
+   3. No `project-state.yaml` anywhere + CWD contains project signals (source code, package.json, Cargo.toml, go.mod, requirements.txt, etc.) and is NOT the prawduct repo → **Onboarding Mode**: activate governance (write current ISO-8601 timestamp to `.claude/.orchestrator-activated`), initialize governance tracking (Step 4), then read `skills/orchestrator/onboarding.md` and follow its process. Onboarding handles Steps 2 and 5-6 internally — skip them.
    4. No `project-state.yaml` + user specified a directory → Create `.prawduct/` within it.
    5. None of the above → Ask the user where project files should go, then create `.prawduct/` there.
 
@@ -73,6 +73,7 @@ Read the sub-file for the current stage. Each sub-file is self-contained for its
 
 | `current_stage` | Sub-file | Stages covered |
 |-----------------|----------|----------------|
+| (no stage — onboarding) | `skills/orchestrator/onboarding.md` | Onboarding Mode |
 | `intake` | `skills/orchestrator/stages-0-2.md` | Stage 0: Intake & Triage |
 | `discovery` | `skills/orchestrator/stages-0-2.md` | Stage 1: Discovery |
 | `definition` | `skills/orchestrator/stages-0-2.md` | Stage 2: Product Definition |

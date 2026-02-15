@@ -12,7 +12,7 @@ observations:
     description: "Several Builder and Orchestrator rubric criteria are inherently unable-to-evaluate in simulation evaluations. These criteria address gameplay feel, conversational naturalness, and cross-platform behavior — experiential qualities that require interactive testing. The rubric does not distinguish between simulation-evaluable and interactive-only criteria."
     evidence: "9 criteria marked UNABLE across Builder (3: player rendering, gameplay feel, cross-platform), Orchestrator (3: technical terminology naturalness, over-explaining, process weight), Iteration (1: high score visual integration), and Review Lenses (1: finding count). These were all simulation limitations, not framework failures, but they are indistinguishable from genuine gaps in the eval results."
     proposed_action: "Annotate rubric criteria with evaluation method requirement (simulation-ok vs requires-interactive). This would allow simulation evals to skip interactive-only criteria cleanly and track them separately for follow-up interactive evaluation."
-    status: triaged
+    status: acted_on
 
   - type: process_friction
     stage: 5
@@ -36,7 +36,7 @@ observations:
     description: "C5 rubric criterion specifies user_expertise.domain_knowledge should be 'basic' for this scenario, but the test persona (Jordan Reyes) references Galaga mechanics accurately, which demonstrates more than 'basic' domain knowledge. The system assigned 'intermediate' which is defensible."
     evidence: "Rubric says domain_knowledge at basic (entertainment/game design is not their expertise). project-state.yaml has domain_knowledge: intermediate with evidence 'References Galaga by name and describes its mechanics accurately.' The persona knows what makes Galaga fun but cannot design difficulty curves — this is between basic and intermediate."
     proposed_action: "Consider updating the rubric to specify 'basic to intermediate' for domain_knowledge in this scenario, or add anchor examples to the expertise calibration scale to clarify the boundary between basic and intermediate domain knowledge."
-    status: triaged
+    status: acted_on
 
   - type: proportionality
     stage: 5
