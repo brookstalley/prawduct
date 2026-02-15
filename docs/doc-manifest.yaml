@@ -32,7 +32,7 @@ tier_1_documents:
   - path: docs/high-level-design.md
     purpose: "System architecture: components, stages, structural characteristics, validation strategy, bootstrapping approach"
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-15
 
   - path: docs/evaluation-methodology.md
     purpose: "How to run evaluations, extract learnings, detect regressions, and improve the eval process"

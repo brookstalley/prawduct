@@ -209,11 +209,12 @@ artifact_manifest:
     - name: high-level-design
       file_path: docs/high-level-design.md
       role: architecture
-      version: 1
+      version: 2
       depends_on: [vision, requirements, principles]
       depended_on_by: [orchestrator, domain-analyzer, artifact-generator, review-lenses, critic, builder]
-      last_validated: 2026-02-11
+      last_validated: 2026-02-15
       tier: 1
+      notes: "Consolidated: duplicated sections slimmed with pointers to canonical sources (skills, eval methodology, self-improvement arch)"
     - name: principles
       file_path: docs/principles.md
       role: principles
@@ -481,6 +482,11 @@ change_log:
     why: "7 observations from .prawduct/ isolation and Orchestrator decomposition sessions needed triage. Closed #1 (already fixed). Added Concept Ripple sub-check to Critic Coherence (Check 5) to grep for stale references after directional changes. Added DCP retrospective mechanical enforcement via directional_change tracking in .session-governance.json and governance-stop.sh check. Added skill file length monitoring to session-health-check.sh with H1 thresholds (400/600 lines for SKILL.md, 300 for sub-files). Observations #2, #4, #5 transitioned to acted_on."
     blast_radius: "skills/critic/SKILL.md, skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, .claude/hooks/governance-stop.sh, tools/session-health-check.sh, project-state.yaml, 4 observation files"
     classification: functional
+    date: 2026-02-15
+  - what: "Consolidate HLD: slim duplicated sections with pointers to canonical sources"
+    why: "HLD at 665 lines duplicated content now living authoritatively in skills/critic/SKILL.md (check architecture), docs/self-improvement-architecture.md (C8 sub-components), docs/evaluation-methodology.md (validation strategy details), and project-state.yaml remaining_work (Phase 2 progress). Slimmed C6, C8, Validation Strategy, and Bootstrapping Phase 2 sections. 665→572 lines (14% reduction)."
+    blast_radius: "docs/high-level-design.md, docs/doc-manifest.yaml, project-state.yaml, 1 observation file"
+    classification: directional
     date: 2026-02-15
 
 # =============================================================================

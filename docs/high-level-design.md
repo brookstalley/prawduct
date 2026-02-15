@@ -47,10 +47,10 @@ Not all components are equally essential for a working v1:
 - **V1 Phase 1 (vertical slice):** C1 (Orchestrator Stages 0-3), C2 (Domain Analyzer), C3 (Artifact Generator Phases A-C), C4 (Review Lenses), C5 (Project State), C6 governance checks (Scope Discipline, Proportionality, Coherence, Learning/Observability, Generality, Instruction Clarity, Cumulative Health), C8a (Observation Capture)
 - **V1 Phase 2 (build loop):** C1 (Orchestrator Stages 4-6), C3 (Artifact Generator Phase D — build planning), C3b (Builder — code generation from build plans), C6 build-stage checks (Spec Compliance, Test Integrity added to always-applicable checks), build-phase observation types
 - **V1 Phase 2 (widen):** Orchestrator sophistication (pushback, prior art, pacing, reclassification), Critic-Review Lenses integration, Review Lenses variable-depth and rotating emphasis, additional test scenarios, Artifact Generator modular updates
-- **V1.5:** C7 (Trajectory Monitor) — architecturally accommodate but implement after v1 validates
-- **V2:** C8 full (Learning System with pattern detection, validation, incorporation) — requires data from many projects; premature before user base exists
+- **V1.5:** C7 (Trajectory Monitor), regulatory discovery, cost awareness, accessibility enforcement, agent agnosticism
+- **V2:** C8 full Learning System (pattern detection, validation, incorporation)
 
-The Trajectory Monitor's triggers (R4.2) can be handled by simple heuristics in v1, upgraded to a dedicated component later. See `docs/requirements.md` § "Phase 1 vs Phase 2" for the full deferral rationale.
+See `docs/requirements.md` for deferral rationale and `project-state.yaml` → `remaining_work` for phased tracking.
 
 ---
 
@@ -374,28 +374,7 @@ Project State
 
 **Purpose:** Automated quality enforcement during development. The embodiment of the Hard Rules from principles.md.
 
-**Check architecture:** The Critic uses 9 general-purpose checks (Spec Compliance, Test Integrity, Scope Discipline, Proportionality, Coherence, Learning/Observability, Generality, Instruction Clarity, Cumulative Health) with an applicability table that determines which checks fire based on project context. Rather than enumerated sub-components, each check strengthens to absorb new concerns:
-
-- **Spec Compliance** (Check 1): Diffs implementation against specs, produces requirement checklists. Also handles operational readiness verification (monitoring implemented, failure recovery tested, alerting configured) when `runs_unattended` or `exposes_programmatic_interface` is active. Verifies process constraints for active structural characteristics.
-- **Test Integrity** (Check 2): Monitors for corruption patterns, enforces test count trends, checks behavioral testing quality.
-- **Scope Discipline** (Check 3): Catches out-of-scope work, unlisted dependencies, unspecified patterns. Also handles documentation integrity (tier system compliance, no orphan documents, Source of Truth currency).
-- **Coherence** (Check 5): Artifact/skill internal consistency and cross-references. For product builds, also checks architectural consistency (module boundaries, dependency directions, data flow patterns match architecture artifact).
-- **Learning/Observability** (Check 6): Preserves the framework's ability to detect and learn from problems.
-
-This general-check approach follows the Generality Over Enumeration principle — new concerns strengthen existing checks rather than creating enumerated sub-components.
-
-**Review cycle:**
-1. Agent completes a defined work unit
-2. All relevant Critic sub-components evaluate
-3. Issues categorized: blocking / warning / note
-4. Agent addresses blocking issues
-5. Critic verifies fixes — specifically watching for:
-   - "Fixing" by weakening the check instead of fixing the code
-   - "Fixing" by changing the spec to match the (wrong) implementation
-   - "Fixing" by adding a workaround rather than addressing root cause
-6. Proceed to next chunk or re-enter step 4
-
-**Mechanical enforcement:** Beyond the LLM-driven review cycle, governance is enforced mechanically via Claude Code hooks that operate independent of LLM judgment. A unified hook system handles both framework and product governance through a single `.session-governance.json` state file: `governance-gate.sh` (PreToolUse — blocks edits without Orchestrator activation or with chunk review debt), `governance-tracker.sh` (PostToolUse — tracks all edits and governance debt with escalating reminders), `governance-prompt.sh` (UserPromptSubmit — injects governance status at start of each turn), `governance-stop.sh` (Stop — blocks session completion when critical governance debt exists), and `critic-gate.sh` (PreToolUse — blocks commits without structured Critic evidence). Advisory for soft items (observation capture reminders), blocking for critical items (unreviewed chunks, overdue governance checkpoints, missing Critic evidence).
+The Critic uses 9 general-purpose checks with an applicability table that determines which checks fire based on project context. New concerns strengthen existing checks rather than creating enumerated sub-components (Generality Over Enumeration principle). See `skills/critic/SKILL.md` for the full check architecture, applicability table, review cycle, and output format. See `CLAUDE.md` for mechanical governance hooks.
 
 ### C7: Trajectory Monitor
 
@@ -422,17 +401,7 @@ This general-check approach follows the Generality Over Enumeration principle �
 
 **Purpose:** Makes the system smarter over time by observing patterns across projects. [v2 — requires project volume]
 
-**Sub-components:**
-
-**C8a: Project Observer** — Passive signal collection. Governance interventions, user direction changes, discovery gaps, refactoring triggers.
-
-**C8b: Pattern Extractor** — Periodic cross-project analysis. Applies review lenses to its own findings. Requires statistical significance, not anecdotes.
-
-**C8c: Validation Pipeline** — Four gates: consistency with principles (hard rules are axioms), appropriate specificity, reversibility, adversarial testing against historical projects.
-
-**C8d: Incorporation Engine** — Routes validated learnings to the right component with provenance. New questions → C2. New failure modes → C6. New patterns → C3. Refined thresholds → C7.
-
-**C8e: Retirement Monitor** — Reviews incorporated learnings against current evidence. System knowledge can shrink.
+Sub-components: C8a (Project Observer), C8b (Pattern Extractor), C8c (Validation Pipeline), C8d (Incorporation Engine), C8e (Retirement Monitor). See `docs/self-improvement-architecture.md` for the full architecture, design philosophy, and implementation status.
 
 ---
 
@@ -503,48 +472,7 @@ Each skill is tested against a defined set of product scenarios. For each scenar
 - **Quality criteria:** Specific, observable markers of good output (e.g., "questions are prioritized by impact, not presented as a flat list," "pushback includes rationale, not just disagreement").
 - **State validation:** Expected state of `project-state.yaml` after the process completes. Since Project State is the coordination mechanism between all skills, its correctness after each stage is a critical test of inter-skill compatibility.
 
-### Minimum Test Scenarios
-
-Five scenarios that cover the structural characteristics and domain types:
-
-1. **Consumer mobile app** (primary structural: `has_human_interface`, modality: screen) — tests screen-related discovery, accessibility, onboarding, platform considerations.
-2. **Background data pipeline** (primary structural: `runs_unattended`, trigger: scheduled) — tests operational concerns, monitoring, failure recovery, cost awareness. Tests that the system does *not* ask about screens or navigation.
-3. **B2B integration API** (primary structural: `exposes_programmatic_interface`, `handles_sensitive_data`) — tests contract design, versioning, consumer needs, SLAs. Tests expertise calibration for a technical user.
-4. **Simple family utility** (primary structural: `has_human_interface`, low risk) — tests pacing sensitivity, scope restraint. The system should *not* interrogate this the same way it interrogates a B2B platform.
-5. **Two-sided marketplace** (primary structural: `has_multiple_party_types`, `has_human_interface`, `exposes_programmatic_interface`, `handles_sensitive_data`) — tests multi-party discovery, per-party needs, cross-party interactions, trust boundaries.
-
-### Evaluation Isolation
-
-Evaluations must not write files into the prawduct framework repository. Each evaluation run:
-
-1. Creates a temporary project directory outside the prawduct tree (e.g., `/tmp/eval-<scenario-name>/`).
-2. Copies `templates/project-state.yaml` into that directory.
-3. Runs the full scenario with all file output directed to the temporary directory.
-4. Evaluates the resulting files (`project-state.yaml`, `artifacts/`) and the conversation transcript against the rubric.
-5. Records results before cleaning up.
-
-All skills reference `project-state.yaml`, `artifacts/`, and `working-notes/` as paths relative to the user's project directory. The Orchestrator is responsible for establishing this directory at the start of any session and ensuring it is not the prawduct repo itself.
-
-### Regression Detection
-
-When a skill is modified, all scenarios are re-evaluated. A regression is:
-
-- A must-do item that previously passed now failing.
-- A must-not-do item that previously passed now triggering.
-- Quality criteria that previously held now absent.
-
-This is judgment-based evaluation, not mechanical. But it has structure, and structure enables regression detection even for non-deterministic outputs. Over time, as patterns stabilize, some evaluations may become partially mechanizable (e.g., checking that specific keywords or topics appear in output).
-
-### Evaluation Lifecycle
-
-The complete evaluation process — from setup through execution, result recording, learning extraction, and regression detection — is documented in `docs/evaluation-methodology.md`. Key aspects:
-
-- **Simulation vs. Interactive**: Simulation (LLM plays test persona) is fast and covers mechanical criteria but cannot evaluate conversation quality. Interactive evaluation (human plays test persona) provides full transcript analysis but requires significantly more time.
-- **Learning Extraction**: A systematic process for transforming evaluation observations into framework improvements, with provenance tracking and "Learn Slowly" principles to avoid over-fitting to single instances.
-- **Meta-Learning**: After each evaluation, critique the evaluation process itself — rubric quality, scenario design, method choice, process friction. Each eval should make the next eval better.
-- **Recording Format**: Standardized YAML frontmatter enables machine-parseable regression detection across framework changes.
-
-For detailed procedures, decision matrices, and recording templates, see `docs/evaluation-methodology.md`.
+For test scenarios, evaluation isolation, regression detection, and the full evaluation lifecycle, see `docs/evaluation-methodology.md`.
 
 ---
 
@@ -574,27 +502,7 @@ Pick one product scenario (the family utility — a simple UI application with l
 
 ### Phase 2: Widen Based on Phase 1 Findings
 
-Phase 1 validated the architecture. Phase 2 widening has delivered:
-
-- `runs_unattended` structural characteristic with full-depth discovery, 5 templates, and test scenario rubric (background-data-pipeline).
-- Critic (C6) with context-sensitive governance (9 checks with applicability table: Spec Compliance, Test Integrity, Scope Discipline, Proportionality, Coherence, Learning/Observability, Generality, Instruction Clarity, Cumulative Health).
-- Unified mechanical governance hooks: governance-gate, governance-tracker, governance-prompt, governance-stop, critic-gate, compact-governance-reinject.
-- Builder with chunk execution, scaffolding, proportionality, and artifact insufficiency flagging.
-- Stages 4-6 (Build Planning, Build + Governance, Iteration) across Orchestrator, Builder, and Critic.
-- Terminal arcade game test scenario (entertainment domain, creative product handling).
-
-Remaining Phase 2 widening (tracked in `project-state.yaml` → `remaining_work`, phase: v1-widen):
-
-- Orchestrator sophistication: pushback, prior art, pacing, reclassification.
-- Critic-Review Lenses integration; Review Lenses variable-depth and rotating emphasis.
-- Artifact Generator modular artifact updates.
-- Consumer mobile app test scenario.
-
-Previously planned items absorbed into general capabilities:
-- `exposes_programmatic_interface` and `has_multiple_party_types` templates → replaced by three-layer artifact generation (amplification rules + process constraints + optional templates).
-- Critic sub-components → absorbed into existing general checks (Coherence, Spec Compliance, Scope Discipline).
-- Builder structural-characteristic chunk patterns → absorbed into Artifact Generator Phase D.
-- Mechanical sub-check tools → replaced by strengthening general Critic checks; mechanical enforcement via hooks is already built.
+Phase 1 validated the architecture. Phase 2 widening is ongoing. See `project-state.yaml` → `build_plan.remaining_work` for current status and `CLAUDE.md` § Framework Status for a summary of what's built and what remains.
 
 ### Phase 3: Full V1
 
