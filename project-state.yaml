@@ -386,120 +386,174 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: "Phase 1 complete: vertical slice through family utility scenario"
-    why: "Proved end-to-end path from vague input through artifact generation with review"
-    blast_radius: "All skills, templates, project-state schema"
-    classification: functional
-    date: 2026-02-01
-  - what: "Phase 2 build loop: added Stages 4-6, Builder skill, Critic product governance"
-    why: "Extended framework from discovery-only to full build-and-iterate cycle"
-    blast_radius: "Orchestrator, Artifact Generator, new Builder skill, Critic, family utility eval rubric"
-    classification: functional
-    date: 2026-02-10
-  - what: "Phase 2 widening: added automation shape with Testing Lens"
-    why: "First shape beyond UI Application — templates, domain analyzer extensions, review lens additions"
-    blast_radius: "Domain Analyzer, Artifact Generator, Review Lenses, new automation templates, background-data-pipeline scenario"
-    classification: functional
-    date: 2026-02-11
-  - what: "Observation triage process + eval fixes from family-utility eval run 3"
-    why: "Observations were captured but had no process for being tracked or surfaced. Added observation_backlog to project-state.yaml, triage step to evaluation methodology, Session Resumption surfaces pending items. Fixed family-utility scenario (novel game timer iteration request), softened Critic criterion for low-risk products, formalized two-phase eval approach."
-    blast_radius: "project-state.yaml schema, Orchestrator Session Resumption, evaluation-methodology.md, family-utility scenario rubric, observation file statuses"
-    classification: functional
-    date: 2026-02-11
-  - what: "Self-hosted framework development via Orchestrator"
-    why: "Framework development now routes through the Orchestrator (Session Resumption, Stage 6 iteration) instead of a separate checklist. Solves the observation capture gap — FRP fires at stage transitions regardless of whether the project is a user product or the framework itself."
-    blast_radius: "CLAUDE.md routing, Orchestrator project directory logic and Session Resumption, framework development workflow"
-    classification: functional
-    date: 2026-02-11
-  - what: "Replaced product shape taxonomy with concern-based classification"
-    why: "Fixed shapes (UI Application, API, Automation, Multi-Party, Hybrid) violated 'Generality Over Enumeration' principle. Products like earbud firmware, browser extensions, smart contracts don't fit any shape. Replaced with 7 composable concern dimensions (human_interface, unattended_operation, api_surface, multi_party, constrained_environment, external_integrations, sensitive_data) that combine freely. Added Structural Critique Protocol to catch similar foundational issues."
-    blast_radius: "Domain Analyzer, Artifact Generator, Review Lenses, Orchestrator, Critic, project-state schema, high-level design, principles, all test scenarios, CLAUDE.md, observation schema"
+  - what: 'Summary: 7 entries compacted (2026-02-01 to 2026-02-13)'
+    why: '7 functional covering: Phase 1 complete: vertical slice through family utility scenario; Phase 2 build loop: added
+      Stages 4-6, Builder skill, Critic product governance; Phase 2 widening: added automation shape with Testing Lens; Observation
+      triage process + eval fixes from family-utility eval run 3; Self-hosted framework development via Orchestrator; and 2
+      more'
+    blast_radius: compacted
+    classification: cosmetic
+    date: '2026-02-15'
+  - what: Replaced product shape taxonomy with concern-based classification
+    why: Fixed shapes (UI Application, API, Automation, Multi-Party, Hybrid) violated 'Generality Over Enumeration' principle.
+      Products like earbud firmware, browser extensions, smart contracts don't fit any shape. Replaced with 7 composable concern
+      dimensions (human_interface, unattended_operation, api_surface, multi_party, constrained_environment, external_integrations,
+      sensitive_data) that combine freely. Added Structural Critique Protocol to catch similar foundational issues.
+    blast_radius: Domain Analyzer, Artifact Generator, Review Lenses, Orchestrator, Critic, project-state schema, high-level
+      design, principles, all test scenarios, CLAUDE.md, observation schema
     classification: directional
     date: 2026-02-12
-  - what: "Consolidated work tracking into project-state.yaml remaining_work"
-    why: "Work tracking was scattered across 8+ files with partial conflicts. Made remaining_work the canonical tracker with 23 phased items (v1-widen, v1-validation, v1.5). Converted skill 'Extending This Skill' sections from feature roadmaps to extension guidance. Fixed staleness in requirements.md and high-level-design.md."
-    blast_radius: "project-state.yaml, CLAUDE.md, docs/requirements.md, docs/high-level-design.md, all 6 skill SKILL.md files"
+  - what: Consolidated work tracking into project-state.yaml remaining_work
+    why: Work tracking was scattered across 8+ files with partial conflicts. Made remaining_work the canonical tracker with
+      23 phased items (v1-widen, v1-validation, v1.5). Converted skill 'Extending This Skill' sections from feature roadmaps
+      to extension guidance. Fixed staleness in requirements.md and high-level-design.md.
+    blast_radius: project-state.yaml, CLAUDE.md, docs/requirements.md, docs/high-level-design.md, all 6 skill SKILL.md files
     classification: directional
     date: 2026-02-13
-  - what: "Replaced concern enumeration with structural characteristics + dynamic domain depth"
-    why: "7 hardcoded concerns violated 'Generality Over Enumeration' — the concern system did two different jobs (structural artifact routing and domain-specific depth) and the domain-specific half couldn't scale to cover all product types. Replaced with 5 stable structural characteristics for artifact routing and dynamic LLM-generated questions guided by 9 universal discovery dimensions and structural amplification rules. Eliminated 4 remaining_work items (deepen api_surface, deepen multi_party, additional domain overlays, open question about concern coverage). Domain-specific depth now comes from the LLM's own knowledge, not hardcoded question banks."
-    blast_radius: "All 6 skills, templates/project-state.yaml, project-state.yaml, docs/high-level-design.md, CLAUDE.md, all 3 test scenarios"
+  - what: Replaced concern enumeration with structural characteristics + dynamic domain depth
+    why: 7 hardcoded concerns violated 'Generality Over Enumeration' — the concern system did two different jobs (structural
+      artifact routing and domain-specific depth) and the domain-specific half couldn't scale to cover all product types. Replaced
+      with 5 stable structural characteristics for artifact routing and dynamic LLM-generated questions guided by 9 universal
+      discovery dimensions and structural amplification rules. Eliminated 4 remaining_work items (deepen api_surface, deepen
+      multi_party, additional domain overlays, open question about concern coverage). Domain-specific depth now comes from the
+      LLM's own knowledge, not hardcoded question banks.
+    blast_radius: All 6 skills, templates/project-state.yaml, project-state.yaml, docs/high-level-design.md, CLAUDE.md, all
+      3 test scenarios
     classification: directional
     date: 2026-02-13
-    retrospective: "Concern enumeration violated Generality for weeks undetected. Root cause: Structural Critique Protocol trigger cadence too low (every 3 evals, effectively never), Directional Change Protocol had no learning step. The 17-file reform produced zero captured learnings until the user asked. Fix: retrospective step added to DCP, Structural Critique triggers expanded to include directional changes. Key insight: governance (Critic) validates quality but retrospective captures learning — both required for framework development."
-  - what: "Created has_human_interface (modality: screen) templates and integrated into artifact generator, review lenses, and test scenario"
-    why: "Products with has_human_interface were detected and classified but had no artifact templates. Added 6 templates (information-architecture, screen-spec, design-direction, accessibility-spec, localization-requirements, onboarding-spec), full Phase C artifact generation instructions, chunk ordering for build planning, cross-artifact consistency checks, hardcoded lens adjustments, and updated family-utility rubric from must-not-do to must-do with proportionality criteria."
-    blast_radius: "templates/human-interface/ (6 new), skills/artifact-generator/SKILL.md, skills/review-lenses/SKILL.md, tests/scenarios/family-utility.md, CLAUDE.md, project-state.yaml, docs/high-level-design.md, docs/doc-manifest.yaml"
-    classification: functional
-    date: 2026-02-13
-  - what: "Added post-change retrospective to Directional Change Protocol and expanded Structural Critique triggers"
-    why: "The DCP had governance (Critic review) but no learning step. A 17-file architectural reform produced zero captured learnings. The Structural Critique Protocol trigger cadence (every 3 evals) was too low to catch structural violations. Added DCP step 7 (mandatory retrospective with three questions: detection, process, architecture), expanded SCP triggers to include directional changes, added retrospective field to change_log schema, and documented framework development learning path in self-improvement-architecture.md."
-    blast_radius: "skills/orchestrator/SKILL.md, templates/project-state.yaml, project-state.yaml, docs/self-improvement-architecture.md, framework-observations/ (3 new observations)"
-    classification: functional
-    date: 2026-02-13
-  - what: "Unified governance and generalized artifact generation"
-    why: "Framework violated 'Eat Your Own Cooking' (separate governance paths for framework vs. product — 8 hooks in two parallel stacks, 2 Critic modes, 2 state files) and 'Generality Over Enumeration' (Artifact Generator hardcoded 575 lines of per-artifact format specs). Unified to: 5 hooks with single .session-governance.json state, 1 context-sensitive Critic with 9 checks and applicability table, Artifact Generator reduced from 789→189 lines by moving format specs to templates, observation backlog enabled for all projects, single Directional Change Protocol."
-    blast_radius: "All 6 skills, .claude/hooks/ (8 deleted, 4 created, 2 updated), .claude/settings.json, templates/project-state.yaml, templates/product-brief.md, templates/data-model.md, tools/record-critic-findings.sh, tools/critic-reminder.sh, docs/high-level-design.md, docs/self-improvement-architecture.md, docs/doc-manifest.yaml, CLAUDE.md, project-state.yaml"
+    retrospective: 'Concern enumeration violated Generality for weeks undetected. Root cause: Structural Critique Protocol trigger
+      cadence too low (every 3 evals, effectively never), Directional Change Protocol had no learning step. The 17-file reform
+      produced zero captured learnings until the user asked. Fix: retrospective step added to DCP, Structural Critique triggers
+      expanded to include directional changes. Key insight: governance (Critic) validates quality but retrospective captures
+      learning — both required for framework development.'
+  - what: Unified governance and generalized artifact generation
+    why: 'Framework violated ''Eat Your Own Cooking'' (separate governance paths for framework vs. product — 8 hooks in two
+      parallel stacks, 2 Critic modes, 2 state files) and ''Generality Over Enumeration'' (Artifact Generator hardcoded 575
+      lines of per-artifact format specs). Unified to: 5 hooks with single .session-governance.json state, 1 context-sensitive
+      Critic with 9 checks and applicability table, Artifact Generator reduced from 789→189 lines by moving format specs to
+      templates, observation backlog enabled for all projects, single Directional Change Protocol.'
+    blast_radius: All 6 skills, .claude/hooks/ (8 deleted, 4 created, 2 updated), .claude/settings.json, templates/project-state.yaml,
+      templates/product-brief.md, templates/data-model.md, tools/record-critic-findings.sh, tools/critic-reminder.sh, docs/high-level-design.md,
+      docs/self-improvement-architecture.md, docs/doc-manifest.yaml, CLAUDE.md, project-state.yaml
     classification: directional
     date: 2026-02-14
-    retrospective: "Detection: The 'Eat Your Own Cooking' violation (parallel governance stacks) was visible for weeks but not detected by the learning system because observation types didn't include 'architectural inconsistency with stated principles.' The Structural Critique Protocol could have caught this but its trigger cadence (every 3 evals) was too low. Process: The phased implementation (hooks → Critic → artifacts → docs) worked well — each phase was independently testable. The Critic review found 4 stale cross-references, confirming that documentation freshness checks catch real issues. Architecture: The unified governance state (.session-governance.json) creates a single point of failure — if the state file is corrupted, all governance tracking is lost. The previous dual-file approach had natural redundancy. Mitigation: SessionStart cleanup creates a fresh file each session, limiting blast radius. Generalization: This pattern (parallel implementations for 'framework' and 'product' that should be unified) should be checked whenever new framework capabilities are added — does the capability apply identically to both contexts?"
-  - what: "Observation triage and threshold change: archived 11 resolved files, triaged 18 noted observations, reduced triage overdue threshold from 14 days to 2 days"
-    why: "27 active observation files with 67 observations had accumulated. 11 files were fully resolved but unarchived. 18 observations in noted status needed triage. The 14-day triage threshold was too long for the framework's rapid development pace — observations were going stale before being triaged."
-    blast_radius: "framework-observations/ (18 status transitions, 11 files archived), project-state.yaml (last_triage, 10 new backlog items), tools/session-health-check.sh (threshold), docs/evaluation-methodology.md (threshold)"
+    retrospective: 'Detection: The ''Eat Your Own Cooking'' violation (parallel governance stacks) was visible for weeks but
+      not detected by the learning system because observation types didn''t include ''architectural inconsistency with stated
+      principles.'' The Structural Critique Protocol could have caught this but its trigger cadence (every 3 evals) was too
+      low. Process: The phased implementation (hooks → Critic → artifacts → docs) worked well — each phase was independently
+      testable. The Critic review found 4 stale cross-references, confirming that documentation freshness checks catch real
+      issues. Architecture: The unified governance state (.session-governance.json) creates a single point of failure — if the
+      state file is corrupted, all governance tracking is lost. The previous dual-file approach had natural redundancy. Mitigation:
+      SessionStart cleanup creates a fresh file each session, limiting blast radius. Generalization: This pattern (parallel
+      implementations for ''framework'' and ''product'' that should be unified) should be checked whenever new framework capabilities
+      are added — does the capability apply identically to both contexts?'
+  - what: 'Observation triage and threshold change: archived 11 resolved files, triaged 18 noted observations, reduced triage
+      overdue threshold from 14 days to 2 days'
+    why: 27 active observation files with 67 observations had accumulated. 11 files were fully resolved but unarchived. 18 observations
+      in noted status needed triage. The 14-day triage threshold was too long for the framework's rapid development pace — observations
+      were going stale before being triaged.
+    blast_radius: framework-observations/ (18 status transitions, 11 files archived), project-state.yaml (last_triage, 10 new
+      backlog items), tools/session-health-check.sh (threshold), docs/evaluation-methodology.md (threshold)
     classification: process
     date: 2026-02-14
-  - what: "Strengthened framework generality: three-layer artifact generation, absorbed Critic sub-components, vocabulary debiasing, Builder governance improvements"
-    why: "Several remaining_work items planned enumerated components (template directories per characteristic, named Critic sub-components) when the framework's own Generality Over Enumeration principle argues for strengthening general capabilities. Templates conflated two jobs (what to generate vs. quality properties) — separated into amplification rules + process constraints + optional template reference. Critic sub-components (Architectural Consistency, Documentation Controller, Operational Readiness) absorbed into existing checks. UI-centric vocabulary generalized for non-screen modalities. Builder spec_compliance made risk-proportionate."
-    blast_radius: "skills/artifact-generator/SKILL.md, skills/critic/SKILL.md, skills/review-lenses/SKILL.md, skills/domain-analyzer/SKILL.md, skills/builder/SKILL.md, templates/product-brief.md, project-state.yaml (remaining_work, artifact_manifest, observation_backlog, change_log), docs/high-level-design.md, CLAUDE.md"
+  - what: 'Strengthened framework generality: three-layer artifact generation, absorbed Critic sub-components, vocabulary debiasing,
+      Builder governance improvements'
+    why: Several remaining_work items planned enumerated components (template directories per characteristic, named Critic sub-components)
+      when the framework's own Generality Over Enumeration principle argues for strengthening general capabilities. Templates
+      conflated two jobs (what to generate vs. quality properties) — separated into amplification rules + process constraints
+      + optional template reference. Critic sub-components (Architectural Consistency, Documentation Controller, Operational
+      Readiness) absorbed into existing checks. UI-centric vocabulary generalized for non-screen modalities. Builder spec_compliance
+      made risk-proportionate.
+    blast_radius: skills/artifact-generator/SKILL.md, skills/critic/SKILL.md, skills/review-lenses/SKILL.md, skills/domain-analyzer/SKILL.md,
+      skills/builder/SKILL.md, templates/product-brief.md, project-state.yaml (remaining_work, artifact_manifest, observation_backlog,
+      change_log), docs/high-level-design.md, CLAUDE.md
     classification: directional
     date: 2026-02-14
-  - what: "User feedback overhaul: remove confirmation pauses, eliminate Stage 0.5, apply lenses to all products, fix project naming, gate skill/template reads behind Orchestrator activation"
-    why: "Real users reported four friction areas: (1) framework stops too often asking permission at every stage gate, (2) project names chosen before asking user, (3) lenses only applied to high-risk products at Stage 2, (4) no mechanical enforcement that skills are accessed through the Orchestrator. Removed Stage 0.5 (Validation) entirely — if the user asks to build something, help them build it. Removed all confirmation pauses — present information and keep moving, only stop when genuinely blocked. Extended governance-gate.sh to block reads of skill/template files (except orchestrator/SKILL.md) without Orchestrator activation. Added three new remaining_work items for future phases: closed-loop testing MCP server, existing project onboarding, and old prawduct version migration."
-    blast_radius: "skills/orchestrator/SKILL.md (Stage 0, Stage 0.5, Stage 2, Stage 3, Stage 4, Stage 5, Stage Transition Protocol, FRP table), .claude/hooks/governance-gate.sh, .claude/hooks/governance-prompt.sh, .claude/settings.json, CLAUDE.md, project-state.yaml (remaining_work, change_log), working-notes/2026-02-15-user-feedback-overhaul.md"
+  - what: 'User feedback overhaul: remove confirmation pauses, eliminate Stage 0.5, apply lenses to all products, fix project
+      naming, gate skill/template reads behind Orchestrator activation'
+    why: 'Real users reported four friction areas: (1) framework stops too often asking permission at every stage gate, (2)
+      project names chosen before asking user, (3) lenses only applied to high-risk products at Stage 2, (4) no mechanical enforcement
+      that skills are accessed through the Orchestrator. Removed Stage 0.5 (Validation) entirely — if the user asks to build
+      something, help them build it. Removed all confirmation pauses — present information and keep moving, only stop when genuinely
+      blocked. Extended governance-gate.sh to block reads of skill/template files (except orchestrator/SKILL.md) without Orchestrator
+      activation. Added three new remaining_work items for future phases: closed-loop testing MCP server, existing project onboarding,
+      and old prawduct version migration.'
+    blast_radius: skills/orchestrator/SKILL.md (Stage 0, Stage 0.5, Stage 2, Stage 3, Stage 4, Stage 5, Stage Transition Protocol,
+      FRP table), .claude/hooks/governance-gate.sh, .claude/hooks/governance-prompt.sh, .claude/settings.json, CLAUDE.md, project-state.yaml
+      (remaining_work, change_log), working-notes/2026-02-15-user-feedback-overhaul.md
     classification: directional
     date: 2026-02-15
-  - what: "Existing project onboarding design: codebase analysis, artifact generation, and old prawduct version migration"
-    why: "Phase 4 of user feedback overhaul. Designed two new Orchestrator modes: Onboarding Mode (reverse-engineers existing codebases into prawduct artifacts via tech stack detection, architecture inference, product understanding, structural characteristic detection, and test coverage analysis) and Migration Mode (detects old prawduct project-state.yaml schemas by structural signals and migrates to current format). Includes schema_version field, version signal detection table, and migration field mapping. Onboarding pauses for user confirmation since analysis may be incomplete."
-    blast_radius: "working-notes/2026-02-15-existing-project-onboarding-design.md (new), project-state.yaml (change_log)"
+  - what: 'Existing project onboarding design: codebase analysis, artifact generation, and old prawduct version migration'
+    why: 'Phase 4 of user feedback overhaul. Designed two new Orchestrator modes: Onboarding Mode (reverse-engineers existing
+      codebases into prawduct artifacts via tech stack detection, architecture inference, product understanding, structural
+      characteristic detection, and test coverage analysis) and Migration Mode (detects old prawduct project-state.yaml schemas
+      by structural signals and migrates to current format). Includes schema_version field, version signal detection table,
+      and migration field mapping. Onboarding pauses for user confirmation since analysis may be incomplete.'
+    blast_radius: working-notes/2026-02-15-existing-project-onboarding-design.md (new), project-state.yaml (change_log)
     classification: functional
     date: 2026-02-15
-  - what: "Closed-loop testing design: dev-tools MCP server architecture for has_human_interface products"
-    why: "Phase 2 of user feedback overhaul. Designed an opt-in dev-tools MCP server that wraps Playwright to give the agent visual verification capabilities (screenshot, navigate, interact, accessibility audit) during UI product builds. Addresses the fundamental gap: framework produces detailed visual specs but has no way to verify rendered output matches. Design covers MCP tool interface, security model (localhost-only on port 39427, HR10 principle), opt-in UX, lifecycle during builds, and technology choices (React + Playwright for v1)."
-    blast_radius: "working-notes/2026-02-15-closed-loop-testing-design.md (new), project-state.yaml (change_log)"
+  - what: 'Closed-loop testing design: dev-tools MCP server architecture for has_human_interface products'
+    why: 'Phase 2 of user feedback overhaul. Designed an opt-in dev-tools MCP server that wraps Playwright to give the agent
+      visual verification capabilities (screenshot, navigate, interact, accessibility audit) during UI product builds. Addresses
+      the fundamental gap: framework produces detailed visual specs but has no way to verify rendered output matches. Design
+      covers MCP tool interface, security model (localhost-only on port 39427, HR10 principle), opt-in UX, lifecycle during
+      builds, and technology choices (React + Playwright for v1).'
+    blast_radius: working-notes/2026-02-15-closed-loop-testing-design.md (new), project-state.yaml (change_log)
     classification: functional
     date: 2026-02-15
-  - what: "Move product outputs to .prawduct/ directory: all prawduct outputs (state, artifacts, observations, working notes) live in .prawduct/ within product repos"
-    why: "Phase 5 of user feedback overhaul. Users reported prawduct artifacts (project-state.yaml, artifacts/, working-notes/, framework-observations/) cluttering project roots. All product-side pravduct outputs now go in .prawduct/ subdirectory. Framework repo (self-hosted) unchanged — uses root-level files. Orchestrator detection checks .prawduct/ first with fallback to root for backward compatibility. Tools gain shared detection pattern. Session-governance.json gains product_output_dir field. Schema_version: 2 added to template for migration detection."
-    blast_radius: "skills/orchestrator/SKILL.md (detection, path resolution, session resumption), tools/session-health-check.sh, tools/compact-project-state.py, tools/capture-observation.sh, tools/observation-analysis.sh, skills/artifact-generator/SKILL.md, skills/builder/SKILL.md, templates/project-state.yaml, CLAUDE.md, project-state.yaml"
+  - what: 'Move product outputs to .prawduct/ directory: all prawduct outputs (state, artifacts, observations, working notes)
+      live in .prawduct/ within product repos'
+    why: 'Phase 5 of user feedback overhaul. Users reported prawduct artifacts (project-state.yaml, artifacts/, working-notes/,
+      framework-observations/) cluttering project roots. All product-side pravduct outputs now go in .prawduct/ subdirectory.
+      Framework repo (self-hosted) unchanged — uses root-level files. Orchestrator detection checks .prawduct/ first with fallback
+      to root for backward compatibility. Tools gain shared detection pattern. Session-governance.json gains product_output_dir
+      field. Schema_version: 2 added to template for migration detection.'
+    blast_radius: skills/orchestrator/SKILL.md (detection, path resolution, session resumption), tools/session-health-check.sh,
+      tools/compact-project-state.py, tools/capture-observation.sh, tools/observation-analysis.sh, skills/artifact-generator/SKILL.md,
+      skills/builder/SKILL.md, templates/project-state.yaml, CLAUDE.md, project-state.yaml
     classification: directional
     date: 2026-02-15
-  - what: "Decompose Orchestrator SKILL.md into main file + 5 sub-files for on-demand loading"
-    why: "Orchestrator at 634 lines exceeded skill-authoring-guide H1 guideline (300-600 lines) and was 1.9x the next-largest skill. Most content is stage-specific — Stage 5 execution doesn't need Stage 1 discovery rules. Decomposed into: SKILL.md (~156 lines, always loaded — activation, routing table, session resumption, orientation) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md (loaded per current_stage) + protocols.md (loaded on demand at stage boundaries). Reduces in-context lines from 634 to ~260 (main + one stage file) — a ~60% reduction. Governance gate unchanged: main SKILL.md whitelisted for pre-activation reads, sub-files gated behind activation (correct behavior)."
-    blast_radius: "skills/orchestrator/SKILL.md (rewritten), skills/orchestrator/stages-0-2.md (new), skills/orchestrator/stages-3-4.md (new), skills/orchestrator/stage-5-build.md (new), skills/orchestrator/stage-6-iteration.md (new), skills/orchestrator/protocols.md (new), CLAUDE.md (cross-references, project structure tree), project-state.yaml (change_log, artifact_manifest), docs/self-improvement-architecture.md (cross-reference), .claude/hooks/governance-prompt.sh (cross-reference)"
+  - what: Decompose Orchestrator SKILL.md into main file + 5 sub-files for on-demand loading
+    why: 'Orchestrator at 634 lines exceeded skill-authoring-guide H1 guideline (300-600 lines) and was 1.9x the next-largest
+      skill. Most content is stage-specific — Stage 5 execution doesn''t need Stage 1 discovery rules. Decomposed into: SKILL.md
+      (~156 lines, always loaded — activation, routing table, session resumption, orientation) + stages-0-2.md, stages-3-4.md,
+      stage-5-build.md, stage-6-iteration.md (loaded per current_stage) + protocols.md (loaded on demand at stage boundaries).
+      Reduces in-context lines from 634 to ~260 (main + one stage file) — a ~60% reduction. Governance gate unchanged: main
+      SKILL.md whitelisted for pre-activation reads, sub-files gated behind activation (correct behavior).'
+    blast_radius: skills/orchestrator/SKILL.md (rewritten), skills/orchestrator/stages-0-2.md (new), skills/orchestrator/stages-3-4.md
+      (new), skills/orchestrator/stage-5-build.md (new), skills/orchestrator/stage-6-iteration.md (new), skills/orchestrator/protocols.md
+      (new), CLAUDE.md (cross-references, project structure tree), project-state.yaml (change_log, artifact_manifest), docs/self-improvement-architecture.md
+      (cross-reference), .claude/hooks/governance-prompt.sh (cross-reference)
     classification: directional
     date: 2026-02-15
-  - what: "Triage and action 7 framework observations: concept-ripple check, DCP retrospective enforcement, skill file length monitoring"
-    why: "7 observations from .prawduct/ isolation and Orchestrator decomposition sessions needed triage. Closed #1 (already fixed). Added Concept Ripple sub-check to Critic Coherence (Check 5) to grep for stale references after directional changes. Added DCP retrospective mechanical enforcement via directional_change tracking in .session-governance.json and governance-stop.sh check. Added skill file length monitoring to session-health-check.sh with H1 thresholds (400/600 lines for SKILL.md, 300 for sub-files). Observations #2, #4, #5 transitioned to acted_on."
-    blast_radius: "skills/critic/SKILL.md, skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, .claude/hooks/governance-stop.sh, tools/session-health-check.sh, project-state.yaml, 4 observation files"
+  - what: 'Triage and action 7 framework observations: concept-ripple check, DCP retrospective enforcement, skill file length
+      monitoring'
+    why: '7 observations from .prawduct/ isolation and Orchestrator decomposition sessions needed triage. Closed #1 (already
+      fixed). Added Concept Ripple sub-check to Critic Coherence (Check 5) to grep for stale references after directional changes.
+      Added DCP retrospective mechanical enforcement via directional_change tracking in .session-governance.json and governance-stop.sh
+      check. Added skill file length monitoring to session-health-check.sh with H1 thresholds (400/600 lines for SKILL.md, 300
+      for sub-files). Observations #2, #4, #5 transitioned to acted_on.'
+    blast_radius: skills/critic/SKILL.md, skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, .claude/hooks/governance-stop.sh,
+      tools/session-health-check.sh, project-state.yaml, 4 observation files
     classification: functional
     date: 2026-02-15
-  - what: "Consolidate HLD: slim duplicated sections with pointers to canonical sources"
-    why: "HLD at 665 lines duplicated content now living authoritatively in skills/critic/SKILL.md (check architecture), docs/self-improvement-architecture.md (C8 sub-components), docs/evaluation-methodology.md (validation strategy details), and project-state.yaml remaining_work (Phase 2 progress). Slimmed C6, C8, Validation Strategy, and Bootstrapping Phase 2 sections. 665→572 lines (14% reduction)."
-    blast_radius: "docs/high-level-design.md, docs/doc-manifest.yaml, project-state.yaml, 1 observation file"
+  - what: 'Consolidate HLD: slim duplicated sections with pointers to canonical sources'
+    why: HLD at 665 lines duplicated content now living authoritatively in skills/critic/SKILL.md (check architecture), docs/self-improvement-architecture.md
+      (C8 sub-components), docs/evaluation-methodology.md (validation strategy details), and project-state.yaml remaining_work
+      (Phase 2 progress). Slimmed C6, C8, Validation Strategy, and Bootstrapping Phase 2 sections. 665→572 lines (14% reduction).
+    blast_radius: docs/high-level-design.md, docs/doc-manifest.yaml, project-state.yaml, 1 observation file
     classification: directional
     date: 2026-02-15
-  - what: "Consolidate .prawduct/ detection logic and add integration_friction observation type"
-    why: "Detection logic for product root (.prawduct/ vs repo root) was duplicated across 5 tools with inconsistent patterns. Created tools/resolve-product-root.sh as shared sourceable/executable helper; refactored session-health-check.sh, capture-observation.sh, observation-analysis.sh, compact-project-state.py to use it. Added integration_friction observation type to schema, session-health-check.sh thresholds, and README. Observations #6, #7 transitioned to acted_on. All 7 observations from 2026-02-15 triage now resolved."
-    blast_radius: "tools/resolve-product-root.sh (new), tools/session-health-check.sh, tools/capture-observation.sh, tools/observation-analysis.sh, tools/compact-project-state.py, framework-observations/schema.yaml, framework-observations/README.md, CLAUDE.md, project-state.yaml, 2 observation files"
+  - what: Consolidate .prawduct/ detection logic and add integration_friction observation type
+    why: 'Detection logic for product root (.prawduct/ vs repo root) was duplicated across 5 tools with inconsistent patterns.
+      Created tools/resolve-product-root.sh as shared sourceable/executable helper; refactored session-health-check.sh, capture-observation.sh,
+      observation-analysis.sh, compact-project-state.py to use it. Added integration_friction observation type to schema, session-health-check.sh
+      thresholds, and README. Observations #6, #7 transitioned to acted_on. All 7 observations from 2026-02-15 triage now resolved.'
+    blast_radius: tools/resolve-product-root.sh (new), tools/session-health-check.sh, tools/capture-observation.sh, tools/observation-analysis.sh,
+      tools/compact-project-state.py, framework-observations/schema.yaml, framework-observations/README.md, CLAUDE.md, project-state.yaml,
+      2 observation files
     classification: functional
     date: 2026-02-15
-
-# =============================================================================
-# BUILD PLAN
-# =============================================================================
-# The framework is in Stage 6 iteration. Remaining work is tracked here.
-# CLAUDE.md § "Framework Status" summarizes this; this file is the source of truth.
-
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.
