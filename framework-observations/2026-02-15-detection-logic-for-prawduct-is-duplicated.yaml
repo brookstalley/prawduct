@@ -10,7 +10,7 @@ observations:
     description: "Detection logic for .prawduct/ is duplicated across 5 locations (Orchestrator + 4 tools) with no mechanical coherence check ensuring they stay in sync"
     evidence: "session-health-check.sh, compact-project-state.py, capture-observation.sh, observation-analysis.sh each independently implement the same if-.prawduct-else-root pattern. Changes to the convention require updating all 5."
     proposed_action: "Consider extracting a shared resolve-product-root.sh helper or adding a coherence test that verifies all tools resolve the same product root for a given directory layout"
-    status: noted
+    status: acted_on
 skills_affected:
   - "orchestrator"
 ---

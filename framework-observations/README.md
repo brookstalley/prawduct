@@ -48,7 +48,7 @@ session_context:
   scenario_name: [if evaluation]
   framework_version: git-sha
 observations:
-  - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction | artifact_insufficiency | spec_ambiguity | deployment_friction | critic_gap | skill_quality | external_practice_drift | documentation_drift | structural_critique
+  - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction | artifact_insufficiency | spec_ambiguity | deployment_friction | critic_gap | skill_quality | external_practice_drift | documentation_drift | structural_critique | integration_friction
     stage: [0, 0.5, 1, 2, 3, 4, 5, 6, or "meta"]
     severity: note | warning | blocking
     description: "Generalized statement (not product-specific)"
@@ -182,6 +182,8 @@ tools/update-observation-status.sh --archive framework-observations/FILENAME.yam
 - Deductive analysis (principles + research → questioning) reveals a founding architectural decision violates the framework's own principles (type: `structural_critique`)
 - A structural choice relies on enumerated categories where dimensional approaches would generalize better (type: `structural_critique`)
 - Periodic Structural Critique Protocol review identifies concern overlap, missing concerns, or obsolete concerns (type: `structural_critique`)
+- Framework outputs clutter the user's project workspace or conflict with their tooling (type: `integration_friction`)
+- Path resolution logic causes confusion or requires user workarounds (type: `integration_friction`)
 
 **Don't capture** (not substantive — no actionable framework change):
 - Generic approval: "Everything worked fine", "No concerns", "Process was smooth"
@@ -225,7 +227,7 @@ These indicate problems with how the framework operates, not what it produces. T
 | 2+ | Pattern detected | Propose skill/process update |
 
 ### Build-phase observations (threshold: 3+)
-Types: `artifact_insufficiency`, `spec_ambiguity`, `deployment_friction`, `critic_gap`
+Types: `artifact_insufficiency`, `spec_ambiguity`, `deployment_friction`, `critic_gap`, `integration_friction`
 
 These emerge during building and indicate gaps between planning and execution. Three occurrences provides enough evidence to distinguish systematic gaps from one-off misses.
 

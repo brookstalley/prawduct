@@ -15,6 +15,7 @@ Uses section-based rewriting to preserve YAML comments (PyYAML round-trip drops 
 import argparse
 import os
 import re
+import subprocess
 import sys
 from datetime import date
 
@@ -23,19 +24,6 @@ try:
 except ImportError:
     print("Error: PyYAML is required. Install with: pip3 install pyyaml", file=sys.stderr)
     sys.exit(1)
-
-
-def find_repo_root():
-    """Find git repo root."""
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, check=True
-        )
-        return result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
 
 
 def parse_full_state(content):
@@ -459,15 +447,16 @@ def main():
     if args.file:
         state_file = args.file
     else:
-        repo_root = find_repo_root()
-        if repo_root:
-            # Check .prawduct/ first, then repo root
-            prawduct_state = os.path.join(repo_root, '.prawduct', 'project-state.yaml')
-            if os.path.isfile(prawduct_state):
-                state_file = prawduct_state
-            else:
-                state_file = os.path.join(repo_root, 'project-state.yaml')
-        else:
+        # Use shared product root resolution
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            result = subprocess.run(
+                [os.path.join(script_dir, 'resolve-product-root.sh')],
+                capture_output=True, text=True, check=True
+            )
+            product_root = result.stdout.strip()
+            state_file = os.path.join(product_root, 'project-state.yaml')
+        except (subprocess.CalledProcessError, FileNotFoundError):
             state_file = 'project-state.yaml'
 
     if not os.path.isfile(state_file):

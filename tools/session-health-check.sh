@@ -24,18 +24,10 @@
 set -uo pipefail
 
 MODE="${1:---full}"
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-if [[ -z "$REPO_ROOT" ]]; then
-    echo "Error: Not in a git repository." >&2
-    exit 1
-fi
 
-# Detect product root: .prawduct/ first, then repo root
-if [[ -f "$REPO_ROOT/.prawduct/project-state.yaml" ]]; then
-    PRODUCT_ROOT="$REPO_ROOT/.prawduct"
-else
-    PRODUCT_ROOT="$REPO_ROOT"
-fi
+# Resolve product root (shared detection logic)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/resolve-product-root.sh"
 
 PROJECT_STATE="$PRODUCT_ROOT/project-state.yaml"
 OBS_DIR="$PRODUCT_ROOT/framework-observations"
@@ -69,7 +61,7 @@ if not files:
 
 # Tiered thresholds
 META_TYPES = {'process_friction', 'rubric_issue', 'skill_quality', 'external_practice_drift', 'documentation_drift', 'structural_critique'}
-BUILD_TYPES = {'artifact_insufficiency', 'spec_ambiguity', 'deployment_friction', 'critic_gap'}
+BUILD_TYPES = {'artifact_insufficiency', 'spec_ambiguity', 'deployment_friction', 'critic_gap', 'integration_friction'}
 
 def get_threshold(obs_type):
     if obs_type in META_TYPES:

@@ -163,7 +163,9 @@ GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # --- Determine output location ---
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+# Resolve product root (shared detection logic)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/resolve-product-root.sh"
 OBS_DIR=""
 
 if [[ -n "$APPEND_FILE" ]]; then
@@ -174,28 +176,19 @@ if [[ -n "$APPEND_FILE" ]]; then
     fi
     OUTPUT_FILE="$APPEND_FILE"
 else
-    # Determine directory: .prawduct/ first, then framework repo root, then fallback
-    if [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/.prawduct/framework-observations" && -w "$REPO_ROOT/.prawduct/framework-observations" ]]; then
-        OBS_DIR="$REPO_ROOT/.prawduct/framework-observations"
-    elif [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/framework-observations" && -w "$REPO_ROOT/framework-observations" ]]; then
-        OBS_DIR="$REPO_ROOT/framework-observations"
-    elif [[ -d "framework-observations" && -w "framework-observations" ]]; then
-        OBS_DIR="framework-observations"
+    # Use product root for observation directory, with write-permission check
+    if [[ -d "$PRODUCT_ROOT/framework-observations" && -w "$PRODUCT_ROOT/framework-observations" ]]; then
+        OBS_DIR="$PRODUCT_ROOT/framework-observations"
     else
-        # Fallback: write to working-notes (check .prawduct/ first, then root)
-        if [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/.prawduct" ]]; then
-            mkdir -p "$REPO_ROOT/.prawduct/working-notes"
-            OBS_DIR="$REPO_ROOT/.prawduct/working-notes"
-        else
-            mkdir -p "working-notes"
-            OBS_DIR="working-notes"
-        fi
+        # Fallback: write to working-notes in product root
+        mkdir -p "$PRODUCT_ROOT/working-notes"
+        OBS_DIR="$PRODUCT_ROOT/working-notes"
         echo "Note: Framework observations dir not writable. Writing to $OBS_DIR/" >&2
     fi
 
     # Generate filename slug from description (first 6 words, hyphenated)
     SLUG=$(echo "$DESCRIPTION" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//;s/-$//' | cut -d'-' -f1-6)
-    if [[ "$OBS_DIR" == "working-notes" ]]; then
+    if [[ "$OBS_DIR" == *"/working-notes" ]]; then
         OUTPUT_FILE="$OBS_DIR/framework-observations-${TODAY}.yaml"
     else
         OUTPUT_FILE="$OBS_DIR/${TODAY}-${SLUG}.yaml"

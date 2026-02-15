@@ -74,7 +74,8 @@ prawduct/
 │   ├── critic-reminder.sh             # Verify Critic evidence before framework commits
 │   ├── observation-analysis.sh        # Parse observations, detect patterns, produce summary
 │   ├── compact-project-state.py       # Mechanical compaction of growing project-state.yaml sections per LIFECYCLE rules
-│   └── compact-project-state.sh       # Bash wrapper for compact-project-state.py
+│   ├── compact-project-state.sh       # Bash wrapper for compact-project-state.py
+│   └── resolve-product-root.sh        # Shared product root detection (.prawduct/ first, then repo root)
 ├── scripts/                           # Eval/validation helper scripts
 │   ├── validate-eval-output.sh        # Mechanical validation for evaluation output
 │   ├── validate-schema.py             # Validate project-state.yaml against template

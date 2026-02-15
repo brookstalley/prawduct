@@ -90,6 +90,7 @@ observation_entry:
             - structural_critique  # Deductive analysis reveals a founding architectural decision violates principles
             - architectural_inconsistency  # Implementation contradicts the framework's own stated principles or patterns
             - governance_compliance  # Mandatory governance step treated as optional or invocation ambiguity
+            - integration_friction  # Framework outputs interact poorly with user environment (workspace clutter, path conflicts, tooling friction)
           required: true
           description: "Category of observation"
 

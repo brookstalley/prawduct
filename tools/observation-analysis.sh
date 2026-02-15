@@ -25,16 +25,13 @@ set -uo pipefail
 
 MODE="${1:---full}"
 
-# Detect observation directory: .prawduct/ first, then repo root
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-if [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/.prawduct/framework-observations" ]]; then
-    OBS_DIR="$REPO_ROOT/.prawduct/framework-observations"
-elif [[ -d "framework-observations" ]]; then
-    OBS_DIR="framework-observations"
-elif [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/framework-observations" ]]; then
-    OBS_DIR="$REPO_ROOT/framework-observations"
-else
-    echo "Error: framework-observations directory not found."
+# Resolve product root (shared detection logic)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/resolve-product-root.sh"
+OBS_DIR="$PRODUCT_ROOT/framework-observations"
+
+if [[ ! -d "$OBS_DIR" ]]; then
+    echo "Error: framework-observations directory not found at $OBS_DIR"
     exit 1
 fi
 

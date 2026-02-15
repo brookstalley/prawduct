@@ -488,6 +488,11 @@ change_log:
     blast_radius: "docs/high-level-design.md, docs/doc-manifest.yaml, project-state.yaml, 1 observation file"
     classification: directional
     date: 2026-02-15
+  - what: "Consolidate .prawduct/ detection logic and add integration_friction observation type"
+    why: "Detection logic for product root (.prawduct/ vs repo root) was duplicated across 5 tools with inconsistent patterns. Created tools/resolve-product-root.sh as shared sourceable/executable helper; refactored session-health-check.sh, capture-observation.sh, observation-analysis.sh, compact-project-state.py to use it. Added integration_friction observation type to schema, session-health-check.sh thresholds, and README. Observations #6, #7 transitioned to acted_on. All 7 observations from 2026-02-15 triage now resolved."
+    blast_radius: "tools/resolve-product-root.sh (new), tools/session-health-check.sh, tools/capture-observation.sh, tools/observation-analysis.sh, tools/compact-project-state.py, framework-observations/schema.yaml, framework-observations/README.md, CLAUDE.md, project-state.yaml, 2 observation files"
+    classification: functional
+    date: 2026-02-15
 
 # =============================================================================
 # BUILD PLAN
