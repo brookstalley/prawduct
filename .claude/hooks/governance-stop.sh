@@ -117,6 +117,12 @@ checkpoints_due = gov.get('governance_checkpoints_due', [])
 if checkpoints_due:
     critical_issues.append(f'{len(checkpoints_due)} governance checkpoint(s) overdue')
 
+# --- DCP retrospective debt ---
+dc = data.get('directional_change', {})
+if dc.get('active', False) and not dc.get('retrospective_completed', False):
+    plan_desc = dc.get('plan_description', 'unknown')
+    critical_issues.append(f'Directional change active without retrospective: {plan_desc}. Complete DCP step 11 (post-change retrospective) before finishing.')
+
 if critical_issues:
     print('CRITICAL: ' + '; '.join(critical_issues))
 else:

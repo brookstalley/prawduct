@@ -11,7 +11,7 @@ observations:
     description: "Agent operated in advisor mode instead of following Orchestrator Stage 6 iteration process despite reading the skill. Governance hooks only gated writes, not reads, so the agent could read all framework skills without activating the Orchestrator. Root cause: no mechanical enforcement that skill access routes through the Orchestrator."
     evidence: "Session started with user feedback. Agent read Orchestrator skill and project-state.yaml but gave strategic advice instead of entering the Directional Change Protocol. User had to ask 'you are using our orchestrator to work on this right?' to catch the violation."
     proposed_action: "Extended governance-gate.sh to gate reads of skill/template files (except orchestrator/SKILL.md) behind Orchestrator activation. Updated settings.json PreToolUse matcher to include Read."
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/SKILL.md"
   - ".claude/hooks/governance-gate.sh"

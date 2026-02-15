@@ -70,10 +70,10 @@ This protocol triggers when a change is classified as **directional** OR modifie
 
 1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?"
 2. **Reclassification check (product builds).** Consider whether reclassification of structural characteristics is warranted. If the product's fundamental nature has changed, re-run classification.
-3. **Write a plan** in `working-notes/` (within the product root) describing the change, its motivation, affected files, and implementation phases.
+3. **Write a plan** in `working-notes/` (within the product root) describing the change, its motivation, affected files, and implementation phases. **Set governance tracking:** Update `.claude/.session-governance.json` → `directional_change` to `{"active": true, "plan_description": "<brief summary>", "retrospective_completed": false}`. The governance-stop hook blocks session completion until the retrospective is complete.
 4. **Plan-stage Critic review.** Before implementing, apply Critic checks for Generality, Coherence, and Learning/Observability to the plan. This catches structural problems before they're built.
 5. **Address findings** from plan-stage review before implementing. Blocking findings must be resolved.
-6. **Impact assessment.** Which artifacts/files are invalidated vs. still valid? Consult `artifact_manifest` to map the blast radius.
+6. **Impact assessment.** Which artifacts/files are invalidated vs. still valid? Consult `artifact_manifest` to map the blast radius. **List all removed/renamed terms** (concepts, stage names, classification labels, etc.) — the Critic's Concept Ripple check uses this list to grep for stale references across the codebase.
 7. **Implement in phases.** For multi-phase changes, run a lightweight review between phases: Coherence and Learning/Observability checks. Capture a brief observation after each phase.
 8. **Update artifacts and implement.** Update affected artifacts → create/modify chunks → Builder implements → Critic reviews (including Directional Change Review — see `skills/critic/SKILL.md`).
 9. **Final Critic review.** After all changes are complete, run the full Critic review (all applicable checks).
@@ -90,4 +90,6 @@ This protocol triggers when a change is classified as **directional** OR modifie
 
     Capture each substantive finding as an observation using `tools/capture-observation.sh`. If no substantive findings exist, record that in the change_log entry: "Retrospective: no findings."
 
-    This step is not optional. The Critic validates quality; the retrospective captures learning. Both are required.
+    **Mark retrospective complete:** Update `.claude/.session-governance.json` → `directional_change.retrospective_completed` to `true`. After the commit succeeds, set `directional_change.active` to `false`.
+
+    This step is not optional. The Critic validates quality; the retrospective captures learning. Both are required. The governance-stop hook enforces this mechanically.

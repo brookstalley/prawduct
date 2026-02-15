@@ -501,8 +501,70 @@ STATE_WARNINGS: 0")
     echo ""
 fi
 
+# --- 7. Skill File Health ---
+
+skill_warnings=0
+echo "## Skill File Health"
+
+skill_health_output=$(python3 -c "
+import os, glob
+
+repo_root = '$REPO_ROOT'
+skills_dir = os.path.join(repo_root, 'skills')
+warnings = 0
+
+if not os.path.isdir(skills_dir):
+    print('  (skills/ directory not found)')
+    print('SKILL_WARNINGS: 0')
+    exit(0)
+
+# Find all skill directories
+skill_dirs = sorted([d for d in os.listdir(skills_dir)
+                     if os.path.isdir(os.path.join(skills_dir, d))])
+
+for skill_name in skill_dirs:
+    skill_dir = os.path.join(skills_dir, skill_name)
+    main_file = os.path.join(skill_dir, 'SKILL.md')
+
+    if not os.path.isfile(main_file):
+        continue
+
+    with open(main_file) as f:
+        main_lines = sum(1 for _ in f)
+
+    # Check SKILL.md thresholds
+    if main_lines > 600:
+        print(f'  ALERT: {skill_name}/SKILL.md is {main_lines} lines (exceeds H1 Complex threshold of 600)')
+        warnings += 1
+    elif main_lines > 400:
+        print(f'  WARNING: {skill_name}/SKILL.md is {main_lines} lines (consider decomposition, H1 threshold: 400)')
+        warnings += 1
+
+    # Check sub-files
+    sub_files = [f for f in os.listdir(skill_dir)
+                 if f.endswith('.md') and f != 'SKILL.md' and os.path.isfile(os.path.join(skill_dir, f))]
+    for sub_file in sorted(sub_files):
+        sub_path = os.path.join(skill_dir, sub_file)
+        with open(sub_path) as f:
+            sub_lines = sum(1 for _ in f)
+        if sub_lines > 300:
+            print(f'  NOTE: {skill_name}/{sub_file} is {sub_lines} lines (sub-file approaching main-file size)')
+            warnings += 1
+
+if warnings == 0:
+    print('  All skill files within H1 thresholds.')
+
+print(f'SKILL_WARNINGS: {warnings}')
+" 2>/dev/null || echo "  (python3 not available for skill health check)
+SKILL_WARNINGS: 0")
+
+echo "$skill_health_output" | grep -v "^SKILL_WARNINGS:"
+skill_warnings=$(echo "$skill_health_output" | grep "^SKILL_WARNINGS:" | head -1 | sed 's/.*: //')
+echo ""
+
 echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
 echo "INFRASTRUCTURE_WARNINGS: ${infra_warnings:-0}"
 echo "STATE_WARNINGS: ${state_warnings:-0}"
+echo "SKILL_WARNINGS: ${skill_warnings:-0}"
 echo ""
 echo "=========================================="

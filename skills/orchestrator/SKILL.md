@@ -43,6 +43,11 @@ This is the default skill. When using Prawduct to build a user's product:
        "observations_captured_this_session": 0,
        "product_files_changed": 0,
        "governance_checkpoints_due": []
+     },
+     "directional_change": {
+       "active": false,
+       "plan_description": null,
+       "retrospective_completed": false
      }
    }
    ```

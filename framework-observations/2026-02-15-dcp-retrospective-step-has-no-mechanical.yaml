@@ -10,7 +10,7 @@ observations:
     description: "DCP retrospective step has no mechanical enforcement — skipped during 10-file directional change because governance-stop hook only checks Critic coverage, not retrospective completion"
     evidence: "Phase 5 .prawduct/ migration: Critic ran, findings recorded, governance-stop passed file coverage check, but DCP step 11 (retrospective) was entirely skipped. Only caught because user asked."
     proposed_action: "Add retrospective tracking to .session-governance.json (e.g., directional_changes_without_retrospective counter) and check in governance-stop hook"
-    status: noted
+    status: acted_on
 skills_affected:
   - "orchestrator"
   - "critic"
