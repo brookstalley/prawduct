@@ -30,8 +30,15 @@ if [[ -z "$REPO_ROOT" ]]; then
     exit 1
 fi
 
-PROJECT_STATE="$REPO_ROOT/project-state.yaml"
-OBS_DIR="$REPO_ROOT/framework-observations"
+# Detect product root: .prawduct/ first, then repo root
+if [[ -f "$REPO_ROOT/.prawduct/project-state.yaml" ]]; then
+    PRODUCT_ROOT="$REPO_ROOT/.prawduct"
+else
+    PRODUCT_ROOT="$REPO_ROOT"
+fi
+
+PROJECT_STATE="$PRODUCT_ROOT/project-state.yaml"
+OBS_DIR="$PRODUCT_ROOT/framework-observations"
 
 if [[ "$MODE" != "--actionable-only" ]]; then
     echo "=========================================="
@@ -247,7 +254,7 @@ fi
 
 fallback_files=()
 shopt -s nullglob
-for dir in ../*/working-notes "$REPO_ROOT/working-notes"; do
+for dir in ../*/working-notes "$REPO_ROOT/working-notes" "$REPO_ROOT/.prawduct/working-notes" ../*/.prawduct/working-notes; do
     if [[ -d "$dir" ]]; then
         for f in "$dir"/framework-observations-*.yaml; do
             if [[ -f "$f" ]]; then
@@ -299,7 +306,7 @@ from datetime import datetime, timedelta
 
 obs_dir = '$OBS_DIR'
 archive_dir = os.path.join(obs_dir, 'archive')
-working_notes_dir = os.path.join('$REPO_ROOT', 'working-notes')
+working_notes_dir = os.path.join('$PRODUCT_ROOT', 'working-notes')
 warnings = 0
 
 # --- Observation directory ---

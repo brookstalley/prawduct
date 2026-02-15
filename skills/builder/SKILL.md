@@ -37,7 +37,7 @@ When the Builder encounters something the artifacts or build plan don't specify,
 - **`artifact_insufficiency`** — "The build plan doesn't specify how to handle X." Example: "Build plan says 'implement score recording' but doesn't specify the UI component library for form inputs."
 - **`spec_ambiguity`** — "The data model says Y but this could mean two things." Example: "Data model has a 'score' field but doesn't specify whether it's cumulative or per-round."
 
-Flags are written as observations to `framework-observations/` (or the project's `working-notes/` if the framework repo is not accessible) and surfaced to the Orchestrator for resolution. The Builder does not continue past a flag that affects the current chunk's deliverables.
+Flags are written as observations to `framework-observations/` within the product root (or the product root's `working-notes/` if the framework observations directory is not accessible) and surfaced to the Orchestrator for resolution. The Builder does not continue past a flag that affects the current chunk's deliverables.
 
 ## Chunk Execution Process
 

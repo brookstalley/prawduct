@@ -10,7 +10,7 @@ When activated:
 
 1. Read `project-state.yaml` in the user's project directory — it must have classification, product definition, and scope decisions populated.
 2. Determine which artifacts to generate based on the product's active structural characteristics and domain characteristics.
-3. Generate artifacts in phased dependency order, writing files to the `artifacts/` directory within the user's project directory. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the project directory.
+3. Generate artifacts in phased dependency order, writing files to the `artifacts/` directory within the product root. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the product root (`.prawduct/` for product repos, repo root for the framework).
 4. Update `project-state.yaml` → `artifact_manifest` with each generated artifact.
 
 ## Step 1: Select Artifact Set

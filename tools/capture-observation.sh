@@ -174,15 +174,22 @@ if [[ -n "$APPEND_FILE" ]]; then
     fi
     OUTPUT_FILE="$APPEND_FILE"
 else
-    # Determine directory: framework repo or fallback
-    if [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/framework-observations" && -w "$REPO_ROOT/framework-observations" ]]; then
+    # Determine directory: .prawduct/ first, then framework repo root, then fallback
+    if [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/.prawduct/framework-observations" && -w "$REPO_ROOT/.prawduct/framework-observations" ]]; then
+        OBS_DIR="$REPO_ROOT/.prawduct/framework-observations"
+    elif [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/framework-observations" && -w "$REPO_ROOT/framework-observations" ]]; then
         OBS_DIR="$REPO_ROOT/framework-observations"
     elif [[ -d "framework-observations" && -w "framework-observations" ]]; then
         OBS_DIR="framework-observations"
     else
-        # Fallback: write to working-notes in current directory
-        mkdir -p "working-notes"
-        OBS_DIR="working-notes"
+        # Fallback: write to working-notes (check .prawduct/ first, then root)
+        if [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/.prawduct" ]]; then
+            mkdir -p "$REPO_ROOT/.prawduct/working-notes"
+            OBS_DIR="$REPO_ROOT/.prawduct/working-notes"
+        else
+            mkdir -p "working-notes"
+            OBS_DIR="working-notes"
+        fi
         echo "Note: Framework observations dir not writable. Writing to $OBS_DIR/" >&2
     fi
 

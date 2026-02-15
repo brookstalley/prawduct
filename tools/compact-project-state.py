@@ -461,7 +461,12 @@ def main():
     else:
         repo_root = find_repo_root()
         if repo_root:
-            state_file = os.path.join(repo_root, 'project-state.yaml')
+            # Check .prawduct/ first, then repo root
+            prawduct_state = os.path.join(repo_root, '.prawduct', 'project-state.yaml')
+            if os.path.isfile(prawduct_state):
+                state_file = prawduct_state
+            else:
+                state_file = os.path.join(repo_root, 'project-state.yaml')
         else:
             state_file = 'project-state.yaml'
 

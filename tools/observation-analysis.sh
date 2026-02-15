@@ -23,11 +23,18 @@
 
 set -uo pipefail
 
-OBS_DIR="framework-observations"
 MODE="${1:---full}"
 
-if [[ ! -d "$OBS_DIR" ]]; then
-    echo "Error: $OBS_DIR directory not found. Run from prawduct root."
+# Detect observation directory: .prawduct/ first, then repo root
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+if [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/.prawduct/framework-observations" ]]; then
+    OBS_DIR="$REPO_ROOT/.prawduct/framework-observations"
+elif [[ -d "framework-observations" ]]; then
+    OBS_DIR="framework-observations"
+elif [[ -n "$REPO_ROOT" && -d "$REPO_ROOT/framework-observations" ]]; then
+    OBS_DIR="$REPO_ROOT/framework-observations"
+else
+    echo "Error: framework-observations directory not found."
     exit 1
 fi
 
@@ -400,7 +407,7 @@ fi
 # Alert if any exist so they can be transferred.
 fallback_files=()
 shopt -s nullglob
-for dir in ../*/working-notes . working-notes; do
+for dir in ../*/working-notes . working-notes .prawduct/working-notes ../*/.prawduct/working-notes; do
     if [[ -d "$dir" ]]; then
         for f in "$dir"/framework-observations-*.yaml; do
             if [[ -f "$f" ]]; then

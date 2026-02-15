@@ -4,14 +4,22 @@
 # All skills read from and write to this file.
 # See docs/high-level-design.md § "C5: Project State" for the specification.
 #
+# Location: For product repos, this file lives in `.prawduct/` within the project
+# directory. For the self-hosted framework repo, it lives at the repo root.
+# The `source_root` field below is relative to the project directory (not .prawduct/).
+#
 # Tier: 1 (Source of Truth)
 # Owner: Orchestrator (C1) manages; all skills may read/write their sections.
 #
-# Usage: Copy this template to a new project directory and populate during
-# the discovery process. Fields start as null and are filled as decisions
-# are made. Partially-populated state is normal and expected throughout
+# Usage: Copy this template to the product root (.prawduct/ for new projects)
+# and populate during the discovery process. Fields start as null and are filled
+# as decisions are made. Partially-populated state is normal and expected throughout
 # discovery — the system works productively with incomplete state.
 # Compaction: tools/compact-project-state.sh implements LIFECYCLE rules mechanically.
+
+# Schema version for migration detection. Current: 2.
+# Missing or old version triggers Migration Mode during Session Resumption.
+schema_version: 2
 
 # =============================================================================
 # CLASSIFICATION
