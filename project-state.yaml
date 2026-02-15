@@ -456,6 +456,11 @@ change_log:
     blast_radius: "skills/orchestrator/SKILL.md (Stage 0, Stage 0.5, Stage 2, Stage 3, Stage 4, Stage 5, Stage Transition Protocol, FRP table), .claude/hooks/governance-gate.sh, .claude/hooks/governance-prompt.sh, .claude/settings.json, CLAUDE.md, project-state.yaml (remaining_work, change_log), working-notes/2026-02-15-user-feedback-overhaul.md"
     classification: directional
     date: 2026-02-15
+  - what: "Closed-loop testing design: dev-tools MCP server architecture for has_human_interface products"
+    why: "Phase 2 of user feedback overhaul. Designed an opt-in dev-tools MCP server that wraps Playwright to give the agent visual verification capabilities (screenshot, navigate, interact, accessibility audit) during UI product builds. Addresses the fundamental gap: framework produces detailed visual specs but has no way to verify rendered output matches. Design covers MCP tool interface, security model (localhost-only on port 39427, HR10 principle), opt-in UX, lifecycle during builds, and technology choices (React + Playwright for v1)."
+    blast_radius: "working-notes/2026-02-15-closed-loop-testing-design.md (new), project-state.yaml (change_log)"
+    classification: functional
+    date: 2026-02-15
 
 # =============================================================================
 # BUILD PLAN
