@@ -95,7 +95,7 @@ prawduct/
 ├── .claude/                           # Claude Code integration (hooks, settings)
 │   ├── hooks/
 │   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
-│   │   ├── governance-gate.sh         # PreToolUse hook: blocks edits without Orchestrator activation or with chunk review debt
+│   │   ├── governance-gate.sh         # PreToolUse hook: blocks skill/template reads and governed edits without Orchestrator activation; blocks edits with chunk review debt
 │   │   ├── governance-tracker.sh      # PostToolUse hook: tracks all edits and governance debt in .session-governance.json
 │   │   ├── governance-prompt.sh       # UserPromptSubmit hook: injects governance status at start of turn
 │   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists
@@ -157,14 +157,14 @@ These are the ones most likely to be violated under pressure:
 The framework follows a vertical-slice build approach (see `docs/high-level-design.md` § "Bootstrapping: Vertical Slice Approach"). Core infrastructure is built; structural characteristics cover artifact routing and dynamic domain depth provides domain-specific discovery.
 
 **Built and operational:**
-- Full stage pipeline: Stages 0-6 (Intake through Iteration)
+- Full stage pipeline: Stages 0-6 (Intake, Discovery, Definition, Artifact Generation, Build Planning, Building, Iteration — Stage 0.5 Validation removed; the framework trusts user intent)
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (context-sensitive governance), Review Lenses (all five)
 - Two-layer classification: 5 structural characteristics for artifact routing (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth via Universal Discovery Dimensions and Structural Amplification Rules
 - Three-layer artifact generation: amplification rules (what to generate) + process constraints (quality properties) + optional template reference (proven structures). All 5 characteristics have amplification rules and process constraints; has_human_interface and runs_unattended additionally have templates as structural reference
 - Observation capture system with triage and session resumption integration; observation backlog available for all projects (not framework-only)
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
-- Unified mechanical governance: 5 hooks (governance-gate, governance-tracker, governance-prompt, governance-stop, critic-gate) plus compact-governance-reinject for session recovery. Single `.session-governance.json` state file tracks both framework edits and product governance debt. Commit gate verifies structured Critic findings (`.critic-findings.json`) with at least 6 applicable checks and staged file coverage
+- Unified mechanical governance: 5 hooks (governance-gate, governance-tracker, governance-prompt, governance-stop, critic-gate) plus compact-governance-reinject for session recovery. Governance-gate enforces read gating on skill/template files (only orchestrator/SKILL.md readable before activation) and edit gating on all governed files. Single `.session-governance.json` state file tracks both framework edits and product governance debt. Commit gate verifies structured Critic findings (`.critic-findings.json`) with at least 6 applicable checks and staged file coverage
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 

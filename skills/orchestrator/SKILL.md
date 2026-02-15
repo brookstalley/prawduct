@@ -15,6 +15,8 @@ This is the default skill. When using Prawduct to build a user's product:
    3. No `project-state.yaml` + CWD contains project signals (source code, package.json, Cargo.toml, go.mod, requirements.txt, etc.) and is NOT the prawduct repo → Use CWD.
    4. None of the above → Ask the user where project files should go.
 
+   **Project naming:** When creating a new project directory (conditions 1a or 4), ask the user what to call the project before creating any files. This is a genuine blocking question — the framework needs a directory name. Example: "What would you like to call this project?" If the user has no preference, derive a short slug from their description (e.g., "family-scorekeeper") and tell them: "I'll call it [slug] — you can rename it anytime."
+
    **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, or `working-notes/`, those paths are in the project directory. When skills reference other skills (`skills/...`) or templates (`templates/...`), those are read from the prawduct framework directory.
 2. Read `project-state.yaml` in the project directory. If it doesn't exist, this is a new project — copy the prawduct framework's `templates/project-state.yaml` to the project directory.
 3. **Activate governance.** Write the current ISO-8601 timestamp to `.claude/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The governance-gate hook blocks governed file edits without this marker — see HR9.)
@@ -63,37 +65,12 @@ Across all stages, the Orchestrator:
 
 1. Read `skills/domain-analyzer/SKILL.md`.
 2. Follow the Domain Analyzer's classification process (Steps 1-4): detect structural characteristics, identify domain-specific characteristics, classify domain, and assess risk profile.
-3. The Domain Analyzer will confirm classification with the user in plain language. Wait for user confirmation.
+3. The Domain Analyzer will state the classification to the user in plain language. Do not wait for confirmation — keep moving unless the classification is genuinely ambiguous (e.g., the product could plausibly be two fundamentally different things). Example: "This looks like a [domain] product with [characteristics]. Moving into discovery..."
 4. Update `project-state.yaml` with classification results and initial `user_expertise` inferences from the user's opening message.
 5. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
-6. Update `current_stage` to "validation".
+6. Update `current_stage` to "discovery".
 
-**Transition to Stage 0.5** when classification is confirmed by the user.
-
----
-
-## Stage 0.5: Validation
-
-**Trigger:** Classification confirmed. `current_stage` is "validation".
-
-**What to do:**
-
-Evaluate whether this product warrants building. Depth depends on risk:
-
-**Low-risk products (family utility, personal tool):**
-Skip formal validation. These products are low-stakes and the user's enthusiasm is sufficient justification. Briefly note if an obvious existing solution fully covers the use case, but don't belabor it. Transition immediately to discovery.
-
-**Medium-risk products:**
-Quick check: Is this a solved problem? Is this one product or multiple? Any obvious feasibility concerns? Surface findings briefly. If the user wants to proceed, proceed.
-
-**High-risk products:**
-Read `skills/review-lenses/SKILL.md`. Apply the Product Lens and Skeptic Lens to evaluate: does this warrant building? Are there existing solutions? Is this feasible for LLM-assisted development? Is this actually one product? Surface findings and discuss with user. If the assessment raises serious concerns, advise clearly — but if the user wants to proceed after hearing the risks, help them build the best version possible.
-
-Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
-
-Update `current_stage` to "discovery".
-
-**Transition to Stage 1** after validation completes (or is skipped for low-risk).
+**Transition to Stage 1** immediately after classification. The user can correct the classification at any time — if they do, update and continue.
 
 ---
 
@@ -162,30 +139,30 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 7. For UI applications, set basic `design_decisions`: at minimum, `accessibility_approach` (even "standard platform accessibility" is fine for low-risk) and general `interaction_patterns` (e.g., "mobile-first, touch-friendly"). Also set `visual_direction` — translate `product_definition.product_identity.personality` and `visual_preferences` into a concrete direction. If the user expressed preferences ("playful," "clean and minimal," "dark and moody"), translate those into a direction the Design Direction artifact can build on. If no preferences were expressed, choose a style appropriate to the platform and domain and state it as a design choice with rationale. Even for low-risk products, a one-line `visual_direction` prevents the Builder from guessing.
 8. Populate `product_definition.cost_estimates` with at least a rough hosting/operational cost expectation, even if the answer is "$0 — free tier."
 
-### Review (risk-proportionate)
+### Review
 
-**For medium and high-risk products:** Before presenting to the user, read `skills/review-lenses/SKILL.md` and apply the Product, Design, Architecture, and Skeptic lenses to the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins. (The Testing Lens does not apply at this stage — no test specifications exist yet.)
+Before presenting to the user, read `skills/review-lenses/SKILL.md` and apply the Product, Design, Architecture, and Skeptic lenses to the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins. Even simple products benefit from clarity — the lenses are lightweight for simple products (they find less to flag), so the overhead is minimal. (The Testing Lens does not apply at this stage — no test specifications exist yet.)
 
-**For low-risk products:** Skip formal lens review at this stage. Your own review of `project-state.yaml` completeness is sufficient — the definition is lightweight and the full artifact review in Stage 3 will catch issues. If you notice obvious concerns while reviewing, surface them informally.
+After each lens application, update `project-state.yaml` → `review_findings.entries` with structured findings (stage, phase, lens, findings with severity/recommendation/status).
 
-### Present and confirm
+### Present and continue
 
 1. **Present the product definition to the user** in plain language. Not as a YAML dump — as a readable summary:
 
-   > "Here's what I think we're building: **[product name]** — **[vision]**. The main users are **[personas]**. In v1, you'll be able to **[core flows]**. I'm deferring **[later items]** for now because **[rationale]**. A few assumptions I'm making: **[technical/design assumptions]**. Does this capture what you're going for?"
+   > "Here's what I'm building: **[product name]** — **[vision]**. Main users: **[personas]**. In v1: **[core flows]**. Deferring: **[later items]** because **[rationale]**. Assumptions: **[technical/design assumptions]**. I'll keep going — interrupt me if any of this is wrong."
 
-2. **Let the user react.** If they correct or add:
-   - **Cosmetic changes** (wording, minor adjustments): update and proceed.
-   - **Functional changes** (new feature, different flow): update `project-state.yaml`, note in change log, re-evaluate if anything else is affected.
-   - **Directional changes** (fundamentally different product): flag this explicitly — "That's a significant shift. It might mean rethinking [X]. Want to explore that, or keep the current direction?"
+2. Run the Stage Transition Protocol (see below) to verify prerequisites are met.
 
-3. When the user confirms, run the Stage Transition Protocol (see below) to verify prerequisites are met.
+3. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 
-4. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
+4. Update `current_stage` to "artifact-generation".
 
-5. Update `current_stage` to "artifact-generation".
+**If the user interrupts with corrections** before or during artifact generation:
+- **Cosmetic changes** (wording, minor adjustments): update and proceed.
+- **Functional changes** (new feature, different flow): update `project-state.yaml`, note in change log, re-evaluate if anything else is affected.
+- **Directional changes** (fundamentally different product): flag this explicitly — "That's a significant shift. It might mean rethinking [X]. Want to explore that, or keep the current direction?"
 
-**Transition to Stage 3** when the user confirms the product definition and readiness check passes.
+**Transition to Stage 3** after presenting the definition and running the readiness check. Do not wait for explicit confirmation.
 
 ---
 
@@ -221,15 +198,17 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
    | Medium | 3 phases as described above (A → B → C) | Standard flow |
    | High | 3 phases with deeper review at each boundary | Consider additional domain-specific lenses |
 
-   **CRITICAL — Review Lenses are mandatory in Stage 3 regardless of risk level.** (Stage 2 skips lenses for low-risk because the *definition* is lightweight. Stage 3 ALWAYS runs lenses because *generated artifacts* feed the downstream build — errors here propagate to code. Different stages, different quality gates.) If you are running a simulation or automated process, Review Lenses are still required. Skipping review = quality gate failure.
+   **CRITICAL — Review Lenses are mandatory in Stage 3 regardless of risk level.** (Both Stage 2 and Stage 3 apply lenses. Stage 2 catches definition issues; Stage 3 catches artifact generation issues. Different stages, different quality gates.) If you are running a simulation or automated process, Review Lenses are still required. Skipping review = quality gate failure.
 
-4. Present a summary of the artifacts and all review findings to the user.
+4. Present a summary of the artifacts and all review findings to the user, then continue to build planning. Do not wait for explicit confirmation.
 
 5. Run the Framework Reflection Protocol (see below). Record reflection in `change_log`.
 
 6. Update `current_stage` to "build-planning".
 
-**Transition to Stage 4** when artifacts are confirmed and review findings resolved.
+**If the user interrupts with corrections** before or during build planning, handle them using the same cosmetic/functional/directional classification from Stage 2.
+
+**Transition to Stage 4** after presenting artifacts and resolving any blocking review findings.
 
 ---
 
@@ -243,9 +222,9 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 2. Invoke the Artifact Generator's Phase D to produce the build plan artifact (`artifacts/build-plan.md`).
 3. The Artifact Generator populates `project-state.yaml` → `build_plan` with the strategy, chunks, and governance checkpoints.
 
-4. **Present the build plan to the user in plain language.** Not as a YAML dump — as a readable summary covering the technology, chunk sequence, what each delivers for the user, the early feedback milestone, and total chunk count. Example: "Here's how I'd build this: First, I'll set up the project with [technology]. Then I'll build [chunks in order], each one delivering [what the user cares about]. By chunk [N], you'll be able to [early feedback milestone]. The whole build is [N] chunks. Want me to go ahead?" For low-risk products, keep to 1-2 paragraphs focused on sequence and when they'll see something working.
+4. **Present the build plan to the user in plain language.** Not as a YAML dump — as a readable summary covering the technology, chunk sequence, what each delivers for the user, the early feedback milestone, and total chunk count. Example: "Here's the build plan: Setting up the project with [technology]. Then [chunks in order], each delivering [what the user cares about]. By chunk [N], you'll see [early feedback milestone]. [N] chunks total. Starting the build now." For low-risk products, keep to 1-2 paragraphs focused on sequence and when they'll see something working.
 
-5. **User confirms → transition to Stage 5.** If the user wants changes:
+5. **Continue to build.** Do not wait for explicit confirmation — the user confirmed their intent when they described the product. If the user interrupts with changes:
    - **Reordering** (build X before Y): update chunk dependencies and order.
    - **Scope changes** (add/remove functionality): this is a Stage 2 concern — flag it. Small scope change (affects 1-2 artifacts and ≤1 chunk): update artifacts and regenerate the build plan. Large scope change (affects 3+ artifacts or requires new chunks): discuss whether to re-enter discovery.
    - **Technology changes**: update `technical_decisions`, relevant artifacts, and regenerate the build plan.
@@ -256,7 +235,7 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 
 7. Update `current_stage` to "building".
 
-**Transition to Stage 5** when the user confirms the build plan.
+**Transition to Stage 5** after presenting the build plan.
 
 ---
 
@@ -272,7 +251,7 @@ Read `skills/builder/SKILL.md` and `skills/critic/SKILL.md`.
 
 For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step cycle:
 
-1. **Brief the user.** Low-risk: brief summary ("Building score recording..."). High-risk: more detail ("Building the payment processing module. This chunk covers [X]."). Don't ask for permission between every chunk for low-risk products — the user confirmed the build plan; execute it.
+1. **Brief the user.** Low-risk: brief summary ("Building score recording..."). High-risk: more detail ("Building the payment processing module. This chunk covers [X]."). Never pause between chunks to ask permission. The user confirmed their intent when they described the product — execute the build plan. Only stop if a flag is raised (artifact_insufficiency, spec_ambiguity) or a governance checkpoint surfaces blocking findings.
 
 2. **Set chunk status.** Update `build_plan.current_chunk` and the chunk's status to "in_progress".
 
@@ -305,9 +284,9 @@ At points marked in `build_plan.governance_checkpoints`, run a broader cross-chu
 
 | Risk | Chunk briefings | User interaction | Checkpoint depth |
 |------|----------------|-----------------|-----------------|
-| Low | Brief summaries | Don't ask between chunks | Lightweight (but not zero) |
-| Medium | Per-chunk summaries | Ask at governance checkpoints | Moderate |
-| High | Detailed briefings | User approval at each checkpoint | Thorough |
+| Low | Brief summaries | Don't pause between chunks | Lightweight (but not zero) |
+| Medium | Per-chunk summaries | Don't pause between chunks | Moderate |
+| High | Detailed briefings | Pause only if governance checkpoint has blocking findings | Thorough |
 
 "Lightweight" means the Critic review is shorter and focuses on the minimum checks (tests pass, specs matched, no regressions) — it does **not** mean the Critic is skipped. Every chunk gets a Critic review. Every governance checkpoint gets a cross-chunk review. Zero review is never appropriate regardless of risk level.
 
@@ -445,7 +424,6 @@ At every stage transition, pause and assess: **did the framework serve this prod
 | Stage | Focus |
 |-------|-------|
 | 0 (Intake) | Did structural characteristic detection cover this product adequately? Were domain-specific characteristics identified? Were risk factors appropriate? Did classification reveal a gap in the structural characteristic set? |
-| 0.5 (Validation) | Was validation depth proportionate to risk? |
 | 1 (Discovery) | Was question count proportionate? Were the right topics covered? |
 | 2 (Definition) | Were scope and technical decisions at the right level of detail? |
 | 3 (Artifacts) | Were the right artifacts generated? Were review findings appropriate? Do artifact descriptions in CLAUDE.md still match what was generated? |
@@ -478,16 +456,11 @@ Before transitioning to any new stage, verify that the prerequisites for that st
 
 **Specific prerequisites by transition:**
 
-### → Stage 0.5 (Validation)
+### → Stage 1 (Discovery)
 - `classification.structural` has at least one non-null structural characteristic
 - `classification.domain` is set
 - `classification.risk_profile.overall` is set
 - `classification.risk_profile.factors` has at least 2 entries with rationale
-- User has confirmed classification
-
-### → Stage 1 (Discovery)
-- All Stage 0.5 prerequisites met
-- Validation complete (or skipped for low-risk)
 
 ### → Stage 2 (Definition)
 - `product_definition.vision` is set
@@ -514,7 +487,7 @@ This is the highest-stakes transition — discovery becomes production. Check th
 - All 7 universal artifacts generated (or minimal artifacts where applicable) with correct frontmatter
 - Cross-artifact consistency check passed
 - All five review lenses applied (Testing Lens in Phase C), all blocking findings resolved
-- User has confirmed the artifact set
+- Artifacts presented to user (user can interrupt with corrections)
 
 ### → Stage 5 (Building)
 - Build plan artifact generated (`artifacts/build-plan.md`)
@@ -522,7 +495,7 @@ This is the highest-stakes transition — discovery becomes production. Check th
 - `build_plan.chunks` has at least 3 entries (scaffold + data layer + at least one feature)
 - Every chunk has `acceptance_criteria` mapped to test specification scenarios
 - `build_plan.governance_checkpoints` has at least one checkpoint
-- User has confirmed the build plan
+- Build plan presented to user (user can interrupt with corrections)
 
 ### → Stage 6 (Iteration)
 - All chunks in `build_plan.chunks` have status "complete"

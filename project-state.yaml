@@ -451,6 +451,11 @@ change_log:
     blast_radius: "skills/artifact-generator/SKILL.md, skills/critic/SKILL.md, skills/review-lenses/SKILL.md, skills/domain-analyzer/SKILL.md, skills/builder/SKILL.md, templates/product-brief.md, project-state.yaml (remaining_work, artifact_manifest, observation_backlog, change_log), docs/high-level-design.md, CLAUDE.md"
     classification: directional
     date: 2026-02-14
+  - what: "User feedback overhaul: remove confirmation pauses, eliminate Stage 0.5, apply lenses to all products, fix project naming, gate skill/template reads behind Orchestrator activation"
+    why: "Real users reported four friction areas: (1) framework stops too often asking permission at every stage gate, (2) project names chosen before asking user, (3) lenses only applied to high-risk products at Stage 2, (4) no mechanical enforcement that skills are accessed through the Orchestrator. Removed Stage 0.5 (Validation) entirely — if the user asks to build something, help them build it. Removed all confirmation pauses — present information and keep moving, only stop when genuinely blocked. Extended governance-gate.sh to block reads of skill/template files (except orchestrator/SKILL.md) without Orchestrator activation. Added three new remaining_work items for future phases: closed-loop testing MCP server, existing project onboarding, and old prawduct version migration."
+    blast_radius: "skills/orchestrator/SKILL.md (Stage 0, Stage 0.5, Stage 2, Stage 3, Stage 4, Stage 5, Stage Transition Protocol, FRP table), .claude/hooks/governance-gate.sh, .claude/hooks/governance-prompt.sh, .claude/settings.json, CLAUDE.md, project-state.yaml (remaining_work, change_log), working-notes/2026-02-15-user-feedback-overhaul.md"
+    classification: directional
+    date: 2026-02-15
 
 # =============================================================================
 # BUILD PLAN
@@ -523,6 +528,19 @@ build_plan:
       description: "When artifacts change mid-build, identify affected chunks and re-execute only those"
       phase: v1-validation
       skill: builder
+    # --- v1-new (3 items, from user feedback 2026-02-15) ---
+    - item: "Closed-loop testing: debugging MCP server"
+      description: "Dev-only MCP server baked into has_human_interface products exposing screenshot, navigate, interact, inspect, logs, state, accessibility audit, config, and seed data tools. Enables agent to verify UI output without human involvement. Phases: design → implement for React+Playwright → integrate with Builder → add visual verification to test specs and Critic."
+      phase: v1-new
+      skill: builder
+    - item: "Existing project onboarding"
+      description: "Reverse-engineer existing codebases into prawduct artifacts. Analyze structure/deps/tech stack to infer structural characteristics, extract product brief from docs/README, generate data-model and test-spec artifacts, infer current stage, produce project-state.yaml reflecting reality."
+      phase: v1-new
+      skill: orchestrator
+    - item: "Old prawduct version detection and migration"
+      description: "Detect old prawduct project-state.yaml schemas and artifact structures during Session Resumption. Enter migration mode to map old artifacts to current structure. Add version field to project-state.yaml template."
+      phase: v1-new
+      skill: orchestrator
     # --- v1.5 (5 items) ---
     - item: "C7 Trajectory Monitor as dedicated component"
       description: "Full trajectory management beyond governance checkpoints and cross-chunk reviews; dedicated monitoring component"

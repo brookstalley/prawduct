@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 #
-# governance-gate.sh — PreToolUse hook for Edit/Write
+# governance-gate.sh — PreToolUse hook for Edit/Write/Read
 #
-# Unified governance gate that replaces orchestrator-gate.sh and product-chunk-gate.sh.
-# Fires before every Edit or Write tool call. Enforces two governance requirements:
+# Unified governance gate. Fires before every Edit, Write, or Read tool call.
+# Enforces three governance requirements:
 #
-# 1. Orchestrator activation: The Orchestrator must be activated (HR9: No Governance
-#    Bypass) before any governed file can be edited. The Orchestrator creates
-#    .claude/.orchestrator-activated with a timestamp during activation.
+# 1. Skill/template read gating: Reads of skill files (except orchestrator/SKILL.md)
+#    and template files are blocked until the Orchestrator is activated. This ensures
+#    all framework access routes through the Orchestrator. (HR9)
 #
-# 2. Chunk review: If a product build is active and chunks have been completed
+# 2. Orchestrator activation: Edits/writes to any governed file require Orchestrator
+#    activation. (HR9: No Governance Bypass)
+#
+# 3. Chunk review: If a product build is active and chunks have been completed
 #    without Critic review, blocks further product file edits until governance
 #    debt is resolved.
 #
-# Both checks apply uniformly — no framework/product distinction.
-#
 # Marker lifecycle:
 #   Created:  Orchestrator activation (step 3) or Session Resumption (step 1)
-#   Read:     This hook (PreToolUse, on every Edit/Write to governed files)
+#   Read:     This hook (PreToolUse, on every Edit/Write/Read to governed files)
 #   Deleted:  On /clear (SessionStart hook), new startup (SessionStart hook),
 #             or successful commit (critic-gate.sh cleanup)
 #
@@ -31,23 +32,110 @@ set -euo pipefail
 # Read the hook input JSON from stdin
 input=$(cat)
 
-# Extract the file path from the tool input
-file_path=$(echo "$input" | python3 -c "
+# Extract the tool name and file path from the tool input
+read -r tool_name file_path <<< "$(echo "$input" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
+tool_name = data.get('tool_name', '')
 tool_input = data.get('tool_input', {})
-print(tool_input.get('file_path', ''))
-" 2>/dev/null || echo "")
+file_path = tool_input.get('file_path', '')
+print(f'{tool_name} {file_path}')
+" 2>/dev/null || echo " ")"
 
 if [[ -z "$file_path" ]]; then
     exit 0
 fi
 
-# --- Determine if this file is governed ---
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+rel_path=""
+if [[ -n "$repo_root" ]]; then
+    rel_path="${file_path#"$repo_root"/}"
+fi
+
+# --- For Read calls: only gate skill and template files ---
+
+if [[ "$tool_name" == "Read" ]]; then
+    if [[ -z "$repo_root" || -z "$rel_path" ]]; then
+        exit 0
+    fi
+
+    # Check if this is a skill or template file
+    is_gated_read=false
+    if [[ "$rel_path" == skills/* || "$rel_path" == templates/* ]]; then
+        is_gated_read=true
+    fi
+
+    if [[ "$is_gated_read" == false ]]; then
+        exit 0
+    fi
+
+    # Whitelist: orchestrator/SKILL.md is always readable (it's the entry point)
+    if [[ "$rel_path" == "skills/orchestrator/SKILL.md" ]]; then
+        exit 0
+    fi
+
+    # Check Orchestrator activation
+    MARKER="$repo_root/.claude/.orchestrator-activated"
+    if [[ ! -f "$MARKER" ]]; then
+        echo "" >&2
+        echo "BLOCKED: Reading skill/template files requires Orchestrator activation. (HR9)" >&2
+        echo "" >&2
+        echo "Skills and templates are accessed through the Orchestrator. Before reading" >&2
+        echo "this file, you must activate governance:" >&2
+        echo "" >&2
+        echo "  1. Read skills/orchestrator/SKILL.md (this file is always readable)" >&2
+        echo "  2. Follow its activation process (Session Resumption or new project setup)" >&2
+        echo "  3. After activation, skill and template files are accessible." >&2
+        exit 2
+    fi
+
+    # Validate marker recency
+    marker_age_ok=$(python3 -c "
+import os, sys
+from datetime import datetime, timedelta
+
+marker = '$MARKER'
+try:
+    with open(marker) as f:
+        content = f.read().strip()
+    if content:
+        marker_time = datetime.fromisoformat(content)
+    else:
+        marker_time = datetime.fromtimestamp(os.path.getmtime(marker))
+    age = datetime.now() - marker_time
+    if age < timedelta(hours=12):
+        print('ok')
+    else:
+        print('stale')
+except Exception:
+    try:
+        mtime = datetime.fromtimestamp(os.path.getmtime(marker))
+        age = datetime.now() - mtime
+        if age < timedelta(hours=12):
+            print('ok')
+        else:
+            print('stale')
+    except:
+        print('stale')
+" 2>/dev/null || echo "stale")
+
+    if [[ "$marker_age_ok" != "ok" ]]; then
+        echo "" >&2
+        echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
+        echo "" >&2
+        echo "Re-read skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
+        exit 2
+    fi
+
+    # Read allowed
+    exit 0
+fi
+
+# --- For Edit/Write calls: full governance checks ---
+
+# Determine if this file is governed
 # A file is governed if it's a framework file (in the repo) or a product file
 # (in an active product build directory).
-
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 
 # Framework file patterns — files that require Orchestrator governance
 FRAMEWORK_PATTERNS=(
@@ -65,7 +153,6 @@ FRAMEWORK_PATTERNS=(
 
 is_framework_file=false
 if [[ -n "$repo_root" ]]; then
-    rel_path="${file_path#"$repo_root"/}"
     for pattern in "${FRAMEWORK_PATTERNS[@]}"; do
         if [[ "$rel_path" == $pattern* ]]; then
             is_framework_file=true
@@ -207,5 +294,5 @@ else:
     fi
 fi
 
-# All checks passed — allow the edit
+# All checks passed — allow the operation
 exit 0
