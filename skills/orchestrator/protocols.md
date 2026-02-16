@@ -159,6 +159,20 @@ Apply the framework's principles to its own founding architectural decisions —
 
 ---
 
+## Root Cause Protocol (5 Whys)
+
+**When to apply:** Before implementing any fix motivated by an observation, pattern, or audit finding. Not required for simple corrections (typos, formatting) — only for issues that indicate a gap in the framework's processes, detection, or design.
+
+**Process:**
+1. State the immediate problem.
+2. Ask "why?" iteratively until you reach a cause the framework can structurally prevent (usually 3-5 levels).
+3. The fix must address both the immediate problem AND the deepest root cause.
+4. Document the analysis in the change_log entry (the `why` field should trace the causal chain, not just describe the symptom).
+
+**The test:** If your fix only prevents this exact symptom from recurring, you haven't gone deep enough. The fix should prevent the *class* of problem, not just the instance.
+
+---
+
 ## Extending This Skill
 
 Remaining Orchestrator capabilities are tracked in `project-state.yaml` → `build_plan.remaining_work`.

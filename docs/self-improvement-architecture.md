@@ -413,7 +413,7 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Root cause**: Critic checks didn't include learning system impact. Governance reviewed changes for generality, coherence, and proportionality — but not for whether the learning pipeline remained intact.
 
-**Discovered**: 2026-02-12 during concern-based classification implementation. A 17-file, 6-phase reform restructured concern dimensions and added new observation types without anyone verifying the learning system remained complete. The Critic ran once at the end as a rubber stamp.
+**Discovered**: 2026-02-12 during structural characteristics implementation. A 17-file, 6-phase reform restructured the classification system and added new observation types without anyone verifying the learning system remained complete. The Critic ran once at the end as a rubber stamp.
 
 **Fix**: Three reinforcing mechanisms:
 - Critic Check 6 (Learning/Observability): Explicitly checks whether changes preserve the framework's ability to learn

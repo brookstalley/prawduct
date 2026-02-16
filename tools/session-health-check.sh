@@ -554,9 +554,139 @@ echo "$skill_health_output" | grep -v "^SKILL_WARNINGS:"
 skill_warnings=$(echo "$skill_health_output" | grep "^SKILL_WARNINGS:" | head -1 | sed 's/.*: //')
 echo ""
 
+# --- 8. Deprecated Term Scanning ---
+
+deprecated_warnings=0
+if [[ -f "$PROJECT_STATE" ]]; then
+    echo "## Deprecated Term Scanning"
+
+    deprecated_output=$(python3 -c "
+import yaml, os, sys, re, subprocess
+
+state_file = '$PROJECT_STATE'
+repo_root = '$REPO_ROOT'
+warnings = 0
+
+try:
+    with open(state_file) as f:
+        data = yaml.safe_load(f)
+    terms = data.get('deprecated_terms', []) or []
+    if not terms:
+        print('  No deprecated terms registered.')
+        print('DEPRECATED_TERM_WARNINGS: 0')
+        sys.exit(0)
+
+    # Exclusion patterns: historical records
+    exclude_dirs = ['eval-history', 'framework-observations/archive', 'working-notes', '.git', '.claude']
+
+    # For project-state.yaml, we need to exclude change_log and deprecated_terms sections
+    # We'll handle this by post-filtering matches in project-state.yaml
+
+    # Read project-state.yaml to find section boundaries for exclusion
+    with open(state_file) as f:
+        ps_lines = f.readlines()
+
+    # Find line ranges for change_log and deprecated_terms sections
+    exclude_ranges = []
+    in_section = False
+    section_start = None
+    for i, line in enumerate(ps_lines, 1):
+        if line.startswith('change_log:') or line.startswith('deprecated_terms:'):
+            in_section = True
+            section_start = i
+        elif in_section and (line.startswith('# ====') or (not line.startswith(' ') and not line.startswith('#') and line.strip() and ':' in line)):
+            exclude_ranges.append((section_start, i - 1))
+            in_section = False
+            # Check if this new line is also a section to exclude
+            if line.startswith('change_log:') or line.startswith('deprecated_terms:'):
+                in_section = True
+                section_start = i
+    if in_section:
+        exclude_ranges.append((section_start, len(ps_lines)))
+
+    total_warnings = 0
+    for term_entry in terms:
+        term = term_entry.get('term', '')
+        patterns = term_entry.get('patterns', [])
+        replacement = term_entry.get('replacement', 'removed')
+
+        for pattern in patterns:
+            try:
+                # Use grep to find matches, excluding historical directories
+                cmd = ['grep', '-rni', pattern]
+                for d in exclude_dirs:
+                    cmd.extend(['--exclude-dir=' + d])
+                cmd.append(repo_root)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+                if result.returncode == 0 and result.stdout.strip():
+                    for line in result.stdout.strip().split('\n'):
+                        if not line.strip():
+                            continue
+                        # Parse grep output: file:line_num:content
+                        parts = line.split(':', 2)
+                        if len(parts) < 3:
+                            continue
+                        filepath = parts[0]
+                        try:
+                            line_num = int(parts[1])
+                        except ValueError:
+                            continue
+
+                        # Get relative path
+                        rel_path = os.path.relpath(filepath, repo_root)
+
+                        # Skip if in excluded directory
+                        skip = False
+                        for d in exclude_dirs:
+                            if rel_path.startswith(d + '/') or rel_path.startswith(d + os.sep):
+                                skip = True
+                                break
+                        if skip:
+                            continue
+
+                        # Skip observation entry files (historical records)
+                        # Only schema.yaml and README.md in framework-observations/ are active docs
+                        if rel_path.startswith('framework-observations/'):
+                            basename = os.path.basename(rel_path)
+                            if basename.endswith('.yaml') and basename != 'schema.yaml':
+                                continue
+
+                        # Skip project-state.yaml matches in excluded sections
+                        if rel_path == 'project-state.yaml':
+                            in_excluded = False
+                            for start, end in exclude_ranges:
+                                if start <= line_num <= end:
+                                    in_excluded = True
+                                    break
+                            if in_excluded:
+                                continue
+
+                        print(f'  WARNING: Deprecated term \"{term}\" found in {rel_path}:{line_num}')
+                        total_warnings += 1
+            except Exception:
+                continue
+
+    if total_warnings == 0:
+        print('  No surviving deprecated term references found.')
+
+    print(f'DEPRECATED_TERM_WARNINGS: {total_warnings}')
+
+except Exception as e:
+    print(f'  (Could not scan deprecated terms: {e})')
+    print('DEPRECATED_TERM_WARNINGS: 0')
+" 2>/dev/null || echo "  (python3/yaml not available for deprecated term scanning)
+DEPRECATED_TERM_WARNINGS: 0")
+
+    echo "$deprecated_output" | grep -v "^DEPRECATED_TERM_WARNINGS:"
+    deprecated_warnings=$(echo "$deprecated_output" | grep "^DEPRECATED_TERM_WARNINGS:" | head -1 | sed 's/.*: //')
+    echo ""
+fi
+
 echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
 echo "INFRASTRUCTURE_WARNINGS: ${infra_warnings:-0}"
 echo "STATE_WARNINGS: ${state_warnings:-0}"
 echo "SKILL_WARNINGS: ${skill_warnings:-0}"
+echo "DEPRECATED_TERM_WARNINGS: ${deprecated_warnings:-0}"
 echo ""
 echo "=========================================="

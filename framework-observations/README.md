@@ -49,7 +49,7 @@ session_context:
   framework_version: git-sha
 observations:
   - type: proportionality | coverage | applicability | missing_guidance | rubric_issue | process_friction | artifact_insufficiency | spec_ambiguity | deployment_friction | critic_gap | skill_quality | external_practice_drift | documentation_drift | structural_critique | integration_friction
-    stage: [0, 0.5, 1, 2, 3, 4, 5, 6, or "meta"]
+    stage: [0, 1, 2, 3, 4, 5, 6, or "meta"]
     severity: note | warning | blocking
     description: "Generalized statement (not product-specific)"
     evidence: "What triggered this observation"
@@ -162,7 +162,7 @@ tools/update-observation-status.sh --archive framework-observations/FILENAME.yam
 
 **Capture** (substantive — identifies something the framework should do differently):
 - Framework process felt disproportionate to product complexity (with specifics)
-- Framework missed important topics or asked irrelevant questions for this product shape
+- Framework missed important topics or asked irrelevant questions for this structural characteristic
 - Framework required outputs that didn't apply to this product type
 - Concrete recurring patterns across multiple sessions
 - User corrected or challenged a framework assumption (signals a gap)

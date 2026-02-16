@@ -190,7 +190,7 @@ notes: ""                              # Free-form observations, limitations, co
 
 **Evidence:** [From rubric evaluation — quote specific values from project-state.yaml, artifacts, or transcript]
 
-**Generality test:** [Does this apply to other product shapes? Mentally test against family-utility, background-pipeline, B2B API, etc.]
+**Generality test:** [Does this apply to other structural characteristics? Mentally test against family-utility, background-pipeline, B2B API, etc.]
 
 **Fix:** [What skill was changed and how? Be specific about what instruction was added/modified/removed]
 

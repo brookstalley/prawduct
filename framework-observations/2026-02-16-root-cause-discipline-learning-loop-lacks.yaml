@@ -1,0 +1,20 @@
+---
+observation_id: 3b76b603-1c86-4981-898b-3f6881a3a919
+timestamp: 2026-02-16T00:00:00Z
+session_type: framework_dev
+session_context:
+  framework_version: 2641c25
+observations:
+  - type: process_friction
+    stage: "meta"
+    severity: warning
+    description: "Framework learning loop lacks causal analysis step — fixes address immediate symptoms without tracing why the gap existed, allowing the same class of problem to recur through different instances"
+    evidence: "5-6 documented instances of stale references surviving directional changes in Feb 2026 alone. Concept Ripple check (added after Stage 0.5 escape) was a correct but reactive fix that addressed the symptom (stale references survive) without addressing the root cause (vocabulary has no lifecycle). 'Product shapes' survived in 4 active files including a template that propagates the term to new evaluations."
+    proposed_action: "Root Cause Protocol (5-whys) added to protocols.md, referenced from DCP planning step, observation action flow, and Critic Check 6. Vocabulary lifecycle added via deprecated_terms registry with mechanical scanning in session-health-check.sh."
+    status: acted_on
+skills_affected:
+  - "skills/orchestrator/protocols.md"
+  - "skills/orchestrator/stage-6-iteration.md"
+  - "skills/critic/SKILL.md"
+  - "tools/session-health-check.sh"
+---

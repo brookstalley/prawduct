@@ -198,7 +198,7 @@ Read `templates/build-plan.md`. Generate from `project-state.yaml` → `technica
 
 1. **Concrete scaffolding instructions.** Exact commands to initialize the project, install dependencies, and configure build tools. Use the product name from the Product Brief.
 
-2. **Concrete project structure.** Directory layout and module boundaries derived from the data model and product shape.
+2. **Concrete project structure.** Directory layout and module boundaries derived from the data model and structural characteristics.
 
 3. **Feature-first build chunks.** Each chunk delivers one user-visible flow end-to-end (data + logic + interface + tests). Chunk ordering depends on structural characteristics:
    - Chunk 01 is always scaffold: project init, dependencies, build config, test runner.

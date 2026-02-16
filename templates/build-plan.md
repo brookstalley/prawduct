@@ -59,7 +59,7 @@ last_validated: null
 
 <!--
   Directory layout and file naming conventions. Derived from the data model
-  and product shape. The Builder follows this structure exactly.
+  and structural characteristics. The Builder follows this structure exactly.
 -->
 
 ```

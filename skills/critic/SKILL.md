@@ -121,7 +121,7 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - When CLAUDE.md is modified or when new files are added, verify that CLAUDE.md's project structure tree includes all files that actually exist (and doesn't list files that don't).
 - When README.md or other external-facing documentation is modified, verify that capability claims match what the framework actually implements. Cross-reference assertions about features against the skills, templates, and tools on disk.
 
-**Concept Ripple (directional changes):** When reviewing changes that remove, rename, or redefine concepts (e.g., removing a stage, renaming a classification term, redefining an architectural component), grep the full codebase for the removed/renamed term(s). Any surviving references in non-staged files are Coherence findings. Severity: surviving references in skills or templates → **warning**; surviving references in docs → **note** (lower risk, but still stale). The Directional Change Protocol provides the list of removed/renamed terms — use it as grep input.
+**Concept Ripple (directional changes):** When reviewing changes that remove, rename, or redefine concepts (e.g., removing a stage, renaming a classification term, redefining an architectural component), grep the full codebase for the removed/renamed term(s). Any surviving references in non-staged files are Coherence findings. Severity: surviving references in skills or templates → **warning**; surviving references in docs → **note** (lower risk, but still stale). The Directional Change Protocol provides the list of removed/renamed terms — use it as grep input. Verify that removed/renamed terms have been registered in `project-state.yaml` → `deprecated_terms`. Missing entries are a **warning** — they mean future sessions won't detect surviving references.
 
 **Severity guide:**
 - Cross-skill/cross-artifact contract broken → **blocking**
@@ -143,6 +143,7 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - **FRP dimension impact:** Does this change affect what the Framework Reflection Protocol should assess?
 - **Observability path:** For any new capability — if it fails subtly, can the observation system detect that failure?
 - **Growing collections:** Does this change create or extend a collection that accumulates entries? If so, does it have: (a) a lifecycle with terminal states, (b) a compaction or archiving mechanism, (c) monitoring in `session-health-check.sh`?
+- **Root cause depth:** If this change was motivated by an observation, pattern, or audit finding, does it address root cause (not just symptom)? Changes that fix a symptom without analyzing why the gap existed are a **warning**. Look for: does the change_log entry trace a causal chain? Does the fix prevent the *class* of problem or just the specific instance?
 
 **Severity guide:**
 - New capability with no observability path → **blocking**

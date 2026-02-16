@@ -184,7 +184,7 @@ These are the ones most likely to be violated under pressure:
 The framework follows a vertical-slice build approach (see `docs/high-level-design.md` § "Bootstrapping: Vertical Slice Approach"). Core infrastructure is built; structural characteristics cover artifact routing and dynamic domain depth provides domain-specific discovery.
 
 **Built and operational:**
-- Full stage pipeline: Stages 0-6 (Intake, Discovery, Definition, Artifact Generation, Build Planning, Building, Iteration — Stage 0.5 Validation removed; the framework trusts user intent)
+- Full stage pipeline: Stages 0-6 (Intake, Discovery, Definition, Artifact Generation, Build Planning, Building, Iteration)
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (context-sensitive governance), Review Lenses (all five)
 - Product output isolation: product repos use `.prawduct/` subdirectory for all prawduct outputs (state, artifacts, observations, working notes); source code stays at project root; framework repo uses root-level files (self-hosted). All tools detect `.prawduct/` first with fallback to root for backward compatibility.
 - Two-layer classification: 5 structural characteristics for artifact routing (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth via Universal Discovery Dimensions and Structural Amplification Rules

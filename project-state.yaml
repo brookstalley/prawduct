@@ -60,7 +60,7 @@ product_definition:
     - "End-to-end flow from vague input to useful build plan for any combination of product concerns"
     - "Framework governs its own development through its own process (eat your own cooking)"
     - "Observation capture fires automatically at every stage transition — no manual reminders needed"
-    - "Review Lenses produce specific, actionable findings across all product shapes"
+    - "Review Lenses produce specific, actionable findings across all structural characteristics"
 
   users:
     personas:
@@ -625,6 +625,22 @@ change_log:
     blast_radius: skills/review-lenses/SKILL.md, project-state.yaml (artifact_manifest, change_log), CLAUDE.md
     classification: functional
     date: 2026-02-16
+  - what: 'Root Cause Discipline + Vocabulary Lifecycle: embed 5-whys analysis in learning loop, add deprecated term registry with mechanical scanning'
+    why: 'Root cause chain: stale references survive directional changes → Concept Ripple check is single-pass
+      with no persistence → vocabulary has no lifecycle management → no persistent tracking of deprecated terms
+      → framework learning loop jumps from "pattern detected" to "implement fix" without causal analysis →
+      C8 was designed for pattern detection (statistical frequency), not causal analysis. Two fixes: (1) Root
+      Cause Protocol added to protocols.md requiring 5-whys before any observation-driven fix, referenced from
+      DCP planning step and observation action flow, enforced by Critic Check 6 root cause depth bullet; (2)
+      deprecated_terms registry in project-state.yaml with mechanical scanning in session-health-check.sh,
+      DCP Step 6 registration requirement, and Critic Concept Ripple verification. Fixed 5 surviving "product
+      shapes" references and removed stale Stage 0.5 from observation schema.'
+    blast_radius: skills/orchestrator/protocols.md, skills/orchestrator/stage-6-iteration.md, skills/critic/SKILL.md,
+      framework-observations/schema.yaml, project-state.yaml, docs/evaluation-methodology.md, templates/eval-result-template.md,
+      tools/session-health-check.sh, skills/artifact-generator/SKILL.md, docs/vision.md, templates/build-plan.md,
+      framework-observations/README.md, docs/self-improvement-architecture.md, CLAUDE.md
+    classification: directional
+    date: 2026-02-16
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.
@@ -847,3 +863,26 @@ observation_backlog:
       priority: deferred
       rationale: "Implementation complete. Verify bootstrap generation and hook firing against an actual product repo."
       added: 2026-02-15
+
+# =============================================================================
+# DEPRECATED TERMS
+# =============================================================================
+# Vocabulary that was removed or renamed in directional changes.
+# session-health-check.sh scans the codebase for surviving references at session start.
+# DCP Step 6 writes new entries here when concepts are removed/renamed.
+# Scanning excludes historical records: change_log entries, eval-history/,
+# framework-observations/archive/, working-notes/.
+
+deprecated_terms:
+  - term: "product shapes"
+    replacement: "structural characteristics"
+    removed_date: 2026-02-12
+    patterns: ["product shape"]
+  - term: "concern dimensions"
+    replacement: "structural characteristics + dynamic domain depth"
+    removed_date: 2026-02-13
+    patterns: ["concern dimension"]
+  - term: "Stage 0.5"
+    replacement: null
+    removed_date: 2026-02-15
+    patterns: ["Stage 0\\.5"]

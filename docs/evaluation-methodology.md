@@ -273,7 +273,7 @@ When using interactive evaluation, follow these procedures for conversation-qual
 **7. Verify framework reflection and observation capture**
 
    **Tier 1 — BLOCKING (mechanical):**
-   - [ ] `change_log` in the eval's `project-state.yaml` has a "Framework reflection" entry for each stage transition (0→0.5, 0.5→1, 1→2, 2→3, completion)
+   - [ ] `change_log` in the eval's `project-state.yaml` has a "Framework reflection" entry for each stage transition (0→1, 1→2, 2→3, completion)
    - [ ] If an observation file exists in `framework-observations/`, each entry has non-empty `type`, `description`, `evidence`, and `severity` fields
    - If either check fails → evaluation is incomplete
 
@@ -328,7 +328,7 @@ This process transforms evaluation observations into framework improvements. Bas
    If yes to any: capture as observation (type: `skill_quality`, stage: "meta"). This ensures every evaluation run also audits instruction quality, catching cumulative drift that per-change reviews miss.
 
 **3. Generality test**
-   - Mentally apply proposed fix to other product shapes
+   - Mentally apply proposed fix to other structural characteristics
    - Check: Does this improve discovery for family-utility? Background pipeline? B2B API? Multi-party marketplace?
    - If fix only helps one scenario, it's enumeration not learning
    - Example: "Ask about dark room constraints" → Too specific. "Ask about physical context alongside platform" → General.
@@ -711,7 +711,7 @@ notes: ""                              # Free-form observations, limitations, co
 
 **Evidence:** [From rubric evaluation]
 
-**Generality test:** [Does this apply to other product shapes?]
+**Generality test:** [Does this apply to other structural characteristics?]
 
 **Fix:** [What skill was changed and how]
 
