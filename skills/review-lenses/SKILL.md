@@ -6,7 +6,6 @@ The Review Lenses provide multi-perspective evaluation of system output at every
 
 The Orchestrator activates this skill:
 
-- During **Stage 0.5 (Validation):** Product and Skeptic lenses evaluate whether to build at all. (Medium/high-risk products only.)
 - During **Stage 2 (Product Definition):** Product, Design, Architecture, and Skeptic lenses review crystallized decisions before artifact generation. (Testing Lens does not apply — no test specifications exist yet.)
 - During **Stage 3 (Artifact Generation):** Lenses are applied in phases as artifacts are generated, not as a single post-hoc review (see Orchestrator Stage 3):
   - **Phase A (Foundation):** Product and Design lenses review the Product Brief before dependent artifacts are generated. Focus: Is the vision clear? Are personas realistic? Are flows complete? Are all states considered?

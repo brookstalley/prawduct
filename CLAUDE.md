@@ -56,7 +56,7 @@ prawduct/
 ├── CLAUDE.md                          # You are here
 ├── project-state.yaml                 # Framework's own project state (self-hosted)
 ├── skills/                            # LLM instruction sets (your behavior)
-│   ├── orchestrator/SKILL.md          # Activation, routing, session resumption (~156 lines always loaded)
+│   ├── orchestrator/SKILL.md          # Activation, routing, session resumption (~180 lines always loaded)
 │   │   ├── stages-0-2.md             # Stages 0-2: Intake, Discovery, Definition
 │   │   ├── stages-3-4.md             # Stages 3-4: Artifact Generation, Build Planning
 │   │   ├── stage-5-build.md          # Stage 5: Build + Governance Loop
@@ -199,6 +199,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
 - **v1-widen (8 items):** Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic-Review Lenses integration; Review Lenses variable-depth and rotating emphasis; consumer-mobile-app scenario; Artifact Generator modular artifact updates
 - **v1-validation (3 items):** Full V1 validation (all scenarios end-to-end); Builder parallel execution and incremental builds
+- **v1-new (2 items):** Closed-loop testing MCP server; old prawduct version detection and migration
 - **v1.5 (5 items):** C7 Trajectory Monitor; regulatory discovery; cost awareness; accessibility enforcement; agent agnosticism
 
 **C8 (Learning System):** Observation Capture (C8a) is active with mechanical tooling and lifecycle management (status transitions, archiving). Pattern Detection (C8b) is partially built — mechanical detection with tiered thresholds surfaces actionable patterns during session resumption; infrastructure health monitoring detects accumulation, staleness, and archive backlog. Incorporation (C8c-e) is partially built — human-approved incorporation via session resumption act-or-defer decisions, with approved changes following normal Critic governance. Full automated incorporation remains v2 scope.

@@ -195,7 +195,7 @@ artifact_manifest:
       role: product-brief
       version: 1
       depends_on: []
-      depended_on_by: [requirements, high-level-design]
+      depended_on_by: [requirements, high-level-design, principles]
       last_validated: 2026-02-11
       tier: 1
     - name: requirements
@@ -230,7 +230,7 @@ artifact_manifest:
       role: built-component
       version: 4
       depends_on: [high-level-design, principles]
-      depended_on_by: []
+      depended_on_by: [family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
       last_validated: 2026-02-15
       tier: 1
       notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, onboarding.md, protocols.md"
@@ -239,7 +239,7 @@ artifact_manifest:
       role: built-component
       version: 2
       depends_on: [high-level-design, principles]
-      depended_on_by: [orchestrator]
+      depended_on_by: [orchestrator, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
       last_validated: 2026-02-11
       tier: 1
     - name: artifact-generator
@@ -247,7 +247,7 @@ artifact_manifest:
       role: built-component
       version: 2
       depends_on: [high-level-design, principles]
-      depended_on_by: [orchestrator]
+      depended_on_by: [orchestrator, human-interface-templates, unattended-operation-templates, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
       last_validated: 2026-02-11
       tier: 1
     - name: review-lenses
@@ -255,7 +255,7 @@ artifact_manifest:
       role: built-component
       version: 2
       depends_on: [high-level-design, principles]
-      depended_on_by: [orchestrator]
+      depended_on_by: [orchestrator, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
       last_validated: 2026-02-11
       tier: 1
     - name: critic
@@ -281,7 +281,7 @@ artifact_manifest:
       role: built-component
       version: 1
       depends_on: [high-level-design]
-      depended_on_by: [orchestrator, artifact-generator, critic]
+      depended_on_by: []
       last_validated: 2026-02-11
       tier: 1
     - name: human-interface-templates
@@ -620,6 +620,11 @@ change_log:
       (project structure), project-state.yaml (remaining_work, change_log)
     classification: functional
     date: 2026-02-15
+  - what: 'Documentation and artifact sync scrub: remove stale Stage 0.5 reference, fix 25 bidirectional dependency inconsistencies, update CLAUDE.md line count and remaining work phases'
+    why: 'Audit found 4 sync issues. Finding 1 (critical): review-lenses/SKILL.md still referenced Stage 0.5 removed in user-feedback overhaul — root cause was temporal gap before Concept Ripple check existed. Finding 2 (high): artifact_manifest depended_on_by drifted in 25 places because it is a denormalized cache of depends_on inverse with no validation. Finding 3-4 (low): CLAUDE.md Orchestrator line count stale (156→182) and missing v1-new phase in remaining work summary. All other cross-references verified clean (artifact paths, observation files, skill references, project structure tree).'
+    blast_radius: skills/review-lenses/SKILL.md, project-state.yaml (artifact_manifest, change_log), CLAUDE.md
+    classification: functional
+    date: 2026-02-16
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.

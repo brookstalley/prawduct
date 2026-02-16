@@ -1,0 +1,16 @@
+---
+observation_id: 6cd0a727-f257-483e-b2d1-efa5046f00f8
+timestamp: 2026-02-16T17:56:20Z
+session_type: framework_dev
+session_context:
+  framework_version: 59e74ee
+observations:
+  - type: coverage
+    severity: warning
+    description: "artifact_manifest depended_on_by drifted (25 inconsistencies) — denormalized cache with no validation"
+    evidence: "Audit found 25 cases where depended_on_by did not match inverse of depends_on: vision missing principles, orchestrator missing 3 test scenarios, domain-analyzer/artifact-generator/review-lenses missing test scenarios, project-state-template over-claiming 3 dependents"
+    proposed_action: "Add bidirectional dependency consistency check to session-health-check.sh infrastructure checks"
+    status: noted
+skills_affected:
+  - "tools/session-health-check.sh"
+---
