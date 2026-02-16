@@ -20,7 +20,7 @@ After loading the Orchestrator, it will route based on context:
 → The Orchestrator provides a brief orientation (see its New User Orientation section), then waits for the user to indicate what they'd like to do.
 
 **Everything else** (framework dev, returning user, "fix the domain analyzer", "what should I work on next?"):
-→ The Orchestrator reads `project-state.yaml` (from `.prawduct/` for product repos, or repo root for the self-hosted framework), performs Session Resumption, and enters Stage 6 iteration for framework development.
+→ The Orchestrator reads `project-state.yaml` (from `.prawduct/` for all repos, including the self-hosted framework), performs Session Resumption, and enters Stage 6 iteration for framework development.
 
 ## Compact Instructions
 
@@ -49,12 +49,34 @@ my-product/
 └── ...
 ```
 
-**The framework repo** (self-hosted) keeps prawduct files at the repo root:
+**The framework repo** (self-hosted) uses the same `.prawduct/` layout as product repos:
 ```
 prawduct/
 ├── README.md                          # Human-facing project overview and getting started
 ├── CLAUDE.md                          # You are here
-├── project-state.yaml                 # Framework's own project state (self-hosted)
+├── .prawduct/                         # All prawduct outputs (same layout as product repos)
+│   ├── project-state.yaml             # Framework's own project state
+│   ├── artifacts/                     # Generated prawduct artifacts (LLM-facing structured docs)
+│   │   ├── product-brief.md           # Vision, users, core flows, scope
+│   │   ├── data-model.md             # Entities, state machines, constraints
+│   │   ├── nonfunctional-requirements.md  # Performance, scalability, cost
+│   │   ├── security-model.md         # Residual: hook bypass, trust model (MINIMAL)
+│   │   ├── test-specifications.md    # Scenario-based tests, state transitions
+│   │   ├── operational-spec.md       # Git versioning, state recovery (MINIMAL)
+│   │   ├── dependency-manifest.yaml  # bash, python3, git, yq (MINIMAL)
+│   │   ├── pipeline-architecture.md  # Stage pipeline + learning loop (runs_unattended)
+│   │   ├── scheduling-spec.md        # Event-driven, no scheduling (MINIMAL)
+│   │   ├── monitoring-alerting-spec.md  # Session health check model (runs_unattended)
+│   │   ├── failure-recovery-spec.md  # Compaction, governance, onboarding recovery
+│   │   ├── configuration-spec.md     # project-state, hooks, markers
+│   │   └── api-contract.md           # Skill interaction, artifact format, schema (exposes_programmatic_interface)
+│   ├── framework-observations/        # Automatic observation capture (Tier 1, lifecycle-managed)
+│   │   ├── README.md                  # Observation system documentation
+│   │   ├── schema.yaml               # Observation entry schema
+│   │   ├── archive/                   # Resolved observations (all statuses terminal)
+│   │   └── {date}-{description}.yaml  # Per-session observations
+│   └── working-notes/                 # Tier 3 ephemeral docs (auto-expire after 2 weeks)
+│       └── .gitkeep
 ├── skills/                            # LLM instruction sets (your behavior)
 │   ├── orchestrator/SKILL.md          # Activation, routing, session resumption (~180 lines always loaded)
 │   │   ├── stages-0-2.md             # Stages 0-2: Intake, Discovery, Definition
@@ -62,6 +84,7 @@ prawduct/
 │   │   ├── stage-5-build.md          # Stage 5: Build + Governance Loop
 │   │   ├── stage-6-iteration.md      # Stage 6: Iteration + Directional Change Protocol
 │   │   ├── onboarding.md            # Onboarding Mode: existing codebase → prawduct artifacts
+│   │   ├── migration.md             # Schema Migration: old prawduct versions → current format
 │   │   └── protocols.md              # FRP, Stage Transition, Expertise Calibration, Structural Critique
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
 │   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency — format specs live in templates
@@ -71,7 +94,7 @@ prawduct/
 ├── tools/                             # Deterministic scripts (mechanical enforcement)
 │   ├── capture-observation.sh         # Create schema-compliant observation files from CLI args
 │   ├── record-critic-findings.sh      # Record structured Critic findings for commit gate
-│   ├── session-health-check.sh        # Session orientation: patterns, backlog, stale items, infrastructure health
+│   ├── session-health-check.sh        # Session orientation: patterns, backlog, stale items, divergence, infrastructure health
 │   ├── update-observation-status.sh   # Observation lifecycle transitions and archiving
 │   ├── critic-reminder.sh             # Verify Critic evidence before framework commits
 │   ├── observation-analysis.sh        # Parse observations, detect patterns, produce summary
@@ -117,11 +140,6 @@ prawduct/
 │       └── terminal-arcade-game.md    # Game design scenario, tests creative product handling
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
-├── framework-observations/            # Automatic observation capture (Tier 1, lifecycle-managed)
-│   ├── README.md                      # Observation system documentation
-│   ├── schema.yaml                    # Observation entry schema
-│   ├── archive/                       # Resolved observations (all statuses terminal)
-│   └── {date}-{description}.yaml      # Per-session observations
 ├── .claude/                           # Claude Code integration (hooks, settings)
 │   ├── hooks/
 │   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
@@ -132,17 +150,15 @@ prawduct/
 │   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
 │   ├── settings.json                  # Project-level Claude Code settings
 │   └── settings.local.json            # Local overrides (not committed)
-├── docs/                              # This project's own Tier 1 documentation
-│   ├── vision.md
-│   ├── requirements.md
-│   ├── principles.md
-│   ├── high-level-design.md
-│   ├── evaluation-methodology.md
-│   ├── self-improvement-architecture.md # C8 learning system design and philosophy
-│   ├── skill-authoring-guide.md       # Structural + health standards for LLM skill instructions
-│   └── doc-manifest.yaml              # Tier 1 doc registry for the framework itself
-└── working-notes/                     # Tier 3 ephemeral docs (auto-expire after 2 weeks)
-    └── .gitkeep
+└── docs/                              # This project's own Tier 1 documentation
+    ├── vision.md
+    ├── requirements.md
+    ├── principles.md
+    ├── high-level-design.md
+    ├── evaluation-methodology.md
+    ├── self-improvement-architecture.md # C8 learning system design and philosophy
+    ├── skill-authoring-guide.md       # Structural + health standards for LLM skill instructions
+    └── doc-manifest.yaml              # Tier 1 doc registry for the framework itself
 ```
 
 ## Framework Development
@@ -158,7 +174,7 @@ The Framework Status section below provides build context. The Key Principles, T
 
 ## Product Build Governance (Compaction Recovery)
 
-If you cannot remember governance procedures (e.g., after context compaction), **read skill files from disk** — they always exist. Product state files live in the **product root** (`.prawduct/` for product repos, repo root for the framework). In product repos, read `.prawduct/framework-path` to get the framework location.
+If you cannot remember governance procedures (e.g., after context compaction), **read skill files from disk** — they always exist. Product state files live in the **product root** (`.prawduct/` for all repos). In product repos, read `.prawduct/framework-path` to get the framework location.
 
 - **After each chunk:** Read `skills/critic/SKILL.md` and apply all applicable checks
 - **At governance checkpoints:** Read `skills/review-lenses/SKILL.md`, apply Architecture + Skeptic + Testing lenses
@@ -185,7 +201,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 **Built and operational:**
 - Full stage pipeline: Stages 0-6 (Intake, Discovery, Definition, Artifact Generation, Build Planning, Building, Iteration)
 - All core skills: Orchestrator, Domain Analyzer, Artifact Generator (Phases A-D), Builder, Critic (context-sensitive governance), Review Lenses (all five)
-- Product output isolation: product repos use `.prawduct/` subdirectory for all prawduct outputs (state, artifacts, observations, working notes); source code stays at project root; framework repo uses root-level files (self-hosted). All tools detect `.prawduct/` first with fallback to root for backward compatibility.
+- Product output isolation: all repos (including the framework itself) use `.prawduct/` subdirectory for all prawduct outputs (state, artifacts, observations, working notes); source code stays at project root. All tools use `resolve-product-root.sh` for consistent detection.
 - Two-layer classification: 5 structural characteristics for artifact routing (has_human_interface, runs_unattended, exposes_programmatic_interface, has_multiple_party_types, handles_sensitive_data) plus dynamic domain-specific depth via Universal Discovery Dimensions and Structural Amplification Rules
 - Three-layer artifact generation: amplification rules (what to generate) + process constraints (quality properties) + optional template reference (proven structures). All 5 characteristics have amplification rules and process constraints; has_human_interface and runs_unattended additionally have templates as structural reference
 - Observation capture system with triage and session resumption integration; observation backlog available for all projects (not framework-only)
@@ -198,7 +214,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
 - **v1-widen (8 items):** Orchestrator sophistication (pushback, prior art, pacing, reclassification); Critic-Review Lenses integration; Review Lenses variable-depth and rotating emphasis; consumer-mobile-app scenario; Artifact Generator modular artifact updates
 - **v1-validation (3 items):** Full V1 validation (all scenarios end-to-end); Builder parallel execution and incremental builds
-- **v1-new (2 items):** Closed-loop testing MCP server; old prawduct version detection and migration
+- **v1-new (1 item):** Closed-loop testing MCP server
 - **v1.5 (5 items):** C7 Trajectory Monitor; regulatory discovery; cost awareness; accessibility enforcement; agent agnosticism
 
 **C8 (Learning System):** Observation Capture (C8a) is active with mechanical tooling and lifecycle management (status transitions, archiving). Pattern Detection (C8b) is partially built — mechanical detection with tiered thresholds surfaces actionable patterns during session resumption; infrastructure health monitoring detects accumulation, staleness, and archive backlog. Incorporation (C8c-e) is partially built — human-approved incorporation via session resumption act-or-defer decisions, with approved changes following normal Critic governance. Full automated incorporation remains v2 scope.

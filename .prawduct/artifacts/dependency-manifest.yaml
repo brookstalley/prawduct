@@ -1,0 +1,45 @@
+---
+artifact: dependency-manifest
+version: 1
+depends_on:
+  - artifact: product-brief
+  - artifact: data-model
+  - artifact: operational-spec
+depended_on_by: []
+last_validated: 2026-02-16
+---
+
+# MINIMAL: Framework has trivial dependencies — no external libraries, no services, no APIs.
+
+dependencies:
+  - name: bash
+    type: infrastructure
+    justification: "Hook scripts and tool wrappers use bash. Available on all target platforms (macOS, Linux)."
+    alternatives_considered: ["zsh-only (less portable)", "Python-only (slower startup for hooks)"]
+    version: "4.x+"
+    cost: free
+    risk: "Effectively zero — bash is ubiquitous on Unix systems."
+
+  - name: python3
+    type: infrastructure
+    justification: "Tools use Python for YAML parsing, JSON manipulation, and observation analysis. stdlib only — no pip dependencies."
+    alternatives_considered: ["Node.js (adds npm dependency)", "Pure bash (insufficient for YAML/JSON)"]
+    version: "3.8+"
+    cost: free
+    risk: "Low — Python 3 is pre-installed on macOS and most Linux distributions."
+
+  - name: git
+    type: infrastructure
+    justification: "Version control for all framework and project files. Framework distribution mechanism. SHA-based version identification."
+    alternatives_considered: ["None — git is the obvious choice for text file version control."]
+    version: "2.x+"
+    cost: free
+    risk: "Effectively zero — git is universal in software development."
+
+  - name: yq
+    type: infrastructure
+    justification: "Optional. Used by some tools for YAML field extraction. Falls back to Python when unavailable."
+    alternatives_considered: ["Python-only (always available but slower for simple queries)"]
+    version: "4.x"
+    cost: free
+    risk: "Low — optional dependency with Python fallback."

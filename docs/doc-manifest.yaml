@@ -180,6 +180,11 @@ tier_1_directories:
     purpose: "5 templates for runs_unattended: pipeline-architecture, scheduling-spec, monitoring-alerting-spec, failure-recovery-spec, configuration-spec"
     naming: "{artifact-name}.md"
 
+  - path: .prawduct/artifacts/
+    purpose: "Generated prawduct artifacts — LLM-facing structured docs sourced from docs/ with divergence tags"
+    naming: "{artifact-name}.md or .yaml"
+    note: "13 artifacts: product-brief, data-model, nonfunctional-requirements, security-model, test-specifications, operational-spec, dependency-manifest, pipeline-architecture, scheduling-spec, monitoring-alerting-spec, failure-recovery-spec, configuration-spec, api-contract"
+
   - path: scripts/
     purpose: "Eval/validation helper scripts (validate-eval-output.sh, validate-schema.py, check-artifacts.py)"
     note: "May be consolidated into tools/ in a future cleanup"

@@ -188,55 +188,64 @@ design_decisions:
 # artifacts — the equivalent of what user projects store in artifacts/.
 
 artifact_manifest:
-  artifacts:
-    # Core documentation (product definition role)
+  # --- Human-facing documentation (docs/) — tracked for divergence detection ---
+  human_docs:
     - name: vision
       file_path: docs/vision.md
-      role: product-brief
+      role: product-context
       version: 1
-      depends_on: []
-      depended_on_by: [requirements, high-level-design, principles]
       last_validated: 2026-02-11
       tier: 1
     - name: requirements
       file_path: docs/requirements.md
-      role: requirements
+      role: product-context
       version: 1
-      depends_on: [vision]
-      depended_on_by: [high-level-design, principles]
       last_validated: 2026-02-11
       tier: 1
     - name: high-level-design
       file_path: docs/high-level-design.md
-      role: architecture
+      role: product-context
       version: 2
-      depends_on: [vision, requirements, principles]
-      depended_on_by: [orchestrator, domain-analyzer, artifact-generator, review-lenses, critic, builder]
       last_validated: 2026-02-15
       tier: 1
-      notes: "Consolidated: duplicated sections slimmed with pointers to canonical sources (skills, eval methodology, self-improvement arch)"
+      notes: "Consolidated: duplicated sections slimmed with pointers to canonical sources"
     - name: principles
       file_path: docs/principles.md
-      role: principles
+      role: product-context
       version: 1
-      depends_on: [vision]
-      depended_on_by: [high-level-design, orchestrator, domain-analyzer, artifact-generator, review-lenses, critic, builder]
       last_validated: 2026-02-11
       tier: 1
+    - name: self-improvement-architecture
+      file_path: docs/self-improvement-architecture.md
+      role: product-context
+      version: 1
+      last_validated: 2026-02-14
+      tier: 1
+    - name: evaluation-methodology
+      file_path: docs/evaluation-methodology.md
+      role: product-context
+      version: 1
+      last_validated: 2026-02-11
+      tier: 1
+    - name: skill-authoring-guide
+      file_path: docs/skill-authoring-guide.md
+      role: product-context
+      version: 1
+      last_validated: 2026-02-12
+      tier: 1
 
-    # Skills (built component role)
+  # --- Skills — the framework's "code" ---
+  source_components:
     - name: orchestrator
       file_path: skills/orchestrator/SKILL.md
-      role: built-component
       version: 4
       depends_on: [high-level-design, principles]
       depended_on_by: [family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
       last_validated: 2026-02-15
       tier: 1
-      notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, onboarding.md, protocols.md"
+      notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, onboarding.md, migration.md, protocols.md"
     - name: domain-analyzer
       file_path: skills/domain-analyzer/SKILL.md
-      role: built-component
       version: 2
       depends_on: [high-level-design, principles]
       depended_on_by: [orchestrator, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
@@ -244,7 +253,6 @@ artifact_manifest:
       tier: 1
     - name: artifact-generator
       file_path: skills/artifact-generator/SKILL.md
-      role: built-component
       version: 2
       depends_on: [high-level-design, principles]
       depended_on_by: [orchestrator, human-interface-templates, unattended-operation-templates, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
@@ -252,7 +260,6 @@ artifact_manifest:
       tier: 1
     - name: review-lenses
       file_path: skills/review-lenses/SKILL.md
-      role: built-component
       version: 2
       depends_on: [high-level-design, principles]
       depended_on_by: [orchestrator, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
@@ -260,7 +267,6 @@ artifact_manifest:
       tier: 1
     - name: critic
       file_path: skills/critic/SKILL.md
-      role: built-component
       version: 2
       depends_on: [high-level-design, principles]
       depended_on_by: [orchestrator]
@@ -268,17 +274,16 @@ artifact_manifest:
       tier: 1
     - name: builder
       file_path: skills/builder/SKILL.md
-      role: built-component
       version: 1
       depends_on: [high-level-design, principles]
       depended_on_by: [orchestrator]
       last_validated: 2026-02-11
       tier: 1
 
-    # Templates (built component role — the framework's "features")
+  # --- Templates and tools — the framework's "features" ---
+  tooling:
     - name: project-state-template
       file_path: templates/project-state.yaml
-      role: built-component
       version: 1
       depends_on: [high-level-design]
       depended_on_by: []
@@ -286,7 +291,6 @@ artifact_manifest:
       tier: 1
     - name: human-interface-templates
       file_path: templates/human-interface/
-      role: built-component
       version: 1
       depends_on: [artifact-generator]
       depended_on_by: []
@@ -294,16 +298,110 @@ artifact_manifest:
       tier: 1
     - name: unattended-operation-templates
       file_path: templates/unattended-operation/
-      role: built-component
       version: 1
       depends_on: [artifact-generator]
       depended_on_by: []
       last_validated: 2026-02-11
       tier: 1
-    # Test scenarios (test specification role)
+
+  # --- Generated prawduct artifacts — LLM-facing structured docs ---
+  artifacts:
+    - name: product-brief
+      file_path: .prawduct/artifacts/product-brief.md
+      version: 1
+      depends_on: [project-state]
+      depended_on_by: [data-model, security-model, test-specifications, nonfunctional-requirements, pipeline-architecture, api-contract, dependency-manifest]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: data-model
+      file_path: .prawduct/artifacts/data-model.md
+      version: 1
+      depends_on: [product-brief]
+      depended_on_by: [test-specifications, security-model, api-contract, dependency-manifest]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: nonfunctional-requirements
+      file_path: .prawduct/artifacts/nonfunctional-requirements.md
+      version: 1
+      depends_on: [product-brief]
+      depended_on_by: [operational-spec, scheduling-spec, monitoring-alerting-spec]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: security-model
+      file_path: .prawduct/artifacts/security-model.md
+      version: 1
+      depends_on: [product-brief, data-model]
+      depended_on_by: [test-specifications, operational-spec]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: test-specifications
+      file_path: .prawduct/artifacts/test-specifications.md
+      version: 1
+      depends_on: [product-brief, data-model, security-model]
+      depended_on_by: []
+      last_validated: 2026-02-16
+      tier: 1
+    - name: operational-spec
+      file_path: .prawduct/artifacts/operational-spec.md
+      version: 1
+      depends_on: [nonfunctional-requirements, security-model]
+      depended_on_by: [dependency-manifest]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: dependency-manifest
+      file_path: .prawduct/artifacts/dependency-manifest.yaml
+      version: 1
+      depends_on: [product-brief, data-model, operational-spec]
+      depended_on_by: []
+      last_validated: 2026-02-16
+      tier: 1
+    - name: pipeline-architecture
+      file_path: .prawduct/artifacts/pipeline-architecture.md
+      version: 1
+      depends_on: [product-brief]
+      depended_on_by: [scheduling-spec, monitoring-alerting-spec, failure-recovery-spec, configuration-spec]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: scheduling-spec
+      file_path: .prawduct/artifacts/scheduling-spec.md
+      version: 1
+      depends_on: [pipeline-architecture, nonfunctional-requirements]
+      depended_on_by: [monitoring-alerting-spec, configuration-spec]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: monitoring-alerting-spec
+      file_path: .prawduct/artifacts/monitoring-alerting-spec.md
+      version: 1
+      depends_on: [pipeline-architecture, scheduling-spec, nonfunctional-requirements]
+      depended_on_by: [failure-recovery-spec]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: failure-recovery-spec
+      file_path: .prawduct/artifacts/failure-recovery-spec.md
+      version: 1
+      depends_on: [pipeline-architecture, monitoring-alerting-spec]
+      depended_on_by: [configuration-spec]
+      last_validated: 2026-02-16
+      tier: 1
+    - name: configuration-spec
+      file_path: .prawduct/artifacts/configuration-spec.md
+      version: 1
+      depends_on: [pipeline-architecture, failure-recovery-spec]
+      depended_on_by: []
+      last_validated: 2026-02-16
+      tier: 1
+    - name: api-contract
+      file_path: .prawduct/artifacts/api-contract.md
+      version: 1
+      depends_on: [product-brief, data-model]
+      depended_on_by: []
+      last_validated: 2026-02-16
+      tier: 1
+
+  # --- Evaluation scenarios ---
+  test_specs:
     - name: family-utility-scenario
       file_path: tests/scenarios/family-utility.md
-      role: test-specification
       version: 2
       depends_on: [orchestrator, domain-analyzer, artifact-generator, review-lenses]
       depended_on_by: []
@@ -311,7 +409,6 @@ artifact_manifest:
       tier: 1
     - name: background-data-pipeline-scenario
       file_path: tests/scenarios/background-data-pipeline.md
-      role: test-specification
       version: 1
       depends_on: [orchestrator, domain-analyzer, artifact-generator, review-lenses]
       depended_on_by: []
@@ -319,7 +416,6 @@ artifact_manifest:
       tier: 1
     - name: terminal-arcade-game-scenario
       file_path: tests/scenarios/terminal-arcade-game.md
-      role: test-specification
       version: 1
       depends_on: [orchestrator, domain-analyzer, artifact-generator, review-lenses]
       depended_on_by: []
@@ -685,6 +781,52 @@ change_log:
       (remaining_work, change_log)
     classification: functional
     date: 2026-02-16
+  - what: 'Full self-hosting: generate 13 prawduct artifacts for the framework, restructure manifest into 5 categories'
+    why: 'Framework declared itself self-hosted (Stage 6, iteration) with structural characteristics runs_unattended
+      and exposes_programmatic_interface, but had zero generated artifacts in .prawduct/artifacts/. Coexistence strategy:
+      existing docs serve humans, prawduct artifacts serve the LLM, project-state.yaml bridges both. Generated all 13
+      artifacts (7 universal + 5 runs_unattended + 1 exposes_programmatic_interface) with source tags (<!-- sourced: -->)
+      for divergence detection. Restructured artifact_manifest from flat list into 5 categories: human_docs,
+      source_components, tooling, artifacts, test_specs. Updated governance hooks to govern .prawduct/artifacts/ edits.
+      4 artifacts marked MINIMAL per applicability assessment (security-model, operational-spec, dependency-manifest,
+      scheduling-spec).'
+    blast_radius: .prawduct/artifacts/ (13 new files), .prawduct/project-state.yaml (manifest restructure, change_log),
+      .claude/hooks/governance-gate.sh, .claude/hooks/governance-tracker.sh, CLAUDE.md (project structure tree),
+      docs/doc-manifest.yaml
+    classification: directional
+    date: 2026-02-16
+    retrospective: 'Parallel generation via 5 background agents was efficient (all 13 artifacts
+      produced in ~3 minutes) but caused depended_on_by drift — 12 inconsistencies where the
+      denormalized inverse of depends_on was wrong. Root cause: each agent independently wrote
+      depended_on_by based on plan-time estimates without post-generation validation. Fixed in
+      Phase 4 consistency check, but the pattern will recur on every multi-artifact generation.
+      The manifest restructure (flat list → 5 categories) was clean and the data model held up
+      well — every framework concept mapped to an artifact without forcing. The MINIMAL applicability
+      assessment was appropriate: security-model, operational-spec, dependency-manifest, and
+      scheduling-spec are genuinely minimal for an LLM instruction framework. Content gaps in
+      test-specifications (missing Skill/EvaluationResult entity coverage, tool CLI coverage) are
+      expected for v1 and align with existing observation backlog items. Key learning: depended_on_by
+      is a denormalized cache that should either be mechanically validated or dropped from frontmatter
+      entirely in favor of on-demand computation from depends_on.'
+  - what: 'Existing repo integration: migrate framework to .prawduct/, enhanced state detection, migration skill, doc ingestion, divergence detection'
+    why: 'Framework repo used root-level files (self-hosted special case) while product repos used .prawduct/ — this inconsistency
+      meant the framework couldn''t validate its own integration tooling. Additionally, existing repo onboarding lacked systematic
+      doc ingestion, migration implementation, partial-state recovery, and divergence detection. Changes: (1) Moved framework''s
+      project-state.yaml, framework-observations/, working-notes/ into .prawduct/. (2) Fixed hardcoded paths in update-observation-status.sh
+      and critic-reminder.sh to use resolve-product-root.sh. (3) Updated governance hooks for .prawduct/ paths. (4) Enhanced
+      prawduct-init.py with classified existing_docs (readme, architecture, api_specs), content_state extraction, onboarding_in_progress
+      detection, schema_version_raw field, and v0.5 version detection fix. (5) Created migration.md with three migration tiers
+      (v1→v2 lightweight, v0.5→v2 moderate, v0→v2 heavy re-analysis). (6) Extended onboarding.md with Phase 1g doc mapping,
+      source-tagged artifact generation, and .onboarding-state.json for interrupted onboarding. (7) Extended Orchestrator routing
+      for interrupted onboarding, doc-enriched onboarding, migration tiers, partial onboarding resume, and divergence checks.
+      (8) Added mechanical divergence detection to session-health-check.sh (source commits since last artifact update, staleness
+      threshold).'
+    blast_radius: tools/update-observation-status.sh, tools/critic-reminder.sh, tools/prawduct-init.py,
+      tools/session-health-check.sh, .claude/hooks/governance-gate.sh, .claude/hooks/governance-tracker.sh,
+      skills/orchestrator/SKILL.md, skills/orchestrator/onboarding.md, skills/orchestrator/migration.md (new),
+      .prawduct/project-state.yaml, CLAUDE.md
+    classification: directional
+    date: 2026-02-16
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.
@@ -757,10 +899,7 @@ build_plan:
       phase: v1-new
       skill: builder
     # Removed: "Existing project onboarding" — implemented: onboarding.md with 4-phase process (codebase analysis, user confirmation, artifact generation, enter iteration) (2026-02-15)
-    - item: "Old prawduct version migration"
-      description: "LLM-assisted content migration for old project-state.yaml schemas (v0, v0.5, v1). Version detection is mechanical (prawduct-init.py). Migration needs LLM reasoning to map old fields to current schema, preserve user content, and handle structural changes."
-      phase: v1-new
-      skill: orchestrator
+    # Removed: "Old prawduct version migration" — implemented: migration.md with 3-tier process (v1→v2 lightweight, v0.5→v2 moderate, v0→v2 re-analysis) + enhanced prawduct-init.py state detection (2026-02-16)
     # --- v1.5 (5 items) ---
     - item: "C7 Trajectory Monitor as dedicated component"
       description: "Full trajectory management beyond governance checkpoints and cross-chunk reviews; dedicated monitoring component"

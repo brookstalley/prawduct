@@ -1,0 +1,16 @@
+---
+observation_id: a39668fc-45f7-413b-bd7b-ef633383f28c
+timestamp: 2026-02-16T21:57:40Z
+session_type: framework_dev
+session_context:
+  framework_version: d405fd2
+observations:
+  - type: process_friction
+    severity: note
+    description: "depended_on_by drift during parallel artifact generation: 12 inconsistencies in frontmatter and manifest because agents independently set depended_on_by without validating against depends_on inverse"
+    evidence: "Cross-artifact consistency audit found 12 mismatches between depends_on and depended_on_by across artifact files and project-state.yaml manifest"
+    proposed_action: "Consider mechanical validation of depended_on_by as inverse of depends_on during artifact generation, or drop depended_on_by from frontmatter and compute on demand"
+    status: noted
+skills_affected:
+  - "skills/artifact-generator/SKILL.md"
+---

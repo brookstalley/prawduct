@@ -153,8 +153,9 @@ FRAMEWORK_PATTERNS=(
     "tools/"
     ".claude/hooks/"
     ".claude/settings.json"
-    "framework-observations/README.md"
-    "framework-observations/schema.yaml"
+    ".prawduct/framework-observations/README.md"
+    ".prawduct/framework-observations/schema.yaml"
+    ".prawduct/artifacts/"
 )
 
 is_framework_file=false
