@@ -10,7 +10,9 @@
 #   - stdout: plain text injected into Claude's context
 #   - exit 0: always
 
-set -euo pipefail
+# No set -e or pipefail: hooks must never exit silently on any bash version.
+# -u catches undefined variable typos.
+set -u
 
 FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 

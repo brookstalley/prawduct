@@ -78,7 +78,9 @@ prawduct/
 │   ├── compact-project-state.py       # Mechanical compaction of growing project-state.yaml sections per LIFECYCLE rules
 │   ├── compact-project-state.sh       # Bash wrapper for compact-project-state.py
 │   ├── resolve-product-root.sh        # Shared product root detection (.prawduct/ first, then repo root)
-│   └── obs_utils.py                   # Shared Python module: observation parsing, thresholds, pattern detection
+│   ├── obs_utils.py                   # Shared Python module: observation parsing, thresholds, pattern detection
+│   ├── prawduct-init.sh               # Bash wrapper for prawduct-init.py
+│   └── prawduct-init.py               # Mechanical prawduct integration: setup, repair, settings.json merging
 ├── scripts/                           # Eval/validation helper scripts
 │   ├── validate-eval-output.sh        # Mechanical validation for evaluation output
 │   ├── validate-schema.py             # Validate project-state.yaml against template

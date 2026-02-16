@@ -11,7 +11,9 @@
 #   - stdout: JSON with additionalContext (only for activation reminder)
 #   - exit 0: always (UserPromptSubmit hooks don't block)
 
-set -euo pipefail
+# No set -e or pipefail: hooks must never exit silently on any bash version.
+# -u catches undefined variable typos.
+set -u
 
 # --- Resolve paths ---
 

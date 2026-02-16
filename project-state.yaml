@@ -669,6 +669,22 @@ change_log:
       estimated for hooks) due to inherent shell wrapper overhead. Generalization: "defense-in-depth where
       defense-in-one suffices" pattern should be watched for in future governance additions. The 3-tier DCP
       should reduce temptation to add uniform heavyweight process.'
+  - what: 'Mechanical prawduct integration tool: prawduct-init.sh/.py for idempotent setup and repair'
+    why: 'Adding prawduct to existing repos was a purely instructional process — 5 conditions with
+      sub-conditions in Orchestrator SKILL.md that mixed mechanical work (create dirs, write files)
+      with LLM work (analyze codebase, interact with user). Setup was unreliable across compactions,
+      settings.json generation overwrote user hooks, no framework version tracking, no idempotent
+      repair. New tool handles all infrastructure mechanically: creates .prawduct/, framework-path,
+      framework-version, CLAUDE.md bootstrap, settings.json hook merging (preserves user hooks).
+      Self-hosted safety prevents modifying the framework repo. Schema version detection (v0/v0.5/v1/v2)
+      enables migration routing. Orchestrator Step 1 simplified from ~30 lines complex conditionals
+      to ~15 lines calling tool + routing on next_action.'
+    blast_radius: tools/prawduct-init.sh (new), tools/prawduct-init.py (new),
+      skills/orchestrator/SKILL.md (Step 1 rewritten), skills/orchestrator/onboarding.md (Phase 3
+      opening simplified, stale condition 3 reference fixed), CLAUDE.md (project tree), project-state.yaml
+      (remaining_work, change_log)
+    classification: functional
+    date: 2026-02-16
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.
@@ -741,8 +757,8 @@ build_plan:
       phase: v1-new
       skill: builder
     # Removed: "Existing project onboarding" — implemented: onboarding.md with 4-phase process (codebase analysis, user confirmation, artifact generation, enter iteration) (2026-02-15)
-    - item: "Old prawduct version detection and migration"
-      description: "Detect old prawduct project-state.yaml schemas and artifact structures during Session Resumption. Enter migration mode to map old artifacts to current structure. Add version field to project-state.yaml template."
+    - item: "Old prawduct version migration"
+      description: "LLM-assisted content migration for old project-state.yaml schemas (v0, v0.5, v1). Version detection is mechanical (prawduct-init.py). Migration needs LLM reasoning to map old fields to current schema, preserve user content, and handle structural changes."
       phase: v1-new
       skill: orchestrator
     # --- v1.5 (5 items) ---

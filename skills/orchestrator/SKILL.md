@@ -6,36 +6,18 @@ The Orchestrator manages the overall Prawduct process — from first user input 
 
 This is the default skill. When using Prawduct to build a user's product:
 
-1. **Establish the project directory.** Check these conditions in order; stop at the first match:
+1. **Establish the project directory.**
+   a. Determine target: CWD unless user specified a different directory.
+   b. Run `tools/prawduct-init.sh --json <target_dir>` to detect and repair integration state. This creates `.prawduct/`, `framework-path`, `framework-version`, `CLAUDE.md` bootstrap, and `.claude/settings.json` with hooks as needed. It is idempotent — safe to run on already-configured repos.
+   c. Route based on the JSON output's `next_action` field:
+      - `"onboarding"` → Fresh repo with no project-state.yaml. If the user describes a **new product idea**, ask for a project name (genuine blocking question — the framework needs a directory name; if no preference, derive a slug like "family-scorekeeper"), create `.prawduct/` in the named directory, and proceed to Step 2. If the user has an **existing codebase**, activate governance (Step 3), initialize governance tracking (Step 4), then read `skills/orchestrator/onboarding.md` and follow its process (skip Steps 2 and 5-6).
+      - `"migration"` → Old project-state.yaml schema detected. Present a migration summary to the user, then perform LLM-assisted content migration to the current schema. Proceed to Step 2 after migration.
+      - `"session_resumption"` → Everything is healthy. Continue to Step 2.
+   d. If the scenario is `"self_hosted"`, this is the prawduct framework repo. The **product root** is the repo root. Proceed to Step 2.
 
-   1. Does `.prawduct/project-state.yaml` exist in the current directory?
-      a. YES + user describes a NEW product → Create a separate directory for the new product with `.prawduct/` inside it.
-      b. YES + not a new product → This is a returning product session. The **product root** is `.prawduct/` within this directory. Proceed.
-   2. Does `project-state.yaml` exist at the repo root (no `.prawduct/`)?
-      a. YES + this is the prawduct framework repo → Self-hosted. The **product root** is the repo root. Proceed.
-      b. YES + user describes a NEW product → Create a separate directory for the new product with `.prawduct/` inside it.
-      c. YES + not a new product → Check `schema_version`. Current version: product root is the repo root (legacy layout). Old/missing version: enter Migration Mode (see Existing Project Onboarding section in working-notes). Legacy-layout products continue to work — migration to `.prawduct/` is offered in a future phase.
-   3. No `project-state.yaml` anywhere + CWD contains project signals (source code, package.json, Cargo.toml, go.mod, requirements.txt, etc.) and is NOT the prawduct repo → **Onboarding Mode**: activate governance (write current ISO-8601 timestamp to `.claude/.orchestrator-activated`), initialize governance tracking (Step 4), then read `skills/orchestrator/onboarding.md` and follow its process. Onboarding handles Steps 2 and 5-6 internally — skip them.
-   4. No `project-state.yaml` + user specified a directory → Create `.prawduct/` within it.
-   5. None of the above → Ask the user where project files should go, then create `.prawduct/` there.
+   **Project naming for new directories:** When creating a new product directory, ask the user what to call the project. Example: "What would you like to call this project?" If the user has no preference, derive a short slug from their description and tell them: "I'll call it [slug] — you can rename it anytime." After naming, run `tools/prawduct-init.sh --json <new_dir>` to set up infrastructure in the new directory.
 
-   **Project naming:** When creating a new project directory (conditions 1a, 2b, 4, or 5), ask the user what to call the project before creating any files. This is a genuine blocking question — the framework needs a directory name. Example: "What would you like to call this project?" If the user has no preference, derive a short slug from their description (e.g., "family-scorekeeper") and tell them: "I'll call it [slug] — you can rename it anytime."
-
-   **Bootstrap files:** When creating a new product directory (conditions 1a, 2b, 4, or 5), generate three bootstrap files so the product repo works as a standalone Claude Code project:
-   1. **`.prawduct/framework-path`** — Write the absolute path to the prawduct framework directory (where this skill file lives). Plain text, single line, no trailing newline.
-   2. **`CLAUDE.md`** — Minimal bootstrap that tells Claude to read the framework-path file, then read the Orchestrator skill from the framework. Content:
-      ```
-      # [Project Name]
-
-      ## Setup
-      This project uses the Prawduct framework.
-      Framework location: read `.prawduct/framework-path` for the absolute path.
-
-      ## Instructions
-      Before taking any action, read the framework path from `.prawduct/framework-path`,
-      then read `<framework-path>/skills/orchestrator/SKILL.md` and follow its activation process.
-      ```
-   3. **`.claude/settings.json`** — Hook configuration with absolute paths to framework hooks. Generate from the framework's own `.claude/settings.json`, replacing relative hook paths with absolute paths using the framework directory.
+   **Bootstrap files** are created mechanically by `tools/prawduct-init.sh`. See the tool's source for the exact content generated (`.prawduct/framework-path`, `CLAUDE.md` with activation bootstrap, `.claude/settings.json` with framework hooks merged alongside any existing user hooks).
 
    **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, `working-notes/`, or `framework-observations/`, those paths are in the **product root**. For product repos, the product root is `.prawduct/` within the project directory. For the framework repo (self-hosted), the product root is the repo root. When skills reference other skills (`skills/...`), templates (`templates/...`), tools (`tools/...`), or scripts (`scripts/...`), those are read from the prawduct framework directory. In product repos, the framework directory is stored in `.prawduct/framework-path`. When skills reference source code (`build_state.source_root`), that path is relative to the project directory (not `.prawduct/`).
 2. Read `project-state.yaml` in the product root. If it doesn't exist, this is a new project — create `.prawduct/` (if not already present), then copy the prawduct framework's `templates/project-state.yaml` into it.

@@ -4,3 +4,4 @@
 .claude/.session-edits.json
 .claude/.orchestrator-activated
 .claude/.session-governance.json
+__pycache__/

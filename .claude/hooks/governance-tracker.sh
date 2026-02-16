@@ -12,7 +12,9 @@
 #   - stdout: empty JSON or nothing (no advisory messages)
 #   - exit 0: always (PostToolUse hooks are advisory, not blocking)
 
-set -euo pipefail
+# No set -e or pipefail: hooks must never exit silently on any bash version.
+# -u catches undefined variable typos.
+set -u
 
 # Read the hook input JSON from stdin
 input=$(cat)

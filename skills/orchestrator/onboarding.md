@@ -4,7 +4,7 @@ Onboarding Mode reverse-engineers an existing codebase into prawduct artifacts s
 
 ## When This File Is Read
 
-The Orchestrator routes here from SKILL.md condition 3: no `project-state.yaml` anywhere, CWD contains project signals, and CWD is not the prawduct framework repo. The Orchestrator has already confirmed this is an existing codebase needing onboarding.
+The Orchestrator routes here from SKILL.md Step 1c when `prawduct-init.sh` reports `next_action: "onboarding"` and the user has an existing codebase (not a new product idea). The Orchestrator has already confirmed this is an existing codebase needing onboarding, and `prawduct-init.sh` has created the `.prawduct/` directory and bootstrap files.
 
 ---
 
@@ -108,7 +108,7 @@ Present the analysis as a readable summary. This is a **genuine blocking questio
 
 ## Phase 3: Artifact Generation
 
-Create `.prawduct/` in the project directory. Generate bootstrap files (`.prawduct/framework-path`, `CLAUDE.md`, `.claude/settings.json`) as described in the Orchestrator's "Bootstrap files" section. Then generate prawduct artifacts from the confirmed analysis.
+Bootstrap infrastructure (`.prawduct/`, `framework-path`, `CLAUDE.md`, `.claude/settings.json`) has been created by `prawduct-init.sh` during Orchestrator activation. Generate prawduct artifacts from the confirmed analysis.
 
 ### 3a. Project State
 

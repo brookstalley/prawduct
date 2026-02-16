@@ -16,7 +16,9 @@
 #   - exit 0: allow Claude to stop
 #   - exit 2: block Claude from stopping (stderr message shown)
 
-set -euo pipefail
+# No set -e or pipefail: hooks must never exit silently on any bash version.
+# -u catches undefined variable typos.
+set -u
 
 # --- Resolve paths ---
 
