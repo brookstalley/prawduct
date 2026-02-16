@@ -883,7 +883,7 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
     # Created for both product repos and framework repo (framework uses .prawduct/ too)
     c = check_prawduct_dir(target, mode)
     checks.append(c)
-    if c["status"] == "created":
+    if c["status"] in ("created", "missing"):
         if not self_hosted:
             scenario = "fresh"
 
