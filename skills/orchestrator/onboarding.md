@@ -73,6 +73,25 @@ Infer from:
 - User count signals (analytics configs, scaling configs)
 - Regulatory signals (compliance configs, data residency)
 
+### 1g. Documentation Mapping
+
+**When:** `prawduct-init.sh` reported `existing_docs` with content (especially `architecture`, `api_specs`, or large `readme`).
+
+Use the classified doc inventory from `prawduct-init.sh` output to prioritize reading:
+
+1. **Architecture and design docs** (`existing_docs.architecture`) — highest value. Read fully. These provide the clearest picture of intended system structure, which may differ from what the code shows today.
+2. **API specifications** (`existing_docs.api_specs`) — read fully. OpenAPI/GraphQL/protobuf files are precise and map directly to the `exposes_programmatic_interface` characteristic.
+3. **README** (`existing_docs.readme`) — read fully. Primary source for product purpose, setup, and intended audience.
+4. **docs/ directory** (`existing_docs.docs_dir`) — read selectively. Skip contribution guides, setup docs, and meeting notes. Prioritize anything describing features, architecture, or user flows.
+5. **Existing CLAUDE.md** — if `existing_docs.claude_md_content_bytes > 0`, read it for project-specific instructions, conventions, and context that should be preserved (not overwritten by the prawduct bootstrap).
+
+**Record per doc:**
+- Which prawduct artifact it maps to (e.g., architecture doc → product brief + data model)
+- What product knowledge it provides (e.g., "describes the auth flow and user roles")
+- Apparent freshness (recent git modifications vs stale)
+
+**Principle:** Existing docs are more authoritative than code inference for "what does this product do" and "why was it built this way." Code is more authoritative for "what does it actually do right now." When they conflict, note the discrepancy — code wins for current state, docs win for intent.
+
 ---
 
 ## Phase 2: User Confirmation
@@ -128,7 +147,21 @@ Create `.prawduct/project-state.yaml` from the framework template (`templates/pr
 
 ### 3b. Artifacts
 
-Generate artifacts in `.prawduct/artifacts/`. For each artifact, mark inferred sections: "Inferred from codebase analysis — verify with product owner."
+Generate **complete standalone artifacts** in `.prawduct/artifacts/`. Each artifact must stand alone — incorporate content from existing docs rather than referencing them.
+
+**Source tagging:** When artifact content is derived from an existing doc, tag the section:
+```markdown
+<!-- sourced: docs/architecture.md, 2026-02-16 -->
+```
+This enables divergence detection during Session Resumption (compare git timestamps of source doc vs artifact). No active sync is required — divergence is detected mechanically.
+
+**When existing docs conflict with code:** Note the discrepancy in the artifact. Code wins for describing current state; docs win for describing intent. Example:
+```markdown
+> **Note:** `docs/architecture.md` describes a microservices architecture, but the codebase
+> is currently a monolith. This may indicate planned migration or stale documentation.
+```
+
+For each artifact, mark inferred sections: "Inferred from codebase analysis — verify with product owner."
 
 **Always generate (universal artifacts):**
 
@@ -171,6 +204,36 @@ Populate `artifact_manifest.artifacts` in project-state.yaml with all generated 
 > You're now in iteration mode. Tell me what you want to change or build next, and the framework will govern the changes."
 
 3. The user can now iterate on their product with full prawduct governance (Critic reviews, artifact updates, test tracking).
+
+---
+
+## Onboarding State Tracking
+
+Onboarding can be interrupted (context compaction, session end, user pause). Track progress in `.prawduct/.onboarding-state.json`:
+
+```json
+{
+  "started": "2026-02-16T10:00:00Z",
+  "current_phase": 2,
+  "phase_1_complete": true,
+  "phase_2_complete": false,
+  "analysis_cache": {
+    "tech_stack": { "languages": ["typescript"], "frameworks": ["react", "express"] },
+    "structural_characteristics": { "has_human_interface": true, "runs_unattended": false },
+    "doc_mapping": [
+      { "doc": "docs/architecture.md", "maps_to": "product-brief", "freshness": "recent" }
+    ]
+  }
+}
+```
+
+**Write** this file at each phase transition (after Phase 1 completes, after Phase 2 completes, etc.).
+
+**Read on re-entry:** When the Orchestrator routes here and `prawduct-init.sh` reports `onboarding_in_progress` is not null, skip completed phases:
+- If `phase_1_complete` is true, skip Phase 1 and use `analysis_cache` for Phase 2
+- If `phase_2_complete` is true, skip Phase 2 and proceed to Phase 3
+
+**Delete** the file when Phase 4 completes (onboarding finished).
 
 ---
 

@@ -35,13 +35,10 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-if [[ -z "$REPO_ROOT" ]]; then
-    echo "Error: Not in a git repository." >&2
-    exit 1
-fi
+# Resolve product root (shared detection logic)
+source "$SCRIPT_DIR/resolve-product-root.sh"
 
-OBS_DIR="$REPO_ROOT/framework-observations"
+OBS_DIR="$PRODUCT_ROOT/framework-observations"
 ARCHIVE_DIR="$OBS_DIR/archive"
 
 # Valid statuses in lifecycle order (index = rank)

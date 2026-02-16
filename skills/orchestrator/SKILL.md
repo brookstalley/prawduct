@@ -9,17 +9,21 @@ This is the default skill. When using Prawduct to build a user's product:
 1. **Establish the project directory.**
    a. Determine target: CWD unless user specified a different directory.
    b. Run `tools/prawduct-init.sh --json <target_dir>` to detect and repair integration state. This creates `.prawduct/`, `framework-path`, `framework-version`, `CLAUDE.md` bootstrap, and `.claude/settings.json` with hooks as needed. It is idempotent — safe to run on already-configured repos.
-   c. Route based on the JSON output's `next_action` field:
-      - `"onboarding"` → Fresh repo with no project-state.yaml. If the user describes a **new product idea**, ask for a project name (genuine blocking question — the framework needs a directory name; if no preference, derive a slug like "family-scorekeeper"), create `.prawduct/` in the named directory, and proceed to Step 2. If the user has an **existing codebase**, activate governance (Step 3), initialize governance tracking (Step 4), then read `skills/orchestrator/onboarding.md` and follow its process (skip Steps 2 and 5-6).
-      - `"migration"` → Old project-state.yaml schema detected. Present a migration summary to the user, then perform LLM-assisted content migration to the current schema. Proceed to Step 2 after migration.
-      - `"session_resumption"` → Everything is healthy. Continue to Step 2.
-   d. If the scenario is `"self_hosted"`, this is the prawduct framework repo. The **product root** is the repo root. Proceed to Step 2.
+   c. Route based on the JSON output's `next_action` and supplementary fields:
+      - `"onboarding"` + `onboarding_in_progress != null` → Interrupted onboarding detected. Activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/onboarding.md` and resume at the saved phase (skip completed phases using the cached state).
+      - `"onboarding"` + `existing_docs.total_doc_bytes > 0` → Existing codebase with documentation. If the user describes a **new product idea**, ask for a project name and proceed to Step 2. If the user has an **existing codebase**, activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/onboarding.md` — the doc-enriched flow uses the classified `existing_docs` to prioritize reading (Phase 1g).
+      - `"onboarding"` (no docs, no interrupted state) → Fresh repo with no project-state.yaml. Same as doc-enriched path but Phase 1g will be minimal.
+      - `"migration"` + `schema_version_raw: "v1"` → Lightweight migration. Activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/migration.md` and follow Tier 1.
+      - `"migration"` + `schema_version_raw: "v0"` or `"v0.5"` → Heavy migration requiring re-analysis. Activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/migration.md` and follow the appropriate tier.
+      - `"session_resumption"` + `content_state.onboarding_completeness: "partial"` → Infra exists but onboarding incomplete. Offer the user a choice: resume onboarding or start iterating with what exists.
+      - `"session_resumption"` (normal) → Everything is healthy. Continue to Step 2.
+   d. If the scenario is `"self_hosted"`, this is the prawduct framework repo. The **product root** is `.prawduct/`. Proceed to Step 2.
 
    **Project naming for new directories:** When creating a new product directory, ask the user what to call the project. Example: "What would you like to call this project?" If the user has no preference, derive a short slug from their description and tell them: "I'll call it [slug] — you can rename it anytime." After naming, run `tools/prawduct-init.sh --json <new_dir>` to set up infrastructure in the new directory.
 
    **Bootstrap files** are created mechanically by `tools/prawduct-init.sh`. See the tool's source for the exact content generated (`.prawduct/framework-path`, `CLAUDE.md` with activation bootstrap, `.claude/settings.json` with framework hooks merged alongside any existing user hooks).
 
-   **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, `working-notes/`, or `framework-observations/`, those paths are in the **product root**. For product repos, the product root is `.prawduct/` within the project directory. For the framework repo (self-hosted), the product root is the repo root. When skills reference other skills (`skills/...`), templates (`templates/...`), tools (`tools/...`), or scripts (`scripts/...`), those are read from the prawduct framework directory. In product repos, the framework directory is stored in `.prawduct/framework-path`. When skills reference source code (`build_state.source_root`), that path is relative to the project directory (not `.prawduct/`).
+   **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, `working-notes/`, or `framework-observations/`, those paths are in the **product root**. For both product repos and the framework repo, the product root is `.prawduct/` within the project directory. When skills reference other skills (`skills/...`), templates (`templates/...`), tools (`tools/...`), or scripts (`scripts/...`), those are read from the prawduct framework directory. In product repos, the framework directory is stored in `.prawduct/framework-path`. When skills reference source code (`build_state.source_root`), that path is relative to the project directory (not `.prawduct/`).
 2. Read `project-state.yaml` in the product root. If it doesn't exist, this is a new project — create `.prawduct/` (if not already present), then copy the prawduct framework's `templates/project-state.yaml` into it.
 3. **Activate governance.** Write the current ISO-8601 timestamp to `.claude/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The governance-gate hook blocks governed file edits without this marker — see HR9.)
 4. **Initialize governance tracking.** Create `.claude/.session-governance.json` to enable mechanical governance enforcement for all projects:
@@ -53,7 +57,7 @@ This is the default skill. When using Prawduct to build a user's product:
      }
    }
    ```
-   `product_dir` is the project root (where `.claude/` lives, where source code is written). `product_output_dir` is where prawduct outputs live (`.prawduct/` for product repos, same as `product_dir` for the framework repo). This file is read by unified mechanical hooks (governance-gate, governance-tracker, governance-stop, governance-prompt) that block file edits when chunks lack review, track framework edits for Critic coverage, inject governance reminders, and block session completion when critical debt exists. The SessionStart hook clears it on `/clear` or new startup.
+   `product_dir` is the project root (where `.claude/` lives, where source code is written). `product_output_dir` is where prawduct outputs live (`.prawduct/` for all repos including the framework). This file is read by unified mechanical hooks (governance-gate, governance-tracker, governance-stop, governance-prompt) that block file edits when chunks lack review, track framework edits for Critic coverage, inject governance reminders, and block session completion when critical debt exists. The SessionStart hook clears it on `/clear` or new startup.
 5. Check `current_stage` to determine where we are.
 6. Read the appropriate stage sub-file and follow its instructions (see Stage Routing Table below).
 
@@ -76,6 +80,7 @@ Read the sub-file for the current stage. Each sub-file is self-contained for its
 | `current_stage` | Sub-file | Stages covered |
 |-----------------|----------|----------------|
 | (no stage — onboarding) | `skills/orchestrator/onboarding.md` | Onboarding Mode |
+| (migration detected) | `skills/orchestrator/migration.md` | Schema Migration |
 | `intake` | `skills/orchestrator/stages-0-2.md` | Stage 0: Intake & Triage |
 | `discovery` | `skills/orchestrator/stages-0-2.md` | Stage 1: Discovery |
 | `definition` | `skills/orchestrator/stages-0-2.md` | Stage 2: Product Definition |
@@ -107,9 +112,10 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 **Goal:** Recover session context, surface anything requiring attention, and orient the user.
 
 **Steps:**
-1. **Locate product root and load state.** Check `.prawduct/project-state.yaml` first (product root = `.prawduct/`), then root `project-state.yaml` (framework repo: product root = repo root; legacy product: product root = repo root). Read `project-state.yaml` to recover stage, decisions, artifacts, and pending work. Refresh the governance marker (write timestamp to `.claude/.orchestrator-activated`).
-2. **Run `tools/session-health-check.sh`** for infrastructure health, actionable patterns, and backlog status.
-3. **Orient the user.** Summarize where we left off, surface anything needing attention (actionable patterns, state warnings, documentation staleness, infrastructure health), and continue from the current stage.
+1. **Locate product root and load state.** Check `.prawduct/project-state.yaml` first (product root = `.prawduct/`), then root `project-state.yaml` (legacy product: product root = repo root). Read `project-state.yaml` to recover stage, decisions, artifacts, and pending work. Refresh the governance marker (write timestamp to `.claude/.orchestrator-activated`).
+2. **Run `tools/session-health-check.sh`** for infrastructure health, actionable patterns, backlog status, and divergence signals.
+   - **2b. Divergence check:** If the health check reports divergence signals (source commits since last artifact update), or if the last session was >7 days ago, or if the framework version changed: flag to the user. If 10+ source commits since last `.prawduct/` update, offer a consistency review (re-read changed docs, spot-check code against artifacts).
+3. **Orient the user.** Summarize where we left off, surface anything needing attention (actionable patterns, state warnings, divergence signals, infrastructure health), and continue from the current stage.
 
 **Constraints — do not skip these:**
 - If `.claude/.session-governance.json` is missing but a build is active, recreate it from `project-state.yaml` state.

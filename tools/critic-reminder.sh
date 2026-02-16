@@ -49,8 +49,8 @@ FRAMEWORK_PATTERNS=(
     "tools/"
     ".claude/hooks/"
     ".claude/settings.json"
-    "framework-observations/README.md"
-    "framework-observations/schema.yaml"
+    ".prawduct/framework-observations/README.md"
+    ".prawduct/framework-observations/schema.yaml"
 )
 
 check_mode="${1:-staged}"
@@ -173,8 +173,12 @@ if [[ "$critic_evidence" == false ]]; then
     fi
 
     today=$(date +%Y-%m-%d)
-    if ls framework-observations/"${today}"*.yaml >/dev/null 2>&1; then
-        for obs_file in framework-observations/"${today}"*.yaml; do
+    # Resolve product root for observation file location
+    SCRIPT_DIR_CR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "$SCRIPT_DIR_CR/resolve-product-root.sh"
+    obs_search_dir="$PRODUCT_ROOT/framework-observations"
+    if ls "$obs_search_dir"/"${today}"*.yaml >/dev/null 2>&1; then
+        for obs_file in "$obs_search_dir"/"${today}"*.yaml; do
             if grep -q "session_type: framework_dev" "$obs_file" 2>/dev/null; then
                 obs_found=true
                 break

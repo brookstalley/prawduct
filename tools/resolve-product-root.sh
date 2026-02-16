@@ -3,9 +3,10 @@
 # resolve-product-root.sh — Shared product root resolution
 #
 # Purpose: Provides consistent product root detection across all tools.
-# Product repos use .prawduct/ for prawduct outputs; the framework repo
-# (self-hosted) uses the repo root. This script detects which layout
-# is in use and outputs the resolved product root path.
+# All repos (including the framework itself) use .prawduct/ for prawduct
+# outputs. Falls back to repo root for legacy repos without .prawduct/.
+# This script detects which layout is in use and outputs the resolved
+# product root path.
 #
 # Usage (as command — prints product root path):
 #   PRODUCT_ROOT=$(tools/resolve-product-root.sh)

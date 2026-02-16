@@ -239,23 +239,219 @@ def detect_schema_version(project_state_path: Path) -> str | None:
     return "current"
 
 
-def scan_existing_docs(target_dir: str) -> list[str]:
-    """Find markdown documentation files in the target directory."""
-    docs = []
+def scan_existing_docs(target_dir: str) -> dict:
+    """Find and classify documentation files in the target directory.
+
+    Returns a classified inventory with categories:
+    - readme: README file path (or None)
+    - architecture: architecture/design/ADR docs
+    - api_specs: OpenAPI, GraphQL, protobuf files
+    - claude_md_content_bytes: size of existing CLAUDE.md (0 if absent)
+    - docs_dir: list of files in docs/ directory
+    - other: other markdown files at root
+    - total_doc_bytes: total size of all documentation files
+    """
     target = Path(target_dir)
+    result: dict = {
+        "readme": None,
+        "architecture": [],
+        "api_specs": [],
+        "claude_md_content_bytes": 0,
+        "docs_dir": [],
+        "other": [],
+        "total_doc_bytes": 0,
+    }
 
-    # Check for root-level docs
-    for name in ["README.md", "CHANGELOG.md", "CONTRIBUTING.md"]:
-        if (target / name).is_file():
-            docs.append(name)
+    architecture_patterns = ("architect", "design", "adr", "decision")
+    api_spec_extensions = (".yaml", ".yml", ".json", ".graphql", ".gql", ".proto")
+    api_spec_names = ("openapi", "swagger", "api-spec", "api_spec", "schema.graphql", "schema.gql")
 
-    # Check docs/ directory
+    def classify_file(rel_path: str, file_path: Path) -> None:
+        """Classify a file into the appropriate category."""
+        try:
+            size = file_path.stat().st_size
+        except OSError:
+            return
+        result["total_doc_bytes"] += size
+
+        name_lower = rel_path.lower()
+
+        # Architecture docs
+        if any(pat in name_lower for pat in architecture_patterns):
+            result["architecture"].append(rel_path)
+            return
+
+        # API specs
+        base_lower = file_path.name.lower()
+        if any(base_lower.startswith(n) for n in api_spec_names):
+            result["api_specs"].append(rel_path)
+            return
+        if file_path.suffix.lower() in (".graphql", ".gql", ".proto"):
+            result["api_specs"].append(rel_path)
+            return
+
+        # Everything else in docs_dir goes to docs_dir, root-level to other
+        if rel_path.startswith("docs/") or rel_path.startswith("docs" + os.sep):
+            result["docs_dir"].append(rel_path)
+        else:
+            result["other"].append(rel_path)
+
+    # README
+    for name in ["README.md", "readme.md", "README.rst", "README.txt", "README"]:
+        readme_path = target / name
+        if readme_path.is_file():
+            result["readme"] = name
+            try:
+                result["total_doc_bytes"] += readme_path.stat().st_size
+            except OSError:
+                pass
+            break
+
+    # CLAUDE.md
+    claude_md = target / "CLAUDE.md"
+    if claude_md.is_file():
+        try:
+            result["claude_md_content_bytes"] = claude_md.stat().st_size
+        except OSError:
+            pass
+
+    # Root-level markdown files (excluding README and CLAUDE.md)
+    for name in ["CHANGELOG.md", "CONTRIBUTING.md", "ARCHITECTURE.md", "DESIGN.md"]:
+        fpath = target / name
+        if fpath.is_file():
+            classify_file(name, fpath)
+
+    # docs/ directory
     docs_dir = target / "docs"
     if docs_dir.is_dir():
-        for md in sorted(docs_dir.rglob("*.md")):
-            docs.append(str(md.relative_to(target)))
+        for fpath in sorted(docs_dir.rglob("*")):
+            if fpath.is_file() and fpath.suffix.lower() in (".md", ".rst", ".txt", ".yaml", ".yml"):
+                rel = str(fpath.relative_to(target))
+                classify_file(rel, fpath)
 
-    return docs
+    # API spec files at common locations
+    for pattern in ["openapi.*", "swagger.*", "api-spec.*", "*.graphql", "*.gql", "*.proto"]:
+        for fpath in target.glob(pattern):
+            if fpath.is_file():
+                rel = str(fpath.relative_to(target))
+                if rel not in result["api_specs"]:
+                    classify_file(rel, fpath)
+
+    return result
+
+
+def extract_content_state(target_dir: str) -> dict:
+    """Extract content-level state from project-state.yaml without a YAML parser.
+
+    Returns:
+    - current_stage: stage name or None
+    - artifact_count: number of artifacts found in .prawduct/artifacts/
+    - has_classification: whether classification section has content
+    - has_product_definition: whether product_definition section has content
+    - onboarding_completeness: "none" / "infra_only" / "partial" / "full"
+    """
+    target = Path(target_dir)
+    result = {
+        "current_stage": None,
+        "artifact_count": 0,
+        "has_classification": False,
+        "has_product_definition": False,
+        "onboarding_completeness": "none",
+    }
+
+    # Count artifacts
+    artifacts_dir = target / ".prawduct" / "artifacts"
+    if artifacts_dir.is_dir():
+        result["artifact_count"] = sum(
+            1 for f in artifacts_dir.iterdir() if f.is_file()
+        )
+
+    # Check project-state.yaml
+    ps_path = target / ".prawduct" / "project-state.yaml"
+    if not ps_path.is_file():
+        ps_path = target / "project-state.yaml"
+    if not ps_path.is_file():
+        # No project-state.yaml — check if .prawduct/ exists (infra_only)
+        if (target / ".prawduct").is_dir():
+            result["onboarding_completeness"] = "infra_only"
+        return result
+
+    try:
+        content = ps_path.read_text()
+    except OSError:
+        return result
+
+    lines = content.splitlines()
+
+    # Line-level extraction
+    in_classification = False
+    in_product_definition = False
+    classification_has_content = False
+    product_def_has_content = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # current_stage
+        if line.startswith("current_stage:"):
+            val = stripped.split(":", 1)[1].strip().strip("'\"")
+            if val and val != "null":
+                result["current_stage"] = val
+
+        # Track top-level sections
+        if not line.startswith(" ") and not line.startswith("#"):
+            if line.startswith("classification:"):
+                in_classification = True
+                in_product_definition = False
+            elif line.startswith("product_definition:"):
+                in_classification = False
+                in_product_definition = True
+            elif ":" in line:
+                in_classification = False
+                in_product_definition = False
+
+        # Check for meaningful content within sections (indented, non-comment, non-empty)
+        if stripped and not stripped.startswith("#") and line.startswith("  "):
+            if in_classification and ":" in stripped:
+                val = stripped.split(":", 1)[1].strip()
+                if val and val != "null" and val != "[]" and val != "{}":
+                    classification_has_content = True
+            if in_product_definition and ":" in stripped:
+                val = stripped.split(":", 1)[1].strip()
+                if val and val != "null" and val != "[]" and val != "{}":
+                    product_def_has_content = True
+
+    result["has_classification"] = classification_has_content
+    result["has_product_definition"] = product_def_has_content
+
+    # Determine onboarding completeness
+    has_prawduct = (target / ".prawduct").is_dir()
+    has_ps = True  # We read it above
+    has_artifacts = result["artifact_count"] > 0
+
+    if has_prawduct and has_ps and has_artifacts and classification_has_content:
+        result["onboarding_completeness"] = "full"
+    elif has_prawduct and has_ps and (classification_has_content or product_def_has_content):
+        result["onboarding_completeness"] = "partial"
+    elif has_prawduct:
+        result["onboarding_completeness"] = "infra_only"
+
+    return result
+
+
+def detect_onboarding_in_progress(target_dir: str) -> dict | None:
+    """Check for .prawduct/.onboarding-state.json indicating interrupted onboarding.
+
+    Returns the parsed state dict if found, None otherwise.
+    """
+    state_file = Path(target_dir) / ".prawduct" / ".onboarding-state.json"
+    if not state_file.is_file():
+        return None
+    try:
+        import json as _json
+        return _json.loads(state_file.read_text())
+    except (OSError, ValueError):
+        return None
 
 
 # Command patterns that identify a hook as prawduct's, even when not referencing
@@ -458,7 +654,8 @@ def check_project_state(target_dir: str, mode: str) -> dict:
             return 2  # Current format without explicit schema_version
         if version.startswith("v"):
             try:
-                return int(version[1:])
+                # Handle fractional versions like "v0.5" → 0
+                return int(float(version[1:]))
             except ValueError:
                 return None
         return None
@@ -471,6 +668,7 @@ def check_project_state(target_dir: str, mode: str) -> dict:
             "status": "ok",
             "detail": str(prawduct_ps),
             "schema_version": version_to_int(version),
+            "schema_version_raw": version,
             "location": ".prawduct/",
         }
     if root_ps.is_file():
@@ -480,6 +678,7 @@ def check_project_state(target_dir: str, mode: str) -> dict:
             "status": "ok",
             "detail": str(root_ps),
             "schema_version": version_to_int(version),
+            "schema_version_raw": version,
             "location": "root",
         }
 
@@ -489,6 +688,7 @@ def check_project_state(target_dir: str, mode: str) -> dict:
         "status": "missing",
         "detail": "No project-state.yaml found; onboarding will create it",
         "schema_version": None,
+        "schema_version_raw": None,
     }
 
 
@@ -639,19 +839,20 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
 
     # Self-hosted detection
     if is_framework_repo(target):
-        log("Self-hosted framework repo detected. Reporting status only.", json_mode)
-        mode = "check"  # Force check-only for framework repo
+        log("Self-hosted framework repo detected.", json_mode)
         self_hosted = True
         scenario = "self_hosted"
 
-    if not self_hosted:
-        # 2. .prawduct/ directory (product repos only)
-        c = check_prawduct_dir(target, mode)
-        checks.append(c)
-        if c["status"] == "created":
+    # 2. .prawduct/ directory
+    # Created for both product repos and framework repo (framework uses .prawduct/ too)
+    c = check_prawduct_dir(target, mode)
+    checks.append(c)
+    if c["status"] == "created":
+        if not self_hosted:
             scenario = "fresh"
 
-        # 3. framework-path (product repos only)
+    if not self_hosted:
+        # 3. framework-path (product repos only — framework doesn't need self-referential bootstrap)
         c = check_framework_path(target, mode)
         checks.append(c)
         if c["status"] in ("created", "updated"):
@@ -677,7 +878,7 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
                 scenario = "migration_v1"
 
     if not self_hosted:
-        # 6. CLAUDE.md (product repos only)
+        # 6. CLAUDE.md (product repos only — framework has its own CLAUDE.md)
         c = check_claude_md(target, mode)
         checks.append(c)
 
@@ -685,10 +886,16 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
         c = check_settings_json(target, mode)
         checks.append(c)
 
-    # 8. Existing documentation inventory
+    # 8. Existing documentation inventory (classified)
     existing_docs = scan_existing_docs(target)
 
-    # 9. Hook accessibility
+    # 9. Content state analysis
+    content_state = extract_content_state(target)
+
+    # 10. Onboarding in progress detection
+    onboarding_in_progress = detect_onboarding_in_progress(target)
+
+    # 11. Hook accessibility
     hook_warnings = check_hook_accessibility(target)
     warnings.extend(hook_warnings)
 
@@ -734,13 +941,19 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
             "updated": fv_check.get("updated", False),
         }
 
+    # Extract schema_version_raw from project_state check
+    schema_version_raw = ps_check.get("schema_version_raw")
+
     result = {
         "status": overall_status,
         "target_dir": target,
         "framework_dir": str(FRAMEWORK_DIR),
         "scenario": scenario,
         "framework_version": framework_version,
+        "schema_version_raw": schema_version_raw,
         "existing_docs": existing_docs,
+        "content_state": content_state,
+        "onboarding_in_progress": onboarding_in_progress,
         "checks": checks,
         "next_action": next_action,
         "warnings": warnings,

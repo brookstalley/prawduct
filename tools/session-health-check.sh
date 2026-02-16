@@ -227,7 +227,94 @@ except:
     fi
 fi
 
-# --- 5. Infrastructure Health ---
+# --- 5. Divergence Detection ---
+
+divergence_warnings=0
+echo "## Divergence Signals"
+
+divergence_output=$(python3 -c "
+import subprocess, sys, os
+from datetime import datetime, timedelta
+
+repo_root = '$REPO_ROOT'
+product_root = '$PRODUCT_ROOT'
+warnings = 0
+
+# Get last .prawduct/ commit date
+try:
+    result = subprocess.run(
+        ['git', '-C', repo_root, 'log', '-1', '--format=%aI', '--', '.prawduct/'],
+        capture_output=True, text=True, timeout=10
+    )
+    last_prawduct_commit = result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else None
+except:
+    last_prawduct_commit = None
+
+# Get last source commit date (anything outside .prawduct/)
+try:
+    # Count source commits since last .prawduct/ commit
+    if last_prawduct_commit:
+        result = subprocess.run(
+            ['git', '-C', repo_root, 'rev-list', '--count',
+             '--after=' + last_prawduct_commit, 'HEAD', '--',
+             '.', ':!.prawduct/'],
+            capture_output=True, text=True, timeout=10
+        )
+        source_commits_since = int(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip() else 0
+    else:
+        source_commits_since = 0
+
+    result = subprocess.run(
+        ['git', '-C', repo_root, 'log', '-1', '--format=%aI', '--',
+         '.', ':!.prawduct/'],
+        capture_output=True, text=True, timeout=10
+    )
+    last_source_commit = result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else None
+except:
+    source_commits_since = 0
+    last_source_commit = None
+
+if last_prawduct_commit:
+    print(f'  Last .prawduct/ commit: {last_prawduct_commit[:10]}')
+else:
+    print('  Last .prawduct/ commit: (none found)')
+
+if last_source_commit:
+    print(f'  Last source commit: {last_source_commit[:10]}')
+else:
+    print('  Last source commit: (none found)')
+
+if source_commits_since > 0:
+    print(f'  Source commits since last artifact update: {source_commits_since}')
+    if source_commits_since >= 10:
+        print(f'  WARNING: {source_commits_since} source commits since last .prawduct/ update. Artifacts may be stale.')
+        warnings += 1
+    elif source_commits_since >= 5:
+        print(f'  NOTE: {source_commits_since} source commits since last artifact update.')
+
+# Check time since last .prawduct/ modification
+if last_prawduct_commit:
+    try:
+        prawduct_date = datetime.fromisoformat(last_prawduct_commit.replace('Z', '+00:00')).replace(tzinfo=None)
+        age_days = (datetime.now() - prawduct_date).days
+        if age_days > 7:
+            print(f'  WARNING: .prawduct/ last updated {age_days} days ago. Consider a consistency review.')
+            warnings += 1
+    except:
+        pass
+
+if warnings == 0 and source_commits_since == 0:
+    print('  No divergence detected.')
+
+print(f'DIVERGENCE_WARNINGS: {warnings}')
+" 2>/dev/null || echo "  (git or python3 not available for divergence detection)
+DIVERGENCE_WARNINGS: 0")
+
+echo "$divergence_output" | grep -v "^DIVERGENCE_WARNINGS:"
+divergence_warnings=$(echo "$divergence_output" | grep "^DIVERGENCE_WARNINGS:" | head -1 | sed 's/.*: //')
+echo ""
+
+# --- 6. Infrastructure Health ---
 
 infra_warnings=0
 echo "## Infrastructure Health"
@@ -304,7 +391,7 @@ echo "$infra_output" | grep -v "^INFRASTRUCTURE_WARNINGS:"
 infra_warnings=$(echo "$infra_output" | grep "^INFRASTRUCTURE_WARNINGS:" | head -1 | sed 's/.*: //')
 echo ""
 
-# --- 6. Project State File Health ---
+# --- 7. Project State File Health ---
 
 state_warnings=0
 if [[ -f "$PROJECT_STATE" ]]; then
@@ -399,7 +486,7 @@ STATE_WARNINGS: 0")
     echo ""
 fi
 
-# --- 7. Skill File Health ---
+# --- 8. Skill File Health ---
 
 skill_warnings=0
 echo "## Skill File Health"
@@ -460,7 +547,7 @@ echo "$skill_health_output" | grep -v "^SKILL_WARNINGS:"
 skill_warnings=$(echo "$skill_health_output" | grep "^SKILL_WARNINGS:" | head -1 | sed 's/.*: //')
 echo ""
 
-# --- 8. Deprecated Term Scanning ---
+# --- 9. Deprecated Term Scanning ---
 
 deprecated_warnings=0
 if [[ -f "$PROJECT_STATE" ]]; then
@@ -483,10 +570,12 @@ try:
         sys.exit(0)
 
     # Exclusion patterns: historical records
-    exclude_dirs = ['eval-history', 'framework-observations/archive', 'working-notes', '.git', '.claude']
+    exclude_dirs = ['eval-history', 'framework-observations/archive', '.prawduct/framework-observations/archive', 'working-notes', '.prawduct/working-notes', '.git', '.claude']
 
     # For project-state.yaml, we need to exclude change_log and deprecated_terms sections
     # We'll handle this by post-filtering matches in project-state.yaml
+    # state_file may be at .prawduct/project-state.yaml — compute its rel_path for matching
+    state_rel_path = os.path.relpath(state_file, repo_root)
 
     # Read project-state.yaml to find section boundaries for exclusion
     with open(state_file) as f:
@@ -553,13 +642,13 @@ try:
 
                         # Skip observation entry files (historical records)
                         # Only schema.yaml and README.md in framework-observations/ are active docs
-                        if rel_path.startswith('framework-observations/'):
+                        if 'framework-observations/' in rel_path:
                             basename = os.path.basename(rel_path)
                             if basename.endswith('.yaml') and basename != 'schema.yaml':
                                 continue
 
                         # Skip project-state.yaml matches in excluded sections
-                        if rel_path == 'project-state.yaml':
+                        if rel_path == state_rel_path:
                             in_excluded = False
                             for start, end in exclude_ranges:
                                 if start <= line_num <= end:
@@ -593,6 +682,7 @@ echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
 echo "INFRASTRUCTURE_WARNINGS: ${infra_warnings:-0}"
 echo "STATE_WARNINGS: ${state_warnings:-0}"
 echo "SKILL_WARNINGS: ${skill_warnings:-0}"
+echo "DIVERGENCE_WARNINGS: ${divergence_warnings:-0}"
 echo "DEPRECATED_TERM_WARNINGS: ${deprecated_warnings:-0}"
 echo ""
 echo "=========================================="
