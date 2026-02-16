@@ -678,11 +678,112 @@ DEPRECATED_TERM_WARNINGS: 0")
     echo ""
 fi
 
+# --- 10. Dependency Graph Consistency ---
+
+dep_graph_warnings=0
+if [[ -f "$PROJECT_STATE" ]]; then
+    echo "## Dependency Graph Consistency"
+
+    dep_graph_output=$(python3 -c "
+import yaml, sys
+
+state_file = '$PROJECT_STATE'
+warnings = 0
+
+try:
+    with open(state_file) as f:
+        data = yaml.safe_load(f)
+    manifest = data.get('artifact_manifest', {})
+    if not manifest:
+        print('  (No artifact_manifest found)')
+        print('DEP_GRAPH_WARNINGS: 0')
+        sys.exit(0)
+
+    # Collect all entries across all manifest categories
+    all_entries = {}
+    categories = ['human_docs', 'source_components', 'tooling', 'artifacts', 'test_specs']
+    for cat in categories:
+        entries = manifest.get(cat, []) or []
+        for entry in entries:
+            name = entry.get('name')
+            if name:
+                all_entries[name] = {
+                    'depends_on': entry.get('depends_on', []) or [],
+                    'depended_on_by': entry.get('depended_on_by', []) or [],
+                    'has_depended_on_by': 'depended_on_by' in entry,
+                    'category': cat
+                }
+
+    if not all_entries:
+        print('  (No manifest entries found)')
+        print('DEP_GRAPH_WARNINGS: 0')
+        sys.exit(0)
+
+    # Compute correct depended_on_by from depends_on
+    computed_dob = {name: set() for name in all_entries}
+    for name, info in all_entries.items():
+        for dep in info['depends_on']:
+            # depends_on may be a string or dict with 'artifact' key
+            dep_name = dep.get('artifact') if isinstance(dep, dict) else dep
+            if dep_name and dep_name in computed_dob:
+                computed_dob[dep_name].add(name)
+
+    # Compare declared vs computed (only for entries that declare depended_on_by)
+    mismatches = []
+    for name, info in all_entries.items():
+        if not info['has_depended_on_by']:
+            continue  # Skip entries that don't track reverse dependencies
+        declared = set()
+        for d in info['depended_on_by']:
+            d_name = d.get('artifact') if isinstance(d, dict) else d
+            if d_name:
+                declared.add(d_name)
+        computed = computed_dob.get(name, set())
+
+        if declared != computed:
+            missing = computed - declared
+            extra = declared - computed
+            mismatches.append({
+                'name': name,
+                'category': info['category'],
+                'missing': sorted(missing),
+                'extra': sorted(extra)
+            })
+
+    if mismatches:
+        print(f'  WARNING: {len(mismatches)} depended_on_by inconsistencies detected:')
+        for m in mismatches:
+            parts = []
+            if m['missing']:
+                parts.append(f\"missing: {', '.join(m['missing'])}\")
+            if m['extra']:
+                parts.append(f\"extra: {', '.join(m['extra'])}\")
+            print(f\"    {m['name']} ({m['category']}): {'; '.join(parts)}\")
+        warnings = len(mismatches)
+        print(f'  ACTION: Fix depended_on_by in project-state.yaml to match inverse of depends_on.')
+    else:
+        total = sum(len(info['depends_on']) for info in all_entries.values())
+        print(f'  All depended_on_by entries consistent ({len(all_entries)} entries, {total} dependency edges).')
+
+    print(f'DEP_GRAPH_WARNINGS: {warnings}')
+
+except Exception as e:
+    print(f'  (Could not validate dependency graph: {e})')
+    print('DEP_GRAPH_WARNINGS: 0')
+" 2>/dev/null || echo "  (python3/yaml not available for dependency graph validation)
+DEP_GRAPH_WARNINGS: 0")
+
+    echo "$dep_graph_output" | grep -v "^DEP_GRAPH_WARNINGS:"
+    dep_graph_warnings=$(echo "$dep_graph_output" | grep "^DEP_GRAPH_WARNINGS:" | head -1 | sed 's/.*: //')
+    echo ""
+fi
+
 echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
 echo "INFRASTRUCTURE_WARNINGS: ${infra_warnings:-0}"
 echo "STATE_WARNINGS: ${state_warnings:-0}"
 echo "SKILL_WARNINGS: ${skill_warnings:-0}"
 echo "DIVERGENCE_WARNINGS: ${divergence_warnings:-0}"
 echo "DEPRECATED_TERM_WARNINGS: ${deprecated_warnings:-0}"
+echo "DEP_GRAPH_WARNINGS: ${dep_graph_warnings:-0}"
 echo ""
 echo "=========================================="

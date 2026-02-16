@@ -10,7 +10,7 @@ observations:
     description: "artifact_manifest depended_on_by drifted (25 inconsistencies) — denormalized cache with no validation"
     evidence: "Audit found 25 cases where depended_on_by did not match inverse of depends_on: vision missing principles, orchestrator missing 3 test scenarios, domain-analyzer/artifact-generator/review-lenses missing test scenarios, project-state-template over-claiming 3 dependents"
     proposed_action: "Add bidirectional dependency consistency check to session-health-check.sh infrastructure checks"
-    status: noted
+    status: acted_on
 skills_affected:
   - "tools/session-health-check.sh"
 ---

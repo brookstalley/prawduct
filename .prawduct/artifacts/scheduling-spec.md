@@ -6,7 +6,6 @@ depends_on:
   - artifact: nonfunctional-requirements
 depended_on_by:
   - artifact: monitoring-alerting-spec
-  - artifact: configuration-spec
 last_validated: 2026-02-16
 ---
 

@@ -248,35 +248,35 @@ artifact_manifest:
       file_path: skills/domain-analyzer/SKILL.md
       version: 2
       depends_on: [high-level-design, principles]
-      depended_on_by: [orchestrator, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
+      depended_on_by: [family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
       last_validated: 2026-02-11
       tier: 1
     - name: artifact-generator
       file_path: skills/artifact-generator/SKILL.md
       version: 2
       depends_on: [high-level-design, principles]
-      depended_on_by: [orchestrator, human-interface-templates, unattended-operation-templates, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
+      depended_on_by: [human-interface-templates, unattended-operation-templates, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
       last_validated: 2026-02-11
       tier: 1
     - name: review-lenses
       file_path: skills/review-lenses/SKILL.md
       version: 2
       depends_on: [high-level-design, principles]
-      depended_on_by: [orchestrator, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
+      depended_on_by: [family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
       last_validated: 2026-02-11
       tier: 1
     - name: critic
       file_path: skills/critic/SKILL.md
       version: 2
       depends_on: [high-level-design, principles]
-      depended_on_by: [orchestrator]
+      depended_on_by: []
       last_validated: 2026-02-11
       tier: 1
     - name: builder
       file_path: skills/builder/SKILL.md
       version: 1
       depends_on: [high-level-design, principles]
-      depended_on_by: [orchestrator]
+      depended_on_by: []
       last_validated: 2026-02-11
       tier: 1
 
@@ -366,7 +366,7 @@ artifact_manifest:
       file_path: .prawduct/artifacts/scheduling-spec.md
       version: 1
       depends_on: [pipeline-architecture, nonfunctional-requirements]
-      depended_on_by: [monitoring-alerting-spec, configuration-spec]
+      depended_on_by: [monitoring-alerting-spec]
       last_validated: 2026-02-16
       tier: 1
     - name: monitoring-alerting-spec
@@ -826,6 +826,21 @@ change_log:
       skills/orchestrator/SKILL.md, skills/orchestrator/onboarding.md, skills/orchestrator/migration.md (new),
       .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
+    date: 2026-02-16
+  - what: '5-whys fix: mechanical depended_on_by validation + DCP observation-backlog check'
+    why: 'depended_on_by drift recurred twice in one day (25 + 12 inconsistencies) because the same root
+      cause was observed but never actioned between DCPs. 5-whys chain: (1) parallel agents set depended_on_by
+      independently without validation, (2) no post-generation validation exists despite observation proposing
+      it 4 hours earlier, (3) session-health-check only runs at session start not between DCPs, (4) DCP
+      planning step does not check observation backlog for relevant patterns, (5) C8c has no surface-during-
+      active-work path. Two root causes: mechanical (denormalized cache with no validation) and process (DCP
+      does not incorporate prior observations). Fix 1: dependency graph consistency section in session-health-check.sh
+      computes depended_on_by from depends_on and flags mismatches. Fix 2: Enhancement step 1 and Structural
+      step 3 now instruct checking observation_backlog before planning. Also fixed 7 surviving depended_on_by
+      inconsistencies (6 source_components + 1 scheduling-spec artifact). Both observations transitioned to acted_on.'
+    blast_radius: tools/session-health-check.sh, skills/orchestrator/stage-6-iteration.md, .prawduct/project-state.yaml,
+      .prawduct/artifacts/scheduling-spec.md, 2 observation files
+    classification: functional
     date: 2026-02-16
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"

@@ -84,7 +84,7 @@ No DCP needed. Implement the changes, run Critic review (see `skills/critic/SKIL
 
 ### Enhancement changes
 
-1. **Write a brief plan** in `working-notes/` describing the change, motivation, and affected files.
+1. **Write a brief plan** in `working-notes/` describing the change, motivation, and affected files. Before implementing, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned approach — prior observations may identify risks or constraints that should inform the plan.
 2. **Implement** the change.
 3. **Run Critic review** (see `skills/critic/SKILL.md`) — all applicable checks.
 4. **Register deprecated terms** if any concepts were renamed/removed: write to `project-state.yaml` → `deprecated_terms` with replacement and grep patterns.
@@ -95,7 +95,7 @@ Set `directional_change` in `.session-governance.json` to track: `{"active": tru
 
 1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction?"
 2. **Reclassification check (product builds).** If the product's fundamental nature changed, re-run classification.
-3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. For observation-driven changes, include root cause analysis (see Root Cause Protocol in `skills/orchestrator/protocols.md`). Set `directional_change` in `.session-governance.json`: `{"active": true, "plan_description": "<summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <N>, "phases_reviewed_count": 0, "observation_captured": false}`.
+3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Root Cause Protocol in `skills/orchestrator/protocols.md`). Set `directional_change` in `.session-governance.json`: `{"active": true, "plan_description": "<summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <N>, "phases_reviewed_count": 0, "observation_captured": false}`.
 4. **Plan-stage Critic review.** Apply Generality, Coherence, and Learning/Observability checks to the plan. Set `plan_stage_review_completed` to `true`.
 5. **Impact assessment.** Map blast radius via `artifact_manifest`. Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
 6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Increment `phases_reviewed_count` after each.
