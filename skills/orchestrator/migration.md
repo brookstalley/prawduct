@@ -49,6 +49,8 @@ Every migration runs through these phases in order. Each phase checks whether it
 
 4. **Verify** all files accessible at new locations.
 
+5. **Clean up empty directories** left at root after relocation (e.g., `artifacts/`, `framework-observations/`, `working-notes/`). Use `rmdir` (safe — only removes if empty).
+
 **Skip this phase** if no `root_level_files` are true.
 
 ---
@@ -138,6 +140,7 @@ Apply the appropriate tier based on the detected version:
    - `product_definition`, `technical_decisions`, `design_decisions`
    - `build_plan`, `build_state`, `iteration_state`
    - `change_log`, `observation_backlog`
+   - Any non-standard project-specific sections (e.g., `conventions:`, custom metadata). Preserve verbatim — these are user content.
 
 5. **Present migration summary to user** showing:
    - What was mapped (concern -> structural characteristic)
@@ -200,13 +203,14 @@ Apply the appropriate tier based on the detected version:
    ```
 
 3. **Check `artifact_manifest` structure:**
-   - If `artifact_manifest` exists but is a flat list (not organized into 5 categories), restructure:
+   - **Product repos:** Only the `artifacts` category is needed. All entries should have `file_path` in `.prawduct/artifacts/`. The 5-category structure (`source_components`, `tooling`, `test_specs`, `human_docs`) applies only to the framework repo.
+   - **Framework repo:** If `artifact_manifest` exists but is a flat list (not organized into 5 categories), restructure:
      - Entries with `file_path` in `.prawduct/artifacts/` → `artifacts` category
      - Entries with `file_path` in `skills/` → `source_components` category
      - Entries with `file_path` in `templates/` or `tools/` → `tooling` category
      - Entries with `file_path` in `tests/` → `test_specs` category
      - Entries with `file_path` in `docs/` → `human_docs` category
-     - If entries lack `depends_on`/`depended_on_by` fields, leave them empty (don't guess)
+   - If entries lack `depends_on`/`depended_on_by` fields, leave them empty (don't guess)
    - If no `artifact_manifest` exists at all, create one with entries for each discovered artifact file in `.prawduct/artifacts/`
 
 4. **Write updated file** to `.prawduct/project-state.yaml`.
@@ -270,7 +274,7 @@ else:
 
 ---
 
-### Phase G: After Migration
+### Phase G: Reflection and Return
 
 **Always runs as the final phase.**
 
@@ -284,9 +288,29 @@ else:
    ```
    Include specifics: what phases ran (layout relocation, schema migration tier, scaffolding), what was moved/mapped/added.
 
-2. **Present summary to user:** What was moved (Phase A), what was migrated (Phase B), what was scaffolded (Phase C), what paths were updated (Phase D), what stage was set (Phase E), and what artifacts are advisory (Phase F).
+2. **Reflection.** Assess these dimensions:
 
-3. **Return control to the Orchestrator** for Session Resumption. The project now has a v2 project-state.yaml in `.prawduct/` and can use full framework governance.
+   | Dimension | Question |
+   |-----------|----------|
+   | **Coverage** | Did migration handle all aspects of the old format? Were any edge cases discovered? |
+   | **Clarity** | Was the migration process clear and predictable, or did it require improvisation? |
+   | **Preservation** | Was all user content preserved correctly? Any losses or misinterpretations? |
+   | **Learning completeness** | Did this migration reveal gaps in the migration skill that should be documented? |
+
+   **Always record reflection in `change_log`:**
+   ```yaml
+   - what: "Migration reflection"
+     why: "[assessment summary or 'no concerns']"
+     blast_radius: meta
+     classification: process
+     date: <today>
+   ```
+
+3. **If substantive findings exist**, run `tools/capture-observation.sh` with `--session-type product_use --stage meta`. Substantive findings include: edge cases not documented, user content lost or misinterpreted, significant improvisation beyond documented steps, or schema mapping ambiguities. "Migration completed successfully" is not substantive.
+
+4. **Present summary to user:** What was moved (Phase A), what was migrated (Phase B), what was scaffolded (Phase C), what paths were updated (Phase D), what stage was set (Phase E), and what artifacts are advisory (Phase F).
+
+5. **Return control to the Orchestrator** for Session Resumption. The project now has a v2 project-state.yaml in `.prawduct/` and can use full framework governance.
 
 ---
 

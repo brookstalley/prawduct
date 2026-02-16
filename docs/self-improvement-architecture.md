@@ -75,6 +75,12 @@ Reflection as side-effect means:
 - Meta-improvement discussions (like the one that created this doc)
 - Observation system failures (framework observing its own observation needs)
 
+**During special modes** (session_type: product_use, stage: meta):
+- Migration edge cases (schema ambiguities, preservation gaps, process friction)
+- Onboarding accuracy (classification gaps, artifact quality from code analysis)
+- Improvisation required beyond documented processes
+- User corrections that reveal systematic blind spots in codebase analysis
+
 **Critical**: Observations must be **generalized, not product-specific**. "Framework didn't ask about offline requirements for media apps" (general) not "Brooks's sleep app needs offline mode" (specific).
 
 ---

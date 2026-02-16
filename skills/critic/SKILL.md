@@ -143,12 +143,14 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - **FRP dimension impact:** Does this change affect what the Framework Reflection Protocol should assess?
 - **Observability path:** For any new capability — if it fails subtly, can the observation system detect that failure?
 - **Growing collections:** Does this change create or extend a collection that accumulates entries? If so, does it have: (a) a lifecycle with terminal states, (b) a compaction or archiving mechanism, (c) monitoring in `session-health-check.sh`?
+- **Terminal modes:** Does this change create or modify a mode that completes a process and returns control to the Orchestrator (e.g., migration, onboarding)? If so, does it include a reflection step with mandatory `change_log` entry and optional observation capture for substantive findings? Terminal modes bypass the main stage pipeline and its FRP, so they need their own learning integration.
 - **Root cause depth:** If this change was motivated by an observation, pattern, or audit finding, does it address root cause (not just symptom)? Changes that fix a symptom without analyzing why the gap existed are a **warning**. Look for: does the change_log entry trace a causal chain? Does the fix prevent the *class* of problem or just the specific instance?
 
 **Severity guide:**
 - New capability with no observability path → **blocking**
 - Modified capture points not updated → **warning**
 - Growing collection without lifecycle monitoring → **warning**
+- Terminal mode without reflection step → **warning**
 - Change that may benefit from a new eval scenario → **note**
 
 ### Check 7: Generality

@@ -189,10 +189,31 @@ Populate `artifact_manifest.artifacts` in project-state.yaml with all generated 
 
 ---
 
-## Phase 4: Enter Iteration
+## Phase 4: Reflection and Enter Iteration
 
-1. Set `current_stage` to `iteration` in project-state.yaml
-2. Present a summary to the user:
+1. Set `current_stage` to `iteration` in project-state.yaml.
+
+2. **Reflection.** Assess these dimensions:
+
+   | Dimension | Question |
+   |-----------|----------|
+   | **Coverage** | Did codebase analysis surface all important characteristics and patterns? |
+   | **Accuracy** | Were inferred classifications correct, or did user corrections reveal systematic gaps? |
+   | **Artifact quality** | Were generated artifacts complete and accurate based on codebase evidence? |
+   | **Learning completeness** | Did this onboarding reveal gaps in the onboarding process that should be documented? |
+
+   **Always record reflection in `change_log`:**
+   ```yaml
+   - what: "Onboarding reflection"
+     why: "[assessment summary or 'no concerns']"
+     blast_radius: meta
+     classification: process
+     date: <today>
+   ```
+
+3. **If substantive findings exist**, run `tools/capture-observation.sh` with `--session-type product_use --stage meta`. Substantive findings include: framework missed structural characteristics evident in the codebase, artifact generation made incorrect inferences, user made significant corrections, or the process required improvisation beyond documented guidance. "Onboarding completed successfully" is not substantive.
+
+4. Present a summary to the user:
 
 > "I've onboarded **[product]** into prawduct. Here's what was generated:
 >
@@ -203,7 +224,7 @@ Populate `artifact_manifest.artifacts` in project-state.yaml with all generated 
 >
 > You're now in iteration mode. Tell me what you want to change or build next, and the framework will govern the changes."
 
-3. The user can now iterate on their product with full prawduct governance (Critic reviews, artifact updates, test tracking).
+5. The user can now iterate on their product with full prawduct governance (Critic reviews, artifact updates, test tracking).
 
 ---
 
