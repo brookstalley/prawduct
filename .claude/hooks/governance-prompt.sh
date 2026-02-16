@@ -35,7 +35,7 @@ cat > /dev/null
 # --- Check Orchestrator activation ---
 
 if [[ -n "$REPO_ROOT" ]]; then
-    MARKER="$REPO_ROOT/.claude/.orchestrator-activated"
+    MARKER="$CLAUDE_DIR/.orchestrator-activated"
     if [[ ! -f "$MARKER" ]]; then
         python3 -c "
 import json
@@ -57,8 +57,8 @@ summary=$(python3 -c "
 import json, sys, os, time
 
 session_file = '$SESSION_FILE'
-repo_root = '$REPO_ROOT'
-findings_file = os.path.join(repo_root, '.claude', '.critic-findings.json') if repo_root else ''
+claude_dir = '$CLAUDE_DIR'
+findings_file = os.path.join(claude_dir, '.critic-findings.json') if claude_dir else ''
 
 try:
     with open(session_file) as f:

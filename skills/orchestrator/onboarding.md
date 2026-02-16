@@ -108,7 +108,7 @@ Present the analysis as a readable summary. This is a **genuine blocking questio
 
 ## Phase 3: Artifact Generation
 
-Create `.prawduct/` in the project directory. Generate prawduct artifacts from the confirmed analysis.
+Create `.prawduct/` in the project directory. Generate bootstrap files (`.prawduct/framework-path`, `CLAUDE.md`, `.claude/settings.json`) as described in the Orchestrator's "Bootstrap files" section. Then generate prawduct artifacts from the confirmed analysis.
 
 ### 3a. Project State
 

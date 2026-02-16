@@ -46,7 +46,11 @@ if [[ -z "$file_path" ]]; then
     exit 0
 fi
 
+# Derive framework root from this script's location (hooks live at <framework>/.claude/hooks/)
+FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.claude"
 rel_path=""
 if [[ -n "$repo_root" ]]; then
     rel_path="${file_path#"$repo_root"/}"
@@ -75,7 +79,7 @@ if [[ "$tool_name" == "Read" ]]; then
     fi
 
     # Check Orchestrator activation
-    MARKER="$repo_root/.claude/.orchestrator-activated"
+    MARKER="$CLAUDE_DIR/.orchestrator-activated"
     if [[ ! -f "$MARKER" ]]; then
         echo "" >&2
         echo "BLOCKED: Reading skill/template files requires Orchestrator activation. (HR9)" >&2
@@ -152,7 +156,7 @@ FRAMEWORK_PATTERNS=(
 )
 
 is_framework_file=false
-if [[ -n "$repo_root" ]]; then
+if [[ -n "$repo_root" && "$repo_root" == "$FRAMEWORK_ROOT" ]]; then
     for pattern in "${FRAMEWORK_PATTERNS[@]}"; do
         if [[ "$rel_path" == $pattern* ]]; then
             is_framework_file=true
@@ -194,7 +198,7 @@ fi
 # --- Check 1: Orchestrator activation (applies to framework files) ---
 
 if [[ "$is_framework_file" == true && -n "$repo_root" ]]; then
-    MARKER="$repo_root/.claude/.orchestrator-activated"
+    MARKER="$CLAUDE_DIR/.orchestrator-activated"
 
     if [[ ! -f "$MARKER" ]]; then
         echo "" >&2

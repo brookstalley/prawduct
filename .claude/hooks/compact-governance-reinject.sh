@@ -15,6 +15,9 @@
 
 set -euo pipefail
 
+# Derive framework root from this script's location (hooks live at <framework>/.claude/hooks/)
+FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
     echo "CONTEXT RESTORED AFTER COMPACTION."
     echo "Read skills/orchestrator/SKILL.md from disk before taking action."
@@ -22,6 +25,14 @@ if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
 fi
 
 SESSION_FILE="$CLAUDE_PROJECT_DIR/.claude/.session-governance.json"
+
+# Detect product repo: check for .prawduct/framework-path
+IS_PRODUCT_REPO=false
+FRAMEWORK_PATH_FILE="$CLAUDE_PROJECT_DIR/.prawduct/framework-path"
+if [[ -f "$FRAMEWORK_PATH_FILE" ]]; then
+    IS_PRODUCT_REPO=true
+    STORED_FRAMEWORK_PATH=$(cat "$FRAMEWORK_PATH_FILE" 2>/dev/null || echo "")
+fi
 
 if [[ -f "$SESSION_FILE" ]]; then
     # Governance state exists — output recovery instructions with debt summary
@@ -57,7 +68,26 @@ lines.append(f'Observations captured: {obs}')
 print('\\n'.join(lines) if lines else 'No governance debt detected')
 " 2>/dev/null || echo "Governance state: unknown")
 
-    cat <<REINJECT
+    if [[ "$IS_PRODUCT_REPO" == true && -n "$STORED_FRAMEWORK_PATH" ]]; then
+        cat <<REINJECT
+CONTEXT RESTORED AFTER COMPACTION — Product repo governance instructions follow.
+
+This is a product repo. The prawduct framework is at: $STORED_FRAMEWORK_PATH
+Skill files are in the framework directory. Read them using absolute paths.
+
+MANDATORY AFTER CHANGES:
+1. Read $STORED_FRAMEWORK_PATH/skills/critic/SKILL.md from disk, apply all applicable checks
+2. Record findings in .prawduct/project-state.yaml -> build_state.reviews
+3. Update .claude/.session-governance.json governance debt to 0
+
+CURRENT GOVERNANCE DEBT:
+$debt_summary
+
+FOR FULL PROCEDURES: Read $STORED_FRAMEWORK_PATH/skills/orchestrator/SKILL.md (process),
+$STORED_FRAMEWORK_PATH/skills/critic/SKILL.md (review), $STORED_FRAMEWORK_PATH/skills/builder/SKILL.md (build).
+REINJECT
+    else
+        cat <<REINJECT
 CONTEXT RESTORED AFTER COMPACTION — Governance instructions follow.
 
 Skill files were in your context but have been compacted. They still exist on disk.
@@ -74,12 +104,22 @@ $debt_summary
 FOR FULL PROCEDURES: Read skills/orchestrator/SKILL.md (process), skills/critic/SKILL.md
 (review), skills/builder/SKILL.md (build). These files are on disk — use the Read tool.
 REINJECT
+    fi
 else
-    cat <<REINJECT
+    if [[ "$IS_PRODUCT_REPO" == true && -n "$STORED_FRAMEWORK_PATH" ]]; then
+        cat <<REINJECT
+CONTEXT RESTORED AFTER COMPACTION.
+This is a product repo. The prawduct framework is at: $STORED_FRAMEWORK_PATH
+Read $STORED_FRAMEWORK_PATH/skills/orchestrator/SKILL.md from disk before taking action.
+Changes require Critic review ($STORED_FRAMEWORK_PATH/skills/critic/SKILL.md).
+REINJECT
+    else
+        cat <<REINJECT
 CONTEXT RESTORED AFTER COMPACTION.
 Read skills/orchestrator/SKILL.md from disk before taking action.
 Changes require Critic review (skills/critic/SKILL.md).
 REINJECT
+    fi
 fi
 
 exit 0

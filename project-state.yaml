@@ -565,6 +565,30 @@ change_log:
       project-state.yaml (observation_backlog, change_log)
     classification: functional
     date: 2026-02-15
+  - what: 'Standalone product repo support: hooks derive framework root, product repos get bootstrap files'
+    why: 'Product repos built with prawduct could not function as standalone Claude Code projects — hooks
+      assumed repo_root equals framework directory. All 5 hooks now derive FRAMEWORK_ROOT from script
+      location and use CLAUDE_DIR for governance state paths. Framework pattern matching guarded with
+      repo_root == FRAMEWORK_ROOT to prevent false positives in product repos. critic-reminder.sh early
+      exits for product repos. compact-governance-reinject.sh provides product-aware recovery with
+      framework absolute paths. Orchestrator generates bootstrap files (.prawduct/framework-path,
+      CLAUDE.md, .claude/settings.json) during project setup.'
+    blast_radius: .claude/hooks/critic-gate.sh, .claude/hooks/governance-tracker.sh, .claude/hooks/governance-prompt.sh,
+      .claude/hooks/governance-stop.sh, .claude/hooks/governance-gate.sh, .claude/hooks/compact-governance-reinject.sh,
+      tools/critic-reminder.sh, skills/orchestrator/SKILL.md, skills/orchestrator/onboarding.md, CLAUDE.md,
+      project-state.yaml
+    classification: directional
+    date: 2026-02-15
+    retrospective: 'Implementation went smoothly — the 5-phase plan mapped cleanly to independent
+      file edits. The FRAMEWORK_ROOT derivation pattern (cd "$(dirname "$0")/../.." && pwd) is
+      consistent across all hooks and adapts to tools/ vs .claude/hooks/ depth. Key insight:
+      CLAUDE_DIR was already defined in governance-prompt.sh and governance-stop.sh (from the
+      unified governance consolidation), so those changes were minimal. The framework pattern
+      matching guard (repo_root == FRAMEWORK_ROOT) is the critical change — without it, editing
+      CLAUDE.md in a product repo would trigger framework governance. The early exit in
+      critic-reminder.sh is important for product repo commits — without it, product commits
+      would fail the Critic evidence check. No new observation types needed — the failure modes
+      for framework-path staleness are loud, not subtle.'
   - what: 'Implement Existing Project Onboarding Mode: 4-phase process for analyzing existing codebases'
     why: 'Orchestrator condition 3 referenced Onboarding Mode with no implementation. Created skills/orchestrator/onboarding.md
       with 4 phases: codebase analysis (tech stack, architecture, product understanding, structural characteristics, tests,

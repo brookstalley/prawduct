@@ -36,6 +36,9 @@ fi
 
 # --- Resolve context ---
 
+# Derive framework root from this script's location (hooks live at <framework>/.claude/hooks/)
+FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.claude"
 SESSION_FILE="$CLAUDE_DIR/.session-governance.json"
@@ -63,12 +66,15 @@ is_framework_file=false
 rel_path=""
 if [[ -n "$repo_root" ]]; then
     rel_path="${file_path#"$repo_root"/}"
-    for pattern in "${FRAMEWORK_PATTERNS[@]}"; do
-        if [[ "$rel_path" == $pattern* ]]; then
-            is_framework_file=true
-            break
-        fi
-    done
+    # Only classify files as framework files in the framework repo
+    if [[ "$repo_root" == "$FRAMEWORK_ROOT" ]]; then
+        for pattern in "${FRAMEWORK_PATTERNS[@]}"; do
+            if [[ "$rel_path" == $pattern* ]]; then
+                is_framework_file=true
+                break
+            fi
+        done
+    fi
 fi
 
 # Check if file is in an active product build directory
@@ -159,9 +165,9 @@ if is_framework:
         messages.append(f'Framework file modified: {file_path}. Run Critic as a standalone step before committing.')
 
     # Maintain .critic-pending flag for backward compatibility with critic-gate.sh
-    repo_root_path = '$repo_root'
-    if repo_root_path:
-        pending_path = os.path.join(repo_root_path, '.claude', '.critic-pending')
+    claude_dir = '$CLAUDE_DIR'
+    if claude_dir:
+        pending_path = os.path.join(claude_dir, '.critic-pending')
         try:
             with open(pending_path, 'w') as f:
                 f.write(timestamp)

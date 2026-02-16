@@ -21,7 +21,23 @@ This is the default skill. When using Prawduct to build a user's product:
 
    **Project naming:** When creating a new project directory (conditions 1a, 2b, 4, or 5), ask the user what to call the project before creating any files. This is a genuine blocking question — the framework needs a directory name. Example: "What would you like to call this project?" If the user has no preference, derive a short slug from their description (e.g., "family-scorekeeper") and tell them: "I'll call it [slug] — you can rename it anytime."
 
-   **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, `working-notes/`, or `framework-observations/`, those paths are in the **product root**. For product repos, the product root is `.prawduct/` within the project directory. For the framework repo (self-hosted), the product root is the repo root. When skills reference other skills (`skills/...`) or templates (`templates/...`), those are read from the prawduct framework directory. When skills reference source code (`build_state.source_root`), that path is relative to the project directory (not `.prawduct/`).
+   **Bootstrap files:** When creating a new product directory (conditions 1a, 2b, 4, or 5), generate three bootstrap files so the product repo works as a standalone Claude Code project:
+   1. **`.prawduct/framework-path`** — Write the absolute path to the prawduct framework directory (where this skill file lives). Plain text, single line, no trailing newline.
+   2. **`CLAUDE.md`** — Minimal bootstrap that tells Claude to read the framework-path file, then read the Orchestrator skill from the framework. Content:
+      ```
+      # [Project Name]
+
+      ## Setup
+      This project uses the Prawduct framework.
+      Framework location: read `.prawduct/framework-path` for the absolute path.
+
+      ## Instructions
+      Before taking any action, read the framework path from `.prawduct/framework-path`,
+      then read `<framework-path>/skills/orchestrator/SKILL.md` and follow its activation process.
+      ```
+   3. **`.claude/settings.json`** — Hook configuration with absolute paths to framework hooks. Generate from the framework's own `.claude/settings.json`, replacing relative hook paths with absolute paths using the framework directory.
+
+   **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, `working-notes/`, or `framework-observations/`, those paths are in the **product root**. For product repos, the product root is `.prawduct/` within the project directory. For the framework repo (self-hosted), the product root is the repo root. When skills reference other skills (`skills/...`), templates (`templates/...`), tools (`tools/...`), or scripts (`scripts/...`), those are read from the prawduct framework directory. In product repos, the framework directory is stored in `.prawduct/framework-path`. When skills reference source code (`build_state.source_root`), that path is relative to the project directory (not `.prawduct/`).
 2. Read `project-state.yaml` in the product root. If it doesn't exist, this is a new project — create `.prawduct/` (if not already present), then copy the prawduct framework's `templates/project-state.yaml` into it.
 3. **Activate governance.** Write the current ISO-8601 timestamp to `.claude/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The governance-gate hook blocks governed file edits without this marker — see HR9.)
 4. **Initialize governance tracking.** Create `.claude/.session-governance.json` to enable mechanical governance enforcement for all projects:

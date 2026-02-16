@@ -30,15 +30,19 @@ if ! echo "$command" | grep -qE '(^|&&\s*|;\s*)git\s+commit'; then
     exit 0
 fi
 
-# Resolve repo root
+# Derive framework root from this script's location (hooks live at <framework>/.claude/hooks/)
+FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
+# Resolve repo root and CLAUDE_DIR
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 if [[ -z "$repo_root" ]]; then
     exit 0
 fi
+CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.claude"
 
 # Check for the .critic-pending flag — if it doesn't exist, no framework
 # files were modified in this session, so no Critic review needed
-if [[ ! -f "$repo_root/.claude/.critic-pending" ]]; then
+if [[ ! -f "$CLAUDE_DIR/.critic-pending" ]]; then
     # No pending flag, but still run the check in case files were staged
     # outside this session (e.g., git add from terminal)
     :
@@ -46,14 +50,14 @@ fi
 
 # Delegate to critic-reminder.sh for the actual governance check
 # It checks staged files against framework patterns and looks for evidence
-if "$repo_root/tools/critic-reminder.sh" 2>&1; then
+if "$FRAMEWORK_ROOT/tools/critic-reminder.sh" 2>&1; then
     # Evidence found or no framework files staged — allow commit
     # Clean up governance state after successful commit
-    rm -f "$repo_root/.claude/.critic-pending"
-    rm -f "$repo_root/.claude/.critic-findings.json"
-    rm -f "$repo_root/.claude/.session-edits.json"        # legacy, remove if present
-    rm -f "$repo_root/.claude/.session-governance.json"
-    rm -f "$repo_root/.claude/.orchestrator-activated"
+    rm -f "$CLAUDE_DIR/.critic-pending"
+    rm -f "$CLAUDE_DIR/.critic-findings.json"
+    rm -f "$CLAUDE_DIR/.session-edits.json"        # legacy, remove if present
+    rm -f "$CLAUDE_DIR/.session-governance.json"
+    rm -f "$CLAUDE_DIR/.orchestrator-activated"
     exit 0
 else
     # Framework files staged without Critic evidence — deny commit

@@ -27,6 +27,18 @@
 
 set -euo pipefail
 
+# Derive framework root from this script's location (tools/ is one level below framework root)
+FRAMEWORK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Early exit for product repos — product commits don't contain framework files
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+if [[ -n "$repo_root" && "$repo_root" != "$FRAMEWORK_ROOT" ]]; then
+    echo "Product repo — framework governance not applicable."
+    exit 0
+fi
+
+CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.claude"
+
 FRAMEWORK_PATTERNS=(
     "CLAUDE.md"
     "README.md"
@@ -84,12 +96,11 @@ echo ""
 
 # --- Check for structured Critic findings (primary path) ---
 
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 critic_evidence=false
 findings_file=""
 
-if [[ -n "$repo_root" ]]; then
-    findings_file="$repo_root/.claude/.critic-findings.json"
+if [[ -n "$CLAUDE_DIR" ]]; then
+    findings_file="$CLAUDE_DIR/.critic-findings.json"
 fi
 
 if [[ -n "$findings_file" && -f "$findings_file" ]]; then
@@ -186,8 +197,8 @@ fi
 
 if [[ "$critic_evidence" == true ]]; then
     # Clean up pending flags
-    if [[ -n "$repo_root" ]]; then
-        rm -f "$repo_root/.claude/.critic-pending"
+    if [[ -n "$CLAUDE_DIR" ]]; then
+        rm -f "$CLAUDE_DIR/.critic-pending"
     fi
     exit 0
 else

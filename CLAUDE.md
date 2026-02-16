@@ -37,13 +37,14 @@ When compacting this conversation, preserve:
 ```
 my-product/
 ├── .claude/                    # Claude Code config (must be at root)
-│   └── settings.json
+│   └── settings.json          # Generated: hooks with absolute paths to framework
 ├── .prawduct/                  # All prawduct outputs (product root)
+│   ├── framework-path         # Absolute path to prawduct framework directory
 │   ├── project-state.yaml
 │   ├── artifacts/
 │   ├── working-notes/
 │   └── framework-observations/
-├── CLAUDE.md                   # Bootstrap (must be at root)
+├── CLAUDE.md                   # Generated: bootstrap pointing to framework
 ├── src/                        # Product source code
 └── ...
 ```
@@ -156,7 +157,7 @@ To run the Critic: read `skills/critic/SKILL.md` and apply all applicable checks
 
 ## Product Build Governance (Compaction Recovery)
 
-If you are building a product and cannot remember governance procedures (e.g., after context compaction), follow these steps. **Skill files are always on disk — read them.** Product state files live in the **product root** (`.prawduct/` for product repos, repo root for the framework).
+If you are building a product and cannot remember governance procedures (e.g., after context compaction), follow these steps. **Skill files are always on disk — read them.** Product state files live in the **product root** (`.prawduct/` for product repos, repo root for the framework). In product repos, skill and tool paths are relative to the framework directory — read `.prawduct/framework-path` to get the framework location, then use absolute paths (e.g., `<framework-path>/skills/critic/SKILL.md`).
 
 1. **After each chunk:** Read `skills/critic/SKILL.md` from disk and apply all applicable checks (Spec Compliance, Test Integrity, Scope Discipline, and others based on context)
 2. **Record findings:** Add review entry to the product's `project-state.yaml` → `build_state.reviews` (in the product root)
