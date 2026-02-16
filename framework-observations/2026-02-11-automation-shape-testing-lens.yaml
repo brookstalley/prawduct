@@ -11,7 +11,7 @@ observations:
     description: "Framework vocabulary defaults to UI application concepts. Universal artifact instructions and skill language use terms like 'core flows,' 'empty state,' and 'first-run experience' that require reframing for non-UI shapes. Each new shape needs vocabulary translation, not just new sections."
     evidence: "Adding automation/pipeline support required reframing 'core flows' to 'pipeline stages' in artifact generator notes, 'first-run experience' to 'first-run output' in domain analyzer proactive expertise, and acknowledging 'empty state' is not a meaningful concept for headless systems."
     proposed_action: "When adding API/Service and Multi-Party shapes, audit universal artifact descriptions for UI-biased language and add shape-specific reframing notes. Consider whether universal language itself should be more shape-neutral."
-    status: triaged
+    status: acted_on
 
   - type: missing_guidance
     stage: 3

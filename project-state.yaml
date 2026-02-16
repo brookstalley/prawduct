@@ -741,6 +741,22 @@ iteration_state:
 observation_backlog:
   last_triage: 2026-02-15
   items:
+    # --- Next priority (actionable now) ---
+    - observation_file: "framework-observations/2026-02-15-dcp-intermediate-steps-skipped-during-standalone.yaml"
+      type: process_friction
+      summary: "DCP intermediate steps skipped — agent bypassed plan-stage review, per-phase reviews, plan file, observation"
+      target_files: ["skills/orchestrator/stage-6-iteration.md", ".claude/hooks/governance-stop.sh"]
+      priority: next
+      rationale: "Real governance gap. Root cause: agent didn't read DCP protocol before implementing. Fix: mechanical enforcement of intermediate steps."
+      added: 2026-02-15
+    - observation_file: "framework-observations/2026-02-15-governance-stop-hook-only-enforces-dcp.yaml"
+      type: process_friction
+      summary: "governance-stop only enforces DCP retrospective, not intermediate steps (plan review, phase reviews, observation)"
+      target_files: [".claude/hooks/governance-stop.sh"]
+      priority: next
+      rationale: "Structural fix: add plan_stage_review_completed, phases_reviewed_count, observation_captured fields to directional_change tracking."
+      added: 2026-02-15
+    # --- Deferred (watch for patterns or address later) ---
     - observation_file: "framework-observations/2026-02-11-family-utility-eval-full.yaml"
       type: critic_gap
       summary: "Critic missed scope addition outside chunk deliverables"
@@ -749,39 +765,11 @@ observation_backlog:
       rationale: "Single instance, note severity. Revisit if recurs in future evals."
       added: 2026-02-11
     - observation_file: "framework-observations/2026-02-11-automation-shape-testing-lens.yaml"
-      type: coverage
-      summary: "UI vocabulary bias in universal artifact descriptions"
-      target_files: ["skills/domain-analyzer/SKILL.md", "skills/artifact-generator/SKILL.md"]
-      priority: acted_on
-      rationale: "Addressed by vocabulary debiasing in generality strengthening change (2026-02-14). Generalized Product Identity dimension, Design Lens, has_human_interface amplification, product-brief template."
-      added: 2026-02-11
-    - observation_file: "framework-observations/2026-02-11-automation-shape-testing-lens.yaml"
       type: process_friction
       summary: "Self-review rigor — Critic self-review may lack adversarial rigor"
       target_files: ["skills/critic/SKILL.md"]
       priority: deferred
       rationale: "Can't address until independent reviewer available. Watch for pattern."
-      added: 2026-02-11
-    - observation_file: "framework-observations/2026-02-11-background-data-pipeline-eval.yaml"
-      type: rubric_issue
-      summary: "29% UNABLE criteria in simulation — rubric over-weighted toward interactive"
-      target_files: ["tests/scenarios/background-data-pipeline.md"]
-      priority: acted_on
-      rationale: "Addressed: reclassified 4 C1 criteria from interactive→hybrid, added concrete thresholds, added concrete end-to-end threshold (2026-02-15)."
-      added: 2026-02-11
-    - observation_file: "framework-observations/2026-02-11-background-data-pipeline-eval.yaml"
-      type: rubric_issue
-      summary: "Subjective rubric terms ('proportionate', 'substantive', 'actionable') lack thresholds"
-      target_files: ["tests/scenarios/background-data-pipeline.md"]
-      priority: acted_on
-      rationale: "Addressed: replaced 'proportionate' with page ranges, 'substantive' with minimum counts, 'actionable' with specific metric/failure-mode counts across all 3 scenarios (2026-02-15)."
-      added: 2026-02-11
-    - observation_file: "framework-observations/2026-02-11-documentation-consolidation-pattern.yaml"
-      type: process_friction
-      summary: "Doc layering bloat — appending sections instead of restructuring"
-      target_files: ["skills/orchestrator/SKILL.md"]
-      priority: acted_on
-      rationale: "Addressed by Orchestrator decomposition (2026-02-15). SKILL.md reduced from 634→155 lines via extraction into 5 sub-files (stages-0-2, stages-3-4, stage-5-build, stage-6-iteration, protocols)."
       added: 2026-02-11
     - observation_file: "framework-observations/2026-02-11-eval-coordination-meta-learning.yaml"
       type: coverage
@@ -790,6 +778,20 @@ observation_backlog:
       priority: deferred
       rationale: "Niche issue; will resurface if it recurs in future evaluations."
       added: 2026-02-14
+    - observation_file: "framework-observations/2026-02-11-eval-coordination-meta-learning.yaml"
+      type: process_friction
+      summary: "FRP execution inconsistent across stage transitions — only some stages mention it explicitly"
+      target_files: ["skills/orchestrator/SKILL.md"]
+      priority: deferred
+      rationale: "At requires_pattern status (seen in 1 eval). Orchestrator decomposition may have partially addressed by making FRP reference clearer in protocols.md."
+      added: 2026-02-15
+    - observation_file: "framework-observations/2026-02-11-eval-coordination-meta-learning.yaml"
+      type: rubric_issue
+      summary: "Eval methodology verification checks file existence, not completeness"
+      target_files: ["docs/evaluation-methodology.md"]
+      priority: deferred
+      rationale: "At requires_pattern status. Will act if a third eval shows incomplete verification."
+      added: 2026-02-15
     - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
       type: coverage
       summary: "Game design guidance gap — no entertainment domain depth"
@@ -798,18 +800,11 @@ observation_backlog:
       rationale: "Address when adding entertainment domain depth or dynamic domain generation improvements."
       added: 2026-02-14
     - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
-      type: applicability
-      summary: "UI discovery questions reference web/mobile — inapplicable to terminal games"
-      target_files: ["skills/domain-analyzer/SKILL.md"]
-      priority: acted_on
-      rationale: "Addressed by vocabulary debiasing in generality strengthening change (2026-02-14). has_human_interface amplification now modality-general, not screen-specific."
-      added: 2026-02-14
-    - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
       type: coverage
       summary: "Review Lens findings not persisted to project-state.yaml"
       target_files: ["skills/review-lenses/SKILL.md", "skills/orchestrator/SKILL.md"]
       priority: deferred
-      rationale: "Related to existing Critic-Review Lenses integration backlog item."
+      rationale: "Related to existing Critic-Review Lenses integration backlog item. At requires_pattern across 2 files."
       added: 2026-02-14
     - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
       type: proportionality
@@ -818,34 +813,6 @@ observation_backlog:
       priority: deferred
       rationale: "Address when refining evaluation methodology for efficiency."
       added: 2026-02-14
-    - observation_file: "framework-observations/2026-02-12-the-human-interface-concern-type-minimal.yaml"
-      type: coverage
-      summary: "Minimal UI coverage gap — has_human_interface needs deeper modality support"
-      target_files: ["skills/domain-analyzer/SKILL.md", "templates/human-interface/"]
-      priority: acted_on
-      rationale: "Addressed by three-layer architecture in generality strengthening change (2026-02-14). Artifact Generator amplification rules now cover all modalities via dynamic generation; templates are optional reference for screen modality only."
-      added: 2026-02-14
-    - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
-      type: rubric_issue
-      summary: "UNABLE criteria in simulation — rubric criteria not evaluable in simulation mode"
-      target_files: ["tests/scenarios/terminal-arcade-game.md"]
-      priority: acted_on
-      rationale: "Addressed: added concrete checks for Builder player rendering, replaced gameplay feel with 15+ FPS threshold, made Critic findings measurable (2026-02-15)."
-      added: 2026-02-14
-    - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
-      type: process_friction
-      summary: "Empty spec_compliance/reviews in eval project-state — Builder governance gaps"
-      target_files: ["skills/builder/SKILL.md", "skills/critic/SKILL.md"]
-      priority: acted_on
-      rationale: "Addressed by Builder governance improvements in generality strengthening change (2026-02-14). Risk-proportionate spec_compliance format (low-risk gets chunk-level summary, medium/high gets per-requirement detail). Strengthened instructions and verification gate."
-      added: 2026-02-14
-    - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
-      type: rubric_issue
-      summary: "domain_knowledge rubric criterion mismatch — game-specific knowledge scoring"
-      target_files: ["tests/scenarios/terminal-arcade-game.md"]
-      priority: acted_on
-      rationale: "Addressed: changed domain_knowledge criterion from 'basic' to 'basic or intermediate' with rationale (2026-02-15)."
-      added: 2026-02-14
     - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
       type: proportionality
       summary: "Game codebase size disproportionate — eval methodology needs size guidance"
@@ -853,3 +820,17 @@ observation_backlog:
       priority: deferred
       rationale: "Eval methodology refinement; address when adding eval efficiency improvements."
       added: 2026-02-14
+    - observation_file: "framework-observations/2026-02-15-observation-lifecycle-cleanup-archiving-has-no.yaml"
+      type: process_friction
+      summary: "Observation archiving has no mechanical enforcement — resolved files linger until manually noticed"
+      target_files: ["tools/update-observation-status.sh", "tools/session-health-check.sh"]
+      priority: deferred
+      rationale: "session-health-check already reports archivable files. Auto-archive on status transition would be nice but not urgent."
+      added: 2026-02-15
+    - observation_file: "framework-observations/2026-02-15-standalone-product-repo-support-hooks-derive.yaml"
+      type: coverage
+      summary: "Standalone product repo support needs real-world testing against product repo"
+      target_files: ["skills/orchestrator/SKILL.md", "skills/orchestrator/onboarding.md"]
+      priority: deferred
+      rationale: "Implementation complete. Verify bootstrap generation and hook firing against an actual product repo."
+      added: 2026-02-15

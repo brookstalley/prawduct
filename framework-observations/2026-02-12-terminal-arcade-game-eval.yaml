@@ -20,7 +20,7 @@ observations:
     description: "UI Application discovery questions reference web/mobile concepts (touch targets, responsive layout, browser APIs) that required mental translation for terminal platform. The general principles adapted naturally, but the specific examples lean web/mobile."
     evidence: "Tier 1 question 3 references 'phone, computer, both' and 'dark room, noisy commute, wet hands in a kitchen.' For a terminal game, these device-centric framings don't apply — the relevant context is terminal emulator type and SSH scenarios. The system adapted without asking wrong questions, but the skill text could be more platform-neutral."
     proposed_action: "Consider restructuring UI Application Tier 1 question 3 around the general concept of 'usage context and platform constraints' rather than device-specific examples. The current phrasing is fine for web/mobile but less natural for terminal, desktop, or embedded UI."
-    status: triaged
+    status: acted_on
 
   - type: coverage
     stage: 3

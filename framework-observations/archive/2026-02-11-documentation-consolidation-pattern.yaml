@@ -11,7 +11,7 @@ observations:
     description: "Documentation fixes that layer new sections on top of existing prose instead of restructuring create repetition, contradiction, and bloat. This pattern recurs when changes are made under time pressure."
     evidence: "Commit e13949a added Mandatory Observation Capture section (lines 233-286) alongside existing Framework Reflection Protocol (lines 199-230) in Orchestrator, creating 88 lines for one concept. Line 278 says capture 'Stage N completed without significant concerns'; README line 142 says that exact pattern is NOT substantive — a direct contradiction."
     proposed_action: "When modifying documentation, restructure rather than layer. Replace the section, don't append alongside it."
-    status: triaged
+    status: acted_on
 
   - type: process_friction
     stage: "meta"

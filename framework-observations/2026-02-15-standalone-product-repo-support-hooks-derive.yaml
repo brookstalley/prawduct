@@ -11,7 +11,7 @@ observations:
     description: "Standalone product repo support: hooks derive FRAMEWORK_ROOT from script location, product repos get bootstrap files. FRAMEWORK_ROOT pattern consistent across all 6 hooks and critic-reminder.sh. Framework pattern matching guarded with repo_root == FRAMEWORK_ROOT. All governance state paths use CLAUDE_DIR. Backward compatible: framework repo behavior unchanged."
     evidence: "11 files modified, 143 insertions, 37 deletions. Final Critic: 0 blocking, 0 warning, 2 notes (framework-path staleness loud failure, product skills/ dir benign edge case)."
     proposed_action: "Test against real product repo (unseen-sights) to verify bootstrap generation and hook firing."
-    status: noted
+    status: triaged
 skills_affected:
   - "skills/orchestrator/SKILL.md"
   - "skills/orchestrator/onboarding.md"

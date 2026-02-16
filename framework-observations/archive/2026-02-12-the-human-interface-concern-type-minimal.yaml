@@ -12,7 +12,7 @@ observations:
     description: "The human_interface concern type 'minimal' (menu bar, system tray, widgets) is detected but has no concern-specific discovery questions or artifact adjustments. The existing human_interface questions assume screen-based UI (platform context, sharing, offline use, simplicity). A menu bar utility has different design concerns: icon legibility at small sizes, system appearance adaptation (light/dark mode), menu structure conventions, and platform-specific APIs. These were addressed through general expertise but not guided by the skill."
     evidence: "Domain Analyzer detected human_interface type: minimal correctly, but discovery questions were drawn from the generic and screen-type question sets. Menu bar-specific concerns (template images, NSStatusItem patterns, system appearance) were handled by general knowledge, not framework guidance."
     proposed_action: "Add minimal-interface-specific questions or considerations to the Domain Analyzer: icon legibility at target size, system appearance adaptation, platform widget/menu conventions, interaction model constraints (click vs hover vs right-click)."
-    status: triaged
+    status: acted_on
 skills_affected:
   - "skills/domain-analyzer/SKILL.md"
 ---

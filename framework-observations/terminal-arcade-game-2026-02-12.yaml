@@ -20,7 +20,7 @@ observations:
     description: "build_state.spec_compliance and build_state.reviews arrays remain empty after completing all 7 build chunks and a Stage 6 iteration. Governance checkpoints are defined but compliance tracking is not structured per-chunk in the project state file."
     evidence: "project-state.yaml has spec_compliance.requirements: [] and reviews: [] despite 7 completed build chunks with 224 tests and two defined governance checkpoints. Compliance was demonstrated through test suite growth (0->28->71->108->148->175->200->224) but not through structured per-chunk compliance records."
     proposed_action: "Consider whether Builder/Critic should populate spec_compliance and reviews entries in project-state.yaml after each chunk. This would provide audit trail without adding significant process weight. Watch for a second instance before acting."
-    status: triaged
+    status: acted_on
 
   - type: coverage
     stage: 3

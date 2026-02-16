@@ -11,7 +11,7 @@ observations:
     description: "governance-stop hook only enforces DCP retrospective completion, not intermediate DCP steps. Plan-stage Critic review, per-phase reviews, plan file creation, and session observation rely entirely on agent compliance. When agent skips reading the DCP protocol, all intermediate governance evaporates."
     evidence: "Standalone product repo support DCP: retrospective enforced mechanically but plan-stage review, per-phase reviews, and observation were not enforced and all skipped."
     proposed_action: "Add directional_change fields to session-governance: plan_stage_review_completed, phases_reviewed_count, observation_captured. governance-stop checks all three before allowing DCP completion."
-    status: noted
+    status: triaged
 skills_affected:
   - "skills/orchestrator/stage-6-iteration.md"
   - ".claude/hooks/governance-stop.sh"
