@@ -15,6 +15,7 @@ This is the default skill. When using Prawduct to build a user's product:
       - `"onboarding"` (no docs, no interrupted state) → Fresh repo with no project-state.yaml. Same as doc-enriched path but Phase 1g will be minimal.
       - `"migration"` + `schema_version_raw: "v1"` → Lightweight migration. Activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/migration.md` and follow Tier 1.
       - `"migration"` + `schema_version_raw: "v0"` or `"v0.5"` → Heavy migration requiring re-analysis. Activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/migration.md` and follow the appropriate tier.
+      - `"migration"` + `schema_version_raw: "current"` (scenario `"migration_layout"`) → Layout-only migration (files at root, schema OK). Activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/migration.md`. Layout migration only (Phase A), then scaffolding (Phase C), path updates (Phase D), and advisory (Phase F).
       - `"session_resumption"` + `content_state.onboarding_completeness: "partial"` → Infra exists but onboarding incomplete. Offer the user a choice: resume onboarding or start iterating with what exists.
       - `"session_resumption"` (normal) → Everything is healthy. Continue to Step 2.
    d. If the scenario is `"self_hosted"`, this is the prawduct framework repo. The **product root** is `.prawduct/`. Proceed to Step 2.

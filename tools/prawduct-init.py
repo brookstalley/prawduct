@@ -234,6 +234,16 @@ def detect_schema_version(project_state_path: Path) -> str | None:
     if has_top_level_structural:
         return "v1"
 
+    # Secondary scan: check for v0.5-specific field names at ANY indent level.
+    # These names were renamed/dropped in v2 and are definitive v0.5 signals.
+    # Catches nested v0.5 (e.g., classification.concerns with old field names),
+    # hybrid formats, and any variant where old field names survive.
+    v05_field_signals = ["api_surface:", "constrained_environment:", "external_integrations:"]
+    for line in lines:
+        stripped = line.strip()
+        if any(stripped.startswith(sig) for sig in v05_field_signals):
+            return "v0.5"
+
     # No version field and no old structural signals — assume current format
     # missing the schema_version field (e.g., framework's own project-state.yaml)
     return "current"
@@ -345,7 +355,8 @@ def extract_content_state(target_dir: str) -> dict:
 
     Returns:
     - current_stage: stage name or None
-    - artifact_count: number of artifacts found in .prawduct/artifacts/
+    - artifact_count: number of artifacts found in .prawduct/artifacts/ (or root artifacts/)
+    - artifacts_location: ".prawduct/" / "root" / "none"
     - has_classification: whether classification section has content
     - has_product_definition: whether product_definition section has content
     - onboarding_completeness: "none" / "infra_only" / "partial" / "full"
@@ -359,12 +370,22 @@ def extract_content_state(target_dir: str) -> dict:
         "onboarding_completeness": "none",
     }
 
-    # Count artifacts
+    # Count artifacts — check .prawduct/artifacts/ first, fall back to root artifacts/
     artifacts_dir = target / ".prawduct" / "artifacts"
     if artifacts_dir.is_dir():
         result["artifact_count"] = sum(
             1 for f in artifacts_dir.iterdir() if f.is_file()
         )
+        result["artifacts_location"] = ".prawduct/"
+    else:
+        root_artifacts = target / "artifacts"
+        if root_artifacts.is_dir():
+            result["artifact_count"] = sum(
+                1 for f in root_artifacts.iterdir() if f.is_file()
+            )
+            result["artifacts_location"] = "root"
+        else:
+            result["artifacts_location"] = "none"
 
     # Check project-state.yaml
     ps_path = target / ".prawduct" / "project-state.yaml"
@@ -437,6 +458,21 @@ def extract_content_state(target_dir: str) -> dict:
         result["onboarding_completeness"] = "infra_only"
 
     return result
+
+
+def detect_root_level_prawduct_files(target_dir: str) -> dict:
+    """Detect prawduct output files at root that should be in .prawduct/.
+
+    Returns a dict indicating which prawduct outputs exist at the project root
+    instead of inside .prawduct/. Used to trigger layout migration.
+    """
+    target = Path(target_dir)
+    return {
+        "project_state": (target / "project-state.yaml").is_file(),
+        "artifacts_dir": (target / "artifacts").is_dir(),
+        "observations_dir": (target / "framework-observations").is_dir(),
+        "working_notes_dir": (target / "working-notes").is_dir(),
+    }
 
 
 def detect_onboarding_in_progress(target_dir: str) -> dict | None:
@@ -876,6 +912,9 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
         elif sv == 1:
             if scenario == "healthy":
                 scenario = "migration_v1"
+        # Also detect layout migration: project-state at root (not in .prawduct/)
+        if c.get("location") == "root" and not scenario.startswith("migration"):
+            scenario = "migration_layout"
 
     if not self_hosted:
         # 6. CLAUDE.md (product repos only — framework has its own CLAUDE.md)
@@ -894,6 +933,9 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
 
     # 10. Onboarding in progress detection
     onboarding_in_progress = detect_onboarding_in_progress(target)
+
+    # 10b. Root-level file detection (prawduct outputs at root instead of .prawduct/)
+    root_level_files = detect_root_level_prawduct_files(target)
 
     # 11. Hook accessibility
     hook_warnings = check_hook_accessibility(target)
@@ -954,6 +996,7 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
         "existing_docs": existing_docs,
         "content_state": content_state,
         "onboarding_in_progress": onboarding_in_progress,
+        "root_level_files": root_level_files,
         "checks": checks,
         "next_action": next_action,
         "warnings": warnings,

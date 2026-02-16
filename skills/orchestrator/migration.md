@@ -1,23 +1,67 @@
-# Migration Mode — Old prawduct Schema Migration
+# Migration Mode — Old prawduct Schema and Layout Migration
 
-Migration Mode converts project-state.yaml files from older prawduct schema versions to the current format (v2). The Orchestrator routes here when `prawduct-init.sh` reports `next_action: "migration"` and the `schema_version_raw` field identifies the source version.
+Migration Mode converts projects from older prawduct versions to the current format. It handles both **layout migration** (files at project root instead of `.prawduct/`) and **schema migration** (old field names and structure). The Orchestrator routes here when `prawduct-init.sh` reports `next_action: "migration"` with any `schema_version_raw` or `scenario` starting with `"migration"`.
 
 ## When This File Is Read
 
-The Orchestrator routes here from SKILL.md Step 1c when the project has a `project-state.yaml` with a detected old schema version. The `prawduct-init.sh` output provides:
-- `schema_version_raw`: the raw detected version string ("v0", "v0.5", "v1", "current")
-- `content_state`: current content analysis including `has_classification`, `has_product_definition`
+The Orchestrator routes here from SKILL.md Step 1c when:
+- `scenario: "migration_v0"` / `"migration_v1"` — old schema version detected
+- `schema_version_raw: "v0.5"` — v0.5-specific field names detected (top-level or nested)
+- `scenario: "migration_layout"` — project-state.yaml and/or artifacts at root instead of `.prawduct/`
+
+The `prawduct-init.sh` output provides:
+- `schema_version_raw`: detected version string ("v0", "v0.5", "v1", "current")
+- `root_level_files`: dict of prawduct outputs found at project root
+- `content_state`: current content analysis including `has_classification`, `has_product_definition`, `artifacts_location`
 - `existing_docs`: classified documentation inventory
 
 ---
 
-## Migration Tiers
+## Unified Migration Flow
 
-### Tier 1: v1 → v2 (Lightweight)
+Every migration runs through these phases in order. Each phase checks whether it applies and skips if not needed.
+
+### Phase A: Layout Migration
+
+**When:** `root_level_files` from prawduct-init shows any files at root (`project_state`, `artifacts_dir`, `observations_dir`, or `working_notes_dir` is true).
+
+**Purpose:** Move prawduct outputs from project root into `.prawduct/` where they belong.
+
+**Steps:**
+
+1. **Inventory root-level prawduct files.** Check for:
+   - `project-state.yaml` at root
+   - `artifacts/` directory at root
+   - `framework-observations/` directory at root
+   - `working-notes/` directory at root
+
+2. **For each file/directory that exists at root AND doesn't exist in `.prawduct/`:**
+   - Use `git mv` if in a git repo, otherwise `mv`
+   - `project-state.yaml` → `.prawduct/project-state.yaml`
+   - `artifacts/` → `.prawduct/artifacts/`
+   - `framework-observations/` → `.prawduct/framework-observations/`
+   - `working-notes/` → `.prawduct/working-notes/`
+
+3. **Handle conflicts** (file/directory exists at BOTH locations):
+   - Keep the `.prawduct/` version (it's newer)
+   - Preserve root version as `.prawduct/working-notes/pre-migration-root-{name}.yaml` (for project-state.yaml) or note the conflict for the user
+   - For directories that exist in both locations, merge contents — move files from root that don't exist in `.prawduct/`, skip duplicates
+
+4. **Verify** all files accessible at new locations.
+
+**Skip this phase** if no `root_level_files` are true.
+
+---
+
+### Phase B: Schema Migration
+
+**When:** `schema_version_raw` is not "v2", "current", or null. Operates on `.prawduct/project-state.yaml` (post-relocation from Phase A).
+
+Apply the appropriate tier based on the detected version:
+
+#### Tier 1: v1 → v2 (Lightweight)
 
 **When:** `schema_version_raw` is "v1" (has top-level `structural:` key, no `schema_version` field)
-
-**Approach:** Mechanical field additions + LLM validation. Minimal content changes — the v1 format is structurally close to v2.
 
 **Steps:**
 
@@ -42,7 +86,7 @@ The Orchestrator routes here from SKILL.md Step 1c when the project has a `proje
 3. **Derive `domain_characteristics`** from existing content:
    - Read `product_definition.vision`, existing docs, and structural characteristics
    - Generate 1-3 domain-specific characteristics with implications
-   - Mark as `"# Inferred during v1→v2 migration — verify with product owner"`
+   - Mark as `"# Inferred during v1->v2 migration -- verify with product owner"`
 
 4. **Validate coherence:**
    - Check that `structural` values match what the codebase shows
@@ -56,36 +100,34 @@ The Orchestrator routes here from SKILL.md Step 1c when the project has a `proje
    > - Derived [N] domain characteristics from your product description
    > - [Any inconsistencies found]
    >
-   > The migration preserves all your existing content. Review the new `domain_characteristics` section — I inferred those from your product description."
+   > The migration preserves all your existing content. Review the new `domain_characteristics` section."
 
 6. **Write the updated file** to `.prawduct/project-state.yaml`.
 
----
+#### Tier 2: v0.5 → v2 (Moderate)
 
-### Tier 2: v0.5 → v2 (Moderate)
+**When:** `schema_version_raw` is "v0.5" (has `concerns:` key — top-level or nested — or v0.5-specific field names like `api_surface`, `constrained_environment`, `external_integrations` at any indent level)
 
-**When:** `schema_version_raw` is "v0.5" (has top-level `concerns:` key)
+**Correspondence table** (search for these field names at any indent level, not just under top-level `concerns:`):
 
-**Approach:** Field mapping via correspondence table + LLM re-derivation of missing sections. User confirmation required.
-
-**Correspondence table:**
-| v0.5 `concerns.*` | v2 `classification.structural.*` |
+| v0.5 field | v2 `classification.structural.*` |
 |---|---|
 | `human_interface` | `has_human_interface` (add `modality` and `platform` from codebase) |
 | `unattended_operation` | `runs_unattended` (add `trigger` from codebase) |
 | `api_surface` | `exposes_programmatic_interface` (add `consumers` from codebase) |
 | `multi_party` | `has_multiple_party_types` |
 | `data_sensitivity` / `sensitive_data` | `handles_sensitive_data` |
-| `constrained_environment` | (dropped — not a v2 structural characteristic) |
-| `external_integrations` | (dropped — covered by domain_characteristics) |
+| `constrained_environment` | (dropped -- not a v2 structural characteristic) |
+| `external_integrations` | (dropped -- covered by domain_characteristics) |
 
 **Steps:**
 
 1. **Read the existing file** completely. Preserve all user content.
 
 2. **Map structural characteristics** using the correspondence table above.
-   - For each v0.5 concern that maps to a v2 structural characteristic, carry over the value
-   - For concerns that map to `null` in v2, note them as candidates for `domain_characteristics`
+   - Search for v0.5 field names at any indent level (not just under a top-level `concerns:` key)
+   - For each v0.5 field that maps to a v2 structural characteristic, carry over the value
+   - For fields that map to `null` in v2, note them as candidates for `domain_characteristics`
 
 3. **Re-derive missing sections:**
    - `classification.domain` — infer from product description and existing docs
@@ -98,22 +140,18 @@ The Orchestrator routes here from SKILL.md Step 1c when the project has a `proje
    - `change_log`, `observation_backlog`
 
 5. **Present migration summary to user** showing:
-   - What was mapped (concern → structural characteristic)
+   - What was mapped (concern -> structural characteristic)
    - What was dropped (concerns with no v2 equivalent)
    - What was newly derived (domain, domain_characteristics, risk_profile)
    - Any content that couldn't be preserved
 
-6. **Wait for user confirmation** — this is a genuine blocking question. The concern→structural mapping involves interpretation.
+6. **Wait for user confirmation** — this is a genuine blocking question. The concern->structural mapping involves interpretation.
 
-7. **Write the v2 file** to `.prawduct/project-state.yaml`. Add a change_log entry documenting the migration.
+7. **Write the v2 file** to `.prawduct/project-state.yaml`.
 
----
-
-### Tier 3: v0 → v2 (Heavy — Re-analysis)
+#### Tier 3: v0 → v2 (Heavy — Re-analysis)
 
 **When:** `schema_version_raw` is "v0" (has top-level `product_shape:` or `shape:` key)
-
-**Approach:** Extract user content, re-run structural detection on the codebase, use preserved text as a head start for artifact generation. This is essentially onboarding with preserved context.
 
 **Steps:**
 
@@ -144,24 +182,111 @@ The Orchestrator routes here from SKILL.md Step 1c when the project has a `proje
 
 ---
 
-## After Migration
+### Phase C: V2 Scaffolding
 
-Regardless of tier:
+**When:** Always runs after Phase B (or if Phase B was skipped because the schema was already current). Ensures ALL v2 sections exist.
 
-1. Add a `change_log` entry documenting the migration:
+**Steps:**
+
+1. **Read `.prawduct/project-state.yaml`** (the post-migration version).
+
+2. **Add missing top-level sections** with empty/default values (only add if absent):
    ```yaml
-   - what: "Migrated project-state.yaml from [version] to v2"
-     why: "Old schema format detected; migrated to current format for full framework governance"
+   schema_version: 2
+   observation_backlog:
+     last_triage: null
+     items: []
+   deprecated_terms: []
+   ```
+
+3. **Check `artifact_manifest` structure:**
+   - If `artifact_manifest` exists but is a flat list (not organized into 5 categories), restructure:
+     - Entries with `file_path` in `.prawduct/artifacts/` → `artifacts` category
+     - Entries with `file_path` in `skills/` → `source_components` category
+     - Entries with `file_path` in `templates/` or `tools/` → `tooling` category
+     - Entries with `file_path` in `tests/` → `test_specs` category
+     - Entries with `file_path` in `docs/` → `human_docs` category
+     - If entries lack `depends_on`/`depended_on_by` fields, leave them empty (don't guess)
+   - If no `artifact_manifest` exists at all, create one with entries for each discovered artifact file in `.prawduct/artifacts/`
+
+4. **Write updated file** to `.prawduct/project-state.yaml`.
+
+---
+
+### Phase D: Path Reference Updates
+
+**When:** Phase A relocated files (layout migration occurred).
+
+**Steps:**
+
+1. **Scan `artifact_manifest` entries** and update `file_path` values:
+   - `artifacts/foo.md` → `.prawduct/artifacts/foo.md`
+   - `framework-observations/foo.yaml` → `.prawduct/framework-observations/foo.yaml`
+   - `working-notes/foo.md` → `.prawduct/working-notes/foo.md`
+
+2. **Check build plan chunk references.** Build plan chunks typically reference artifact NAMES (not paths), so they should be unaffected. Verify and flag to the user if any use full paths that need updating.
+
+3. **Write updated file** if any paths changed.
+
+---
+
+### Phase E: Build Stage Determination
+
+**When:** Always runs. Sets `current_stage` appropriately for the migrated project.
+
+**Logic:**
+
+```
+if build_plan.chunks exists AND any chunk has status "in-progress" or "pending":
+    keep current_stage as-is (preserve "building")
+elif build_plan.chunks exists AND all chunks have status "complete":
+    set current_stage to "iteration"
+elif current_stage is "building" but no chunks exist:
+    set current_stage to "iteration"
+elif current_stage is null or missing:
+    set current_stage to "definition"
+else:
+    keep current_stage as-is
+```
+
+---
+
+### Phase F: Artifact Coverage Advisory
+
+**When:** Always runs after migration. Advisory only — presents information, does not auto-generate.
+
+**Steps:**
+
+1. **Read the structural characteristics** from the migrated `classification.structural` section.
+
+2. **List expected artifacts:** 7 universal artifacts + characteristic-specific artifacts (from Artifact Generator amplification rules in `skills/artifact-generator/SKILL.md`).
+
+3. **List discovered artifacts** in `.prawduct/artifacts/`.
+
+4. **Report gaps:**
+   > "Your project has [N] artifacts. Based on your structural characteristics ([list]), the current framework would also generate: [list of missing artifacts]. These are optional — you can generate them later with the Artifact Generator."
+
+**This is advisory only** — present to user, don't auto-generate. The user may choose to generate them in a future session.
+
+---
+
+### Phase G: After Migration
+
+**Always runs as the final phase.**
+
+1. **Add `change_log` entry** documenting the migration:
+   ```yaml
+   - what: "Migrated project from [source description] to v2 format"
+     why: "Old schema/layout detected; migrated to current format for full framework governance"
      blast_radius: ".prawduct/project-state.yaml"
      classification: process
      date: <today>
    ```
+   Include specifics: what phases ran (layout relocation, schema migration tier, scaffolding), what was moved/mapped/added.
 
-2. Set `current_stage` appropriately:
-   - If the project was previously in a build stage → `iteration`
-   - If the project had no build progress → `definition` (to resume where they left off)
+2. **Present summary to user:** What was moved (Phase A), what was migrated (Phase B), what was scaffolded (Phase C), what paths were updated (Phase D), what stage was set (Phase E), and what artifacts are advisory (Phase F).
 
-3. Return control to the Orchestrator for Session Resumption. The project now has a v2 project-state.yaml and can use full framework governance.
+3. **Return control to the Orchestrator** for Session Resumption. The project now has a v2 project-state.yaml in `.prawduct/` and can use full framework governance.
 
 ---
 
@@ -172,3 +297,9 @@ Regardless of tier:
 **Corrupt files:** If the file can't be parsed at all, treat as v0 (extract what's readable, re-derive the rest).
 
 **Framework repo:** Migration is never triggered for the framework repo (`self_hosted` scenario). The framework's own project-state.yaml is always maintained at the current schema.
+
+**Layout-only migration:** When `scenario: "migration_layout"` and `schema_version_raw: "current"`, only Phases A, C, D, E, F, G run. Phase B (schema migration) is skipped since the schema is already current.
+
+**Files at both locations:** When project-state.yaml exists at both root and `.prawduct/`, the `.prawduct/` version takes precedence (it's newer). The root version is preserved as a working note for reference.
+
+**Active builds:** Phase E preserves "building" stage when in-progress chunks exist. The build can continue after migration with full v2 governance.
