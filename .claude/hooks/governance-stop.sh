@@ -117,11 +117,28 @@ checkpoints_due = gov.get('governance_checkpoints_due', [])
 if checkpoints_due:
     critical_issues.append(f'{len(checkpoints_due)} governance checkpoint(s) overdue')
 
-# --- DCP retrospective debt ---
+# --- DCP debt ---
 dc = data.get('directional_change', {})
-if dc.get('active', False) and not dc.get('retrospective_completed', False):
+if dc.get('active', False):
     plan_desc = dc.get('plan_description', 'unknown')
-    critical_issues.append(f'Directional change active without retrospective: {plan_desc}. Complete DCP step 11 (post-change retrospective) before finishing.')
+
+    # DCP step 4: plan-stage Critic review
+    if 'plan_stage_review_completed' in dc and not dc.get('plan_stage_review_completed', False):
+        critical_issues.append(f'DCP step 4 incomplete: plan-stage Critic review not done for: {plan_desc}')
+
+    # DCP step 7: per-phase reviews (only for multi-phase DCPs)
+    total_phases = dc.get('total_phases', 0)
+    phases_reviewed = dc.get('phases_reviewed_count', 0)
+    if 'phases_reviewed_count' in dc and total_phases > 1 and phases_reviewed == 0:
+        critical_issues.append(f'DCP step 7 incomplete: {total_phases} phases planned but 0 phase reviews done for: {plan_desc}')
+
+    # DCP step 10: session observation
+    if 'observation_captured' in dc and not dc.get('observation_captured', False):
+        critical_issues.append(f'DCP step 10 incomplete: session observation not captured for: {plan_desc}')
+
+    # DCP step 11: retrospective
+    if not dc.get('retrospective_completed', False):
+        critical_issues.append(f'DCP step 11 incomplete: post-change retrospective not done for: {plan_desc}')
 
 if critical_issues:
     print('CRITICAL: ' + '; '.join(critical_issues))

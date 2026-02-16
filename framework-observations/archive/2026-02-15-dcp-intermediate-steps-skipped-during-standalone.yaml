@@ -11,7 +11,7 @@ observations:
     description: "DCP intermediate steps skipped during standalone product repo support implementation. Plan-stage Critic review (step 4), per-phase lightweight reviews (step 7), plan file in working-notes (step 3), and session observation (step 10) were all skipped. Agent jumped from approved plan to implementation without reading stage-6-iteration.md. HR9 violation: detailed user plan treated as governance bypass."
     evidence: "5-whys analysis after implementation revealed 4 skipped DCP steps. Root cause: agent did not read the DCP protocol file before executing a directional change, relying instead on CLAUDE.md one-line summary."
     proposed_action: "Extend governance-stop hook to check for plan-stage Critic evidence and phase review count in directional_change tracking. Add plan_stage_review_completed and phases_reviewed fields to directional_change in .session-governance.json."
-    status: triaged
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/stage-6-iteration.md"
 ---

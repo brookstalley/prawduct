@@ -63,7 +63,11 @@ This is the default skill. When using Prawduct to build a user's product:
      "directional_change": {
        "active": false,
        "plan_description": null,
-       "retrospective_completed": false
+       "retrospective_completed": false,
+       "plan_stage_review_completed": false,
+       "total_phases": 0,
+       "phases_reviewed_count": 0,
+       "observation_captured": false
      }
    }
    ```

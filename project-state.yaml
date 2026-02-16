@@ -589,6 +589,27 @@ change_log:
       critic-reminder.sh is important for product repo commits — without it, product commits
       would fail the Critic evidence check. No new observation types needed — the failure modes
       for framework-path staleness are loud, not subtle.'
+  - what: 'DCP mechanical enforcement: add intermediate step tracking to governance-stop hook'
+    why: 'governance-stop.sh only enforced DCP retrospective completion (step 11). Intermediate
+      steps (plan-stage review, per-phase reviews, session observation) relied on agent compliance.
+      Added 4 fields to directional_change tracking: plan_stage_review_completed, total_phases,
+      phases_reviewed_count, observation_captured. governance-stop.sh checks all fields when DCP
+      is active. phases_reviewed_count only enforced when total_phases > 1 (single-phase DCPs
+      skip per-phase reviews per DCP step 7). Backward compatible: missing fields treated as
+      not-applicable. stage-6-iteration.md updated with instructions to set each field at the
+      right DCP step.'
+    blast_radius: .claude/hooks/governance-stop.sh, skills/orchestrator/stage-6-iteration.md,
+      skills/orchestrator/SKILL.md, project-state.yaml
+    classification: functional
+    date: 2026-02-15
+    retrospective: 'Plan-stage Critic review caught a real coherence issue: single-phase DCPs
+      would be incorrectly blocked by phases_reviewed_count enforcement. Fixed by adding total_phases
+      field and only checking phases_reviewed_count when total_phases > 1. This validates the
+      plan-stage review step — catching design issues before implementation. The enforcement
+      relies on agent self-reporting (same limitation as existing retrospective_completed).
+      Generalization: the pattern of mechanical enforcement for skippable protocol steps applies
+      broadly but each field adds schema complexity — threshold should be steps that agents
+      demonstrably skip.'
   - what: 'Implement Existing Project Onboarding Mode: 4-phase process for analyzing existing codebases'
     why: 'Orchestrator condition 3 referenced Onboarding Mode with no implementation. Created skills/orchestrator/onboarding.md
       with 4 phases: codebase analysis (tech stack, architecture, product understanding, structural characteristics, tests,
@@ -741,22 +762,9 @@ iteration_state:
 observation_backlog:
   last_triage: 2026-02-15
   items:
-    # --- Next priority (actionable now) ---
-    - observation_file: "framework-observations/2026-02-15-dcp-intermediate-steps-skipped-during-standalone.yaml"
-      type: process_friction
-      summary: "DCP intermediate steps skipped — agent bypassed plan-stage review, per-phase reviews, plan file, observation"
-      target_files: ["skills/orchestrator/stage-6-iteration.md", ".claude/hooks/governance-stop.sh"]
-      priority: next
-      rationale: "Real governance gap. Root cause: agent didn't read DCP protocol before implementing. Fix: mechanical enforcement of intermediate steps."
-      added: 2026-02-15
-    - observation_file: "framework-observations/2026-02-15-governance-stop-hook-only-enforces-dcp.yaml"
-      type: process_friction
-      summary: "governance-stop only enforces DCP retrospective, not intermediate steps (plan review, phase reviews, observation)"
-      target_files: [".claude/hooks/governance-stop.sh"]
-      priority: next
-      rationale: "Structural fix: add plan_stage_review_completed, phases_reviewed_count, observation_captured fields to directional_change tracking."
-      added: 2026-02-15
     # --- Deferred (watch for patterns or address later) ---
+    # Removed: "DCP intermediate steps skipped" (2026-02-15-dcp-intermediate-steps-skipped-during-standalone.yaml) — acted_on: mechanical enforcement added
+    # Removed: "governance-stop only enforces DCP retrospective" (2026-02-15-governance-stop-hook-only-enforces-dcp.yaml) — acted_on: 4 new fields + governance-stop checks
     - observation_file: "framework-observations/2026-02-11-family-utility-eval-full.yaml"
       type: critic_gap
       summary: "Critic missed scope addition outside chunk deliverables"
