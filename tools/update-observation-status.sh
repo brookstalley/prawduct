@@ -33,6 +33,8 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 if [[ -z "$REPO_ROOT" ]]; then
     echo "Error: Not in a git repository." >&2
@@ -74,48 +76,30 @@ is_terminal() {
 all_terminal() {
     local file="$1"
     python3 -c "
-import yaml, sys
-try:
-    with open('$file') as f:
-        for doc in yaml.safe_load_all(f):
-            if not doc or 'observations' not in doc:
-                continue
-            for obs in doc.get('observations', []):
-                status = obs.get('status', 'noted')
-                if status not in ('acted_on', 'archived'):
-                    sys.exit(1)
-    sys.exit(0)
-except Exception as e:
-    print(f'Error parsing {file}: {e}', file=sys.stderr)
-    sys.exit(1)
+import sys
+sys.path.insert(0, '$SCRIPT_DIR')
+import obs_utils
+sys.exit(0 if obs_utils.all_terminal('$file') else 1)
 " 2>/dev/null
     return $?
 }
 
 # List all archivable files
 list_archivable() {
-    local archivable=()
-    shopt -s nullglob
-    for f in "$OBS_DIR"/*.yaml; do
-        basename=$(basename "$f")
-        if [[ "$basename" == "schema.yaml" ]]; then
-            continue
-        fi
-        if all_terminal "$f"; then
-            archivable+=("$f")
-        fi
-    done
-    shopt -u nullglob
+    python3 -c "
+import sys
+sys.path.insert(0, '$SCRIPT_DIR')
+import obs_utils
 
-    if [[ ${#archivable[@]} -eq 0 ]]; then
-        echo "No files eligible for archiving."
-        return 0
-    fi
-
-    echo "${#archivable[@]} file(s) eligible for archiving:"
-    for f in "${archivable[@]}"; do
-        echo "  $(basename "$f")"
-    done
+archivable = obs_utils.find_archivable('$OBS_DIR')
+if not archivable:
+    print('No files eligible for archiving.')
+else:
+    print(f'{len(archivable)} file(s) eligible for archiving:')
+    import os
+    for f in archivable:
+        print(f'  {os.path.basename(f)}')
+" 2>/dev/null
 }
 
 # Update a specific observation's status

@@ -94,82 +94,37 @@ echo "-------------------"
 # Dynamic: extract observation types from data
 obs_types=$(grep -h "  - type:" "${obs_files_filtered[@]}" 2>/dev/null | sed 's/.*type: //' | sort -u)
 
-# Count active (non-terminal) observations per type using Python for accurate
-# per-observation status filtering. Terminal statuses (acted_on, archived) are
-# excluded from threshold counts to prevent already-fixed patterns from re-triggering.
 active_counts=$(python3 -c "
-import yaml, os, sys
+import sys, os
+sys.path.insert(0, '$SCRIPT_DIR')
+import obs_utils
 
 files = [$(printf '"%s",' "${obs_files_filtered[@]}")]
-active_by_type = {}
-total_by_type = {}
+all_obs = obs_utils.parse_observations(files)
+active_groups = obs_utils.group_by_type(all_obs, active_only=True)
+all_groups = obs_utils.group_by_type(all_obs, active_only=False)
 
-for f in files:
-    if not os.path.isfile(f):
-        continue
-    try:
-        with open(f) as fh:
-            for doc in yaml.safe_load_all(fh):
-                if not doc or 'observations' not in doc:
-                    continue
-                for obs in doc.get('observations', []):
-                    otype = obs.get('type', 'unknown')
-                    status = obs.get('status', 'noted')
-                    total_by_type[otype] = total_by_type.get(otype, 0) + 1
-                    if status not in ('acted_on', 'archived'):
-                        active_by_type[otype] = active_by_type.get(otype, 0) + 1
-    except:
-        continue
-
-for otype in sorted(set(list(total_by_type.keys()) + list(active_by_type.keys()))):
-    total = total_by_type.get(otype, 0)
-    active = active_by_type.get(otype, 0)
-    print(f'{otype} {active} {total}')
+for otype in sorted(set(list(all_groups.keys()) + list(active_groups.keys()))):
+    total = len(all_groups.get(otype, []))
+    active = len(active_groups.get(otype, []))
+    if total > 0:
+        threshold = obs_utils.get_threshold(otype)
+        tier = obs_utils.get_tier(otype)
+        if active >= threshold:
+            label = f'PATTERN DETECTED ({tier})'
+        elif active >= 2:
+            label = 'requires_pattern'
+        else:
+            label = 'noted'
+        if active == total:
+            print(f'  {otype}: {total} ({label})')
+        else:
+            print(f'  {otype}: {active} active of {total} total ({label})')
 " 2>/dev/null)
 
 if [[ -n "$active_counts" ]]; then
-    while read -r otype active_count total_count; do
-        if [[ "$total_count" -gt 0 ]]; then
-            # Tiered thresholds applied to ACTIVE observations only
-            case "$otype" in
-                process_friction|rubric_issue|skill_quality|external_practice_drift|documentation_drift|structural_critique)
-                    # Meta observations — act at 2+
-                    if [[ "$active_count" -ge 2 ]]; then
-                        threshold="PATTERN DETECTED (meta)"
-                    else
-                        threshold="noted"
-                    fi
-                    ;;
-                artifact_insufficiency|spec_ambiguity|deployment_friction|critic_gap)
-                    # Build-phase observations — act at 3+
-                    if [[ "$active_count" -ge 3 ]]; then
-                        threshold="PATTERN DETECTED (build)"
-                    elif [[ "$active_count" -ge 2 ]]; then
-                        threshold="requires_pattern"
-                    else
-                        threshold="noted"
-                    fi
-                    ;;
-                *)
-                    # Product behavior observations — act at 4+
-                    if [[ "$active_count" -ge 4 ]]; then
-                        threshold="PATTERN DETECTED"
-                    elif [[ "$active_count" -ge 2 ]]; then
-                        threshold="requires_pattern"
-                    else
-                        threshold="noted"
-                    fi
-                    ;;
-            esac
-            if [[ "$active_count" -eq "$total_count" ]]; then
-                echo "  $otype: $total_count ($threshold)"
-            else
-                echo "  $otype: $active_count active of $total_count total ($threshold)"
-            fi
-        fi
-    done <<< "$active_counts"
+    echo "$active_counts"
 else
-    # Fallback: simple grep counts if python3/yaml unavailable
     for otype in $obs_types; do
         count=$(count_matches "type: $otype" "${obs_files_filtered[@]}")
         if [[ "$count" -gt 0 ]]; then
@@ -182,39 +137,24 @@ echo ""
 # --- By affected skill (active observations only) ---
 echo "By Affected Skill"
 echo "------------------"
-# Count skills affected by active (non-terminal) observations only
 skill_counts=$(python3 -c "
-import yaml, os
+import sys, os
+sys.path.insert(0, '$SCRIPT_DIR')
+import obs_utils
+from collections import Counter
 
 files = [$(printf '"%s",' "${obs_files_filtered[@]}")]
-skill_counts = {}
+all_obs = obs_utils.parse_observations(files)
+active_obs = [o for o in all_obs if obs_utils.is_active(o)]
 
-for f in files:
-    if not os.path.isfile(f):
-        continue
-    try:
-        with open(f) as fh:
-            for doc in yaml.safe_load_all(fh):
-                if not doc or 'observations' not in doc:
-                    continue
-                skills = doc.get('skills_affected', [])
-                has_active = any(
-                    obs.get('status', 'noted') not in ('acted_on', 'archived')
-                    for obs in doc.get('observations', [])
-                )
-                if has_active:
-                    for skill in skills:
-                        skill_counts[skill] = skill_counts.get(skill, 0) + 1
-    except:
-        continue
+skill_counter = Counter()
+for obs in active_obs:
+    for skill in obs.get('_skills', []):
+        skill_counter[skill] += 1
 
-for skill, count in sorted(skill_counts.items(), key=lambda x: -x[1]):
-    threshold = 'noted'
-    if count >= 4:
-        threshold = 'PATTERN DETECTED'
-    elif count >= 2:
-        threshold = 'requires_pattern'
-    print(f'  {count}  {skill} ({threshold})')
+for skill, count in skill_counter.most_common():
+    label = 'PATTERN DETECTED' if count >= 4 else ('requires_pattern' if count >= 2 else 'noted')
+    print(f'  {count}  {skill} ({label})')
 " 2>/dev/null)
 
 if [[ -n "$skill_counts" ]]; then
@@ -269,55 +209,25 @@ if [[ "$MODE" == "--patterns-only" || "$MODE" == "--full" ]]; then
 
     found_pattern=false
 
-    # Use Python to count only active (non-terminal) observations per type
-    # This prevents acted_on/archived observations from inflating pattern counts
     pattern_data=$(python3 -c "
-import yaml, os, sys
-
-META_TYPES = {'process_friction', 'rubric_issue', 'skill_quality', 'external_practice_drift', 'documentation_drift', 'structural_critique'}
-BUILD_TYPES = {'artifact_insufficiency', 'spec_ambiguity', 'deployment_friction', 'critic_gap'}
+import sys, os
+sys.path.insert(0, '$SCRIPT_DIR')
+import obs_utils
 
 files = [$(printf '"%s",' "${obs_files_filtered[@]}")]
-active_by_type = {}
-descriptions_by_type = {}
+all_obs = obs_utils.parse_observations(files)
+active_groups = obs_utils.group_by_type(all_obs, active_only=True)
 
-for f in files:
-    if not os.path.isfile(f):
-        continue
-    try:
-        with open(f) as fh:
-            for doc in yaml.safe_load_all(fh):
-                if not doc or 'observations' not in doc:
-                    continue
-                for obs in doc.get('observations', []):
-                    otype = obs.get('type', 'unknown')
-                    status = obs.get('status', 'noted')
-                    if status not in ('acted_on', 'archived'):
-                        active_by_type[otype] = active_by_type.get(otype, 0) + 1
-                        desc = obs.get('description', '')
-                        if desc:
-                            descriptions_by_type.setdefault(otype, []).append(desc)
-    except:
-        continue
-
-def get_threshold(t):
-    if t in META_TYPES: return 2
-    if t in BUILD_TYPES: return 3
-    return 4
-
-def get_tier(t):
-    if t in META_TYPES: return 'meta'
-    if t in BUILD_TYPES: return 'build'
-    return 'product'
-
-for otype in sorted(active_by_type.keys()):
-    count = active_by_type[otype]
-    threshold = get_threshold(otype)
-    if count >= threshold:
-        tier = get_tier(otype)
-        print(f'PATTERN:{otype}:{count}:{tier}:{threshold}')
-        for desc in descriptions_by_type.get(otype, [])[:10]:
-            print(f'DESC:{desc}')
+for otype in sorted(active_groups.keys()):
+    observations = active_groups[otype]
+    threshold = obs_utils.get_threshold(otype)
+    if len(observations) >= threshold:
+        tier = obs_utils.get_tier(otype)
+        print(f'PATTERN:{otype}:{len(observations)}:{tier}:{threshold}')
+        for obs in observations[:10]:
+            desc = obs.get('description', '')
+            if desc:
+                print(f'DESC:{desc}')
         print('END')
 " 2>/dev/null)
 

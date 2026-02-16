@@ -43,7 +43,9 @@ fi
 # --- 1. Actionable pattern analysis (parse observation files directly) ---
 
 actionable_output=$(python3 -c "
-import yaml, os, sys, glob
+import sys, os
+sys.path.insert(0, '$SCRIPT_DIR')
+import obs_utils
 
 obs_dir = '$OBS_DIR'
 if not os.path.isdir(obs_dir):
@@ -51,90 +53,28 @@ if not os.path.isdir(obs_dir):
     print('PATTERNS_REQUIRING_ACTION: 0')
     sys.exit(0)
 
-files = sorted(glob.glob(os.path.join(obs_dir, '*.yaml')))
-files = [f for f in files if not f.endswith('schema.yaml')]
-
+files = obs_utils.find_observation_files(obs_dir)
 if not files:
     print('  No observation files found.')
     print('PATTERNS_REQUIRING_ACTION: 0')
     sys.exit(0)
 
-# Tiered thresholds
-META_TYPES = {'process_friction', 'rubric_issue', 'skill_quality', 'external_practice_drift', 'documentation_drift', 'structural_critique'}
-BUILD_TYPES = {'artifact_insufficiency', 'spec_ambiguity', 'deployment_friction', 'critic_gap', 'integration_friction'}
+all_obs = obs_utils.parse_observations(files)
+patterns = obs_utils.detect_patterns(all_obs)
 
-def get_threshold(obs_type):
-    if obs_type in META_TYPES:
-        return 2
-    elif obs_type in BUILD_TYPES:
-        return 3
-    else:
-        return 4
-
-# Collect all observations (handle multi-document YAML files)
-all_obs = []
-for f in files:
-    try:
-        with open(f) as fh:
-            for data in yaml.safe_load_all(fh):
-                if not data or 'observations' not in data:
-                    continue
-                skills = data.get('skills_affected', [])
-                for obs in data.get('observations', []):
-                    obs['_file'] = os.path.basename(f)
-                    obs['_skills'] = skills
-                    all_obs.append(obs)
-    except:
-        continue
-
-# Group by type, filter to active (non-terminal: not acted_on or archived)
-from collections import defaultdict
-by_type = defaultdict(list)
-for obs in all_obs:
-    status = obs.get('status', 'noted')
-    if status not in ('acted_on', 'archived'):
-        by_type[obs.get('type', 'unknown')].append(obs)
-
-# Find actionable patterns (active count >= threshold for that type)
-actionable = []
-for obs_type, observations in sorted(by_type.items()):
-    active_count = len(observations)
-    threshold = get_threshold(obs_type)
-    if active_count >= threshold:
-        # Collect unique proposed actions and affected skills
-        actions = []
-        skills = set()
-        for obs in observations:
-            action = obs.get('proposed_action')
-            if action:
-                actions.append(action)
-            for s in obs.get('_skills', []):
-                skills.add(s)
-        total_of_type = sum(1 for o in all_obs if o.get('type') == obs_type)
-        actionable.append({
-            'type': obs_type,
-            'active': active_count,
-            'total': total_of_type,
-            'threshold': threshold,
-            'skills': sorted(skills),
-            'actions': actions,
-        })
-
-# Output
-if actionable:
-    for item in actionable:
-        tier = 'meta' if item['type'] in META_TYPES else ('build' if item['type'] in BUILD_TYPES else 'product')
-        print(f\"  PATTERN: {item['type']} ({item['active']} active of {item['total']} total, {tier} threshold: {item['threshold']}+)\")
-        if item['skills']:
-            print(f\"    Affected skills: {', '.join(item['skills'])}\")
-        for action in item['actions']:
+if patterns:
+    for p in patterns:
+        print(f\"  PATTERN: {p['type']} ({p['active_count']} active of {p['total_count']} total, {p['tier']} threshold: {p['threshold']}+)\")
+        if p['skills']:
+            print(f\"    Affected skills: {', '.join(p['skills'])}\")
+        for action in p['actions']:
             print(f'    -> {action}')
         print()
 else:
     print('  No patterns above threshold with un-acted observations.')
     print()
 
-print(f'PATTERNS_REQUIRING_ACTION: {len(actionable)}')
+print(f'PATTERNS_REQUIRING_ACTION: {len(patterns)}')
 " 2>/dev/null || echo "  (python3/yaml not available for pattern analysis)
 PATTERNS_REQUIRING_ACTION: 0")
 
@@ -293,8 +233,10 @@ infra_warnings=0
 echo "## Infrastructure Health"
 
 infra_output=$(python3 -c "
-import yaml, os, sys, glob
-from datetime import datetime, timedelta
+import sys, os, glob
+sys.path.insert(0, '$SCRIPT_DIR')
+import obs_utils
+from datetime import datetime
 
 obs_dir = '$OBS_DIR'
 archive_dir = os.path.join(obs_dir, 'archive')
@@ -302,69 +244,38 @@ working_notes_dir = os.path.join('$PRODUCT_ROOT', 'working-notes')
 warnings = 0
 
 # --- Observation directory ---
-active_files = [f for f in glob.glob(os.path.join(obs_dir, '*.yaml'))
-                if not f.endswith('schema.yaml')]
+active_files = obs_utils.find_observation_files(obs_dir)
 archived_files = glob.glob(os.path.join(archive_dir, '*.yaml')) if os.path.isdir(archive_dir) else []
-
 print(f'  framework-observations/: {len(active_files)} active files, {len(archived_files)} archived')
 
-# Warn if too many active files
 if len(active_files) > 50:
-    print(f'  WARNING: {len(active_files)} active observation files (threshold: 50). Consider archiving resolved files.')
+    print(f'  WARNING: {len(active_files)} active observation files (threshold: 50).')
     warnings += 1
 
 # --- Archive backlog ---
-archivable = 0
-for f in active_files:
-    try:
-        all_terminal = True
-        with open(f) as fh:
-            for doc in yaml.safe_load_all(fh):
-                if not doc or 'observations' not in doc:
-                    continue
-                for obs in doc.get('observations', []):
-                    status = obs.get('status', 'noted')
-                    if status not in ('acted_on', 'archived'):
-                        all_terminal = False
-                        break
-                if not all_terminal:
-                    break
-        if all_terminal:
-            archivable += 1
-    except:
-        continue
-
-if archivable > 0:
-    print(f'  WARNING: {archivable} file(s) ready to archive. Run: tools/update-observation-status.sh --archive-all')
+archivable = obs_utils.find_archivable(obs_dir)
+if archivable:
+    print(f'  WARNING: {len(archivable)} file(s) ready to archive. Run: tools/update-observation-status.sh --archive-all')
     warnings += 1
 
 # --- Stale observations ---
+all_obs = obs_utils.parse_observations(active_files)
+now = datetime.now()
 oldest_unresolved = None
 stale_noted = 0
-now = datetime.now()
-for f in active_files:
-    try:
-        with open(f) as fh:
-            for doc in yaml.safe_load_all(fh):
-                if not doc or 'observations' not in doc:
-                    continue
-                timestamp = doc.get('timestamp', '')
-                if not timestamp:
-                    continue
-                try:
-                    obs_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).replace(tzinfo=None)
-                except:
-                    continue
-                for obs in doc.get('observations', []):
-                    status = obs.get('status', 'noted')
-                    if status == 'noted':
-                        age_days = (now - obs_date).days
-                        if age_days > 30:
-                            stale_noted += 1
-                        if oldest_unresolved is None or obs_date < oldest_unresolved:
-                            oldest_unresolved = obs_date
-    except:
-        continue
+for obs in all_obs:
+    if obs.get('status', 'noted') == 'noted':
+        ts = obs.get('_timestamp', '')
+        if ts:
+            try:
+                obs_date = datetime.fromisoformat(ts.replace('Z', '+00:00')).replace(tzinfo=None)
+                age_days = (now - obs_date).days
+                if age_days > 30:
+                    stale_noted += 1
+                if oldest_unresolved is None or obs_date < oldest_unresolved:
+                    oldest_unresolved = obs_date
+            except:
+                pass
 
 if oldest_unresolved:
     age = (now - oldest_unresolved).days
@@ -377,12 +288,7 @@ if oldest_unresolved:
 if os.path.isdir(working_notes_dir):
     wn_files = [f for f in os.listdir(working_notes_dir)
                 if os.path.isfile(os.path.join(working_notes_dir, f)) and f != '.gitkeep']
-    stale_wn = 0
-    for wf in wn_files:
-        wf_path = os.path.join(working_notes_dir, wf)
-        mtime = datetime.fromtimestamp(os.path.getmtime(wf_path))
-        if (now - mtime).days > 14:
-            stale_wn += 1
+    stale_wn = sum(1 for wf in wn_files if (now - datetime.fromtimestamp(os.path.getmtime(os.path.join(working_notes_dir, wf)))).days > 14)
     if wn_files:
         print(f'  working-notes/: {len(wn_files)} file(s), {stale_wn} older than 14 days')
         if stale_wn > 0:

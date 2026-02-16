@@ -2,19 +2,14 @@
 #
 # governance-tracker.sh — PostToolUse hook for Edit/Write
 #
-# Unified governance tracker that replaces framework-edit-tracker.sh and
-# product-governance-tracker.sh. Fires after every Edit or Write tool call.
-# Tracks edited files and governance debt in a single .session-governance.json
-# file. Provides escalating reminders via additionalContext.
-#
-# All projects use the same tracking mechanism. The governance state file
-# tracks framework edits, product edits, chunk review debt, FRP debt, and
-# observation capture — in one place.
+# Silent bookkeeper: tracks edited files and governance state in
+# .session-governance.json. No additionalContext injection — enforcement
+# is handled by governance-gate.sh (blocking edits) and governance-stop.sh
+# (blocking session completion).
 #
 # Hook protocol:
 #   - Reads JSON from stdin (tool_name, tool_input with file_path)
-#   - stdout: JSON with additionalContext (injected into Claude's context)
-#   - stderr: ignored for PostToolUse
+#   - stdout: empty JSON or nothing (no advisory messages)
 #   - exit 0: always (PostToolUse hooks are advisory, not blocking)
 
 set -euo pipefail
@@ -48,7 +43,6 @@ mkdir -p "$CLAUDE_DIR"
 
 # --- Classify the file ---
 
-# Framework file patterns
 FRAMEWORK_PATTERNS=(
     "CLAUDE.md"
     "skills/"
@@ -103,9 +97,9 @@ if [[ "$is_framework_file" == false && "$is_product_file" == false ]]; then
     exit 0
 fi
 
-# --- Track the edit and produce governance context ---
+# --- Track the edit (no advisory output) ---
 
-result=$(python3 -c "
+python3 -c "
 import json, sys, os
 
 session_file = '$SESSION_FILE'
@@ -132,13 +126,11 @@ if 'governance_state' not in data:
     data['governance_state'] = {}
 
 gov = data['governance_state']
-messages = []
 
 if is_framework:
     # --- Framework file tracking ---
     edits = data['framework_edits']
 
-    # Update file entry
     found = False
     for entry in edits['files']:
         if entry['path'] == file_path:
@@ -155,16 +147,7 @@ if is_framework:
         })
     edits['total_edits'] = edits.get('total_edits', 0) + 1
 
-    total_edits = edits['total_edits']
-    file_count = len(edits['files'])
-
-    if total_edits >= 3:
-        file_list = ', '.join(e['path'] for e in edits['files'])
-        messages.append(f'URGENT: {total_edits} framework edits across {file_count} file(s) without Critic review. Files: {file_list}. Run Critic (skills/critic/SKILL.md) and record findings via tools/record-critic-findings.sh before committing.')
-    else:
-        messages.append(f'Framework file modified: {file_path}. Run Critic as a standalone step before committing.')
-
-    # Maintain .critic-pending flag for backward compatibility with critic-gate.sh
+    # Maintain .critic-pending flag for critic-gate.sh
     claude_dir = '$CLAUDE_DIR'
     if claude_dir:
         pending_path = os.path.join(claude_dir, '.critic-pending')
@@ -177,7 +160,6 @@ if is_framework:
 elif is_product:
     # --- Product file tracking ---
     if basename_file == 'project-state.yaml':
-        # Heavy path: parse project-state.yaml for governance debt
         try:
             import yaml
             with open('$file_path') as f:
@@ -202,25 +184,15 @@ elif is_product:
                     if status in ('complete', 'review') and name not in reviewed_chunks:
                         unreviewed.append(name)
 
-                if unreviewed:
-                    gov['chunks_completed_without_review'] = len(unreviewed)
-                    chunks_str = ', '.join(unreviewed[:3])
-                    if len(unreviewed) > 3:
-                        chunks_str += f' (+{len(unreviewed) - 3} more)'
-                    messages.append(f'CRITIC REVIEW OVERDUE: {len(unreviewed)} chunk(s) completed without Critic review: {chunks_str}. Read skills/critic/SKILL.md from disk and apply Product Governance before proceeding.')
-                else:
-                    gov['chunks_completed_without_review'] = 0
+                gov['chunks_completed_without_review'] = len(unreviewed) if unreviewed else 0
 
-                # Check stage transitions without FRP
+                # Track stage transitions
                 current_stage = ps.get('current_stage', '')
                 last_frp_stage = gov.get('last_frp_stage', '')
                 if current_stage and last_frp_stage and current_stage != last_frp_stage:
-                    stage_transitions = gov.get('stage_transitions_without_frp', 0) + 1
-                    gov['stage_transitions_without_frp'] = stage_transitions
-                    if stage_transitions >= 1:
-                        messages.append(f'FRP OVERDUE: Stage transitioned to \"{current_stage}\" without Framework Reflection.')
+                    gov['stage_transitions_without_frp'] = gov.get('stage_transitions_without_frp', 0) + 1
 
-                # Check governance checkpoints
+                # Track governance checkpoints
                 checkpoints = build_plan.get('governance_checkpoints', [])
                 completed_chunk_count = sum(1 for c in chunks if c.get('status') == 'complete')
                 overdue_checkpoints = []
@@ -230,12 +202,10 @@ elif is_product:
                     if not completed:
                         if isinstance(trigger, int) and completed_chunk_count >= trigger:
                             overdue_checkpoints.append(f'after chunk {trigger}')
-                            messages.append(f'GOVERNANCE CHECKPOINT OVERDUE: Checkpoint after chunk {trigger} not completed.')
                         elif isinstance(trigger, str):
                             for chunk in chunks:
                                 if chunk.get('name', chunk.get('id', '')) == trigger and chunk.get('status') == 'complete':
                                     overdue_checkpoints.append(f'after \"{trigger}\"')
-                                    messages.append(f'GOVERNANCE CHECKPOINT OVERDUE: Checkpoint after \"{trigger}\" not completed.')
                                     break
                 gov['governance_checkpoints_due'] = overdue_checkpoints
 
@@ -245,15 +215,8 @@ elif is_product:
             pass
     else:
         # Light path: non-project-state.yaml product file
-        files_changed = gov.get('product_files_changed', 0) + 1
-        gov['product_files_changed'] = files_changed
+        gov['product_files_changed'] = gov.get('product_files_changed', 0) + 1
         gov['last_product_file_edit'] = timestamp
-        observations_count = gov.get('observations_captured_this_session', 0)
-
-        if files_changed > 0 and files_changed % 10 == 0:
-            messages.append(f'{files_changed} product files modified. Have you updated project-state.yaml chunk status?')
-        elif files_changed >= 10 and observations_count == 0 and files_changed % 5 == 0:
-            messages.append(f'{files_changed} product files modified with 0 observations captured. If the build revealed anything about the framework, capture an observation via tools/capture-observation.sh.')
 
 gov['last_updated'] = timestamp
 data['governance_state'] = gov
@@ -265,21 +228,6 @@ try:
         f.write('\n')
 except:
     pass
-
-# Output messages
-if messages:
-    print('\n'.join(messages))
-else:
-    print('')
-" 2>/dev/null || echo "")
-
-if [[ -n "$result" && "$result" != "" ]]; then
-    python3 -c "
-import json
-msg = '''$result'''
-if msg.strip():
-    print(json.dumps({'additionalContext': msg.strip()}))
 " 2>/dev/null
-fi
 
 exit 0

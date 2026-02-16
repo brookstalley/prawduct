@@ -77,7 +77,8 @@ prawduct/
 │   ├── observation-analysis.sh        # Parse observations, detect patterns, produce summary
 │   ├── compact-project-state.py       # Mechanical compaction of growing project-state.yaml sections per LIFECYCLE rules
 │   ├── compact-project-state.sh       # Bash wrapper for compact-project-state.py
-│   └── resolve-product-root.sh        # Shared product root detection (.prawduct/ first, then repo root)
+│   ├── resolve-product-root.sh        # Shared product root detection (.prawduct/ first, then repo root)
+│   └── obs_utils.py                   # Shared Python module: observation parsing, thresholds, pattern detection
 ├── scripts/                           # Eval/validation helper scripts
 │   ├── validate-eval-output.sh        # Mechanical validation for evaluation output
 │   ├── validate-schema.py             # Validate project-state.yaml against template
@@ -123,8 +124,8 @@ prawduct/
 │   ├── hooks/
 │   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
 │   │   ├── governance-gate.sh         # PreToolUse hook: blocks skill/template reads and governed edits without Orchestrator activation; blocks edits with chunk review debt
-│   │   ├── governance-tracker.sh      # PostToolUse hook: tracks all edits and governance debt in .session-governance.json
-│   │   ├── governance-prompt.sh       # UserPromptSubmit hook: injects governance status at start of turn
+│   │   ├── governance-tracker.sh      # PostToolUse hook: silently tracks edits in .session-governance.json
+│   │   ├── governance-prompt.sh       # UserPromptSubmit hook: enforces Orchestrator activation (HR9)
 │   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists
 │   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
 │   ├── settings.json                  # Project-level Claude Code settings
@@ -149,24 +150,20 @@ Framework development is managed by the Orchestrator. The framework's own `proje
 The Framework Status section below provides build context. The Key Principles, Testing Strategy, and Conventions sections provide constraints the Orchestrator needs when making framework changes.
 
 ### After modifying skills, templates, or principles:
-**Framework Critic review is mandatory for every framework change. Run it automatically.** Do not ask the user whether to run it. A Claude Code hook blocks `git commit` when framework files are staged without Critic evidence, a Stop hook blocks session completion when framework edits lack Critic review, and a UserPromptSubmit hook injects governance reminders. But don't wait for the gates — run the Critic as a **separate, final step** in every framework change regardless of file count, not as a sub-step of another work item. Run the Critic automatically after all modifications are complete and before reporting results to the user.
+**Critic review is mandatory for every framework change. Run it automatically** — do not ask the user. Run it as a **separate, final step** after all modifications are complete and before reporting results. The full procedure is in `skills/critic/SKILL.md`; record findings via `tools/record-critic-findings.sh`. Include "Governance Review" in the commit message.
 
-**For directional or multi-file changes (3+ framework files):** Follow the Directional Change Protocol in `skills/orchestrator/stage-6-iteration.md`. This requires a written plan, plan-stage Critic review before implementation, per-phase lightweight reviews, and a final full Critic review. The protocol ensures governance is proportionate to change impact — not just a rubber stamp at the end.
-
-To run the Critic: read `skills/critic/SKILL.md` and apply all applicable checks to your changes. The Critic determines which checks apply from context — always at least Scope Discipline, Proportionality, Coherence, and Learning/Observability; plus Generality, Instruction Clarity, and Cumulative Health for skill/template changes. After review, run `tools/record-critic-findings.sh` to record structured findings — the commit gate verifies this file exists with at least 6 checks and coverage of all staged files. Include "Governance Review" in the commit message.
+**For multi-file changes:** Follow the Directional Change Protocol in `skills/orchestrator/stage-6-iteration.md`, which classifies changes into three tiers (mechanical, enhancement, structural) with governance proportionate to impact.
 
 ## Product Build Governance (Compaction Recovery)
 
-If you are building a product and cannot remember governance procedures (e.g., after context compaction), follow these steps. **Skill files are always on disk — read them.** Product state files live in the **product root** (`.prawduct/` for product repos, repo root for the framework). In product repos, skill and tool paths are relative to the framework directory — read `.prawduct/framework-path` to get the framework location, then use absolute paths (e.g., `<framework-path>/skills/critic/SKILL.md`).
+If you cannot remember governance procedures (e.g., after context compaction), **read skill files from disk** — they always exist. Product state files live in the **product root** (`.prawduct/` for product repos, repo root for the framework). In product repos, read `.prawduct/framework-path` to get the framework location.
 
-1. **After each chunk:** Read `skills/critic/SKILL.md` from disk and apply all applicable checks (Spec Compliance, Test Integrity, Scope Discipline, and others based on context)
-2. **Record findings:** Add review entry to the product's `project-state.yaml` → `build_state.reviews` (in the product root)
-3. **Clear debt:** Update `.claude/.session-governance.json` → `governance_state.chunks_completed_without_review` to 0
-4. **At governance checkpoints:** Read `skills/review-lenses/SKILL.md` from disk, apply Architecture + Skeptic + Testing lenses
-5. **At stage transitions:** Read `skills/orchestrator/protocols.md` from disk and run the Framework Reflection Protocol
-6. **If hooks block your edits:** The hook message tells you which skill file to read. Read it from disk and follow its instructions.
+- **After each chunk:** Read `skills/critic/SKILL.md` and apply all applicable checks
+- **At governance checkpoints:** Read `skills/review-lenses/SKILL.md`, apply Architecture + Skeptic + Testing lenses
+- **At stage transitions:** Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol
+- **If hooks block you:** Read the skill file named in the hook message
 
-Hooks survive compaction but `additionalContext` does not. When a hook blocks or reminds you, it means governance procedures are needed — the skill files contain the full procedures.
+Hooks survive compaction. When a hook blocks you, the skill file it references contains the full procedure.
 
 ## Key Principles (read `docs/principles.md` for the full set)
 
@@ -192,7 +189,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Observation capture system with triage and session resumption integration; observation backlog available for all projects (not framework-only)
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
-- Unified mechanical governance: 5 hooks (governance-gate, governance-tracker, governance-prompt, governance-stop, critic-gate) plus compact-governance-reinject for session recovery. Governance-gate enforces read gating on skill/template files (only orchestrator/SKILL.md readable before activation) and edit gating on all governed files. Single `.session-governance.json` state file tracks both framework edits and product governance debt. Commit gate verifies structured Critic findings (`.critic-findings.json`) with at least 6 applicable checks and staged file coverage
+- Unified mechanical governance: 5 hooks with distinct responsibilities — governance-gate (blocks unauthorized reads/edits), governance-tracker (silent edit bookkeeping), governance-prompt (Orchestrator activation enforcement), governance-stop (blocks session completion on debt), critic-gate (blocks commits without findings) — plus compact-governance-reinject for session recovery. Single `.session-governance.json` state file tracks all governance debt
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 

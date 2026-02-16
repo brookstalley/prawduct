@@ -120,32 +120,22 @@ These protocols are in `skills/orchestrator/protocols.md`. Read on demand at sta
 
 ## Session Resumption
 
-If `project-state.yaml` exists and `current_stage` is not "intake", this is a returning session:
+If `project-state.yaml` exists and `current_stage` is not "intake", this is a returning session.
 
-1. **Locate product root.** Check `.prawduct/project-state.yaml` first; if found, product root is `.prawduct/`. Otherwise check root `project-state.yaml`; if found, check whether this is the framework repo (product root = repo root) or a legacy-layout product (product root = repo root, offer migration in future phase). If root `project-state.yaml` exists with old/missing `schema_version`, enter Migration Mode before loading state.
-1a. Read `project-state.yaml` from the product root to understand current state. Refresh the governance marker (write current ISO-8601 timestamp to `.claude/.orchestrator-activated`) — this ensures the marker is fresh for this session even if a stale marker exists from a previous session.
-2. Read artifacts listed in `artifact_manifest.artifacts` from `project-state.yaml`. If `artifact_manifest.artifacts` is empty, fall back to reading any existing artifacts in the `artifacts/` directory within the product root.
-3. **Check documentation health.** For projects that have a `docs/doc-manifest.yaml`: quick-scan for any `last_validated` date older than 30 days. If found, mention it during orientation: "N Tier 1 docs haven't been validated in over 30 days: [list]. Worth a freshness check?" This is lightweight — don't block the session, just surface the signal.
-4. **Run session health check:** Run `tools/session-health-check.sh` and include relevant findings in your orientation. The tool reports actionable observation patterns with proposed actions, priority:next backlog items, overdue triage, stale deferred items, untransferred fallback observation files, and infrastructure health (observation archive backlog, stale observations, working notes freshness). Infrastructure warnings are informational — mention them if present (e.g., "4 resolved observation files are ready to archive. Run `tools/update-observation-status.sh --archive-all` to clean up.") but don't interrupt workflow for them.
-4a. **Handle state warnings.** If the health check reports `STATE_WARNINGS > 0`, run `tools/compact-project-state.sh --dry-run` and present the preview to the user. Compact with their approval.
-4b. **Surface actionable patterns.** When `PATTERNS_REQUIRING_ACTION > 0`, present actionable patterns to the user during orientation:
-   - For each pattern: synthesize the proposed actions into a concrete recommendation naming affected skill files. Don't dump raw observation text — distill it.
-   - Present as: "The learning system detected N patterns requiring action: [brief summary per pattern with recommendation]."
-   - User decides: **act now** (triggers a Stage 6 change with normal Critic governance) or **defer** (pattern stays in backlog, resurfaces only if further observations accumulate).
-   - Deferred patterns are not re-presented every session — only when new observations are added to an already-actionable pattern type.
-5. Briefly orient the user: "Welcome back. Last time we [summary of where we left off]. We're in the [stage name] phase. [What's next or what needs your input]."
-6. Continue from the current stage (read the appropriate sub-file from the Stage Routing Table above).
+**Goal:** Recover session context, surface anything requiring attention, and orient the user.
 
-**Governance session recovery:** If `.claude/.session-governance.json` does not exist but `current_stage` indicates an active build, recreate it from `project-state.yaml` state (derive `chunks_completed_without_review` from chunks with status "complete"/"review" that lack entries in `build_state.reviews`). This handles cases where the session file was cleared but a build is active.
+**Steps:**
+1. **Locate product root and load state.** Check `.prawduct/project-state.yaml` first (product root = `.prawduct/`), then root `project-state.yaml` (framework repo: product root = repo root; legacy product: product root = repo root). Read `project-state.yaml` to recover stage, decisions, artifacts, and pending work. Refresh the governance marker (write timestamp to `.claude/.orchestrator-activated`).
+2. **Run `tools/session-health-check.sh`** for infrastructure health, actionable patterns, and backlog status.
+3. **Orient the user.** Summarize where we left off, surface anything needing attention (actionable patterns, state warnings, documentation staleness, infrastructure health), and continue from the current stage.
 
-**Mid-build resumption (Stage 5):** If `current_stage` is "building":
-- Read `build_plan.current_chunk` to find the active chunk.
-- Read `build_plan.chunks` to see progress: which chunks are complete, in review, in progress, or pending.
-- Read `build_state.test_tracking` for the test baseline.
-- Read the source code in `build_state.source_root`.
-- Orient the user with progress: "Welcome back. We're building [product]. [N] of [M] chunks complete. Currently working on [chunk name]. [What's next]."
-- If a chunk is in "review" status, invoke the Critic before proceeding.
-- If a chunk is "in_progress", resume the Builder for that chunk.
+**Constraints — do not skip these:**
+- If `.claude/.session-governance.json` is missing but a build is active, recreate it from `project-state.yaml` state.
+- If `doc-manifest.yaml` exists, check for `last_validated` dates older than 30 days — mention stale docs.
+- If health check reports `STATE_WARNINGS > 0`, preview compaction with `--dry-run` and compact with user approval.
+- When actionable patterns exist, synthesize concrete recommendations and let the user **act now** or **defer**. Deferred patterns are not re-presented unless new observations accumulate.
+
+**Mid-build resumption (Stage 5):** Read `build_plan.current_chunk`, chunk statuses, `test_tracking`, and source code. Orient with progress. Resume in-progress chunks; invoke Critic for chunks in "review" status.
 
 ---
 

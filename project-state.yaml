@@ -641,6 +641,34 @@ change_log:
       framework-observations/README.md, docs/self-improvement-architecture.md, CLAUDE.md
     classification: directional
     date: 2026-02-16
+  - what: 'Framework simplification: collapse advisory hooks, impact-scaled DCP, deduplicate instructions, shared observation utilities'
+    why: 'Governance infrastructure exceeded instruction content — hooks alone (1,079 lines) approached core
+      skill files (~997 lines). Triple-redundant debt detection (governance-tracker, governance-prompt,
+      governance-stop all detecting same conditions), uniform 11-step DCP regardless of impact, Critic
+      invocation instructions repeated 7 times, and duplicated observation parsing across 3 tools created
+      context pressure and instruction fragility. Root cause: governance grew reactively — each failure
+      added a new check without auditing existing coverage. Fix: (1) governance-tracker became silent
+      bookkeeper, governance-prompt stripped to activation-only, governance-stop messages made terse —
+      enforcement preserved, advisory noise removed. (2) DCP replaced with 3-tier system
+      (mechanical/enhancement/structural) scaled to change impact. (3) Session Resumption converted
+      from enumerated checklist to goal-oriented instruction. (4) Critic procedure deduplicated to
+      single canonical source with references. (5) obs_utils.py shared module eliminates duplicated
+      threshold and parsing logic across session-health-check.sh, observation-analysis.sh,
+      update-observation-status.sh.'
+    blast_radius: .claude/hooks/governance-tracker.sh, .claude/hooks/governance-prompt.sh,
+      .claude/hooks/governance-stop.sh, .claude/hooks/compact-governance-reinject.sh,
+      skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, CLAUDE.md,
+      tools/obs_utils.py (new), tools/session-health-check.sh, tools/observation-analysis.sh,
+      tools/update-observation-status.sh, project-state.yaml
+    classification: directional
+    date: 2026-02-16
+    retrospective: 'Detection: Learning system detected process_friction at threshold but proposed
+      instance-specific fixes rather than systemic audit. User analysis identified root cause (reactive
+      governance additions without coverage audit). Root Cause Protocol would help but was itself recent.
+      Process: 4-phase plan mapped cleanly. Line reduction estimates were optimistic (212 actual vs 290
+      estimated for hooks) due to inherent shell wrapper overhead. Generalization: "defense-in-depth where
+      defense-in-one suffices" pattern should be watched for in future governance additions. The 3-tier DCP
+      should reduce temptation to add uniform heavyweight process.'
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.

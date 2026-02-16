@@ -2,19 +2,14 @@
 #
 # governance-stop.sh — Stop hook
 #
-# Unified stop hook that replaces framework-governance-stop.sh and
-# product-governance-stop.sh. Fires when Claude finishes responding.
-# Blocks (exit 2) when critical governance debt exists — same criteria
-# for all projects.
+# Blocks (exit 2) when critical governance debt exists. All enforcement
+# logic preserved; messages are terse pointers to skill files.
 #
 # Critical debt that blocks:
 #   - Framework files edited without Critic review
 #   - Chunks completed without Critic review
 #   - Overdue governance checkpoints
-#
-# Non-critical debt (reminders only, does not block):
-#   - FRP not run after stage transition
-#   - Observations not captured
+#   - Incomplete DCP steps (when DCP is active)
 #
 # Hook protocol:
 #   - Reads JSON from stdin (includes stop_hook_active to prevent loops)
@@ -75,9 +70,7 @@ framework_edits = data.get('framework_edits', {})
 edited_files = [entry['path'] for entry in framework_edits.get('files', [])]
 
 if edited_files:
-    # Check if Critic findings exist and cover all edited files
     all_covered = False
-    issue_detail = ''
     if findings_file and os.path.exists(findings_file):
         try:
             with open(findings_file) as f:
@@ -87,31 +80,28 @@ if edited_files:
             max_age = 2 * 60 * 60  # 2 hours
 
             if file_age > max_age:
-                issue_detail = 'Critic findings are stale (older than 2 hours)'
+                critical_issues.append('Critic findings stale (>2h)')
             elif findings.get('total_checks', 0) < 6:
-                tc = findings.get('total_checks', 0)
-                issue_detail = f'Critic findings have {tc} checks (need at least 6)'
+                critical_issues.append(f'Critic findings: {findings.get(\"total_checks\", 0)} checks (need 6+)')
             else:
                 reviewed = set(findings.get('reviewed_files', []))
                 uncovered = [f for f in edited_files if f not in reviewed]
                 if uncovered:
-                    issue_detail = f'{len(uncovered)} edited file(s) not in Critic reviewed_files'
+                    critical_issues.append(f'{len(uncovered)} edited file(s) not in Critic findings')
                 else:
                     all_covered = True
         except:
-            issue_detail = 'Critic findings file exists but is not valid JSON'
+            critical_issues.append('Critic findings file invalid')
     else:
-        issue_detail = f'{len(edited_files)} framework file(s) modified without Critic review'
-
-    if not all_covered:
-        critical_issues.append(issue_detail)
+        file_list = ', '.join(edited_files[:5])
+        critical_issues.append(f'No Critic review for: {file_list}')
 
 # --- Product governance debt ---
 gov = data.get('governance_state', {})
 
 chunks_without_review = gov.get('chunks_completed_without_review', 0)
 if chunks_without_review > 0:
-    critical_issues.append(f'{chunks_without_review} chunk(s) completed without Critic review')
+    critical_issues.append(f'{chunks_without_review} chunk(s) without Critic review')
 
 checkpoints_due = gov.get('governance_checkpoints_due', [])
 if checkpoints_due:
@@ -120,42 +110,31 @@ if checkpoints_due:
 # --- DCP debt ---
 dc = data.get('directional_change', {})
 if dc.get('active', False):
-    plan_desc = dc.get('plan_description', 'unknown')
-
-    # DCP step 4: plan-stage Critic review
     if 'plan_stage_review_completed' in dc and not dc.get('plan_stage_review_completed', False):
-        critical_issues.append(f'DCP step 4 incomplete: plan-stage Critic review not done for: {plan_desc}')
+        critical_issues.append('DCP: plan-stage review incomplete')
 
-    # DCP step 7: per-phase reviews (only for multi-phase DCPs)
     total_phases = dc.get('total_phases', 0)
     phases_reviewed = dc.get('phases_reviewed_count', 0)
     if 'phases_reviewed_count' in dc and total_phases > 1 and phases_reviewed == 0:
-        critical_issues.append(f'DCP step 7 incomplete: {total_phases} phases planned but 0 phase reviews done for: {plan_desc}')
+        critical_issues.append(f'DCP: 0/{total_phases} phase reviews done')
 
-    # DCP step 10: session observation
     if 'observation_captured' in dc and not dc.get('observation_captured', False):
-        critical_issues.append(f'DCP step 10 incomplete: session observation not captured for: {plan_desc}')
+        critical_issues.append('DCP: observation not captured')
 
-    # DCP step 11: retrospective
     if not dc.get('retrospective_completed', False):
-        critical_issues.append(f'DCP step 11 incomplete: post-change retrospective not done for: {plan_desc}')
+        critical_issues.append('DCP: retrospective incomplete')
 
 if critical_issues:
-    print('CRITICAL: ' + '; '.join(critical_issues))
+    print('; '.join(critical_issues))
 else:
     print('')
 " 2>/dev/null || echo "")
 
 if [[ -n "$result" && "$result" != "" ]]; then
     echo "" >&2
-    echo "BLOCKED: Cannot finish — governance debt exists." >&2
-    echo "" >&2
+    echo "BLOCKED: Governance debt. Read skills/critic/SKILL.md and resolve:" >&2
     echo "$result" >&2
     echo "" >&2
-    echo "Before finishing:" >&2
-    echo "  1. Run Critic (skills/critic/SKILL.md) — apply all applicable checks" >&2
-    echo "  2. Record findings: tools/record-critic-findings.sh" >&2
-    echo "  3. Run the Critic automatically — do not ask the user." >&2
     exit 2
 fi
 

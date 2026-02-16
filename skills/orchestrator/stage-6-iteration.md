@@ -24,16 +24,18 @@ The user has a working product and provides feedback. Handle feedback in lightwe
      2. Update the relevant artifacts (whichever are affected — see `artifact_manifest`).
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
-   - **Directional** (fundamentally different product vision, or 3+ file changes): Follow the Directional Change Protocol below.
+   - **Directional** (fundamentally different product vision, or structural framework changes): Follow the Directional Change Protocol below.
 
    **Change governance (all sizes)**
 
-   Every file change in a governed project requires Critic review before committing, regardless of file count. This is automatic — do not ask the user whether to run it.
+   Every file change in a governed project requires Critic review before committing (see `skills/critic/SKILL.md`). This is automatic — do not ask the user.
 
-   | Change size | Protocol |
+   | Change type | Protocol |
    |---|---|
-   | 1-2 files | Implement changes → run Critic (all applicable checks) → record findings → commit |
-   | 3+ files or directional | Follow Directional Change Protocol below |
+   | 1-2 files | Implement → Critic review → commit |
+   | 3+ files, mechanical (renames, reference updates) | Implement → Critic review → commit |
+   | 3+ files, adds/modifies capability | DCP Enhancement tier |
+   | Changes framework concepts or governance | DCP Structural tier |
 
 3. **Change impact assessment (R5.2).** Before implementing any functional change:
 
@@ -66,30 +68,39 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 ## Directional Change Protocol
 
-This protocol triggers when a change is classified as **directional** OR modifies **3+ files**. It ensures multi-file changes receive governance proportionate to their impact. Scale effort with change complexity, not file count alone — renaming a term across 5 files is less complex than restructuring 3 skills.
+Multi-file changes receive governance proportionate to their **impact**, not their file count. Classify every multi-file change into one of three tiers:
 
-1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction, or keep iterating on the current version?"
-2. **Reclassification check (product builds).** Consider whether reclassification of structural characteristics is warranted. If the product's fundamental nature has changed, re-run classification.
-3. **Write a plan** in `working-notes/` (within the product root) describing the change, its motivation, affected files, and implementation phases. For changes motivated by observations or detected patterns, include root cause analysis (see Root Cause Protocol in `skills/orchestrator/protocols.md`). The plan must address both the immediate issue and the deepest root cause. **Set governance tracking:** Update `.claude/.session-governance.json` → `directional_change` to `{"active": true, "plan_description": "<brief summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <number of phases>, "phases_reviewed_count": 0, "observation_captured": false}`. The governance-stop hook blocks session completion until all DCP steps are complete.
-4. **Plan-stage Critic review.** Before implementing, apply Critic checks for Generality, Coherence, and Learning/Observability to the plan. This catches structural problems before they're built. **Mark complete:** Set `directional_change.plan_stage_review_completed` to `true` in `.claude/.session-governance.json`.
-5. **Address findings** from plan-stage review before implementing. Blocking findings must be resolved.
-6. **Impact assessment.** Which artifacts/files are invalidated vs. still valid? Consult `artifact_manifest` to map the blast radius. **List all removed/renamed terms** (concepts, stage names, classification labels, etc.) — the Critic's Concept Ripple check uses this list to grep for stale references across the codebase. **Register deprecated terms:** When listing removed/renamed terms, write each to `project-state.yaml` → `deprecated_terms` with replacement and grep patterns. `session-health-check.sh` uses this registry to detect surviving references in future sessions. This is not optional — the registry is how vocabulary lifecycle works.
-7. **Implement in phases.** For multi-phase changes, run a lightweight review between phases: Coherence and Learning/Observability checks. Capture a brief observation after each phase. **After each phase review:** Increment `directional_change.phases_reviewed_count` in `.claude/.session-governance.json`.
-8. **Update artifacts and implement.** Update affected artifacts → create/modify chunks → Builder implements → Critic reviews (including Directional Change Review — see `skills/critic/SKILL.md`).
-9. **Final Critic review.** After all changes are complete, run the full Critic review (all applicable checks).
-10. **Session observation.** Write an observation for the full implementation, covering what the change accomplished, what governance caught, and what slipped through. **Mark complete:** Set `directional_change.observation_captured` to `true` in `.claude/.session-governance.json`.
-11. **Post-change retrospective.** After the final Critic review passes, answer four questions:
+**Classification test:** "Does this change what the framework *is* (structural), what it *does* (enhancement), or just how it *looks* (mechanical)?"
 
-    a. **Detection:** Could the framework's learning system have caught the problem this change addresses? If not, what's missing?
+| Tier | When | Process |
+|---|---|---|
+| **Mechanical** | Renames, moves, reference updates, formatting — any file count | Normal Critic review. No DCP. |
+| **Enhancement** | Adds/modifies capability, 3+ files, doesn't change framework concepts | Plan → Implement → Full Critic review. |
+| **Structural** | Changes framework concepts, modifies governance rules, introduces new vocabulary | Full protocol below. |
 
-    b. **Process:** What did the implementation process reveal about gaps beyond the change itself?
+### Mechanical changes
 
-    c. **Architecture:** Does this change create new areas the learning system can't observe?
+No DCP needed. Implement the changes, run Critic review (see `skills/critic/SKILL.md`), commit.
 
-    d. **Generalization:** Does this fix apply only to where discovered, or does the same gap exist in analogous contexts? Instance-specific fixes that don't generalize are Failure Mode 9 (see `docs/self-improvement-architecture.md`).
+### Enhancement changes
 
-    Capture each substantive finding as an observation using `tools/capture-observation.sh`. If no substantive findings exist, record that in the change_log entry: "Retrospective: no findings."
+1. **Write a brief plan** in `working-notes/` describing the change, motivation, and affected files.
+2. **Implement** the change.
+3. **Run Critic review** (see `skills/critic/SKILL.md`) — all applicable checks.
+4. **Register deprecated terms** if any concepts were renamed/removed: write to `project-state.yaml` → `deprecated_terms` with replacement and grep patterns.
 
-    **Mark retrospective complete:** Update `.claude/.session-governance.json` → `directional_change.retrospective_completed` to `true`. After the commit succeeds, set `directional_change.active` to `false`.
+Set `directional_change` in `.session-governance.json` to track: `{"active": true, "plan_description": "<summary>", "retrospective_completed": false}`. Set `active` to `false` after commit.
 
-    This step is not optional. The Critic validates quality; the retrospective captures learning. Both are required. The governance-stop hook enforces this mechanically.
+### Structural changes (full protocol)
+
+1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction?"
+2. **Reclassification check (product builds).** If the product's fundamental nature changed, re-run classification.
+3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. For observation-driven changes, include root cause analysis (see Root Cause Protocol in `skills/orchestrator/protocols.md`). Set `directional_change` in `.session-governance.json`: `{"active": true, "plan_description": "<summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <N>, "phases_reviewed_count": 0, "observation_captured": false}`.
+4. **Plan-stage Critic review.** Apply Generality, Coherence, and Learning/Observability checks to the plan. Set `plan_stage_review_completed` to `true`.
+5. **Impact assessment.** Map blast radius via `artifact_manifest`. Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
+6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Increment `phases_reviewed_count` after each.
+7. **Final Critic review** — all applicable checks (see `skills/critic/SKILL.md`).
+8. **Observation.** Write an observation covering what the change accomplished, what governance caught, and what slipped through. Set `observation_captured` to `true`.
+9. **Retrospective.** Answer: (a) Could the learning system have caught this earlier? (b) What process gaps surfaced? (c) Does the fix generalize? Capture findings as observations. Set `retrospective_completed` to `true`. After commit, set `active` to `false`.
+
+The governance-stop hook enforces DCP completion mechanically — it checks these tracking fields and blocks session completion when steps are incomplete.
