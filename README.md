@@ -43,7 +43,7 @@ A product build generates:
 - **Dependency manifest** — every external dependency justified
 - **Build plan** — chunked, dependency-ordered, with acceptance criteria for each piece
 
-The framework adapts to each product's shape — discovery depth, risk profiling, and build plan structure all adjust based on what concerns are active (UI, API, background automation, multi-party, etc.). Some concerns have dedicated artifact templates that add depth; others work through the universal artifact set.
+The framework adapts to each product's structural characteristics — discovery depth, risk profiling, and build plan structure all adjust based on what's active (human interface, API, background automation, multi-party, sensitive data). Some characteristics have dedicated artifact templates that add depth; others work through the universal artifact set with dynamic domain-specific questions.
 
 ## What It Is Not
 
@@ -66,9 +66,11 @@ prawduct/
 ├── scripts/                 # Validation helper scripts
 ├── tests/scenarios/         # Evaluation rubrics for skill validation
 ├── docs/                    # Framework documentation
-├── framework-observations/  # Captured learnings (structured, lifecycle-managed)
+├── .prawduct/               # Framework's own prawduct outputs
+│   ├── framework-observations/  # Captured learnings (structured, lifecycle-managed)
+│   └── working-notes/           # Ephemeral notes (2-week expiration)
 ├── eval-history/            # Evaluation results (append-only)
-└── working-notes/           # Ephemeral notes (2-week expiration)
+└── .claude/                 # Claude Code config and governance hooks
 ```
 
 See `CLAUDE.md` for the full project structure with per-file descriptions.

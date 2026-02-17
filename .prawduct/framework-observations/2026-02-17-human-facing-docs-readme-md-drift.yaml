@@ -1,0 +1,22 @@
+---
+observation_id: faa7b1db-602d-45cd-a48a-2e7dff73c1a3
+timestamp: 2026-02-17T17:49:09Z
+session_type: framework_dev
+session_context:
+  framework_version: 4cfda13
+observations:
+  - type: documentation_drift
+    stage: meta
+    severity: warning
+    description: "Human-facing docs (README.md) drift silently when framework vocabulary or layout changes because no proactive governance check prompts verifying them — only reactive checks when README is already being modified"
+    evidence: "README.md contained deprecated vocabulary (product shapes, concerns) from 2026-02-12/13 changes and stale project layout from 2026-02-15 .prawduct/ migration. Three directional changes included CLAUDE.md in blast_radius but not README.md."
+    proposed_action: "Added README.md to CLAUDE.md Documentation Freshness convention and proactive Critic Coherence check for directional changes. README now prompted for verification alongside CLAUDE.md."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "README.md contained deprecated vocabulary and stale project layout for 2-5 days across 3 directional changes"
+      root_cause: "Documentation freshness governance covered CLAUDE.md explicitly but not README.md or other human-facing docs — the framework does not read README during normal operation so staleness is invisible"
+      category: incomplete_coverage
+skills_affected:
+  - "skills/critic/SKILL.md"
+  - "CLAUDE.md"
+---
