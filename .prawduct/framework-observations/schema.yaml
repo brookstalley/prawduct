@@ -145,6 +145,32 @@ observation_entry:
             - "Make security model sections conditional based on product architecture"
             - "Adjust discovery round count for low-risk products from 2-4 to 1-2"
 
+        # Root cause analysis from Post-Fix Reflection Protocol
+        root_cause_analysis:
+          type: object | null
+          required: false
+          description: "Root cause analysis captured by Post-Fix Reflection Protocol"
+          fields:
+            symptom:
+              type: string
+              required: true
+              description: "The immediate problem that was fixed"
+            root_cause:
+              type: string
+              required: true
+              description: "The deepest structural cause identified"
+            category:
+              type: string
+              enum:
+                - missing_process
+                - process_not_enforced
+                - incomplete_coverage
+                - wrong_abstraction
+                - missing_detection
+                - vocabulary_drift
+              required: true
+              description: "Category of root cause (enables cross-fix pattern detection)"
+
         # What's the current status of this observation
         status:
           type: string

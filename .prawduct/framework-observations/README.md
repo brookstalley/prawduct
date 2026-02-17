@@ -59,6 +59,17 @@ skills_affected: [list of skill files this relates to]
 ---
 ```
 
+Observations may optionally include a `root_cause_analysis` block (captured by the Post-Fix Reflection Protocol):
+
+```yaml
+    root_cause_analysis:
+      symptom: "The immediate problem that was fixed"
+      root_cause: "The deepest structural cause identified"
+      category: missing_process | process_not_enforced | incomplete_coverage | wrong_abstraction | missing_detection | vocabulary_drift
+```
+
+The `--rca-symptom`, `--rca-root-cause`, and `--rca-category` arguments to `tools/capture-observation.sh` generate this block automatically.
+
 See `schema.yaml` for the complete schema definition.
 
 ## Key Properties
@@ -258,6 +269,20 @@ When recording evaluation results in `eval-history/`, framework findings are dup
 - Skill updates can reference observation IDs for provenance
 
 See `docs/evaluation-methodology.md` § "Recording Results" for the extraction procedure.
+
+## Contributing Observations Back
+
+When using prawduct on a product repo (not the framework itself), observations are captured locally in `.prawduct/framework-observations/`. To contribute these back to the framework:
+
+```bash
+# Format an observation as shareable markdown
+tools/format-contribution.sh .prawduct/framework-observations/<observation>.yaml
+
+# Or write to a file
+tools/format-contribution.sh .prawduct/framework-observations/<observation>.yaml --output file
+```
+
+The output includes a human-readable summary, the full YAML, and instructions for submitting to the framework repo.
 
 ## Meta-Improvement Note
 

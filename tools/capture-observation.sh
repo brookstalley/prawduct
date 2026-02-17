@@ -43,6 +43,8 @@ VALID_STAGES="0 0.5 1 2 3 4 5 6 meta"
 
 VALID_STATUSES="noted triaged requires_pattern acted_on"
 
+VALID_RCA_CATEGORIES="missing_process process_not_enforced incomplete_coverage wrong_abstraction missing_detection vocabulary_drift"
+
 # --- Parse arguments ---
 
 SESSION_TYPE=""
@@ -57,6 +59,9 @@ STATUS="noted"
 APPEND_FILE=""
 SCENARIO_NAME=""
 PRODUCT_CLASSIFICATION=""
+RCA_SYMPTOM=""
+RCA_ROOT_CAUSE=""
+RCA_CATEGORY=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -72,6 +77,9 @@ while [[ $# -gt 0 ]]; do
         --append)             APPEND_FILE="$2"; shift 2 ;;
         --scenario-name)      SCENARIO_NAME="$2"; shift 2 ;;
         --product-classification) PRODUCT_CLASSIFICATION="$2"; shift 2 ;;
+        --rca-symptom)        RCA_SYMPTOM="$2"; shift 2 ;;
+        --rca-root-cause)     RCA_ROOT_CAUSE="$2"; shift 2 ;;
+        --rca-category)       RCA_CATEGORY="$2"; shift 2 ;;
         --help|-h)
             echo "Usage: tools/capture-observation.sh --session-type TYPE --type OBS_TYPE --severity SEV --description DESC --evidence EVID --skills-affected SKILLS [options]"
             echo ""
@@ -90,6 +98,12 @@ while [[ $# -gt 0 ]]; do
             echo "  --append FILE        Append observation to existing session file"
             echo "  --scenario-name      Required for evaluation sessions"
             echo "  --product-classification  Required for product_use sessions"
+            echo ""
+            echo "Root Cause Analysis (PFR — all three required if any provided):"
+            echo "  --rca-symptom        The immediate problem that was fixed"
+            echo "  --rca-root-cause     The deepest structural cause identified"
+            echo "  --rca-category       missing_process | process_not_enforced | incomplete_coverage |"
+            echo "                       wrong_abstraction | missing_detection | vocabulary_drift"
             exit 0
             ;;
         *)
@@ -144,6 +158,16 @@ fi
 if [[ "$SESSION_TYPE" == "product_use" && -z "$PRODUCT_CLASSIFICATION" ]]; then
     errors+=("--product-classification is required for product_use sessions")
 fi
+
+# RCA validation: if any --rca-* provided, all three required
+RCA_COUNT=0
+[[ -n "$RCA_SYMPTOM" ]] && ((RCA_COUNT++)) || true
+[[ -n "$RCA_ROOT_CAUSE" ]] && ((RCA_COUNT++)) || true
+[[ -n "$RCA_CATEGORY" ]] && ((RCA_COUNT++)) || true
+if [[ $RCA_COUNT -gt 0 && $RCA_COUNT -lt 3 ]]; then
+    errors+=("All three --rca-* arguments are required if any is provided (--rca-symptom, --rca-root-cause, --rca-category)")
+fi
+[[ -n "$RCA_CATEGORY" ]] && validate_enum "$RCA_CATEGORY" "--rca-category" "$VALID_RCA_CATEGORIES"
 
 # Report all errors at once
 if [[ ${#errors[@]} -gt 0 ]]; then
@@ -208,6 +232,12 @@ if [[ -n "$APPEND_FILE" ]]; then
     OBS_ENTRY+="    evidence: \"$(echo "$EVIDENCE" | sed 's/"/\\"/g')\""$'\n'
     [[ -n "$PROPOSED_ACTION" ]] && OBS_ENTRY+="    proposed_action: \"$(echo "$PROPOSED_ACTION" | sed 's/"/\\"/g')\""$'\n'
     OBS_ENTRY+="    status: $STATUS"
+    if [[ -n "$RCA_SYMPTOM" ]]; then
+        OBS_ENTRY+=$'\n'"    root_cause_analysis:"
+        OBS_ENTRY+=$'\n'"      symptom: \"$(echo "$RCA_SYMPTOM" | sed 's/"/\\"/g')\""
+        OBS_ENTRY+=$'\n'"      root_cause: \"$(echo "$RCA_ROOT_CAUSE" | sed 's/"/\\"/g')\""
+        OBS_ENTRY+=$'\n'"      category: $RCA_CATEGORY"
+    fi
 
     # Append before the skills_affected line
     # Use a temp file for safe in-place edit
@@ -265,6 +295,12 @@ else
     OBS_YAML+="    evidence: \"$(echo "$EVIDENCE" | sed 's/"/\\"/g')\""$'\n'
     [[ -n "$PROPOSED_ACTION" ]] && OBS_YAML+="    proposed_action: \"$(echo "$PROPOSED_ACTION" | sed 's/"/\\"/g')\""$'\n'
     OBS_YAML+="    status: $STATUS"
+    if [[ -n "$RCA_SYMPTOM" ]]; then
+        OBS_YAML+=$'\n'"    root_cause_analysis:"
+        OBS_YAML+=$'\n'"      symptom: \"$(echo "$RCA_SYMPTOM" | sed 's/"/\\"/g')\""
+        OBS_YAML+=$'\n'"      root_cause: \"$(echo "$RCA_ROOT_CAUSE" | sed 's/"/\\"/g')\""
+        OBS_YAML+=$'\n'"      category: $RCA_CATEGORY"
+    fi
 
     cat > "$OUTPUT_FILE" <<YAMLEOF
 ---
