@@ -97,37 +97,41 @@ if [[ "$tool_name" == "Read" ]]; then
         exit 2
     fi
 
-    # Validate marker recency
-    marker_age_ok=$(python3 -c "
+    # Validate marker content: must contain a recent timestamp AND the activation
+    # token "praw-active" (documented in skills/orchestrator/SKILL.md step 3).
+    # The token ensures the agent read and followed the Orchestrator's activation
+    # instructions rather than just writing a timestamp to the file.
+    marker_status=$(python3 -c "
 import os, sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 marker = '$MARKER'
 try:
     with open(marker) as f:
         content = f.read().strip()
-    if content:
-        marker_time = datetime.fromisoformat(content)
+    if 'praw-active' not in content:
+        print('invalid')
+        sys.exit(0)
+    ts_part = content.replace('praw-active', '').strip().rstrip('Z')
+    if ts_part:
+        marker_time = datetime.fromisoformat(ts_part)
     else:
         marker_time = datetime.fromtimestamp(os.path.getmtime(marker))
-    age = datetime.now() - marker_time
-    if age < timedelta(hours=12):
-        print('ok')
-    else:
-        print('stale')
+    age = datetime.now(timezone.utc).replace(tzinfo=None) - marker_time
+    print('ok' if age < timedelta(hours=12) else 'stale')
 except Exception:
-    try:
-        mtime = datetime.fromtimestamp(os.path.getmtime(marker))
-        age = datetime.now() - mtime
-        if age < timedelta(hours=12):
-            print('ok')
-        else:
-            print('stale')
-    except:
-        print('stale')
-" 2>/dev/null || echo "stale")
+    print('invalid')
+" 2>/dev/null || echo "invalid")
 
-    if [[ "$marker_age_ok" != "ok" ]]; then
+    if [[ "$marker_status" == "invalid" ]]; then
+        echo "" >&2
+        echo "BLOCKED: Orchestrator activation marker is invalid. (HR9)" >&2
+        echo "" >&2
+        echo "The marker must be created by following the Orchestrator's activation process." >&2
+        echo "Read skills/orchestrator/SKILL.md and follow its step 3." >&2
+        exit 2
+    fi
+    if [[ "$marker_status" == "stale" ]]; then
         echo "" >&2
         echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
         echo "" >&2
@@ -161,37 +165,38 @@ if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
         exit 2
     fi
 
-    # Validate marker recency for edits too (same 12-hour window as reads)
-    edit_marker_age_ok=$(python3 -c "
+    # Validate marker content for edits: recent timestamp + "praw-active" token
+    edit_marker_status=$(python3 -c "
 import os, sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 marker = '$ACTIVATION_MARKER'
 try:
     with open(marker) as f:
         content = f.read().strip()
-    if content:
-        marker_time = datetime.fromisoformat(content)
+    if 'praw-active' not in content:
+        print('invalid')
+        sys.exit(0)
+    ts_part = content.replace('praw-active', '').strip().rstrip('Z')
+    if ts_part:
+        marker_time = datetime.fromisoformat(ts_part)
     else:
         marker_time = datetime.fromtimestamp(os.path.getmtime(marker))
-    age = datetime.now() - marker_time
-    if age < timedelta(hours=12):
-        print('ok')
-    else:
-        print('stale')
+    age = datetime.now(timezone.utc).replace(tzinfo=None) - marker_time
+    print('ok' if age < timedelta(hours=12) else 'stale')
 except Exception:
-    try:
-        mtime = datetime.fromtimestamp(os.path.getmtime(marker))
-        age = datetime.now() - mtime
-        if age < timedelta(hours=12):
-            print('ok')
-        else:
-            print('stale')
-    except:
-        print('stale')
-" 2>/dev/null || echo "stale")
+    print('invalid')
+" 2>/dev/null || echo "invalid")
 
-    if [[ "$edit_marker_age_ok" != "ok" ]]; then
+    if [[ "$edit_marker_status" == "invalid" ]]; then
+        echo "" >&2
+        echo "BLOCKED: Orchestrator activation marker is invalid. (HR9)" >&2
+        echo "" >&2
+        echo "The marker must be created by following the Orchestrator's activation process." >&2
+        echo "Read skills/orchestrator/SKILL.md and follow its step 3." >&2
+        exit 2
+    fi
+    if [[ "$edit_marker_status" == "stale" ]]; then
         echo "" >&2
         echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
         echo "" >&2

@@ -6,6 +6,11 @@
 # The commit gate checks .prawduct/.critic-findings.json for structured findings
 # rather than relying on keyword matching in commit messages.
 #
+# Merge behavior: When called multiple times in a session, findings ACCUMULATE
+# rather than overwriting. Files are unioned, checks are merged (latest wins
+# per check name). The SessionStart hook clears findings on /clear or startup.
+# This prevents the "second review erases first" problem in multi-change sessions.
+#
 # The Critic applies context-dependent checks — not every check applies to every
 # review. The required minimum is 6 checks (the always-applicable checks), but
 # skill file reviews may include up to 9 checks.
@@ -222,9 +227,30 @@ while i + 2 < len(check_lines):
     })
     i += 3
 
+# Merge with existing findings if present (accumulate across multiple reviews
+# in the same session). The SessionStart hook clears this file on /clear or
+# startup, so cross-session contamination is not a concern.
+existing_files = set()
+existing_checks = {}  # name -> check dict (latest wins)
+if os.path.exists(output_file):
+    try:
+        with open(output_file) as f:
+            existing = json.load(f)
+        existing_files = set(existing.get('reviewed_files', []))
+        for c in existing.get('checks', []):
+            existing_checks[c['name']] = c
+    except (json.JSONDecodeError, KeyError):
+        pass  # Corrupt file — start fresh
+
+# Merge: union of files, latest checks win by name
+merged_files = sorted(existing_files | set(files))
+for c in checks:
+    existing_checks[c['name']] = c
+merged_checks = list(existing_checks.values())
+
 # Determine highest severity (excluding not-applicable)
 severity_order = {'not-applicable': -1, 'pass': 0, 'note': 1, 'warning': 2, 'blocking': 3}
-applicable_checks = [c for c in checks if c['severity'] != 'not-applicable']
+applicable_checks = [c for c in merged_checks if c['severity'] != 'not-applicable']
 if applicable_checks:
     max_sev = max(applicable_checks, key=lambda c: severity_order.get(c['severity'], 0))
     highest = max_sev['severity']
@@ -234,10 +260,10 @@ else:
 output = {
     'timestamp': timestamp,
     'git_sha': git_sha,
-    'reviewed_files': files,
-    'checks': checks,
+    'reviewed_files': merged_files,
+    'checks': merged_checks,
     'highest_severity': highest,
-    'total_checks': len(checks)
+    'total_checks': len(merged_checks)
 }
 
 with open(output_file, 'w') as f:

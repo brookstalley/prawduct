@@ -3,8 +3,9 @@
 prawduct-init.py — Mechanical prawduct integration setup and repair.
 
 Detects the current state of prawduct infrastructure in a target directory,
-creates missing components, repairs stale paths, and merges settings.json
-hooks without destroying user configuration.
+creates missing components, repairs stale paths, merges settings.json hooks
+without destroying user configuration, and manages .gitignore entries for
+machine-specific and session files.
 
 Designed to be idempotent: running twice produces no changes on the second run.
 """
@@ -42,17 +43,27 @@ PRAWDUCT_HOOK_SCRIPTS = [
 def get_prawduct_hooks() -> dict:
     """Return the canonical prawduct hook configuration with dynamic path resolution.
 
-    Hook commands resolve the framework directory at runtime from
-    .prawduct/framework-path rather than embedding absolute paths.
+    Hook commands resolve the framework directory at runtime:
+    1. Read .prawduct/framework-path (developer's local path)
+    2. Fall back to ~/.prawduct/framework/ (well-known location)
     This keeps settings.json portable across machines and users.
+
+    When the framework is absent (FW resolves to empty), all hooks silently
+    exit 0 — a methodology framework should not prevent tool usage. When the
+    framework IS present, the hook script's own exit code propagates (exit 2
+    to block, exit 0 to allow).
     """
-    # Dynamic framework path resolution (reads .prawduct/framework-path at runtime)
-    fw_resolve = 'FW=$(cat "$CLAUDE_PROJECT_DIR/.prawduct/framework-path" 2>/dev/null)'
-    # Blocking fallback for governance-critical hooks (PreToolUse, Stop)
-    fw_block = (
-        "|| { echo 'prawduct: framework-path missing — "
-        "run prawduct-init.sh --fix' >&2; exit 2; }"
+    # Dynamic framework path resolution: reads .prawduct/framework-path first,
+    # falls back to well-known location ~/.prawduct/framework/ if it exists
+    # and contains the expected skill file (validates it's actually prawduct).
+    fw_resolve = (
+        'FW=$(cat "$CLAUDE_PROJECT_DIR/.prawduct/framework-path" 2>/dev/null) || '
+        '{ if [ -f "$HOME/.prawduct/framework/skills/orchestrator/SKILL.md" ]; then '
+        'FW="$HOME/.prawduct/framework"; else FW=""; fi; }'
     )
+
+    def fw_cmd(script: str) -> str:
+        return f'{fw_resolve}; if [ -n "$FW" ]; then "$FW/.prawduct/hooks/{script}"; fi'
 
     return {
         "SessionStart": [
@@ -75,7 +86,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} && "$FW/.prawduct/hooks/compact-governance-reinject.sh"',
+                        "command": fw_cmd("compact-governance-reinject.sh"),
                     }
                 ],
             },
@@ -86,7 +97,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} && "$FW/.prawduct/hooks/governance-prompt.sh"',
+                        "command": fw_cmd("governance-prompt.sh"),
                     }
                 ],
             }
@@ -97,7 +108,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} {fw_block}; "$FW/.prawduct/hooks/critic-gate.sh"',
+                        "command": fw_cmd("critic-gate.sh"),
                     }
                 ],
             },
@@ -106,7 +117,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} {fw_block}; "$FW/.prawduct/hooks/governance-gate.sh"',
+                        "command": fw_cmd("governance-gate.sh"),
                     }
                 ],
             },
@@ -117,7 +128,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} && "$FW/.prawduct/hooks/governance-tracker.sh"',
+                        "command": fw_cmd("governance-tracker.sh"),
                     }
                 ],
             }
@@ -128,7 +139,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} {fw_block}; "$FW/.prawduct/hooks/governance-stop.sh"',
+                        "command": fw_cmd("governance-stop.sh"),
                     }
                 ],
             }
@@ -144,7 +155,11 @@ This project uses the Prawduct framework.
 
 Before taking any action:
 1. Read `.prawduct/framework-path` to get the framework directory
-2. Read `<framework-dir>/skills/orchestrator/SKILL.md` and follow its activation process
+2. If that file is missing, the framework needs to be installed:
+   - Clone: `git clone https://github.com/brookstalley/prawduct ~/.prawduct/framework`
+   - Initialize: `python3 ~/.prawduct/framework/tools/prawduct-init.py --fix .`
+   - Then read `.prawduct/framework-path` (now created by init)
+3. Read `<framework-dir>/skills/orchestrator/SKILL.md` and follow its activation process
 <!-- /prawduct-bootstrap -->
 """
 
@@ -862,6 +877,131 @@ def check_hook_accessibility(target_dir: str) -> list[str]:
     return warnings
 
 
+# Files that should be gitignored in product repos (machine-specific or session-ephemeral).
+PRAWDUCT_GITIGNORE_ENTRIES = [
+    "# Prawduct machine-specific files",
+    ".prawduct/framework-path",
+    ".prawduct/framework-version",
+    "",
+    "# Prawduct session files (ephemeral, machine-local)",
+    ".prawduct/.orchestrator-activated",
+    ".prawduct/.session-governance.json",
+    ".prawduct/.session-edits.json",
+    ".prawduct/.product-session.json",
+    ".prawduct/.onboarding-state.json",
+]
+
+# Session files that previously lived in .claude/ and now live in .prawduct/.
+# After upgrading, stale copies may linger in .claude/.
+STALE_CLAUDE_SESSION_FILES = [
+    ".orchestrator-activated",
+    ".session-governance.json",
+    ".session-edits.json",
+    ".product-session.json",
+    ".critic-pending",
+    ".critic-findings.json",
+]
+
+
+def check_gitignore(target_dir: str, mode: str) -> dict:
+    """Check/update .gitignore with prawduct machine-specific and session file entries."""
+    gitignore_path = Path(target_dir) / ".gitignore"
+    needed_entries = PRAWDUCT_GITIGNORE_ENTRIES
+
+    if gitignore_path.is_file():
+        existing = gitignore_path.read_text()
+        existing_lines = set(existing.splitlines())
+    else:
+        existing = ""
+        existing_lines = set()
+
+    # Find entries that are missing (skip blank lines and comments for matching)
+    missing = [
+        entry for entry in needed_entries
+        if entry and not entry.startswith("#") and entry not in existing_lines
+    ]
+
+    if not missing:
+        return {
+            "name": "gitignore",
+            "status": "ok",
+            "detail": "All prawduct entries present",
+            "added": [],
+        }
+
+    if mode == "fix":
+        # Build the block of entries to append
+        # Include comments and blank lines for readability
+        lines_to_add = []
+        for entry in needed_entries:
+            if entry == "":
+                lines_to_add.append("")
+            elif entry.startswith("#"):
+                lines_to_add.append(entry)
+            elif entry not in existing_lines:
+                lines_to_add.append(entry)
+            # Skip entries already present (but keep their section comments)
+
+        # Ensure existing content ends with newline before appending
+        separator = "\n" if existing and not existing.endswith("\n") else ""
+        # Add a blank line before our section if file has content
+        prefix = "\n" if existing.strip() else ""
+
+        gitignore_path.write_text(
+            existing + separator + prefix + "\n".join(lines_to_add) + "\n"
+        )
+        return {
+            "name": "gitignore",
+            "status": "updated",
+            "detail": f"Added {len(missing)} prawduct entry/entries to .gitignore",
+            "added": missing,
+        }
+
+    return {
+        "name": "gitignore",
+        "status": "missing_entries",
+        "detail": f"{len(missing)} prawduct entry/entries missing from .gitignore",
+        "missing": missing,
+    }
+
+
+def check_stale_claude_session_files(target_dir: str, mode: str) -> dict:
+    """Detect and clean stale session files in .claude/ left from pre-migration.
+
+    Session files moved from .claude/ to .prawduct/ in the hooks migration.
+    The SessionStart hook now only cleans .prawduct/, so old .claude/ copies
+    linger harmlessly but messily.
+    """
+    claude_dir = Path(target_dir) / ".claude"
+    stale = [f for f in STALE_CLAUDE_SESSION_FILES if (claude_dir / f).is_file()]
+
+    if not stale:
+        return {
+            "name": "stale_claude_session_files",
+            "status": "ok",
+            "detail": "No stale session files in .claude/",
+            "cleaned": [],
+        }
+
+    if mode == "fix":
+        for f in stale:
+            (claude_dir / f).unlink()
+        return {
+            "name": "stale_claude_session_files",
+            "status": "cleaned",
+            "detail": f"Removed {len(stale)} stale session file(s) from .claude/",
+            "cleaned": stale,
+        }
+
+    return {
+        "name": "stale_claude_session_files",
+        "status": "stale_files",
+        "detail": f"Found {len(stale)} stale session file(s) in .claude/: {', '.join(stale)}",
+        "cleaned": [],
+        "stale_files": stale,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Main logic
 # ---------------------------------------------------------------------------
@@ -938,28 +1078,38 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
         c = check_settings_json(target, mode)
         checks.append(c)
 
-    # 8. Existing documentation inventory (classified)
+        # 8. .gitignore (product repos only — ensure machine-specific files are ignored)
+        if is_git_repo(target):
+            c = check_gitignore(target, mode)
+            checks.append(c)
+
+    # 9. Existing documentation inventory (classified)
     existing_docs = scan_existing_docs(target)
 
-    # 9. Content state analysis
+    # 10. Content state analysis
     content_state = extract_content_state(target)
 
-    # 10. Onboarding in progress detection
+    # 11. Onboarding in progress detection
     onboarding_in_progress = detect_onboarding_in_progress(target)
 
-    # 10b. Root-level file detection (prawduct outputs at root instead of .prawduct/)
+    # 11b. Root-level file detection (prawduct outputs at root instead of .prawduct/)
     root_level_files = detect_root_level_prawduct_files(target)
 
-    # 11. Hook accessibility
+    # 12. Hook accessibility
     hook_warnings = check_hook_accessibility(target)
     warnings.extend(hook_warnings)
+
+    # 13. Stale .claude/ session file cleanup (post-migration hygiene)
+    if not self_hosted:
+        c = check_stale_claude_session_files(target, mode)
+        checks.append(c)
 
     # Determine overall status and next_action
     statuses = [c["status"] for c in checks]
     has_created = "created" in statuses
     has_missing = any(
         s in statuses
-        for s in ("missing", "stale", "needs_merge", "missing_bootstrap")
+        for s in ("missing", "stale", "needs_merge", "missing_bootstrap", "stale_files", "missing_entries")
     )
     has_error = "error" in statuses
 
@@ -969,7 +1119,7 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
         overall_status = "error"
     elif mode == "check" and has_missing:
         overall_status = "needs_repair"
-    elif has_created or "merged" in statuses or "updated" in statuses:
+    elif has_created or any(s in statuses for s in ("merged", "updated", "cleaned")):
         overall_status = "repaired"
     else:
         overall_status = "healthy"

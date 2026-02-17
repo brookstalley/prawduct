@@ -37,17 +37,21 @@ When compacting this conversation, preserve:
 ```
 my-product/
 ├── .claude/                    # Claude Code config (must be at root)
-│   └── settings.json          # Generated: hooks with absolute paths to framework
+│   └── settings.json          # Generated: hooks with runtime framework resolution
 ├── .prawduct/                  # All prawduct outputs (product root)
-│   ├── framework-path         # Absolute path to prawduct framework directory
+│   ├── framework-path         # Absolute path to prawduct framework directory (gitignored)
+│   ├── framework-version      # Framework git hash for drift detection (gitignored)
 │   ├── project-state.yaml
 │   ├── artifacts/
 │   ├── working-notes/
 │   └── framework-observations/
-├── CLAUDE.md                   # Generated: bootstrap pointing to framework
+├── CLAUDE.md                   # Generated: bootstrap with install instructions
+├── .gitignore                  # Updated: machine-specific prawduct files excluded
 ├── src/                        # Product source code
 └── ...
 ```
+
+**Distribution model:** Product repos are portable. Machine-specific files (`framework-path`, `framework-version`) and session files are gitignored by `prawduct-init`. The CLAUDE.md bootstrap includes installation instructions for cloners: clone the framework to `~/.prawduct/framework/` and run `prawduct-init.py --fix .`. Hook commands resolve the framework at runtime — first from `.prawduct/framework-path`, then from the well-known `~/.prawduct/framework/` location.
 
 **The framework repo** (self-hosted) uses the same `.prawduct/` layout as product repos:
 ```
@@ -111,7 +115,7 @@ prawduct/
 │   ├── format-contribution.sh         # Format observation YAML as shareable markdown for framework contributions
 │   ├── obs_utils.py                   # Shared Python module: observation parsing, thresholds, pattern detection
 │   ├── prawduct-init.sh               # Bash wrapper for prawduct-init.py
-│   └── prawduct-init.py               # Mechanical prawduct integration: setup, repair, settings.json merging
+│   └── prawduct-init.py               # Mechanical prawduct integration: setup, repair, settings.json merging, gitignore management
 ├── scripts/                           # Eval/validation helper scripts
 │   ├── validate-eval-output.sh        # Mechanical validation for evaluation output
 │   ├── validate-schema.py             # Validate project-state.yaml against template

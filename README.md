@@ -12,11 +12,22 @@ Prawduct is designed to support everything from multi-user web applications to h
 
 Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
+**To use Prawduct for building a new product:**
+
+1. Clone this repo to the well-known location: `git clone https://github.com/brookstalley/prawduct ~/.prawduct/framework`
+2. Open your project directory in Claude Code
+3. Run: `python3 ~/.prawduct/framework/tools/prawduct-init.py --fix .`
+4. Say hello — the framework handles onboarding from there
+
+**To develop the framework itself:**
+
 1. Clone this repo
 2. Open the directory in Claude Code
 3. Say hello
 
-The framework handles onboarding from there.
+**Cloning a project that already uses Prawduct:**
+
+If you clone a repo that was built with Prawduct, the CLAUDE.md bootstrap will guide framework installation. Install the framework to `~/.prawduct/framework/` and run `prawduct-init.py --fix .` to connect it.
 
 ## What It Does
 
