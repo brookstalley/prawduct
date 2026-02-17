@@ -38,7 +38,7 @@ Product repos contain `.prawduct/framework-path` pointing to the prawduct framew
 
 ### Governance Marker Spoofing
 
-The `.orchestrator-activated` marker is a simple timestamp file. Any process that can write to `.claude/` can create this marker, bypassing the requirement to actually read and follow the Orchestrator.
+The `.orchestrator-activated` marker is a simple timestamp file. Any process that can write to `.prawduct/` can create this marker, bypassing the requirement to actually read and follow the Orchestrator.
 
 **Mitigation:** The marker is a convenience check, not a security boundary. The real governance comes from skill instructions and Critic reviews, which operate at the LLM judgment level.
 

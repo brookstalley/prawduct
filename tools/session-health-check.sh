@@ -208,7 +208,7 @@ fi
 
 # --- 4. Session edits pending review ---
 
-SESSION_GOV="$REPO_ROOT/.claude/.session-governance.json"
+SESSION_GOV="$REPO_ROOT/.prawduct/.session-governance.json"
 if [[ -f "$SESSION_GOV" ]]; then
     edit_count=$(python3 -c "
 import json

@@ -50,11 +50,11 @@ if [[ -z "$file_path" ]]; then
     exit 0
 fi
 
-# Derive framework root from this script's location (hooks live at <framework>/.claude/hooks/)
+# Derive framework root from this script's location (hooks live at <framework>/.prawduct/hooks/)
 FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.claude"
+PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.prawduct"
 rel_path=""
 if [[ -n "$repo_root" ]]; then
     rel_path="${file_path#"$repo_root"/}"
@@ -83,7 +83,7 @@ if [[ "$tool_name" == "Read" ]]; then
     fi
 
     # Check Orchestrator activation
-    MARKER="$CLAUDE_DIR/.orchestrator-activated"
+    MARKER="$PRAWDUCT_DIR/.orchestrator-activated"
     if [[ ! -f "$MARKER" ]]; then
         echo "" >&2
         echo "BLOCKED: Reading skill/template files requires Orchestrator activation. (HR9)" >&2
@@ -147,7 +147,7 @@ fi
 # The Orchestrator activation itself uses Bash (not Edit/Write) to create
 # governance files, so this doesn't create a circular dependency.
 if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
-    ACTIVATION_MARKER="${CLAUDE_PROJECT_DIR}/.claude/.orchestrator-activated"
+    ACTIVATION_MARKER="${CLAUDE_PROJECT_DIR}/.prawduct/.orchestrator-activated"
     if [[ ! -f "$ACTIVATION_MARKER" ]]; then
         echo "" >&2
         echo "BLOCKED: Orchestrator activation required before any file modifications. (HR9)" >&2
@@ -212,7 +212,7 @@ FRAMEWORK_PATTERNS=(
     "docs/"
     "scripts/"
     "tools/"
-    ".claude/hooks/"
+    ".prawduct/hooks/"
     ".claude/settings.json"
     ".prawduct/framework-observations/README.md"
     ".prawduct/framework-observations/schema.yaml"
@@ -233,7 +233,7 @@ fi
 is_product_file=false
 SESSION_FILE=""
 if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
-    SESSION_FILE="$CLAUDE_PROJECT_DIR/.claude/.session-governance.json"
+    SESSION_FILE="$CLAUDE_PROJECT_DIR/.prawduct/.session-governance.json"
     if [[ -f "$SESSION_FILE" ]]; then
         product_dir=$(python3 -c "
 import json
@@ -302,7 +302,7 @@ else:
         echo "To unblock — read skill files from disk (they survive context compaction):" >&2
         echo "  1. Read skills/critic/SKILL.md from disk NOW, then apply Product Governance to completed chunks" >&2
         echo "  2. Record findings in project-state.yaml -> build_state.reviews" >&2
-        echo "  3. Update .claude/.session-governance.json -> governance_state.chunks_completed_without_review to 0" >&2
+        echo "  3. Update .prawduct/.session-governance.json -> governance_state.chunks_completed_without_review to 0" >&2
         exit 2
     fi
 fi

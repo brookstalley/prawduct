@@ -56,6 +56,13 @@ prawduct/
 ├── CLAUDE.md                          # You are here
 ├── .prawduct/                         # All prawduct outputs (same layout as product repos)
 │   ├── project-state.yaml             # Framework's own project state
+│   ├── hooks/                         # Governance hook scripts (6 hooks)
+│   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
+│   │   ├── governance-gate.sh         # PreToolUse hook: blocks skill/template reads and governed edits without Orchestrator activation; blocks edits with chunk review debt
+│   │   ├── governance-tracker.sh      # PostToolUse hook: silently tracks edits in .session-governance.json
+│   │   ├── governance-prompt.sh       # UserPromptSubmit hook: enforces Orchestrator activation (HR9)
+│   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists
+│   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
 │   ├── artifacts/                     # Generated prawduct artifacts (LLM-facing structured docs)
 │   │   ├── product-brief.md           # Vision, users, core flows, scope
 │   │   ├── data-model.md             # Entities, state machines, constraints
@@ -141,15 +148,8 @@ prawduct/
 │       └── terminal-arcade-game.md    # Game design scenario, tests creative product handling
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
-├── .claude/                           # Claude Code integration (hooks, settings)
-│   ├── hooks/
-│   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
-│   │   ├── governance-gate.sh         # PreToolUse hook: blocks skill/template reads and governed edits without Orchestrator activation; blocks edits with chunk review debt
-│   │   ├── governance-tracker.sh      # PostToolUse hook: silently tracks edits in .session-governance.json
-│   │   ├── governance-prompt.sh       # UserPromptSubmit hook: enforces Orchestrator activation (HR9)
-│   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists
-│   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
-│   ├── settings.json                  # Project-level Claude Code settings
+├── .claude/                           # Claude Code integration (settings only)
+│   ├── settings.json                  # Project-level Claude Code settings (hooks point to .prawduct/hooks/)
 │   └── settings.local.json            # Local overrides (not committed)
 └── docs/                              # This project's own Tier 1 documentation
     ├── vision.md
@@ -208,7 +208,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Observation capture system with triage and session resumption integration; observation backlog available for all projects (not framework-only)
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
-- Unified mechanical governance: 5 hooks with distinct responsibilities — governance-gate (blocks unauthorized reads/edits), governance-tracker (silent edit bookkeeping), governance-prompt (Orchestrator activation enforcement), governance-stop (blocks session completion on debt), critic-gate (blocks commits without findings) — plus compact-governance-reinject for session recovery. Single `.session-governance.json` state file tracks all governance debt
+- Unified mechanical governance: 6 hooks in `.prawduct/hooks/` with distinct responsibilities — governance-gate (blocks unauthorized reads/edits), governance-tracker (silent edit bookkeeping), governance-prompt (Orchestrator activation enforcement), governance-stop (blocks session completion on debt), critic-gate (blocks commits without findings), compact-governance-reinject (session recovery). Single `.prawduct/.session-governance.json` state file tracks all governance debt. `.claude/` holds only `settings.json` (hook registrations) and `settings.local.json`
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 

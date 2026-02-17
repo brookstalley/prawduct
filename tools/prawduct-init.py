@@ -38,7 +38,7 @@ PRAWDUCT_HOOK_SCRIPTS = [
 # $CLAUDE_PROJECT_DIR/.prawduct/framework-path, keeping settings.json
 # portable across machines.  The SessionStart/clear hook uses
 # $CLAUDE_PROJECT_DIR because it operates on the product repo's own
-# .claude/ directory.
+# .prawduct/ directory for session files.
 def get_prawduct_hooks() -> dict:
     """Return the canonical prawduct hook configuration with dynamic path resolution.
 
@@ -62,10 +62,10 @@ def get_prawduct_hooks() -> dict:
                     {
                         "type": "command",
                         "command": (
-                            'rm -f "$CLAUDE_PROJECT_DIR"/.claude/.orchestrator-activated '
-                            '"$CLAUDE_PROJECT_DIR"/.claude/.session-governance.json '
-                            '"$CLAUDE_PROJECT_DIR"/.claude/.session-edits.json '
-                            '"$CLAUDE_PROJECT_DIR"/.claude/.product-session.json'
+                            'rm -f "$CLAUDE_PROJECT_DIR"/.prawduct/.orchestrator-activated '
+                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-governance.json '
+                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-edits.json '
+                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.product-session.json'
                         ),
                     }
                 ],
@@ -75,7 +75,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} && "$FW/.claude/hooks/compact-governance-reinject.sh"',
+                        "command": f'{fw_resolve} && "$FW/.prawduct/hooks/compact-governance-reinject.sh"',
                     }
                 ],
             },
@@ -86,7 +86,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} && "$FW/.claude/hooks/governance-prompt.sh"',
+                        "command": f'{fw_resolve} && "$FW/.prawduct/hooks/governance-prompt.sh"',
                     }
                 ],
             }
@@ -97,7 +97,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} {fw_block}; "$FW/.claude/hooks/critic-gate.sh"',
+                        "command": f'{fw_resolve} {fw_block}; "$FW/.prawduct/hooks/critic-gate.sh"',
                     }
                 ],
             },
@@ -106,7 +106,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} {fw_block}; "$FW/.claude/hooks/governance-gate.sh"',
+                        "command": f'{fw_resolve} {fw_block}; "$FW/.prawduct/hooks/governance-gate.sh"',
                     }
                 ],
             },
@@ -117,7 +117,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} && "$FW/.claude/hooks/governance-tracker.sh"',
+                        "command": f'{fw_resolve} && "$FW/.prawduct/hooks/governance-tracker.sh"',
                     }
                 ],
             }
@@ -128,7 +128,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'{fw_resolve} {fw_block}; "$FW/.claude/hooks/governance-stop.sh"',
+                        "command": f'{fw_resolve} {fw_block}; "$FW/.prawduct/hooks/governance-stop.sh"',
                     }
                 ],
             }
@@ -854,7 +854,7 @@ def check_settings_json(target_dir: str, mode: str) -> dict:
 
 def check_hook_accessibility(target_dir: str) -> list[str]:
     """Verify each hook script exists at the framework path."""
-    hooks_dir = FRAMEWORK_DIR / ".claude" / "hooks"
+    hooks_dir = FRAMEWORK_DIR / ".prawduct" / "hooks"
     warnings = []
     for script in PRAWDUCT_HOOK_SCRIPTS:
         if not (hooks_dir / script).is_file():

@@ -37,7 +37,7 @@ if [[ -n "$repo_root" && "$repo_root" != "$FRAMEWORK_ROOT" ]]; then
     exit 0
 fi
 
-CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.claude"
+PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.prawduct"
 
 FRAMEWORK_PATTERNS=(
     "CLAUDE.md"
@@ -47,7 +47,7 @@ FRAMEWORK_PATTERNS=(
     "docs/"
     "scripts/"
     "tools/"
-    ".claude/hooks/"
+    ".prawduct/hooks/"
     ".claude/settings.json"
     ".prawduct/framework-observations/README.md"
     ".prawduct/framework-observations/schema.yaml"
@@ -99,8 +99,8 @@ echo ""
 critic_evidence=false
 findings_file=""
 
-if [[ -n "$CLAUDE_DIR" ]]; then
-    findings_file="$CLAUDE_DIR/.critic-findings.json"
+if [[ -n "$PRAWDUCT_DIR" ]]; then
+    findings_file="$PRAWDUCT_DIR/.critic-findings.json"
 fi
 
 if [[ -n "$findings_file" && -f "$findings_file" ]]; then
@@ -201,8 +201,8 @@ fi
 
 if [[ "$critic_evidence" == true ]]; then
     # Clean up pending flags
-    if [[ -n "$CLAUDE_DIR" ]]; then
-        rm -f "$CLAUDE_DIR/.critic-pending"
+    if [[ -n "$PRAWDUCT_DIR" ]]; then
+        rm -f "$PRAWDUCT_DIR/.critic-pending"
     fi
     exit 0
 else
@@ -215,7 +215,7 @@ else
     echo "  3. Include 'Governance Review' in commit message"
     echo ""
     echo "The commit gate verifies:"
-    echo "  - .claude/.critic-findings.json exists and is < 2 hours old"
+    echo "  - .prawduct/.critic-findings.json exists and is < 2 hours old"
     echo "  - At least 6 Critic checks are recorded"
     echo "  - All staged framework files appear in reviewed_files"
     exit 2

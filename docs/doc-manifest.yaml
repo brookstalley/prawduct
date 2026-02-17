@@ -109,35 +109,35 @@ tier_1_documents:
     owner: framework
     last_validated: 2026-02-14
 
-  - path: .claude/hooks/critic-gate.sh
+  - path: .prawduct/hooks/critic-gate.sh
     purpose: "PreToolUse hook: blocks git commit when framework files are staged without Critic review evidence"
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-17
 
-  - path: .claude/hooks/governance-gate.sh
+  - path: .prawduct/hooks/governance-gate.sh
     purpose: "PreToolUse hook: blocks edits without Orchestrator activation or with chunk review debt"
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-17
 
-  - path: .claude/hooks/governance-tracker.sh
-    purpose: "PostToolUse hook: tracks all edits and governance debt in .session-governance.json with escalating reminders"
+  - path: .prawduct/hooks/governance-tracker.sh
+    purpose: "PostToolUse hook: tracks all edits and governance debt in .prawduct/.session-governance.json"
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-17
 
-  - path: .claude/hooks/governance-prompt.sh
+  - path: .prawduct/hooks/governance-prompt.sh
     purpose: "UserPromptSubmit hook: injects governance status at start of each turn"
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-17
 
-  - path: .claude/hooks/governance-stop.sh
+  - path: .prawduct/hooks/governance-stop.sh
     purpose: "Stop hook: blocks completion when critical governance debt exists (unreviewed chunks, overdue checkpoints, missing Critic review)"
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-17
 
-  - path: .claude/hooks/compact-governance-reinject.sh
+  - path: .prawduct/hooks/compact-governance-reinject.sh
     purpose: "SessionStart hook (compact): re-injects governance instructions after context compaction"
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-17
 
   - path: docs/self-improvement-architecture.md
     purpose: "Self-improvement system design: observation-as-side-effect philosophy, three-phase architecture (C8), failure modes"

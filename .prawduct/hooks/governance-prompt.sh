@@ -18,9 +18,9 @@ set -u
 # --- Resolve paths ---
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$REPO_ROOT}/.claude"
+PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$REPO_ROOT}/.prawduct"
 
-if [[ -z "$CLAUDE_DIR" || "$CLAUDE_DIR" == "/.claude" ]]; then
+if [[ -z "$PRAWDUCT_DIR" || "$PRAWDUCT_DIR" == "/.prawduct" ]]; then
     cat > /dev/null
     exit 0
 fi
@@ -31,7 +31,7 @@ cat > /dev/null
 # --- Check Orchestrator activation ---
 
 if [[ -n "$REPO_ROOT" ]]; then
-    MARKER="$CLAUDE_DIR/.orchestrator-activated"
+    MARKER="$PRAWDUCT_DIR/.orchestrator-activated"
     if [[ ! -f "$MARKER" ]]; then
         python3 -c "
 import json

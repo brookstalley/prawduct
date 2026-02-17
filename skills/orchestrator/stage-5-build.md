@@ -35,13 +35,13 @@ For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step
    - **Blocking findings:** Before the Builder fixes a blocking finding, apply PFR steps 1-2 (classify + RCA) from `skills/orchestrator/protocols.md` § PFR. If framework-relevant, the RCA informs the fix — the Builder targets the root cause, not just the symptom. After the fix, apply PFR steps 4-6 (meta-fix across the product, capture framework observation, present contribution pathway). The Critic re-reviews. Repeat until clear. Watch for fix-by-fudging (the Critic checks for this).
    - **Warnings:** Note them. The Builder addresses warnings that are quick to fix. Others are tracked in `build_state.reviews` for later.
    - **Clear:** Chunk status → "complete". Proceed to next chunk.
-   - **Update governance tracking:** After Critic review, update `.claude/.session-governance.json` → `governance_state.chunks_completed_without_review` to 0 and set `last_critic_review_chunk` to the reviewed chunk name. (The PostToolUse hook also derives this mechanically from project-state.yaml, but explicit updates ensure consistency.)
+   - **Update governance tracking:** After Critic review, update `.prawduct/.session-governance.json` → `governance_state.chunks_completed_without_review` to 0 and set `last_critic_review_chunk` to the reviewed chunk name. (The PostToolUse hook also derives this mechanically from project-state.yaml, but explicit updates ensure consistency.)
 
 7. **Lightweight reflection.**
    - Were the artifact specs sufficient for this chunk? If not, that's an `artifact_insufficiency` observation.
    - Did the Critic catch real issues or produce noise? That informs Critic calibration.
    - If PFR was applied during this chunk (step 6 blocking finding fixes), verify observations were captured.
-   - After capturing any observations, increment `.claude/.session-governance.json` → `governance_state.observations_captured_this_session`.
+   - After capturing any observations, increment `.prawduct/.session-governance.json` → `governance_state.observations_captured_this_session`.
 
 ### Governance checkpoints
 

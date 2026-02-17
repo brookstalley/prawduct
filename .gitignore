@@ -1,7 +1,7 @@
 .claude/settings.local.json
-.claude/.critic-pending
-.claude/.critic-findings.json
-.claude/.session-edits.json
-.claude/.orchestrator-activated
-.claude/.session-governance.json
+.prawduct/.critic-pending
+.prawduct/.critic-findings.json
+.prawduct/.session-edits.json
+.prawduct/.orchestrator-activated
+.prawduct/.session-governance.json
 __pycache__/

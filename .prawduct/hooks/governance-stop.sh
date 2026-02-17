@@ -23,9 +23,9 @@ set -u
 # --- Resolve paths ---
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$REPO_ROOT}/.claude"
+PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$REPO_ROOT}/.prawduct"
 
-if [[ -z "$CLAUDE_DIR" || "$CLAUDE_DIR" == "/.claude" ]]; then
+if [[ -z "$PRAWDUCT_DIR" || "$PRAWDUCT_DIR" == "/.prawduct" ]]; then
     cat > /dev/null
     exit 0
 fi
@@ -45,7 +45,7 @@ if [[ "$stop_hook_active" == "true" ]]; then
     exit 0
 fi
 
-SESSION_FILE="$CLAUDE_DIR/.session-governance.json"
+SESSION_FILE="$PRAWDUCT_DIR/.session-governance.json"
 if [[ ! -f "$SESSION_FILE" ]]; then
     exit 0
 fi
@@ -56,8 +56,8 @@ result=$(python3 -c "
 import json, sys, os, time
 
 session_file = '$SESSION_FILE'
-claude_dir = '$CLAUDE_DIR'
-findings_file = os.path.join(claude_dir, '.critic-findings.json') if claude_dir else ''
+prawduct_dir = '$PRAWDUCT_DIR'
+findings_file = os.path.join(prawduct_dir, '.critic-findings.json') if prawduct_dir else ''
 
 try:
     with open(session_file) as f:

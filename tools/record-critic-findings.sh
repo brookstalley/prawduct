@@ -3,7 +3,7 @@
 # record-critic-findings.sh — Record structured Critic findings for the commit gate
 #
 # Purpose: Makes Critic evidence recording a structured, verifiable operation.
-# The commit gate checks .claude/.critic-findings.json for structured findings
+# The commit gate checks .prawduct/.critic-findings.json for structured findings
 # rather than relying on keyword matching in commit messages.
 #
 # The Critic applies context-dependent checks — not every check applies to every
@@ -24,7 +24,7 @@
 #     --check "Cumulative Health:pass:Skill length proportionate"
 #
 # Exit codes:
-#   0 — Findings recorded to .claude/.critic-findings.json
+#   0 — Findings recorded to .prawduct/.critic-findings.json
 #   1 — Validation failure (missing checks, invalid names/severities)
 
 set -euo pipefail
@@ -184,9 +184,9 @@ GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # Determine output location
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 if [[ -n "$REPO_ROOT" ]]; then
-    OUTPUT_DIR="$REPO_ROOT/.claude"
+    OUTPUT_DIR="$REPO_ROOT/.prawduct"
 else
-    OUTPUT_DIR=".claude"
+    OUTPUT_DIR=".prawduct"
 fi
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_FILE="$OUTPUT_DIR/.critic-findings.json"

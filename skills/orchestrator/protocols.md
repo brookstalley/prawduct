@@ -39,7 +39,7 @@ At every stage transition, pause and assess: **did the framework serve this prod
 1. **Always** record a reflection entry in `change_log` (proves reflection happened):
    - `what: "Framework reflection: Stage N (name) complete"`
    - `why: "[assessment summary or 'no concerns']"`
-   - **Update governance tracking (product builds only):** After recording the FRP, update `.claude/.session-governance.json` → `governance_state.last_frp_stage` to the current stage and reset `stage_transitions_without_frp` to 0.
+   - **Update governance tracking (product builds only):** After recording the FRP, update `.prawduct/.session-governance.json` → `governance_state.last_frp_stage` to the current stage and reset `stage_transitions_without_frp` to 0.
 2. **If substantive findings exist**, run `tools/capture-observation.sh` with your findings. The tool handles schema compliance, UUIDs, timestamps, git SHAs, and write-access fallback automatically. Only create observations when there's signal — not for "no concerns." Non-substantive stage reflections are already recorded in `change_log`. See `framework-observations/README.md` for substantiveness criteria.
 3. **If documentation is stale, update it in this session — don't defer.** Documentation drift compounds: a stale doc misleads the next session, which produces more stale docs. File creation, capability changes, and structural additions are the most common triggers.
 4. **Surface findings to the user** briefly: "Framework note: [observation]." Keep to 1-2 sentences unless there's a significant finding. Don't slow down an eager user.

@@ -27,10 +27,10 @@ last_validated: 2026-02-16
 
 | Item | File | Purpose | Format | Default |
 |------|------|---------|--------|---------|
-| Governance state | `.claude/.session-governance.json` | Edit tracking, debt tracking, DCP state | JSON | Created by Orchestrator step 4 |
-| Activation marker | `.claude/.orchestrator-activated` | Timestamp proving Orchestrator was loaded | ISO-8601 text | Created by Orchestrator step 3 |
-| Critic evidence | `.claude/.critic-pending` | Timestamp of last framework edit awaiting review | ISO-8601 text | Created by governance-tracker.sh |
-| Critic findings | `.claude/.critic-findings.json` | Structured Critic review evidence for commit gate | JSON | Created by record-critic-findings.sh |
+| Governance state | `.prawduct/.session-governance.json` | Edit tracking, debt tracking, DCP state | JSON | Created by Orchestrator step 4 |
+| Activation marker | `.prawduct/.orchestrator-activated` | Timestamp proving Orchestrator was loaded | ISO-8601 text | Created by Orchestrator step 3 |
+| Critic evidence | `.prawduct/.critic-pending` | Timestamp of last framework edit awaiting review | ISO-8601 text | Created by governance-tracker.sh |
+| Critic findings | `.prawduct/.critic-findings.json` | Structured Critic review evidence for commit gate | JSON | Created by record-critic-findings.sh |
 
 ### Framework-Level Configuration
 
@@ -54,7 +54,7 @@ No environment variables. No config service. No database. Files are human-readab
 - **Startup validation:** `prawduct-init.py` validates infrastructure state and reports issues as JSON
 - **Schema validation:** `scripts/validate-schema.py` checks project-state.yaml against template structure
 - **Observation validation:** `capture-observation.sh` validates required fields before writing
-- **Missing config behavior:** Hooks fail loudly on missing files. Session Resumption recreates `.session-governance.json` if absent.
+- **Missing config behavior:** Hooks fail loudly on missing files. Session Resumption recreates `.prawduct/.session-governance.json` if absent.
 
 ## Configuration Changes
 

@@ -22,7 +22,7 @@ if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
     exit 0
 fi
 
-SESSION_FILE="$CLAUDE_PROJECT_DIR/.claude/.session-governance.json"
+SESSION_FILE="$CLAUDE_PROJECT_DIR/.prawduct/.session-governance.json"
 
 # Detect product repo
 IS_PRODUCT_REPO=false

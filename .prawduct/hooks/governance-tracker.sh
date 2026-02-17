@@ -33,15 +33,15 @@ fi
 
 # --- Resolve context ---
 
-# Derive framework root from this script's location (hooks live at <framework>/.claude/hooks/)
+# Derive framework root from this script's location (hooks live at <framework>/.prawduct/hooks/)
 FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.claude"
-SESSION_FILE="$CLAUDE_DIR/.session-governance.json"
+PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.prawduct"
+SESSION_FILE="$PRAWDUCT_DIR/.session-governance.json"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-mkdir -p "$CLAUDE_DIR"
+mkdir -p "$PRAWDUCT_DIR"
 
 # --- Classify the file ---
 
@@ -52,7 +52,7 @@ FRAMEWORK_PATTERNS=(
     "docs/"
     "scripts/"
     "tools/"
-    ".claude/hooks/"
+    ".prawduct/hooks/"
     ".claude/settings.json"
     ".prawduct/framework-observations/README.md"
     ".prawduct/framework-observations/schema.yaml"
@@ -151,9 +151,9 @@ if is_framework:
     edits['total_edits'] = edits.get('total_edits', 0) + 1
 
     # Maintain .critic-pending flag for critic-gate.sh
-    claude_dir = '$CLAUDE_DIR'
-    if claude_dir:
-        pending_path = os.path.join(claude_dir, '.critic-pending')
+    prawduct_dir = '$PRAWDUCT_DIR'
+    if prawduct_dir:
+        pending_path = os.path.join(prawduct_dir, '.critic-pending')
         try:
             with open(pending_path, 'w') as f:
                 f.write(timestamp)

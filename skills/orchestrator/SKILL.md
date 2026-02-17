@@ -26,8 +26,8 @@ This is the default skill. When using Prawduct to build a user's product:
 
    **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, `working-notes/`, or `framework-observations/`, those paths are in the **product root**. For both product repos and the framework repo, the product root is `.prawduct/` within the project directory. When skills reference other skills (`skills/...`), templates (`templates/...`), tools (`tools/...`), or scripts (`scripts/...`), those are read from the prawduct framework directory. In product repos, the framework directory is stored in `.prawduct/framework-path`. When skills reference source code (`build_state.source_root`), that path is relative to the project directory (not `.prawduct/`).
 2. Read `project-state.yaml` in the product root. If it doesn't exist, this is a new project — create `.prawduct/` (if not already present), then copy the prawduct framework's `templates/project-state.yaml` into it.
-3. **Activate governance.** Write the current ISO-8601 timestamp to `.claude/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The governance-gate hook blocks governed file edits without this marker — see HR9.)
-4. **Initialize governance tracking.** Create `.claude/.session-governance.json` to enable mechanical governance enforcement for all projects:
+3. **Activate governance.** Write the current ISO-8601 timestamp to `.prawduct/.orchestrator-activated`. This signals to the mechanical hooks that the Orchestrator is loaded and governance is active for this session. (The governance-gate hook blocks governed file edits without this marker — see HR9.)
+4. **Initialize governance tracking.** Create `.prawduct/.session-governance.json` to enable mechanical governance enforcement for all projects:
    ```json
    {
      "product_dir": "/absolute/path/to/project",
@@ -114,13 +114,13 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 **Goal:** Recover session context, surface anything requiring attention, and orient the user.
 
 **Steps:**
-1. **Locate product root and load state.** Check `.prawduct/project-state.yaml` first (product root = `.prawduct/`), then root `project-state.yaml` (legacy product: product root = repo root). Read `project-state.yaml` to recover stage, decisions, artifacts, and pending work. Refresh the governance marker (write timestamp to `.claude/.orchestrator-activated`).
+1. **Locate product root and load state.** Check `.prawduct/project-state.yaml` first (product root = `.prawduct/`), then root `project-state.yaml` (legacy product: product root = repo root). Read `project-state.yaml` to recover stage, decisions, artifacts, and pending work. Refresh the governance marker (write timestamp to `.prawduct/.orchestrator-activated`).
 2. **Run `tools/session-health-check.sh`** for infrastructure health, actionable patterns, backlog status, and divergence signals.
    - **2b. Divergence check:** If the health check reports divergence signals (source commits since last artifact update), or if the last session was >7 days ago, or if the framework version changed: flag to the user. If 10+ source commits since last `.prawduct/` update, offer a consistency review (re-read changed docs, spot-check code against artifacts).
 3. **Orient the user.** Summarize where we left off, surface anything needing attention (actionable patterns, state warnings, divergence signals, infrastructure health), and continue from the current stage.
 
 **Constraints — do not skip these:**
-- If `.claude/.session-governance.json` is missing but a build is active, recreate it from `project-state.yaml` state.
+- If `.prawduct/.session-governance.json` is missing but a build is active, recreate it from `project-state.yaml` state.
 - If `doc-manifest.yaml` exists, check for `last_validated` dates older than 30 days — mention stale docs.
 - If health check reports `STATE_WARNINGS > 0`, preview compaction with `--dry-run` and compact with user approval.
 - When actionable patterns exist, synthesize concrete recommendations and let the user **act now** or **defer**. Deferred patterns are not re-presented unless new observations accumulate.

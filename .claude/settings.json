@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.claude/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.claude/.session-governance.json \"$CLAUDE_PROJECT_DIR\"/.claude/.session-edits.json \"$CLAUDE_PROJECT_DIR\"/.claude/.product-session.json"
+            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.prawduct/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-governance.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-edits.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.product-session.json"
           }
         ]
       },
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/compact-governance-reinject.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.prawduct/hooks/compact-governance-reinject.sh"
           }
         ]
       }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/governance-prompt.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.prawduct/hooks/governance-prompt.sh"
           }
         ]
       }
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/critic-gate.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.prawduct/hooks/critic-gate.sh"
           }
         ]
       },
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/governance-gate.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.prawduct/hooks/governance-gate.sh"
           }
         ]
       }
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/governance-tracker.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.prawduct/hooks/governance-tracker.sh"
           }
         ]
       }
@@ -71,7 +71,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/governance-stop.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.prawduct/hooks/governance-stop.sh"
           }
         ]
       }
