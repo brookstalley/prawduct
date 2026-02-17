@@ -538,6 +538,99 @@ def is_prawduct_hook(command: str) -> bool:
     return False
 
 
+def detect_prawduct_mode(target_dir: str, requested_local: bool) -> str:
+    """Determine whether to use 'local' or 'shared' mode.
+
+    If --local was passed, always returns 'local'.
+    Otherwise, auto-detects from existing hook placement:
+    - Hooks in settings.local.json only → 'local'
+    - Anything else → 'shared'
+    """
+    if requested_local:
+        return "local"
+
+    target = Path(target_dir)
+    local_settings = target / ".claude" / "settings.local.json"
+    shared_settings = target / ".claude" / "settings.json"
+
+    has_local_hooks = False
+    has_shared_hooks = False
+
+    if local_settings.is_file():
+        try:
+            data = json.loads(local_settings.read_text())
+            for entries in data.get("hooks", {}).values():
+                for entry in entries:
+                    for h in entry.get("hooks", []):
+                        if h.get("type") == "command" and is_prawduct_hook(h.get("command", "")):
+                            has_local_hooks = True
+                            break
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if shared_settings.is_file():
+        try:
+            data = json.loads(shared_settings.read_text())
+            for entries in data.get("hooks", {}).values():
+                for entry in entries:
+                    for h in entry.get("hooks", []):
+                        if h.get("type") == "command" and is_prawduct_hook(h.get("command", "")):
+                            has_shared_hooks = True
+                            break
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if has_local_hooks and not has_shared_hooks:
+        return "local"
+
+    return "shared"
+
+
+def remove_prawduct_hooks_from(settings_path: Path) -> bool:
+    """Remove all prawduct hooks from a settings file. Returns True if file was modified."""
+    if not settings_path.is_file():
+        return False
+
+    try:
+        data = json.loads(settings_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+
+    existing_hooks = data.get("hooks", {})
+    if not existing_hooks:
+        return False
+
+    cleaned_hooks = {}
+    modified = False
+
+    for event, entries in existing_hooks.items():
+        user_entries = []
+        for entry in entries:
+            entry_hooks = entry.get("hooks", [])
+            is_praw = any(
+                is_prawduct_hook(h.get("command", ""))
+                for h in entry_hooks
+                if h.get("type") == "command"
+            )
+            if is_praw:
+                modified = True
+            else:
+                user_entries.append(entry)
+        if user_entries:
+            cleaned_hooks[event] = user_entries
+
+    if not modified:
+        return False
+
+    data["hooks"] = cleaned_hooks
+    # Remove empty hooks dict entirely
+    if not cleaned_hooks:
+        del data["hooks"]
+    # Only write if there's remaining content; otherwise leave file empty-ish
+    settings_path.write_text(json.dumps(data, indent=2) + "\n")
+    return True
+
+
 def merge_settings_json(
     existing: dict, prawduct_hooks: dict
 ) -> tuple[dict, int, int]:
@@ -759,12 +852,36 @@ def check_project_state(target_dir: str, mode: str) -> dict:
     }
 
 
-def check_claude_md(target_dir: str, mode: str) -> dict:
-    """Check/create CLAUDE.md with prawduct bootstrap section."""
+def check_claude_md(target_dir: str, mode: str, local_mode: bool = False) -> dict:
+    """Check/create CLAUDE.md with prawduct bootstrap section.
+
+    In local mode, bootstrap is never added. If switching from shared to local
+    and a bootstrap section exists, it is removed in fix mode.
+    """
     claude_md = Path(target_dir) / "CLAUDE.md"
     bootstrap_marker = "<!-- prawduct-bootstrap -->"
     bootstrap_end = "<!-- /prawduct-bootstrap -->"
     bootstrap_content = CLAUDE_MD_BOOTSTRAP
+
+    if local_mode:
+        # In local mode: skip bootstrap entirely, remove if present (mode switch)
+        if claude_md.is_file():
+            existing = claude_md.read_text()
+            if bootstrap_marker in existing:
+                if mode == "fix":
+                    start = existing.index(bootstrap_marker)
+                    end = existing.index(bootstrap_end) + len(bootstrap_end)
+                    # Remove bootstrap and any trailing blank line
+                    cleaned = existing[:start] + existing[end:]
+                    # Strip leading/trailing whitespace artifacts from removal
+                    cleaned = cleaned.strip()
+                    if cleaned:
+                        claude_md.write_text(cleaned + "\n")
+                    else:
+                        claude_md.unlink()
+                    return {"name": "claude_md", "status": "updated", "detail": "Bootstrap removed (local mode)"}
+                return {"name": "claude_md", "status": "needs_cleanup", "detail": "Bootstrap present but local mode — should be removed"}
+        return {"name": "claude_md", "status": "skipped", "detail": "Local mode — no bootstrap needed"}
 
     if claude_md.is_file():
         existing = claude_md.read_text()
@@ -795,10 +912,26 @@ def check_claude_md(target_dir: str, mode: str) -> dict:
     return {"name": "claude_md", "status": "missing", "detail": "No CLAUDE.md"}
 
 
-def check_settings_json(target_dir: str, mode: str) -> dict:
-    """Check/create .claude/settings.json with prawduct hooks merged."""
-    settings_path = Path(target_dir) / ".claude" / "settings.json"
+def check_settings_json(target_dir: str, mode: str, local_mode: bool = False) -> dict:
+    """Check/create settings file with prawduct hooks merged.
+
+    In local mode, hooks go to .claude/settings.local.json. In shared mode,
+    hooks go to .claude/settings.json. In fix mode, prawduct hooks are also
+    removed from the opposite file to keep mode switches clean.
+    """
+    target = Path(target_dir)
+    if local_mode:
+        settings_path = target / ".claude" / "settings.local.json"
+        other_path = target / ".claude" / "settings.json"
+    else:
+        settings_path = target / ".claude" / "settings.json"
+        other_path = target / ".claude" / "settings.local.json"
     prawduct_hooks = get_prawduct_hooks()
+
+    # In fix mode, clean prawduct hooks from the opposite file (mode switch)
+    other_cleaned = False
+    if mode == "fix":
+        other_cleaned = remove_prawduct_hooks_from(other_path)
 
     if settings_path.is_file():
         try:
@@ -807,9 +940,10 @@ def check_settings_json(target_dir: str, mode: str) -> dict:
             return {
                 "name": "settings_json",
                 "status": "error",
-                "detail": "Could not parse existing settings.json",
+                "detail": f"Could not parse existing {settings_path.name}",
                 "hooks_added": 0,
                 "user_hooks_preserved": 0,
+                "other_cleaned": other_cleaned,
             }
 
         # Check if all prawduct hooks are present and correct
@@ -822,9 +956,10 @@ def check_settings_json(target_dir: str, mode: str) -> dict:
             return {
                 "name": "settings_json",
                 "status": "ok",
-                "detail": "All prawduct hooks present",
+                "detail": f"All prawduct hooks present in {settings_path.name}",
                 "hooks_added": 0,
                 "user_hooks_preserved": user_hooks_preserved,
+                "other_cleaned": other_cleaned,
             }
 
         if mode == "fix":
@@ -832,19 +967,21 @@ def check_settings_json(target_dir: str, mode: str) -> dict:
             return {
                 "name": "settings_json",
                 "status": "merged",
-                "detail": f"Added {hooks_added} hook(s), preserved {user_hooks_preserved} user hook(s)",
+                "detail": f"Added {hooks_added} hook(s) to {settings_path.name}, preserved {user_hooks_preserved} user hook(s)",
                 "hooks_added": hooks_added,
                 "user_hooks_preserved": user_hooks_preserved,
+                "other_cleaned": other_cleaned,
             }
         return {
             "name": "settings_json",
             "status": "needs_merge",
-            "detail": f"Need to add {hooks_added} hook(s)",
+            "detail": f"Need to add {hooks_added} hook(s) to {settings_path.name}",
             "hooks_added": hooks_added,
             "user_hooks_preserved": user_hooks_preserved,
+            "other_cleaned": other_cleaned,
         }
 
-    # No settings.json — create with only prawduct hooks
+    # No target settings file — create with only prawduct hooks
     if mode == "fix":
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings = {"hooks": prawduct_hooks}
@@ -853,17 +990,19 @@ def check_settings_json(target_dir: str, mode: str) -> dict:
         return {
             "name": "settings_json",
             "status": "created",
-            "detail": f"Created with {total_hooks} prawduct hooks",
+            "detail": f"Created {settings_path.name} with {total_hooks} prawduct hooks",
             "hooks_added": total_hooks,
             "user_hooks_preserved": 0,
+            "other_cleaned": other_cleaned,
         }
 
     return {
         "name": "settings_json",
         "status": "missing",
-        "detail": "No .claude/settings.json",
+        "detail": f"No {settings_path.name}",
         "hooks_added": 0,
         "user_hooks_preserved": 0,
+        "other_cleaned": other_cleaned,
     }
 
 
@@ -891,6 +1030,13 @@ PRAWDUCT_GITIGNORE_ENTRIES = [
     ".prawduct/.onboarding-state.json",
 ]
 
+# In local mode, the entire .prawduct/ directory is gitignored.
+# Individual file entries are redundant when the whole dir is ignored.
+PRAWDUCT_GITIGNORE_ENTRIES_LOCAL = [
+    "# Prawduct (local-only mode)",
+    ".prawduct/",
+]
+
 # Session files that previously lived in .claude/ and now live in .prawduct/.
 # After upgrading, stale copies may linger in .claude/.
 STALE_CLAUDE_SESSION_FILES = [
@@ -903,10 +1049,14 @@ STALE_CLAUDE_SESSION_FILES = [
 ]
 
 
-def check_gitignore(target_dir: str, mode: str) -> dict:
-    """Check/update .gitignore with prawduct machine-specific and session file entries."""
+def check_gitignore(target_dir: str, mode: str, local_mode: bool = False) -> dict:
+    """Check/update .gitignore with prawduct entries.
+
+    In local mode, gitignores the entire .prawduct/ directory.
+    In shared mode, gitignores only machine-specific and session files.
+    """
     gitignore_path = Path(target_dir) / ".gitignore"
-    needed_entries = PRAWDUCT_GITIGNORE_ENTRIES
+    needed_entries = PRAWDUCT_GITIGNORE_ENTRIES_LOCAL if local_mode else PRAWDUCT_GITIGNORE_ENTRIES
 
     if gitignore_path.is_file():
         existing = gitignore_path.read_text()
@@ -1006,7 +1156,7 @@ def check_stale_claude_session_files(target_dir: str, mode: str) -> dict:
 # Main logic
 # ---------------------------------------------------------------------------
 
-def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
+def run_init(target_dir: str, mode: str, json_mode: bool, requested_local: bool = False) -> dict:
     """Run all checks and return the result dict."""
     target = os.path.abspath(target_dir)
     checks = []
@@ -1031,6 +1181,14 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
         log("Self-hosted framework repo detected.", json_mode)
         self_hosted = True
         scenario = "self_hosted"
+
+    # Determine local vs shared mode (not applicable for self-hosted)
+    if self_hosted:
+        prawduct_mode = "shared"
+        local_mode = False
+    else:
+        prawduct_mode = detect_prawduct_mode(target, requested_local)
+        local_mode = prawduct_mode == "local"
 
     # 2. .prawduct/ directory
     # Created for both product repos and framework repo (framework uses .prawduct/ too)
@@ -1071,16 +1229,16 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
 
     if not self_hosted:
         # 6. CLAUDE.md (product repos only — framework has its own CLAUDE.md)
-        c = check_claude_md(target, mode)
+        c = check_claude_md(target, mode, local_mode=local_mode)
         checks.append(c)
 
         # 7. .claude/settings.json (product repos only)
-        c = check_settings_json(target, mode)
+        c = check_settings_json(target, mode, local_mode=local_mode)
         checks.append(c)
 
         # 8. .gitignore (product repos only — ensure machine-specific files are ignored)
         if is_git_repo(target):
-            c = check_gitignore(target, mode)
+            c = check_gitignore(target, mode, local_mode=local_mode)
             checks.append(c)
 
     # 9. Existing documentation inventory (classified)
@@ -1151,6 +1309,7 @@ def run_init(target_dir: str, mode: str, json_mode: bool) -> dict:
 
     result = {
         "status": overall_status,
+        "mode": prawduct_mode,
         "target_dir": target,
         "framework_dir": str(FRAMEWORK_DIR),
         "scenario": scenario,
@@ -1199,6 +1358,11 @@ def main():
         dest="json_mode",
         help="JSON-only output to stdout",
     )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Local-only mode: hooks in settings.local.json, .prawduct/ gitignored, no CLAUDE.md bootstrap",
+    )
     args = parser.parse_args()
 
     # Determine mode
@@ -1209,7 +1373,7 @@ def main():
     else:
         mode = "fix"
 
-    result = run_init(args.target_dir, mode, args.json_mode)
+    result = run_init(args.target_dir, mode, args.json_mode, requested_local=args.local)
 
     # Output
     if args.json_mode:
@@ -1218,7 +1382,8 @@ def main():
         # Human-readable output to stderr, JSON to stdout
         status = result["status"]
         scenario = result["scenario"]
-        print(f"prawduct-init: {status} (scenario: {scenario})", file=sys.stderr)
+        pmode = result.get("mode", "shared")
+        print(f"prawduct-init: {status} (scenario: {scenario}, mode: {pmode})", file=sys.stderr)
 
         for check in result["checks"]:
             name = check["name"]
