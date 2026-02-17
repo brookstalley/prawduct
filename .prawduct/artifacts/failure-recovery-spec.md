@@ -77,11 +77,11 @@ last_validated: 2026-02-16
 **Failure mode:** Framework directory moves but `.prawduct/framework-path` still points to old location.
 
 **Recovery:**
-1. Hooks fail loudly — shell errors when sourcing non-existent scripts
-2. User re-runs `prawduct-init.sh` from the new framework location to update paths
-3. `.claude/settings.json` hook paths need manual update (absolute paths)
+1. Governance hooks are resilient — they derive `FRAMEWORK_ROOT` from their own script location (`$(cd "$(dirname "$0")/../.." && pwd)`), so they continue to find skills and tools regardless of `.prawduct/framework-path` content.
+2. The `framework-path` file is still used by non-hook code (e.g., `compact-governance-reinject.sh` for product repo detection). User re-runs `prawduct-init.sh` from the new framework location to update it.
+3. `.claude/settings.json` hook paths use runtime resolution and are set by `prawduct-init.py`, so they also remain correct as long as hooks are physically in the framework.
 
-**Impact:** All governance hooks and skill reads fail until paths are corrected. This is intentionally loud rather than silent.
+**Impact:** Hooks continue to function. `framework-path` staleness primarily affects product-repo bootstrap (CLAUDE.md instructions) and session-health-check divergence detection. Corrected by re-running `prawduct-init.sh`.
 
 ## Partial Success Behavior
 

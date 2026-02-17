@@ -61,7 +61,7 @@ Prawduct operates as two interlocking pipelines: the **stage pipeline** (user-fa
 
 **Stage 5 — Building:** Repeating cycle: Builder executes chunk → Critic evaluates → issues resolved → next chunk.
 
-**Stage 6 — Iteration:** User feedback classified (cosmetic/functional/directional). Changes propagated through artifacts. DCP for structural changes.
+**Stage 6 — Iteration:** User feedback classified (cosmetic/functional/directional). Changes propagated through artifacts. DCP governs multi-file changes: mechanical (renames, no DCP), enhancement (3+ files adding capability), or structural (changes framework concepts). DCP classification is mechanically enforced — `governance-tracker.sh` flags when 3+ governed files are edited without classification.
 
 ### Learning Loop: Capture → Detect → Incorporate
 

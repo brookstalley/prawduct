@@ -27,8 +27,8 @@ last_validated: 2026-02-16
 
 | Item | File | Purpose | Format | Default |
 |------|------|---------|--------|---------|
-| Governance state | `.prawduct/.session-governance.json` | Edit tracking, debt tracking, DCP state | JSON | Created by Orchestrator step 4 |
-| Activation marker | `.prawduct/.orchestrator-activated` | Timestamp proving Orchestrator was loaded | ISO-8601 text | Created by Orchestrator step 3 |
+| Governance state | `.prawduct/.session-governance.json` | Edit tracking, debt tracking, DCP state (including `needs_classification` trigger and `artifacts_verified` list) | JSON | Created by Orchestrator step 4; `needs_classification` set by governance-tracker.sh |
+| Activation marker | `.prawduct/.orchestrator-activated` | Timestamp proving Orchestrator was loaded. Cross-repo: must exist at `$CLAUDE_PROJECT_DIR/.prawduct/` (where hooks check); also written to target dir for future direct launches. | ISO-8601 text | Created by Orchestrator step 3 |
 | Critic evidence | `.prawduct/.critic-pending` | Timestamp of last framework edit awaiting review | ISO-8601 text | Created by governance-tracker.sh |
 | Critic findings | `.prawduct/.critic-findings.json` | Structured Critic review evidence for commit gate | JSON | Created by record-critic-findings.sh |
 

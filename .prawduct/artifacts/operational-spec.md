@@ -32,4 +32,4 @@ Framework is distributed as a git repository. Users clone or reference it. Updat
 
 - **After compaction:** Hooks survive context compaction. The SessionStart hook (`compact-governance-reinject.sh`) re-injects governance instructions. Skill files are re-read from disk when referenced.
 - **After session restart:** `project-state.yaml` persists all project state. Session Resumption reads it and rebuilds context. `.session-governance.json` is recreated from project state if missing.
-- **Framework-path staleness:** If the framework directory moves, `.prawduct/framework-path` becomes stale. Hooks fail loudly (file not found errors) rather than silently — this is by design.
+- **Framework-path staleness:** If the framework directory moves, `.prawduct/framework-path` becomes stale. Governance hooks are resilient — they derive `FRAMEWORK_ROOT` from their own script location, so they continue to function. The `framework-path` file primarily affects product-repo bootstrap and divergence detection. Corrected by re-running `prawduct-init.sh`.

@@ -104,7 +104,7 @@ Body is markdown — human-readable and LLM-consumable. Frontmatter enables mech
 
 | Tool | Interface | Output |
 |------|-----------|--------|
-| `prawduct-init.sh` | `[--json] <target_dir>` | Detects/repairs integration state, returns JSON with next_action |
+| `prawduct-init.sh` | `[--json] [--check] [--local] <target_dir>` | Detects/repairs integration state, returns JSON with next_action. `--check` detects without changes. `--local` skips git-tracked files (CLAUDE.md, .gitignore). |
 | `resolve-product-root.sh` | (sourceable or executable) | Prints absolute path to product root (.prawduct/) |
 | `compact-project-state.py` | `[--dry-run] <project-state-path>` | Compacts growing sections per lifecycle rules |
 

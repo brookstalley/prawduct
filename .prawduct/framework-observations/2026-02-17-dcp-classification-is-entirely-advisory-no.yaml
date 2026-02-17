@@ -1,0 +1,22 @@
+---
+observation_id: f29cf001-0434-4004-bdb5-8f7ef0db866a
+timestamp: 2026-02-17T20:53:27Z
+session_type: framework_dev
+session_context:
+  framework_version: f59d771
+observations:
+  - type: governance_compliance
+    stage: 6
+    severity: warning
+    description: "DCP classification is entirely advisory. No mechanical enforcement existed when 3+ governed files are edited. An agent can edit 7+ framework files, produce Critic findings to pass the commit gate, and skip DCP classification, PFR, and observation capture entirely."
+    evidence: "Session implementing cross-repo fix: 7 framework files edited without DCP classification, PFR, or observations. Critic Check 6 assessed observability of new code but did not verify PFR ran. Missing PFR should have been a warning per Critic skill."
+    proposed_action: "Fixed: governance-tracker sets needs_classification when 3+ governed files edited. governance-stop blocks until classification. stage-6-iteration.md documents the enforcement."
+    status: noted
+    root_cause_analysis:
+      symptom: "7-file enhancement completed without DCP classification, PFR, or observation capture"
+      root_cause: "DCP classification threshold was advisory instruction with no mechanical gate. Agent optimized for unblocking commit gate rather than following Stage 6 workflow."
+      category: process_not_enforced
+skills_affected:
+  - "skills/orchestrator/stage-6-iteration.md"
+  - "skills/critic/SKILL.md"
+---
