@@ -17,6 +17,9 @@ set -u
 
 # --- Resolve paths ---
 
+# Derive framework root from this script's location (hooks live at <framework>/.prawduct/hooks/)
+FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$REPO_ROOT}/.prawduct"
 
@@ -35,7 +38,7 @@ if [[ -n "$REPO_ROOT" ]]; then
     if [[ ! -f "$MARKER" ]]; then
         python3 -c "
 import json
-msg = 'ORCHESTRATOR NOT ACTIVATED. Reads of skill files (except orchestrator/SKILL.md) and template files are BLOCKED. Edits to all governed files are BLOCKED. Before doing anything else, you MUST read skills/orchestrator/SKILL.md and follow its activation process (Session Resumption or new project setup). This is HR9 — no governance bypass. Do this NOW, before responding to the user\\'s request.'
+msg = 'ORCHESTRATOR NOT ACTIVATED. Reads of skill files (except orchestrator/SKILL.md) and template files are BLOCKED. Edits to all governed files are BLOCKED. Before doing anything else, you MUST read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and follow its activation process (Session Resumption or new project setup). This is HR9 — no governance bypass. Do this NOW, before responding to the user\\'s request.'
 print(json.dumps({'additionalContext': msg}))
 " 2>/dev/null
         exit 0

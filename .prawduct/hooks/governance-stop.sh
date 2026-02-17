@@ -22,6 +22,9 @@ set -u
 
 # --- Resolve paths ---
 
+# Derive framework root from this script's location (hooks live at <framework>/.prawduct/hooks/)
+FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$REPO_ROOT}/.prawduct"
 
@@ -109,8 +112,15 @@ checkpoints_due = gov.get('governance_checkpoints_due', [])
 if checkpoints_due:
     critical_issues.append(f'{len(checkpoints_due)} governance checkpoint(s) overdue')
 
-# --- DCP debt ---
+# --- DCP classification enforcement ---
+# When 3+ governed files are edited without DCP classification, block.
+# This mechanically enforces the Stage 6 governance table.
 dc = data.get('directional_change', {})
+if dc.get('needs_classification', False) and not dc.get('active', False):
+    file_count = dc.get('triggered_at_file_count', 3)
+    critical_issues.append(f'DCP: {file_count}+ governed files edited without change classification. Read $FRAMEWORK_ROOT/skills/orchestrator/stage-6-iteration.md and classify per DCP tiers (mechanical/enhancement/structural). Then set directional_change.active and tier in .prawduct/.session-governance.json, or set needs_classification to false if mechanical.')
+
+# --- DCP debt ---
 if dc.get('active', False):
     if 'plan_stage_review_completed' in dc and not dc.get('plan_stage_review_completed', False):
         critical_issues.append('DCP: plan-stage review incomplete')
@@ -126,6 +136,13 @@ if dc.get('active', False):
     if not dc.get('retrospective_completed', False):
         critical_issues.append('DCP: retrospective incomplete')
 
+    # Artifact freshness: enhancement/structural DCPs must verify artifacts
+    tier = dc.get('tier', '')
+    if tier in ('enhancement', 'structural'):
+        artifacts_verified = dc.get('artifacts_verified', [])
+        if not artifacts_verified:
+            critical_issues.append('DCP: artifact freshness not verified. Read artifact_manifest in project-state.yaml, identify artifacts describing affected behavior, verify each is current, update stale ones, then record the list in directional_change.artifacts_verified')
+
 if critical_issues:
     print('; '.join(critical_issues))
 else:
@@ -134,7 +151,7 @@ else:
 
 if [[ -n "$result" && "$result" != "" ]]; then
     echo "" >&2
-    echo "BLOCKED: Governance debt. Read skills/critic/SKILL.md and resolve:" >&2
+    echo "BLOCKED: Governance debt. Read $FRAMEWORK_ROOT/skills/critic/SKILL.md and resolve:" >&2
     echo "$result" >&2
     echo "" >&2
     exit 2

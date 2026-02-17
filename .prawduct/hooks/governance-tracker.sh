@@ -160,6 +160,17 @@ if is_framework:
         except:
             pass
 
+    # DCP classification trigger: when 3+ distinct governed files are edited
+    # without an active DCP, flag for classification. This mechanically enforces
+    # the Stage 6 governance table (3+ files adding capability → DCP Enhancement).
+    dc = data.get('directional_change', {})
+    distinct_files = len(edits['files'])
+    if distinct_files >= 3 and not dc.get('active', False) and not dc.get('needs_classification', False):
+        if 'directional_change' not in data:
+            data['directional_change'] = {}
+        data['directional_change']['needs_classification'] = True
+        data['directional_change']['triggered_at_file_count'] = distinct_files
+
 elif is_product:
     # --- Product file tracking ---
     if basename_file == 'project-state.yaml':

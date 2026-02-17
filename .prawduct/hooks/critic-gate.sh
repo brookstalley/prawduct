@@ -68,7 +68,7 @@ else
     echo "" >&2
     echo "Framework files are staged but no Critic review evidence was found." >&2
     echo "Run the Critic as a standalone step:" >&2
-    echo "  1. Read skills/critic/SKILL.md" >&2
+    echo "  1. Read $FRAMEWORK_ROOT/skills/critic/SKILL.md" >&2
     echo "  2. Apply all applicable checks to your changes" >&2
     echo "  3. Record findings, then retry the commit" >&2
     echo "  4. Include 'Governance Review' in the commit message" >&2

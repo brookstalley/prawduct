@@ -60,16 +60,21 @@ if [[ -n "$repo_root" ]]; then
     rel_path="${file_path#"$repo_root"/}"
 fi
 
+# Compute framework-relative path for cross-repo skill reads
+fw_rel_path=""
+if [[ "$file_path" == "$FRAMEWORK_ROOT"/* ]]; then
+    fw_rel_path="${file_path#"$FRAMEWORK_ROOT"/}"
+fi
+
 # --- For Read calls: only gate skill and template files ---
 
 if [[ "$tool_name" == "Read" ]]; then
-    if [[ -z "$repo_root" || -z "$rel_path" ]]; then
-        exit 0
-    fi
-
-    # Check if this is a skill or template file
+    # Check if this is a skill or template file (local repo path or framework path)
     is_gated_read=false
     if [[ "$rel_path" == skills/* || "$rel_path" == templates/* ]]; then
+        is_gated_read=true
+    fi
+    if [[ -n "$fw_rel_path" && ( "$fw_rel_path" == skills/* || "$fw_rel_path" == templates/* ) ]]; then
         is_gated_read=true
     fi
 
@@ -78,7 +83,8 @@ if [[ "$tool_name" == "Read" ]]; then
     fi
 
     # Whitelist: orchestrator/SKILL.md is always readable (it's the entry point)
-    if [[ "$rel_path" == "skills/orchestrator/SKILL.md" ]]; then
+    if [[ "$rel_path" == "skills/orchestrator/SKILL.md" || \
+          "$fw_rel_path" == "skills/orchestrator/SKILL.md" ]]; then
         exit 0
     fi
 
@@ -91,7 +97,7 @@ if [[ "$tool_name" == "Read" ]]; then
         echo "Skills and templates are accessed through the Orchestrator. Before reading" >&2
         echo "this file, you must activate governance:" >&2
         echo "" >&2
-        echo "  1. Read skills/orchestrator/SKILL.md (this file is always readable)" >&2
+        echo "  1. Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md (this file is always readable)" >&2
         echo "  2. Follow its activation process (Session Resumption or new project setup)" >&2
         echo "  3. After activation, skill and template files are accessible." >&2
         exit 2
@@ -128,14 +134,14 @@ except Exception:
         echo "BLOCKED: Orchestrator activation marker is invalid. (HR9)" >&2
         echo "" >&2
         echo "The marker must be created by following the Orchestrator's activation process." >&2
-        echo "Read skills/orchestrator/SKILL.md and follow its step 3." >&2
+        echo "Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and follow its step 3." >&2
         exit 2
     fi
     if [[ "$marker_status" == "stale" ]]; then
         echo "" >&2
         echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
         echo "" >&2
-        echo "Re-read skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
+        echo "Re-read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
         exit 2
     fi
 
@@ -159,7 +165,7 @@ if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
         echo "All file edits — framework, product, and cross-repo — require Orchestrator" >&2
         echo "activation. This prevents governance bypass for external project work." >&2
         echo "" >&2
-        echo "  1. Read skills/orchestrator/SKILL.md (always readable)" >&2
+        echo "  1. Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md (always readable)" >&2
         echo "  2. Follow its activation process (Session Resumption or new project setup)" >&2
         echo "  3. After activation, file modifications are permitted." >&2
         exit 2
@@ -193,14 +199,14 @@ except Exception:
         echo "BLOCKED: Orchestrator activation marker is invalid. (HR9)" >&2
         echo "" >&2
         echo "The marker must be created by following the Orchestrator's activation process." >&2
-        echo "Read skills/orchestrator/SKILL.md and follow its step 3." >&2
+        echo "Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and follow its step 3." >&2
         exit 2
     fi
     if [[ "$edit_marker_status" == "stale" ]]; then
         echo "" >&2
         echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
         echo "" >&2
-        echo "Re-read skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
+        echo "Re-read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
         exit 2
     fi
 fi
@@ -305,7 +311,7 @@ else:
         echo "Product file edits are BLOCKED until governance debt is resolved." >&2
         echo "" >&2
         echo "To unblock — read skill files from disk (they survive context compaction):" >&2
-        echo "  1. Read skills/critic/SKILL.md from disk NOW, then apply Product Governance to completed chunks" >&2
+        echo "  1. Read $FRAMEWORK_ROOT/skills/critic/SKILL.md from disk NOW, then apply Product Governance to completed chunks" >&2
         echo "  2. Record findings in project-state.yaml -> build_state.reviews" >&2
         echo "  3. Update .prawduct/.session-governance.json -> governance_state.chunks_completed_without_review to 0" >&2
         exit 2

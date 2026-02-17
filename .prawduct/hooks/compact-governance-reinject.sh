@@ -18,21 +18,11 @@ FRAMEWORK_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
     echo "CONTEXT RESTORED AFTER COMPACTION."
-    echo "Read skills/orchestrator/SKILL.md from disk before taking action."
+    echo "Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md from disk before taking action."
     exit 0
 fi
 
 SESSION_FILE="$CLAUDE_PROJECT_DIR/.prawduct/.session-governance.json"
-
-# Detect product repo
-IS_PRODUCT_REPO=false
-FRAMEWORK_PATH_FILE="$CLAUDE_PROJECT_DIR/.prawduct/framework-path"
-SKILL_PREFIX="skills"
-if [[ -f "$FRAMEWORK_PATH_FILE" ]]; then
-    IS_PRODUCT_REPO=true
-    STORED_FRAMEWORK_PATH=$(cat "$FRAMEWORK_PATH_FILE" 2>/dev/null || echo "")
-    SKILL_PREFIX="$STORED_FRAMEWORK_PATH/skills"
-fi
 
 # Build debt summary if governance state exists
 DEBT_SUMMARY=""
@@ -66,8 +56,8 @@ cat <<REINJECT
 CONTEXT RESTORED AFTER COMPACTION.
 
 Skill files are on disk — read them when needed or when hooks block you.
-Start: $SKILL_PREFIX/orchestrator/SKILL.md
-Critic: $SKILL_PREFIX/critic/SKILL.md
+Start: $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md
+Critic: $FRAMEWORK_ROOT/skills/critic/SKILL.md
 ${DEBT_SUMMARY:+
 GOVERNANCE DEBT:
 $DEBT_SUMMARY}
