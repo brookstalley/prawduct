@@ -165,7 +165,8 @@ if is_framework:
     # the Stage 6 governance table (3+ files adding capability → DCP Enhancement).
     dc = data.get('directional_change', {})
     distinct_files = len(edits['files'])
-    if distinct_files >= 3 and not dc.get('active', False) and not dc.get('needs_classification', False):
+    already_classified = dc.get('tier') is not None
+    if distinct_files >= 3 and not dc.get('active', False) and not dc.get('needs_classification', False) and not already_classified:
         if 'directional_change' not in data:
             data['directional_change'] = {}
         data['directional_change']['needs_classification'] = True

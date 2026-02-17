@@ -1,0 +1,17 @@
+---
+observation_id: cb96188e-0990-457e-a0b1-3ad127ff1abe
+timestamp: 2026-02-17T22:03:24Z
+session_type: framework_dev
+session_context:
+  framework_version: 5621a25
+observations:
+  - type: critic_gap
+    stage: meta
+    severity: note
+    description: "External audit severity assessments should verify actual execution paths before rating issues as blocking. A template format inconsistency was rated blocking based on the assumption that check-artifacts.py validates templates, but it only validates generated artifacts. The fix was still correct (consistency improvement) but the severity was wrong."
+    evidence: "Audit flagged build-plan.md starting with '# Build Plan' instead of '---' as blocking because check-artifacts.py expects files to start with '---'. Investigation showed check-artifacts.py only runs against .prawduct/artifacts/ (generated output), not templates/. Generated artifacts do start with '---'. The template format was inconsistent with other templates but would never have caused a validation failure."
+    proposed_action: "When assessing severity of validator-related issues, trace the actual invocation path (what calls the validator, on what inputs) before assigning severity. Consider adding this as guidance to the Critic's proportionality or coherence check -- verify the execution path of claimed failures."
+    status: noted
+skills_affected:
+  - "skills/critic/SKILL.md"
+---
