@@ -10,24 +10,42 @@ Prawduct is designed to support everything from multi-user web applications to h
 
 ## Getting Started
 
-Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+### Prerequisites
 
-**To use Prawduct for building a new product:**
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (Anthropic's AI-powered development CLI)
+- Python 3.8+
+- git
+- PyYAML: `pip3 install pyyaml`
+
+### Building a new product
 
 1. Clone this repo to the well-known location: `git clone https://github.com/brookstalley/prawduct ~/.prawduct/framework`
-2. Open your project directory in Claude Code
-3. Run: `python3 ~/.prawduct/framework/tools/prawduct-init.py --fix .`
-4. Say hello — the framework handles onboarding from there
+2. Install dependencies: `pip3 install -r ~/.prawduct/framework/requirements.txt`
+3. Open your project directory in Claude Code
+4. Run: `python3 ~/.prawduct/framework/tools/prawduct-init.py --fix .`
+5. Verify the setup: `python3 ~/.prawduct/framework/tools/prawduct-init.py --check .` (all checks should show "ok")
+6. Say hello
 
-**To develop the framework itself:**
+The framework starts a conversation. It asks about your product idea, your users, edge cases, and scope. Based on your answers it produces structured specifications, then builds the product in governed chunks. A simple utility gets a lightweight process; a complex platform gets more depth. The whole thing adapts to you.
+
+**Local-only mode:** If you don't want prawduct files committed to your repo (e.g., for personal projects or experiments), use `--local` during init:
+
+```
+python3 ~/.prawduct/framework/tools/prawduct-init.py --fix --local .
+```
+
+This stores prawduct hooks in `.claude/settings.local.json` (gitignored by Claude Code) instead of `settings.json`.
+
+### Developing the framework itself
 
 1. Clone this repo
-2. Open the directory in Claude Code
-3. Say hello
+2. `pip3 install -r requirements.txt`
+3. Open the directory in Claude Code
+4. Say hello
 
-**Cloning a project that already uses Prawduct:**
+### Cloning a project that already uses Prawduct
 
-If you clone a repo that was built with Prawduct, the CLAUDE.md bootstrap will guide framework installation. Install the framework to `~/.prawduct/framework/` and run `prawduct-init.py --fix .` to connect it.
+If you clone a repo that was built with Prawduct, the CLAUDE.md bootstrap will guide framework installation. Install the framework to `~/.prawduct/framework/`, run `pip3 install -r ~/.prawduct/framework/requirements.txt`, and run `prawduct-init.py --fix .` to connect it.
 
 ## What It Does
 
@@ -60,6 +78,10 @@ The framework adapts to each product's structural characteristics — discovery 
 
 - **Not a replacement for domain expertise.** If you're building a medical app, you still need medical knowledge. The framework ensures the product and engineering thinking is sound.
 - **Not a form to fill out.** The discovery process is a conversation that adapts to you.
+
+## Terminology
+
+Prawduct has its own vocabulary -- stages, structural characteristics, review lenses, hard rules, and more. See [`docs/glossary.md`](docs/glossary.md) for definitions.
 
 ## Contributing
 

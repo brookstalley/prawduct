@@ -58,6 +58,7 @@ my-product/
 prawduct/
 ├── README.md                          # Human-facing project overview and getting started
 ├── CLAUDE.md                          # You are here
+├── requirements.txt                   # Python dependencies (pyyaml)
 ├── .prawduct/                         # All prawduct outputs (same layout as product repos)
 │   ├── project-state.yaml             # Framework's own project state
 │   ├── hooks/                         # Governance hook scripts (6 hooks)
@@ -74,7 +75,7 @@ prawduct/
 │   │   ├── security-model.md         # Residual: hook bypass, trust model (MINIMAL)
 │   │   ├── test-specifications.md    # Scenario-based tests, state transitions
 │   │   ├── operational-spec.md       # Git versioning, state recovery (MINIMAL)
-│   │   ├── dependency-manifest.yaml  # bash, python3, git, yq (MINIMAL)
+│   │   ├── dependency-manifest.yaml  # bash, python3, pyyaml, git, yq (MINIMAL)
 │   │   ├── pipeline-architecture.md  # Stage pipeline + learning loop (runs_unattended)
 │   │   ├── scheduling-spec.md        # Event-driven, no scheduling (MINIMAL)
 │   │   ├── monitoring-alerting-spec.md  # Session health check model (runs_unattended)
@@ -163,6 +164,7 @@ prawduct/
     ├── evaluation-methodology.md
     ├── self-improvement-architecture.md # C8 learning system design and philosophy
     ├── skill-authoring-guide.md       # Structural + health standards for LLM skill instructions
+    ├── glossary.md                    # Definitions of framework-specific terminology
     └── doc-manifest.yaml              # Tier 1 doc registry for the framework itself
 ```
 

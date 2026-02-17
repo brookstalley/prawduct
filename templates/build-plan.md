@@ -1,17 +1,17 @@
-# Build Plan
+<!-- Build Plan Template
+     Tier: 1 (Source of Truth)
+     Owner: Artifact Generator (C3)
 
-<!--
-  This artifact translates abstract technical decisions and artifact specifications
-  into concrete, executable build instructions. It is the bridge between "what to build"
-  (artifacts) and "how to build it" (Builder execution).
+     This artifact translates abstract technical decisions and artifact specifications
+     into concrete, executable build instructions. It is the bridge between "what to build"
+     (artifacts) and "how to build it" (Builder execution).
 
-  The build plan must be specific enough that the Builder can execute without making
-  technology decisions. If the Builder would need to guess, the build plan is underspecified.
+     The build plan must be specific enough that the Builder can execute without making
+     technology decisions. If the Builder would need to guess, the build plan is underspecified.
 
-  Generated during Stage 4 (Build Planning) by Artifact Generator Phase D.
-  Consumed during Stage 5 (Building) by the Builder skill.
+     Generated during Stage 4 (Build Planning) by Artifact Generator Phase D.
+     Consumed during Stage 5 (Building) by the Builder skill.
 -->
-
 ---
 artifact: build-plan
 version: 1

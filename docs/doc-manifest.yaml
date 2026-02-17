@@ -149,6 +149,11 @@ tier_1_documents:
     owner: framework
     last_validated: 2026-02-12
 
+  - path: docs/glossary.md
+    purpose: "Definitions of framework-specific terminology: stages, components, structural characteristics, protocols, hard rules, and key terms"
+    owner: framework
+    last_validated: 2026-02-17
+
   - path: templates/eval-result-template.md
     purpose: "Template for recording evaluation results with YAML frontmatter and per-component rubric tables"
     owner: framework
