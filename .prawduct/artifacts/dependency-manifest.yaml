@@ -22,11 +22,19 @@ dependencies:
 
   - name: python3
     type: infrastructure
-    justification: "Tools use Python for YAML parsing, JSON manipulation, and observation analysis. stdlib only — no pip dependencies."
+    justification: "Tools use Python for YAML parsing, JSON manipulation, and observation analysis. Requires PyYAML (see requirements.txt)."
     alternatives_considered: ["Node.js (adds npm dependency)", "Pure bash (insufficient for YAML/JSON)"]
     version: "3.8+"
     cost: free
-    risk: "Low — Python 3 is pre-installed on macOS and most Linux distributions."
+    risk: "Low — Python 3 is pre-installed on macOS and most Linux distributions. PyYAML requires pip install."
+
+  - name: pyyaml
+    type: library
+    justification: "YAML parsing for project-state.yaml, observation files, and schema validation. Used by compact-project-state.py, obs_utils.py, validate-schema.py, and inline Python in shell tools."
+    alternatives_considered: ["ruamel.yaml (heavier, better round-trip)", "Text-based parsing (fragile for complex YAML)"]
+    version: "5.0+"
+    cost: free
+    risk: "Low — well-maintained, widely used. Install via pip3 install pyyaml."
 
   - name: git
     type: infrastructure
