@@ -9,8 +9,10 @@
 #    and template files are blocked until the Orchestrator is activated. This ensures
 #    all framework access routes through the Orchestrator. (HR9)
 #
-# 2. Orchestrator activation: Edits/writes to any governed file require Orchestrator
-#    activation. (HR9: No Governance Bypass)
+# 2. Universal edit activation: ALL Edit/Write operations require Orchestrator
+#    activation — framework files, product files, AND cross-repo files. This closes
+#    the governance gap where edits to external projects could bypass governance
+#    when .session-governance.json hadn't been initialized. (HR9: No Governance Bypass)
 #
 # 3. Chunk review: If a product build is active and chunks have been completed
 #    without Critic review, blocks further product file edits until governance
@@ -139,7 +141,66 @@ fi
 
 # --- For Edit/Write calls: full governance checks ---
 
-# Determine if this file is governed
+# Universal activation gate: block ALL edits when Orchestrator is not activated.
+# This closes the cross-repo governance gap — without activation, no file
+# modifications of any kind are permitted, regardless of file location.
+# The Orchestrator activation itself uses Bash (not Edit/Write) to create
+# governance files, so this doesn't create a circular dependency.
+if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
+    ACTIVATION_MARKER="${CLAUDE_PROJECT_DIR}/.claude/.orchestrator-activated"
+    if [[ ! -f "$ACTIVATION_MARKER" ]]; then
+        echo "" >&2
+        echo "BLOCKED: Orchestrator activation required before any file modifications. (HR9)" >&2
+        echo "" >&2
+        echo "All file edits — framework, product, and cross-repo — require Orchestrator" >&2
+        echo "activation. This prevents governance bypass for external project work." >&2
+        echo "" >&2
+        echo "  1. Read skills/orchestrator/SKILL.md (always readable)" >&2
+        echo "  2. Follow its activation process (Session Resumption or new project setup)" >&2
+        echo "  3. After activation, file modifications are permitted." >&2
+        exit 2
+    fi
+
+    # Validate marker recency for edits too (same 12-hour window as reads)
+    edit_marker_age_ok=$(python3 -c "
+import os, sys
+from datetime import datetime, timedelta
+
+marker = '$ACTIVATION_MARKER'
+try:
+    with open(marker) as f:
+        content = f.read().strip()
+    if content:
+        marker_time = datetime.fromisoformat(content)
+    else:
+        marker_time = datetime.fromtimestamp(os.path.getmtime(marker))
+    age = datetime.now() - marker_time
+    if age < timedelta(hours=12):
+        print('ok')
+    else:
+        print('stale')
+except Exception:
+    try:
+        mtime = datetime.fromtimestamp(os.path.getmtime(marker))
+        age = datetime.now() - mtime
+        if age < timedelta(hours=12):
+            print('ok')
+        else:
+            print('stale')
+    except:
+        print('stale')
+" 2>/dev/null || echo "stale")
+
+    if [[ "$edit_marker_age_ok" != "ok" ]]; then
+        echo "" >&2
+        echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
+        echo "" >&2
+        echo "Re-read skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
+        exit 2
+    fi
+fi
+
+# Determine if this file is governed (for additional governance-specific checks)
 # A file is governed if it's a framework file (in the repo) or a product file
 # (in an active product build directory).
 
@@ -198,65 +259,10 @@ if [[ "$is_framework_file" == false && "$is_product_file" == false ]]; then
     exit 0
 fi
 
-# --- Check 1: Orchestrator activation (applies to framework files) ---
-
-if [[ "$is_framework_file" == true && -n "$repo_root" ]]; then
-    MARKER="$CLAUDE_DIR/.orchestrator-activated"
-
-    if [[ ! -f "$MARKER" ]]; then
-        echo "" >&2
-        echo "BLOCKED: Orchestrator activation required before modifying governed files. (HR9)" >&2
-        echo "" >&2
-        echo "You must read skills/orchestrator/SKILL.md and follow its activation process" >&2
-        echo "before editing governed files. The Orchestrator determines the appropriate" >&2
-        echo "governance level for your changes." >&2
-        echo "" >&2
-        echo "Do this now:" >&2
-        echo "  1. Read skills/orchestrator/SKILL.md" >&2
-        echo "  2. Follow Session Resumption (read project-state.yaml, run health check, orient)" >&2
-        echo "  3. The Orchestrator will create the activation marker, then you can proceed." >&2
-        exit 2
-    fi
-
-    # Validate marker recency (must be created within the last 12 hours)
-    marker_age_ok=$(python3 -c "
-import os, sys
-from datetime import datetime, timedelta
-
-marker = '$MARKER'
-try:
-    with open(marker) as f:
-        content = f.read().strip()
-    if content:
-        marker_time = datetime.fromisoformat(content)
-    else:
-        marker_time = datetime.fromtimestamp(os.path.getmtime(marker))
-
-    age = datetime.now() - marker_time
-    if age < timedelta(hours=12):
-        print('ok')
-    else:
-        print('stale')
-except Exception:
-    try:
-        mtime = datetime.fromtimestamp(os.path.getmtime(marker))
-        age = datetime.now() - mtime
-        if age < timedelta(hours=12):
-            print('ok')
-        else:
-            print('stale')
-    except:
-        print('stale')
-" 2>/dev/null || echo "stale")
-
-    if [[ "$marker_age_ok" != "ok" ]]; then
-        echo "" >&2
-        echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
-        echo "" >&2
-        echo "Re-read skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
-        exit 2
-    fi
-fi
+# NOTE: Orchestrator activation check for Edit/Write was moved to the universal
+# activation gate above (runs before framework/product file detection). The gate
+# blocks ALL edits when the marker is missing or stale, closing the cross-repo
+# governance gap that previously allowed ungoverned edits to external projects.
 
 # --- Check 2: Chunk review gate (applies to product files during builds) ---
 
