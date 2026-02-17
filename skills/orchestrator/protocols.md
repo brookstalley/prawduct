@@ -159,17 +159,43 @@ Apply the framework's principles to its own founding architectural decisions —
 
 ---
 
-## Root Cause Protocol (5 Whys)
+## Post-Fix Reflection Protocol (PFR)
 
-**When to apply:** Before implementing any fix motivated by an observation, pattern, or audit finding. Not required for simple corrections (typos, formatting) — only for issues that indicate a gap in the framework's processes, detection, or design.
+**When to apply:** Every non-cosmetic fix in Stage 5 (chunk fixes, Critic blocking findings) and Stage 6 (functional iteration fixes). Exempt: cosmetic changes (wording, formatting, minor adjustments). DCP structural changes have their own retrospective (step 9) which is more thorough — PFR steps 4-6 (observation + contribution) still apply if relevant.
 
-**Process:**
-1. State the immediate problem.
-2. Ask "why?" iteratively until you reach a cause the framework can structurally prevent (usually 3-5 levels).
-3. The fix must address both the immediate problem AND the deepest root cause.
-4. Document the analysis in the change_log entry (the `why` field should trace the causal chain, not just describe the symptom).
+**Key principle:** Root cause analysis happens **before** implementing the fix, so the fix targets the root cause rather than the symptom.
 
-**The test:** If your fix only prevents this exact symptom from recurring, you haven't gone deep enough. The fix should prevent the *class* of problem, not just the instance.
+**Steps:**
+
+1. **Classify.** Is this fix product-specific or framework-relevant?
+   - **Test:** "Would a different product with similar structural characteristics hit the same problem?"
+   - If yes → framework-relevant. Continue to step 2.
+   - If no → product-specific. Record briefly in `change_log` and proceed directly to step 3 (implement the fix). Skip steps 2, 4-6.
+
+2. **Root Cause Analysis (5-whys) — before implementing.** For framework-relevant fixes only.
+   - State the immediate problem (the symptom).
+   - Ask "why?" iteratively until you reach a cause the framework can structurally prevent (usually 3-5 levels).
+   - Identify a root cause category:
+     - `missing_process` — No process existed for this situation
+     - `process_not_enforced` — Process existed but was optional/advisory
+     - `incomplete_coverage` — Process existed but didn't cover this case
+     - `wrong_abstraction` — The structural model doesn't match reality
+     - `missing_detection` — No mechanism to detect this class of problem
+     - `vocabulary_drift` — Concepts renamed/removed without lifecycle
+   - Document the analysis in the `change_log` entry (the `why` field should trace the causal chain, not just describe the symptom).
+   - **The class test:** If your fix only prevents this exact symptom from recurring, you haven't gone deep enough. The fix should prevent the *class* of problem, not just the instance.
+
+3. **Implement the fix** targeting the root cause identified in step 2. For product-specific fixes (step 1), implement targeting the immediate issue.
+
+4. **Meta-fix.** Check the user's product for other manifestations of the same root cause.
+   - **Search scope:** Same-stage artifacts, same module/component as the original fix.
+   - **Fix scope:** No count cap — if 10 instances exist, fix all 10. A high instance count is itself evidence of a systematic gap; note the count in the observation.
+
+5. **Framework observation.** Capture via `tools/capture-observation.sh` with `--rca-symptom`, `--rca-root-cause`, and `--rca-category` arguments. The observation must be generalized (not product-specific) per standard observation rules in `framework-observations/README.md`.
+
+6. **Contribution pathway.** Present the observation to the user and offer `tools/format-contribution.sh` to generate shareable markdown. Keep to 1-2 sentences — "I captured a framework observation about [topic]. If you want to contribute it back, run `tools/format-contribution.sh <file>`."
+
+**Relationship to DCP:** PFR and DCP serve different purposes and stay separate. DCP is about *governance proportionality* — how much review does this change need? PFR is about *learning* — is this fix addressing a class of problem? A small functional fix (no DCP needed) can reveal a framework gap (PFR triggers). A large structural DCP adding new capability (not fixing a problem) doesn't need PFR. Where they overlap (DCP structural with retrospective), DCP's retrospective subsumes PFR steps 1-3, but PFR steps 4-6 (meta-fix, observation, contribution) may still apply if the structural change was fixing a framework gap.
 
 ---
 

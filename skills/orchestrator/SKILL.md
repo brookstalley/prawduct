@@ -99,6 +99,7 @@ These protocols are in `skills/orchestrator/protocols.md`. Read on demand at sta
 | Protocol | When to use |
 |----------|-------------|
 | **Framework Reflection Protocol (FRP)** | At every stage transition — assess whether the framework served well |
+| **Post-Fix Reflection Protocol (PFR)** | Every non-cosmetic fix — classify, RCA before fix, meta-fix, observe, contribute |
 | **Stage Transition Protocol** | Before transitioning to a new stage — verify prerequisites are met |
 | **Expertise Calibration** | Throughout all stages — infer user expertise from signals, adapt behavior |
 | **Structural Critique Protocol** | After every 3 evals, after directional changes, or on request |
