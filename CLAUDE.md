@@ -101,6 +101,7 @@ prawduct/
 │   ├── compact-project-state.py       # Mechanical compaction of growing project-state.yaml sections per LIFECYCLE rules
 │   ├── compact-project-state.sh       # Bash wrapper for compact-project-state.py
 │   ├── resolve-product-root.sh        # Shared product root detection (.prawduct/ first, then repo root)
+│   ├── format-contribution.sh         # Format observation YAML as shareable markdown for framework contributions
 │   ├── obs_utils.py                   # Shared Python module: observation parsing, thresholds, pattern detection
 │   ├── prawduct-init.sh               # Bash wrapper for prawduct-init.py
 │   └── prawduct-init.py               # Mechanical prawduct integration: setup, repair, settings.json merging
@@ -244,5 +245,5 @@ Every evaluation run **must** produce a results file in `eval-history/` before t
 - **Templates:** Include comments/guidance explaining what goes in each section. Templates are instructional, not just structural.
 - **Commit messages:** Describe what changed and why. "Updated orchestrator skill" is not acceptable. "Added pacing sensitivity to orchestrator: system now adapts discovery depth to user patience level (R1.8)" is.
 - **Working notes:** Any file in `working-notes/` must include a creation date. Notes older than 2 weeks are stale — incorporate into Tier 1 or delete.
-- **Documentation freshness:** When creating a new file in the framework (skill, template, doc, tool, test scenario), update CLAUDE.md's project structure tree in the same session. When changing a component's capabilities, verify its description in CLAUDE.md still matches. When a milestone completes (phase finished, major feature shipped), check whether CLAUDE.md contains planning artifacts that should be converted to status descriptions — roadmaps become stale silently because the content stays true long enough that nobody questions it. The FRP's Documentation Freshness dimension catches both inaccuracy and obsolescence, but prevention is cheaper than detection.
+- **Documentation freshness:** When creating a new file in the framework (skill, template, doc, tool, test scenario), update CLAUDE.md's project structure tree in the same session. When changing a component's capabilities, verify its description in CLAUDE.md still matches. When vocabulary or structural layout changes (directional changes), also verify README.md — it describes capabilities to humans and drifts silently because the framework doesn't read it during normal operation. When a milestone completes (phase finished, major feature shipped), check whether CLAUDE.md contains planning artifacts that should be converted to status descriptions — roadmaps become stale silently because the content stays true long enough that nobody questions it. The FRP's Documentation Freshness dimension catches both inaccuracy and obsolescence, but prevention is cheaper than detection.
 # test

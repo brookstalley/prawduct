@@ -842,6 +842,45 @@ change_log:
       .prawduct/artifacts/scheduling-spec.md, 2 observation files
     classification: functional
     date: 2026-02-16
+  - what: 'Fix README.md staleness + close governance gap for human-facing docs'
+    why: 'Root cause chain: README contained deprecated vocabulary (product shapes, concerns) and stale project
+      layout → README not in blast_radius of 3 directional changes → no instruction prompts verifying README
+      when capabilities change → CLAUDE.md conventions have explicit update triggers for CLAUDE.md but not
+      README → the framework does not read README during normal operation so staleness is invisible. Category:
+      incomplete_coverage. Fix: updated README content, added README to CLAUDE.md Documentation Freshness
+      convention, added proactive Critic Coherence check for directional changes affecting vocabulary/layout.'
+    blast_radius: README.md, CLAUDE.md, skills/critic/SKILL.md, .prawduct/project-state.yaml
+    classification: functional
+    date: 2026-02-17
+  - what: 'Post-Fix Reflection Protocol: automatic root cause analysis and framework contribution pathway for every non-cosmetic fix'
+    why: 'Root cause chain: fixes address symptoms without analyzing root cause → Root Cause Protocol existed
+      but was advisory (triggered only for observation-driven fixes) → routine bug fixes and Critic findings
+      skipped RCA entirely → the same class of problem recurs because only the instance was fixed. Three-layer
+      fix: (1) PFR embedded in Stage 5 step 6 and Stage 6 steps 1/4/5a making RCA unavoidable for non-cosmetic
+      fixes, (2) meta-fix step checks product for other instances of same root cause, (3) contribution pathway
+      via format-contribution.sh enables product users to share observations back to framework. RCA happens
+      before the fix so implementation targets root cause. root_cause_analysis schema field with 6-category
+      enum enables cross-fix pattern detection.'
+    blast_radius: skills/orchestrator/protocols.md, skills/orchestrator/stage-5-build.md,
+      skills/orchestrator/stage-6-iteration.md, skills/orchestrator/onboarding.md, skills/orchestrator/SKILL.md,
+      skills/critic/SKILL.md, tools/capture-observation.sh, tools/format-contribution.sh (new),
+      .prawduct/framework-observations/schema.yaml, .prawduct/framework-observations/README.md,
+      docs/self-improvement-architecture.md, CLAUDE.md, .prawduct/project-state.yaml
+    classification: functional
+    date: 2026-02-17
+  - what: 'Fix doc-code divergence blind spot in onboarding: add Phase 1h bidirectional reconciliation'
+    why: 'Onboarding contained contradictory instructions about doc vs code authority (edge case guidance said
+      "lean heavily on docs" while Phase 1g said "code wins for current state"). No operational procedure existed
+      for reconciling doc-code disagreements about feature status in either direction. During Unseen Sights
+      onboarding, a fully-implemented POI feature (18+ code signals) was flagged as uncertain because vision.md
+      listed it as future. Root cause (5-whys): Phase 1g and Phases 1a-1e run as separate activities with no
+      cross-referencing step, because the process did not model the common scenario where docs and code drift
+      apart on feature status. Fix: Phase 1h with bidirectional passes (stale roadmaps + phantom features),
+      Phase 1c status-extraction prompt, Phase 2 divergence reporting, Phase 3b three-case conflict handling,
+      Phase 4 reconciliation reflection dimension, state cache for session interruption.'
+    blast_radius: skills/orchestrator/onboarding.md
+    classification: functional
+    date: 2026-02-17
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.
@@ -1084,3 +1123,7 @@ deprecated_terms:
     replacement: null
     removed_date: 2026-02-15
     patterns: ["Stage 0\\.5"]
+  - term: "Root Cause Protocol"
+    replacement: "Post-Fix Reflection Protocol (PFR)"
+    removed_date: 2026-02-17
+    patterns: ["Root Cause Protocol"]

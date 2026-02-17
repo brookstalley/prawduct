@@ -272,6 +272,7 @@ The Structural Critique Protocol now triggers after directional changes (not jus
 | Path | Triggers | Captures | Mechanism |
 |------|----------|----------|-----------|
 | Product sessions | Stage transitions | Behavioral observations, coverage gaps, proportionality issues | FRP + observation capture (automatic, blocking) |
+| Non-cosmetic fixes | Every fix in Stage 5/6 | Root cause analysis, framework gaps, class-of-problem patterns | Post-Fix Reflection Protocol (PFR) — classify, RCA before fix, meta-fix, observe, contribute |
 | Framework development | Directional changes | Detection gaps, process gaps, architecture blind spots | DCP step 7 retrospective (mandatory) |
 
 Both paths feed the same downstream pipeline: observations → pattern detection → incorporation. The difference is the trigger and the questions asked, not the output format or processing.
@@ -461,7 +462,21 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Learning**: Governance and learning are orthogonal. A change can pass all quality checks while producing zero insights. The Critic asks "is this well-made?" The retrospective asks "what did we learn from making it?" Both questions are necessary; neither implies the other.
 
-### Failure Mode 9: Instance-Specific Fixes Don't Generalize
+### Failure Mode 9: Fixes Address Symptoms Without Root Cause Analysis
+
+**Symptom**: A problem is fixed, but the same class of problem recurs because only the specific instance was addressed, not the structural cause.
+
+**Root cause**: The fix flow (discover problem → implement fix → commit) had no step requiring causal analysis. The Root Cause Protocol existed but was advisory — it triggered only for observation-driven fixes, not for routine bug fixes or Critic findings.
+
+**Discovered**: 2026-02-17. User observed that results improve when they explicitly request 5-whys analysis, but this should be automatic.
+
+**Fix**: Post-Fix Reflection Protocol (PFR) embedded in Stage 5 and Stage 6 fix flows. RCA happens *before* the fix so the fix targets the root cause. Meta-fix step checks for other instances of the same root cause in the product. Framework observation with `root_cause_analysis` block enables cross-fix pattern detection by category.
+
+**Safeguard**: Critic Check 6 (Learning/Observability) verifies PFR completeness for non-cosmetic fixes. Missing PFR is a **warning**. `tools/format-contribution.sh` enables product users to contribute observations back to the framework.
+
+**Learning**: Advisory protocols get skipped. Embedding the protocol in the fix flow (Stage 5 step 6, Stage 6 steps 1/4/5a) makes it unavoidable. The `root_cause_analysis.category` enum enables mechanical pattern detection across fixes — if 5 fixes share the same category, that's a systematic gap.
+
+### Failure Mode 10: Instance-Specific Fixes Don't Generalize
 
 **Symptom**: A problem is discovered in one context (e.g., framework development) and fixed only there. The same gap in analogous contexts (e.g., product development) goes unnoticed until someone stumbles on it independently.
 
@@ -469,9 +484,9 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Discovered**: 2026-02-13. The DCP retrospective (step 7) was added for framework development after discovering governance without learning. The same gap — directional changes without retrospective — existed on the product path but wasn't checked because the fix was scoped to where the problem was found.
 
-**Fix**: Generalization question (d) added to both the framework DCP retrospective and the new Product Directional Change Protocol retrospective: "Does this fix apply only to the context where the problem was discovered, or does the same gap exist in analogous contexts?" Every retrospective now explicitly prompts checking parallel paths.
+**Fix**: Two reinforcing mechanisms: (1) Generalization question in DCP retrospective: "Does this fix apply only to the context where the problem was discovered, or does the same gap exist in analogous contexts?" (2) PFR step 4 (meta-fix): after every non-cosmetic fix, check the product for other manifestations of the same root cause.
 
-**Safeguard**: The generalization question is structural — it's part of every retrospective, not a one-time check. Critic Check 6 (Learning/Observability) extended to cover in-file growing collections (same principle: check for the general pattern, not just the specific instance).
+**Safeguard**: The generalization question is structural — it's part of every retrospective, not a one-time check. PFR step 4 makes meta-fix a standard part of every fix cycle. Critic Check 6 (Learning/Observability) extended to cover in-file growing collections (same principle: check for the general pattern, not just the specific instance).
 
 **Learning**: Fixing an instance without checking for the general pattern is a form of silent requirement dropping (HR2) at the meta level. The fix was correct but incomplete. Retrospectives that ask "what did we learn?" without asking "where else does this apply?" will systematically produce instance-specific fixes.
 
