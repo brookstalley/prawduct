@@ -14,7 +14,7 @@ Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol (F
 
 The user has a working product and provides feedback. Handle feedback in lightweight cycles.
 
-1. **Receive user feedback.** Listen for what the user wants to change. For changes triggered by the observation system (the "act now" path from session resumption pattern surfacing), apply the Root Cause Protocol (see `skills/orchestrator/protocols.md`) before planning the fix. The goal is not just to fix the symptom but to close the gap that allowed the symptom.
+1. **Receive user feedback.** Listen for what the user wants to change. For all non-cosmetic changes, apply the Post-Fix Reflection Protocol (see `skills/orchestrator/protocols.md` § PFR) — classify the issue and, if framework-relevant, perform root cause analysis before planning the fix. The RCA informs what to fix: the implementation should target the root cause, not just the surface symptom.
 
 2. **Classify the feedback:**
 
@@ -45,9 +45,11 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 4. **Implement the change.** Follow the cycle matching the classification:
    - **Cosmetic:** Implement the fix → run tests → verify → done.
-   - **Functional:** Update affected artifacts → create or modify chunks for the change → Builder implements → Critic reviews → run tests → verify no regressions.
+   - **Functional:** Update affected artifacts → create or modify chunks for the change → Builder implements (if PFR classified this as framework-relevant in step 1, the implementation should target the root cause identified in the 5-whys, not just the surface symptom) → Critic reviews → run tests → verify no regressions.
 
 5. **Verify no regressions.** Run all tests after every change. If a test fails, fix the regression before proceeding.
+
+5a. **Post-Fix Reflection (completion).** For **functional** changes that PFR classified as framework-relevant in step 1: now that the fix is verified, apply PFR steps 4-6 (meta-fix across the product, capture framework observation, present contribution pathway). For product-specific changes, skip. For directional changes, the DCP retrospective (step 9) handles this.
 
 6. **Update iteration state.** Add an entry to `project-state.yaml` → `iteration_state.feedback_cycles` with the feedback, classification, affected artifacts/chunks, and status. Run `tools/compact-project-state.sh --section change_log --section feedback_cycles` if session-health-check reports state warnings.
 
@@ -84,7 +86,7 @@ No DCP needed. Implement the changes, run Critic review (see `skills/critic/SKIL
 
 ### Enhancement changes
 
-1. **Write a brief plan** in `working-notes/` describing the change, motivation, and affected files. Before implementing, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned approach — prior observations may identify risks or constraints that should inform the plan.
+1. **Write a brief plan** in `working-notes/` describing the change, motivation, and affected files. Before implementing, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned approach — prior observations may identify risks or constraints that should inform the plan. Apply PFR steps 1-2 (classify + RCA) before implementation if the enhancement addresses a known issue or gap. After implementation and Critic review, complete PFR steps 4-6.
 2. **Implement** the change.
 3. **Run Critic review** (see `skills/critic/SKILL.md`) — all applicable checks.
 4. **Register deprecated terms** if any concepts were renamed/removed: write to `project-state.yaml` → `deprecated_terms` with replacement and grep patterns.
@@ -95,7 +97,7 @@ Set `directional_change` in `.session-governance.json` to track: `{"active": tru
 
 1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction?"
 2. **Reclassification check (product builds).** If the product's fundamental nature changed, re-run classification.
-3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Root Cause Protocol in `skills/orchestrator/protocols.md`). Set `directional_change` in `.session-governance.json`: `{"active": true, "plan_description": "<summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <N>, "phases_reviewed_count": 0, "observation_captured": false}`.
+3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Post-Fix Reflection Protocol in `skills/orchestrator/protocols.md` § PFR). Set `directional_change` in `.session-governance.json`: `{"active": true, "plan_description": "<summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <N>, "phases_reviewed_count": 0, "observation_captured": false}`.
 4. **Plan-stage Critic review.** Apply Generality, Coherence, and Learning/Observability checks to the plan. Set `plan_stage_review_completed` to `true`.
 5. **Impact assessment.** Map blast radius via `artifact_manifest`. Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
 6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Increment `phases_reviewed_count` after each.

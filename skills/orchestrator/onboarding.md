@@ -42,6 +42,8 @@ Read documentation and source to understand what the product does:
 - User-facing strings → infer features and personas
 - Error messages → infer edge cases handled
 
+**For Phase 1h reconciliation:** While reading docs, note two things: (1) features described with temporal status ("future," "planned," "roadmap," "v2," "in progress," "upcoming") — record each with its claimed status and source doc; (2) features described as current/implemented — record each with its source doc. Phase 1h will verify both lists against code evidence.
+
 ### 1d. Structural Characteristics
 
 Infer from codebase signals:
@@ -92,6 +94,26 @@ Use the classified doc inventory from `prawduct-init.sh` output to prioritize re
 
 **Principle:** Existing docs are more authoritative than code inference for "what does this product do" and "why was it built this way." Code is more authoritative for "what does it actually do right now." When they conflict, note the discrepancy — code wins for current state, docs win for intent.
 
+### 1h. Doc-Code Reconciliation
+
+After both doc reading (1g) and code analysis (1a-1e), cross-reference doc claims against code reality. Feature implementation status is a factual question answered by code, not by docs. Docs are authoritative for intent, architecture rationale, and product vision. But whether a feature exists in the running software is determined by reading the software. This applies in both directions: docs may under-report what's built (stale roadmaps) or over-report what's built (aspirational docs, abandoned features).
+
+**Pass A — Claimed-future features:**
+
+Extract features described as "future," "planned," "roadmap," "v2," "upcoming," or "in progress" from docs (collected in Phase 1c). Verify each against code evidence. Classify:
+
+- **Confirmed future** — no code evidence (no UI, no data model, no routes, no tests) → `scope.later`
+- **Partially implemented** — some code but incomplete (e.g., data model exists but no UI, or stubs only) → `scope.v1` with "partial" note; flag for user confirmation in Phase 2
+- **Implemented despite docs** — strong code evidence (3+ signals across layers: UI + data + routes, or tests + handlers + localization, etc.) → `scope.v1`; flag doc as stale in Phase 2
+
+**Pass B — Claimed-current features:**
+
+Extract features that docs describe as current or implemented (feature lists, "what the app does" sections, user guides, README descriptions) from docs (collected in Phase 1c). Verify each against code evidence. Classify:
+
+- **Confirmed implemented** — code evidence supports the claim → `scope.v1`
+- **Partially implemented** — some code but incomplete (e.g., data model exists but no UI, or stubs only) → `scope.v1` with "partial" note; flag for user confirmation in Phase 2
+- **Documented but not in code** — docs describe it but code shows no evidence (no handlers, no models, no routes, no tests) → flag as potentially stale/aspirational docs; do NOT include in `scope.v1` without user confirmation in Phase 2
+
 ---
 
 ## Phase 2: User Confirmation
@@ -109,6 +131,8 @@ Present the analysis as a readable summary. This is a **genuine blocking questio
 > **Tests:** [count] test files covering [areas]
 > **Architecture:** [inferred pattern]
 > **Risk level:** [low/medium/high with brief rationale]
+>
+> **Doc-code divergences:** [If Phase 1h found any — report as factual findings, not uncertainty. Examples: "Your vision.md lists X as a future feature, but the code fully implements it — the doc appears stale." / "Your README describes Y as a current feature, but I found no implementation in the code — this may be aspirational or removed." Omit section if none found.]
 >
 > **Things I'm less sure about:** [uncertainties — e.g., 'I see auth but not sure if there are distinct user types', 'the docs mention an API but I didn't find route definitions']
 >
@@ -155,11 +179,11 @@ Generate **complete standalone artifacts** in `.prawduct/artifacts/`. Each artif
 ```
 This enables divergence detection during Session Resumption (compare git timestamps of source doc vs artifact). No active sync is required — divergence is detected mechanically.
 
-**When existing docs conflict with code:** Note the discrepancy in the artifact. Code wins for describing current state; docs win for describing intent. Example:
-```markdown
-> **Note:** `docs/architecture.md` describes a microservices architecture, but the codebase
-> is currently a monolith. This may indicate planned migration or stale documentation.
-```
+**When existing docs conflict with code:** Note the discrepancy in the artifact. Handle by divergence type:
+
+- **Stale roadmap** (docs say future, code implements): Don't hedge. State clearly: "The documentation is stale — this feature is implemented." Include in `scope.v1`.
+- **Phantom feature** (docs say current, no code): Don't include in artifacts without user confirmation from Phase 2. "Docs describe this feature but no implementation was found in the codebase."
+- **Architectural divergences** (docs describe one approach, code shows another): Hedge appropriately. "May indicate planned migration or stale documentation."
 
 For each artifact, mark inferred sections: "Inferred from codebase analysis — verify with product owner."
 
@@ -201,6 +225,7 @@ Populate `artifact_manifest.artifacts` in project-state.yaml with all generated 
    | **Accuracy** | Were inferred classifications correct, or did user corrections reveal systematic gaps? |
    | **Artifact quality** | Were generated artifacts complete and accurate based on codebase evidence? |
    | **Learning completeness** | Did this onboarding reveal gaps in the onboarding process that should be documented? |
+   | **Doc-code reconciliation** | Did Phase 1h identify all stale feature status claims? Did the user confirm or correct the findings? |
 
    **Always record reflection in `change_log`:**
    ```yaml
@@ -212,6 +237,8 @@ Populate `artifact_manifest.artifacts` in project-state.yaml with all generated 
    ```
 
 3. **If substantive findings exist**, run `tools/capture-observation.sh` with `--session-type product_use --stage meta`. Substantive findings include: framework missed structural characteristics evident in the codebase, artifact generation made incorrect inferences, user made significant corrections, or the process required improvisation beyond documented guidance. "Onboarding completed successfully" is not substantive.
+
+3a. **Post-Fix Reflection for user corrections.** If user corrections in Phase 2 revealed framework gaps (the framework missed features, made incorrect inferences, or required improvisation), apply PFR steps 2-5 (from `skills/orchestrator/protocols.md` § PFR) for each correction that indicates a framework-relevant issue. This captures root cause analysis for systematic onboarding blind spots.
 
 4. Present a summary to the user:
 
@@ -243,6 +270,9 @@ Onboarding can be interrupted (context compaction, session end, user pause). Tra
     "structural_characteristics": { "has_human_interface": true, "runs_unattended": false },
     "doc_mapping": [
       { "doc": "docs/architecture.md", "maps_to": "product-brief", "freshness": "recent" }
+    ],
+    "doc_code_reconciliation": [
+      { "feature": "POI system", "doc": "docs/vision.md", "doc_status": "future", "code_status": "implemented", "evidence_count": 18 }
     ]
   }
 }
@@ -272,4 +302,4 @@ Onboarding can be interrupted (context compaction, session end, user pause). Tra
 - All test configuration files
 - Schema/model definitions
 
-**Projects with existing docs:** If the project has thorough documentation (README, architecture docs, API docs), lean heavily on those for product understanding rather than code analysis. Existing docs are more reliable than code inference for "what does this product do."
+**Projects with existing docs:** If the project has thorough documentation (README, architecture docs, API docs), docs are authoritative for vision, architecture rationale, and design intent. But docs are NOT authoritative for feature implementation status — in either direction. A roadmap may list a feature as "future" that has since been built; equally, a feature doc may describe capabilities that were never implemented or were later removed. Always verify feature status claims against code (Phase 1h).
