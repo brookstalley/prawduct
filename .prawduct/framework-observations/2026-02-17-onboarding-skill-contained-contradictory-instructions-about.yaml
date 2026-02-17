@@ -1,0 +1,17 @@
+---
+observation_id: 464006a1-3d2e-4975-b881-80f64bde0cd8
+timestamp: 2026-02-17T17:08:39Z
+session_type: framework_dev
+session_context:
+  framework_version: 4cfda13
+observations:
+  - type: coverage
+    stage: meta
+    severity: warning
+    description: "Onboarding skill contained contradictory instructions about doc vs code authority for feature status. Edge case guidance said 'lean heavily on docs' for product understanding while Phase 1g principle said 'code wins for current state.' No operational procedure existed for reconciling doc-code disagreements about feature implementation status in either direction — stale roadmaps (docs say future, code implements) and phantom features (docs say current, code missing). Any project with outdated docs triggers this."
+    evidence: "During Unseen Sights onboarding, a fully-implemented POI feature (18+ code signals across UI, data, loaders, state, localization, coach marks, tests) was flagged as uncertain because vision.md listed it under Future. The process trusted the stale doc over overwhelming code evidence."
+    proposed_action: "Added Phase 1h (bidirectional doc-code reconciliation), fixed contradictory edge case guidance, strengthened Phase 3b conflict handling with three divergence types"
+    status: acted_on
+skills_affected:
+  - "skills/orchestrator/onboarding.md"
+---

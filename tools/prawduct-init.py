@@ -34,11 +34,26 @@ PRAWDUCT_HOOK_SCRIPTS = [
 ]
 
 # The canonical hook configuration for product repos.
-# Commands use absolute paths to the framework's hook directory.
-# The SessionStart/clear hook uses $CLAUDE_PROJECT_DIR because it
-# operates on the product repo's own .claude/ directory.
-def get_prawduct_hooks(framework_hooks_dir: str) -> dict:
-    """Return the canonical prawduct hook configuration with absolute paths."""
+# Commands resolve the framework directory at runtime from
+# $CLAUDE_PROJECT_DIR/.prawduct/framework-path, keeping settings.json
+# portable across machines.  The SessionStart/clear hook uses
+# $CLAUDE_PROJECT_DIR because it operates on the product repo's own
+# .claude/ directory.
+def get_prawduct_hooks() -> dict:
+    """Return the canonical prawduct hook configuration with dynamic path resolution.
+
+    Hook commands resolve the framework directory at runtime from
+    .prawduct/framework-path rather than embedding absolute paths.
+    This keeps settings.json portable across machines and users.
+    """
+    # Dynamic framework path resolution (reads .prawduct/framework-path at runtime)
+    fw_resolve = 'FW=$(cat "$CLAUDE_PROJECT_DIR/.prawduct/framework-path" 2>/dev/null)'
+    # Blocking fallback for governance-critical hooks (PreToolUse, Stop)
+    fw_block = (
+        "|| { echo 'prawduct: framework-path missing — "
+        "run prawduct-init.sh --fix' >&2; exit 2; }"
+    )
+
     return {
         "SessionStart": [
             {
@@ -60,7 +75,7 @@ def get_prawduct_hooks(framework_hooks_dir: str) -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'"{framework_hooks_dir}/compact-governance-reinject.sh"',
+                        "command": f'{fw_resolve} && "$FW/.claude/hooks/compact-governance-reinject.sh"',
                     }
                 ],
             },
@@ -71,7 +86,7 @@ def get_prawduct_hooks(framework_hooks_dir: str) -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'"{framework_hooks_dir}/governance-prompt.sh"',
+                        "command": f'{fw_resolve} && "$FW/.claude/hooks/governance-prompt.sh"',
                     }
                 ],
             }
@@ -82,7 +97,7 @@ def get_prawduct_hooks(framework_hooks_dir: str) -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'"{framework_hooks_dir}/critic-gate.sh"',
+                        "command": f'{fw_resolve} {fw_block}; "$FW/.claude/hooks/critic-gate.sh"',
                     }
                 ],
             },
@@ -91,7 +106,7 @@ def get_prawduct_hooks(framework_hooks_dir: str) -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'"{framework_hooks_dir}/governance-gate.sh"',
+                        "command": f'{fw_resolve} {fw_block}; "$FW/.claude/hooks/governance-gate.sh"',
                     }
                 ],
             },
@@ -102,7 +117,7 @@ def get_prawduct_hooks(framework_hooks_dir: str) -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'"{framework_hooks_dir}/governance-tracker.sh"',
+                        "command": f'{fw_resolve} && "$FW/.claude/hooks/governance-tracker.sh"',
                     }
                 ],
             }
@@ -113,7 +128,7 @@ def get_prawduct_hooks(framework_hooks_dir: str) -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f'"{framework_hooks_dir}/governance-stop.sh"',
+                        "command": f'{fw_resolve} {fw_block}; "$FW/.claude/hooks/governance-stop.sh"',
                     }
                 ],
             }
@@ -126,10 +141,10 @@ CLAUDE_MD_BOOTSTRAP = """\
 ## Prawduct Framework
 
 This project uses the Prawduct framework.
-Framework location: read `.prawduct/framework-path` for the absolute path.
 
-Before taking any action, read the framework path from `.prawduct/framework-path`,
-then read `{framework-path}/skills/orchestrator/SKILL.md` and follow its activation process.
+Before taking any action:
+1. Read `.prawduct/framework-path` to get the framework directory
+2. Read `<framework-dir>/skills/orchestrator/SKILL.md` and follow its activation process
 <!-- /prawduct-bootstrap -->
 """
 
@@ -495,6 +510,7 @@ def detect_onboarding_in_progress(target_dir: str) -> dict | None:
 PRAWDUCT_COMMAND_PATTERNS = [
     ".orchestrator-activated",
     ".session-governance.json",
+    ".prawduct/framework-path",
 ]
 
 
@@ -508,7 +524,7 @@ def is_prawduct_hook(command: str) -> bool:
 
 
 def merge_settings_json(
-    existing: dict, prawduct_hooks: dict, framework_hooks_dir: str
+    existing: dict, prawduct_hooks: dict
 ) -> tuple[dict, int, int]:
     """Merge prawduct hooks into existing settings.json.
 
@@ -733,9 +749,7 @@ def check_claude_md(target_dir: str, mode: str) -> dict:
     claude_md = Path(target_dir) / "CLAUDE.md"
     bootstrap_marker = "<!-- prawduct-bootstrap -->"
     bootstrap_end = "<!-- /prawduct-bootstrap -->"
-    bootstrap_content = CLAUDE_MD_BOOTSTRAP.replace(
-        "{framework-path}", str(FRAMEWORK_DIR)
-    )
+    bootstrap_content = CLAUDE_MD_BOOTSTRAP
 
     if claude_md.is_file():
         existing = claude_md.read_text()
@@ -769,8 +783,7 @@ def check_claude_md(target_dir: str, mode: str) -> dict:
 def check_settings_json(target_dir: str, mode: str) -> dict:
     """Check/create .claude/settings.json with prawduct hooks merged."""
     settings_path = Path(target_dir) / ".claude" / "settings.json"
-    framework_hooks_dir = str(FRAMEWORK_DIR / ".claude" / "hooks")
-    prawduct_hooks = get_prawduct_hooks(framework_hooks_dir)
+    prawduct_hooks = get_prawduct_hooks()
 
     if settings_path.is_file():
         try:
@@ -786,7 +799,7 @@ def check_settings_json(target_dir: str, mode: str) -> dict:
 
         # Check if all prawduct hooks are present and correct
         merged, hooks_added, user_hooks_preserved = merge_settings_json(
-            existing, prawduct_hooks, framework_hooks_dir
+            existing, prawduct_hooks
         )
 
         # Compare to see if anything changed
