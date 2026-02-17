@@ -47,6 +47,7 @@ mkdir -p "$PRAWDUCT_DIR"
 
 FRAMEWORK_PATTERNS=(
     "CLAUDE.md"
+    "README.md"
     "skills/"
     "templates/"
     "docs/"

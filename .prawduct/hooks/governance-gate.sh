@@ -218,6 +218,7 @@ fi
 # Framework file patterns — files that require Orchestrator governance
 FRAMEWORK_PATTERNS=(
     "CLAUDE.md"
+    "README.md"
     "skills/"
     "templates/"
     "docs/"
