@@ -60,6 +60,8 @@ After each chunk, diff the implementation against artifact specifications.
 - Test scenarios match `test-specifications.md`: every scenario for this chunk has a corresponding test.
 - **Builder recorded spec compliance:** Verify that `build_state.spec_compliance.requirements` contains entries with `chunk_id` matching the current chunk. If not, that is a **WARNING**.
 - **Process constraint verification:** Verify that all process constraints for active structural characteristics (defined in Artifact Generator's "Structural Amplification Rules for Artifact Generation" section) are satisfied in generated artifacts and implementation. For example: if `runs_unattended` is active, verify every pipeline stage has failure handling; if `has_human_interface` is active, verify all user-facing states are specified.
+- **Accessibility alongside features** (when `has_human_interface` is active): Verify that accessibility requirements are specified alongside features, not deferred to a later phase (HR7). Features delivered without accessibility specifications are a **WARNING**.
+- **Ongoing cost identification** (when `runs_unattended` or `exposes_programmatic_interface` is active): Verify that ongoing operational costs are identified in the operational spec or nonfunctional requirements (HR8). Infrastructure, API calls, storage, and compute costs that appear in the implementation but are absent from specs are a **WARNING**.
 - **Operational readiness** (when `runs_unattended` or `exposes_programmatic_interface` is active): Verify monitoring is implemented (not just specified), failure recovery paths are tested, alerting thresholds are configured, deployment procedure is documented and reproducible. Missing operational implementation for an active operational characteristic is a **WARNING**.
 
 ### Check 2: Test Integrity
@@ -105,6 +107,7 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - A low-risk product path should not get heavier because of a change targeting medium/high-risk scenarios.
 - Changes that add significant process to low-risk paths without justification are a warning.
 - Changes that add minor weight that's clearly worth it are a note.
+- Non-trivial technical decisions (introducing a library, choosing an architecture, picking a data pattern) should include rationale (HR4: No Unjustified Decisions). A change where the decision exists but its justification doesn't is disproportionate — it creates review burden for future readers without compensating context.
 
 ### Check 5: Coherence
 
@@ -318,6 +321,10 @@ After each review cycle, update `project-state.yaml` → `build_state.reviews` w
 ```
 
 **Verification:** After recording, confirm that `build_state.reviews` contains an entry for the current chunk before proceeding.
+
+### Framework Review
+
+Framework changes follow the same check application logic (use the applicability table above) but without the chunk status lifecycle. The Critic reviews all edited files in the session, records findings via `tools/record-critic-findings.sh`, and the commit gate validates coverage. There is no chunk-to-review status transition — the review happens once after all modifications are complete and before committing.
 
 ## Extending This Skill
 
