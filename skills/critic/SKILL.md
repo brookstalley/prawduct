@@ -121,10 +121,13 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - When CLAUDE.md is modified or when new files are added, verify that CLAUDE.md's project structure tree includes all files that actually exist (and doesn't list files that don't).
 - When README.md or other external-facing documentation is modified, verify that capability claims match what the framework actually implements. Cross-reference assertions about features against the skills, templates, and tools on disk. **Proactive check:** When reviewing directional changes that modify vocabulary, project layout, or structural characteristics, verify README.md still uses current terminology and describes the current layout — README drifts silently because it's human-facing and the framework doesn't read it during normal operation.
 
+**Artifact freshness (DCP enhancement/structural):** When reviewing changes under an active DCP, verify that `directional_change.artifacts_verified` in `.prawduct/.session-governance.json` is non-empty. Read each listed artifact and confirm it still describes current behavior — don't trust the list at face value. If the changes modified hooks, tools, or governance mechanics, check artifacts that describe those systems (configuration-spec, failure-recovery-spec, operational-spec, api-contract, monitoring-alerting-spec, pipeline-architecture). If the changes modified skills, check artifacts that describe skill interaction (api-contract, pipeline-architecture). Missing or stale artifacts in `artifacts_verified` → **warning**. Empty `artifacts_verified` with an active DCP → **blocking** (the DCP protocol requires this step).
+
 **Concept Ripple (directional changes):** When reviewing changes that remove, rename, or redefine concepts (e.g., removing a stage, renaming a classification term, redefining an architectural component), grep the full codebase for the removed/renamed term(s). Any surviving references in non-staged files are Coherence findings. Severity: surviving references in skills or templates → **warning**; surviving references in docs → **note** (lower risk, but still stale). The Directional Change Protocol provides the list of removed/renamed terms — use it as grep input. Verify that removed/renamed terms have been registered in `project-state.yaml` → `deprecated_terms`. Missing entries are a **warning** — they mean future sessions won't detect surviving references.
 
 **Severity guide:**
 - Cross-skill/cross-artifact contract broken → **blocking**
+- Empty artifacts_verified with active DCP → **blocking**
 - Internal logic slightly inconsistent → **warning**
 
 ### Check 6: Learning/Observability

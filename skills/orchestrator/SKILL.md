@@ -8,8 +8,13 @@ This is the default skill. When using Prawduct to build a user's product:
 
 1. **Establish the project directory.**
    a. Determine target: CWD unless user specified a different directory.
-   b. Run `tools/prawduct-init.sh --json <target_dir>` to detect and repair integration state. This creates `.prawduct/`, `framework-path`, `framework-version`, `CLAUDE.md` bootstrap, and `.claude/settings.json` with hooks as needed. It is idempotent — safe to run on already-configured repos.
-   c. Route based on the JSON output's `next_action` and supplementary fields:
+   a2. **Cross-repo detection.** If the target directory differs from `$CLAUDE_PROJECT_DIR`, note the distinction: `claude_project_dir` (where hooks fire, where `.prawduct/.session-governance.json` lives) vs `target_dir` (where the product lives, where `.prawduct/` artifacts go). Steps 3 and 4 must account for this.
+   b. Run `tools/prawduct-init.sh --json --check <target_dir>` to detect integration state **without making changes**. Route based on the JSON output:
+      - **Fresh onboarding** (`next_action: "onboarding"`, no `onboarding_in_progress`): Ask the user whether to share prawduct with collaborators (tracked in git) or keep it local to this machine. Then run:
+        - Shared (default): `tools/prawduct-init.sh --json <target_dir>`
+        - Local: `tools/prawduct-init.sh --json --local <target_dir>`
+      - **All other cases** (returning project, interrupted onboarding, migration): Run `tools/prawduct-init.sh --json <target_dir>` (auto-detects existing mode).
+   c. Route based on the `prawduct-init` JSON output's `next_action` and supplementary fields:
       - `"onboarding"` + `onboarding_in_progress != null` → Interrupted onboarding detected. Activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/onboarding.md` and resume at the saved phase (skip completed phases using the cached state).
       - `"onboarding"` + `existing_docs.total_doc_bytes > 0` → Existing codebase with documentation. If the user describes a **new product idea**, ask for a project name and proceed to Step 2. If the user has an **existing codebase**, activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/onboarding.md` — the doc-enriched flow uses the classified `existing_docs` to prioritize reading (Phase 1g).
       - `"onboarding"` (no docs, no interrupted state) → Fresh repo with no project-state.yaml. Same as doc-enriched path but Phase 1g will be minimal.
@@ -27,11 +32,12 @@ This is the default skill. When using Prawduct to build a user's product:
    **Path resolution:** When skills reference `project-state.yaml`, `artifacts/`, `working-notes/`, or `framework-observations/`, those paths are in the **product root**. For both product repos and the framework repo, the product root is `.prawduct/` within the project directory. When skills reference other skills (`skills/...`), templates (`templates/...`), tools (`tools/...`), or scripts (`scripts/...`), those are read from the prawduct framework directory. In product repos, the framework directory is stored in `.prawduct/framework-path`. When skills reference source code (`build_state.source_root`), that path is relative to the project directory (not `.prawduct/`).
 2. Read `project-state.yaml` in the product root. If it doesn't exist, this is a new project — create `.prawduct/` (if not already present), then copy the prawduct framework's `templates/project-state.yaml` into it.
 3. **Activate governance.** Write `<ISO-8601 timestamp> praw-active` to `.prawduct/.orchestrator-activated` (e.g., `echo "2026-02-17T18:00:00Z praw-active" > .prawduct/.orchestrator-activated`). The timestamp and activation token are both required — the governance-gate hook validates both. This signals that the Orchestrator is loaded and governance is active for this session. (HR9)
-4. **Initialize governance tracking.** Create `.prawduct/.session-governance.json` to enable mechanical governance enforcement for all projects:
+   **Cross-repo:** The activation marker MUST be written to `$CLAUDE_PROJECT_DIR/.prawduct/` (where hooks check for it). If the target directory differs from `$CLAUDE_PROJECT_DIR`, also write the marker to `<target_dir>/.prawduct/` so future direct launches from that directory find an activation marker.
+4. **Initialize governance tracking.** Create `$CLAUDE_PROJECT_DIR/.prawduct/.session-governance.json` to enable mechanical governance enforcement for all projects. The file itself lives in `$CLAUDE_PROJECT_DIR/.prawduct/` (where hooks read it), but `product_dir` and `product_output_dir` MUST point to the **target directory** — not `$CLAUDE_PROJECT_DIR` when working cross-repo:
    ```json
    {
-     "product_dir": "/absolute/path/to/project",
-     "product_output_dir": "/absolute/path/to/project/.prawduct",
+     "product_dir": "/absolute/path/to/target/project",
+     "product_output_dir": "/absolute/path/to/target/project/.prawduct",
      "current_stage": "<current_stage from project-state.yaml>",
      "session_started": "<current ISO-8601 timestamp>",
      "framework_edits": {

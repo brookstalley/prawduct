@@ -4,7 +4,7 @@ Onboarding Mode reverse-engineers an existing codebase into prawduct artifacts s
 
 ## When This File Is Read
 
-The Orchestrator routes here from SKILL.md Step 1c when `prawduct-init.sh` reports `next_action: "onboarding"` and the user has an existing codebase (not a new product idea). The Orchestrator has already confirmed this is an existing codebase needing onboarding, and `prawduct-init.sh` has created the `.prawduct/` directory and bootstrap files.
+The Orchestrator routes here from SKILL.md Step 1c when `prawduct-init.sh` reports `next_action: "onboarding"` and the user has an existing codebase (not a new product idea). The Orchestrator has already confirmed this is an existing codebase needing onboarding, and `prawduct-init.sh` has created the `.prawduct/` directory and bootstrap files. **Cross-repo note:** When the target directory differs from `$CLAUDE_PROJECT_DIR`, all `.prawduct/` artifact references below (project-state.yaml, artifacts/, onboarding-state.json) refer to `<target_dir>/.prawduct/`, not `$CLAUDE_PROJECT_DIR/.prawduct/`.
 
 ---
 
