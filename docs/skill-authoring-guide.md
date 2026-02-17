@@ -98,7 +98,7 @@ When different sections of a skill prescribe different behavior for what appears
 
 **Why:** LLMs resolve contradictions unpredictably. Explicit resolution ensures consistent behavior.
 
-**Derived from:** [Anthropic: Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) — "Be explicit, define all terms, no contradictions"; also the framework's own Critic Check 5 (instruction clarity)
+**Derived from:** [Anthropic: Claude prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) — "Be explicit, define all terms, no contradictions"; also the framework's own Critic Check 8 (Instruction Clarity)
 
 **Example violation:**
 > Stage 2: "Skip formal lens review for low-risk products."
@@ -154,7 +154,7 @@ When modifying a skill, search for contradictions, redundancy, and orphaned refe
 
 **During skill modification:** Apply S1-S6 to the modified section. Apply H3 (cross-section audit) to the full skill. Check H1 if the modification adds significant content.
 
-**During Critic Check 5:** Reference S1, S2, and S6 specifically — these are the most commonly violated standards.
+**During Critic Check 8 (Instruction Clarity):** Reference S1, S2, and S6 specifically — these are the most commonly violated standards.
 
 **During evaluation (step 2b):** Use S1-S6 as a checklist for skill instruction quality assessment.
 
