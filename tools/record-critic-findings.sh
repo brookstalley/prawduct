@@ -12,8 +12,8 @@
 # This prevents the "second review erases first" problem in multi-change sessions.
 #
 # The Critic applies context-dependent checks — not every check applies to every
-# review. The required minimum is 6 checks (the always-applicable checks), but
-# skill file reviews may include up to 9 checks.
+# review. The required minimum is 4 checks (the always-applicable checks 3-6), but
+# build-stage reviews include checks 1-2 and skill file reviews add checks 7-9.
 #
 # Usage:
 #   tools/record-critic-findings.sh \
@@ -35,7 +35,7 @@
 set -euo pipefail
 
 # --- Known Critic checks (from skills/critic/SKILL.md) ---
-# Checks 1-6 are always applicable. Checks 7-9 apply when reviewing skill/template files.
+# Checks 3-6 are always applicable; Checks 1-2 apply at build stages, Checks 7-9 apply when reviewing skill/template files.
 
 ALL_VALID_CHECKS=(
     "Spec Compliance"
@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
             echo "Required:"
             echo "  --files    Comma-separated list of all reviewed files"
             echo "  --check    One per Critic check, format: 'CheckName:severity:summary'"
-            echo "             Must provide at least 6 checks (all applicable checks)"
+            echo "             Must provide at least 4 checks (the always-applicable checks)"
             echo ""
             echo "Check names: ${ALL_VALID_CHECKS[*]}"
             echo "Severities: $VALID_SEVERITIES"
@@ -97,8 +97,8 @@ errors=()
 
 [[ -z "$FILES" ]] && errors+=("--files is required")
 
-if [[ ${#CHECKS[@]} -lt 6 ]]; then
-    errors+=("At least 6 --check entries required. Got ${#CHECKS[@]}.")
+if [[ ${#CHECKS[@]} -lt 4 ]]; then
+    errors+=("At least 4 --check entries required. Got ${#CHECKS[@]}.")
 fi
 
 # Parse and validate each check

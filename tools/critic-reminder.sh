@@ -51,6 +51,7 @@ FRAMEWORK_PATTERNS=(
     ".claude/settings.json"
     ".prawduct/framework-observations/README.md"
     ".prawduct/framework-observations/schema.yaml"
+    ".prawduct/artifacts/"
 )
 
 check_mode="${1:-staged}"
@@ -124,7 +125,7 @@ except:
     print(0)
 " 2>/dev/null || echo "0")
 
-        if [[ "$check_count" -ge 6 ]]; then
+        if [[ "$check_count" -ge 4 ]]; then
             # Check 3: Do reviewed_files cover all staged framework files?
             reviewed_files=$(python3 -c "
 import json
@@ -153,7 +154,7 @@ except:
                 echo "Re-run the Critic with all files, or add missing files to the review."
             fi
         else
-            echo "WARNING: Critic findings file has $check_count checks. At least 6 required."
+            echo "WARNING: Critic findings file has $check_count checks. At least 4 required."
         fi
     else
         echo "WARNING: Critic findings are stale (older than 2 hours). Re-run the Critic."
@@ -216,7 +217,7 @@ else
     echo ""
     echo "The commit gate verifies:"
     echo "  - .prawduct/.critic-findings.json exists and is < 2 hours old"
-    echo "  - At least 6 Critic checks are recorded"
+    echo "  - At least 4 Critic checks are recorded"
     echo "  - All staged framework files appear in reviewed_files"
     exit 2
 fi

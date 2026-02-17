@@ -86,8 +86,8 @@ if edited_files:
 
             if file_age > max_age:
                 critical_issues.append('Critic findings stale (>2h)')
-            elif findings.get('total_checks', 0) < 6:
-                critical_issues.append(f'Critic findings: {findings.get(\"total_checks\", 0)} checks (need 6+)')
+            elif findings.get('total_checks', 0) < 4:
+                critical_issues.append(f'Critic findings: {findings.get(\"total_checks\", 0)} checks (need 4+)')
             else:
                 reviewed = set(findings.get('reviewed_files', []))
                 uncovered = [f for f in edited_files if f not in reviewed]
