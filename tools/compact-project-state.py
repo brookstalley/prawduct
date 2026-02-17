@@ -12,6 +12,8 @@ Implements the LIFECYCLE rules defined in templates/project-state.yaml:
 Uses section-based rewriting to preserve YAML comments (PyYAML round-trip drops them).
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import re

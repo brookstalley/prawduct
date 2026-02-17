@@ -10,6 +10,8 @@ machine-specific and session files.
 Designed to be idempotent: running twice produces no changes on the second run.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os

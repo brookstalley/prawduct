@@ -11,6 +11,8 @@ Checks:
 Usage: python3 validate-schema.py <path-to-project-state.yaml>
 """
 
+from __future__ import annotations
+
 import sys
 import yaml
 from pathlib import Path

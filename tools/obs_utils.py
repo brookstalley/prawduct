@@ -6,6 +6,8 @@ update-observation-status.sh to eliminate duplicated YAML parsing,
 file scanning, threshold logic, and pattern detection.
 """
 
+from __future__ import annotations
+
 import os
 import glob
 import yaml

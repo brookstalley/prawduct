@@ -10,6 +10,8 @@ Validates:
 Usage: python3 check-artifacts.py <path-to-artifacts-directory>
 """
 
+from __future__ import annotations
+
 import sys
 import re
 from pathlib import Path
