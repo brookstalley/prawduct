@@ -10,9 +10,7 @@ This is the default skill. When using Prawduct to build a user's product:
    a. Determine target: CWD unless user specified a different directory.
    a2. **Cross-repo detection.** If the target directory differs from `$CLAUDE_PROJECT_DIR`, note the distinction: `claude_project_dir` (where hooks fire, where `.prawduct/.session-governance.json` lives) vs `target_dir` (where the product lives, where `.prawduct/` artifacts go). Steps 3 and 4 must account for this.
    b. Run `tools/prawduct-init.sh --json --check <target_dir>` to detect integration state **without making changes**. Route based on the JSON output:
-      - **Fresh onboarding** (`next_action: "onboarding"`, no `onboarding_in_progress`): Ask the user whether to share prawduct with collaborators (tracked in git) or keep it local to this machine. Then run:
-        - Shared (default): `tools/prawduct-init.sh --json <target_dir>`
-        - Local: `tools/prawduct-init.sh --json --local <target_dir>`
+      - **Fresh onboarding** (`next_action: "onboarding"`, no `onboarding_in_progress`): Run `tools/prawduct-init.sh --json <target_dir>` (shared mode — artifacts tracked in git, machine-specific files gitignored). Users who prefer local-only can re-run with `--local`.
       - **All other cases** (returning project, interrupted onboarding, migration): Run `tools/prawduct-init.sh --json <target_dir>` (auto-detects existing mode).
    c. Route based on the `prawduct-init` JSON output's `next_action` and supplementary fields:
       - `"onboarding"` + `onboarding_in_progress != null` → Interrupted onboarding detected. Activate governance (Step 3), initialize tracking (Step 4), then read `skills/orchestrator/onboarding.md` and resume at the saved phase (skip completed phases using the cached state).

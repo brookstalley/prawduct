@@ -151,9 +151,71 @@ fi
 
 # --- For Edit/Write calls: full governance checks ---
 
-# Universal activation gate: block ALL edits when Orchestrator is not activated.
-# This closes the cross-repo governance gap — without activation, no file
-# modifications of any kind are permitted, regardless of file location.
+# First, determine if this file is governed. A file is governed if it's a
+# framework file (in the repo) or a product file (in an active product build
+# directory). Files outside all governed scopes (e.g. ~/.claude/plans/,
+# temporary files, unrelated paths) are allowed without activation.
+
+# Framework file patterns — files that require Orchestrator governance
+FRAMEWORK_PATTERNS=(
+    "CLAUDE.md"
+    "README.md"
+    "skills/"
+    "templates/"
+    "docs/"
+    "scripts/"
+    "tools/"
+    ".prawduct/hooks/"
+    ".claude/settings.json"
+    ".prawduct/framework-observations/README.md"
+    ".prawduct/framework-observations/schema.yaml"
+    ".prawduct/artifacts/"
+)
+
+is_framework_file=false
+if [[ -n "$repo_root" && "$repo_root" == "$FRAMEWORK_ROOT" ]]; then
+    for pattern in "${FRAMEWORK_PATTERNS[@]}"; do
+        if [[ "$rel_path" == $pattern* ]]; then
+            is_framework_file=true
+            break
+        fi
+    done
+fi
+
+# Check if file is in an active product build directory
+is_product_file=false
+SESSION_FILE=""
+if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
+    SESSION_FILE="$CLAUDE_PROJECT_DIR/.prawduct/.session-governance.json"
+    if [[ -f "$SESSION_FILE" ]]; then
+        product_dir=$(python3 -c "
+import json
+try:
+    with open('$SESSION_FILE') as f:
+        data = json.load(f)
+    print(data.get('product_dir', ''))
+except:
+    print('')
+" 2>/dev/null || echo "")
+
+        if [[ -n "$product_dir" ]]; then
+            norm_file=$(cd "$(dirname "$file_path")" 2>/dev/null && pwd)/$(basename "$file_path") 2>/dev/null || echo "$file_path"
+            if [[ "$norm_file" == "$product_dir"* ]]; then
+                is_product_file=true
+            fi
+        fi
+    fi
+fi
+
+# If neither framework nor product file, allow — this lets Claude Code write
+# to its own infrastructure (plan files, settings, etc.) without activation.
+if [[ "$is_framework_file" == false && "$is_product_file" == false ]]; then
+    exit 0
+fi
+
+# Activation gate: governed files require Orchestrator activation.
+# This closes the cross-repo governance gap — edits to framework files,
+# product files, and cross-repo product files all require activation.
 # The Orchestrator activation itself uses Bash (not Edit/Write) to create
 # governance files, so this doesn't create a circular dependency.
 if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
@@ -210,71 +272,6 @@ except Exception:
         exit 2
     fi
 fi
-
-# Determine if this file is governed (for additional governance-specific checks)
-# A file is governed if it's a framework file (in the repo) or a product file
-# (in an active product build directory).
-
-# Framework file patterns — files that require Orchestrator governance
-FRAMEWORK_PATTERNS=(
-    "CLAUDE.md"
-    "README.md"
-    "skills/"
-    "templates/"
-    "docs/"
-    "scripts/"
-    "tools/"
-    ".prawduct/hooks/"
-    ".claude/settings.json"
-    ".prawduct/framework-observations/README.md"
-    ".prawduct/framework-observations/schema.yaml"
-    ".prawduct/artifacts/"
-)
-
-is_framework_file=false
-if [[ -n "$repo_root" && "$repo_root" == "$FRAMEWORK_ROOT" ]]; then
-    for pattern in "${FRAMEWORK_PATTERNS[@]}"; do
-        if [[ "$rel_path" == $pattern* ]]; then
-            is_framework_file=true
-            break
-        fi
-    done
-fi
-
-# Check if file is in an active product build directory
-is_product_file=false
-SESSION_FILE=""
-if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
-    SESSION_FILE="$CLAUDE_PROJECT_DIR/.prawduct/.session-governance.json"
-    if [[ -f "$SESSION_FILE" ]]; then
-        product_dir=$(python3 -c "
-import json
-try:
-    with open('$SESSION_FILE') as f:
-        data = json.load(f)
-    print(data.get('product_dir', ''))
-except:
-    print('')
-" 2>/dev/null || echo "")
-
-        if [[ -n "$product_dir" ]]; then
-            norm_file=$(cd "$(dirname "$file_path")" 2>/dev/null && pwd)/$(basename "$file_path") 2>/dev/null || echo "$file_path"
-            if [[ "$norm_file" == "$product_dir"* ]]; then
-                is_product_file=true
-            fi
-        fi
-    fi
-fi
-
-# If neither framework nor product file, allow
-if [[ "$is_framework_file" == false && "$is_product_file" == false ]]; then
-    exit 0
-fi
-
-# NOTE: Orchestrator activation check for Edit/Write was moved to the universal
-# activation gate above (runs before framework/product file detection). The gate
-# blocks ALL edits when the marker is missing or stale, closing the cross-repo
-# governance gap that previously allowed ungoverned edits to external projects.
 
 # --- Check 2: Chunk review gate (applies to product files during builds) ---
 

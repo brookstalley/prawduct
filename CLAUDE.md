@@ -51,7 +51,7 @@ my-product/
 └── ...
 ```
 
-**Distribution model:** Product repos are portable. Machine-specific files (`framework-path`, `framework-version`) and session files are gitignored by `prawduct-init`. The CLAUDE.md bootstrap includes installation instructions for cloners: clone the framework to `~/.prawduct/framework/` and run `prawduct-init.py --fix .`. Hook commands resolve the framework at runtime — first from `.prawduct/framework-path`, then from the well-known `~/.prawduct/framework/` location.
+**Distribution model:** Product repos default to shared mode — artifacts are committed, machine-specific files (`framework-path`, `framework-version`) and session files are gitignored by `prawduct-init`. The CLAUDE.md bootstrap includes installation instructions for cloners: clone the framework to `~/.prawduct/framework/` and run `prawduct-init.py --fix .`. Hook commands resolve the framework at runtime — first from `.prawduct/framework-path`, then from the well-known `~/.prawduct/framework/` location. Power users can use `prawduct-init --local` for local-only mode (entire `.prawduct/` gitignored, hooks in `settings.local.json`).
 
 **The framework repo** (self-hosted) uses the same `.prawduct/` layout as product repos:
 ```
