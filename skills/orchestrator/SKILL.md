@@ -126,7 +126,7 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 **Constraints — do not skip these:**
 - If `.prawduct/.session-governance.json` is missing but a build is active, recreate it from `project-state.yaml` state.
 - If `doc-manifest.yaml` exists, check for `last_validated` dates older than 30 days — mention stale docs.
-- If health check reports `STATE_WARNINGS > 0`, preview compaction with `--dry-run` and compact with user approval.
+- If health check reports `STATE_WARNINGS > 0`, run `tools/compact-project-state.sh` automatically. Compaction is lossless — it preserves all information in condensed form.
 - When actionable patterns exist, synthesize concrete recommendations and let the user **act now** or **defer**. Deferred patterns are not re-presented unless new observations accumulate.
 
 **Mid-build resumption (Stage 5):** Read `build_plan.current_chunk`, chunk statuses, `test_tracking`, and source code. Orient with progress. Resume in-progress chunks; invoke Critic for chunks in "review" status.

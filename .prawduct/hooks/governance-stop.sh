@@ -129,6 +129,22 @@ if dc.get('needs_classification', False) and not dc.get('active', False):
     file_count = dc.get('triggered_at_file_count', 3)
     critical_issues.append(f'DCP: {file_count}+ governed files edited without change classification. Read $FRAMEWORK_ROOT/skills/orchestrator/stage-6-iteration.md and classify per DCP tiers (mechanical/enhancement/structural). Then set directional_change.active and tier in .prawduct/.session-governance.json, or set needs_classification to false if mechanical.')
 
+# --- Compaction debt ---
+try:
+    _state_file = os.path.join(prawduct_dir, 'project-state.yaml')
+    if os.path.isfile(_state_file):
+        import subprocess as _sp
+        _compact = _sp.run(
+            ['$FRAMEWORK_ROOT/tools/compact-project-state.sh', '--check', _state_file],
+            capture_output=True, text=True, timeout=10
+        )
+        if _compact.returncode == 1:
+            critical_issues.append(
+                'project-state.yaml needs compaction. Run: tools/compact-project-state.sh'
+            )
+except Exception:
+    pass  # Never block on tool failure
+
 # --- DCP debt ---
 if dc.get('active', False):
     if 'plan_stage_review_completed' in dc and not dc.get('plan_stage_review_completed', False):

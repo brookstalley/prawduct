@@ -212,6 +212,14 @@ def compact_change_log(data, lines, dry_run=False, verbose=False):
     compacted.extend(preserved_directional)
     compacted.extend(recent)
 
+    # If compaction wouldn't reduce entry count, nothing to do
+    # (e.g., many directional entries preserved + summary already condensed)
+    if len(compacted) >= len(entries):
+        if verbose:
+            print(f"  change_log: {len(entries)} entries — compaction cannot reduce further "
+                  f"({len(preserved_directional)} directional preserved)")
+        return lines, False
+
     if verbose:
         print(f"  change_log: {len(entries)} entries → {len(compacted)} "
               f"({len(preserved_directional)} directional preserved, "

@@ -482,14 +482,11 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 7 entries compacted (2026-02-01 to 2026-02-13)'
-    why: '7 functional covering: Phase 1 complete: vertical slice through family utility scenario; Phase 2 build loop: added
-      Stages 4-6, Builder skill, Critic product governance; Phase 2 widening: added automation shape with Testing Lens; Observation
-      triage process + eval fixes from family-utility eval run 3; Self-hosted framework development via Orchestrator; and 2
-      more'
+  - what: 'Summary: 1 entries compacted (2026-02-17)'
+    why: '1 cosmetic covering: Summary: 9 entries compacted (2026-02-14 to 2026-02-15)'
     blast_radius: compacted
     classification: cosmetic
-    date: '2026-02-15'
+    date: '2026-02-17'
   - what: Replaced product shape taxonomy with concern-based classification
     why: Fixed shapes (UI Application, API, Automation, Multi-Party, Hybrid) violated 'Generality Over Enumeration' principle.
       Products like earbud firmware, browser extensions, smart contracts don't fit any shape. Replaced with 7 composable concern
@@ -543,15 +540,6 @@ change_log:
       SessionStart cleanup creates a fresh file each session, limiting blast radius. Generalization: This pattern (parallel
       implementations for ''framework'' and ''product'' that should be unified) should be checked whenever new framework capabilities
       are added — does the capability apply identically to both contexts?'
-  - what: 'Observation triage and threshold change: archived 11 resolved files, triaged 18 noted observations, reduced triage
-      overdue threshold from 14 days to 2 days'
-    why: 27 active observation files with 67 observations had accumulated. 11 files were fully resolved but unarchived. 18 observations
-      in noted status needed triage. The 14-day triage threshold was too long for the framework's rapid development pace — observations
-      were going stale before being triaged.
-    blast_radius: framework-observations/ (18 status transitions, 11 files archived), project-state.yaml (last_triage, 10 new
-      backlog items), tools/session-health-check.sh (threshold), docs/evaluation-methodology.md (threshold)
-    classification: process
-    date: 2026-02-14
   - what: 'Strengthened framework generality: three-layer artifact generation, absorbed Critic sub-components, vocabulary debiasing,
       Builder governance improvements'
     why: Several remaining_work items planned enumerated components (template directories per characteristic, named Critic sub-components)
@@ -579,24 +567,6 @@ change_log:
       (remaining_work, change_log), working-notes/2026-02-15-user-feedback-overhaul.md
     classification: directional
     date: 2026-02-15
-  - what: 'Existing project onboarding design: codebase analysis, artifact generation, and old prawduct version migration'
-    why: 'Phase 4 of user feedback overhaul. Designed two new Orchestrator modes: Onboarding Mode (reverse-engineers existing
-      codebases into prawduct artifacts via tech stack detection, architecture inference, product understanding, structural
-      characteristic detection, and test coverage analysis) and Migration Mode (detects old prawduct project-state.yaml schemas
-      by structural signals and migrates to current format). Includes schema_version field, version signal detection table,
-      and migration field mapping. Onboarding pauses for user confirmation since analysis may be incomplete.'
-    blast_radius: working-notes/2026-02-15-existing-project-onboarding-design.md (new), project-state.yaml (change_log)
-    classification: functional
-    date: 2026-02-15
-  - what: 'Closed-loop testing design: dev-tools MCP server architecture for has_human_interface products'
-    why: 'Phase 2 of user feedback overhaul. Designed an opt-in dev-tools MCP server that wraps Playwright to give the agent
-      visual verification capabilities (screenshot, navigate, interact, accessibility audit) during UI product builds. Addresses
-      the fundamental gap: framework produces detailed visual specs but has no way to verify rendered output matches. Design
-      covers MCP tool interface, security model (localhost-only on port 39427, HR10 principle), opt-in UX, lifecycle during
-      builds, and technology choices (React + Playwright for v1).'
-    blast_radius: working-notes/2026-02-15-closed-loop-testing-design.md (new), project-state.yaml (change_log)
-    classification: functional
-    date: 2026-02-15
   - what: 'Move product outputs to .prawduct/ directory: all prawduct outputs (state, artifacts, observations, working notes)
       live in .prawduct/ within product repos'
     why: 'Phase 5 of user feedback overhaul. Users reported prawduct artifacts (project-state.yaml, artifacts/, working-notes/,
@@ -622,17 +592,6 @@ change_log:
       (cross-reference), .claude/hooks/governance-prompt.sh (cross-reference)
     classification: directional
     date: 2026-02-15
-  - what: 'Triage and action 7 framework observations: concept-ripple check, DCP retrospective enforcement, skill file length
-      monitoring'
-    why: '7 observations from .prawduct/ isolation and Orchestrator decomposition sessions needed triage. Closed #1 (already
-      fixed). Added Concept Ripple sub-check to Critic Coherence (Check 5) to grep for stale references after directional changes.
-      Added DCP retrospective mechanical enforcement via directional_change tracking in .session-governance.json and governance-stop.sh
-      check. Added skill file length monitoring to session-health-check.sh with H1 thresholds (400/600 lines for SKILL.md, 300
-      for sub-files). Observations #2, #4, #5 transitioned to acted_on.'
-    blast_radius: skills/critic/SKILL.md, skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, .claude/hooks/governance-stop.sh,
-      tools/session-health-check.sh, project-state.yaml, 4 observation files
-    classification: functional
-    date: 2026-02-15
   - what: 'Consolidate HLD: slim duplicated sections with pointers to canonical sources'
     why: HLD at 665 lines duplicated content now living authoritatively in skills/critic/SKILL.md (check architecture), docs/self-improvement-architecture.md
       (C8 sub-components), docs/evaluation-methodology.md (validation strategy details), and project-state.yaml remaining_work
@@ -640,175 +599,112 @@ change_log:
     blast_radius: docs/high-level-design.md, docs/doc-manifest.yaml, project-state.yaml, 1 observation file
     classification: directional
     date: 2026-02-15
-  - what: Consolidate .prawduct/ detection logic and add integration_friction observation type
-    why: 'Detection logic for product root (.prawduct/ vs repo root) was duplicated across 5 tools with inconsistent patterns.
-      Created tools/resolve-product-root.sh as shared sourceable/executable helper; refactored session-health-check.sh, capture-observation.sh,
-      observation-analysis.sh, compact-project-state.py to use it. Added integration_friction observation type to schema, session-health-check.sh
-      thresholds, and README. Observations #6, #7 transitioned to acted_on. All 7 observations from 2026-02-15 triage now resolved.'
-    blast_radius: tools/resolve-product-root.sh (new), tools/session-health-check.sh, tools/capture-observation.sh, tools/observation-analysis.sh,
-      tools/compact-project-state.py, framework-observations/schema.yaml, framework-observations/README.md, CLAUDE.md, project-state.yaml,
-      2 observation files
-    classification: functional
-    date: 2026-02-15
-  - what: 'Rubric refinement: replace subjective terms with concrete thresholds across all 3 test scenarios'
-    why: '4 rubric_issue observations (meta threshold: 2+) identified subjective terms (''proportionate'', ''substantive''),
-      simulation-mode eval gaps, and domain_knowledge criterion mismatch. Replaced with concrete page ranges, minimum finding
-      counts, FPS thresholds, round-count limits. Reclassified 4 background-data-pipeline C1 criteria from interactive→hybrid
-      where partially evaluable from project-state artifacts. Fixed terminal-arcade domain_knowledge to accept basic or
-      intermediate. All 4 observations transitioned to acted_on.'
-    blast_radius: tests/scenarios/family-utility.md, tests/scenarios/background-data-pipeline.md, tests/scenarios/terminal-arcade-game.md,
-      framework-observations/2026-02-11-background-data-pipeline-eval.yaml, framework-observations/terminal-arcade-game-2026-02-12.yaml,
-      project-state.yaml (observation_backlog, change_log)
-    classification: functional
-    date: 2026-02-15
   - what: 'Standalone product repo support: hooks derive framework root, product repos get bootstrap files'
-    why: 'Product repos built with prawduct could not function as standalone Claude Code projects — hooks
-      assumed repo_root equals framework directory. All 5 hooks now derive FRAMEWORK_ROOT from script
-      location and use CLAUDE_DIR for governance state paths. Framework pattern matching guarded with
-      repo_root == FRAMEWORK_ROOT to prevent false positives in product repos. critic-reminder.sh early
-      exits for product repos. compact-governance-reinject.sh provides product-aware recovery with
-      framework absolute paths. Orchestrator generates bootstrap files (.prawduct/framework-path,
-      CLAUDE.md, .claude/settings.json) during project setup.'
-    blast_radius: .claude/hooks/critic-gate.sh, .claude/hooks/governance-tracker.sh, .claude/hooks/governance-prompt.sh,
-      .claude/hooks/governance-stop.sh, .claude/hooks/governance-gate.sh, .claude/hooks/compact-governance-reinject.sh,
-      tools/critic-reminder.sh, skills/orchestrator/SKILL.md, skills/orchestrator/onboarding.md, CLAUDE.md,
-      project-state.yaml
+    why: Product repos built with prawduct could not function as standalone Claude Code projects — hooks assumed repo_root equals
+      framework directory. All 5 hooks now derive FRAMEWORK_ROOT from script location and use CLAUDE_DIR for governance state
+      paths. Framework pattern matching guarded with repo_root == FRAMEWORK_ROOT to prevent false positives in product repos.
+      critic-reminder.sh early exits for product repos. compact-governance-reinject.sh provides product-aware recovery with
+      framework absolute paths. Orchestrator generates bootstrap files (.prawduct/framework-path, CLAUDE.md, .claude/settings.json)
+      during project setup.
+    blast_radius: .claude/hooks/critic-gate.sh, .claude/hooks/governance-tracker.sh, .claude/hooks/governance-prompt.sh, .claude/hooks/governance-stop.sh,
+      .claude/hooks/governance-gate.sh, .claude/hooks/compact-governance-reinject.sh, tools/critic-reminder.sh, skills/orchestrator/SKILL.md,
+      skills/orchestrator/onboarding.md, CLAUDE.md, project-state.yaml
     classification: directional
     date: 2026-02-15
-    retrospective: 'Implementation went smoothly — the 5-phase plan mapped cleanly to independent
-      file edits. The FRAMEWORK_ROOT derivation pattern (cd "$(dirname "$0")/../.." && pwd) is
-      consistent across all hooks and adapts to tools/ vs .claude/hooks/ depth. Key insight:
-      CLAUDE_DIR was already defined in governance-prompt.sh and governance-stop.sh (from the
-      unified governance consolidation), so those changes were minimal. The framework pattern
-      matching guard (repo_root == FRAMEWORK_ROOT) is the critical change — without it, editing
-      CLAUDE.md in a product repo would trigger framework governance. The early exit in
-      critic-reminder.sh is important for product repo commits — without it, product commits
-      would fail the Critic evidence check. No new observation types needed — the failure modes
-      for framework-path staleness are loud, not subtle.'
-  - what: 'DCP mechanical enforcement: add intermediate step tracking to governance-stop hook'
-    why: 'governance-stop.sh only enforced DCP retrospective completion (step 11). Intermediate
-      steps (plan-stage review, per-phase reviews, session observation) relied on agent compliance.
-      Added 4 fields to directional_change tracking: plan_stage_review_completed, total_phases,
-      phases_reviewed_count, observation_captured. governance-stop.sh checks all fields when DCP
-      is active. phases_reviewed_count only enforced when total_phases > 1 (single-phase DCPs
-      skip per-phase reviews per DCP step 7). Backward compatible: missing fields treated as
-      not-applicable. stage-6-iteration.md updated with instructions to set each field at the
-      right DCP step.'
-    blast_radius: .claude/hooks/governance-stop.sh, skills/orchestrator/stage-6-iteration.md,
-      skills/orchestrator/SKILL.md, project-state.yaml
-    classification: functional
-    date: 2026-02-15
-    retrospective: 'Plan-stage Critic review caught a real coherence issue: single-phase DCPs
-      would be incorrectly blocked by phases_reviewed_count enforcement. Fixed by adding total_phases
-      field and only checking phases_reviewed_count when total_phases > 1. This validates the
-      plan-stage review step — catching design issues before implementation. The enforcement
-      relies on agent self-reporting (same limitation as existing retrospective_completed).
-      Generalization: the pattern of mechanical enforcement for skippable protocol steps applies
-      broadly but each field adds schema complexity — threshold should be steps that agents
-      demonstrably skip.'
-  - what: 'Implement Existing Project Onboarding Mode: 4-phase process for analyzing existing codebases'
-    why: 'Orchestrator condition 3 referenced Onboarding Mode with no implementation. Created skills/orchestrator/onboarding.md
-      with 4 phases: codebase analysis (tech stack, architecture, product understanding, structural characteristics, tests,
-      risk), user confirmation (blocking question with uncertainties), artifact generation (universal + characteristic-specific
-      + retroactive build plan in .prawduct/), and enter iteration. Added onboarding to SKILL.md routing table and condition 3.
-      Handles edge cases: monorepo, sparse codebase, large codebase sampling, projects with existing docs.'
-    blast_radius: skills/orchestrator/onboarding.md (new), skills/orchestrator/SKILL.md (routing table, condition 3), CLAUDE.md
-      (project structure), project-state.yaml (remaining_work, change_log)
-    classification: functional
-    date: 2026-02-15
-  - what: 'Documentation and artifact sync scrub: remove stale Stage 0.5 reference, fix 25 bidirectional dependency inconsistencies, update CLAUDE.md line count and remaining work phases'
-    why: 'Audit found 4 sync issues. Finding 1 (critical): review-lenses/SKILL.md still referenced Stage 0.5 removed in user-feedback overhaul — root cause was temporal gap before Concept Ripple check existed. Finding 2 (high): artifact_manifest depended_on_by drifted in 25 places because it is a denormalized cache of depends_on inverse with no validation. Finding 3-4 (low): CLAUDE.md Orchestrator line count stale (156→182) and missing v1-new phase in remaining work summary. All other cross-references verified clean (artifact paths, observation files, skill references, project structure tree).'
+    retrospective: 'Implementation went smoothly — the 5-phase plan mapped cleanly to independent file edits. The FRAMEWORK_ROOT
+      derivation pattern (cd "$(dirname "$0")/../.." && pwd) is consistent across all hooks and adapts to tools/ vs .claude/hooks/
+      depth. Key insight: CLAUDE_DIR was already defined in governance-prompt.sh and governance-stop.sh (from the unified governance
+      consolidation), so those changes were minimal. The framework pattern matching guard (repo_root == FRAMEWORK_ROOT) is the
+      critical change — without it, editing CLAUDE.md in a product repo would trigger framework governance. The early exit in
+      critic-reminder.sh is important for product repo commits — without it, product commits would fail the Critic evidence
+      check. No new observation types needed — the failure modes for framework-path staleness are loud, not subtle.'
+  - what: 'Documentation and artifact sync scrub: remove stale Stage 0.5 reference, fix 25 bidirectional dependency inconsistencies,
+      update CLAUDE.md line count and remaining work phases'
+    why: 'Audit found 4 sync issues. Finding 1 (critical): review-lenses/SKILL.md still referenced Stage 0.5 removed in user-feedback
+      overhaul — root cause was temporal gap before Concept Ripple check existed. Finding 2 (high): artifact_manifest depended_on_by
+      drifted in 25 places because it is a denormalized cache of depends_on inverse with no validation. Finding 3-4 (low): CLAUDE.md
+      Orchestrator line count stale (156→182) and missing v1-new phase in remaining work summary. All other cross-references
+      verified clean (artifact paths, observation files, skill references, project structure tree).'
     blast_radius: skills/review-lenses/SKILL.md, project-state.yaml (artifact_manifest, change_log), CLAUDE.md
     classification: functional
     date: 2026-02-16
-  - what: 'Root Cause Discipline + Vocabulary Lifecycle: embed 5-whys analysis in learning loop, add deprecated term registry with mechanical scanning'
-    why: 'Root cause chain: stale references survive directional changes → Concept Ripple check is single-pass
-      with no persistence → vocabulary has no lifecycle management → no persistent tracking of deprecated terms
-      → framework learning loop jumps from "pattern detected" to "implement fix" without causal analysis →
-      C8 was designed for pattern detection (statistical frequency), not causal analysis. Two fixes: (1) Root
-      Cause Protocol added to protocols.md requiring 5-whys before any observation-driven fix, referenced from
-      DCP planning step and observation action flow, enforced by Critic Check 6 root cause depth bullet; (2)
-      deprecated_terms registry in project-state.yaml with mechanical scanning in session-health-check.sh,
-      DCP Step 6 registration requirement, and Critic Concept Ripple verification. Fixed 5 surviving "product
-      shapes" references and removed stale Stage 0.5 from observation schema.'
-    blast_radius: skills/orchestrator/protocols.md, skills/orchestrator/stage-6-iteration.md, skills/critic/SKILL.md,
-      framework-observations/schema.yaml, project-state.yaml, docs/evaluation-methodology.md, templates/eval-result-template.md,
-      tools/session-health-check.sh, skills/artifact-generator/SKILL.md, docs/vision.md, templates/build-plan.md,
-      framework-observations/README.md, docs/self-improvement-architecture.md, CLAUDE.md
+  - what: 'Root Cause Discipline + Vocabulary Lifecycle: embed 5-whys analysis in learning loop, add deprecated term registry
+      with mechanical scanning'
+    why: 'Root cause chain: stale references survive directional changes → Concept Ripple check is single-pass with no persistence
+      → vocabulary has no lifecycle management → no persistent tracking of deprecated terms → framework learning loop jumps
+      from "pattern detected" to "implement fix" without causal analysis → C8 was designed for pattern detection (statistical
+      frequency), not causal analysis. Two fixes: (1) Root Cause Protocol added to protocols.md requiring 5-whys before any
+      observation-driven fix, referenced from DCP planning step and observation action flow, enforced by Critic Check 6 root
+      cause depth bullet; (2) deprecated_terms registry in project-state.yaml with mechanical scanning in session-health-check.sh,
+      DCP Step 6 registration requirement, and Critic Concept Ripple verification. Fixed 5 surviving "product shapes" references
+      and removed stale Stage 0.5 from observation schema.'
+    blast_radius: skills/orchestrator/protocols.md, skills/orchestrator/stage-6-iteration.md, skills/critic/SKILL.md, framework-observations/schema.yaml,
+      project-state.yaml, docs/evaluation-methodology.md, templates/eval-result-template.md, tools/session-health-check.sh,
+      skills/artifact-generator/SKILL.md, docs/vision.md, templates/build-plan.md, framework-observations/README.md, docs/self-improvement-architecture.md,
+      CLAUDE.md
     classification: directional
     date: 2026-02-16
-  - what: 'Framework simplification: collapse advisory hooks, impact-scaled DCP, deduplicate instructions, shared observation utilities'
-    why: 'Governance infrastructure exceeded instruction content — hooks alone (1,079 lines) approached core
-      skill files (~997 lines). Triple-redundant debt detection (governance-tracker, governance-prompt,
-      governance-stop all detecting same conditions), uniform 11-step DCP regardless of impact, Critic
-      invocation instructions repeated 7 times, and duplicated observation parsing across 3 tools created
-      context pressure and instruction fragility. Root cause: governance grew reactively — each failure
-      added a new check without auditing existing coverage. Fix: (1) governance-tracker became silent
-      bookkeeper, governance-prompt stripped to activation-only, governance-stop messages made terse —
-      enforcement preserved, advisory noise removed. (2) DCP replaced with 3-tier system
-      (mechanical/enhancement/structural) scaled to change impact. (3) Session Resumption converted
-      from enumerated checklist to goal-oriented instruction. (4) Critic procedure deduplicated to
-      single canonical source with references. (5) obs_utils.py shared module eliminates duplicated
-      threshold and parsing logic across session-health-check.sh, observation-analysis.sh,
-      update-observation-status.sh.'
-    blast_radius: .claude/hooks/governance-tracker.sh, .claude/hooks/governance-prompt.sh,
-      .claude/hooks/governance-stop.sh, .claude/hooks/compact-governance-reinject.sh,
-      skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, CLAUDE.md,
-      tools/obs_utils.py (new), tools/session-health-check.sh, tools/observation-analysis.sh,
-      tools/update-observation-status.sh, project-state.yaml
+  - what: 'Framework simplification: collapse advisory hooks, impact-scaled DCP, deduplicate instructions, shared observation
+      utilities'
+    why: 'Governance infrastructure exceeded instruction content — hooks alone (1,079 lines) approached core skill files (~997
+      lines). Triple-redundant debt detection (governance-tracker, governance-prompt, governance-stop all detecting same conditions),
+      uniform 11-step DCP regardless of impact, Critic invocation instructions repeated 7 times, and duplicated observation
+      parsing across 3 tools created context pressure and instruction fragility. Root cause: governance grew reactively — each
+      failure added a new check without auditing existing coverage. Fix: (1) governance-tracker became silent bookkeeper, governance-prompt
+      stripped to activation-only, governance-stop messages made terse — enforcement preserved, advisory noise removed. (2)
+      DCP replaced with 3-tier system (mechanical/enhancement/structural) scaled to change impact. (3) Session Resumption converted
+      from enumerated checklist to goal-oriented instruction. (4) Critic procedure deduplicated to single canonical source with
+      references. (5) obs_utils.py shared module eliminates duplicated threshold and parsing logic across session-health-check.sh,
+      observation-analysis.sh, update-observation-status.sh.'
+    blast_radius: .claude/hooks/governance-tracker.sh, .claude/hooks/governance-prompt.sh, .claude/hooks/governance-stop.sh,
+      .claude/hooks/compact-governance-reinject.sh, skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md,
+      CLAUDE.md, tools/obs_utils.py (new), tools/session-health-check.sh, tools/observation-analysis.sh, tools/update-observation-status.sh,
+      project-state.yaml
     classification: directional
     date: 2026-02-16
-    retrospective: 'Detection: Learning system detected process_friction at threshold but proposed
-      instance-specific fixes rather than systemic audit. User analysis identified root cause (reactive
-      governance additions without coverage audit). Root Cause Protocol would help but was itself recent.
-      Process: 4-phase plan mapped cleanly. Line reduction estimates were optimistic (212 actual vs 290
-      estimated for hooks) due to inherent shell wrapper overhead. Generalization: "defense-in-depth where
-      defense-in-one suffices" pattern should be watched for in future governance additions. The 3-tier DCP
-      should reduce temptation to add uniform heavyweight process.'
+    retrospective: 'Detection: Learning system detected process_friction at threshold but proposed instance-specific fixes rather
+      than systemic audit. User analysis identified root cause (reactive governance additions without coverage audit). Root
+      Cause Protocol would help but was itself recent. Process: 4-phase plan mapped cleanly. Line reduction estimates were optimistic
+      (212 actual vs 290 estimated for hooks) due to inherent shell wrapper overhead. Generalization: "defense-in-depth where
+      defense-in-one suffices" pattern should be watched for in future governance additions. The 3-tier DCP should reduce temptation
+      to add uniform heavyweight process.'
   - what: 'Mechanical prawduct integration tool: prawduct-init.sh/.py for idempotent setup and repair'
-    why: 'Adding prawduct to existing repos was a purely instructional process — 5 conditions with
-      sub-conditions in Orchestrator SKILL.md that mixed mechanical work (create dirs, write files)
-      with LLM work (analyze codebase, interact with user). Setup was unreliable across compactions,
-      settings.json generation overwrote user hooks, no framework version tracking, no idempotent
-      repair. New tool handles all infrastructure mechanically: creates .prawduct/, framework-path,
-      framework-version, CLAUDE.md bootstrap, settings.json hook merging (preserves user hooks).
-      Self-hosted safety prevents modifying the framework repo. Schema version detection (v0/v0.5/v1/v2)
-      enables migration routing. Orchestrator Step 1 simplified from ~30 lines complex conditionals
-      to ~15 lines calling tool + routing on next_action.'
-    blast_radius: tools/prawduct-init.sh (new), tools/prawduct-init.py (new),
-      skills/orchestrator/SKILL.md (Step 1 rewritten), skills/orchestrator/onboarding.md (Phase 3
-      opening simplified, stale condition 3 reference fixed), CLAUDE.md (project tree), project-state.yaml
-      (remaining_work, change_log)
+    why: 'Adding prawduct to existing repos was a purely instructional process — 5 conditions with sub-conditions in Orchestrator
+      SKILL.md that mixed mechanical work (create dirs, write files) with LLM work (analyze codebase, interact with user). Setup
+      was unreliable across compactions, settings.json generation overwrote user hooks, no framework version tracking, no idempotent
+      repair. New tool handles all infrastructure mechanically: creates .prawduct/, framework-path, framework-version, CLAUDE.md
+      bootstrap, settings.json hook merging (preserves user hooks). Self-hosted safety prevents modifying the framework repo.
+      Schema version detection (v0/v0.5/v1/v2) enables migration routing. Orchestrator Step 1 simplified from ~30 lines complex
+      conditionals to ~15 lines calling tool + routing on next_action.'
+    blast_radius: tools/prawduct-init.sh (new), tools/prawduct-init.py (new), skills/orchestrator/SKILL.md (Step 1 rewritten),
+      skills/orchestrator/onboarding.md (Phase 3 opening simplified, stale condition 3 reference fixed), CLAUDE.md (project
+      tree), project-state.yaml (remaining_work, change_log)
     classification: functional
     date: 2026-02-16
   - what: 'Full self-hosting: generate 13 prawduct artifacts for the framework, restructure manifest into 5 categories'
-    why: 'Framework declared itself self-hosted (Stage 6, iteration) with structural characteristics runs_unattended
-      and exposes_programmatic_interface, but had zero generated artifacts in .prawduct/artifacts/. Coexistence strategy:
-      existing docs serve humans, prawduct artifacts serve the LLM, project-state.yaml bridges both. Generated all 13
-      artifacts (7 universal + 5 runs_unattended + 1 exposes_programmatic_interface) with source tags (<!-- sourced: -->)
-      for divergence detection. Restructured artifact_manifest from flat list into 5 categories: human_docs,
-      source_components, tooling, artifacts, test_specs. Updated governance hooks to govern .prawduct/artifacts/ edits.
-      4 artifacts marked MINIMAL per applicability assessment (security-model, operational-spec, dependency-manifest,
+    why: 'Framework declared itself self-hosted (Stage 6, iteration) with structural characteristics runs_unattended and exposes_programmatic_interface,
+      but had zero generated artifacts in .prawduct/artifacts/. Coexistence strategy: existing docs serve humans, prawduct artifacts
+      serve the LLM, project-state.yaml bridges both. Generated all 13 artifacts (7 universal + 5 runs_unattended + 1 exposes_programmatic_interface)
+      with source tags (<!-- sourced: -->) for divergence detection. Restructured artifact_manifest from flat list into 5 categories:
+      human_docs, source_components, tooling, artifacts, test_specs. Updated governance hooks to govern .prawduct/artifacts/
+      edits. 4 artifacts marked MINIMAL per applicability assessment (security-model, operational-spec, dependency-manifest,
       scheduling-spec).'
-    blast_radius: .prawduct/artifacts/ (13 new files), .prawduct/project-state.yaml (manifest restructure, change_log),
-      .claude/hooks/governance-gate.sh, .claude/hooks/governance-tracker.sh, CLAUDE.md (project structure tree),
-      docs/doc-manifest.yaml
+    blast_radius: .prawduct/artifacts/ (13 new files), .prawduct/project-state.yaml (manifest restructure, change_log), .claude/hooks/governance-gate.sh,
+      .claude/hooks/governance-tracker.sh, CLAUDE.md (project structure tree), docs/doc-manifest.yaml
     classification: directional
     date: 2026-02-16
-    retrospective: 'Parallel generation via 5 background agents was efficient (all 13 artifacts
-      produced in ~3 minutes) but caused depended_on_by drift — 12 inconsistencies where the
-      denormalized inverse of depends_on was wrong. Root cause: each agent independently wrote
-      depended_on_by based on plan-time estimates without post-generation validation. Fixed in
-      Phase 4 consistency check, but the pattern will recur on every multi-artifact generation.
-      The manifest restructure (flat list → 5 categories) was clean and the data model held up
-      well — every framework concept mapped to an artifact without forcing. The MINIMAL applicability
-      assessment was appropriate: security-model, operational-spec, dependency-manifest, and
-      scheduling-spec are genuinely minimal for an LLM instruction framework. Content gaps in
-      test-specifications (missing Skill/EvaluationResult entity coverage, tool CLI coverage) are
-      expected for v1 and align with existing observation backlog items. Key learning: depended_on_by
-      is a denormalized cache that should either be mechanically validated or dropped from frontmatter
-      entirely in favor of on-demand computation from depends_on.'
-  - what: 'Existing repo integration: migrate framework to .prawduct/, enhanced state detection, migration skill, doc ingestion, divergence detection'
+    retrospective: 'Parallel generation via 5 background agents was efficient (all 13 artifacts produced in ~3 minutes) but
+      caused depended_on_by drift — 12 inconsistencies where the denormalized inverse of depends_on was wrong. Root cause: each
+      agent independently wrote depended_on_by based on plan-time estimates without post-generation validation. Fixed in Phase
+      4 consistency check, but the pattern will recur on every multi-artifact generation. The manifest restructure (flat list
+      → 5 categories) was clean and the data model held up well — every framework concept mapped to an artifact without forcing.
+      The MINIMAL applicability assessment was appropriate: security-model, operational-spec, dependency-manifest, and scheduling-spec
+      are genuinely minimal for an LLM instruction framework. Content gaps in test-specifications (missing Skill/EvaluationResult
+      entity coverage, tool CLI coverage) are expected for v1 and align with existing observation backlog items. Key learning:
+      depended_on_by is a denormalized cache that should either be mechanically validated or dropped from frontmatter entirely
+      in favor of on-demand computation from depends_on.'
+  - what: 'Existing repo integration: migrate framework to .prawduct/, enhanced state detection, migration skill, doc ingestion,
+      divergence detection'
     why: 'Framework repo used root-level files (self-hosted special case) while product repos used .prawduct/ — this inconsistency
       meant the framework couldn''t validate its own integration tooling. Additionally, existing repo onboarding lacked systematic
       doc ingestion, migration implementation, partial-state recovery, and divergence detection. Changes: (1) Moved framework''s
@@ -821,64 +717,64 @@ change_log:
       for interrupted onboarding, doc-enriched onboarding, migration tiers, partial onboarding resume, and divergence checks.
       (8) Added mechanical divergence detection to session-health-check.sh (source commits since last artifact update, staleness
       threshold).'
-    blast_radius: tools/update-observation-status.sh, tools/critic-reminder.sh, tools/prawduct-init.py,
-      tools/session-health-check.sh, .claude/hooks/governance-gate.sh, .claude/hooks/governance-tracker.sh,
-      skills/orchestrator/SKILL.md, skills/orchestrator/onboarding.md, skills/orchestrator/migration.md (new),
-      .prawduct/project-state.yaml, CLAUDE.md
+    blast_radius: tools/update-observation-status.sh, tools/critic-reminder.sh, tools/prawduct-init.py, tools/session-health-check.sh,
+      .claude/hooks/governance-gate.sh, .claude/hooks/governance-tracker.sh, skills/orchestrator/SKILL.md, skills/orchestrator/onboarding.md,
+      skills/orchestrator/migration.md (new), .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
     date: 2026-02-16
   - what: '5-whys fix: mechanical depended_on_by validation + DCP observation-backlog check'
-    why: 'depended_on_by drift recurred twice in one day (25 + 12 inconsistencies) because the same root
-      cause was observed but never actioned between DCPs. 5-whys chain: (1) parallel agents set depended_on_by
-      independently without validation, (2) no post-generation validation exists despite observation proposing
-      it 4 hours earlier, (3) session-health-check only runs at session start not between DCPs, (4) DCP
-      planning step does not check observation backlog for relevant patterns, (5) C8c has no surface-during-
-      active-work path. Two root causes: mechanical (denormalized cache with no validation) and process (DCP
-      does not incorporate prior observations). Fix 1: dependency graph consistency section in session-health-check.sh
-      computes depended_on_by from depends_on and flags mismatches. Fix 2: Enhancement step 1 and Structural
-      step 3 now instruct checking observation_backlog before planning. Also fixed 7 surviving depended_on_by
-      inconsistencies (6 source_components + 1 scheduling-spec artifact). Both observations transitioned to acted_on.'
-    blast_radius: tools/session-health-check.sh, skills/orchestrator/stage-6-iteration.md, .prawduct/project-state.yaml,
-      .prawduct/artifacts/scheduling-spec.md, 2 observation files
+    why: 'depended_on_by drift recurred twice in one day (25 + 12 inconsistencies) because the same root cause was observed
+      but never actioned between DCPs. 5-whys chain: (1) parallel agents set depended_on_by independently without validation,
+      (2) no post-generation validation exists despite observation proposing it 4 hours earlier, (3) session-health-check only
+      runs at session start not between DCPs, (4) DCP planning step does not check observation backlog for relevant patterns,
+      (5) C8c has no surface-during- active-work path. Two root causes: mechanical (denormalized cache with no validation) and
+      process (DCP does not incorporate prior observations). Fix 1: dependency graph consistency section in session-health-check.sh
+      computes depended_on_by from depends_on and flags mismatches. Fix 2: Enhancement step 1 and Structural step 3 now instruct
+      checking observation_backlog before planning. Also fixed 7 surviving depended_on_by inconsistencies (6 source_components
+      + 1 scheduling-spec artifact). Both observations transitioned to acted_on.'
+    blast_radius: tools/session-health-check.sh, skills/orchestrator/stage-6-iteration.md, .prawduct/project-state.yaml, .prawduct/artifacts/scheduling-spec.md,
+      2 observation files
     classification: functional
     date: 2026-02-16
-  - what: 'Fix README.md staleness + close governance gap for human-facing docs'
-    why: 'Root cause chain: README contained deprecated vocabulary (product shapes, concerns) and stale project
-      layout → README not in blast_radius of 3 directional changes → no instruction prompts verifying README
-      when capabilities change → CLAUDE.md conventions have explicit update triggers for CLAUDE.md but not
-      README → the framework does not read README during normal operation so staleness is invisible. Category:
-      incomplete_coverage. Fix: updated README content, added README to CLAUDE.md Documentation Freshness
-      convention, added proactive Critic Coherence check for directional changes affecting vocabulary/layout.'
+  - what: Fix README.md staleness + close governance gap for human-facing docs
+    why: 'Root cause chain: README contained deprecated vocabulary (product shapes, concerns) and stale project layout → README
+      not in blast_radius of 3 directional changes → no instruction prompts verifying README when capabilities change → CLAUDE.md
+      conventions have explicit update triggers for CLAUDE.md but not README → the framework does not read README during normal
+      operation so staleness is invisible. Category: incomplete_coverage. Fix: updated README content, added README to CLAUDE.md
+      Documentation Freshness convention, added proactive Critic Coherence check for directional changes affecting vocabulary/layout.'
     blast_radius: README.md, CLAUDE.md, skills/critic/SKILL.md, .prawduct/project-state.yaml
     classification: functional
     date: 2026-02-17
-  - what: 'Post-Fix Reflection Protocol: automatic root cause analysis and framework contribution pathway for every non-cosmetic fix'
-    why: 'Root cause chain: fixes address symptoms without analyzing root cause → Root Cause Protocol existed
-      but was advisory (triggered only for observation-driven fixes) → routine bug fixes and Critic findings
-      skipped RCA entirely → the same class of problem recurs because only the instance was fixed. Three-layer
-      fix: (1) PFR embedded in Stage 5 step 6 and Stage 6 steps 1/4/5a making RCA unavoidable for non-cosmetic
-      fixes, (2) meta-fix step checks product for other instances of same root cause, (3) contribution pathway
-      via format-contribution.sh enables product users to share observations back to framework. RCA happens
-      before the fix so implementation targets root cause. root_cause_analysis schema field with 6-category
+  - what: 'Post-Fix Reflection Protocol: automatic root cause analysis and framework contribution pathway for every non-cosmetic
+      fix'
+    why: 'Root cause chain: fixes address symptoms without analyzing root cause → Root Cause Protocol existed but was advisory
+      (triggered only for observation-driven fixes) → routine bug fixes and Critic findings skipped RCA entirely → the same
+      class of problem recurs because only the instance was fixed. Three-layer fix: (1) PFR embedded in Stage 5 step 6 and Stage
+      6 steps 1/4/5a making RCA unavoidable for non-cosmetic fixes, (2) meta-fix step checks product for other instances of
+      same root cause, (3) contribution pathway via format-contribution.sh enables product users to share observations back
+      to framework. RCA happens before the fix so implementation targets root cause. root_cause_analysis schema field with 6-category
       enum enables cross-fix pattern detection.'
-    blast_radius: skills/orchestrator/protocols.md, skills/orchestrator/stage-5-build.md,
-      skills/orchestrator/stage-6-iteration.md, skills/orchestrator/onboarding.md, skills/orchestrator/SKILL.md,
-      skills/critic/SKILL.md, tools/capture-observation.sh, tools/format-contribution.sh (new),
-      .prawduct/framework-observations/schema.yaml, .prawduct/framework-observations/README.md,
+    blast_radius: skills/orchestrator/protocols.md, skills/orchestrator/stage-5-build.md, skills/orchestrator/stage-6-iteration.md,
+      skills/orchestrator/onboarding.md, skills/orchestrator/SKILL.md, skills/critic/SKILL.md, tools/capture-observation.sh,
+      tools/format-contribution.sh (new), .prawduct/framework-observations/schema.yaml, .prawduct/framework-observations/README.md,
       docs/self-improvement-architecture.md, CLAUDE.md, .prawduct/project-state.yaml
     classification: functional
     date: 2026-02-17
   - what: 'Fix doc-code divergence blind spot in onboarding: add Phase 1h bidirectional reconciliation'
-    why: 'Onboarding contained contradictory instructions about doc vs code authority (edge case guidance said
-      "lean heavily on docs" while Phase 1g said "code wins for current state"). No operational procedure existed
-      for reconciling doc-code disagreements about feature status in either direction. During Unseen Sights
-      onboarding, a fully-implemented POI feature (18+ code signals) was flagged as uncertain because vision.md
-      listed it as future. Root cause (5-whys): Phase 1g and Phases 1a-1e run as separate activities with no
-      cross-referencing step, because the process did not model the common scenario where docs and code drift
-      apart on feature status. Fix: Phase 1h with bidirectional passes (stale roadmaps + phantom features),
-      Phase 1c status-extraction prompt, Phase 2 divergence reporting, Phase 3b three-case conflict handling,
-      Phase 4 reconciliation reflection dimension, state cache for session interruption.'
+    why: 'Onboarding contained contradictory instructions about doc vs code authority (edge case guidance said "lean heavily
+      on docs" while Phase 1g said "code wins for current state"). No operational procedure existed for reconciling doc-code
+      disagreements about feature status in either direction. During Unseen Sights onboarding, a fully-implemented POI feature
+      (18+ code signals) was flagged as uncertain because vision.md listed it as future. Root cause (5-whys): Phase 1g and Phases
+      1a-1e run as separate activities with no cross-referencing step, because the process did not model the common scenario
+      where docs and code drift apart on feature status. Fix: Phase 1h with bidirectional passes (stale roadmaps + phantom features),
+      Phase 1c status-extraction prompt, Phase 2 divergence reporting, Phase 3b three-case conflict handling, Phase 4 reconciliation
+      reflection dimension, state cache for session interruption.'
     blast_radius: skills/orchestrator/onboarding.md
+    classification: functional
+    date: 2026-02-17
+  - what: 'Compaction enforcement: governance-stop blocks on compaction debt, Session Resumption compacts automatically, Critic Check 6 requires enforcement for lossless operations'
+    why: 'Advisory-only compaction drifted to non-compliance — project-state.yaml grew to 1172 lines (change_log 29 entries, threshold 20) despite full infrastructure existing (tool, detection, instructions). Root cause: incomplete_coverage — Critic Check 6 validates that growing collections have lifecycle + compaction + monitoring, but not enforcement that mechanisms fire. Also fixed compact-project-state.py steady-state bug where --check reported compaction needed when preserved directional entries made reduction impossible.'
+    blast_radius: .prawduct/hooks/governance-stop.sh, skills/orchestrator/SKILL.md, skills/critic/SKILL.md, tools/compact-project-state.py, .prawduct/project-state.yaml
     classification: functional
     date: 2026-02-17
 build_plan:
