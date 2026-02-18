@@ -336,11 +336,12 @@ artifact_manifest:
       tier: 1
     - name: test-specifications
       file_path: .prawduct/artifacts/test-specifications.md
-      version: 1
+      version: 2
       depends_on: [product-brief, data-model, security-model]
       depended_on_by: []
-      last_validated: 2026-02-16
+      last_validated: 2026-02-18
       tier: 1
+      notes: "Added Test Strategy section with three-level testing approach, Level annotations per test, updated source tag"
     - name: operational-spec
       file_path: .prawduct/artifacts/operational-spec.md
       version: 1
@@ -811,6 +812,17 @@ change_log:
     blast_radius: templates/test-specifications.md, templates/build-plan.md, skills/artifact-generator/SKILL.md,
       skills/builder/SKILL.md, skills/critic/SKILL.md, skills/review-lenses/SKILL.md
     classification: enhancement
+    date: 2026-02-18
+  - what: 'Apply new testing protocols to prawduct, fix template-to-artifact propagation gap in DCP'
+    why: 'The test level enhancement updated templates but did not propagate to prawduct''s own .prawduct/artifacts/test-specifications.md.
+      5-whys root cause: DCP artifact verification asks "does this describe affected behavior" but template
+      structural additions (new sections) are not "behavior" — existing artifacts don''t know they''re missing
+      sections from updated templates. Fix 1: Updated prawduct''s test-specifications artifact with Test Strategy
+      section, Level annotations (unit/integration/e2e), and testing approach mapping (tools=unit, tool+state=integration,
+      full pipeline=e2e). Fix 2: Added template propagation rule to DCP Enhancement step 3 and Structural step 7:
+      "if templates were modified, artifacts generated from those templates are automatically in the blast radius."'
+    blast_radius: .prawduct/artifacts/test-specifications.md, skills/orchestrator/stage-6-iteration.md, .prawduct/project-state.yaml
+    classification: functional
     date: 2026-02-18
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
