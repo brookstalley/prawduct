@@ -1,0 +1,20 @@
+---
+observation_id: ded402d8-4e97-43a5-9b11-4d1873057c4e
+timestamp: 2026-02-18T15:12:37Z
+session_type: framework_dev
+session_context:
+  framework_version: 3e63316
+observations:
+  - type: process_friction
+    severity: warning
+    description: "DCP Enhancement that modified templates did not propagate changes to self-hosted artifacts. Template changes add structural sections that existing artifacts don't know they're missing. The artifact dependency model tracks artifact-to-artifact dependencies but not template-to-artifact generation lineage. Fixed: added template propagation rule to DCP Enhancement step 3 and Structural step 7."
+    evidence: "templates/test-specifications.md gained Test Strategy section, Level annotations, and Performance Tests section. .prawduct/artifacts/test-specifications.md was immediately stale — still used the old flat-list format with no Test Strategy, no Level annotations. The DCP plan listed 6 files but excluded the self-hosted artifact. The Critic review did not flag the missing artifacts_verified check."
+    proposed_action: "Added template propagation rule to DCP Enhancement step 3 and Structural step 7. Updated prawduct own test-specifications artifact. Future: consider template_version tracking in artifact frontmatter for mechanical detection."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Template changes did not propagate to existing artifacts generated from those templates"
+      root_cause: "DCP artifact verification does not explicitly connect template changes to generated artifacts — templates were treated as one-time scaffolding not ongoing contracts"
+      category: incomplete_coverage
+skills_affected:
+  - "skills/orchestrator/stage-6-iteration.md"
+---
