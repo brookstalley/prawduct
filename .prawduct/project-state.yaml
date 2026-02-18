@@ -76,8 +76,8 @@ current_stage: iteration
 
 change_log:
   - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-18)'
-    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-16 to 2026-02-17); Fix README.md staleness
-      + close governance gap for human-facing docs'
+    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-17 to 2026-02-18); Post-Fix Reflection Protocol:
+      automatic root cause analysis and framework con...'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-18'
@@ -293,21 +293,6 @@ change_log:
       skills/orchestrator/migration.md (new), .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
     date: 2026-02-16
-  - what: 'Post-Fix Reflection Protocol: automatic root cause analysis and framework contribution pathway for every non-cosmetic
-      fix'
-    why: 'Root cause chain: fixes address symptoms without analyzing root cause → Root Cause Protocol existed but was advisory
-      (triggered only for observation-driven fixes) → routine bug fixes and Critic findings skipped RCA entirely → the same
-      class of problem recurs because only the instance was fixed. Three-layer fix: (1) PFR embedded in Stage 5 step 6 and Stage
-      6 steps 1/4/5a making RCA unavoidable for non-cosmetic fixes, (2) meta-fix step checks product for other instances of
-      same root cause, (3) contribution pathway via format-contribution.sh enables product users to share observations back
-      to framework. RCA happens before the fix so implementation targets root cause. root_cause_analysis schema field with 6-category
-      enum enables cross-fix pattern detection.'
-    blast_radius: skills/orchestrator/protocols.md, skills/orchestrator/stage-5-build.md, skills/orchestrator/stage-6-iteration.md,
-      skills/orchestrator/onboarding.md, skills/orchestrator/SKILL.md, skills/critic/SKILL.md, tools/capture-observation.sh,
-      tools/format-contribution.sh (new), .prawduct/framework-observations/schema.yaml, .prawduct/framework-observations/README.md,
-      docs/self-improvement-architecture.md, CLAUDE.md, .prawduct/project-state.yaml
-    classification: functional
-    date: 2026-02-17
   - what: 'Fix doc-code divergence blind spot in onboarding: add Phase 1h bidirectional reconciliation'
     why: 'Onboarding contained contradictory instructions about doc vs code authority (edge case guidance said "lean heavily
       on docs" while Phase 1g said "code wins for current state"). No operational procedure existed for reconciling doc-code
@@ -400,6 +385,16 @@ change_log:
       are automatically in the blast radius."'
     blast_radius: .prawduct/artifacts/test-specifications.md, skills/orchestrator/stage-6-iteration.md, .prawduct/project-state.yaml
     classification: functional
+    date: 2026-02-18
+  - what: 'Prawduct statusline for Claude Code: two-line status bar showing stage, governance alerts, context usage, git state'
+    why: Prawduct sessions are context-heavy and governance-rich, but users have no persistent at-a-glance view of where they
+      are in the process, what governance debt exists, or how much context runway remains. Added prawduct-statusline.py that
+      reads Claude Code stdin JSON + project-state.yaml + session-governance.json + critic-findings.json + git state. Line 1
+      shows prawduct state (stage, chunk progress, governance alerts with CRITIC/CHUNK/CP/PFR/DCP/OBS labels). Line 2 shows
+      context bar + git branch/staged/modified + duration. Non-prawduct projects get only Line 2. Extended prawduct-init.py
+      to generate statusLine config for product repos with runtime framework resolution.
+    blast_radius: tools/prawduct-statusline.py (new), .claude/settings.json, tools/prawduct-init.py, docs/project-structure.md
+    classification: enhancement
     date: 2026-02-18
   - what: Add observation capture enforcement to governance-stop.sh
     why: 'Retroactive review of MetaLLM (7 chunks, 15+ warning findings) produced zero observations until user asked. Root cause
