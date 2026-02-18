@@ -62,6 +62,22 @@ Write tests first (or alongside implementation) for this chunk. Tests are mapped
 - Include happy path, at least one error case, and relevant edge cases as specified in test-specifications.md.
 - Test names must be specific and descriptive: `"records score for 3-player game and updates player totals"`, not `"test scoring"`.
 
+**Test level selection:** For each test scenario, determine the appropriate level from the test strategy in `artifacts/test-specifications.md`:
+
+- **Unit tests** for isolated logic and business rules. Mock external dependencies (databases, APIs, file systems) so tests run fast and deterministically. These test that the code computes correctly.
+- **Integration tests** for data persistence and service boundaries. Use the real boundary being tested (actual database, actual file system) — mocking the boundary under test defeats the purpose. These test that components connect correctly.
+- **E2E tests** for core user flows. At least one per core flow — these prove the system actually works end-to-end from input to output. These test that the product delivers value.
+- Every product gets all three levels. Proportionality scales how many tests at each level and how deep the edge case coverage, not which levels exist.
+
+**Test isolation:** Every test must be independent:
+
+- Each test creates its own test data. No shared fixtures that accumulate state across tests.
+- External services are mocked at integration boundaries (not inside the code being tested).
+- Time-dependent behavior uses controllable clocks or time providers, not real system time.
+- Tests clean up after themselves. A failing test must not break subsequent tests.
+
+**What NOT to do:** Don't create elaborate mock hierarchies, test utility frameworks, or shared test infrastructure for simple products. A family score tracker needs a test file with straightforward assertions, not a mock factory with dependency injection. Match mocking infrastructure complexity to product complexity — low-risk products use simple inline mocks; high-risk products may justify a structured mock library.
+
 ### Step 3: Implement
 
 Write the implementation for this chunk, following the artifacts exactly:

@@ -145,6 +145,8 @@ For each lens, produce findings in this format:
 - **Specificity:** Are test scenarios concrete (setup, action, expected result) or generic ("test that it works")? Generic test scenarios provide false confidence.
 - **Experiential proxy coverage:** For products with experiential quality requirements (visual aesthetics, responsiveness, timing feel), are there test scenarios for measurable proxies of the experiential goals? If NFRs specify render efficiency, a test should verify no full-screen redraws during normal operation. If a visual layout has proportional requirements, a test should verify the proportions mathematically. Not all UX quality is testable, but the testable proxies should be specified.
 - **State coverage:** Are entity lifecycle transitions (from data model) tested, including invalid transitions?
+- **Test level strategy:** Are all three test levels present (unit, integration, E2E)? A high-risk product with only unit tests has a testing gap — integration and E2E tests verify that components connect and the system delivers value. A low-risk product with elaborate E2E *infrastructure* (not E2E tests themselves) is over-invested. Is the mocking strategy sound — mocking external dependencies at boundaries, not mocking the thing being tested?
+- **Test infrastructure alignment:** Does the build plan infrastructure match the test strategy? If the strategy specifies three test levels, does the scaffold configure directories, runners, and tools for all three? Is a mock library configured when the strategy calls for mocking? Is a coverage tool configured when targets are specified?
 
 **Typical findings:**
 - Core flow X has happy-path test but no error case tests (warning)
@@ -152,6 +154,9 @@ For each lens, produce findings in this format:
 - Failure Recovery Spec enumerates 8 failure modes but Test Specifications only cover 3 (blocking)
 - Test scenarios are generic ("verify filtering works") rather than concrete (warning)
 - Test depth disproportionate to risk — 40 test scenarios for a family utility (note)
+- Test strategy missing for medium/high-risk product (warning)
+- Build plan infrastructure doesn't match test strategy — strategy specifies E2E tests but scaffold has no E2E runner (warning)
+- Tests mock the thing being tested — database query tests that mock the database (warning)
 
 **Proportionality guidance by risk level:**
 

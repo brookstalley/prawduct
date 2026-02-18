@@ -797,6 +797,21 @@ change_log:
       .prawduct/framework-observations/README.md, CLAUDE.md, .prawduct/project-state.yaml
     classification: functional
     date: 2026-02-17
+  - what: 'Comprehensive test level and infrastructure guidance across 6 files'
+    why: 'Framework had strong test scenario coverage (happy/error/edge per flow) and strong test governance
+      (Critic checks test count, enforces behavior-focused testing) but treated tests as a flat list without
+      distinguishing test levels and provided no guidance on test infrastructure, mocking, isolation, or
+      coverage measurement. Added: Test Strategy section to test-specifications template (testing floor,
+      risk-scaled depth, mocking/isolation principles, Level annotation per test, Performance section).
+      Test infrastructure to build-plan template (directory structure, per-level runners, mock library,
+      coverage tool). Builder skill guidance (test level selection, isolation, what-NOT-to-do). Artifact
+      Generator amplification rules for runs_unattended and exposes_programmatic_interface test levels,
+      Phase D test infrastructure, Step 3 consistency check. Critic Check 2 level appropriateness and
+      isolation checks. Review Lenses Testing Lens test strategy and infrastructure alignment evaluation.'
+    blast_radius: templates/test-specifications.md, templates/build-plan.md, skills/artifact-generator/SKILL.md,
+      skills/builder/SKILL.md, skills/critic/SKILL.md, skills/review-lenses/SKILL.md
+    classification: enhancement
+    date: 2026-02-18
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.

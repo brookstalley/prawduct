@@ -49,6 +49,24 @@ last_validated: null
 
 ### Build & Test Configuration
 
+<!--
+  Test infrastructure must match the test strategy in test-specifications.md.
+  The Builder must be able to run "test this level" and "test everything" without
+  making decisions about where files live or how runners are configured.
+
+  Include:
+  - Test directory structure: where each level's test files live. Low-risk
+    products can use a single test directory; medium/high-risk should separate
+    unit, integration, and e2e directories.
+  - Test runner configuration per level: how to run unit tests alone, integration
+    tests alone, e2e tests alone, and all together.
+  - Mock/stub library setup: when the test strategy calls for mocking external
+    services, configure the mock library here.
+  - Coverage tool setup: always configure coverage measurement. Low-risk products
+    measure without enforcing thresholds. Medium/high-risk products set coverage
+    targets from NFRs.
+-->
+
 [Configuration files to create or modify, with their contents]
 
 ### Scaffold Verification
@@ -98,6 +116,9 @@ last_validated: null
 - **Artifacts consumed:** [Which artifact files the Builder reads for this chunk]
 - **Deliverables:** [Specific files or components produced]
 - **Tests:** [Test scenarios from test-specifications that apply to this chunk]
+  <!-- For medium/high-risk products, note which test levels this chunk introduces
+       or extends (e.g., "adds unit tests for scoring logic, integration test for
+       DB persistence, extends E2E test for full score flow"). -->
 - **Acceptance criteria:** [Concrete checks — "npm test passes", "page renders scores", etc.]
 
 <!-- Repeat for each chunk -->

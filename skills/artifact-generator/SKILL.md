@@ -70,7 +70,7 @@ Universal artifact deepening: Product Brief frames "Core Flows" as user journeys
 
 **Amplification rules:** Generate pipeline architecture, scheduling specification, monitoring & alerting, failure recovery, configuration specification. "Core Flows" become pipeline stages. Data Model captures processed entities. NFRs emphasize runtime constraints and operational requirements.
 
-Universal artifact deepening: Product Brief frames success criteria for headless operation ("digest delivered by 7 AM" not "works well"). Security Model addresses credential management for external services. Test Specs include silent-failure detection and partial-success scenarios.
+Universal artifact deepening: Product Brief frames success criteria for headless operation ("digest delivered by 7 AM" not "works well"). Security Model addresses credential management for external services. Test Specs include silent-failure detection and partial-success scenarios. Test Strategy addresses test levels: unit tests for processing logic and business rules, integration tests for service interactions with external dependency mocking, E2E tests for full pipeline execution from trigger to output.
 
 **Process constraints:**
 - Silent failure is default mode — monitoring must distinguish "no results" from "didn't run."
@@ -85,7 +85,7 @@ Universal artifact deepening: Product Brief frames success criteria for headless
 
 **Amplification rules:** Generate API contract artifact (operations, request/response shapes, error codes, auth, rate limits), versioning strategy section (in operational spec or standalone).
 
-Universal artifact deepening: Data Model gets API-facing schemas and request/response types. Security Model gets consumer authentication, rate limiting, API key management. Test Specs get contract testing and backward compatibility tests. NFRs get latency SLAs, throughput targets, availability guarantees. Operational Spec gets consumer impact analysis and deprecation procedures.
+Universal artifact deepening: Data Model gets API-facing schemas and request/response types. Security Model gets consumer authentication, rate limiting, API key management. Test Specs get contract testing and backward compatibility tests; Test Strategy includes contract tests as a distinct level verifying API shape and behavior stability across versions. NFRs get latency SLAs, throughput targets, availability guarantees. Operational Spec gets consumer impact analysis and deprecation procedures.
 
 **Process constraints:**
 - Every API operation traces to a core flow (operations serve use cases, not implementation convenience).
@@ -198,7 +198,7 @@ Read `templates/build-plan.md`. Generate from `project-state.yaml` → `technica
 
 1. **Concrete scaffolding instructions.** Exact commands to initialize the project, install dependencies, and configure build tools. Use the product name from the Product Brief.
 
-2. **Concrete project structure.** Directory layout and module boundaries derived from the data model and structural characteristics.
+2. **Concrete project structure.** Directory layout and module boundaries derived from the data model and structural characteristics. Test infrastructure must match the test strategy: test directory structure accommodating all test levels specified in the strategy, per-level runner configuration, mock library setup when the strategy calls for mocking external services, and coverage tool configuration (always — coverage measurement is baseline regardless of risk level).
 
 3. **Feature-first build chunks.** Each chunk delivers one user-visible flow end-to-end (data + logic + interface + tests). Chunk ordering depends on structural characteristics:
    - Chunk 01 is always scaffold: project init, dependencies, build config, test runner.
@@ -261,6 +261,9 @@ After generating all Phase C artifacts, run the full cross-artifact consistency 
 - Lifecycle coverage: every sensitive entity has collection, storage, access, and deletion defined.
 - Audit coverage: every access pattern has an audit trail specified.
 - Retention enforcement: every retention policy has an enforcement mechanism.
+
+**Universal (all products):**
+- **Test infrastructure alignment:** Every test level in the test strategy (unit, integration, E2E) has corresponding infrastructure in the build plan scaffold: directory structure, runner configuration, and any required libraries (mock framework, coverage tool). A test strategy that specifies three levels but a scaffold that only configures one runner is an inconsistency.
 
 If any inconsistency is found, fix it before presenting artifacts to the user.
 

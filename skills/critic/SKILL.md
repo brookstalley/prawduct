@@ -78,6 +78,8 @@ After each chunk, diff the implementation against artifact specifications.
 - Tests verify **behavior**, not implementation. Tests that assert on internal variable names, private method calls, or data structure shapes (rather than user-visible behavior or API contracts) are a warning.
 - Tests cover **happy path + at least one error case** for each flow this chunk implements. Missing error case coverage is a warning.
 - Test names are **specific and descriptive**. `"test1"` or `"it works"` is a warning.
+- **Level appropriateness:** Tests use the right level for what they verify. A test that mocks a database to test a database query is testing the mock, not the persistence — that's an integration test pretending to be a unit test. A test that hits a real external API in what should be a unit test is slow and flaky. Warning severity.
+- **Test isolation:** Tests that depend on execution order, share mutable state between test cases, or leave side effects (files, database rows, environment variables) that affect subsequent tests. Warning severity.
 
 ### Check 3: Scope Discipline
 
