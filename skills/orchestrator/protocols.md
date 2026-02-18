@@ -1,8 +1,5 @@
 # Orchestrator: Protocols
 
-Reference protocols used at stage boundaries and periodically. Read on demand — not needed during normal stage execution.
-Read the main `skills/orchestrator/SKILL.md` for activation, session resumption, and routing.
-
 ---
 
 ## Framework Reflection Protocol
@@ -107,6 +104,8 @@ This is the highest-stakes transition — discovery becomes production. Check th
 - Product presented to user with instructions for running it
 
 If any prerequisite is missing, fill it in with a proportionate inference and state it as an assumption in the product definition summary. If a prerequisite can't be inferred (rare — usually means discovery was insufficient), flag it to the user before proceeding.
+
+**Context management at transitions:** After completing a stage transition, prior stage skill content (e.g., domain-analyzer questions, artifact-generator templates) is no longer needed in context. If the session has been running long (multiple stages completed), suggest `/compact` to the user before starting the next stage — controlled compaction loses less context than automatic truncation.
 
 ---
 

@@ -1,9 +1,5 @@
 # Orchestrator: Stage 5 (Build + Governance Loop)
 
-This stage executes the build plan chunk by chunk with governance at every step.
-Read the main `skills/orchestrator/SKILL.md` for activation, session resumption, and routing.
-Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol (FRP).
-
 ---
 
 ## Stage 5: Build + Governance Loop

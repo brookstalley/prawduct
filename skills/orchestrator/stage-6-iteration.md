@@ -1,9 +1,5 @@
 # Orchestrator: Stage 6 (Iteration)
 
-This stage handles post-build iteration: user feedback, change classification, and the Directional Change Protocol.
-Read the main `skills/orchestrator/SKILL.md` for activation, session resumption, and routing.
-Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol (FRP).
-
 ---
 
 ## Stage 6: Iteration
@@ -20,8 +16,8 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
    - **Cosmetic** (wording, formatting, minor adjustments that don't change behavior or contracts): Implement directly. No artifact updates needed. Quick cycle: fix → test → done.
    - **Functional** (new feature, changed behavior, different flow): Update affected artifacts first, then build. This is a mini Stage 5 loop:
-     1. Assess change impact: what artifacts change? What chunks are affected? Any regressions? Consult `artifact_manifest` to identify affected artifacts.
-     2. Update the relevant artifacts (whichever are affected — see `artifact_manifest`).
+     1. Assess change impact: what artifacts change? What chunks are affected? Any regressions? Consult `artifact_manifest` (in `project-state.yaml` or the file at `artifact_manifest_file`) to identify affected artifacts.
+     2. Update the relevant artifacts (whichever are affected).
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
    - **Directional** (fundamentally different product vision, or structural framework changes): Follow the Directional Change Protocol below.
@@ -136,7 +132,7 @@ No DCP needed. Implement the changes, run Critic review (see `skills/critic/SKIL
 
 1. **Write a brief plan** in `working-notes/` describing the change, motivation, and affected files. Before implementing, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned approach — prior observations may identify risks or constraints that should inform the plan. Apply PFR steps 1-2 (classify + RCA) before implementation if the enhancement addresses a known issue or gap. After implementation and Critic review, complete PFR steps 4-6.
 2. **Implement** the change.
-3. **Verify artifact freshness.** Read `artifact_manifest` in `project-state.yaml` to get the full artifact list. For each artifact, ask: "does this artifact describe behavior affected by my changes?" Read each candidate artifact and verify it still matches implementation. **Template propagation rule:** If any templates were modified, artifacts generated from those templates are automatically in the blast radius — template structural additions (new sections, new fields) make existing artifacts stale even if the artifact's "behavior" didn't change. For self-hosted repos, check `.prawduct/artifacts/` for artifacts matching modified templates. Update any stale artifacts. Record which artifacts you verified in `directional_change.artifacts_verified` (list of artifact names). **The stop hook enforces this** — it blocks completion when `artifacts_verified` is empty for enhancement/structural DCPs.
+3. **Verify artifact freshness.** Read `artifact_manifest` (in `project-state.yaml`, or from the file at `artifact_manifest_file` if that pointer exists). For each artifact, ask: "does this artifact describe behavior affected by my changes?" Read each candidate artifact and verify it still matches implementation. **Template propagation rule:** If any templates were modified, artifacts generated from those templates are automatically in the blast radius — template structural additions (new sections, new fields) make existing artifacts stale even if the artifact's "behavior" didn't change. For self-hosted repos, check `.prawduct/artifacts/` for artifacts matching modified templates. Update any stale artifacts. Record which artifacts you verified in `directional_change.artifacts_verified` (list of artifact names). **The stop hook enforces this** — it blocks completion when `artifacts_verified` is empty for enhancement/structural DCPs.
 4. **Run Critic review** (see `skills/critic/SKILL.md`) — all applicable checks.
 5. **Register deprecated terms** if any concepts were renamed/removed: write to `project-state.yaml` → `deprecated_terms` with replacement and grep patterns.
 
@@ -148,7 +144,7 @@ Set `directional_change` in `.prawduct/.session-governance.json` to track: `{"ac
 2. **Reclassification check (product builds).** If the product's fundamental nature changed, re-run classification.
 3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Post-Fix Reflection Protocol in `skills/orchestrator/protocols.md` § PFR). Set `directional_change` in `.prawduct/.session-governance.json`: `{"active": true, "tier": "structural", "plan_description": "<summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <N>, "phases_reviewed_count": 0, "observation_captured": false, "artifacts_verified": []}`.
 4. **Plan-stage Critic review.** Apply Generality, Coherence, and Learning/Observability checks to the plan. Set `plan_stage_review_completed` to `true`.
-5. **Impact assessment.** Map blast radius via `artifact_manifest`. Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
+5. **Impact assessment.** Map blast radius via `artifact_manifest` (inline or at `artifact_manifest_file`). Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
 6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Increment `phases_reviewed_count` after each.
 7. **Verify artifact freshness.** Same as Enhancement step 3: read `artifact_manifest`, identify artifacts describing affected behavior, verify each is current, update stale ones, record the list in `directional_change.artifacts_verified`. **Template propagation rule applies** — if templates were modified, artifacts generated from those templates are in the blast radius. **The stop hook enforces this.**
 8. **Final Critic review** — all applicable checks (see `skills/critic/SKILL.md`).

@@ -1,9 +1,5 @@
 # Orchestrator: Stages 3–4 (Artifact Generation, Build Planning)
 
-These stages transform the product definition into artifacts and a concrete build plan.
-Read the main `skills/orchestrator/SKILL.md` for activation, session resumption, and routing.
-Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol (FRP) and Stage Transition Protocol.
-
 ---
 
 ## Stage 3: Artifact Generation

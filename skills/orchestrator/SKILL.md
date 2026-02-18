@@ -119,8 +119,8 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 **Goal:** Recover session context, surface anything requiring attention, and orient the user.
 
 **Steps:**
-1. **Locate product root and load state.** Check `.prawduct/project-state.yaml` first (product root = `.prawduct/`), then root `project-state.yaml` (legacy product: product root = repo root). Read `project-state.yaml` to recover stage, decisions, artifacts, and pending work. Refresh the governance marker (write `<timestamp> praw-active` to `.prawduct/.orchestrator-activated`).
-2. **Run `tools/session-health-check.sh`** for infrastructure health, actionable patterns, backlog status, and divergence signals.
+1. **Locate product root and load state.** Check `.prawduct/project-state.yaml` first (product root = `.prawduct/`), then root `project-state.yaml` (legacy product: product root = repo root). Read `project-state.yaml` to recover stage, pending work, and iteration state. If `definition_file`, `artifact_manifest_file`, or `deferred_backlog_file` pointers exist, those sections live in separate files — load them on demand when needed (not at startup). Refresh the governance marker (write `<timestamp> praw-active` to `.prawduct/.orchestrator-activated`).
+2. **Run `tools/session-health-check.sh`** for actionable patterns and warnings. The script only outputs sections with findings (no noise when healthy). Use `--full` if you need verbose output or if the user requests a detailed health report.
    - **2b. Divergence check:** If the health check reports divergence signals (source commits since last artifact update), or if the last session was >7 days ago, or if the framework version changed: flag to the user. If 10+ source commits since last `.prawduct/` update, offer a consistency review (re-read changed docs, spot-check code against artifacts).
 3. **Orient the user.** Summarize where we left off, surface anything needing attention (actionable patterns, state warnings, divergence signals, infrastructure health), and continue from the current stage.
 

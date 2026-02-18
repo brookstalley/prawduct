@@ -203,6 +203,7 @@ Apply the appropriate tier based on the detected version:
    ```
 
 3. **Check `artifact_manifest` structure:**
+   - **Split file pointers:** If `definition_file`, `artifact_manifest_file`, or `deferred_backlog_file` pointers exist, those sections live in separate files. Do not overwrite pointers with inline content — the split format is valid and preferred for large projects.
    - **Product repos:** Only the `artifacts` category is needed. All entries should have `file_path` in `.prawduct/artifacts/`. The 5-category structure (`source_components`, `tooling`, `test_specs`, `human_docs`) applies only to the framework repo.
    - **Framework repo:** If `artifact_manifest` exists but is a flat list (not organized into 5 categories), restructure:
      - Entries with `file_path` in `.prawduct/artifacts/` → `artifacts` category

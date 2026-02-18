@@ -8,14 +8,14 @@ The Orchestrator activates this skill when `current_stage` is "artifact-generati
 
 When activated:
 
-1. Read `project-state.yaml` in the user's project directory — it must have classification, product definition, and scope decisions populated.
+1. Read `project-state.yaml` in the user's project directory. If `definition_file` exists, also read that file for classification and product definition. The state must have classification, product definition, and scope decisions populated (inline or via split files).
 2. Determine which artifacts to generate based on the product's active structural characteristics and domain characteristics.
 3. Generate artifacts in phased dependency order, writing files to the `artifacts/` directory within the product root. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the product root (`.prawduct/` for all repos).
-4. Update `project-state.yaml` → `artifact_manifest` with each generated artifact.
+4. Update `artifact_manifest` with each generated artifact (in `project-state.yaml` or in the file at `artifact_manifest_file` if that pointer exists).
 
 ## Step 1: Select Artifact Set
 
-Read `classification.structural` and `classification.domain_characteristics` from project-state.yaml. Generate the universal artifact set plus any structurally-triggered artifacts, then assess whether domain characteristics call for additional artifacts.
+Read `classification.structural` and `classification.domain_characteristics` from project-state.yaml (or from `definition_file` if that pointer exists). Generate the universal artifact set plus any structurally-triggered artifacts, then assess whether domain characteristics call for additional artifacts.
 
 **Universal artifacts (all products):**
 

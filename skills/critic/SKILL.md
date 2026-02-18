@@ -8,7 +8,7 @@ The Critic is activated after changes are made to any project — framework or p
 
 When activated:
 
-1. Read `project-state.yaml` to determine context: current stage, classification, what artifacts exist, what the project is.
+1. Read `project-state.yaml` to determine context: current stage, what artifacts exist, what the project is. If `definition_file` or `artifact_manifest_file` pointers exist, read those files for classification and artifact manifest data.
 2. Read the relevant principles (`docs/principles.md`).
 3. Read the changes to be reviewed.
 4. Apply all applicable checks for the context (see check applicability below).

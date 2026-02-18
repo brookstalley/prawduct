@@ -1,9 +1,5 @@
 # Orchestrator: Stages 0–2 (Intake, Discovery, Definition)
 
-These stages take a raw product idea through classification, discovery, and definition.
-Read the main `skills/orchestrator/SKILL.md` for activation, session resumption, and routing.
-Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol (FRP), Stage Transition Protocol, and Expertise Calibration.
-
 ---
 
 ## Stage 0: Intake & Triage
