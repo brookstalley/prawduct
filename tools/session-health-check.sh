@@ -71,8 +71,7 @@ if patterns:
             print(f'    -> {action}')
         print()
 else:
-    print('  No patterns above threshold with un-acted observations.')
-    print()
+    pass  # Silence when no actionable patterns
 
 print(f'PATTERNS_REQUIRING_ACTION: {len(patterns)}')
 " 2>/dev/null || echo "  (python3/yaml not available for pattern analysis)
@@ -81,9 +80,12 @@ PATTERNS_REQUIRING_ACTION: 0")
 # Extract the count for use by callers
 patterns_count=$(echo "$actionable_output" | grep "^PATTERNS_REQUIRING_ACTION:" | head -1 | sed 's/.*: //')
 
-echo "## Actionable Observation Patterns"
-echo "$actionable_output" | grep -v "^PATTERNS_REQUIRING_ACTION:"
-echo ""
+filtered_actionable=$(echo "$actionable_output" | grep -v "^PATTERNS_REQUIRING_ACTION:" | grep -v "^$")
+if [[ -n "$filtered_actionable" ]]; then
+    echo "## Actionable Observation Patterns"
+    echo "$filtered_actionable"
+    echo ""
+fi
 
 # If --actionable-only, skip non-pattern sections
 if [[ "$MODE" == "--actionable-only" ]]; then
@@ -93,10 +95,9 @@ fi
 
 # --- 2. Backlog status from project-state.yaml ---
 
+backlog_output=""
 if [[ -f "$PROJECT_STATE" ]]; then
-    echo "## Observation Backlog"
-
-    # Extract priority: next items
+    # Extract priority: next items (only output if items exist)
     next_items=$(python3 -c "
 import yaml, sys
 try:
@@ -109,15 +110,14 @@ try:
         for item in next_items:
             print(f\"  - [{item.get('type', '?')}] {item.get('summary', '?')}\")
             print(f\"    Target: {', '.join(item.get('target_files', []))}\")
-    else:
-        print('  No priority:next items.')
 except Exception as e:
     print(f'  (Could not parse backlog: {e})')
-" 2>/dev/null || echo "  (python3/yaml not available for backlog parsing)")
-    echo "$next_items"
-    echo ""
+" 2>/dev/null || true)
+    if [[ -n "$next_items" ]]; then
+        backlog_output+="$next_items"$'\n'
+    fi
 
-    # Check triage freshness
+    # Check triage freshness (only output warnings)
     triage_info=$(python3 -c "
 import yaml, sys
 from datetime import datetime, timedelta
@@ -134,26 +134,32 @@ try:
         age_days = (datetime.now() - triage_date).days
         if age_days > 2:
             print(f'  WARNING: Observation triage overdue (last: {last_triage}, {age_days} days ago)')
-        else:
-            print(f'  Last triage: {last_triage} ({age_days} days ago)')
-    else:
-        print('  No triage date recorded.')
 except Exception as e:
     print(f'  (Could not check triage: {e})')
-" 2>/dev/null || echo "  (python3/yaml not available)")
-    echo "$triage_info"
-    echo ""
+" 2>/dev/null || true)
+    if [[ -n "$triage_info" ]]; then
+        backlog_output+="$triage_info"$'\n'
+    fi
 
-    # Check for stale deferred items (>4 weeks)
+    # Check for stale deferred items (>4 weeks) — reads from split file if available
     stale_info=$(python3 -c "
-import yaml, sys
+import yaml, sys, os
 from datetime import datetime, timedelta
 try:
     with open('$PROJECT_STATE') as f:
         data = yaml.safe_load(f)
     backlog = data.get('observation_backlog', {})
-    items = backlog.get('items', [])
-    deferred = [i for i in items if i.get('priority') == 'deferred']
+    deferred_file = backlog.get('deferred_file') or data.get('deferred_backlog_file')
+    deferred = []
+    if deferred_file:
+        deferred_path = os.path.join(os.path.dirname('$PROJECT_STATE'), deferred_file)
+        if os.path.isfile(deferred_path):
+            with open(deferred_path) as df:
+                deferred_data = yaml.safe_load(df)
+            deferred = deferred_data.get('deferred_items', []) if deferred_data else []
+    if not deferred:
+        items = backlog.get('items', [])
+        deferred = [i for i in items if i.get('priority') == 'deferred']
     stale = []
     for item in deferred:
         added = item.get('added')
@@ -169,17 +175,17 @@ try:
         print(f'  WARNING: {len(stale)} deferred item(s) older than 4 weeks:')
         for item, age in stale:
             print(f\"    - [{item.get('type', '?')}] {item.get('summary', '?')} ({age} days)\")
-    else:
-        print(f'  {len(deferred)} deferred item(s), none older than 4 weeks.')
 except Exception as e:
     print(f'  (Could not check deferred items: {e})')
-" 2>/dev/null || echo "  (python3/yaml not available)")
-    echo "$stale_info"
-    echo ""
-else
+" 2>/dev/null || true)
+    if [[ -n "$stale_info" ]]; then
+        backlog_output+="$stale_info"$'\n'
+    fi
+fi
+
+if [[ -n "$backlog_output" ]]; then
     echo "## Observation Backlog"
-    echo "  (project-state.yaml not found)"
-    echo ""
+    echo "$backlog_output"
 fi
 
 # --- 3. Fallback observation files ---
@@ -260,7 +266,6 @@ fi
 # --- 5. Divergence Detection ---
 
 divergence_warnings=0
-echo "## Divergence Signals"
 
 divergence_output=$(python3 -c "
 import subprocess, sys, os
@@ -333,21 +338,20 @@ if last_prawduct_commit:
     except:
         pass
 
-if warnings == 0 and source_commits_since == 0:
-    print('  No divergence detected.')
-
 print(f'DIVERGENCE_WARNINGS: {warnings}')
-" 2>/dev/null || echo "  (git or python3 not available for divergence detection)
-DIVERGENCE_WARNINGS: 0")
+" 2>/dev/null || echo "DIVERGENCE_WARNINGS: 0")
 
-echo "$divergence_output" | grep -v "^DIVERGENCE_WARNINGS:"
 divergence_warnings=$(echo "$divergence_output" | grep "^DIVERGENCE_WARNINGS:" | head -1 | sed 's/.*: //')
-echo ""
+divergence_content=$(echo "$divergence_output" | grep -v "^DIVERGENCE_WARNINGS:" | grep -v "^$")
+if [[ "${divergence_warnings:-0}" -gt 0 && -n "$divergence_content" ]]; then
+    echo "## Divergence Signals"
+    echo "$divergence_content"
+    echo ""
+fi
 
 # --- 6. Infrastructure Health ---
 
 infra_warnings=0
-echo "## Infrastructure Health"
 
 infra_output=$(python3 -c "
 import sys, os, glob
@@ -416,110 +420,76 @@ print(f'INFRASTRUCTURE_WARNINGS: {warnings}')
 " 2>/dev/null || echo "  (python3/yaml not available for infrastructure health check)
 INFRASTRUCTURE_WARNINGS: 0")
 
-# Display output, extract warning count
-echo "$infra_output" | grep -v "^INFRASTRUCTURE_WARNINGS:"
 infra_warnings=$(echo "$infra_output" | grep "^INFRASTRUCTURE_WARNINGS:" | head -1 | sed 's/.*: //')
-echo ""
+if [[ "${infra_warnings:-0}" -gt 0 ]]; then
+    echo "## Infrastructure Health"
+    echo "$infra_output" | grep -v "^INFRASTRUCTURE_WARNINGS:" | grep -E "WARNING|ALERT"
+    echo ""
+fi
 
 # --- 7. Project State File Health ---
 
 state_warnings=0
 if [[ -f "$PROJECT_STATE" ]]; then
-    echo "## Project State Health"
-
     state_health_output=$(python3 -c "
 import yaml, sys
 
 state_file = '$PROJECT_STATE'
 warnings = 0
+msgs = []
 
 try:
     with open(state_file) as f:
         data = yaml.safe_load(f)
-    with open(state_file) as f:
-        total_lines = sum(1 for _ in f)
 
-    print(f'  Total lines: {total_lines}')
-
-    # Count entries in growing sections
-    sections = {}
-
-    # change_log
     cl = data.get('change_log', []) or []
-    cl_complete = sum(1 for _ in cl)  # all entries count, no terminal status
-    sections['change_log'] = {'total': len(cl), 'compactable': max(0, len(cl) - 10)}
+    if len(cl) > 10:
+        msgs.append(f'  change_log: {len(cl)} entries (compact with tools/compact-project-state.sh)')
+        warnings += 1
 
-    # build_plan.chunks
     bp = data.get('build_plan', {}) or {}
     chunks = bp.get('chunks', []) or []
     chunks_complete = sum(1 for c in chunks if c.get('status') == 'complete')
-    sections['build_plan.chunks'] = {'total': len(chunks), 'compactable': chunks_complete}
+    if chunks_complete > 20:
+        msgs.append(f'  build_plan.chunks: {chunks_complete} compaction-eligible')
+        warnings += 1
 
-    # build_state.reviews
     bs = data.get('build_state', {}) or {}
     reviews = bs.get('reviews', []) or []
     reviews_resolved = sum(1 for r in reviews
                           if all(f.get('status') in ('resolved', 'deferred')
                                  for f in r.get('findings', [])))
-    sections['build_state.reviews'] = {'total': len(reviews), 'compactable': reviews_resolved}
+    if reviews_resolved > 20:
+        msgs.append(f'  build_state.reviews: {reviews_resolved} compaction-eligible')
+        warnings += 1
 
-    # review_findings.entries
-    rf = data.get('review_findings', {}) or {}
-    rf_entries = rf.get('entries', []) or []
-    rf_resolved = sum(1 for e in rf_entries
-                      if all(f.get('status') in ('resolved', 'deferred')
-                             for f in e.get('findings', [])))
-    sections['review_findings.entries'] = {'total': len(rf_entries), 'compactable': rf_resolved}
-
-    # iteration_state.feedback_cycles
     it = data.get('iteration_state', {}) or {}
     fc = it.get('feedback_cycles', []) or []
     fc_complete = sum(1 for c in fc if c.get('status') == 'complete')
-    sections['iteration_state.feedback_cycles'] = {'total': len(fc), 'compactable': fc_complete}
-
-    # Report
-    growing_lines = 0
-    for name, info in sections.items():
-        if info['total'] > 0:
-            print(f\"  {name}: {info['total']} entries ({info['compactable']} compaction-eligible)\")
-            growing_lines += info['total'] * 5  # rough estimate: ~5 lines per entry
-
-    # Threshold checks
-    if sections['change_log']['total'] > 20:
-        print(f\"  WARNING: change_log has {sections['change_log']['total']} entries (threshold: 20). Compact older entries.\")
+    if fc_complete > 10:
+        msgs.append(f'  feedback_cycles: {fc_complete} completed (compact)')
         warnings += 1
 
-    for name, info in sections.items():
-        if info['compactable'] > 20:
-            print(f\"  WARNING: {name} has {info['compactable']} compaction-eligible entries (threshold: 20).\")
-            warnings += 1
-
-    if growing_lines > 300:
-        print(f'  WARNING: Growing sections estimated at ~{growing_lines} lines (threshold: 300). Consider compaction.')
-        warnings += 1
-
-    if all(info['total'] == 0 for info in sections.values()):
-        print('  All growing sections empty (new or compacted project).')
+    for m in msgs:
+        print(m)
 
 except Exception as e:
     print(f'  (Could not analyze project state: {e})')
 
 print(f'STATE_WARNINGS: {warnings}')
-" 2>/dev/null || echo "  (python3/yaml not available for project state analysis)
-STATE_WARNINGS: 0")
+" 2>/dev/null || echo "STATE_WARNINGS: 0")
 
-    echo "$state_health_output" | grep -v "^STATE_WARNINGS:"
     state_warnings=$(echo "$state_health_output" | grep "^STATE_WARNINGS:" | head -1 | sed 's/.*: //')
     if [[ "${state_warnings:-0}" -gt 0 ]]; then
-        echo "  ACTION: Run 'tools/compact-project-state.sh --dry-run' to preview compaction."
+        echo "## Project State Health"
+        echo "$state_health_output" | grep -v "^STATE_WARNINGS:"
+        echo ""
     fi
-    echo ""
 fi
 
 # --- 8. Skill File Health ---
 
 skill_warnings=0
-echo "## Skill File Health"
 
 skill_health_output=$(python3 -c "
 import os, glob
@@ -566,23 +536,20 @@ for skill_name in skill_dirs:
             print(f'  NOTE: {skill_name}/{sub_file} is {sub_lines} lines (sub-file approaching main-file size)')
             warnings += 1
 
-if warnings == 0:
-    print('  All skill files within H1 thresholds.')
-
 print(f'SKILL_WARNINGS: {warnings}')
-" 2>/dev/null || echo "  (python3 not available for skill health check)
-SKILL_WARNINGS: 0")
+" 2>/dev/null || echo "SKILL_WARNINGS: 0")
 
-echo "$skill_health_output" | grep -v "^SKILL_WARNINGS:"
 skill_warnings=$(echo "$skill_health_output" | grep "^SKILL_WARNINGS:" | head -1 | sed 's/.*: //')
-echo ""
+if [[ "${skill_warnings:-0}" -gt 0 ]]; then
+    echo "## Skill File Health"
+    echo "$skill_health_output" | grep -v "^SKILL_WARNINGS:" | grep -v "^$"
+    echo ""
+fi
 
 # --- 9. Deprecated Term Scanning ---
 
 deprecated_warnings=0
 if [[ -f "$PROJECT_STATE" ]]; then
-    echo "## Deprecated Term Scanning"
-
     deprecated_output=$(python3 -c "
 import yaml, os, sys, re, subprocess
 
@@ -595,7 +562,6 @@ try:
         data = yaml.safe_load(f)
     terms = data.get('deprecated_terms', []) or []
     if not terms:
-        print('  No deprecated terms registered.')
         print('DEPRECATED_TERM_WARNINGS: 0')
         sys.exit(0)
 
@@ -692,30 +658,27 @@ try:
             except Exception:
                 continue
 
-    if total_warnings == 0:
-        print('  No surviving deprecated term references found.')
-
     print(f'DEPRECATED_TERM_WARNINGS: {total_warnings}')
 
 except Exception as e:
     print(f'  (Could not scan deprecated terms: {e})')
     print('DEPRECATED_TERM_WARNINGS: 0')
-" 2>/dev/null || echo "  (python3/yaml not available for deprecated term scanning)
-DEPRECATED_TERM_WARNINGS: 0")
+" 2>/dev/null || echo "DEPRECATED_TERM_WARNINGS: 0")
 
-    echo "$deprecated_output" | grep -v "^DEPRECATED_TERM_WARNINGS:"
     deprecated_warnings=$(echo "$deprecated_output" | grep "^DEPRECATED_TERM_WARNINGS:" | head -1 | sed 's/.*: //')
-    echo ""
+    if [[ "${deprecated_warnings:-0}" -gt 0 ]]; then
+        echo "## Deprecated Term Scanning"
+        echo "$deprecated_output" | grep -v "^DEPRECATED_TERM_WARNINGS:" | grep -v "^$"
+        echo ""
+    fi
 fi
 
 # --- 10. Dependency Graph Consistency ---
 
 dep_graph_warnings=0
 if [[ -f "$PROJECT_STATE" ]]; then
-    echo "## Dependency Graph Consistency"
-
     dep_graph_output=$(python3 -c "
-import yaml, sys
+import yaml, sys, os
 
 state_file = '$PROJECT_STATE'
 warnings = 0
@@ -723,7 +686,16 @@ warnings = 0
 try:
     with open(state_file) as f:
         data = yaml.safe_load(f)
-    manifest = data.get('artifact_manifest', {})
+    # Load manifest from split file if pointer exists, else fall back to inline
+    manifest = None
+    manifest_file = data.get('artifact_manifest_file')
+    if manifest_file:
+        manifest_path = os.path.join(os.path.dirname(state_file), manifest_file)
+        if os.path.isfile(manifest_path):
+            with open(manifest_path) as mf:
+                manifest = yaml.safe_load(mf) or {}
+    if manifest is None:
+        manifest = data.get('artifact_manifest', {})
     if not manifest:
         print('  (No artifact_manifest found)')
         print('DEP_GRAPH_WARNINGS: 0')
@@ -791,21 +763,37 @@ try:
             print(f\"    {m['name']} ({m['category']}): {'; '.join(parts)}\")
         warnings = len(mismatches)
         print(f'  ACTION: Fix depended_on_by in project-state.yaml to match inverse of depends_on.')
-    else:
-        total = sum(len(info['depends_on']) for info in all_entries.values())
-        print(f'  All depended_on_by entries consistent ({len(all_entries)} entries, {total} dependency edges).')
-
     print(f'DEP_GRAPH_WARNINGS: {warnings}')
 
 except Exception as e:
     print(f'  (Could not validate dependency graph: {e})')
     print('DEP_GRAPH_WARNINGS: 0')
-" 2>/dev/null || echo "  (python3/yaml not available for dependency graph validation)
-DEP_GRAPH_WARNINGS: 0")
+" 2>/dev/null || echo "DEP_GRAPH_WARNINGS: 0")
 
-    echo "$dep_graph_output" | grep -v "^DEP_GRAPH_WARNINGS:"
     dep_graph_warnings=$(echo "$dep_graph_output" | grep "^DEP_GRAPH_WARNINGS:" | head -1 | sed 's/.*: //')
-    echo ""
+    if [[ "${dep_graph_warnings:-0}" -gt 0 ]]; then
+        echo "## Dependency Graph Consistency"
+        echo "$dep_graph_output" | grep -v "^DEP_GRAPH_WARNINGS:" | grep -v "^$"
+        echo ""
+    fi
+fi
+
+# --- Session length check: suggest /compact when beneficial ---
+if [[ -f "$SESSION_GOV" ]]; then
+    total_edits=$(python3 -c "
+import json
+try:
+    with open('$SESSION_GOV') as f:
+        data = json.load(f)
+    print(data.get('framework_edits', {}).get('total_edits', 0))
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+    if [[ "${total_edits:-0}" -gt 15 ]]; then
+        echo "## Context Management"
+        echo "  NOTE: $total_edits edits this session. Consider /compact to free context before continuing."
+        echo ""
+    fi
 fi
 
 echo "PATTERNS_REQUIRING_ACTION: ${patterns_count:-0}"
