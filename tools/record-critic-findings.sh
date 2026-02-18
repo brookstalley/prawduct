@@ -66,13 +66,23 @@ declare -a CHECKS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --files)   FILES="$2"; shift 2 ;;
+        --files)
+            # Accept both comma-separated and repeated --files args
+            if [[ -n "$FILES" ]]; then
+                FILES="$FILES,$2"
+            else
+                FILES="$2"
+            fi
+            shift 2
+            ;;
         --check)   CHECKS+=("$2"); shift 2 ;;
         --help|-h)
-            echo "Usage: tools/record-critic-findings.sh --files FILE_LIST --check CHECK_ENTRY [--check ...]"
+            echo "Usage: tools/record-critic-findings.sh --files FILE [--files FILE2 ...] --check CHECK_ENTRY [--check ...]"
             echo ""
             echo "Required:"
-            echo "  --files    Comma-separated list of all reviewed files"
+            echo "  --files    Reviewed files. Can be comma-separated or repeated:"
+            echo "             --files \"file1.sh,file2.md\""
+            echo "             --files file1.sh --files file2.md"
             echo "  --check    One per Critic check, format: 'CheckName:severity:summary'"
             echo "             Must provide at least 4 checks (the always-applicable checks)"
             echo ""

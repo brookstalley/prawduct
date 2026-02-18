@@ -77,9 +77,9 @@ while [[ $# -gt 0 ]]; do
         --append)             APPEND_FILE="$2"; shift 2 ;;
         --scenario-name)      SCENARIO_NAME="$2"; shift 2 ;;
         --product-classification) PRODUCT_CLASSIFICATION="$2"; shift 2 ;;
-        --rca-symptom)        RCA_SYMPTOM="$2"; shift 2 ;;
-        --rca-root-cause)     RCA_ROOT_CAUSE="$2"; shift 2 ;;
-        --rca-category)       RCA_CATEGORY="$2"; shift 2 ;;
+        --rca-symptom|--root-cause-symptom)        RCA_SYMPTOM="$2"; shift 2 ;;
+        --rca-root-cause|--root-cause)            RCA_ROOT_CAUSE="$2"; shift 2 ;;
+        --rca-category|--root-cause-category)     RCA_CATEGORY="$2"; shift 2 ;;
         --help|-h)
             echo "Usage: tools/capture-observation.sh --session-type TYPE --type OBS_TYPE --severity SEV --description DESC --evidence EVID --skills-affected SKILLS [options]"
             echo ""
@@ -101,9 +101,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Root Cause Analysis (PFR — all three required if any provided):"
             echo "  --rca-symptom        The immediate problem that was fixed"
+            echo "    (alias: --root-cause-symptom)"
             echo "  --rca-root-cause     The deepest structural cause identified"
+            echo "    (alias: --root-cause)"
             echo "  --rca-category       missing_process | process_not_enforced | incomplete_coverage |"
             echo "                       wrong_abstraction | missing_detection | vocabulary_drift"
+            echo "    (alias: --root-cause-category)"
             exit 0
             ;;
         *)
