@@ -91,15 +91,7 @@ if [[ "$tool_name" == "Read" ]]; then
     # Check Orchestrator activation
     MARKER="$PRAWDUCT_DIR/.orchestrator-activated"
     if [[ ! -f "$MARKER" ]]; then
-        echo "" >&2
-        echo "BLOCKED: Reading skill/template files requires Orchestrator activation. (HR9)" >&2
-        echo "" >&2
-        echo "Skills and templates are accessed through the Orchestrator. Before reading" >&2
-        echo "this file, you must activate governance:" >&2
-        echo "" >&2
-        echo "  1. Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md (this file is always readable)" >&2
-        echo "  2. Follow its activation process (Session Resumption or new project setup)" >&2
-        echo "  3. After activation, skill and template files are accessible." >&2
+        echo "BLOCKED: Skill/template read requires activation (HR9). Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md first." >&2
         exit 2
     fi
 
@@ -130,22 +122,14 @@ except Exception:
 " 2>/dev/null || echo "invalid")
 
     if [[ "$marker_status" == "invalid" ]]; then
-        echo "" >&2
-        echo "BLOCKED: Orchestrator activation marker is invalid. (HR9)" >&2
-        echo "" >&2
-        echo "The marker must be created by following the Orchestrator's activation process." >&2
-        echo "Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and follow its step 3." >&2
+        echo "BLOCKED: Invalid activation marker (HR9). Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md step 3." >&2
         exit 2
     fi
     if [[ "$marker_status" == "stale" ]]; then
-        echo "" >&2
-        echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
-        echo "" >&2
-        echo "Re-read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
+        echo "BLOCKED: Stale activation marker (HR9). Re-run Session Resumption via $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md." >&2
         exit 2
     fi
 
-    # Read allowed
     exit 0
 fi
 
@@ -221,15 +205,7 @@ fi
 if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
     ACTIVATION_MARKER="${CLAUDE_PROJECT_DIR}/.prawduct/.orchestrator-activated"
     if [[ ! -f "$ACTIVATION_MARKER" ]]; then
-        echo "" >&2
-        echo "BLOCKED: Orchestrator activation required before any file modifications. (HR9)" >&2
-        echo "" >&2
-        echo "All file edits — framework, product, and cross-repo — require Orchestrator" >&2
-        echo "activation. This prevents governance bypass for external project work." >&2
-        echo "" >&2
-        echo "  1. Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md (always readable)" >&2
-        echo "  2. Follow its activation process (Session Resumption or new project setup)" >&2
-        echo "  3. After activation, file modifications are permitted." >&2
+        echo "BLOCKED: Edit requires activation (HR9). Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md first." >&2
         exit 2
     fi
 
@@ -257,18 +233,11 @@ except Exception:
 " 2>/dev/null || echo "invalid")
 
     if [[ "$edit_marker_status" == "invalid" ]]; then
-        echo "" >&2
-        echo "BLOCKED: Orchestrator activation marker is invalid. (HR9)" >&2
-        echo "" >&2
-        echo "The marker must be created by following the Orchestrator's activation process." >&2
-        echo "Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and follow its step 3." >&2
+        echo "BLOCKED: Invalid activation marker (HR9). Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md step 3." >&2
         exit 2
     fi
     if [[ "$edit_marker_status" == "stale" ]]; then
-        echo "" >&2
-        echo "BLOCKED: Orchestrator activation marker is stale (older than 12 hours). (HR9)" >&2
-        echo "" >&2
-        echo "Re-read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and run Session Resumption to refresh." >&2
+        echo "BLOCKED: Stale activation marker (HR9). Re-run Session Resumption via $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md." >&2
         exit 2
     fi
 fi
@@ -315,20 +284,9 @@ else:
 " 2>/dev/null || echo "")
 
             if [[ "$pfr_result" == "BLOCKED" ]]; then
-                echo "" >&2
                 echo "BLOCKED: Governance-sensitive file edit requires pre-fix diagnosis. (PFR)" >&2
-                echo "" >&2
-                echo "Before editing $rel_path, write your diagnosis to .prawduct/.session-governance.json:" >&2
-                echo "  pfr_state.diagnosis: {" >&2
-                echo "    \"symptom\": \"what's broken\"," >&2
-                echo "    \"five_whys\": [\"why1\", \"why2\", \"why3\", \"why4\", \"why5\"]," >&2
-                echo "    \"root_cause\": \"deepest structural cause\"," >&2
-                echo "    \"root_cause_category\": \"missing_process|process_not_enforced|incomplete_coverage|wrong_abstraction|missing_detection|vocabulary_drift\"," >&2
-                echo "    \"meta_fix_plan\": \"what else might be affected\"" >&2
-                echo "  }" >&2
-                echo "  pfr_state.diagnosis_written: true" >&2
-                echo "" >&2
-                echo "Or if truly cosmetic: set pfr_state.cosmetic_justification and pfr_state.required to false." >&2
+                echo "Write to .prawduct/.session-governance.json pfr_state.diagnosis: {symptom, five_whys, root_cause, root_cause_category, meta_fix_plan} + pfr_state.diagnosis_written: true" >&2
+                echo "Or if cosmetic: set pfr_state.cosmetic_justification and pfr_state.required: false." >&2
                 exit 2
             fi
         fi
@@ -365,15 +323,7 @@ else:
 " 2>/dev/null || echo "")
 
     if [[ -n "$result" && "$result" != "" ]]; then
-        echo "" >&2
-        echo "$result" >&2
-        echo "" >&2
-        echo "Product file edits are BLOCKED until governance debt is resolved." >&2
-        echo "" >&2
-        echo "To unblock — read skill files from disk (they survive context compaction):" >&2
-        echo "  1. Read $FRAMEWORK_ROOT/skills/critic/SKILL.md from disk NOW, then apply Product Governance to completed chunks" >&2
-        echo "  2. Record findings in project-state.yaml -> build_state.reviews" >&2
-        echo "  3. Update .prawduct/.session-governance.json -> governance_state.chunks_completed_without_review to 0" >&2
+        echo "$result Read $FRAMEWORK_ROOT/skills/critic/SKILL.md then run Governance Review." >&2
         exit 2
     fi
 fi

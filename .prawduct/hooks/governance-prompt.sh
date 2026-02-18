@@ -38,7 +38,7 @@ if [[ -n "$REPO_ROOT" ]]; then
     if [[ ! -f "$MARKER" ]]; then
         python3 -c "
 import json
-msg = 'ORCHESTRATOR NOT ACTIVATED. Reads of skill files (except orchestrator/SKILL.md) and template files are BLOCKED. Edits to all governed files are BLOCKED. Before doing anything else, you MUST read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md and follow its activation process (Session Resumption or new project setup). This is HR9 — no governance bypass. Do this NOW, before responding to the user\\'s request.'
+msg = 'Orchestrator not activated (HR9). Read $FRAMEWORK_ROOT/skills/orchestrator/SKILL.md steps 2-4 first.'
 print(json.dumps({'additionalContext': msg}))
 " 2>/dev/null
         exit 0
