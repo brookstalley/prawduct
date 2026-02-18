@@ -191,9 +191,11 @@ Apply the framework's principles to its own founding architectural decisions —
    - **Search scope:** Same-stage artifacts, same module/component as the original fix.
    - **Fix scope:** No count cap — if 10 instances exist, fix all 10. A high instance count is itself evidence of a systematic gap; note the count in the observation.
 
-5. **Framework observation.** Capture via `tools/capture-observation.sh` with `--rca-symptom`, `--rca-root-cause`, and `--rca-category` arguments. The observation must be generalized (not product-specific) per standard observation rules in `framework-observations/README.md`.
+5. **Framework observation.** Capture via `tools/capture-observation.sh` with `--rca-symptom`, `--rca-root-cause`, and `--rca-category` arguments (these are always required — see note below). The observation must be generalized (not product-specific) per standard observation rules in `framework-observations/README.md`.
 
 6. **Contribution pathway.** Present the observation to the user and offer `tools/format-contribution.sh` to generate shareable markdown. Keep to 1-2 sentences — "I captured a framework observation about [topic]. If you want to contribute it back, run `tools/format-contribution.sh <file>`."
+
+**RCA applies to all observations, not just PFR.** PFR mandates 5-whys as part of the fix flow, but root cause analysis is required for *every* observation captured — whether through PFR, DCP retrospective, FRP, or ad hoc learning. The observation schema enforces this: `root_cause_analysis` with `five_whys` is a required field. If an observation isn't worth analyzing causally, it isn't worth recording.
 
 **Relationship to DCP:** PFR and DCP serve different purposes and stay separate. DCP is about *governance proportionality* — how much review does this change need? PFR is about *learning* — is this fix addressing a class of problem? A small functional fix (no DCP needed) can reveal a framework gap (PFR triggers). A large structural DCP adding new capability (not fixing a problem) doesn't need PFR. Where they overlap (DCP structural with retrospective), DCP's retrospective subsumes PFR steps 1-3, but PFR steps 4-6 (meta-fix, observation, contribution) may still apply if the structural change was fixing a framework gap.
 

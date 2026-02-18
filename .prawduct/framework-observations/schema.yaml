@@ -145,16 +145,34 @@ observation_entry:
             - "Make security model sections conditional based on product architecture"
             - "Adjust discovery round count for low-risk products from 2-4 to 1-2"
 
-        # Root cause analysis from Post-Fix Reflection Protocol
+        # Root cause analysis — required for every observation
+        # If an observation isn't worth analyzing causally, it isn't worth recording.
         root_cause_analysis:
-          type: object | null
-          required: false
-          description: "Root cause analysis captured by Post-Fix Reflection Protocol"
+          type: object
+          required: true
+          description: "Root cause analysis with 5-whys. Required for all observations — not just PFR-triggered ones."
           fields:
             symptom:
               type: string
               required: true
-              description: "The immediate problem that was fixed"
+              description: "The immediate problem observed"
+            five_whys:
+              type: array
+              required: true
+              min_items: 3
+              max_items: 5
+              description: "Iterative 'why?' chain until reaching a cause the framework can structurally prevent (usually 3-5 levels)"
+              items:
+                type: object
+                fields:
+                  why:
+                    type: string
+                    required: true
+                    description: "The 'why?' question at this level"
+                  answer:
+                    type: string
+                    required: true
+                    description: "The answer that leads to the next 'why?'"
             root_cause:
               type: string
               required: true
@@ -217,6 +235,17 @@ example: |
       description: "Framework didn't ask about offline/connectivity requirements for media-heavy utility apps"
       evidence: "User explicitly mentioned 'works offline' but framework never asked about connectivity during discovery"
       proposed_action: "Add Tier 2 discovery question about connectivity requirements for media/content apps"
+      root_cause_analysis:
+        symptom: "Offline capability not explored during discovery for a media utility app"
+        five_whys:
+          - why: "Why wasn't offline capability explored?"
+            answer: "No discovery question covers connectivity requirements"
+          - why: "Why is there no connectivity discovery question?"
+            answer: "Discovery questions were designed for general products, not media-specific concerns"
+          - why: "Why don't media-specific concerns have coverage?"
+            answer: "Domain-specific Tier 2 questions haven't been added for media/content product types"
+        root_cause: "Discovery question coverage doesn't include domain-specific concerns for media/content apps"
+        category: incomplete_coverage
       status: noted
   skills_affected:
     - "skills/domain-analyzer/SKILL.md"

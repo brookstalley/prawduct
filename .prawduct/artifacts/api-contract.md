@@ -89,7 +89,7 @@ Body is markdown — human-readable and LLM-consumable. Frontmatter enables mech
 
 | Tool | Interface | Output |
 |------|-----------|--------|
-| `capture-observation.sh` | `--type TYPE --description DESC --evidence EVID --severity SEV --skills-affected SKILLS [--rca-symptom SYM --rca-root-cause RC --rca-category CAT]` | Creates schema-compliant YAML file. When called for PFR (governance-sensitive file edits), include `--rca-*` flags for root cause analysis. After creation, set `pfr_state.observation_file` in `.session-governance.json` to the output path. |
+| `capture-observation.sh` | `--type TYPE --description DESC --evidence EVID --severity SEV --skills-affected SKILLS --rca-symptom SYM --rca-root-cause RC --rca-category CAT` | Creates schema-compliant YAML file. The `--rca-*` flags are **required** for all observations (root cause analysis is mandatory — if an observation isn't worth analyzing causally, it isn't worth recording). The 5-whys analysis informing `--rca-root-cause` should be documented in the observation's `five_whys` field. After creation for PFR, set `pfr_state.observation_file` in `.session-governance.json` to the output path. |
 | `update-observation-status.sh` | `FILE --status STATUS [--archive]` | Updates observation status, optionally moves to archive/ |
 | `observation-analysis.sh` | `[--patterns-only]` | Parses observations, applies tiered thresholds, reports patterns |
 

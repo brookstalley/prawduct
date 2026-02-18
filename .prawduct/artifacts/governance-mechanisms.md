@@ -109,6 +109,8 @@ Agent attempts to edit skills/, tools/, scripts/, or .prawduct/hooks/
 
 **Cosmetic escape:** Set `pfr_state.cosmetic_justification` and `pfr_state.required: false`.
 
+**RCA universality:** Root cause analysis is required for *all* observations, not just PFR-triggered ones. The observation schema mandates `root_cause_analysis` with `five_whys` as required fields, and `capture-observation.sh` requires `--rca-symptom`, `--rca-root-cause`, and `--rca-category` for every invocation.
+
 ### 3. Directional Change Protocol (DCP)
 
 **Purpose:** Multi-file changes get governance proportionate to impact.
