@@ -1,8 +1,14 @@
-# Closed-Loop Testing: Dev-Tools MCP Server Design
+# Closed-Loop Testing: Dev-Tools MCP Server Design (Web UI Specific)
 
 Created: 2026-02-15
 Phase: 2 (Design only — no implementation in this phase)
 Status: Draft
+
+> **Scope note (2026-02-18):** This document is a **web-UI-specific reference implementation** within the
+> broader Agent Verification Architecture (see `docs/high-level-design.md` § Agent Verification Architecture).
+> The general architecture defines verification as a principle applicable to all product types, with MCP as
+> the preferred approach for web UIs and other product types using lighter strategies (Bash, process I/O).
+> This design doc covers the MCP+Playwright implementation for `has_human_interface` (web) products only.
 
 ## Problem
 

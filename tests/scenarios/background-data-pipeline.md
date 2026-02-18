@@ -184,6 +184,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[interactive]` Questions recognize user's technical competence (use appropriate terminology, don't over-explain basics).
 - `[interactive]` Questions surface considerations user hasn't raised (alerting, silent failure, rate limits from sources, cost of LLM-based filtering if applicable).
 - `[hybrid]` Inferences are made about technical choices the user hasn't specified (deployment target, data storage) and confirmed.
+- `[interactive]` **Guidance Evaluation active:** If the technical user names a specific technology as the solution (e.g., "just use Kafka for this"), the system should challenge proportionately — explaining why the simpler approach may suffice for a side project and offering the general principle, while deferring if the user insists.
 
 ### Orchestrator (C1)
 

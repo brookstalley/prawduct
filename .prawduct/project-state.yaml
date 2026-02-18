@@ -205,15 +205,15 @@ artifact_manifest:
     - name: high-level-design
       file_path: docs/high-level-design.md
       role: product-context
-      version: 3
-      last_validated: 2026-02-17
+      version: 4
+      last_validated: 2026-02-18
       tier: 1
-      notes: "Added Runtime Platform section; consolidated duplicated sections with pointers to canonical sources"
+      notes: "Added Agent Verification Architecture section; previously added Runtime Platform section and consolidated duplicated sections"
     - name: principles
       file_path: docs/principles.md
       role: product-context
-      version: 1
-      last_validated: 2026-02-11
+      version: 2
+      last_validated: 2026-02-18
       tier: 1
     - name: self-improvement-architecture
       file_path: docs/self-improvement-architecture.md
@@ -238,12 +238,12 @@ artifact_manifest:
   source_components:
     - name: orchestrator
       file_path: skills/orchestrator/SKILL.md
-      version: 4
+      version: 5
       depends_on: [high-level-design, principles]
       depended_on_by: [family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
-      last_validated: 2026-02-15
+      last_validated: 2026-02-18
       tier: 1
-      notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, onboarding.md, migration.md, protocols.md"
+      notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, onboarding.md, migration.md, protocols.md. Added Guidance Evaluation (pushback) to stage-6-iteration.md, cross-reference + verification opt-in to stages-0-2.md."
     - name: domain-analyzer
       file_path: skills/domain-analyzer/SKILL.md
       version: 2
@@ -253,10 +253,10 @@ artifact_manifest:
       tier: 1
     - name: artifact-generator
       file_path: skills/artifact-generator/SKILL.md
-      version: 2
+      version: 3
       depends_on: [high-level-design, principles]
       depended_on_by: [human-interface-templates, unattended-operation-templates, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
-      last_validated: 2026-02-11
+      last_validated: 2026-02-18
       tier: 1
     - name: review-lenses
       file_path: skills/review-lenses/SKILL.md
@@ -267,17 +267,17 @@ artifact_manifest:
       tier: 1
     - name: critic
       file_path: skills/critic/SKILL.md
-      version: 2
+      version: 3
       depends_on: [high-level-design, principles]
       depended_on_by: []
-      last_validated: 2026-02-11
+      last_validated: 2026-02-18
       tier: 1
     - name: builder
       file_path: skills/builder/SKILL.md
-      version: 1
+      version: 2
       depends_on: [high-level-design, principles]
       depended_on_by: []
-      last_validated: 2026-02-11
+      last_validated: 2026-02-18
       tier: 1
 
   # --- Templates and tools — the framework's "features" ---
@@ -491,11 +491,11 @@ current_stage: iteration
 
 change_log:
   - what: 'Summary: 2 entries compacted (2026-02-16 to 2026-02-17)'
-    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-17 to 2026-02-17); Mechanical prawduct integration
-      tool: prawduct-init.sh/.py for idempotent set...'
+    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-16 to 2026-02-17); 5-whys fix: mechanical
+      depended_on_by validation + DCP observation-backlog check'
     blast_radius: compacted
     classification: cosmetic
-    date: '2026-02-17'
+    date: '2026-02-18'
   - what: Replaced product shape taxonomy with concern-based classification
     why: Fixed shapes (UI Application, API, Automation, Multi-Party, Hybrid) violated 'Generality Over Enumeration' principle.
       Products like earbud firmware, browser extensions, smart contracts don't fit any shape. Replaced with 7 composable concern
@@ -708,20 +708,6 @@ change_log:
       skills/orchestrator/migration.md (new), .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
     date: 2026-02-16
-  - what: '5-whys fix: mechanical depended_on_by validation + DCP observation-backlog check'
-    why: 'depended_on_by drift recurred twice in one day (25 + 12 inconsistencies) because the same root cause was observed
-      but never actioned between DCPs. 5-whys chain: (1) parallel agents set depended_on_by independently without validation,
-      (2) no post-generation validation exists despite observation proposing it 4 hours earlier, (3) session-health-check only
-      runs at session start not between DCPs, (4) DCP planning step does not check observation backlog for relevant patterns,
-      (5) C8c has no surface-during- active-work path. Two root causes: mechanical (denormalized cache with no validation) and
-      process (DCP does not incorporate prior observations). Fix 1: dependency graph consistency section in session-health-check.sh
-      computes depended_on_by from depends_on and flags mismatches. Fix 2: Enhancement step 1 and Structural step 3 now instruct
-      checking observation_backlog before planning. Also fixed 7 surviving depended_on_by inconsistencies (6 source_components
-      + 1 scheduling-spec artifact). Both observations transitioned to acted_on.'
-    blast_radius: tools/session-health-check.sh, skills/orchestrator/stage-6-iteration.md, .prawduct/project-state.yaml, .prawduct/artifacts/scheduling-spec.md,
-      2 observation files
-    classification: functional
-    date: 2026-02-16
   - what: Fix README.md staleness + close governance gap for human-facing docs
     why: 'Root cause chain: README contained deprecated vocabulary (product shapes, concerns) and stale project layout → README
       not in blast_radius of 3 directional changes → no instruction prompts verifying README when capabilities change → CLAUDE.md
@@ -798,29 +784,44 @@ change_log:
       .prawduct/framework-observations/README.md, CLAUDE.md, .prawduct/project-state.yaml
     classification: functional
     date: 2026-02-17
-  - what: 'Comprehensive test level and infrastructure guidance across 6 files'
-    why: 'Framework had strong test scenario coverage (happy/error/edge per flow) and strong test governance
-      (Critic checks test count, enforces behavior-focused testing) but treated tests as a flat list without
-      distinguishing test levels and provided no guidance on test infrastructure, mocking, isolation, or
-      coverage measurement. Added: Test Strategy section to test-specifications template (testing floor,
-      risk-scaled depth, mocking/isolation principles, Level annotation per test, Performance section).
-      Test infrastructure to build-plan template (directory structure, per-level runners, mock library,
-      coverage tool). Builder skill guidance (test level selection, isolation, what-NOT-to-do). Artifact
-      Generator amplification rules for runs_unattended and exposes_programmatic_interface test levels,
-      Phase D test infrastructure, Step 3 consistency check. Critic Check 2 level appropriateness and
-      isolation checks. Review Lenses Testing Lens test strategy and infrastructure alignment evaluation.'
-    blast_radius: templates/test-specifications.md, templates/build-plan.md, skills/artifact-generator/SKILL.md,
-      skills/builder/SKILL.md, skills/critic/SKILL.md, skills/review-lenses/SKILL.md
+  - what: Comprehensive test level and infrastructure guidance across 6 files
+    why: 'Framework had strong test scenario coverage (happy/error/edge per flow) and strong test governance (Critic checks
+      test count, enforces behavior-focused testing) but treated tests as a flat list without distinguishing test levels and
+      provided no guidance on test infrastructure, mocking, isolation, or coverage measurement. Added: Test Strategy section
+      to test-specifications template (testing floor, risk-scaled depth, mocking/isolation principles, Level annotation per
+      test, Performance section). Test infrastructure to build-plan template (directory structure, per-level runners, mock library,
+      coverage tool). Builder skill guidance (test level selection, isolation, what-NOT-to-do). Artifact Generator amplification
+      rules for runs_unattended and exposes_programmatic_interface test levels, Phase D test infrastructure, Step 3 consistency
+      check. Critic Check 2 level appropriateness and isolation checks. Review Lenses Testing Lens test strategy and infrastructure
+      alignment evaluation.'
+    blast_radius: templates/test-specifications.md, templates/build-plan.md, skills/artifact-generator/SKILL.md, skills/builder/SKILL.md,
+      skills/critic/SKILL.md, skills/review-lenses/SKILL.md
     classification: enhancement
     date: 2026-02-18
-  - what: 'Apply new testing protocols to prawduct, fix template-to-artifact propagation gap in DCP'
+  - what: Pushback mechanism + Generalized agent verification architecture
+    why: 'Framework accepted technology-specific guidance ("bake MCP servers into UI products") without challenge, producing
+      a 285-line web-UI-specific design. Root cause: (1) Generality Over Enumeration not applied to guidance evaluation at runtime,
+      only to skill file changes; (2) no general verification architecture — specific technology accepted where a principle
+      should live. Two fixes: Part A adds Guidance Evaluation to the Orchestrator (4 trigger signals: technology specificity,
+      structural assumption, principle conflict, instance-specificity) active during discovery and iteration. Part B adds Agent
+      Verification Architecture to high-level-design.md as a general principle with MCP as one strategy among several, adds
+      HR10 (No Dev Tooling in Production), adds verification amplification rules and Builder Step 4b, strengthens Critic Check
+      7 with plan-level generality and Check 1 with verification coverage + HR10. Reframes closed-loop testing backlog item
+      from MCP-specific to general with MCP as first implementation track.'
+    blast_radius: docs/principles.md, docs/high-level-design.md, skills/orchestrator/stage-6-iteration.md, skills/orchestrator/stages-0-2.md,
+      skills/artifact-generator/SKILL.md, skills/builder/SKILL.md, skills/critic/SKILL.md, templates/test-specifications.md,
+      templates/build-plan.md, templates/project-state.yaml, .prawduct/framework-observations/schema.yaml, .prawduct/project-state.yaml,
+      .prawduct/working-notes/2026-02-15-closed-loop-testing-design.md, tests/scenarios/background-data-pipeline.md, tests/scenarios/family-utility.md
+    classification: enhancement
+    date: 2026-02-18
+  - what: Apply new testing protocols to prawduct, fix template-to-artifact propagation gap in DCP
     why: 'The test level enhancement updated templates but did not propagate to prawduct''s own .prawduct/artifacts/test-specifications.md.
-      5-whys root cause: DCP artifact verification asks "does this describe affected behavior" but template
-      structural additions (new sections) are not "behavior" — existing artifacts don''t know they''re missing
-      sections from updated templates. Fix 1: Updated prawduct''s test-specifications artifact with Test Strategy
-      section, Level annotations (unit/integration/e2e), and testing approach mapping (tools=unit, tool+state=integration,
-      full pipeline=e2e). Fix 2: Added template propagation rule to DCP Enhancement step 3 and Structural step 7:
-      "if templates were modified, artifacts generated from those templates are automatically in the blast radius."'
+      5-whys root cause: DCP artifact verification asks "does this describe affected behavior" but template structural additions
+      (new sections) are not "behavior" — existing artifacts don''t know they''re missing sections from updated templates. Fix
+      1: Updated prawduct''s test-specifications artifact with Test Strategy section, Level annotations (unit/integration/e2e),
+      and testing approach mapping (tools=unit, tool+state=integration, full pipeline=e2e). Fix 2: Added template propagation
+      rule to DCP Enhancement step 3 and Structural step 7: "if templates were modified, artifacts generated from those templates
+      are automatically in the blast radius."'
     blast_radius: .prawduct/artifacts/test-specifications.md, skills/orchestrator/stage-6-iteration.md, .prawduct/project-state.yaml
     classification: functional
     date: 2026-02-18
@@ -841,11 +842,7 @@ build_plan:
       description: "Test scenario rubric exercising has_human_interface (modality: screen, platform: mobile) with mobile-specific constraints; also tests dynamic domain generation"
       phase: v1-widen
       requirements: [R7.2]
-    - item: "Orchestrator: opinionated pushback"
-      description: "Challenge user decisions that conflict with good practice; requires calibrated confidence and domain knowledge"
-      phase: v1-widen
-      requirements: [R1.5]
-      skill: orchestrator
+    # Removed: "Orchestrator: opinionated pushback" — implemented: Guidance Evaluation section in stage-6-iteration.md with 4 trigger signals, cross-reference in stages-0-2.md, pushback observation type in schema (2026-02-18)
     - item: "Orchestrator: prior art awareness"
       description: "Surface existing solutions via web search during Stage 0-1; additive capability"
       phase: v1-widen
@@ -891,8 +888,12 @@ build_plan:
       phase: v1-validation
       skill: builder
     # --- v1-new (3 items, from user feedback 2026-02-15) ---
-    - item: "Closed-loop testing: debugging MCP server"
-      description: "Dev-only MCP server baked into has_human_interface products exposing screenshot, navigate, interact, inspect, logs, state, accessibility audit, config, and seed data tools. Enables agent to verify UI output without human involvement. Phases: design → implement for React+Playwright → integrate with Builder → add visual verification to test specs and Critic."
+    - item: "Agent verification loops: MCP implementation for web UI"
+      description: "Implement MCP-based verification for has_human_interface (web) products as the first concrete implementation of the Agent Verification Architecture. Uses Playwright for browser automation. Phases: dev-tools-spec template → Builder MCP integration → visual verification in test specs and Critic. See .prawduct/working-notes/2026-02-15-closed-loop-testing-design.md for the web-UI-specific design."
+      phase: v1-new
+      skill: builder
+    - item: "Agent verification loops: terminal and API strategies"
+      description: "Implement Bash-based verification for terminal and API products. Lighter than MCP — process I/O for terminal, curl/contract tests for APIs. Extends the Agent Verification Architecture to non-web product types."
       phase: v1-new
       skill: builder
     # Removed: "Existing project onboarding" — implemented: onboarding.md with 4-phase process (codebase analysis, user confirmation, artifact generation, enter iteration) (2026-02-15)

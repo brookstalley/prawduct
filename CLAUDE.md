@@ -159,9 +159,9 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 **Built:** Full stage pipeline (Stages 0-6), all 6 core skills, product output isolation (`.prawduct/`), two-layer classification (5 structural characteristics + dynamic domain depth), three-layer artifact generation, observation capture with pattern surfacing, unified mechanical governance (6 hooks), 3 test scenarios. C8 Learning System: capture active, pattern detection partially built, automated incorporation v2 scope. See `project-state.yaml` for detailed capability tracking.
 
 **Remaining work** (tracked in `project-state.yaml` → `build_plan.remaining_work`):
-- **v1-widen (8):** Orchestrator sophistication; Critic-Review Lenses integration; consumer-mobile-app scenario; Artifact Generator modular updates
+- **v1-widen (7):** Orchestrator sophistication (prior art, pacing, reclassification); Critic-Review Lenses integration; consumer-mobile-app scenario; Artifact Generator modular updates
 - **v1-validation (3):** Full V1 validation; Builder parallel execution and incremental builds
-- **v1-new (1):** Closed-loop testing MCP server
+- **v1-new (2):** Agent verification loops (MCP for web UI; Bash for terminal/API)
 - **v1.5 (5):** C7 Trajectory Monitor; regulatory discovery; cost awareness; accessibility enforcement; agent agnosticism
 
 ## Testing Strategy for This Project

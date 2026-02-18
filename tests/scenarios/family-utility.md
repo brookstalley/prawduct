@@ -150,6 +150,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[interactive]` Questions are ordered by impact (most important first).
 - `[interactive]` Questions use plain language — "Where will you use this?" not "What's your target platform?"
 - `[interactive]` Inferences are made and confirmed rather than asked open-endedly: "Since this is for family game nights, I'm assuming you don't need enterprise security — just a simple way to identify who's playing. Sound right?"
+- `[interactive]` **Guidance Evaluation proportionate:** The system must NOT challenge the non-technical user's cosmetic preferences (app name "Score Night", wanting it to feel "fun and colorful"). Guidance Evaluation should only fire if the user's direction conflicts with a quality principle (e.g., requesting inaccessible color choices would trigger principle conflict with HR7).
 
 ### Orchestrator (C1)
 
