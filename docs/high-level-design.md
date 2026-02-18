@@ -591,6 +591,41 @@ All projects (including this one) follow a three-tier system:
 
 ---
 
+## Agent Verification Architecture
+
+Products should include agent-accessible verification mechanisms that allow the building agent to observe, drive, and inspect the running product without requiring human intervention. This is a natural application of "The Product Includes Its Operations" and "Define Testability for Judgment-Dependent Outputs." The specific mechanism varies by product type.
+
+### Verification strategies by structural characteristic
+
+| Characteristic | What needs verifying | Possible approaches |
+|---------------|---------------------|-------------------|
+| `has_human_interface` (web) | Visual output, interaction, accessibility | MCP server with browser automation (preferred — native Claude Code integration); Bash + headless browser for lighter setups |
+| `has_human_interface` (terminal) | Screen output, keyboard interaction | Process I/O via Bash; MCP server with terminal capture for richer inspection |
+| `has_human_interface` (desktop) | Visual output, interaction, accessibility | MCP server with platform automation (Playwright for Electron, platform APIs for native) |
+| `runs_unattended` | Pipeline executes, outputs correct, idempotent | Bash (run + inspect outputs/logs) — usually sufficient; MCP server if pipeline state is complex |
+| `exposes_programmatic_interface` | Endpoints respond, contracts honored | Bash (curl/httpie) + contract tests; MCP server if complex state requires inspection between calls |
+| `handles_sensitive_data` | Access controls hold, audit trails work | Deepens other strategies — adds security verification scenarios |
+
+### MCP as preferred option, not only option
+
+MCP servers have a structural advantage: they integrate natively with Claude Code, giving the agent rich, typed tool access to the running product. This makes them the **preferred approach** when the verification problem warrants the infrastructure. But they're not always warranted.
+
+**Use an MCP server when:**
+- The agent needs capabilities it can't get through Bash (visual inspection, browser interaction, complex state queries)
+- The verification loop benefits from persistent state (browser session, connected debugger)
+- The product type has rich runtime state worth inspecting (UI state trees, connection pools, caches)
+
+**Use Bash-based verification when:**
+- Outputs are files, logs, or structured text the agent can read directly
+- The product can be driven via CLI or stdin
+- The product exposes HTTP endpoints queryable with curl
+
+### Dev tooling lifecycle
+
+All verification infrastructure is development-only (HR10: No Dev Tooling in Production). The build plan includes verification infrastructure setup in the scaffold chunk and removal/disabling instructions before deployment. The Critic verifies HR10 compliance during build reviews.
+
+---
+
 ## Cross-Cutting Concerns
 
 ### User Expertise Adaptation
