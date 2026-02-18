@@ -36,7 +36,7 @@ last_validated: 2026-02-16
 2. If file is corrupted: SessionStart hook clears it on next session
 3. If file has stale data: Governance hooks read it defensively — missing fields treated as not-applicable
 
-**Impact:** Governance tracking resets. Previous session's edit counts and debt tracking are lost, but project-state.yaml preserves the actual state.
+**Impact:** Governance tracking resets. Previous session's edit counts and debt tracking are lost, but project-state.yaml preserves the actual state. PFR state (`pfr_state`) also resets — if governance-sensitive files were edited before corruption, the PFR gate will not block further edits (since `required` defaults to false when missing). However, governance-tracker.sh will re-set `pfr_state` on the next governance-sensitive edit, restoring enforcement for subsequent changes.
 
 ### Interrupted Onboarding
 
