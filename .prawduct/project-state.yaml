@@ -489,9 +489,9 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-17)'
-    why: '1 cosmetic, 1 enhancement covering: Add Runtime Platform section to high-level-design.md; Summary: 2 entries compacted
-      (2026-02-16 to 2026-02-17)'
+  - what: 'Summary: 2 entries compacted (2026-02-16 to 2026-02-17)'
+    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-17 to 2026-02-17); Mechanical prawduct integration
+      tool: prawduct-init.sh/.py for idempotent set...'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-17'
@@ -666,19 +666,6 @@ change_log:
       (212 actual vs 290 estimated for hooks) due to inherent shell wrapper overhead. Generalization: "defense-in-depth where
       defense-in-one suffices" pattern should be watched for in future governance additions. The 3-tier DCP should reduce temptation
       to add uniform heavyweight process.'
-  - what: 'Mechanical prawduct integration tool: prawduct-init.sh/.py for idempotent setup and repair'
-    why: 'Adding prawduct to existing repos was a purely instructional process — 5 conditions with sub-conditions in Orchestrator
-      SKILL.md that mixed mechanical work (create dirs, write files) with LLM work (analyze codebase, interact with user). Setup
-      was unreliable across compactions, settings.json generation overwrote user hooks, no framework version tracking, no idempotent
-      repair. New tool handles all infrastructure mechanically: creates .prawduct/, framework-path, framework-version, CLAUDE.md
-      bootstrap, settings.json hook merging (preserves user hooks). Self-hosted safety prevents modifying the framework repo.
-      Schema version detection (v0/v0.5/v1/v2) enables migration routing. Orchestrator Step 1 simplified from ~30 lines complex
-      conditionals to ~15 lines calling tool + routing on next_action.'
-    blast_radius: tools/prawduct-init.sh (new), tools/prawduct-init.py (new), skills/orchestrator/SKILL.md (Step 1 rewritten),
-      skills/orchestrator/onboarding.md (Phase 3 opening simplified, stale condition 3 reference fixed), CLAUDE.md (project
-      tree), project-state.yaml (remaining_work, change_log)
-    classification: functional
-    date: 2026-02-16
   - what: 'Full self-hosting: generate 13 prawduct artifacts for the framework, restructure manifest into 5 categories'
     why: 'Framework declared itself self-hosted (Stage 6, iteration) with structural characteristics runs_unattended and exposes_programmatic_interface,
       but had zero generated artifacts in .prawduct/artifacts/. Coexistence strategy: existing docs serve humans, prawduct artifacts
@@ -788,6 +775,16 @@ change_log:
       CLAUDE.md project structure comments for at-a-glance visibility. Fixed doc-manifest.yaml artifact count (13 → 14, governance-mechanisms.md
       was missing).
     blast_radius: docs/high-level-design.md, CLAUDE.md, docs/doc-manifest.yaml, .prawduct/project-state.yaml
+    classification: enhancement
+    date: 2026-02-17
+  - what: 'CLAUDE.md context footprint optimization: condense tree, Framework Status, Testing Strategy'
+    why: 'CLAUDE.md (always-loaded, ~6k tokens) had grown organically with exhaustive file listings (14 artifacts, 13 tools,
+      17 templates individually enumerated), detailed Framework Status capability bullets (redundant with project-state.yaml
+      read during Session Resumption), and eval-run procedures in Testing Strategy (redundant with docs/evaluation-methodology.md).
+      Condensed: artifacts/ 14→1 line, tools/ 13→4 lines, templates/ 17→4 lines, scripts/ 3→1 line, tests/ 4→2 lines. Framework
+      Status 24→10 lines. Testing Strategy Recording subsection 9→1 line. Removed stray # test. 257→185 lines (~1,000 tokens
+      saved from every session start). No information lost — all removed content available on-demand from canonical sources.'
+    blast_radius: CLAUDE.md, .prawduct/project-state.yaml
     classification: enhancement
     date: 2026-02-17
   - what: 'Create governance-mechanisms.md artifact: consolidate enforcement chain documentation, slim 4 files'
