@@ -73,6 +73,28 @@ last_validated: null
 
 [Commands to run that prove the scaffold is working: build succeeds, dev server starts, test runner executes]
 
+### Verification Infrastructure
+
+<!--
+  Include this section when the user opted into agent verification during discovery.
+  Omit for products without verification infrastructure.
+
+  Specify what verification tools to set up, how to configure them, and how the
+  Builder uses them during development. The verification strategy depends on the
+  product's structural characteristics — see docs/high-level-design.md §
+  Agent Verification Architecture.
+
+  For web UI products: MCP server setup, browser automation configuration.
+  For terminal products: process I/O capture, screen inspection approach.
+  For APIs: curl/httpie test scripts, contract test setup.
+  For pipelines: output inspection commands, log verification.
+
+  IMPORTANT: All verification infrastructure is development-only (HR10).
+  Include removal/disabling instructions for production deployment.
+-->
+
+[Verification tool setup, configuration, and usage instructions. Include how to remove for deployment.]
+
 ## Project Structure
 
 <!--

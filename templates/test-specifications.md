@@ -126,6 +126,28 @@ last_validated: null
      - Action: [attempt invalid transition]
      - Expected: [transition rejected, entity remains in StartState] -->
 
+## Runtime Verification Scenarios
+
+<!-- Include this section when verification infrastructure was opted into during
+     discovery. These scenarios define what to observe in the RUNNING product
+     (beyond what automated tests cover) and what "correct" looks like.
+
+     Runtime verification catches issues that unit/integration/E2E tests miss:
+     visual correctness, interaction feel, accessibility in practice, timing
+     and animation, and cross-browser/cross-platform rendering.
+
+     Each scenario specifies what to observe and what "correct" looks like:
+
+     **Scenario: [what to verify]**
+     - Verification method: MCP | Bash | manual
+     - Setup: [product running state needed]
+     - Observe: [what to look at or drive]
+     - Correct: [what the output should look like or how it should behave]
+     - Incorrect: [what would indicate a problem]
+
+     For products WITHOUT verification infrastructure, omit this section.
+     Tests (above) provide the verification. -->
+
 ## Performance & Non-Functional Tests
 
 <!-- Include this section when NFRs specify quantified performance targets

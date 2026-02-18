@@ -305,6 +305,24 @@ build_plan:
   governance_checkpoints: []
 
 # =============================================================================
+# DEV TOOLS
+# =============================================================================
+# Agent verification infrastructure opted into during discovery.
+# Populated during Stage 1-2 when user opts into verification tooling.
+# Consumed by Artifact Generator (Phase D) and Builder (Step 4b).
+# See docs/high-level-design.md § Agent Verification Architecture.
+
+dev_tools:
+  # Whether verification infrastructure is enabled for this product.
+  enabled: false
+  # Verification strategy appropriate to the product's structural characteristics.
+  # Values: mcp (MCP server), bash (CLI-driven), none
+  strategy: none
+  # Current state of verification infrastructure.
+  # Values: not-started, scaffolded, operational, removed (for deployment)
+  infrastructure_status: not-started
+
+# =============================================================================
 # BUILD STATE
 # =============================================================================
 # Runtime tracking during Stage 5 (Building).

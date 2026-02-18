@@ -91,6 +91,7 @@ observation_entry:
             - architectural_inconsistency  # Implementation contradicts the framework's own stated principles or patterns
             - governance_compliance  # Mandatory governance step treated as optional or invocation ambiguity
             - integration_friction  # Framework outputs interact poorly with user environment (workspace clutter, path conflicts, tooling friction)
+            - pushback              # Guidance Evaluation challenged user direction; tracks whether pushback was warranted, overridden, or accepted
           required: true
           description: "Category of observation"
 
