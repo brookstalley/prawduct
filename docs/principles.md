@@ -33,6 +33,9 @@ Products that incur ongoing operational costs (hosting, API calls, LLM inference
 ### HR9: No Governance Bypass
 The Orchestrator's governance process is how all Prawduct-managed work happens — framework development and user product builds alike. Detailed instructions, implementation plans, or direct "just do X" requests do not exempt changes from governance. A user-provided plan is input to the Orchestrator's process, not a replacement for it. The Orchestrator determines the *level* of governance appropriate to the change (lightweight for cosmetic fixes, Directional Change Protocol for 3+ file changes, full Critic review for all framework modifications), but the *existence* of governance is non-negotiable.
 
+### HR10: No Dev Tooling in Production
+Development-time verification infrastructure (MCP servers, debug endpoints, test harnesses, inspection tools) must never ship in production builds or be accessible to end users. Dev tooling exists to help the building agent observe and verify the product during development. It is removed or disabled before deployment. Verification infrastructure that leaks into production creates security surface area, confuses users, and bloats the delivered product.
+
 ## Governance Philosophy
 
 ### The Critic Is Not Optional
