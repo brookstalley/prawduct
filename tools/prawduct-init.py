@@ -1027,9 +1027,12 @@ PRAWDUCT_GITIGNORE_ENTRIES = [
     "# Prawduct session files (ephemeral, machine-local)",
     ".prawduct/.orchestrator-activated",
     ".prawduct/.session-governance.json",
+    ".prawduct/.session-governance.json.bak",
     ".prawduct/.session-edits.json",
     ".prawduct/.product-session.json",
     ".prawduct/.onboarding-state.json",
+    ".prawduct/.critic-pending",
+    ".prawduct/.critic-findings.json",
 ]
 
 # In local mode, the entire .prawduct/ directory is gitignored.

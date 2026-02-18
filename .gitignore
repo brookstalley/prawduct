@@ -4,4 +4,5 @@
 .prawduct/.session-edits.json
 .prawduct/.orchestrator-activated
 .prawduct/.session-governance.json
+.prawduct/.session-governance.json.bak
 __pycache__/
