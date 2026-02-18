@@ -72,7 +72,7 @@ When all chunks are complete:
 
    > "Your [product name] is built. Here's what it does: [summary of core flows]. All [N] tests pass. To try it: [how to verify it works — e.g., run the product, execute a test scenario, or try a workflow]. A few things the review found: [brief findings summary]. Want to try it out and let me know what you'd like to change?"
 
-5. **Mention contribution opportunity.** After presenting the build result, briefly note that the framework captured observations during the build. If the user wants to contribute these back, they can raise a PR including files from `framework-observations/` (in the product root). Also suggest periodic `git pull` to pick up improvements from other sessions. Keep this to 1-2 sentences — it's an FYI, not a pitch.
+5. **Mention contribution opportunity.** After presenting the build result, briefly note that the framework captured observations during the build. These can be contributed back to the framework — the Orchestrator's Observation Contribution Flow (in `skills/orchestrator/SKILL.md`) will prompt for this during the next session resumption, or the user can run `tools/contribute-observations.sh --check` to see what's available. Also suggest periodic `git pull` to pick up improvements from other sessions. Keep this to 1-2 sentences — it's an FYI, not a pitch.
 
 6. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols.md` § FRP if not already loaded). Record reflection in `change_log`.
 

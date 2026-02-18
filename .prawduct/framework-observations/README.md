@@ -240,17 +240,31 @@ See `docs/evaluation-methodology.md` § "Recording Results" for the extraction p
 
 ## Contributing Observations Back
 
-When using prawduct on a product repo (not the framework itself), observations are captured locally in `.prawduct/framework-observations/`. To contribute these back to the framework:
+When using prawduct on a product repo (not the framework itself), observations are captured locally in `.prawduct/framework-observations/`. The Orchestrator automatically checks for uncontributed observations during session resumption and offers to submit them.
+
+**Automatic prompting:** During session resumption, if the health check reports `UNCONTRIBUTED_OBSERVATIONS > 0`, the Orchestrator mentions the opportunity and walks the user through the Observation Contribution Flow (privacy review, optional edits, submission).
+
+**Manual tool usage:**
 
 ```bash
-# Format an observation as shareable markdown
-tools/format-contribution.sh .prawduct/framework-observations/<observation>.yaml
+# Check what's available to contribute
+tools/contribute-observations.sh --check <product-dir>
 
-# Or write to a file
-tools/format-contribution.sh .prawduct/framework-observations/<observation>.yaml --output file
+# Preview the issue body that would be submitted
+tools/contribute-observations.sh --format <product-dir>
+
+# Submit as a GitHub issue (requires gh CLI)
+tools/contribute-observations.sh --submit <product-dir>
+
+# Submit specific files only
+tools/contribute-observations.sh --submit <product-dir> file1.yaml file2.yaml
 ```
 
-The output includes a human-readable summary, the full YAML, and instructions for submitting to the framework repo.
+**Privacy note:** Observations are submitted as public GitHub issues on the framework repo. The Orchestrator prompts the user to review for sensitive information before submission. Observations should already be generalized (not product-specific) per the capture guidelines above, but review before contributing is always recommended.
+
+**Post-contribution tracking:** After submission, observation files are marked with `contributed_to_framework` (timestamp) and `contribution_issue_url` (link to the created issue). These fields prevent re-prompting for already-contributed files.
+
+**Self-hosted note:** The framework repo's own observations are acted on directly through the normal triage → action cycle. The contribution tool returns `self_hosted: true` and count 0 for the framework repo.
 
 ## Meta-Improvement Note
 

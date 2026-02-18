@@ -193,7 +193,7 @@ Apply the framework's principles to its own founding architectural decisions —
 
 5. **Framework observation.** Capture via `tools/capture-observation.sh` with `--rca-symptom`, `--rca-root-cause`, and `--rca-category` arguments (these are always required — see note below). The observation must be generalized (not product-specific) per standard observation rules in `framework-observations/README.md`.
 
-6. **Contribution pathway.** Present the observation to the user and offer `tools/format-contribution.sh` to generate shareable markdown. Keep to 1-2 sentences — "I captured a framework observation about [topic]. If you want to contribute it back, run `tools/format-contribution.sh <file>`."
+6. **Contribution pathway.** Briefly mention the observation was captured — "I captured a framework observation about [topic]." Observations accumulate in `.prawduct/framework-observations/` and are surfaced for contribution during session resumption (see the Orchestrator's Observation Contribution Flow in `skills/orchestrator/SKILL.md`). For manual contribution, use `tools/contribute-observations.sh --format <product-dir>`.
 
 **RCA applies to all observations, not just PFR.** PFR mandates 5-whys as part of the fix flow, but root cause analysis is required for *every* observation captured — whether through PFR, DCP retrospective, FRP, or ad hoc learning. The observation schema enforces this: `root_cause_analysis` with `five_whys` is a required field. If an observation isn't worth analyzing causally, it isn't worth recording.
 
