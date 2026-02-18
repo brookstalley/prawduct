@@ -1,0 +1,22 @@
+---
+observation_id: 2f8f72df-ba11-40b5-b91c-e18a28b9a226
+timestamp: 2026-02-18T19:55:28Z
+session_type: framework_dev
+session_context:
+  framework_version: cb277f9
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Manual observation contribution flow has zero adoption — product repos accumulate observations but the 4-step manual process (format, copy, create issue, track) is never executed"
+    evidence: "MetaLLM built 7 chunks with 15+ warning findings but .prawduct/framework-observations/ is empty. format-contribution.sh existed but required manual invocation with no automation, tracking, or session integration"
+    proposed_action: "Created contribute-observations.sh with --check/--format/--submit modes, integrated with session-health-check.sh and Orchestrator session resumption for automatic prompting"
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Product observations never reach the framework repo"
+      root_cause: "Contribution pathway was advisory-only with no automation, tracking, or session integration — purely manual 4-step process"
+      category: process_not_enforced
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+  - "tools/session-health-check.sh"
+---

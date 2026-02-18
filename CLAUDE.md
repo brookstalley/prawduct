@@ -94,6 +94,7 @@ prawduct/
 │   ├── prawduct-init.{sh,py}         # Project setup, repair, settings.json merging, gitignore management
 │   ├── session-health-check.sh        # Session orientation: patterns, backlog, divergence, health
 │   ├── compact-project-state.{sh,py}  # Mechanical compaction of growing project-state.yaml sections
+│   ├── contribute-observations.sh     # Check/format/submit product observations to framework repo
 │   └── ...                            # Observation lifecycle, Critic evidence, product root detection
 ├── scripts/                           # Eval/validation helpers (validate-eval-output, validate-schema, check-artifacts)
 ├── templates/                         # Starting templates for user project artifacts

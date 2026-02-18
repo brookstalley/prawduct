@@ -36,6 +36,7 @@ Prawduct operates as two interlocking pipelines: the **stage pipeline** (user-fa
 | framework-observations/*.yaml | File read | YAML per schema | Always available |
 | change_log entries | Embedded in project-state.yaml | YAML | Always available |
 | eval-history/*.md | File read | Markdown with YAML frontmatter | Append-only |
+| Product repo observations | Contributed via GitHub issue | YAML → Markdown (contribute-observations.sh) | User-triggered during session resumption |
 
 ## Processing Stages
 
@@ -69,9 +70,10 @@ Prawduct operates as two interlocking pipelines: the **stage pipeline** (user-fa
 [Stage Transitions] → [Observation Capture] → [Pattern Detection] → [Pattern Surfacing] → [Human Decision] → [Incorporation]
 [DCP Retrospectives] ↗                              ↓                        ↓                    ↓                    ↓
 [Evaluations] ↗                              [obs_utils.py]        [session-health-check]   [act or defer]    [Stage 6 + Critic]
+[Product Repos] → [contribute-observations.sh] → [GitHub Issue] → [Framework Triage] ↗
 ```
 
-**C8a — Observation Capture (BUILT):** Automatic at stage transitions (change_log entry blocking). Observation files for substantive findings.
+**C8a — Observation Capture (BUILT):** Automatic at stage transitions (change_log entry blocking). Observation files for substantive findings. Product repos capture observations locally; `contribute-observations.sh` upstreams them to the framework via GitHub issues.
 
 **C8b — Pattern Detection (PARTIALLY BUILT):** `session-health-check.sh` parses observations, applies tiered thresholds (meta: 2+, build: 3+, product: 4+), surfaces actionable patterns.
 

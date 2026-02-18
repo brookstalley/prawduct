@@ -1,0 +1,25 @@
+---
+observation_id: e4cc0045-9b3f-4f49-8c91-ade537db1418
+timestamp: 2026-02-18T19:08:48Z
+session_type: framework_dev
+session_context:
+  framework_version: cb277f9
+observations:
+  - type: process_friction
+    stage: meta
+    severity: warning
+    description: "Product-to-framework observation contribution flow is almost entirely manual with no automation, prompting, or cross-product aggregation — observations accumulate in product repos but never feed framework pattern detection"
+    evidence: "MetaLLM had 7 chunks with 15+ warning findings but .prawduct/framework-observations/ is empty. format-contribution.sh exists but requires manual invocation, manual GitHub issue creation, and manual YAML transfer. observation-analysis.sh reads only from framework repo observations directory. No mechanism surfaces uncontributed observations to users during session resumption."
+    proposed_action: "Design automated contribution pipeline: (1) session-end prompt when observations exist, (2) observation-analysis that can read from multiple product repos, (3) contribution format that enables PR automation, (4) session resumption surfaces uncontributed observation count"
+    status: noted
+    root_cause_analysis:
+      symptom: "Product observations sit in product repos indefinitely and never reach framework pattern detection"
+      root_cause: "Observation system was designed for single-repo operation (framework self-development) and contribution from product repos was added as an afterthought with no mechanical enforcement or automation"
+      category: missing_process
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+  - "tools/capture-observation.sh"
+  - "tools/format-contribution.sh"
+  - "tools/observation-analysis.sh"
+  - "docs/self-improvement-architecture.md"
+---

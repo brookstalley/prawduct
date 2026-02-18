@@ -93,12 +93,13 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 **Purpose**: Passive observation collection as side-effect of framework operation.
 
 **Implementation**:
-- `framework-observations/` directory in framework repo (NOT user project directories)
+- `framework-observations/` directory in framework repo AND product repos (`.prawduct/framework-observations/`)
 - YAML files with schema: observation_id, timestamp, session_type, observations array
 - Mandatory reflection at every Orchestrator stage transition (recorded in `change_log` — blocking)
 - Observation files created only for substantive findings (see `framework-observations/README.md` for criteria)
+- **Product repo contribution**: Product repos capture observations locally during builds. `tools/contribute-observations.sh` upstreams them to the framework via GitHub issues. The Orchestrator prompts for contribution during session resumption when `UNCONTRIBUTED_OBSERVATIONS > 0`.
 
-**Location**: Framework repo, not user projects. Observations are about framework behavior, not product specifics.
+**Location**: Framework repo for self-hosted observations. Product repos capture observations locally; the contribution pipeline (`contribute-observations.sh --submit`) bridges product-use signal to the framework repo.
 
 **Status tracking**: Each observation has `status: noted | triaged | requires_pattern | acted_on | archived`
 
@@ -226,15 +227,16 @@ Directional change completes
 
 The Structural Critique Protocol now triggers after directional changes (not just every 3 evals). If a retrospective reveals that the learning system failed to detect a principle violation, that's a signal to expand the Structural Critique's dimensions or the observation system's coverage.
 
-### Three Parallel Capture Paths
+### Four Capture Paths
 
 | Path | Triggers | Captures | Mechanism |
 |------|----------|----------|-----------|
 | Product sessions | Stage transitions | Behavioral observations, coverage gaps, proportionality issues | FRP + observation capture (automatic, blocking) |
 | Non-cosmetic fixes | Every fix in Stage 5/6 | Root cause analysis, framework gaps, class-of-problem patterns | Post-Fix Reflection Protocol (PFR) — classify, RCA before fix, meta-fix, observe, contribute |
 | Framework development | Directional changes | Detection gaps, process gaps, architecture blind spots | DCP step 7 retrospective (mandatory) |
+| Product deployments | Session resumption (prompted) or manual | Framework gaps as seen from real product use, coverage blind spots across diverse products | `contribute-observations.sh --submit` → GitHub issue → framework triage |
 
-Both paths feed the same downstream pipeline: observations → pattern detection → incorporation. The difference is the trigger and the questions asked, not the output format or processing.
+All paths feed the same downstream pipeline: observations → pattern detection → incorporation. The difference is the trigger and the questions asked, not the output format or processing. The product deployments path is unique: it brings distributed, real-world product-use signal into the framework from outside self-hosted sessions.
 
 ### Why This Matters
 

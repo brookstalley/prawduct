@@ -28,6 +28,7 @@ Prawduct's monitoring system is `tools/session-health-check.sh` — it runs at s
 | Deprecated term references | Surviving references to removed vocabulary | 0 | grep for patterns from deprecated_terms |
 | Source-artifact divergence | Source commits since last artifact update | < 10 commits | git log comparison |
 | Archive backlog | Resolved observations not yet archived | 0 | Status check in observation files |
+| Uncontributed observations | Product-repo observation files not yet submitted to framework | 0 | `contribute-observations.sh --check` via session-health-check.sh (product repos only) |
 
 ## Failure Detection
 
@@ -42,6 +43,7 @@ Prawduct's monitoring system is `tools/session-health-check.sh` — it runs at s
 | Missing governance state | .session-governance.json absent during active build | blocking |
 | PFR diagnosis missing | Governance-sensitive files edited without `pfr_state.diagnosis_written: true` in .session-governance.json | blocking |
 | PFR observation missing | Governance-sensitive files edited but `pfr_state.observation_file` not set or file doesn't exist | blocking |
+| Uncontributed observations | `UNCONTRIBUTED_OBSERVATIONS > 0` in product repos | note (non-blocking, mentioned during session resumption) |
 
 ## Alerting
 

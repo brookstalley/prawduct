@@ -1150,3 +1150,7 @@ deprecated_terms:
     replacement: "Post-Fix Reflection Protocol (PFR)"
     removed_date: 2026-02-17
     patterns: ["Root Cause Protocol"]
+  - term: "format-contribution.sh"
+    replacement: "contribute-observations.sh"
+    removed_date: 2026-02-18
+    patterns: ["format-contribution\\.sh", "format-contribution"]
