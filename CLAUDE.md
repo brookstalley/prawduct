@@ -59,7 +59,7 @@ prawduct/
 ├── README.md                          # Human-facing project overview and getting started
 ├── CLAUDE.md                          # You are here
 ├── requirements.txt                   # Python dependencies (pyyaml)
-├── .prawduct/                         # All prawduct outputs (same layout as product repos)
+├── .prawduct/                         # Product specifications (WHAT/HOW — downstream from docs/)
 │   ├── project-state.yaml             # Framework's own project state
 │   ├── hooks/                         # Governance hook scripts (6 hooks)
 │   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
@@ -68,7 +68,7 @@ prawduct/
 │   │   ├── governance-prompt.sh       # UserPromptSubmit hook: enforces Orchestrator activation (HR9)
 │   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists
 │   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
-│   ├── artifacts/                     # Generated prawduct artifacts (LLM-facing structured docs)
+│   ├── artifacts/                     # Product specs derived from docs/ + discovery (see high-level-design.md § Documentation Architecture)
 │   │   ├── product-brief.md           # Vision, users, core flows, scope
 │   │   ├── data-model.md             # Entities, state machines, constraints
 │   │   ├── nonfunctional-requirements.md  # Performance, scalability, cost
@@ -157,7 +157,7 @@ prawduct/
 ├── .claude/                           # Claude Code integration (settings only)
 │   ├── settings.json                  # Project-level Claude Code settings (hooks point to .prawduct/hooks/)
 │   └── settings.local.json            # Local overrides (not committed)
-└── docs/                              # This project's own Tier 1 documentation
+└── docs/                              # Design documents (WHY — upstream, Tier 1; see high-level-design.md § Documentation Architecture)
     ├── vision.md
     ├── requirements.md
     ├── principles.md
