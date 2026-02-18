@@ -63,6 +63,8 @@ After each chunk, diff the implementation against artifact specifications.
 - **Accessibility alongside features** (when `has_human_interface` is active): Verify that accessibility requirements are specified alongside features, not deferred to a later phase (HR7). Features delivered without accessibility specifications are a **WARNING**.
 - **Ongoing cost identification** (when `runs_unattended` or `exposes_programmatic_interface` is active): Verify that ongoing operational costs are identified in the operational spec or nonfunctional requirements (HR8). Infrastructure, API calls, storage, and compute costs that appear in the implementation but are absent from specs are a **WARNING**.
 - **Operational readiness** (when `runs_unattended` or `exposes_programmatic_interface` is active): Verify monitoring is implemented (not just specified), failure recovery paths are tested, alerting thresholds are configured, deployment procedure is documented and reproducible. Missing operational implementation for an active operational characteristic is a **WARNING**.
+- **Verification coverage** (when verification infrastructure was opted into): Verify that runtime verification scenarios exist in test specifications, that verification infrastructure is included in the build plan scaffold, and that the Builder's Step 4b was executed for chunks with user-facing deliverables. Missing verification for opted-in products is a **WARNING**.
+- **Dev tooling isolation** (HR10): Verify that verification infrastructure (MCP servers, debug endpoints, test harnesses) is development-only. Check that build/deployment configurations exclude dev tooling. Dev tools accessible in production builds are **BLOCKING**.
 
 ### Check 2: Test Integrity
 
@@ -172,9 +174,11 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - If a modification adds a specific concern as an enumerated item rather than strengthening the dynamic generation system, it fails this check.
 - If a modification strengthens a general principle or structural amplification rule so the LLM naturally surfaces the concern for any relevant product, it passes.
 - **Test:** Mentally apply the modified skill to three very different products. Does the modification help with all three, or only the product that triggered it?
+- **Plan-level generality:** When reviewing design plans, working notes, or proposed approaches (not just skill file changes): mentally apply the planned approach to three very different products (e.g., a web app, a CLI tool, and firmware). Does the approach help all three, or does it assume one product type? Plans that name a specific technology as *the* solution where a general principle would serve better fail this check — the technology should be positioned as one implementation of the general principle.
 
 **Severity guide:**
 - Enumerated concern that doesn't generalize → **blocking**
+- Plan that assumes one product type where a general principle would serve better → **warning**
 - General principle worded to favor one product type → **warning**
 - Slight specificity that doesn't harm generality → **note**
 

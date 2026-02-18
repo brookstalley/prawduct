@@ -95,6 +95,23 @@ Run the full test suite (not just tests for this chunk). All tests must pass.
 - If a test from a previous chunk fails (regression), fix the regression before proceeding. Never disable or weaken a previous test to make a new chunk work (HR1: No Test Corruption — see docs/principles.md).
 - If tests cannot pass because of an artifact gap, raise an `artifact_insufficiency` flag.
 
+### Step 4b: Runtime Verification (when verification infrastructure exists)
+
+After tests pass, verify the running product matches specifications by using the verification infrastructure set up in the scaffold chunk. This step is only applicable when the user opted into verification tooling during discovery and the scaffold includes verification infrastructure.
+
+**What to verify:**
+- The product runs and is interactive (launch it, observe it responds)
+- Core flows from the Product Brief work end-to-end in the running product (not just in tests)
+- Visual output matches design specifications (for `has_human_interface` products)
+- Output format matches expectations (for `runs_unattended` products)
+
+**How to verify (varies by product type):**
+- **MCP server available:** Use the verification MCP tools to inspect, drive, and observe the running product.
+- **Bash-based:** Launch the product, drive it via CLI/stdin/curl, inspect outputs.
+- **No verification infrastructure:** Skip this step. Tests (Step 4) provide the verification.
+
+**If verification reveals a discrepancy** between the running product and the specifications that tests didn't catch, fix the implementation and add a test that would have caught it. Then re-run Step 4.
+
 ### Step 5: Update Project State
 
 Update `project-state.yaml` with the following sub-steps. All three are required.

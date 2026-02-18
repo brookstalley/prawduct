@@ -64,6 +64,8 @@ Universal artifact deepening: Product Brief frames "Core Flows" as user journeys
 - Every interaction traces to a core flow; every data element traces to Data Model.
 - Experience-critical parameters concretely specified: frame rates, response times, animation timing, physical feedback characteristics — whatever is perceptible to the user and would diverge if left to implementation.
 
+**Verification amplification:** When the user opted into agent verification during discovery, include verification infrastructure in artifact generation. For web modality: MCP server with browser automation is the preferred approach (rich, typed tool access to the running product). For terminal modality: process I/O via Bash is usually sufficient. For desktop: platform-appropriate automation. Verification infrastructure is development-only (HR10). See `docs/high-level-design.md` § Agent Verification Architecture.
+
 **Template reference:** `templates/human-interface/` provides proven structure for screen-modality products. For other modalities, amplification rules + process constraints guide generation.
 
 ### `runs_unattended`
@@ -79,6 +81,8 @@ Universal artifact deepening: Product Brief frames success criteria for headless
 - Idempotency: if the system runs twice, it must not produce duplicate output.
 - Configuration is validated at startup, not at first use.
 
+**Verification amplification:** For unattended systems, Bash-based verification is usually sufficient — run the pipeline and inspect outputs/logs. MCP servers are warranted only when pipeline state is complex or requires real-time observation. Verification scenarios: pipeline executes end-to-end, outputs are correct, idempotency holds, failure modes are observable.
+
 **Template reference:** `templates/unattended-operation/` provides proven structure.
 
 ### `exposes_programmatic_interface`
@@ -93,6 +97,8 @@ Universal artifact deepening: Data Model gets API-facing schemas and request/res
 - Backward compatibility strategy is explicit before any versioning decisions.
 - Consumer experience is first-class: error messages are helpful, not just status codes.
 - Rate limiting and authentication are specified per-consumer-type, not globally.
+
+**Verification amplification:** For APIs, Bash with curl/httpie plus contract tests provides adequate verification. MCP servers are warranted when the API has complex state requiring inspection between calls (connection pools, caches, session state).
 
 **Template reference:** None currently. Dynamic generation guided by amplification rules + process constraints.
 
@@ -215,6 +221,8 @@ Read `templates/build-plan.md`. Generate from `project-state.yaml` → `technica
 5. **Early feedback milestone.** Which chunk first lets the user interact with a working product.
 
 6. **Governance checkpoints.** At minimum: after early feedback milestone and after all chunks complete.
+
+7. **Verification infrastructure** (when user opted in during discovery). Include verification tooling in the scaffold chunk specification: what tools to install, how to configure them, and how they integrate with the dev workflow. Specify the verification strategy appropriate to the product's structural characteristics (see `docs/high-level-design.md` § Agent Verification Architecture). Verification infrastructure is development-only — include removal/disabling instructions for deployment (HR10: No Dev Tooling in Production).
 
 **NFR technique traceability:** For every NFR that constrains *how* something is built, the build plan must include a concrete implementation instruction in the relevant chunk.
 
