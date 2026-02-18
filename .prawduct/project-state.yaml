@@ -205,10 +205,10 @@ artifact_manifest:
     - name: high-level-design
       file_path: docs/high-level-design.md
       role: product-context
-      version: 2
-      last_validated: 2026-02-15
+      version: 3
+      last_validated: 2026-02-17
       tier: 1
-      notes: "Consolidated: duplicated sections slimmed with pointers to canonical sources"
+      notes: "Added Runtime Platform section; consolidated duplicated sections with pointers to canonical sources"
     - name: principles
       file_path: docs/principles.md
       role: product-context
@@ -489,8 +489,9 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 1 entries compacted (2026-02-17)'
-    why: '1 cosmetic covering: Summary: 9 entries compacted (2026-02-14 to 2026-02-15)'
+  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-17)'
+    why: '1 cosmetic, 1 enhancement covering: Add Runtime Platform section to high-level-design.md; Summary: 2 entries compacted
+      (2026-02-16 to 2026-02-17)'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-17'
@@ -625,16 +626,6 @@ change_log:
       critical change — without it, editing CLAUDE.md in a product repo would trigger framework governance. The early exit in
       critic-reminder.sh is important for product repo commits — without it, product commits would fail the Critic evidence
       check. No new observation types needed — the failure modes for framework-path staleness are loud, not subtle.'
-  - what: 'Documentation and artifact sync scrub: remove stale Stage 0.5 reference, fix 25 bidirectional dependency inconsistencies,
-      update CLAUDE.md line count and remaining work phases'
-    why: 'Audit found 4 sync issues. Finding 1 (critical): review-lenses/SKILL.md still referenced Stage 0.5 removed in user-feedback
-      overhaul — root cause was temporal gap before Concept Ripple check existed. Finding 2 (high): artifact_manifest depended_on_by
-      drifted in 25 places because it is a denormalized cache of depends_on inverse with no validation. Finding 3-4 (low): CLAUDE.md
-      Orchestrator line count stale (156→182) and missing v1-new phase in remaining work summary. All other cross-references
-      verified clean (artifact paths, observation files, skill references, project structure tree).'
-    blast_radius: skills/review-lenses/SKILL.md, project-state.yaml (artifact_manifest, change_log), CLAUDE.md
-    classification: functional
-    date: 2026-02-16
   - what: 'Root Cause Discipline + Vocabulary Lifecycle: embed 5-whys analysis in learning loop, add deprecated term registry
       with mechanical scanning'
     why: 'Root cause chain: stale references survive directional changes → Concept Ripple check is single-pass with no persistence
@@ -779,16 +770,32 @@ change_log:
     blast_radius: skills/orchestrator/onboarding.md
     classification: functional
     date: 2026-02-17
-  - what: 'Compaction enforcement: governance-stop blocks on compaction debt, Session Resumption compacts automatically, Critic Check 6 requires enforcement for lossless operations'
-    why: 'Advisory-only compaction drifted to non-compliance — project-state.yaml grew to 1172 lines (change_log 29 entries, threshold 20) despite full infrastructure existing (tool, detection, instructions). Root cause: incomplete_coverage — Critic Check 6 validates that growing collections have lifecycle + compaction + monitoring, but not enforcement that mechanisms fire. Also fixed compact-project-state.py steady-state bug where --check reported compaction needed when preserved directional entries made reduction impossible.'
-    blast_radius: .prawduct/hooks/governance-stop.sh, skills/orchestrator/SKILL.md, skills/critic/SKILL.md, tools/compact-project-state.py, .prawduct/project-state.yaml
+  - what: 'Compaction enforcement: governance-stop blocks on compaction debt, Session Resumption compacts automatically, Critic
+      Check 6 requires enforcement for lossless operations'
+    why: 'Advisory-only compaction drifted to non-compliance — project-state.yaml grew to 1172 lines (change_log 29 entries,
+      threshold 20) despite full infrastructure existing (tool, detection, instructions). Root cause: incomplete_coverage —
+      Critic Check 6 validates that growing collections have lifecycle + compaction + monitoring, but not enforcement that mechanisms
+      fire. Also fixed compact-project-state.py steady-state bug where --check reported compaction needed when preserved directional
+      entries made reduction impossible.'
+    blast_radius: .prawduct/hooks/governance-stop.sh, skills/orchestrator/SKILL.md, skills/critic/SKILL.md, tools/compact-project-state.py,
+      .prawduct/project-state.yaml
     classification: functional
     date: 2026-02-17
+  - what: Document docs/ vs .prawduct/artifacts/ distinction in high-level-design.md, clarify CLAUDE.md tree, fix artifact count
+    why: The principled distinction (docs/ = design documents explaining WHY, upstream; .prawduct/artifacts/ = product specifications
+      describing WHAT/HOW, downstream) was sound and every file was correctly placed, but the principle was undocumented — invisible
+      and vulnerable to drift. Added Documentation Architecture subsection to high-level-design.md as canonical reference. Updated
+      CLAUDE.md project structure comments for at-a-glance visibility. Fixed doc-manifest.yaml artifact count (13 → 14, governance-mechanisms.md
+      was missing).
+    blast_radius: docs/high-level-design.md, CLAUDE.md, docs/doc-manifest.yaml, .prawduct/project-state.yaml
+    classification: enhancement
+    date: 2026-02-17
   - what: 'Create governance-mechanisms.md artifact: consolidate enforcement chain documentation, slim 4 files'
-    why: 'Enforcement mechanism descriptions were duplicated across 5+ files (self-improvement-architecture.md, failure-recovery-spec.md,
-      framework-observations/README.md, CLAUDE.md) with no single reference for hook lifecycle, state files, or enforcement chains.
-      New artifact documents all 6 hooks, state file lifecycle, and 6 enforcement chains (activation, PFR, DCP, Critic evidence,
-      compaction, chunk review). Slimmed ~100 lines of duplicated mechanism descriptions in existing docs, replacing with pointers.'
+    why: Enforcement mechanism descriptions were duplicated across 5+ files (self-improvement-architecture.md, failure-recovery-spec.md,
+      framework-observations/README.md, CLAUDE.md) with no single reference for hook lifecycle, state files, or enforcement
+      chains. New artifact documents all 6 hooks, state file lifecycle, and 6 enforcement chains (activation, PFR, DCP, Critic
+      evidence, compaction, chunk review). Slimmed ~100 lines of duplicated mechanism descriptions in existing docs, replacing
+      with pointers.
     blast_radius: .prawduct/artifacts/governance-mechanisms.md (new), docs/self-improvement-architecture.md, .prawduct/artifacts/failure-recovery-spec.md,
       .prawduct/framework-observations/README.md, CLAUDE.md, .prawduct/project-state.yaml
     classification: functional

@@ -1,5 +1,41 @@
 # High-Level Design
 
+## Runtime Platform
+
+Prawduct is not a standalone system. It runs on top of **Claude Code** (Anthropic's CLI for Claude), which provides the runtime primitives that everything else in this document assumes.
+
+### What Claude Code provides
+
+Claude Code gives the LLM a project-aware execution environment:
+
+- **File I/O tools** — read, write, edit, glob, grep across the project directory
+- **Bash execution** — run shell commands, scripts, and build tools
+- **5 lifecycle hook types** — PreToolUse, PostToolUse, UserPromptSubmit, Stop, and SessionStart (compact), each firing shell commands on specific events
+- **CLAUDE.md project instructions** — loaded at session start, providing persistent context that survives conversation turns
+- **Per-project settings** — `.claude/settings.json` for hook registrations and configuration
+- **`$CLAUDE_PROJECT_DIR`** — the project root, available to hooks and scripts
+
+These are generic capabilities. Claude Code knows how to manipulate files, run commands, and fire hooks — but has no opinion about what to build, in what order, or to what standard.
+
+### What prawduct adds
+
+Prawduct layers a product development methodology onto Claude Code's runtime:
+
+- **Structured stage pipeline** (Stages 0-6: Intake through Iteration) — so the LLM knows what phase of product development it's in and what to do next
+- **6 governance hooks** — shell scripts registered with Claude Code's hook system that mechanically enforce activation, change tracking, Critic evidence, compaction, and review gates
+- **Artifact generation system** — structural characteristics drive which artifacts to produce; templates and amplification rules guide their content
+- **Project state coordination** — `project-state.yaml` tracks decisions, dependencies, open questions, and change history across sessions
+- **Skill-based specialization** — 6 skills (Orchestrator, Domain Analyzer, Artifact Generator, Builder, Critic, Review Lenses) implemented as markdown instruction files that Claude Code loads on demand
+- **Observation-based learning** — structured capture, triage, and pattern detection that feeds back into framework improvement
+
+All of this is implemented as files Claude Code reads and scripts Claude Code executes — no additional infrastructure.
+
+### Why this architecture
+
+Claude Code gives an LLM tools and a project context. That's necessary but not sufficient for building products well. Prawduct adds the methodology: knowing what to build, in what order, with what quality checks, and how to recover when context is lost. The mechanical enforcement (hooks, gates, state files) ensures the methodology survives context compaction, user pressure to skip steps, and LLM drift toward premature implementation.
+
+---
+
 ## System Overview
 
 The system consists of eight components organized into three layers: a **Conversation Layer** (user-facing), a **Production Layer** (artifact generation and build management), and a **Quality Layer** (governance, trajectory, and learning).
@@ -513,6 +549,22 @@ All v1 requirements implemented, all six test scenarios passing evaluation rubri
 ---
 
 ## Documentation Architecture
+
+### docs/ vs .prawduct/artifacts/
+
+Two directories hold Tier 1 content. They serve different purposes with an upstream/downstream relationship:
+
+**`docs/` = Design documents** — reasoning, philosophy, constraints, and methodology that explain WHY prawduct works the way it does. These are the upstream source of truth: principles, requirements, architecture rationale, evaluation methodology, skill authoring guidance. The LLM reads these during operation for governance and philosophy lookup (what are the hard rules? what's the design rationale?), not to know what to build.
+
+**`.prawduct/artifacts/` = Product specifications** — structured descriptions of WHAT the product does and HOW it should work. These are downstream, derived from design documents and discovery. Each artifact declares its dependencies via YAML frontmatter, and `<!-- sourced: -->` tags track derivation from specific docs/ sections, enabling drift detection. The LLM reads these to understand the product's operational behavior.
+
+**Why the framework repo has both:** Prawduct is simultaneously the framework and a product of that framework (self-hosted). `docs/` contains the framework's design rationale (which is also the product's design rationale, since the framework IS the product). `.prawduct/artifacts/` contains the framework's own product specifications. `skills/` contains runtime instructions. `templates/` contains starter structures for other products' artifacts. This is analogous to a compiler whose source repo has both design docs and a build config treating itself as a build target.
+
+**What product repos should expect:** Products built with prawduct have `.prawduct/artifacts/` managed by the framework (generated during Stages 3-4, validated, versioned). Product teams may optionally maintain their own `docs/` for design rationale, architecture decisions, and guides — prawduct does not manage those. During onboarding, prawduct reads existing product docs to understand the product, then generates artifacts that incorporate that understanding.
+
+**Relationship to the tier system:** Both directories are Tier 1 (source of truth). `docs/` files are continuously maintained by framework developers. `.prawduct/artifacts/` files are versioned with dependency frontmatter and validated against implementation during build.
+
+### Three-tier system
 
 All projects (including this one) follow a three-tier system:
 
