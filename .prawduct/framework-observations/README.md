@@ -225,41 +225,9 @@ Never mark an observation as `acted_on` without a corresponding skill change com
 
 ## Pattern Detection Thresholds
 
-Thresholds are tiered by observation type. Meta/process observations need fewer occurrences to trigger action because they indicate systemic issues. Build-phase observations sit in between. Product behavior observations need the most data before generalizing.
+Thresholds are tiered by observation type — meta observations need fewer occurrences (2+) than build-phase (3+) or product behavior (4+) because process issues tend to be structural, not coincidental. Blocking severity may trigger action at lower thresholds regardless of type.
 
-### Meta observations (threshold: 2+)
-Types: `process_friction`, `rubric_issue`, `skill_quality`, `external_practice_drift`, `documentation_drift`, `structural_critique`
-
-These indicate problems with how the framework operates, not what it produces. Two occurrences is sufficient signal — process issues tend to be structural, not coincidental.
-
-| Occurrences | Status | Action |
-|-------------|--------|--------|
-| 1 | `noted` | Watch for recurrence |
-| 2+ | Pattern detected | Propose skill/process update |
-
-### Build-phase observations (threshold: 3+)
-Types: `artifact_insufficiency`, `spec_ambiguity`, `deployment_friction`, `critic_gap`, `integration_friction`
-
-These emerge during building and indicate gaps between planning and execution. Three occurrences provides enough evidence to distinguish systematic gaps from one-off misses.
-
-| Occurrences | Status | Action |
-|-------------|--------|--------|
-| 1 | `noted` | Watch for recurrence |
-| 2 | `requires_pattern` | Flag for review, continue watching |
-| 3+ | Pattern detected | Propose artifact/template update |
-
-### Product behavior observations (threshold: 4+)
-Types: `proportionality`, `coverage`, `applicability`, `missing_guidance`
-
-These describe how the framework interacts with specific product types. More data is needed to distinguish real patterns from product-specific quirks.
-
-| Occurrences | Status | Action |
-|-------------|--------|--------|
-| 1 | `noted` | Watch for recurrence |
-| 2-3 | `requires_pattern` | Flag for review, continue watching |
-| 4+ | Pattern detected | Propose skill update, run validation pipeline |
-
-**Exception:** Severity `blocking` observations may trigger action at lower thresholds regardless of type.
+See `monitoring-alerting-spec.md` § "Failure Detection" for the complete threshold table, and `tools/obs_utils.py` for the canonical threshold constants used by detection tools.
 
 ## Integration with Evaluation
 

@@ -1,0 +1,22 @@
+---
+observation_id: 72da1914-1d99-4574-9a96-2e8be18ce5c9
+timestamp: 2026-02-18T05:44:16Z
+session_type: framework_dev
+session_context:
+  framework_version: a33fe93
+observations:
+  - type: documentation_drift
+    severity: note
+    description: "Enforcement mechanism descriptions duplicated across 5+ files with no single reference for hook lifecycle, state files, or enforcement chains"
+    evidence: "self-improvement-architecture.md FM1/5/6/7/9 safeguards, failure-recovery-spec.md governance state section, framework-observations/README.md threshold tables, CLAUDE.md Framework Status all described enforcement mechanisms inline. No document showed the complete hook lifecycle or PFR/DCP state evolution."
+    proposed_action: "Fixed: Created governance-mechanisms.md artifact consolidating all enforcement chains. Slimmed ~100 lines of duplicated descriptions, replaced with pointers."
+    status: noted
+    root_cause_analysis:
+      symptom: "No single document describes how enforcement mechanisms work"
+      root_cause: "Documentation grew organically without a canonical reference for mechanism descriptions; each doc described enforcement inline"
+      category: missing_process
+skills_affected:
+  - "docs/self-improvement-architecture.md"
+  - ".prawduct/artifacts/failure-recovery-spec.md"
+  - ".prawduct/framework-observations/README.md"
+---

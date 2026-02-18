@@ -81,6 +81,7 @@ prawduct/
 │   │   ├── monitoring-alerting-spec.md  # Session health check model (runs_unattended)
 │   │   ├── failure-recovery-spec.md  # Compaction, governance, onboarding recovery
 │   │   ├── configuration-spec.md     # project-state, hooks, markers
+│   │   ├── governance-mechanisms.md  # Hook lifecycle, state files, enforcement chains
 │   │   └── api-contract.md           # Skill interaction, artifact format, schema (exposes_programmatic_interface)
 │   ├── framework-observations/        # Automatic observation capture (Tier 1, lifecycle-managed)
 │   │   ├── README.md                  # Observation system documentation
@@ -214,7 +215,7 @@ The framework follows a vertical-slice build approach (see `docs/high-level-desi
 - Observation capture system with triage and session resumption integration; observation backlog available for all projects (not framework-only)
 - Pattern surfacing: `session-health-check.sh` parses observations, applies tiered thresholds, and surfaces actionable patterns with proposed actions during session resumption; Orchestrator presents patterns to user for act-or-defer decisions
 - Mechanical self-improvement tools: `capture-observation.sh` (schema-compliant observation creation), `record-critic-findings.sh` (structured Critic evidence), `session-health-check.sh` (session orientation with actionable pattern surfacing and infrastructure health monitoring), `update-observation-status.sh` (observation lifecycle transitions and archiving)
-- Unified mechanical governance: 6 hooks in `.prawduct/hooks/` with distinct responsibilities — governance-gate (blocks unauthorized reads/edits), governance-tracker (silent edit bookkeeping), governance-prompt (Orchestrator activation enforcement), governance-stop (blocks session completion on debt), critic-gate (blocks commits without findings), compact-governance-reinject (session recovery). Single `.prawduct/.session-governance.json` state file tracks all governance debt. `.claude/` holds only `settings.json` (hook registrations) and `settings.local.json`
+- Unified mechanical governance: 6 hooks in `.prawduct/hooks/` enforcing activation, PFR, DCP, Critic evidence, compaction, and chunk review gates. See `.prawduct/artifacts/governance-mechanisms.md` for the complete hook lifecycle, state files, and enforcement chains. `.claude/` holds only `settings.json` (hook registrations) and `settings.local.json`
 - Self-hosted development through the Orchestrator's own Stage 6 process
 - Three test scenarios with evaluation rubrics: family-utility, background-data-pipeline, terminal-arcade-game
 

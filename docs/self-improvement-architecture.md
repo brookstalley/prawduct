@@ -320,9 +320,7 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Discovered**: 2026-02-11 during background-pipeline eval simulation
 
-**Fix**: Made observation capture BLOCKING (stage transition fails if file not created)
-
-**Safeguard**: Evaluation methodology Step 7 verifies observation file exists before completing eval
+**Fix**: Made observation capture BLOCKING (stage transition fails if file not created). See `.prawduct/artifacts/governance-mechanisms.md` for how enforcement chains work.
 
 **Learning**: Building a feature ≠ feature is enforced. Must verify feature actually runs.
 
@@ -369,8 +367,6 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Fix**: Framework now observes its own observation failures (meta-improvement loop)
 
-**Safeguard**: Every framework development session captures observations, including observations about the observation system
-
 **Learning**: Meta-level observation required. "Apply framework to itself" extends to self-improvement system.
 
 ### Failure Mode 6: Learning Infrastructure Modified Without Learning Review
@@ -381,14 +377,9 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Discovered**: 2026-02-12 during structural characteristics implementation. A 17-file, 6-phase reform restructured the classification system and added new observation types without anyone verifying the learning system remained complete. The Critic ran once at the end as a rubber stamp.
 
-**Fix**: Three reinforcing mechanisms:
-- Critic Check 6 (Learning/Observability): Explicitly checks whether changes preserve the framework's ability to learn
-- Directional Change Protocol: Multi-file changes get plan-stage Critic review before implementation and per-phase lightweight reviews during implementation
-- FRP dimension 6 (Learning completeness): Every stage transition assesses whether new areas are observable
+**Fix**: Critic Check 6 (Learning/Observability) explicitly checks whether changes preserve the framework's ability to learn. DCP provides plan-stage and per-phase reviews. FRP dimension 6 assesses whether new areas are observable. See `.prawduct/artifacts/governance-mechanisms.md` § "Enforcement Chains" for how these are mechanically enforced.
 
-**Safeguard**: Check 6 makes "no observability path" a blocking finding. Changes that create blind spots in the learning system cannot pass governance review.
-
-**Learning**: Governance that doesn't review its own governance creates blind spots. The Critic checked whether changes were well-made but not whether they preserved the system's ability to detect future problems. A meta-governance gap: the learning system was the one thing that couldn't observe its own modification.
+**Learning**: Governance that doesn't review its own governance creates blind spots. The Critic checked whether changes were well-made but not whether they preserved the system's ability to detect future problems.
 
 ### Failure Mode 7: Infrastructure Degrades Without Monitoring
 
@@ -398,12 +389,9 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Discovered**: 2026-02-12. Observation directory had no archiving mechanism; `observation-analysis.sh` counted `acted_on` observations toward pattern thresholds, potentially re-triggering already-fixed patterns.
 
-**Fix**: Three reinforcing mechanisms:
-- Infrastructure health monitoring in `session-health-check.sh` checks lifecycle invariants (bounded growth, status progression, archive backlog, working notes freshness)
-- `tools/update-observation-status.sh` manages observation lifecycle transitions and archiving
-- Critic Check 6 extended to flag growing collections without lifecycle monitoring
+**Fix**: Infrastructure health monitoring in `session-health-check.sh` checks lifecycle invariants. `tools/update-observation-status.sh` manages lifecycle transitions. Critic Check 6 flags growing collections without lifecycle monitoring and mechanical enforcement. See `monitoring-alerting-spec.md` for health metrics and thresholds.
 
-**Structural principle**: Invariants, not enumerations. Rather than listing every housekeeping task, define invariant properties (bounded growth, status progression, consistency) and monitor them generically. New collections get monitoring at creation time (Critic Check 6), existing collections get health-checked at session time (`session-health-check.sh`).
+**Structural principle**: Invariants, not enumerations. Define invariant properties (bounded growth, status progression, consistency) and monitor generically. New collections get monitoring at creation time (Critic Check 6), existing collections get health-checked at session time.
 
 **Learning**: Systems that monitor their outputs but not their infrastructure degrade silently. Time-based degradation (accumulation, staleness) requires different monitoring than change-based degradation (breaking modifications). Content health and infrastructure health are orthogonal concerns.
 
@@ -429,17 +417,9 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Discovered**: 2026-02-17. User observed that results improve when they explicitly request 5-whys analysis, but this should be automatic.
 
-**Fix**: Two layers of enforcement:
-1. **Instructional** (original): Post-Fix Reflection Protocol (PFR) embedded in Stage 5 and Stage 6 fix flows. RCA happens *before* the fix so the fix targets the root cause. Meta-fix step checks for other instances of the same root cause in the product. Framework observation with `root_cause_analysis` block enables cross-fix pattern detection by category.
-2. **Mechanical** (added 2026-02-17): Four governance hooks enforce PFR for governance-sensitive files (`skills/`, `tools/`, `scripts/`, `.prawduct/hooks/`):
-   - `governance-gate.sh`: Independently detects governance-sensitive file edits and blocks them — including the very first edit — until diagnosis (5-whys, root cause, meta-fix plan) is written to session state. Does not depend on the tracker having run.
-   - `governance-tracker.sh`: Handles bookkeeping after edits — tracks which governance-sensitive files were edited and maintains `governance_sensitive_files` list in session state.
-   - `governance-stop.sh`: Blocks session completion if PFR is required but no observation file captured.
-   - `critic-gate.sh`: Blocks commit if PFR observation file doesn't exist.
+**Fix**: Two layers — instructional (PFR embedded in Stage 5/6 fix flows, RCA before fix, meta-fix step) and mechanical (four governance hooks enforce PFR for governance-sensitive files). See `.prawduct/artifacts/governance-mechanisms.md` § "Post-Fix Reflection (PFR)" for the complete enforcement chain.
 
-**Safeguard**: Mechanical hooks enforce the pre-fix gate (diagnosis required before edits) and pre-commit gate (observation required before commit). Critic Check 6 (Learning/Observability) provides additional verification. Cosmetic escape hatch: set `pfr_state.cosmetic_justification` and `pfr_state.required: false` for truly cosmetic changes.
-
-**Learning**: Advisory protocols get skipped — this was proven again on 2026-02-17 when a governance-gate.sh bug fix skipped PFR entirely despite it being documented in skill instructions. The fix: make PFR mechanically unavoidable for governance-sensitive files, the same way activation and Critic review are mechanically enforced. The `root_cause_analysis.category` enum enables mechanical pattern detection across fixes — if multiple fixes share the same category, that's a systematic gap.
+**Learning**: Advisory protocols get skipped — this was proven again on 2026-02-17 when a governance-gate.sh bug fix skipped PFR entirely despite it being documented in skill instructions. The fix: make PFR mechanically unavoidable, the same way activation and Critic review are mechanically enforced. The `root_cause_analysis.category` enum enables mechanical pattern detection across fixes — if multiple fixes share the same category, that's a systematic gap.
 
 ### Failure Mode 10: Instance-Specific Fixes Don't Generalize
 

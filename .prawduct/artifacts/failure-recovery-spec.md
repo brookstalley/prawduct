@@ -31,12 +31,9 @@ last_validated: 2026-02-16
 
 **Failure mode:** `.session-governance.json` is missing, corrupted, or contains stale data.
 
-**Recovery:**
-1. If file is missing during active build: Orchestrator recreates it from project-state.yaml (Session Resumption constraint)
-2. If file is corrupted: SessionStart hook clears it on next session
-3. If file has stale data: Governance hooks read it defensively — missing fields treated as not-applicable
+**Recovery:** Orchestrator recreates if missing. SessionStart hook clears corrupted files. Hooks read defensively — missing fields treated as not-applicable. See `governance-mechanisms.md` § "State Files" for who creates/reads each field.
 
-**Impact:** Governance tracking resets. Previous session's edit counts and debt tracking are lost, but project-state.yaml preserves the actual state. PFR state (`pfr_state`) also resets — if governance-sensitive files were edited before corruption, the PFR gate will not block further edits (since `required` defaults to false when missing). However, governance-tracker.sh will re-set `pfr_state` on the next governance-sensitive edit, restoring enforcement for subsequent changes.
+**Impact:** Governance tracking resets but project-state.yaml preserves actual state. PFR state also resets (`required` defaults to false when missing), but governance-tracker.sh re-sets it on the next governance-sensitive edit.
 
 ### Interrupted Onboarding
 
@@ -53,11 +50,7 @@ last_validated: 2026-02-16
 
 **Failure mode:** Observations accumulate without triage, exceeding manageable volume.
 
-**Recovery:**
-1. `session-health-check.sh` detects accumulation (> 30 active files)
-2. Health check flags stale `noted` observations (> 2 days)
-3. Orchestrator surfaces during Session Resumption with concrete triage recommendations
-4. `update-observation-status.sh` provides mechanical lifecycle transitions and archiving
+**Recovery:** `session-health-check.sh` detects accumulation and staleness (see `monitoring-alerting-spec.md` for thresholds). Orchestrator surfaces during Session Resumption. `update-observation-status.sh` provides mechanical lifecycle transitions and archiving.
 
 **Impact:** Pattern detection may be impaired by noise. Triage reduces active set to actionable items.
 

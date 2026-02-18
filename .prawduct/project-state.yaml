@@ -397,6 +397,13 @@ artifact_manifest:
       depended_on_by: []
       last_validated: 2026-02-16
       tier: 1
+    - name: governance-mechanisms
+      file_path: .prawduct/artifacts/governance-mechanisms.md
+      version: 1
+      depends_on: [pipeline-architecture, configuration-spec]
+      depended_on_by: []
+      last_validated: 2026-02-17
+      tier: 1
 
   # --- Evaluation scenarios ---
   test_specs:
@@ -775,6 +782,15 @@ change_log:
   - what: 'Compaction enforcement: governance-stop blocks on compaction debt, Session Resumption compacts automatically, Critic Check 6 requires enforcement for lossless operations'
     why: 'Advisory-only compaction drifted to non-compliance — project-state.yaml grew to 1172 lines (change_log 29 entries, threshold 20) despite full infrastructure existing (tool, detection, instructions). Root cause: incomplete_coverage — Critic Check 6 validates that growing collections have lifecycle + compaction + monitoring, but not enforcement that mechanisms fire. Also fixed compact-project-state.py steady-state bug where --check reported compaction needed when preserved directional entries made reduction impossible.'
     blast_radius: .prawduct/hooks/governance-stop.sh, skills/orchestrator/SKILL.md, skills/critic/SKILL.md, tools/compact-project-state.py, .prawduct/project-state.yaml
+    classification: functional
+    date: 2026-02-17
+  - what: 'Create governance-mechanisms.md artifact: consolidate enforcement chain documentation, slim 4 files'
+    why: 'Enforcement mechanism descriptions were duplicated across 5+ files (self-improvement-architecture.md, failure-recovery-spec.md,
+      framework-observations/README.md, CLAUDE.md) with no single reference for hook lifecycle, state files, or enforcement chains.
+      New artifact documents all 6 hooks, state file lifecycle, and 6 enforcement chains (activation, PFR, DCP, Critic evidence,
+      compaction, chunk review). Slimmed ~100 lines of duplicated mechanism descriptions in existing docs, replacing with pointers.'
+    blast_radius: .prawduct/artifacts/governance-mechanisms.md (new), docs/self-improvement-architecture.md, .prawduct/artifacts/failure-recovery-spec.md,
+      .prawduct/framework-observations/README.md, CLAUDE.md, .prawduct/project-state.yaml
     classification: functional
     date: 2026-02-17
 build_plan:
