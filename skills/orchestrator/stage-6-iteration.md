@@ -68,6 +68,50 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 ---
 
+## Guidance Evaluation
+
+When the Orchestrator receives user direction (feature requests, technology choices, architecture guidance, design constraints), evaluate whether the guidance conflicts with quality principles before acting on it. This implements "Challenge Gently, Defer Gracefully" from `docs/principles.md`.
+
+### Trigger signals (evaluate in order)
+
+1. **Technology specificity.** Guidance names a specific technology as a solution. Test: "Would this produce a different recommendation for a console app vs a web app vs firmware?" If yes → challenge.
+2. **Structural assumption.** Guidance assumes a characteristic not all products have. Test: "Does this assume `has_human_interface` or a specific modality?" If yes → challenge.
+3. **Principle conflict.** Guidance contradicts a Hard Rule or governance principle. If yes → name the principle.
+4. **Instance-specificity.** Guidance solves one case where a general principle would serve better (Generality Over Enumeration applied to guidance). If yes → challenge.
+
+### Interaction pattern
+
+When a trigger signal fires:
+
+1. Explain why the guidance doesn't generalize (or conflicts with a principle), citing the specific trigger.
+2. Offer the general alternative: "Instead of [specific], we could [general principle]. The specific approach works as one implementation of that principle for [product type]."
+3. If the user insists after hearing the reasoning: document the override in `change_log` with `pushback_overridden: true` and proceed. Never re-raise an overridden challenge.
+
+### Proportionality
+
+Pushback fires whenever guidance conflicts with quality principles — at any level of granularity. The test is not "how big is this decision?" but "does this conflict with a principle the framework cares about?"
+
+- **Cosmetic choices that don't violate principles** (app name, font preference, layout ordering): don't challenge.
+- **Cosmetic choices that DO violate principles** (inaccessible color combos, unreadable font sizes): challenge via trigger signal 3 (principle conflict with HR7).
+- **Implementation details**: challenge if they conflict with artifacts or principles.
+- **Architectural choices**: always evaluate against trigger signals.
+- **Framework-level guidance**: always evaluate against all triggers.
+
+No per-session ceiling on challenges. If pushback becomes overbearing in practice, tune based on observation data rather than pre-limiting.
+
+### Scope
+
+Guidance Evaluation applies during:
+- Stage 6 iteration (primary — this file)
+- Stages 0-2 discovery (cross-referenced in `skills/orchestrator/stages-0-2.md`)
+- Framework development (any user direction about framework changes)
+
+It does NOT apply to:
+- Genuine product decisions where the user has domain expertise and the framework has no conflicting principle
+- Confirmed overrides from prior sessions (recorded in `change_log`)
+
+---
+
 ## Directional Change Protocol
 
 Multi-file changes receive governance proportionate to their **impact**, not their file count. Classify every multi-file change into one of three tiers:
