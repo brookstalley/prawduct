@@ -3,7 +3,7 @@
 compact-project-state.py — Mechanical compaction of growing project-state.yaml sections.
 
 Implements the LIFECYCLE rules defined in templates/project-state.yaml:
-  - change_log: >20 entries → keep 10 most recent + summary block
+  - change_log: >10 entries → keep 10 most recent + summary block
   - build_plan.chunks: all complete → compact to {id, name, status}
   - build_state.reviews: all findings resolved/deferred → compact to {chunk_id, summary, deferred_items}
   - review_findings.entries: resolved → compact to {stage, lens, summary, deferred_count}
@@ -165,11 +165,11 @@ def render_yaml_list(items, indent_str="  "):
 # --- Compaction rules ---
 
 def compact_change_log(data, lines, dry_run=False, verbose=False):
-    """Compact change_log when >20 entries."""
+    """Compact change_log when >10 entries."""
     entries = data.get('change_log', []) or []
-    if len(entries) <= 20:
+    if len(entries) <= 10:
         if verbose:
-            print(f"  change_log: {len(entries)} entries (threshold: 20) — no compaction needed")
+            print(f"  change_log: {len(entries)} entries (threshold: 10) — no compaction needed")
         return lines, False
 
     recent = entries[-10:]

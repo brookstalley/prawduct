@@ -1,0 +1,115 @@
+# Observation Backlog — Deferred Items
+#
+# Split from project-state.yaml for context efficiency.
+# Items with priority: deferred. Surfaced only when health-check flags stale ones (>4 weeks).
+#
+# Tier: 1 (Source of Truth)
+
+deferred_items:
+  # Removed: "DCP intermediate steps skipped" (2026-02-15-dcp-intermediate-steps-skipped-during-standalone.yaml) — acted_on: mechanical enforcement added
+  # Removed: "governance-stop only enforces DCP retrospective" (2026-02-15-governance-stop-hook-only-enforces-dcp.yaml) — acted_on: 4 new fields + governance-stop checks
+  - observation_file: "framework-observations/2026-02-11-family-utility-eval-full.yaml"
+    type: critic_gap
+    summary: "Critic missed scope addition outside chunk deliverables"
+    target_files: ["skills/critic/SKILL.md"]
+    priority: deferred
+    rationale: "Single instance, note severity. Revisit if recurs in future evals."
+    added: 2026-02-11
+  - observation_file: "framework-observations/2026-02-11-automation-shape-testing-lens.yaml"
+    type: process_friction
+    summary: "Self-review rigor — Critic self-review may lack adversarial rigor"
+    target_files: ["skills/critic/SKILL.md"]
+    priority: deferred
+    rationale: "Can't address until independent reviewer available. Watch for pattern."
+    added: 2026-02-11
+  - observation_file: "framework-observations/2026-02-11-eval-coordination-meta-learning.yaml"
+    type: coverage
+    summary: "Subagent coordination rigor — eval delegation lacks verification enforcement"
+    target_files: ["docs/evaluation-methodology.md"]
+    priority: deferred
+    rationale: "Niche issue; will resurface if it recurs in future evaluations."
+    added: 2026-02-14
+  - observation_file: "framework-observations/2026-02-11-eval-coordination-meta-learning.yaml"
+    type: process_friction
+    summary: "FRP execution inconsistent across stage transitions — only some stages mention it explicitly"
+    target_files: ["skills/orchestrator/SKILL.md"]
+    priority: deferred
+    rationale: "At requires_pattern status (seen in 1 eval). Orchestrator decomposition may have partially addressed by making FRP reference clearer in protocols.md."
+    added: 2026-02-15
+  - observation_file: "framework-observations/2026-02-11-eval-coordination-meta-learning.yaml"
+    type: rubric_issue
+    summary: "Eval methodology verification checks file existence, not completeness"
+    target_files: ["docs/evaluation-methodology.md"]
+    priority: deferred
+    rationale: "At requires_pattern status. Will act if a third eval shows incomplete verification."
+    added: 2026-02-15
+  - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
+    type: coverage
+    summary: "Game design guidance gap — no entertainment domain depth"
+    target_files: ["skills/domain-analyzer/SKILL.md"]
+    priority: deferred
+    rationale: "Address when adding entertainment domain depth or dynamic domain generation improvements."
+    added: 2026-02-14
+  - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
+    type: coverage
+    summary: "Review Lens findings not persisted to project-state.yaml"
+    target_files: ["skills/review-lenses/SKILL.md", "skills/orchestrator/SKILL.md"]
+    priority: deferred
+    rationale: "Related to existing Critic-Review Lenses integration backlog item. At requires_pattern across 2 files."
+    added: 2026-02-14
+  - observation_file: "framework-observations/2026-02-12-terminal-arcade-game-eval.yaml"
+    type: proportionality
+    summary: "Simulation eval time disproportionate for simple products"
+    target_files: ["docs/evaluation-methodology.md"]
+    priority: deferred
+    rationale: "Address when refining evaluation methodology for efficiency."
+    added: 2026-02-14
+  - observation_file: "framework-observations/terminal-arcade-game-2026-02-12.yaml"
+    type: proportionality
+    summary: "Game codebase size disproportionate — eval methodology needs size guidance"
+    target_files: ["docs/evaluation-methodology.md"]
+    priority: deferred
+    rationale: "Eval methodology refinement; address when adding eval efficiency improvements."
+    added: 2026-02-14
+  - observation_file: "framework-observations/2026-02-15-observation-lifecycle-cleanup-archiving-has-no.yaml"
+    type: process_friction
+    summary: "Observation archiving has no mechanical enforcement — resolved files linger until manually noticed"
+    target_files: ["tools/update-observation-status.sh", "tools/session-health-check.sh"]
+    priority: deferred
+    rationale: "session-health-check already reports archivable files. Auto-archive on status transition would be nice but not urgent."
+    added: 2026-02-15
+  - observation_file: "framework-observations/2026-02-15-standalone-product-repo-support-hooks-derive.yaml"
+    type: coverage
+    summary: "Standalone product repo support needs real-world testing against product repo"
+    target_files: ["skills/orchestrator/SKILL.md", "skills/orchestrator/onboarding.md"]
+    priority: deferred
+    rationale: "Implementation complete. Verify bootstrap generation and hook firing against an actual product repo."
+    added: 2026-02-15
+  - observation_file: "framework-observations/2026-02-18-retroactive-review-patterns.yaml"
+    type: process_friction
+    summary: "Stop hook blocks progress during retroactive review resolution — no 'review in progress' governance state"
+    target_files: [".prawduct/hooks/governance-stop.sh"]
+    priority: deferred
+    rationale: "Note severity, single instance. The hook was annoying but not harmful — reviews completed despite friction. Watch for recurrence."
+    added: 2026-02-18
+  - observation_file: "framework-observations/2026-02-17-dcp-classification-triggers-on-file-count.yaml"
+    type: process_friction
+    summary: "DCP classification triggers on file count without considering change nature (doc-only changes flagged)"
+    target_files: ["skills/orchestrator/stage-6-iteration.md"]
+    priority: deferred
+    rationale: "Single instance, note severity. Design improvement for governance-tracker auto-classification. Watch for recurrence."
+    added: 2026-02-17
+  - observation_file: "framework-observations/2026-02-17-external-audit-severity-assessments-should-verify.yaml"
+    type: critic_gap
+    summary: "External audit severity assessments should verify tool scope before reporting compliance"
+    target_files: ["skills/critic/SKILL.md"]
+    priority: deferred
+    rationale: "Single instance, note severity. Guidance improvement for Critic proportionality check. Watch for recurrence."
+    added: 2026-02-17
+  - observation_file: "framework-observations/2026-02-17-requirement-version-tags-drift-from-actual.yaml"
+    type: process_friction
+    summary: "Requirement version tags drift from actual build state with no update process"
+    target_files: ["skills/critic/SKILL.md"]
+    priority: deferred
+    rationale: "Immediate tags fixed this session. Process fix (Critic coherence check extension) is the proposed action. Single instance."
+    added: 2026-02-17
