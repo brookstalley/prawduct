@@ -44,8 +44,9 @@ prawduct/
 │   ├── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
 │   ├── critic/SKILL.md                # Context-sensitive governance: applies checks based on project state
 │   └── review-lenses/SKILL.md         # Five evaluation perspectives (product, design, arch, skeptic, testing)
-├── tools/                             # Deterministic scripts (mechanical enforcement, 13 files)
+├── tools/                             # Deterministic scripts (mechanical enforcement, 14 files)
 │   ├── prawduct-init.{sh,py}         # Project setup, repair, settings.json merging, gitignore management
+│   ├── prawduct-statusline.py         # Claude Code statusline: stage, governance alerts, context bar, git
 │   ├── session-health-check.sh        # Session orientation: patterns, backlog, divergence, health
 │   ├── compact-project-state.{sh,py}  # Mechanical compaction of growing project-state.yaml sections
 │   ├── contribute-observations.sh     # Check/format/submit product observations to framework repo

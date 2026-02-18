@@ -36,6 +36,38 @@ PRAWDUCT_HOOK_SCRIPTS = [
     "compact-governance-reinject.sh",
 ]
 
+# Patterns that identify a statusLine entry as prawduct's.
+PRAWDUCT_STATUSLINE_PATTERNS = [
+    "prawduct-statusline.py",
+]
+
+
+def is_prawduct_statusline(command: str) -> bool:
+    """Check if a statusLine command is prawduct's."""
+    return any(pat in command for pat in PRAWDUCT_STATUSLINE_PATTERNS)
+
+
+def get_statusline_config() -> dict:
+    """Return the canonical prawduct statusLine configuration.
+
+    Uses the same fw_resolve pattern as hooks to locate the framework
+    at runtime, keeping settings.json portable across machines.
+    """
+    fw_resolve = (
+        'FW=$(cat "$CLAUDE_PROJECT_DIR/.prawduct/framework-path" 2>/dev/null) || '
+        '{ if [ -f "$HOME/.prawduct/framework/skills/orchestrator/SKILL.md" ]; then '
+        'FW="$HOME/.prawduct/framework"; else FW=""; fi; }'
+    )
+    return {
+        "type": "command",
+        "command": (
+            f'{fw_resolve}; if [ -n "$FW" ]; then '
+            f'python3 "$FW/tools/prawduct-statusline.py" 2>/dev/null || cat > /dev/null; '
+            f'else cat > /dev/null; fi'
+        ),
+    }
+
+
 # The canonical hook configuration for product repos.
 # Commands resolve the framework directory at runtime from
 # $CLAUDE_PROJECT_DIR/.prawduct/framework-path, keeping settings.json
@@ -589,7 +621,7 @@ def detect_prawduct_mode(target_dir: str, requested_local: bool) -> str:
 
 
 def remove_prawduct_hooks_from(settings_path: Path) -> bool:
-    """Remove all prawduct hooks from a settings file. Returns True if file was modified."""
+    """Remove all prawduct hooks and statusLine from a settings file. Returns True if file was modified."""
     if not settings_path.is_file():
         return False
 
@@ -598,45 +630,50 @@ def remove_prawduct_hooks_from(settings_path: Path) -> bool:
     except (json.JSONDecodeError, OSError):
         return False
 
-    existing_hooks = data.get("hooks", {})
-    if not existing_hooks:
-        return False
-
-    cleaned_hooks = {}
     modified = False
 
-    for event, entries in existing_hooks.items():
-        user_entries = []
-        for entry in entries:
-            entry_hooks = entry.get("hooks", [])
-            is_praw = any(
-                is_prawduct_hook(h.get("command", ""))
-                for h in entry_hooks
-                if h.get("type") == "command"
-            )
-            if is_praw:
-                modified = True
-            else:
-                user_entries.append(entry)
-        if user_entries:
-            cleaned_hooks[event] = user_entries
+    # Clean hooks
+    existing_hooks = data.get("hooks", {})
+    if existing_hooks:
+        cleaned_hooks = {}
+        for event, entries in existing_hooks.items():
+            user_entries = []
+            for entry in entries:
+                entry_hooks = entry.get("hooks", [])
+                is_praw = any(
+                    is_prawduct_hook(h.get("command", ""))
+                    for h in entry_hooks
+                    if h.get("type") == "command"
+                )
+                if is_praw:
+                    modified = True
+                else:
+                    user_entries.append(entry)
+            if user_entries:
+                cleaned_hooks[event] = user_entries
+
+        data["hooks"] = cleaned_hooks
+        if not cleaned_hooks:
+            del data["hooks"]
+
+    # Clean statusLine
+    existing_sl = data.get("statusLine", {})
+    if existing_sl and existing_sl.get("type") == "command":
+        if is_prawduct_statusline(existing_sl.get("command", "")):
+            del data["statusLine"]
+            modified = True
 
     if not modified:
         return False
 
-    data["hooks"] = cleaned_hooks
-    # Remove empty hooks dict entirely
-    if not cleaned_hooks:
-        del data["hooks"]
-    # Only write if there's remaining content; otherwise leave file empty-ish
     settings_path.write_text(json.dumps(data, indent=2) + "\n")
     return True
 
 
 def merge_settings_json(
-    existing: dict, prawduct_hooks: dict
+    existing: dict, prawduct_hooks: dict, prawduct_statusline: dict | None = None,
 ) -> tuple[dict, int, int]:
-    """Merge prawduct hooks into existing settings.json.
+    """Merge prawduct hooks and statusLine into existing settings.json.
 
     Returns (merged_settings, hooks_added, user_hooks_preserved).
     """
@@ -645,6 +682,17 @@ def merge_settings_json(
     merged_hooks = {}
     hooks_added = 0
     user_hooks_preserved = 0
+
+    # Merge statusLine: replace if prawduct-owned, preserve if user-owned, create if absent
+    if prawduct_statusline:
+        existing_sl = existing.get("statusLine")
+        if existing_sl is None:
+            merged["statusLine"] = prawduct_statusline
+        elif existing_sl.get("type") == "command" and is_prawduct_statusline(
+            existing_sl.get("command", "")
+        ):
+            merged["statusLine"] = prawduct_statusline
+        # else: user-owned statusLine — preserve it
 
     # Collect all event types from both sources
     all_events = set(list(existing_hooks.keys()) + list(prawduct_hooks.keys()))
@@ -929,6 +977,7 @@ def check_settings_json(target_dir: str, mode: str, local_mode: bool = False) ->
         settings_path = target / ".claude" / "settings.json"
         other_path = target / ".claude" / "settings.local.json"
     prawduct_hooks = get_prawduct_hooks()
+    prawduct_statusline = get_statusline_config()
 
     # In fix mode, clean prawduct hooks from the opposite file (mode switch)
     other_cleaned = False
@@ -948,9 +997,9 @@ def check_settings_json(target_dir: str, mode: str, local_mode: bool = False) ->
                 "other_cleaned": other_cleaned,
             }
 
-        # Check if all prawduct hooks are present and correct
+        # Check if all prawduct hooks and statusLine are present and correct
         merged, hooks_added, user_hooks_preserved = merge_settings_json(
-            existing, prawduct_hooks
+            existing, prawduct_hooks, prawduct_statusline
         )
 
         # Compare to see if anything changed
@@ -983,10 +1032,10 @@ def check_settings_json(target_dir: str, mode: str, local_mode: bool = False) ->
             "other_cleaned": other_cleaned,
         }
 
-    # No target settings file — create with only prawduct hooks
+    # No target settings file — create with prawduct hooks and statusLine
     if mode == "fix":
         settings_path.parent.mkdir(parents=True, exist_ok=True)
-        settings = {"hooks": prawduct_hooks}
+        settings = {"statusLine": prawduct_statusline, "hooks": prawduct_hooks}
         settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         total_hooks = sum(len(entries) for entries in prawduct_hooks.values())
         return {

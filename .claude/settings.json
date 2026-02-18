@@ -2,6 +2,10 @@
   "companyAnnouncements": [
     "\u001b[1;34m ▗▟███▙▖\u001b[0m    \u001b[1mPrawduct\u001b[0m\n\u001b[1;34m ▐▘ █ ▝▌\u001b[0m    \u001b[38;2;153;153;153mProduct development framework\u001b[0m\n\u001b[1;34m ▝▜███▛▘\u001b[0m    \u001b[38;2;153;153;153mDescribe an idea or say \u001b[0m\u001b[1mhello\u001b[0m"
   ],
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/prawduct-statusline.py\" 2>/dev/null || cat > /dev/null"
+  },
   "hooks": {
     "SessionStart": [
       {
