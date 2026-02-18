@@ -50,6 +50,44 @@ if [[ ! -f "$PRAWDUCT_DIR/.critic-pending" ]]; then
     :
 fi
 
+# --- PFR observation gate: if governance-sensitive files were edited, ---
+# --- observation must exist before commit is allowed.                 ---
+SESSION_FILE="$PRAWDUCT_DIR/.session-governance.json"
+if [[ -f "$SESSION_FILE" ]]; then
+    pfr_obs_result=$(python3 -c "
+import json, sys, os
+
+try:
+    with open('$SESSION_FILE') as f:
+        data = json.load(f)
+except:
+    sys.exit(0)
+
+pfr = data.get('pfr_state', {})
+if not pfr.get('required', False):
+    print('')
+    sys.exit(0)
+
+obs_file = pfr.get('observation_file')
+if not obs_file:
+    print('BLOCKED: no observation file')
+elif not os.path.exists(obs_file):
+    print(f'BLOCKED: observation file not found: {obs_file}')
+else:
+    print('')
+" 2>/dev/null || echo "")
+
+    if [[ -n "$pfr_obs_result" && "$pfr_obs_result" == BLOCKED* ]]; then
+        echo "" >&2
+        echo "$pfr_obs_result" >&2
+        echo "" >&2
+        echo "PFR requires an observation file for governance-sensitive changes." >&2
+        echo "Create one via: tools/capture-observation.sh with root_cause_analysis block," >&2
+        echo "then set pfr_state.observation_file in .prawduct/.session-governance.json." >&2
+        exit 2
+    fi
+fi
+
 # Delegate to critic-reminder.sh for the actual governance check
 # It checks staged files against framework patterns and looks for evidence
 if "$FRAMEWORK_ROOT/tools/critic-reminder.sh" 2>&1; then

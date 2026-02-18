@@ -112,6 +112,15 @@ checkpoints_due = gov.get('governance_checkpoints_due', [])
 if checkpoints_due:
     critical_issues.append(f'{len(checkpoints_due)} governance checkpoint(s) overdue')
 
+# --- PFR debt ---
+pfr = data.get('pfr_state', {})
+if pfr.get('required', False):
+    if not pfr.get('diagnosis_written', False):
+        critical_issues.append('PFR: governance-sensitive files edited without pre-fix diagnosis. Write diagnosis to .prawduct/.session-governance.json pfr_state.diagnosis (symptom, five_whys, root_cause, root_cause_category, meta_fix_plan) and set pfr_state.diagnosis_written to true. Or if cosmetic: set pfr_state.cosmetic_justification and pfr_state.required to false.')
+    elif not pfr.get('observation_file'):
+        gov_files = ', '.join(pfr.get('governance_sensitive_files', [])[:5])
+        critical_issues.append(f'PFR: governance-sensitive files edited ({gov_files}) but no observation captured. Create observation via tools/capture-observation.sh with root_cause_analysis block, then set pfr_state.observation_file in .prawduct/.session-governance.json.')
+
 # --- DCP classification enforcement ---
 # When 3+ governed files are edited without DCP classification, block.
 # This mechanically enforces the Stage 6 governance table.

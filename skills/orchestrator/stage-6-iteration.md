@@ -112,3 +112,43 @@ Set `directional_change` in `.prawduct/.session-governance.json` to track: `{"ac
 10. **Retrospective.** Answer: (a) Could the learning system have caught this earlier? (b) What process gaps surfaced? (c) Does the fix generalize? Capture findings as observations. Set `retrospective_completed` to `true`. After commit, set `active` to `false`.
 
 The governance-stop hook enforces DCP completion mechanically — it checks these tracking fields and blocks session completion when steps are incomplete.
+
+---
+
+## Post-Fix Reflection (PFR) — Mechanical Enforcement
+
+PFR ensures root cause analysis happens before fixes to governance-sensitive files, and that learning is captured as an observation. It is orthogonal to DCP — a mechanical DCP change still needs PFR if it touches governance-sensitive files.
+
+### Governance-sensitive files
+
+`skills/`, `tools/`, `scripts/`, `.prawduct/hooks/`. These define framework behavior. Changes to docs, templates, config, and artifacts are NOT governance-sensitive.
+
+### How it works
+
+1. **`governance-tracker.sh`** detects edits to governance-sensitive files and sets `pfr_state.required: true` in `.session-governance.json`.
+2. **`governance-gate.sh`** blocks further governance-sensitive edits until `pfr_state.diagnosis_written: true`. The diagnosis must include `symptom`, `five_whys`, `root_cause`, `root_cause_category`, and `meta_fix_plan`.
+3. After implementing the fix, create an observation via `tools/capture-observation.sh` with a `root_cause_analysis` block and set `pfr_state.observation_file` to the observation file path.
+4. **`governance-stop.sh`** blocks session completion if PFR is required but no observation file is set.
+5. **`critic-gate.sh`** blocks commit if PFR is required but the observation file doesn't exist.
+
+### The flow
+
+```
+1. Read files, understand the bug (reads are allowed)
+2. Write diagnosis to .session-governance.json pfr_state
+3. governance-gate now allows edits to governance-sensitive files
+4. Implement fix
+5. Create observation with root_cause_analysis via capture-observation.sh
+6. Set pfr_state.observation_file in session state
+7. Commit — critic-gate validates observation file exists
+```
+
+### Cosmetic escape hatch
+
+If a change is truly cosmetic (typo fix in an error message, formatting), set `pfr_state.cosmetic_justification` to describe why and `pfr_state.required` to `false`. Both gates accept this. The Critic can flag insufficient justification as a warning.
+
+### `root_cause_category` values
+
+`missing_process` | `process_not_enforced` | `incomplete_coverage` | `wrong_abstraction` | `missing_detection` | `vocabulary_drift`
+
+These enable mechanical pattern detection across fixes — if multiple fixes share the same category, that's a systematic gap.

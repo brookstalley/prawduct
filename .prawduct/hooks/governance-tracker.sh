@@ -173,6 +173,32 @@ if is_framework:
         data['directional_change']['needs_classification'] = True
         data['directional_change']['triggered_at_file_count'] = distinct_files
 
+    # PFR trigger: when a governance-sensitive file is edited, set pfr_state.
+    # Governance-sensitive files define what the framework *is*: skills, tools,
+    # scripts, hooks. Docs/templates/config are NOT governance-sensitive.
+    GOVERNANCE_SENSITIVE_PREFIXES = ['skills/', 'tools/', 'scripts/', '.prawduct/hooks/']
+    is_gov_sensitive = any(file_path.startswith(p) for p in GOVERNANCE_SENSITIVE_PREFIXES)
+
+    if is_gov_sensitive:
+        pfr = data.get('pfr_state', {})
+        if not pfr.get('required', False):
+            # First governance-sensitive edit — initialize PFR state
+            data['pfr_state'] = {
+                'required': True,
+                'diagnosis_written': False,
+                'governance_sensitive_files': [file_path],
+                'diagnosis': None,
+                'observation_file': None,
+                'cosmetic_justification': None
+            }
+        else:
+            # Already tracking — add this file if not already listed
+            gov_files = pfr.get('governance_sensitive_files', [])
+            if file_path not in gov_files:
+                gov_files.append(file_path)
+                pfr['governance_sensitive_files'] = gov_files
+            data['pfr_state'] = pfr
+
 elif is_product:
     # --- Product file tracking ---
     if basename_file == 'project-state.yaml':

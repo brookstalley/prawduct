@@ -470,11 +470,17 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Discovered**: 2026-02-17. User observed that results improve when they explicitly request 5-whys analysis, but this should be automatic.
 
-**Fix**: Post-Fix Reflection Protocol (PFR) embedded in Stage 5 and Stage 6 fix flows. RCA happens *before* the fix so the fix targets the root cause. Meta-fix step checks for other instances of the same root cause in the product. Framework observation with `root_cause_analysis` block enables cross-fix pattern detection by category.
+**Fix**: Two layers of enforcement:
+1. **Instructional** (original): Post-Fix Reflection Protocol (PFR) embedded in Stage 5 and Stage 6 fix flows. RCA happens *before* the fix so the fix targets the root cause. Meta-fix step checks for other instances of the same root cause in the product. Framework observation with `root_cause_analysis` block enables cross-fix pattern detection by category.
+2. **Mechanical** (added 2026-02-17): Four governance hooks enforce PFR for governance-sensitive files (`skills/`, `tools/`, `scripts/`, `.prawduct/hooks/`):
+   - `governance-tracker.sh`: Detects governance-sensitive edits, sets `pfr_state.required: true`
+   - `governance-gate.sh`: Blocks further governance-sensitive edits until diagnosis (5-whys, root cause, meta-fix plan) is written to session state
+   - `governance-stop.sh`: Blocks session completion if PFR is required but no observation file captured
+   - `critic-gate.sh`: Blocks commit if PFR observation file doesn't exist
 
-**Safeguard**: Critic Check 6 (Learning/Observability) verifies PFR completeness for non-cosmetic fixes. Missing PFR is a **warning**. `tools/format-contribution.sh` enables product users to contribute observations back to the framework.
+**Safeguard**: Mechanical hooks enforce the pre-fix gate (diagnosis required before edits) and pre-commit gate (observation required before commit). Critic Check 6 (Learning/Observability) provides additional verification. Cosmetic escape hatch: set `pfr_state.cosmetic_justification` and `pfr_state.required: false` for truly cosmetic changes.
 
-**Learning**: Advisory protocols get skipped. Embedding the protocol in the fix flow (Stage 5 step 6, Stage 6 steps 1/4/5a) makes it unavoidable. The `root_cause_analysis.category` enum enables mechanical pattern detection across fixes — if 5 fixes share the same category, that's a systematic gap.
+**Learning**: Advisory protocols get skipped — this was proven again on 2026-02-17 when a governance-gate.sh bug fix skipped PFR entirely despite it being documented in skill instructions. The fix: make PFR mechanically unavoidable for governance-sensitive files, the same way activation and Critic review are mechanically enforced. The `root_cause_analysis.category` enum enables mechanical pattern detection across fixes — if multiple fixes share the same category, that's a systematic gap.
 
 ### Failure Mode 10: Instance-Specific Fixes Don't Generalize
 

@@ -273,7 +273,64 @@ except Exception:
     fi
 fi
 
-# --- Check 2: Chunk review gate (applies to product files during builds) ---
+# --- Check 2: PFR gate (applies to governance-sensitive framework files) ---
+# Governance-sensitive files: skills/, tools/, scripts/, .prawduct/hooks/
+# These define framework behavior. Edits require pre-fix diagnosis (PFR)
+# unless cosmetic_justification is set.
+
+if [[ "$is_framework_file" == true && -n "$rel_path" ]]; then
+    is_gov_sensitive=false
+    for prefix in skills/ tools/ scripts/ .prawduct/hooks/; do
+        if [[ "$rel_path" == $prefix* ]]; then
+            is_gov_sensitive=true
+            break
+        fi
+    done
+
+    if [[ "$is_gov_sensitive" == true ]]; then
+        SESSION_FILE_PFR="$PRAWDUCT_DIR/.session-governance.json"
+        if [[ -f "$SESSION_FILE_PFR" ]]; then
+            pfr_result=$(python3 -c "
+import json, sys
+
+try:
+    with open('$SESSION_FILE_PFR') as f:
+        data = json.load(f)
+except:
+    sys.exit(0)
+
+pfr = data.get('pfr_state', {})
+if not pfr.get('required', False):
+    # PFR not triggered, or cosmetic escape used (required set to false)
+    print('')
+elif not pfr.get('diagnosis_written', False):
+    print('BLOCKED')
+else:
+    print('')
+" 2>/dev/null || echo "")
+
+            if [[ "$pfr_result" == "BLOCKED" ]]; then
+                echo "" >&2
+                echo "BLOCKED: Governance-sensitive file edit requires pre-fix diagnosis. (PFR)" >&2
+                echo "" >&2
+                echo "Before editing $rel_path, write your diagnosis to .prawduct/.session-governance.json:" >&2
+                echo "  pfr_state.diagnosis: {" >&2
+                echo "    \"symptom\": \"what's broken\"," >&2
+                echo "    \"five_whys\": [\"why1\", \"why2\", \"why3\", \"why4\", \"why5\"]," >&2
+                echo "    \"root_cause\": \"deepest structural cause\"," >&2
+                echo "    \"root_cause_category\": \"missing_process|process_not_enforced|incomplete_coverage|wrong_abstraction|missing_detection|vocabulary_drift\"," >&2
+                echo "    \"meta_fix_plan\": \"what else might be affected\"" >&2
+                echo "  }" >&2
+                echo "  pfr_state.diagnosis_written: true" >&2
+                echo "" >&2
+                echo "Or if truly cosmetic: set pfr_state.cosmetic_justification and pfr_state.required to false." >&2
+                exit 2
+            fi
+        fi
+    fi
+fi
+
+# --- Check 3: Chunk review gate (applies to product files during builds) ---
 
 if [[ "$is_product_file" == true && -f "$SESSION_FILE" ]]; then
     # Exception: always allow edits to project-state.yaml (needed to record reviews)
