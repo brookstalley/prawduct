@@ -1242,9 +1242,10 @@ def run_init(target_dir: str, mode: str, json_mode: bool, requested_local: bool 
         checks.append(c)
 
         # 8. .gitignore (product repos only — ensure machine-specific files are ignored)
-        if is_git_repo(target):
-            c = check_gitignore(target, mode, local_mode=local_mode)
-            checks.append(c)
+        # .gitignore is a plain file that works without git — create it unconditionally
+        # so it's ready when the user initializes git later.
+        c = check_gitignore(target, mode, local_mode=local_mode)
+        checks.append(c)
 
     # 9. Existing documentation inventory (classified)
     existing_docs = scan_existing_docs(target)
