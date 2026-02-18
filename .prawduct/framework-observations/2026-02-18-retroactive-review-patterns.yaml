@@ -1,0 +1,72 @@
+---
+observation_id: f8a2c3d1-7e4b-4a9f-b6d8-3c1e5f9a2b7d
+timestamp: 2026-02-18T17:10:00Z
+session_type: product_use
+session_context:
+  product_classification: "has_human_interface (web) + exposes_programmatic_interface + handles_sensitive_data - Productivity/Communication"
+  framework_version: 154d5de
+observations:
+  - type: critic_gap
+    stage: 5
+    severity: warning
+    description: "Per-chunk Critic review does not detect when later chunks silently invalidate earlier chunks' tests or spec_compliance evidence. The review model checks each chunk in isolation at build time, but cross-chunk regression (tests broken by implementation changes in subsequent chunks) goes undetected."
+    evidence: "ConversationState was refactored from dataclass to TypedDict in chunks 07-09, breaking 12+ tests written in chunk 04. ANTI_SYCOPHANCY_WRAPPER was emptied in chunk 09, breaking 6+ tests from chunk 04. Neither chunk 09's review nor chunk 04's original review would catch these — the original review passed at build time, and chunk 09's review only examines chunk 09's deliverables."
+    proposed_action: "Add a Critic check or governance checkpoint that re-validates test integrity across all prior chunks when a shared type or constant is modified. Alternatively, require 'pytest --tb=short' as evidence at each chunk boundary to catch silent breakage."
+    root_cause_analysis:
+      symptom: "12+ tests broken across test_conversation.py and test_tool_orchestration.py, undetected until retroactive review"
+      five_whys:
+        - why: "Why weren't the broken tests detected when chunks 07-09 were built?"
+          answer: "The Critic reviews each chunk's deliverables in isolation — it doesn't re-run or re-examine prior chunks' tests"
+        - why: "Why doesn't the Critic re-examine prior chunks' tests?"
+          answer: "The per-chunk review model assumes each chunk's tests remain valid after passing initial review"
+        - why: "Why is that assumption wrong?"
+          answer: "Later chunks can change shared types (ConversationState) and constants (ANTI_SYCOPHANCY_WRAPPER) that prior chunks' tests depend on"
+        - why: "Why is there no mechanism to detect shared-dependency changes?"
+          answer: "The Builder skill doesn't track cross-chunk test dependencies, and the Critic has no 'regression check' that runs the full test suite"
+      root_cause: "No mechanism exists to detect when implementation changes in one chunk invalidate tests written in a different chunk"
+      category: missing_detection
+    status: triaged
+
+  - type: critic_gap
+    stage: 5
+    severity: warning
+    description: "spec_compliance evidence entries in project-state.yaml become documentation fiction when implementation evolves across chunks, because evidence is written once at build time and never re-validated against current code."
+    evidence: "Project-state evidence claimed 'ConversationState dataclass' (was TypedDict), 'ANTI_SYCOPHANCY_WRAPPER prioritizes honesty over agreement' (wrapper is empty string), 'similarity > 0.7 threshold' (code uses 0.4). All three were accurate when written but became fiction as later chunks changed the implementation."
+    proposed_action: "Consider adding a Critic check dimension that spot-checks 2-3 existing spec_compliance evidence entries against current code at each chunk review, particularly for entries that reference files being modified in the current chunk."
+    root_cause_analysis:
+      symptom: "Multiple spec_compliance evidence entries describe past state rather than current reality (HR3 violation)"
+      five_whys:
+        - why: "Why do evidence entries describe past state?"
+          answer: "Evidence was written when the chunk was built and never updated when later chunks changed the code"
+        - why: "Why doesn't evidence get updated when code changes?"
+          answer: "The Builder modifies code but doesn't scan for stale evidence entries that reference the modified files"
+        - why: "Why doesn't the Builder scan for stale evidence?"
+          answer: "The Builder skill focuses on implementing the current chunk's deliverables, not maintaining prior chunks' evidence trail"
+      root_cause: "No feedback loop exists between code modification and evidence freshness — evidence is write-once"
+      category: missing_process
+    status: triaged
+
+  - type: process_friction
+    stage: 5
+    severity: note
+    description: "When governance hooks detect accumulated review debt (chunks built before hooks existed), the stop hook blocks all progress including the review work needed to resolve the debt. The hook message tells the agent to read the Critic skill, but doesn't distinguish between 'you skipped reviews' and 'reviews predate the hook system'."
+    evidence: "governance-stop.sh blocked with '7 chunk(s) without Critic review' for chunks built in a pre-governance session. The stop hook fired repeatedly during the retroactive review process itself, creating friction while trying to resolve the very debt the hook detected."
+    proposed_action: "Consider a 'retroactive review in progress' state in session-governance.json that suppresses the stop hook while review debt is actively being resolved. Or have the hook message differentiate between 'current session debt' and 'inherited debt'."
+    root_cause_analysis:
+      symptom: "Stop hook blocks progress while agent is actively performing the reviews needed to clear the debt"
+      five_whys:
+        - why: "Why does the stop hook fire during retroactive review?"
+          answer: "The hook checks chunks_completed_without_review > 0, which is true until reviews are recorded"
+        - why: "Why can't the hook tell the agent is mid-review?"
+          answer: "session-governance.json has no state representing 'review in progress' — only 'debt exists' and 'debt cleared'"
+        - why: "Why is there no intermediate state?"
+          answer: "The governance tracker was designed for the normal flow (build chunk → review chunk) where debt is never more than 1 chunk"
+      root_cause: "Governance state model doesn't represent 'actively resolving inherited debt' as a distinct state from 'ignoring debt'"
+      category: incomplete_coverage
+    status: triaged
+
+skills_affected:
+  - "skills/critic/SKILL.md"
+  - "skills/builder/SKILL.md"
+  - "skills/orchestrator/stage-5-build.md"
+---

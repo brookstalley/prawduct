@@ -66,7 +66,7 @@ prawduct/
 │   │   ├── governance-gate.sh         # PreToolUse hook: blocks skill/template reads and governed edits without Orchestrator activation; blocks edits with chunk review debt
 │   │   ├── governance-tracker.sh      # PostToolUse hook: silently tracks edits in .session-governance.json
 │   │   ├── governance-prompt.sh       # UserPromptSubmit hook: enforces Orchestrator activation (HR9)
-│   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists
+│   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists (incl. observation capture)
 │   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
 │   ├── artifacts/                     # 14 product specs (see doc-manifest.yaml); derived from docs/ + discovery
 │   ├── framework-observations/        # Automatic observation capture (Tier 1, lifecycle-managed)

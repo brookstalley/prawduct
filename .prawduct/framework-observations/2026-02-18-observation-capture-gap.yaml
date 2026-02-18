@@ -1,0 +1,36 @@
+---
+observation_id: a7b3e1f4-2d8c-4f6a-9e5b-1c4d7a8b3e2f
+timestamp: 2026-02-18T17:20:00Z
+session_type: product_use
+session_context:
+  product_classification: "has_human_interface (web) + exposes_programmatic_interface + handles_sensitive_data - Productivity/Communication"
+  framework_version: 154d5de
+observations:
+  - type: governance_compliance
+    stage: 5
+    severity: warning
+    description: "Observation capture after Critic review is procedurally instructed (Orchestrator Step 7) but not mechanically enforced. The framework mechanically prevents commits without Critic evidence (critic-gate.sh) and blocks session completion without reviews (governance-stop.sh), but no hook verifies that substantive Critic findings produced observations. An agent can complete a review with multiple warning-severity findings and never capture a single observation."
+    evidence: "Retroactive Critic review of 7 chunks produced 15+ warning-severity findings across 3 systemic patterns (TypedDict test breakage, documentation fiction, threshold mismatch). Agent recorded findings in build_state.reviews and ran record-critic-findings.sh, then reported 'governance debt cleared' without creating any observations. observations_captured_this_session remained 0. The gap was only caught because the user asked."
+    proposed_action: "Add mechanical enforcement for observation capture. Options: (A) governance-stop.sh checks whether warning/blocking findings exist in the current session's Critic evidence without a corresponding observation file — blocks completion if findings > 0 and observations == 0. (B) Add observation capture as a mandatory step in the Critic skill's output format (not just as a check it applies to others). (C) record-critic-findings.sh could prompt for or require an observation file path when highest_severity >= warning."
+    root_cause_analysis:
+      symptom: "Retroactive review produced 15+ warning-severity findings but zero observations were captured"
+      five_whys:
+        - why: "Why didn't the agent capture observations after the review?"
+          answer: "The agent's task was 'clear the governance debt' (stop hook). After recording findings and running record-critic-findings.sh, the debt was cleared. Observation capture wasn't part of the agent's goal."
+        - why: "Why wasn't observation capture part of the debt resolution process?"
+          answer: "There is no designed debt-resolution procedure. The stop hook says 'read the Critic skill' but the Critic skill doesn't include observation capture in its own workflow — it checks whether OTHERS captured observations."
+        - why: "Why doesn't the Critic's workflow include its own observation capture step?"
+          answer: "Observation capture is the Orchestrator's Step 7 in the normal build loop (stage-5-build.md). The Critic finishes, the Orchestrator's Step 7 runs. But retroactive reviews and ad-hoc debt resolution bypass the Orchestrator's loop."
+        - why: "Why does bypassing the Orchestrator's loop lose observation capture?"
+          answer: "Because observation capture is procedural (a step in a sequence the agent follows) rather than mechanical (a hook that blocks progress without it)"
+        - why: "Why is observation capture procedural when review is mechanical?"
+          answer: "The hooks were built to enforce the highest-friction governance requirements (review and commit gate). Observation capture was treated as lower-priority and left to procedural compliance. But procedural compliance fails exactly when the process is unusual (retroactive reviews, debt resolution, post-compaction recovery)."
+      root_cause: "Observation capture lacks mechanical enforcement. The framework solved this exact problem for Critic reviews (governance-stop.sh) but has not applied the same pattern to observation capture. Procedural instructions are insufficient for non-standard process paths."
+      category: process_not_enforced
+    status: acted_on
+
+skills_affected:
+  - "skills/orchestrator/stage-5-build.md"
+  - "skills/critic/SKILL.md"
+  - ".prawduct/hooks/governance-stop.sh"
+---

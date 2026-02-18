@@ -73,6 +73,7 @@ The governance-tracker builds this file incrementally. Key fields and who sets t
 | `pfr_state.required` | governance-tracker (on gov-sensitive edit) | governance-gate, governance-stop | Triggers PFR enforcement chain |
 | `pfr_state.diagnosis_written` | Agent (writes diagnosis) | governance-gate | Unblocks edits after diagnosis |
 | `pfr_state.observation_file` | Agent (after capture-observation.sh) | governance-stop, critic-gate | Unblocks commit after observation |
+| `governance_state.observations_captured_this_session` | Agent (after capturing observations) | governance-stop | Blocks stop when Critic findings >= warning and observations == 0 |
 
 ## Enforcement Chains
 
@@ -172,6 +173,22 @@ Builder completes a chunk, marks status as "review" in project-state.yaml
   → Updates project-state.yaml with review entry
   → governance-tracker.sh: recalculates → chunks_completed_without_review: 0
   → Edits unblocked
+```
+
+### 7. Observation Capture Enforcement
+
+**Purpose:** Warning/blocking Critic findings must produce observations — the learning loop can't be skipped.
+
+```
+Critic review produces findings with highest_severity >= warning
+  → Agent records findings via record-critic-findings.sh
+  → .critic-findings.json has highest_severity: warning (or blocking)
+  → Agent attempts to stop/complete session
+  → governance-stop.sh: reads .critic-findings.json and governance_state.observations_captured_this_session
+  → If highest_severity in (warning, blocking) AND observations == 0 → BLOCKS
+  → Agent captures observation(s) to framework-observations/
+  → Agent increments observations_captured_this_session
+  → governance-stop.sh: observations > 0 → allows stop
 ```
 
 ## Recovery

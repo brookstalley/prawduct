@@ -10,6 +10,7 @@
 #   - Chunks completed without Critic review
 #   - Overdue governance checkpoints
 #   - Incomplete DCP steps (when DCP is active)
+#   - Warning/blocking Critic findings with zero observations captured
 #
 # Hook protocol:
 #   - Reads JSON from stdin (includes stop_hook_active to prevent loops)
@@ -144,6 +145,23 @@ try:
             )
 except Exception:
     pass  # Never block on tool failure
+
+# --- Observation debt ---
+# If Critic found warning/blocking issues this session but no observations were captured,
+# the learning loop is broken. Same enforcement pattern as chunk review debt.
+obs_captured = gov.get('observations_captured_this_session', 0)
+if obs_captured == 0 and findings_file and os.path.exists(findings_file):
+    try:
+        with open(findings_file) as f:
+            findings_data = json.load(f)
+        highest_sev = findings_data.get('highest_severity', 'pass')
+        if highest_sev in ('warning', 'blocking'):
+            critical_issues.append(
+                f'Critic findings have {highest_sev}-severity issues but 0 observations captured this session. '
+                f'Capture observations to framework-observations/ and increment observations_captured_this_session.'
+            )
+    except Exception:
+        pass  # Never block on file read failure
 
 # --- DCP debt ---
 if dc.get('active', False):

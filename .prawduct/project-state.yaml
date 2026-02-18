@@ -490,9 +490,9 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 2 entries compacted (2026-02-16 to 2026-02-17)'
-    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-16 to 2026-02-17); 5-whys fix: mechanical
-      depended_on_by validation + DCP observation-backlog check'
+  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-18)'
+    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-16 to 2026-02-17); Fix README.md staleness
+      + close governance gap for human-facing docs'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-18'
@@ -708,15 +708,6 @@ change_log:
       skills/orchestrator/migration.md (new), .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
     date: 2026-02-16
-  - what: Fix README.md staleness + close governance gap for human-facing docs
-    why: 'Root cause chain: README contained deprecated vocabulary (product shapes, concerns) and stale project layout → README
-      not in blast_radius of 3 directional changes → no instruction prompts verifying README when capabilities change → CLAUDE.md
-      conventions have explicit update triggers for CLAUDE.md but not README → the framework does not read README during normal
-      operation so staleness is invisible. Category: incomplete_coverage. Fix: updated README content, added README to CLAUDE.md
-      Documentation Freshness convention, added proactive Critic Coherence check for directional changes affecting vocabulary/layout.'
-    blast_radius: README.md, CLAUDE.md, skills/critic/SKILL.md, .prawduct/project-state.yaml
-    classification: functional
-    date: 2026-02-17
   - what: 'Post-Fix Reflection Protocol: automatic root cause analysis and framework contribution pathway for every non-cosmetic
       fix'
     why: 'Root cause chain: fixes address symptoms without analyzing root cause → Root Cause Protocol existed but was advisory
@@ -823,6 +814,15 @@ change_log:
       rule to DCP Enhancement step 3 and Structural step 7: "if templates were modified, artifacts generated from those templates
       are automatically in the blast radius."'
     blast_radius: .prawduct/artifacts/test-specifications.md, skills/orchestrator/stage-6-iteration.md, .prawduct/project-state.yaml
+    classification: functional
+    date: 2026-02-18
+  - what: Add observation capture enforcement to governance-stop.sh
+    why: 'Retroactive review of MetaLLM (7 chunks, 15+ warning findings) produced zero observations until user asked. Root cause
+      (5-whys): observation capture depends on procedural compliance (Orchestrator Step 7) not mechanical enforcement. The framework
+      already solved this for Critic reviews (governance-stop.sh blocks without review) but not for observations. Fix: governance-stop.sh
+      now checks if Critic findings have warning/blocking severity but observations_captured_this_session == 0. GitHub issue
+      #4.'
+    blast_radius: .prawduct/hooks/governance-stop.sh, .prawduct/artifacts/governance-mechanisms.md, CLAUDE.md
     classification: functional
     date: 2026-02-18
 build_plan:
@@ -962,7 +962,7 @@ iteration_state:
 # Items removed when acted on; deferred items reviewed periodically.
 
 observation_backlog:
-  last_triage: 2026-02-17
+  last_triage: 2026-02-18
   items:
     # --- Deferred (watch for patterns or address later) ---
     # Removed: "DCP intermediate steps skipped" (2026-02-15-dcp-intermediate-steps-skipped-during-standalone.yaml) — acted_on: mechanical enforcement added
@@ -1044,6 +1044,42 @@ observation_backlog:
       priority: deferred
       rationale: "Implementation complete. Verify bootstrap generation and hook firing against an actual product repo."
       added: 2026-02-15
+    # --- Triaged 2026-02-18 (MetaLLM retroactive review session) ---
+    - observation_file: "framework-observations/2026-02-18-observation-capture-gap.yaml"
+      type: governance_compliance
+      summary: "Observation capture after Critic review lacks mechanical enforcement — procedural-only compliance fails on non-standard paths"
+      target_files: [".prawduct/hooks/governance-stop.sh", "skills/critic/SKILL.md"]
+      priority: next
+      rationale: "RCA: process_not_enforced. Same pattern already solved for Critic reviews (governance-stop.sh enforces review; nothing enforces observation). Fix is clear and bounded: governance-stop checks findings-vs-observations. GitHub issue #4."
+      added: 2026-02-18
+    - observation_file: "framework-observations/2026-02-18-retroactive-review-patterns.yaml"
+      type: critic_gap
+      summary: "Per-chunk Critic review doesn't detect cross-chunk test regression — later chunks silently invalidate earlier tests"
+      target_files: ["skills/critic/SKILL.md", "skills/builder/SKILL.md", "skills/orchestrator/stage-5-build.md"]
+      priority: soon
+      rationale: "RCA: missing_detection. Caused 12+ broken tests in MetaLLM undetected until retroactive review. Fix: require pytest evidence at chunk boundaries, or Critic re-validates shared-type tests. Interacts with existing Critic-Review Lenses integration backlog item."
+      added: 2026-02-18
+    - observation_file: "framework-observations/2026-02-18-retroactive-review-patterns.yaml"
+      type: critic_gap
+      summary: "spec_compliance evidence entries become documentation fiction when implementation evolves across chunks — evidence is write-once, never re-validated"
+      target_files: ["skills/critic/SKILL.md", "skills/builder/SKILL.md"]
+      priority: soon
+      rationale: "RCA: missing_process. Three instances in MetaLLM (ConversationState type, wrapper content, threshold value). Fix: Critic spot-checks 2-3 existing evidence entries referencing files modified in current chunk."
+      added: 2026-02-18
+    - observation_file: "framework-observations/2026-02-18-retroactive-review-patterns.yaml"
+      type: process_friction
+      summary: "Stop hook blocks progress during retroactive review resolution — no 'review in progress' governance state"
+      target_files: [".prawduct/hooks/governance-stop.sh"]
+      priority: deferred
+      rationale: "Note severity, single instance. The hook was annoying but not harmful — reviews completed despite friction. Watch for recurrence."
+      added: 2026-02-18
+    - observation_file: "framework-observations/2026-02-18-pfr-meta-fix-plan-identifies-code.yaml"
+      type: process_friction
+      summary: "PFR meta_fix_plan identifies code blast radius but not documentation blast radius — doc artifacts not prompted for update"
+      target_files: ["skills/orchestrator/protocols.md", "skills/orchestrator/stage-6-iteration.md", "skills/critic/SKILL.md"]
+      priority: soon
+      rationale: "RCA: incomplete_coverage. PFR meta_fix_plan caught code but missed 2 doc updates (governance-mechanisms.md, CLAUDE.md). Fix: add doc blast radius prompt to PFR template, or extend Critic Concept Ripple to check artifact descriptions of edited files."
+      added: 2026-02-18
     # --- Triaged 2026-02-17 ---
     - observation_file: "framework-observations/2026-02-17-agent-bypassed-orchestrator-activation-by-writing.yaml"
       type: process_friction
