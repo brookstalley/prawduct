@@ -4,7 +4,7 @@
 
 **Tier**: 1 (Source of Truth)
 **Owner**: Framework maintainers
-**Last updated**: 2026-02-13
+**Last updated**: 2026-02-17
 
 ---
 
@@ -58,30 +58,9 @@ Reflection as side-effect means:
 
 ### What Gets Observed
 
-**During product sessions** (session_type: product_use):
-- Framework Reflection Protocol at every stage transition (proportionality, coverage, applicability, missing guidance)
-- User corrections to framework outputs
-- Deviations from expected stage progressions
-- Gaps between framework questions and user needs
+See `framework-observations/README.md` § "Observation Capture Guidelines" for the complete list of what to capture and what not to capture, with examples. The three session types (product_use, evaluation, framework_dev) each have distinct capture points.
 
-**During evaluations** (session_type: evaluation):
-- Failed must-do/must-not-do criteria
-- Partial passes and quality issues
-- Rubric ambiguities and test scenario problems
-- Framework capability gaps (e.g., Phase 2 scenarios on Phase 1 framework)
-
-**During framework development** (session_type: framework_dev):
-- Conversations about improving the framework itself
-- Meta-improvement discussions (like the one that created this doc)
-- Observation system failures (framework observing its own observation needs)
-
-**During special modes** (session_type: product_use, stage: meta):
-- Migration edge cases (schema ambiguities, preservation gaps, process friction)
-- Onboarding accuracy (classification gaps, artifact quality from code analysis)
-- Improvisation required beyond documented processes
-- User corrections that reveal systematic blind spots in codebase analysis
-
-**Critical**: Observations must be **generalized, not product-specific**. "Framework didn't ask about offline requirements for media apps" (general) not "Brooks's sleep app needs offline mode" (specific).
+**Critical**: Observations must be **generalized, not product-specific**.
 
 ---
 
@@ -89,45 +68,17 @@ Reflection as side-effect means:
 
 ### Why Three Phases?
 
-Self-improvement has distinct layers that require different capabilities and different amounts of data:
-
-**Phase 1: Capture** (Build immediately)
-- Reflection at every stage transition (recorded in `change_log`), observation files for substantive findings
-- Minimal data needed (just need framework to run)
-- Side-effect of normal operation
-- **Status**: Built 2026-02-11, refined 2026-02-11 (reflection/observation split)
-
-**Phase 2: Pattern Detection** (Build after project volume)
-- Analyze accumulated observations for patterns
-- Requires multiple observations to detect signal vs noise
-- Applies tiered thresholds (meta 2+, build 3+, product 4+ occurrences to detect a pattern)
-- **Status**: PARTIALLY BUILT. Detection is mechanical via `tools/observation-analysis.sh` with tiered thresholds. `tools/session-health-check.sh` surfaces actionable patterns (with proposed actions, affected skills, and un-acted counts) automatically during session resumption. Patterns are presented to the user for action-or-defer decisions. What remains: fully automated periodic detection triggers (currently runs on session start, not on a schedule or after N observations).
-
-**Phase 3: Incorporation** (Build after validation infrastructure)
-- Proposes skill updates based on detected patterns
-- Validates proposed changes against principles and historical projects
-- Requires human approval before merging
-- **Status**: PARTIALLY BUILT. Human-approved incorporation via session resumption: actionable patterns are presented with concrete recommendations, user approves or defers, approved changes follow normal Stage 6 governance (Critic review, commit gate). What remains: automated change proposal generation, validation pipeline (consistency/specificity/reversibility/adversarial gates), provenance tracking from observation IDs through to skill changes.
-
-### Why Capture Must Be Phase 1
-
-**Cannot build pattern detection without observation data.** Trying to build Phase 2 before Phase 1 is like trying to analyze logs that don't exist.
-
-**Cannot defer capture to Phase 2.** If capture isn't built until we have project volume, we miss all the early observations that would inform pattern detection.
-
-**Capture is the foundation.** Get it working reliably first. Everything else builds on top.
-
-### The Phasing Logic
+Self-improvement has distinct layers with **data dependencies**: you can't detect patterns without observations, and you can't incorporate learnings without patterns. Each phase enables the next — this isn't just incremental, it's sequential by necessity.
 
 ```
-Phase 1 (now):     Capture observations automatically
-                   ↓
-Phase 2 (later):   Detect patterns across observations
-                   ↓
-Phase 3 (much later): Propose validated skill updates
+Phase 1 (Capture):        Observations as side-effect of operation
+                           ↓
+Phase 2 (Detection):      Patterns across accumulated observations
+                           ↓
+Phase 3 (Incorporation):  Validated skill updates from patterns
 ```
 
-This isn't just "build incrementally" - it's **data dependency**. You can't skip to Phase 2. You can't parallelize. Each phase enables the next.
+See "Component Architecture" below for implementation details and current status of each phase.
 
 ---
 
@@ -172,6 +123,8 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 
 **Principle**: Learn Slowly - requires strong evidence (multiple occurrences) before acting
 
+**Remaining**: Fully automated periodic triggers (beyond session-start); pattern detection generates observations about its own effectiveness (meta-learning).
+
 ### C8c: Validation Pipeline (Phase 3 - NOT BUILT)
 
 **Purpose**: Validates proposed skill changes before incorporation.
@@ -183,6 +136,8 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 4. **Adversarial testing** - Apply to historical projects, does it improve or regress results?
 
 **Output**: Validated learnings ready for incorporation OR rejected learnings with rationale
+
+**Remaining**: Build validation pipeline with all four gates. Design adversarial testing against historical evals.
 
 ### C8d: Incorporation Engine (Phase 3 - NOT BUILT)
 
@@ -202,6 +157,8 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 
 **Supervision**: Human approval required before merging (supervised learning, not autonomous)
 
+**Remaining**: Automated skill change proposal generation. Provenance tracking from observation IDs through to skill changes.
+
 ### C8e: Retirement Monitor (Phase 3+ - NOT BUILT)
 
 **Purpose**: Reviews incorporated learnings against current evidence. System knowledge can shrink.
@@ -211,6 +168,8 @@ The Learning System (C8) consists of five sub-components. Phase 1 builds only C8
 - Check if later evidence contradicts the learning
 - If contradicted by stronger pattern, mark for retirement
 - System's knowledge is curated, not just accumulated
+
+**Remaining**: Build retirement monitor. Design learning retirement process with documented rationale.
 
 ---
 
@@ -267,7 +226,7 @@ Directional change completes
 
 The Structural Critique Protocol now triggers after directional changes (not just every 3 evals). If a retrospective reveals that the learning system failed to detect a principle violation, that's a signal to expand the Structural Critique's dimensions or the observation system's coverage.
 
-### Two Parallel Capture Paths
+### Three Parallel Capture Paths
 
 | Path | Triggers | Captures | Mechanism |
 |------|----------|----------|-----------|
@@ -473,10 +432,10 @@ Automatic skill updates without validation are dangerous. The system must valida
 **Fix**: Two layers of enforcement:
 1. **Instructional** (original): Post-Fix Reflection Protocol (PFR) embedded in Stage 5 and Stage 6 fix flows. RCA happens *before* the fix so the fix targets the root cause. Meta-fix step checks for other instances of the same root cause in the product. Framework observation with `root_cause_analysis` block enables cross-fix pattern detection by category.
 2. **Mechanical** (added 2026-02-17): Four governance hooks enforce PFR for governance-sensitive files (`skills/`, `tools/`, `scripts/`, `.prawduct/hooks/`):
-   - `governance-tracker.sh`: Detects governance-sensitive edits, sets `pfr_state.required: true`
-   - `governance-gate.sh`: Blocks further governance-sensitive edits until diagnosis (5-whys, root cause, meta-fix plan) is written to session state
-   - `governance-stop.sh`: Blocks session completion if PFR is required but no observation file captured
-   - `critic-gate.sh`: Blocks commit if PFR observation file doesn't exist
+   - `governance-gate.sh`: Independently detects governance-sensitive file edits and blocks them — including the very first edit — until diagnosis (5-whys, root cause, meta-fix plan) is written to session state. Does not depend on the tracker having run.
+   - `governance-tracker.sh`: Handles bookkeeping after edits — tracks which governance-sensitive files were edited and maintains `governance_sensitive_files` list in session state.
+   - `governance-stop.sh`: Blocks session completion if PFR is required but no observation file captured.
+   - `critic-gate.sh`: Blocks commit if PFR observation file doesn't exist.
 
 **Safeguard**: Mechanical hooks enforce the pre-fix gate (diagnosis required before edits) and pre-commit gate (observation required before commit). Critic Check 6 (Learning/Observability) provides additional verification. Cosmetic escape hatch: set `pfr_state.cosmetic_justification` and `pfr_state.required: false` for truly cosmetic changes.
 
@@ -498,138 +457,6 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 ---
 
-## Success Metrics
-
-### Phase 1 Success (Observation Capture)
-
-✅ **Every stage transition records reflection in `change_log`** (automatic, blocking)
-✅ **Substantive findings produce observation files** (signal, not noise)
-✅ **Observation files follow schema** (machine-parseable, structured)
-✅ **Observations are generalized** (pattern-ready, not product-specific)
-✅ **Evaluation methodology verifies reflection mechanically** (Tier 1 BLOCKING check)
-
-### Phase 2 Success (Pattern Detection)
-
-✅ **Pattern reports generated mechanically** (`tools/observation-analysis.sh` with tiered thresholds)
-✅ **Patterns show statistical significance** (tiered: meta 2+, build 3+, product 4+)
-✅ **Emerging patterns flagged for monitoring** (2-3 occurrences → `requires_pattern`)
-✅ **Single instances noted but not acted on** (Learn Slowly enforced by thresholds)
-✅ **Actionable patterns surfaced during session resumption** (via `session-health-check.sh`)
-✅ **Infrastructure health monitoring** (observation lifecycle, archive backlog, stale items, working notes freshness)
-⬜ Fully automated periodic triggers (currently session-start only)
-⬜ Pattern detection itself generates observations (meta-learning)
-
-### Phase 3 Success (Incorporation)
-
-✅ **Actionable patterns presented with concrete recommendations** (session resumption step 4a)
-✅ **Human approval required** (user decides act-now or defer during orientation)
-✅ **Approved changes follow normal governance** (Stage 6 + Critic review)
-⬜ Automated skill change proposal generation from patterns
-⬜ Validation pipeline (consistency, specificity, reversibility, adversarial)
-⬜ Provenance maintained (observation IDs → pattern → skill change)
-⬜ Adversarial testing shows improvement (or flags regression)
-⬜ Retired learnings documented with rationale
-
-### Overall System Success
-
-⬜ Framework improves without manual meta-requests
-⬜ Skill quality increases over time (measured via eval regression checks)
-⬜ Observation → pattern → incorporation cycle runs automatically
-⬜ System observes its own observation/learning failures (closes meta-loop)
-✅ Knowledge curated (can shrink as well as grow) [partial: archiving built, full retirement monitor deferred]
-
----
-
-## Historical Context
-
-### 2026-02-11: The Day We Closed the Loop
-
-**Morning (09:43)**: Built observation capture system from scratch
-- Created framework-observations/ directory structure
-- Defined observation schema
-- Updated Orchestrator skill to capture at stage transitions
-- First observation: documented meta-improvement loop need
-
-**Afternoon (10:19)**: Ran background-pipeline eval (simulation)
-- Expected: Observations automatically captured during eval
-- Actual: No observation files created
-- Discovery: Observation capture built but not invoked
-
-**Analysis (10:35)**: Multi-layer meta-evaluation
-- Identified that observation was optional, not blocking
-- Recognized even "how do we automate?" is a manual meta-request
-- Documented in eval-history/ and working-notes/
-
-**Fix (11:00)**: Implemented ALL immediate fixes
-- Made observation capture BLOCKING (stage fails if not created)
-- Made Review Lenses MANDATORY (cannot skip)
-- Created mechanical validation scripts
-- Added observation verification to eval methodology
-- Marked background-pipeline as Phase 2
-
-**Meta-observation (11:15)**: Observed the fix
-- Created observation file documenting fix implementation
-- Closed the loop: observation → failure → observation-of-failure → fix → observation-of-fix
-
-**Commit (11:30)**: Pushed everything
-- 19 files changed (+3,756 insertions)
-- Observation capture now enforced
-- Self-improvement loop operational
-
-### The Key Insight
-
-**We didn't just fix a bug. We fixed the meta-bug**: the framework couldn't reliably improve itself because observation was optional.
-
-The solution wasn't "remember to observe" - that's still manual. The solution was "make observation unavoidable."
-
-### What This Demonstrates
-
-The self-improvement system successfully improved itself:
-1. System built feature (observation capture)
-2. Feature failed in practice (not invoked during eval)
-3. System observed the failure (manually created observation file)
-4. System generated fix (made capture blocking)
-5. System observed the fix (documented fix as observation)
-
-**The loop is closed.** Future iterations will be automatic.
-
----
-
-## Future Work
-
-### Phase 1 Completion
-
-- [x] Run family-utility baseline to verify observation capture works automatically
-- [x] Accumulate observations from multiple product sessions
-- [x] Validate observation schema supports all needed observation types
-- [x] Monitor observation file size/format for scalability (lifecycle management with archiving built)
-
-### Phase 2: Pattern Detection
-
-- [x] Build pattern-detector script (`tools/observation-analysis.sh` with tiered thresholds)
-- [x] Design pattern report format (surfaced via `tools/session-health-check.sh` during session resumption)
-- [x] Determine pattern detection triggers (session-start via session-health-check.sh)
-- [x] Validate pattern detection catches real patterns without false positives
-- [ ] Fully automated periodic triggers (beyond session-start)
-- [ ] Pattern detection itself generates observations (meta-learning)
-
-### Phase 3: Incorporation
-
-- [x] Implement human approval workflow (act-or-defer during session resumption)
-- [ ] Build validation pipeline (4 gates: consistency, specificity, reversibility, adversarial)
-- [ ] Design skill change proposal format (with provenance from observation IDs)
-- [ ] Build adversarial testing (apply to historical evals, measure impact)
-- [ ] Design learning retirement process
-
-### Meta-Level
-
-- [ ] Apply Prawduct to Prawduct (self-application test)
-- [ ] Generate Prawduct's own build plan using Prawduct
-- [ ] Use framework to design framework improvements
-- [ ] The compiler-compiles-itself test
-
----
-
 ## References
 
 - **Vision**: `docs/vision.md` § "Gets smarter over time"
@@ -641,17 +468,3 @@ The self-improvement system successfully improved itself:
 - **Schema**: `framework-observations/schema.yaml`
 - **History**: `eval-history/background-data-pipeline-2026-02-11.md`
 - **Meta-analysis**: `working-notes/background-pipeline-eval-meta-analysis-2026-02-11.md`
-
----
-
-## Conclusion
-
-**The goal**: Self-improvement without manual meta-requests
-**The philosophy**: Observation as unavoidable side-effect
-**The architecture**: Three-phase approach (capture → detect → incorporate)
-**The meta-requirement**: Framework observes its own observation system
-**The status**: Phase 1 built and enforced, foundation solid
-
-**This is not a feature. This is the framework's ability to learn and adapt. Without it, the framework ossifies. With it, the framework gets smarter every time it runs.**
-
-**It's observation all the way down. And now, it's automatic all the way up.**

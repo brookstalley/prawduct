@@ -175,7 +175,7 @@ Produce execution plan:
 Output: Ordered build plan ready for coding agent.
 
 ### Stage 5: Build + Governance Loop
-**Owner:** Build Governance (C6) + Trajectory Monitor (C7)
+**Owner:** Build Governance (C6)
 
 Repeating cycle during development:
 1. Coding agent builds a defined chunk
@@ -183,8 +183,9 @@ Repeating cycle during development:
 3. Issues categorized: blocking / warning / note
 4. Agent addresses blocking issues
 5. Critic verifies fixes (watching for fix-by-fudging)
-6. Trajectory Monitor checks for holistic concerns at defined triggers
-7. Proceed to next chunk or trigger refactoring review
+6. Proceed to next chunk or trigger refactoring review
+
+*Note: The Trajectory Monitor (C7, v1.5) will add holistic review triggers at this stage when built.*
 
 ### Stage 6: Iteration
 **Owner:** Orchestrator (C1) + Project State (C5)
@@ -422,14 +423,15 @@ The LLM operates under one skill's instructions at a time. The Orchestrator (C1)
 
 ### Persistence Model (V1)
 
-Project state persists as files in the user's project directory:
+Project state persists as files in the `.prawduct/` subdirectory within the user's project:
 
-- `project-state.yaml` — Master state file (C5)
-- `doc-manifest.yaml` — Documentation tier tracking
-- `artifacts/` — Generated artifacts (markdown with YAML frontmatter)
-- `working-notes/` — Ephemeral Tier 3 documents
+- `.prawduct/project-state.yaml` — Master state file (C5)
+- `.prawduct/artifacts/` — Generated artifacts (markdown with YAML frontmatter)
+- `.prawduct/working-notes/` — Ephemeral Tier 3 documents
+- `.prawduct/framework-observations/` — Observation capture files
+- `doc-manifest.yaml` — Documentation tier tracking (project root)
 
-This is intentionally simple: files are human-readable, version-controllable, and require no infrastructure. The LLM reads these files at session start and writes them as decisions are made. This is a reversible choice — if file-based persistence proves insufficient, migration to a structured store is straightforward because the schema is already defined in C5.
+This is intentionally simple: files are human-readable, version-controllable, and require no infrastructure. The LLM reads these files at session start and writes them as decisions are made. Product source code stays at the project root; prawduct outputs are isolated in `.prawduct/`. This is a reversible choice — if file-based persistence proves insufficient, migration to a structured store is straightforward because the schema is already defined in C5.
 
 ### Artifact Format (V1)
 
@@ -543,7 +545,7 @@ All projects (including this one) follow a three-tier system:
 Spans C1, C2, C3, C4. The system maintains a multi-dimensional expertise profile inferred from conversation. Dimensions include: product thinking, technical depth, design sensibility, domain knowledge, operational awareness. The profile updates continuously and drives vocabulary, explanation depth, and involvement calibration.
 
 ### Change Propagation
-Decision changes flow: Project State (C5) identifies affected decisions and artifacts → Artifact Generator (C3) updates affected artifacts → Build Governance (C6) re-validates affected implementation → Trajectory Monitor (C7) assesses whether change patterns suggest deeper issues.
+Decision changes flow: Project State (C5) identifies affected decisions and artifacts → Artifact Generator (C3) updates affected artifacts → Build Governance (C6) re-validates affected implementation. *When built, the Trajectory Monitor (C7, v1.5) will also assess whether change patterns suggest deeper issues.*
 
 ### Feedback Integration
 User reacts to build → Orchestrator (C1) classifies feedback → if directional, Domain Analyzer (C2) re-evaluates → if reclassification, discovery reopens for changed structural characteristics → Project State (C5) updates → change propagation follows.

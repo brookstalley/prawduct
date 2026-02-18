@@ -18,11 +18,11 @@ V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrappi
 - R2.5 (Build Ordering) — implemented via Artifact Generator Phase D and build-plan template
 - R3.1-R3.2 (Automated Critic, Spec Compliance) — implemented via Critic product governance mode
 - R3.3 (Test Integrity) — implemented via Critic Test Integrity Checker
-- R3.7 (Meta-Enforcement) — partially implemented: product governance hooks enforce Critic review and governance checkpoints mechanically (PostToolUse tracking, Stop blocking, UserPromptSubmit context injection); remaining mechanical sub-checks tracked in `project-state.yaml` → `remaining_work`
+- R3.7 (Meta-Enforcement) — partially implemented in Phase 2 (product governance hooks), completed post-Phase 2 (unified governance hooks fully built; see "Delivered since Phase 2")
 - R4.1-R4.3 (Trajectory Management) — partially addressed via governance checkpoints and cross-chunk reviews in Stage 5; full C7 Trajectory Monitor deferred to v1.5
 - R5.1-R5.3 (Feedback Integration) — implemented via Orchestrator Stage 6 iteration loop
 - Stages 4-6 (Build Planning, Build + Governance, Iteration) — implemented across Orchestrator, Builder, Critic
-- `runs_unattended` structural characteristic — full depth with templates, domain overlays, discovery questions
+- `runs_unattended` structural characteristic — full depth with templates, structural amplification rules, discovery questions
 
 **Remaining v1 work** (canonical tracker: `project-state.yaml` → `build_plan.remaining_work`):
 - R1.5 (Opinionated Pushback), R1.7 (Prior Art Awareness), R1.8 (Pacing Sensitivity) — Orchestrator sophistication
@@ -36,6 +36,8 @@ V1 is built as a vertical slice (see `docs/high-level-design.md` § "Bootstrappi
 - R3.4 (Architectural Consistency) — absorbed into Critic Check 5 (Coherence). Architectural consistency is verified as part of coherence checking, not a separate sub-component.
 - R3.5 (Documentation Integrity, Operational Readiness) — absorbed into Critic Checks 1 (Spec Compliance) and 3 (Scope Discipline). Documentation integrity is part of scope discipline; operational readiness is part of spec compliance for relevant structural characteristics.
 - R3.7 (Meta-Enforcement) — mechanical sub-check tools replaced by strengthening general Critic checks. Mechanical enforcement via unified governance hooks (governance-gate, governance-tracker, governance-prompt, governance-stop, critic-gate) is fully built.
+- R6.1 (Project Observation) — delivered as C8a Observer. Observation capture is automatic for all session types (product_use, evaluation, framework_dev). Originally tagged [v2] but built as existential requirement for framework self-improvement.
+- R6.2 (Pattern Extraction) — partially delivered as C8b Pattern Extractor. Mechanical detection via `tools/observation-analysis.sh` with tiered thresholds; actionable patterns surfaced during session resumption via `tools/session-health-check.sh`. Remaining: fully automated periodic triggers.
 
 ---
 
@@ -196,15 +198,15 @@ Before implementing a change, the system must assess and communicate its impact:
 ### R5.3: Graceful Scope Evolution [v1]
 The system must handle the reality that users change their minds, discover new requirements through usage, and evolve their vision — without treating every change as a crisis or requiring a full restart.
 
-### R5.4: Reclassification [v1.5]
+### R5.4: Reclassification [v1]
 When scope evolution fundamentally changes the product's nature (a cribbage app becomes a multi-game platform; a simple tool becomes a B2B service), the system must recognize the reclassification, re-run relevant discovery for the new structural characteristics, and communicate what this means for the existing work.
 
 ## R6: Learning
 
-### R6.1: Project Observation [v2]
+### R6.1: Project Observation [v1] *(delivered: C8a Observer)*
 The system must passively collect structured signals from every project: where governance intervened, where users changed direction, where discovery gaps appeared, what patterns emerged.
 
-### R6.2: Pattern Extraction [v2]
+### R6.2: Pattern Extraction [v1] *(partially delivered: C8b Pattern Extractor)*
 The system must periodically analyze observations across projects to identify statistically meaningful patterns.
 
 ### R6.3: Conservative Incorporation [v2]

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 **This scenario requires Phase 2 framework capabilities:**
-- Domain Analyzer has UI Application discovery questions (Tier 1-3) with Entertainment domain overlay
+- Domain Analyzer has UI Application discovery questions (Tier 1-3) with dynamic domain depth for Entertainment
 - Artifact Generator supports universal artifacts with game/real-time architecture awareness
 - Review Lenses can evaluate non-web UI concerns (terminal rendering, game loop architecture, text-based visual design)
 - Builder can execute build plans for real-time terminal applications
@@ -11,7 +11,7 @@
 
 **Additional framework stretch:**
 - This scenario tests the framework's ability to handle an unusual UI substrate (terminal/TUI rather than web or mobile). The Domain Analyzer's UI Application questions assume web/mobile in several places. This scenario reveals where those assumptions are baked in vs. where general principles adapt naturally.
-- The Entertainment domain overlay in the Domain Analyzer is partial. This scenario exercises it more deeply than the family-utility scenario (which is Entertainment/Utility, not pure Entertainment).
+- The Entertainment dynamic domain depth in the Domain Analyzer relies on LLM knowledge rather than hardcoded question banks. This scenario exercises it more deeply than the family-utility scenario (which is Entertainment/Utility, not pure Entertainment).
 
 **Current status**: Ready for Phase 2 evaluation. All required Phase 2 capabilities are implemented. Terminal-specific adaptations may surface framework gaps — this is a feature, not a bug. Observations from this scenario should feed back into skill improvements.
 
