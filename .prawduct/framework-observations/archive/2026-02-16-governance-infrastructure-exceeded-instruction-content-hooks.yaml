@@ -11,7 +11,7 @@ observations:
     description: "Governance infrastructure exceeded instruction content: hooks alone approached core skill line count. Triple-redundant debt detection, uniform DCP regardless of impact, and procedural instructions repeated 7 times created context pressure and instruction fragility."
     evidence: "Hooks reduced 1079→867 lines (20%). governance-tracker.sh became silent bookkeeper. governance-prompt.sh reduced to activation-only. DCP replaced uniform 11-step with 3-tier (mechanical/enhancement/structural). Session Resumption converted from 6-step enumeration to goal-oriented instruction. obs_utils.py eliminates duplicated threshold and parsing logic across 3 tools."
     proposed_action: "Monitor whether 3-tier DCP classification is correctly applied in practice. Watch for cases where mechanical changes get structural treatment or vice versa."
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/SKILL.md"
   - "skills/orchestrator/stage-6-iteration.md"

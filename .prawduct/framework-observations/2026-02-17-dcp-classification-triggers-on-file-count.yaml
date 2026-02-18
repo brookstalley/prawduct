@@ -11,7 +11,7 @@ observations:
     description: "DCP classification triggers on file count without considering change nature. Documentation-only changes (README, CLAUDE.md, glossary, doc-manifest) trigger the same 3-file DCP classification as skill or governance changes, even though doc-only changes are almost always mechanical tier."
     evidence: "Audit fix session edited 8 files (README, CLAUDE.md, glossary, doc-manifest, dependency-manifest, build-plan template, prawduct-init.py). DCP triggered at 3 files. All changes were documentation fixes and compatibility improvements -- clearly mechanical -- but required manual classification and governance-stop blocked until classified."
     proposed_action: "Consider having governance-tracker.sh auto-classify as mechanical when all edited files are in docs/, templates/, or are README.md/CLAUDE.md. Or add a file-category awareness to the DCP trigger threshold so documentation-only sessions skip classification."
-    status: noted
+    status: triaged
 skills_affected:
   - "skills/orchestrator/stage-6-iteration.md"
 ---

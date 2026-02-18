@@ -11,7 +11,7 @@ observations:
     description: "capture-observation.sh validation list is missing newer observation types (integration_friction, architectural_inconsistency, governance_compliance) that exist in schema.yaml"
     evidence: "Tried to use --type integration_friction (defined in schema.yaml) but the tool rejected it — its hardcoded validation list hasn't been updated since new types were added to the schema"
     proposed_action: "Update capture-observation.sh to read valid types from schema.yaml dynamically, or keep the hardcoded list in sync with the schema"
-    status: noted
+    status: triaged
 skills_affected:
   - "tools/capture-observation.sh"
 ---

@@ -11,7 +11,7 @@ observations:
     description: "Artifact freshness verification is a cross-cutting concern split across Critic Check 3 (Scope Discipline: documentation integrity), Check 5 (Coherence: artifact consistency), and FRP (documentation freshness). Because three checks partially own it, none fully own it, and it falls through the cracks. The agent satisfies each check on its most obvious dimension without cross-referencing changes against artifacts."
     evidence: "9-file enhancement DCP completed with Critic review showing all notes/passes. Five artifacts were stale: api-contract (missing prawduct-init flags), failure-recovery-spec and operational-spec (hooks now resilient to framework-path staleness), pipeline-architecture (DCP covers enhancement tier), configuration-spec (new DCP fields). None caught by Critic."
     proposed_action: "Fixed: artifact freshness is now an explicit DCP step (Enhancement step 3, Structural step 7) with mechanical enforcement via artifacts_verified in session-governance.json. Stop hook blocks enhancement/structural DCPs with empty artifacts_verified. Critic Check 5 strengthened with artifact freshness sub-section."
-    status: noted
+    status: acted_on
     root_cause_analysis:
       symptom: "5 stale artifacts escaped Critic review in a 9-file enhancement DCP"
       root_cause: "Artifact freshness treated as sub-bullet of existing checks rather than as a distinct verification step requiring cross-reference of changes against artifact inventory"

@@ -1018,7 +1018,7 @@ iteration_state:
 # Items removed when acted on; deferred items reviewed periodically.
 
 observation_backlog:
-  last_triage: 2026-02-15
+  last_triage: 2026-02-17
   items:
     # --- Deferred (watch for patterns or address later) ---
     # Removed: "DCP intermediate steps skipped" (2026-02-15-dcp-intermediate-steps-skipped-during-standalone.yaml) — acted_on: mechanical enforcement added
@@ -1100,6 +1100,49 @@ observation_backlog:
       priority: deferred
       rationale: "Implementation complete. Verify bootstrap generation and hook firing against an actual product repo."
       added: 2026-02-15
+    # --- Triaged 2026-02-17 ---
+    - observation_file: "framework-observations/2026-02-17-agent-bypassed-orchestrator-activation-by-writing.yaml"
+      type: process_friction
+      summary: "Agent bypassed Orchestrator activation by writing governance marker via Bash instead of proper flow"
+      target_files: [".prawduct/hooks/governance-prompt.sh"]
+      priority: soon
+      rationale: "RCA: process_not_enforced. Structural gap: markers can be created via Bash. Proposed fix: governance-prompt validates marker provenance. Not urgent (agent behavior issue) but real gap."
+      added: 2026-02-17
+    - observation_file: "framework-observations/2026-02-17-capture-observation-sh-validation-list-is.yaml"
+      type: process_friction
+      summary: "capture-observation.sh validation list missing newer observation types defined in schema.yaml"
+      target_files: ["tools/capture-observation.sh"]
+      priority: next
+      rationale: "Quick mechanical fix: add missing types to VALID_OBS_TYPES enum. Schema has the types but the script rejects them."
+      added: 2026-02-17
+    - observation_file: "framework-observations/2026-02-17-dcp-classification-triggers-on-file-count.yaml"
+      type: process_friction
+      summary: "DCP classification triggers on file count without considering change nature (doc-only changes flagged)"
+      target_files: ["skills/orchestrator/stage-6-iteration.md"]
+      priority: deferred
+      rationale: "Single instance, note severity. Design improvement for governance-tracker auto-classification. Watch for recurrence."
+      added: 2026-02-17
+    - observation_file: "framework-observations/2026-02-17-external-audit-severity-assessments-should-verify.yaml"
+      type: critic_gap
+      summary: "External audit severity assessments should verify tool scope before reporting compliance"
+      target_files: ["skills/critic/SKILL.md"]
+      priority: deferred
+      rationale: "Single instance, note severity. Guidance improvement for Critic proportionality check. Watch for recurrence."
+      added: 2026-02-17
+    - observation_file: "framework-observations/2026-02-17-requirement-version-tags-drift-from-actual.yaml"
+      type: process_friction
+      summary: "Requirement version tags drift from actual build state with no update process"
+      target_files: ["skills/critic/SKILL.md"]
+      priority: deferred
+      rationale: "Immediate tags fixed this session. Process fix (Critic coherence check extension) is the proposed action. Single instance."
+      added: 2026-02-17
+    - observation_file: "framework-observations/2026-02-17-self-hosting-blind-spot-code-generators.yaml"
+      type: coverage
+      summary: "Self-hosting blind spot: code generators embed build-time paths instead of runtime resolution"
+      target_files: ["tools/prawduct-init.py"]
+      priority: soon
+      rationale: "Structural gap in prawduct-init.py: generated configs can embed build-time values. Proposed fix: post-generation check for environment-specific paths."
+      added: 2026-02-17
 
 # =============================================================================
 # DEPRECATED TERMS

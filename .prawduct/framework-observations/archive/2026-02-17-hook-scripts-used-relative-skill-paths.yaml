@@ -11,7 +11,7 @@ observations:
     description: "Hook scripts used relative skill paths in error messages. Cross-repo work (launching from product repo with framework elsewhere) produces unresolvable paths. Orchestrator wrote product_dir as CLAUDE_PROJECT_DIR regardless of actual target, breaking cross-repo product file classification in governance-gate and governance-tracker."
     evidence: "Onboarding unseen-sights from framework repo: governance-prompt.sh told Claude to read skills/orchestrator/SKILL.md but product repo has no skills/ directory. governance-gate.sh lacked fw_rel_path so cross-repo skill reads bypassed gating."
     proposed_action: "Fixed: all hooks derive FRAMEWORK_ROOT from script location. governance-gate.sh adds fw_rel_path for cross-repo reads. SKILL.md adds cross-repo detection, local/shared choice, cross-repo product_dir."
-    status: noted
+    status: acted_on
     root_cause_analysis:
       symptom: "Local mode restart broken: governance-prompt advisory uses relative path unresolvable in product repos"
       root_cause: "Hooks assumed framework directory equals CWD/repo root; no hook used absolute framework paths in user-facing messages"
