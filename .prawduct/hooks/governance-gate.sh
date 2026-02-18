@@ -300,13 +300,18 @@ except:
     sys.exit(0)
 
 pfr = data.get('pfr_state', {})
-if not pfr.get('required', False):
-    # PFR not triggered, or cosmetic escape used (required set to false)
+has_pfr = 'pfr_state' in data
+
+if has_pfr and not pfr.get('required', False):
+    # Cosmetic escape: pfr_state exists but required explicitly set to false
     print('')
-elif not pfr.get('diagnosis_written', False):
-    print('BLOCKED')
+elif has_pfr and pfr.get('diagnosis_written', False):
+    # Diagnosis written — allow
+    print('')
 else:
-    print('')
+    # Either: no pfr_state yet (first edit attempt, diagnosis needed first)
+    # Or: pfr_state exists but diagnosis not yet written
+    print('BLOCKED')
 " 2>/dev/null || echo "")
 
             if [[ "$pfr_result" == "BLOCKED" ]]; then

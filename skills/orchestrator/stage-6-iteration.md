@@ -125,11 +125,10 @@ PFR ensures root cause analysis happens before fixes to governance-sensitive fil
 
 ### How it works
 
-1. **`governance-tracker.sh`** detects edits to governance-sensitive files and sets `pfr_state.required: true` in `.session-governance.json`.
-2. **`governance-gate.sh`** blocks further governance-sensitive edits until `pfr_state.diagnosis_written: true`. The diagnosis must include `symptom`, `five_whys`, `root_cause`, `root_cause_category`, and `meta_fix_plan`.
-3. After implementing the fix, create an observation via `tools/capture-observation.sh` with a `root_cause_analysis` block and set `pfr_state.observation_file` to the observation file path.
-4. **`governance-stop.sh`** blocks session completion if PFR is required but no observation file is set.
-5. **`critic-gate.sh`** blocks commit if PFR is required but the observation file doesn't exist.
+1. **`governance-gate.sh`** independently detects governance-sensitive file edits and blocks them until `pfr_state.diagnosis_written: true` exists in `.session-governance.json`. This includes the very first edit — absence of `pfr_state` is treated as "diagnosis needed", not "PFR not triggered". The diagnosis must include `symptom`, `five_whys`, `root_cause`, `root_cause_category`, and `meta_fix_plan`. **`governance-tracker.sh`** (PostToolUse) handles bookkeeping — tracking which files were edited and maintaining `governance_sensitive_files` — but the gate does not depend on the tracker having run.
+2. After implementing the fix, create an observation via `tools/capture-observation.sh` with a `root_cause_analysis` block and set `pfr_state.observation_file` to the observation file path.
+3. **`governance-stop.sh`** blocks session completion if PFR is required but no observation file is set.
+4. **`critic-gate.sh`** blocks commit if PFR is required but the observation file doesn't exist.
 
 ### The flow
 
