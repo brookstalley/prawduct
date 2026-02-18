@@ -1,0 +1,34 @@
+---
+observation_id: d9c08583-45ed-4238-9bf9-ccdc13c3cb5d
+timestamp: 2026-02-18T12:00:00Z
+session_type: product_use
+session_context:
+  product_classification: "human_interface (screen) + constrained_environment - macOS Utility"
+  framework_version: 11267f7
+observations:
+  - type: integration_friction
+    stage: 5
+    severity: warning
+    description: "prawduct-init skips .gitignore creation when git is not yet initialized, and never revisits it. Projects that run prawduct-init before git init end up with no .gitignore, risking hundreds of build artifacts being committed."
+    evidence: "moonphase project had no .gitignore at all. prawduct-init.py's gitignore step requires a git repo (checks for .git/), but the user initialized git after running prawduct-init. The .build/ directory alone contained hundreds of SPM artifacts that would have been committed."
+    proposed_action: "Either (a) create .gitignore unconditionally (it doesn't require git), or (b) detect missing .gitignore on subsequent prawduct-init --fix runs and create it then. Option (a) is simpler — .gitignore is just a file, it doesn't need git to exist."
+    root_cause_analysis:
+      symptom: "No .gitignore in product repo, build artifacts visible in git status"
+      five_whys:
+        - why: "Why was there no .gitignore in moonphase?"
+          answer: "prawduct-init skipped the gitignore step entirely."
+        - why: "Why did prawduct-init skip gitignore?"
+          answer: "Line 1245 gates it: `if is_git_repo(target):` — .git/ didn't exist yet."
+        - why: "Why does prawduct-init require .git/ for .gitignore?"
+          answer: "The gitignore step was conceptually grouped with 'git repo setup' — treated as a git operation."
+        - why: "Why was .gitignore treated as a git operation?"
+          answer: "Wrong mental model. .gitignore is a plain file that git reads; creating it doesn't require git. But the developer (and reviewer) modeled it as part of git infrastructure."
+        - why: "Why didn't testing catch the wrong abstraction?"
+          answer: "No eval scenario tests the ordering where git init happens after prawduct-init. All scenarios assume git already exists or test the happy path."
+      root_cause: "Wrong abstraction: .gitignore treated as a git operation rather than a plain file, compounded by no test coverage for git-after-init ordering."
+      category: wrong_abstraction
+    status: noted
+skills_affected:
+  - "tools/prawduct-init.py"
+  - "tools/prawduct-init.sh"
+---
