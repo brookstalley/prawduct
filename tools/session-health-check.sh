@@ -206,6 +206,36 @@ if [[ ${#fallback_files[@]} -gt 0 ]]; then
     echo ""
 fi
 
+# --- 3b. Uncontributed observations (product repos only) ---
+
+uncontributed_count=0
+# Only check for non-self-hosted repos (product repos with a framework-path)
+if [[ -f "$PRODUCT_ROOT/framework-path" ]]; then
+    # Verify this isn't self-hosted (framework-path doesn't point to self)
+    fw_path=$(cat "$PRODUCT_ROOT/framework-path" 2>/dev/null || echo "")
+    fw_repo_root=""
+    if [[ -n "$fw_path" && -d "$fw_path" ]]; then
+        fw_repo_root=$(cd "$fw_path" && git rev-parse --show-toplevel 2>/dev/null || echo "")
+    fi
+    if [[ -n "$fw_repo_root" && "$fw_repo_root" != "$REPO_ROOT" ]]; then
+        contrib_check=$("$SCRIPT_DIR/contribute-observations.sh" --check "$REPO_ROOT" 2>/dev/null || echo '{}')
+        uncontributed_count=$(echo "$contrib_check" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    print(data.get('uncontributed_count', 0))
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+        if [[ "${uncontributed_count:-0}" -gt 0 ]]; then
+            echo "## Uncontributed Observations"
+            echo "  $uncontributed_count observation file(s) have not been contributed to the framework."
+            echo "  The Orchestrator can help submit these during session resumption."
+            echo ""
+        fi
+    fi
+fi
+
 # --- 4. Session edits pending review ---
 
 SESSION_GOV="$REPO_ROOT/.prawduct/.session-governance.json"
@@ -785,5 +815,6 @@ echo "SKILL_WARNINGS: ${skill_warnings:-0}"
 echo "DIVERGENCE_WARNINGS: ${divergence_warnings:-0}"
 echo "DEPRECATED_TERM_WARNINGS: ${deprecated_warnings:-0}"
 echo "DEP_GRAPH_WARNINGS: ${dep_graph_warnings:-0}"
+echo "UNCONTRIBUTED_OBSERVATIONS: ${uncontributed_count:-0}"
 echo ""
 echo "=========================================="
