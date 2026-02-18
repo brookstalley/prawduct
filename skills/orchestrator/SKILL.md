@@ -75,6 +75,7 @@ Across all stages, the Orchestrator:
 - **Makes decisions the user can't.** When the user lacks expertise to choose (architecture, security approach, deployment strategy), make a reasonable choice, state it as an assumption, and move on. Don't ask a non-technical user to pick between PostgreSQL and MongoDB.
 - **Tracks stage transitions.** Stages are fuzzy, not rigid gates. Discovery and definition interleave. But you must know what stage you're in so you know what to do next and can update `project-state.yaml` → `current_stage` at each transition.
 - **Reflects on the framework at every stage transition.** See the Framework Reflection Protocol in `skills/orchestrator/protocols.md`.
+- **Treats approved plans as input, not bypass.** When the user provides an approved plan (from plan mode, a prior session, or explicit instructions), that plan is input to the Orchestrator's process. The Orchestrator still activates governance (step 3), initializes tracking (step 4), classifies the change, and applies appropriate governance (PFR, DCP, Critic). An approved plan tells the Orchestrator *what* to implement — it does not skip *how* governance works. This is HR9.
 
 ---
 
