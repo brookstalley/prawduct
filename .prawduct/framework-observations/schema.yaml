@@ -220,6 +220,20 @@ observation_entry:
         - "templates/security-model.md"
         - "framework-observations/README.md"
 
+  # When this observation file was contributed back to the framework repo
+  contributed_to_framework:
+    type: string
+    format: ISO-8601
+    required: false
+    description: "When this file was submitted to the framework repo (YYYY-MM-DDTHH:MM:SSZ). Set by contribute-observations.sh --submit."
+
+  # Link to the GitHub issue created for the contribution
+  contribution_issue_url:
+    type: string
+    format: url
+    required: false
+    description: "URL of the GitHub issue created for this contribution. Set by contribute-observations.sh --submit."
+
 # Example observation entry
 example: |
   ---

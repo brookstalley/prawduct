@@ -138,3 +138,38 @@ def all_terminal(filepath):
 def find_archivable(obs_dir):
     """Return list of observation files where all observations are terminal."""
     return [f for f in find_observation_files(obs_dir) if all_terminal(f)]
+
+
+def is_contributed(filepath):
+    """Check if an observation file has been contributed to the framework."""
+    try:
+        with open(filepath) as f:
+            for doc in yaml.safe_load_all(f):
+                if not doc:
+                    continue
+                if doc.get('contributed_to_framework'):
+                    return True
+        return False
+    except Exception:
+        return False
+
+
+def has_active_observations(filepath):
+    """Check if a file has at least one observation not in terminal status."""
+    try:
+        with open(filepath) as f:
+            for doc in yaml.safe_load_all(f):
+                if not doc or 'observations' not in doc:
+                    continue
+                for obs in doc.get('observations', []):
+                    if is_active(obs):
+                        return True
+        return False
+    except Exception:
+        return False
+
+
+def get_uncontributed(obs_dir):
+    """Return observation files that haven't been contributed and have active observations."""
+    return [f for f in find_observation_files(obs_dir)
+            if not is_contributed(f) and has_active_observations(f)]
