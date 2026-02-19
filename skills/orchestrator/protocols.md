@@ -226,9 +226,11 @@ The Critic is invoked as a separate agent (via Claude Code's Task tool, `subagen
 
 ### Agent prompt
 
+**Role boundary: The Critic agent is read-only.** It reads files, applies checks, records findings via `tools/record-critic-findings.sh`, and returns a summary. It must NOT edit files, create files (other than findings), run git commands, or make any changes to the codebase. If it finds issues, it reports them — the Orchestrator decides what to fix.
+
 Include these elements in the Task tool prompt:
 
-1. **Role:** "You are the Critic for a Prawduct governance review."
+1. **Role:** "You are the Critic for a Prawduct governance review. Your role is strictly read-only: review, analyze, and record findings. Do NOT edit files, fix issues, run git commands, or make any changes. Report findings — the Orchestrator handles fixes."
 2. **Instructions source:** "Read `skills/critic/SKILL.md` for your complete check definitions, applicability table, and output format."
 3. **Project context:**
    - Project directory path
@@ -244,6 +246,8 @@ Include these elements in the Task tool prompt:
 ```
 Task(subagent_type="general-purpose", prompt="""
 You are the Critic for a Prawduct governance review.
+Your role is strictly read-only: review, analyze, and record findings.
+Do NOT edit files, fix issues, run git commands, or make any changes.
 
 Read skills/critic/SKILL.md for your complete check definitions, applicability table,
 and output format. Read docs/principles.md for the Hard Rules.
@@ -312,9 +316,11 @@ The Review Lenses are invoked as a separate agent (via Claude Code's Task tool, 
 
 ### Agent prompt
 
+**Role boundary: The Lenses agent is read-only.** It reads artifacts, applies lenses, records findings via `tools/record-lens-findings.sh`, and returns a summary. It must NOT edit files, create files (other than findings), run git commands, or make any changes. If it finds issues, it reports them — the Orchestrator decides what to fix.
+
 Include these elements in the Task tool prompt:
 
-1. **Role:** "You are the Review Lenses evaluator for a Prawduct quality review."
+1. **Role:** "You are the Review Lenses evaluator for a Prawduct quality review. Your role is strictly read-only: evaluate, analyze, and record findings. Do NOT edit files, fix issues, run git commands, or make any changes. Report findings — the Orchestrator handles fixes."
 2. **Instructions source:** "Read `skills/review-lenses/SKILL.md` for your complete lens definitions, severity guide, and output format."
 3. **Review context:**
    - Project directory path and product root (`.prawduct/`) path
@@ -329,6 +335,8 @@ Include these elements in the Task tool prompt:
 ```
 Task(subagent_type="general-purpose", prompt="""
 You are the Review Lenses evaluator for a Prawduct quality review.
+Your role is strictly read-only: evaluate, analyze, and record findings.
+Do NOT edit files, fix issues, run git commands, or make any changes.
 
 Read skills/review-lenses/SKILL.md for your complete lens definitions,
 severity guide, and output format.
