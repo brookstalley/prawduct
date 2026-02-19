@@ -163,7 +163,7 @@ def _run_stop(hook_input: dict, ctx, state: SessionState) -> NoReturn:
     else:
         print("", file=sys.stderr)
         print(
-            f"BLOCKED: Governance debt. Read {ctx.framework_root}/skills/critic/SKILL.md and resolve:",
+            f"BLOCKED: Governance debt. Read {ctx.framework_root}/skills/orchestrator/protocols.md and resolve:",
             file=sys.stderr,
         )
         print("; ".join(decision.debts), file=sys.stderr)

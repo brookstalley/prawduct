@@ -122,7 +122,7 @@ def _check_critic_evidence(ctx: Context) -> CommitDecision:
                 reason=(
                     "BLOCKED: Framework governance review required before committing.\n"
                     "Framework files are staged but no Critic review evidence was found.\n"
-                    f"Run the Critic: read {ctx.framework_root}/skills/critic/SKILL.md"
+                    f"Run the Critic: invoke agent per {ctx.framework_root}/skills/orchestrator/protocols.md § Critic Agent Protocol"
                 ),
             )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):

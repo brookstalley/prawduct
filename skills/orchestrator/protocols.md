@@ -208,6 +208,89 @@ Apply the framework's principles to its own founding architectural decisions —
 
 ---
 
+## Critic Agent Protocol
+
+The Critic is invoked as a separate agent (via Claude Code's Task tool, `subagent_type: "general-purpose"`). This provides independent review — the agent starts with a clean context, hasn't seen the Builder's reasoning, and isn't subject to task pressure from the build.
+
+### When to invoke
+
+- **Stage 5 per-chunk:** After each chunk (step 5 of the per-chunk cycle)
+- **Stage 6 iteration:** After every file change before committing
+- **DCP Enhancement:** Step 4 (after implementation)
+- **DCP Structural:** Step 4 (plan-stage review — Generality + Coherence + Learning/Observability only) and Step 8 (final full review)
+- **Build completion:** Full product governance review (Stage 5 completion step 1)
+
+### Model requirement
+
+**Always use the best available model for the Critic agent.** Do not specify a downgraded model (e.g., `model: "haiku"`) — the Critic is a quality gate and must have the same analytical capability as the main conversation. Omit the `model` parameter to inherit the parent's model.
+
+### Agent prompt
+
+Include these elements in the Task tool prompt:
+
+1. **Role:** "You are the Critic for a Prawduct governance review."
+2. **Instructions source:** "Read `skills/critic/SKILL.md` for your complete check definitions, applicability table, and output format."
+3. **Project context:**
+   - Project directory path
+   - Product root (`.prawduct/`) path
+   - Current stage
+   - Files changed in this review (list relative paths)
+   - One-sentence summary of what was changed and why
+4. **Accepted context** (prevents false positives): Any user-approved tradeoffs, design decisions explicitly discussed, or scope decisions from this session. Keep this brief — 2-3 sentences maximum. If none, say "No special tradeoffs."
+5. **Task:** "Apply all applicable checks per the applicability table. Run `tools/record-critic-findings.sh` with your findings (--files for all reviewed files, --check for each applicable check). Return a structured summary in the Critic output format."
+
+**Example invocation:**
+
+```
+Task(subagent_type="general-purpose", prompt="""
+You are the Critic for a Prawduct governance review.
+
+Read skills/critic/SKILL.md for your complete check definitions, applicability table,
+and output format. Read docs/principles.md for the Hard Rules.
+
+Project: /path/to/project
+Product root: /path/to/project/.prawduct
+Stage: iteration
+Files changed:
+- skills/orchestrator/protocols.md
+- skills/orchestrator/stage-5-build.md
+- CLAUDE.md
+
+Change summary: Moved Critic invocation from in-context skill loading to subagent model.
+Accepted tradeoffs: None — this is a straightforward architectural change.
+
+Apply all applicable checks per the applicability table. Run
+tools/record-critic-findings.sh with your findings. Return your full review.
+""")
+```
+
+### Output verification
+
+After the agent returns, verify these four conditions:
+
+1. **Evidence exists:** `.prawduct/.critic-findings.json` was created or updated (check file exists).
+2. **File coverage:** `reviewed_files` in the findings includes all files listed as changed.
+3. **Substantiveness:** At least one check has a summary longer than 5 words. An agent returning only "pass" or "ok" for every check without analysis is rubber-stamping.
+4. **Check count:** `total_checks >= 4` (the minimum always-applicable checks).
+
+**If verification fails:** Re-invoke the agent once with an explicit note: "Your previous review was incomplete — [specific failure]. Provide substantive analysis for each check." If it fails again, conduct an in-context review as fallback (read `skills/critic/SKILL.md` and apply checks manually).
+
+### Acting on findings
+
+- **Blocking:** Must be resolved before proceeding. Fix the issues, then re-invoke the Critic agent for the changed files.
+- **Warning:** Note them. Fix quick ones, track others in `build_state.reviews`.
+- **Note:** Informational. No action required unless they accumulate.
+- **No findings:** Proceed. Record the clean review.
+
+### Governance tracking
+
+After the Critic agent completes successfully:
+- Update `.prawduct/.session-governance.json` → `governance_state.chunks_completed_without_review` to 0
+- Set `last_critic_review_chunk` to current chunk name (Stage 5) or change description (Stage 6)
+- The `record-critic-findings.sh` tool also resets the chunk counter automatically
+
+---
+
 ## Extending This Skill
 
 Remaining Orchestrator capabilities are tracked in `project-state.yaml` → `build_plan.remaining_work`.

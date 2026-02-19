@@ -109,6 +109,7 @@ These protocols are in `skills/orchestrator/protocols.md`. Read on demand at sta
 | **Stage Transition Protocol** | Before transitioning to a new stage — verify prerequisites are met |
 | **Expertise Calibration** | Throughout all stages — infer user expertise from signals, adapt behavior |
 | **Structural Critique Protocol** | After every 3 evals, after directional changes, or on request |
+| **Critic Agent Protocol** | When invoking Critic review — spawn agent per this protocol |
 | **Extending This Skill** | When adding new Orchestrator capabilities |
 
 ---

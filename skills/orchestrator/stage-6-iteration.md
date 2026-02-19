@@ -24,7 +24,7 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
    **Change governance (all sizes)**
 
-   Every file change in a governed project requires Critic review before committing (see `skills/critic/SKILL.md`). This is automatic — do not ask the user.
+   Every file change in a governed project requires Critic review before committing. Invoke the Critic as an agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`. This is automatic — do not ask the user.
 
    | Change type | Protocol |
    |---|---|
@@ -126,14 +126,14 @@ Multi-file changes receive governance proportionate to their **impact**, not the
 
 ### Mechanical changes
 
-No DCP needed. Implement the changes, run Critic review (see `skills/critic/SKILL.md`), commit. Set `directional_change.needs_classification` to `false` in `.prawduct/.session-governance.json` if the tracker flagged it.
+No DCP needed. Implement the changes, invoke Critic agent review per the protocol in `skills/orchestrator/protocols.md`, commit. Set `directional_change.needs_classification` to `false` in `.prawduct/.session-governance.json` if the tracker flagged it.
 
 ### Enhancement changes
 
 1. **Write a brief plan** in `working-notes/` describing the change, motivation, and affected files. Before implementing, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned approach — prior observations may identify risks or constraints that should inform the plan. Apply PFR steps 1-2 (classify + RCA) before implementation if the enhancement addresses a known issue or gap. After implementation and Critic review, complete PFR steps 4-6.
 2. **Implement** the change.
 3. **Verify artifact freshness.** Read `artifact_manifest` (in `project-state.yaml`, or from the file at `artifact_manifest_file` if that pointer exists). For each artifact, ask: "does this artifact describe behavior affected by my changes?" Read each candidate artifact and verify it still matches implementation. **Template propagation rule:** If any templates were modified, artifacts generated from those templates are automatically in the blast radius — template structural additions (new sections, new fields) make existing artifacts stale even if the artifact's "behavior" didn't change. For self-hosted repos, check `.prawduct/artifacts/` for artifacts matching modified templates. Update any stale artifacts. Record which artifacts you verified in `directional_change.artifacts_verified` (list of artifact names). **The stop hook enforces this** — it blocks completion when `artifacts_verified` is empty for enhancement/structural DCPs.
-4. **Run Critic review** (see `skills/critic/SKILL.md`) — all applicable checks.
+4. **Run Critic review** — invoke the Critic agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`. All applicable checks.
 5. **Register deprecated terms** if any concepts were renamed/removed: write to `project-state.yaml` → `deprecated_terms` with replacement and grep patterns.
 
 Set `directional_change` in `.prawduct/.session-governance.json` to track: `{"active": true, "tier": "enhancement", "plan_description": "<summary>", "retrospective_completed": false, "artifacts_verified": []}`. Set `active` to `false` after commit.
@@ -143,11 +143,11 @@ Set `directional_change` in `.prawduct/.session-governance.json` to track: `{"ac
 1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction?"
 2. **Reclassification check (product builds).** If the product's fundamental nature changed, re-run classification.
 3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Post-Fix Reflection Protocol in `skills/orchestrator/protocols.md` § PFR). Set `directional_change` in `.prawduct/.session-governance.json`: `{"active": true, "tier": "structural", "plan_description": "<summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <N>, "phases_reviewed_count": 0, "observation_captured": false, "artifacts_verified": []}`.
-4. **Plan-stage Critic review.** Apply Generality, Coherence, and Learning/Observability checks to the plan. Set `plan_stage_review_completed` to `true`.
+4. **Plan-stage Critic review.** Invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`, specifying that only Generality, Coherence, and Learning/Observability checks apply (plan-stage review). Set `plan_stage_review_completed` to `true`.
 5. **Impact assessment.** Map blast radius via `artifact_manifest` (inline or at `artifact_manifest_file`). Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
 6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Increment `phases_reviewed_count` after each.
 7. **Verify artifact freshness.** Same as Enhancement step 3: read `artifact_manifest`, identify artifacts describing affected behavior, verify each is current, update stale ones, record the list in `directional_change.artifacts_verified`. **Template propagation rule applies** — if templates were modified, artifacts generated from those templates are in the blast radius. **The stop hook enforces this.**
-8. **Final Critic review** — all applicable checks (see `skills/critic/SKILL.md`).
+8. **Final Critic review** — invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`. All applicable checks.
 9. **Observation.** Write an observation covering what the change accomplished, what governance caught, and what slipped through. Set `observation_captured` to `true`.
 10. **Retrospective.** Answer: (a) Could the learning system have caught this earlier? (b) What process gaps surfaced? (c) Does the fix generalize? Capture findings as observations. Set `retrospective_completed` to `true`. After commit, set `active` to `false`.
 

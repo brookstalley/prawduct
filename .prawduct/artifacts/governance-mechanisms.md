@@ -142,7 +142,7 @@ Agent attempts to edit skills/, tools/, or scripts/
     why it happens, deeper structural cause, class of problem, prevention)
   → gate.py: rca present and >= 50 chars → allows edit
   → tracker.py: adds file to governance_sensitive_files, sets pfr_state.required: true
-  → Agent makes changes, runs Critic, then captures observation
+  → Agent makes changes, invokes Critic agent for review, then captures observation
   → Agent sets pfr_state.observation_file to observation path
   → stop.py: checks observation_file is set → allows stop
   → commit.py: checks observation file exists on disk → allows commit
@@ -208,8 +208,9 @@ Builder completes a chunk, marks status as "review" in project-state.yaml
   → Sets governance_state.chunks_completed_without_review > 0
   → gate.py: blocks product file edits until review debt is 0
       (exempts project-state.yaml and .session-governance.json)
-  → Agent reads Critic skill, reviews chunk, records findings
-  → Updates project-state.yaml with review entry
+  → Orchestrator invokes Critic agent (separate context, reads skills/critic/SKILL.md)
+  → Agent reviews chunk, runs record-critic-findings.sh
+  → Orchestrator updates project-state.yaml with review entry
   → tracker.py: recalculates → chunks_completed_without_review: 0
   → Edits unblocked
 ```

@@ -62,7 +62,7 @@ Framework development is managed by the Orchestrator. The framework's own `proje
 The Key Principles and Conventions sections below provide constraints the Orchestrator needs when making framework changes.
 
 ### After modifying skills, templates, or principles:
-**Critic review is mandatory for every framework change. Run it automatically** — do not ask the user. Run it as a **separate, final step** after all modifications are complete and before reporting results. The full procedure is in `skills/critic/SKILL.md`; record findings via `tools/record-critic-findings.sh`. Include "Governance Review" in the commit message.
+**Critic review is mandatory for every framework change. Run it automatically** — do not ask the user. Run it as a **separate, final step** after all modifications are complete and before reporting results. Invoke the Critic as an agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`; the agent reads `skills/critic/SKILL.md` and records findings via `tools/record-critic-findings.sh`. Include "Governance Review" in the commit message.
 
 **For multi-file changes:** Follow the Directional Change Protocol in `skills/orchestrator/stage-6-iteration.md`, which classifies changes into three tiers (mechanical, enhancement, structural) with governance proportionate to impact.
 
@@ -70,7 +70,7 @@ The Key Principles and Conventions sections below provide constraints the Orches
 
 If you cannot remember governance procedures (e.g., after context compaction), **read skill files from disk** — they always exist. Product state files live in the **product root** (`.prawduct/` for all repos). In product repos, read `.prawduct/framework-path` to get the framework location.
 
-- **After each chunk:** Read `skills/critic/SKILL.md` and apply all applicable checks
+- **After each chunk:** Invoke the Critic agent (see `skills/orchestrator/protocols.md` § Critic Agent Protocol)
 - **At governance checkpoints:** Read `skills/review-lenses/SKILL.md`, apply Architecture + Skeptic + Testing lenses
 - **At stage transitions:** Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol
 - **If hooks block you:** Read the skill file named in the hook message

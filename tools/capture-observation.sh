@@ -136,6 +136,9 @@ errors=()
 [[ -z "$EVIDENCE" ]]        && errors+=("--evidence is required")
 [[ -z "$SKILLS_AFFECTED" ]] && errors+=("--skills-affected is required")
 
+# Normalize common aliases before validation
+[[ "$STATUS" == "open" || "$STATUS" == "new" ]] && STATUS="noted"
+
 # Enum validation
 validate_enum() {
     local value="$1"

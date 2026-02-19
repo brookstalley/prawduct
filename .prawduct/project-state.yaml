@@ -21,7 +21,7 @@ deferred_backlog_file: observation-backlog-deferred.yaml  # priority: deferred o
 
 dependency_graph:
   - decision_id: skill-interaction-model
-    description: "Skills operate as LLM instruction sets within single context"
+    description: "Skills operate as LLM instruction sets — most in main context, review skills (Critic) as independent subagents"
     affects_decisions: []
     affects_artifacts: [orchestrator, domain-analyzer, artifact-generator, review-lenses, critic, builder]
   - decision_id: file-based-persistence
@@ -75,12 +75,12 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 2 entries compacted (2026-02-18 to 2026-02-18)'
-    why: '1 cosmetic, 1 structural covering: Separate product session state from framework repo via .active-product pointer;
-      Summary: 3 entries compacted (2026-02-18 to 2026-02-18)'
+  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-18)'
+    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-18 to 2026-02-18); Fix doc-code divergence
+      blind spot in onboarding: add Phase 1h bidirectional ...'
     blast_radius: compacted
     classification: cosmetic
-    date: '2026-02-18'
+    date: '2026-02-19'
   - what: Replaced product shape taxonomy with concern-based classification
     why: Fixed shapes (UI Application, API, Automation, Multi-Party, Hybrid) violated 'Generality Over Enumeration' principle.
       Products like earbud firmware, browser extensions, smart contracts don't fit any shape. Replaced with 7 composable concern
@@ -293,18 +293,6 @@ change_log:
       skills/orchestrator/migration.md (new), .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
     date: 2026-02-16
-  - what: 'Fix doc-code divergence blind spot in onboarding: add Phase 1h bidirectional reconciliation'
-    why: 'Onboarding contained contradictory instructions about doc vs code authority (edge case guidance said "lean heavily
-      on docs" while Phase 1g said "code wins for current state"). No operational procedure existed for reconciling doc-code
-      disagreements about feature status in either direction. During Unseen Sights onboarding, a fully-implemented POI feature
-      (18+ code signals) was flagged as uncertain because vision.md listed it as future. Root cause (5-whys): Phase 1g and Phases
-      1a-1e run as separate activities with no cross-referencing step, because the process did not model the common scenario
-      where docs and code drift apart on feature status. Fix: Phase 1h with bidirectional passes (stale roadmaps + phantom features),
-      Phase 1c status-extraction prompt, Phase 2 divergence reporting, Phase 3b three-case conflict handling, Phase 4 reconciliation
-      reflection dimension, state cache for session interruption.'
-    blast_radius: skills/orchestrator/onboarding.md
-    classification: functional
-    date: 2026-02-17
   - what: 'Compaction enforcement: governance-stop blocks on compaction debt, Session Resumption compacts automatically, Critic
       Check 6 requires enforcement for lossless operations'
     why: 'Advisory-only compaction drifted to non-compliance — project-state.yaml grew to 1172 lines (change_log 29 entries,
@@ -405,6 +393,33 @@ change_log:
     blast_radius: .prawduct/hooks/governance-stop.sh, .prawduct/artifacts/governance-mechanisms.md, CLAUDE.md
     classification: functional
     date: 2026-02-18
+  - what: 'Move Critic from in-context skill to subagent: Critic Agent Protocol, updated invocation in stage-5/6, simplified
+      CLAUDE.md compaction recovery'
+    why: 'Critic skill (6,900 tokens) loaded into main context caused three problems: cognitive interference with Builder instructions,
+      self-review conflict (same LLM reviews its own work), compaction fragility (Critic instructions lost on compaction). Root
+      cause (5-whys): skill-as-in-context-instructions model is wrong for review functions that benefit from independence. Fix:
+      Critic invoked as a separate agent via Task tool. Agent reads SKILL.md in its own context, providing genuinely independent
+      review. Hook system, evidence format (.critic-findings.json), and all mechanical enforcement unchanged. Main context reduced
+      by ~6,900 tokens (45% of the instruction-heavy stage). Critic Agent Protocol in protocols.md defines invocation, prompt
+      template, output verification, and fallback. Initial validation: agent successfully reviewed its own migration (10 files,
+      7 checks, caught 2 surviving old-pattern references that were then fixed).'
+    blast_radius: skills/orchestrator/protocols.md, skills/critic/SKILL.md, skills/orchestrator/stage-5-build.md, skills/orchestrator/stage-6-iteration.md,
+      CLAUDE.md, tools/governance/reinject.py, tools/critic-reminder.sh, tools/governance/__main__.py, tools/governance/commit.py,
+      .prawduct/artifacts/governance-mechanisms.md, .prawduct/project-state.yaml
+    classification: structural
+    date: 2026-02-19
+    retrospective: 'Detection: The self-review conflict pattern was identified through observation history analysis, not by
+      the learning system itself. The observation system tracks governance_compliance and process_friction but did not have
+      a type for "architectural limitation causing systemic instruction-following failures." The closest type (architectural_inconsistency)
+      works but doesn''t quite capture "the invocation model itself is wrong." Process: The implementation mapped cleanly to
+      a single phase. Key validation: the Critic agent successfully ran its own migration review (proving the mechanism works)
+      and caught 2 surviving references the implementation missed (proving independence adds value). The initial review found
+      the issues, fixes were applied, re-review passed clean. Evidence format compatibility was confirmed — .critic-findings.json
+      from the agent is identical to what the in-context Critic produces. Generalization: This pattern (review functions benefit
+      from isolation) may apply to Review Lenses (Phase 2, deferred). The key test for other skills: does this skill benefit
+      from NOT seeing the main conversation? Builder does not (needs interaction), Orchestrator does not (IS the conversation),
+      Domain Analyzer might not (somewhat interactive). Review skills benefit most because independence is a feature, not a
+      limitation.'
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.

@@ -8,7 +8,7 @@
 
 **What to do:**
 
-Read `skills/builder/SKILL.md` and `skills/critic/SKILL.md`.
+Read `skills/builder/SKILL.md`. The Critic is invoked as a separate agent — you do not need to load `skills/critic/SKILL.md` into your context.
 
 ### Per-chunk execution
 
@@ -25,7 +25,7 @@ For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step
    - If the gap is real: update the relevant artifact, note the change in `change_log`, and write an observation to `framework-observations/`. Then let the Builder continue.
    - If the gap requires a user decision: ask the user, update artifacts, continue.
 
-5. **Invoke the Critic.** Load `skills/critic/SKILL.md` and review the chunk (the Critic determines applicable checks from project context).
+5. **Invoke the Critic agent.** Spawn a Critic review agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`. The agent runs in a separate context — it reads `skills/critic/SKILL.md` itself and hasn't seen the Builder's reasoning. Include in the prompt: project paths, current stage, files changed in this chunk, chunk summary, and any accepted tradeoffs. Verify the agent's output per the protocol's verification steps.
 
 6. **Handle Critic findings.**
    - **Blocking findings:** Before the Builder fixes a blocking finding, apply PFR steps 1-2 (classify + RCA) from `skills/orchestrator/protocols.md` § PFR. If framework-relevant, the RCA informs the fix — the Builder targets the root cause, not just the symptom. After the fix, apply PFR steps 4-6 (meta-fix across the product, capture framework observation, present contribution pathway). The Critic re-reviews. Repeat until clear. Watch for fix-by-fudging (the Critic checks for this).
@@ -62,7 +62,7 @@ At points marked in `build_plan.governance_checkpoints`, run a broader cross-chu
 
 When all chunks are complete:
 
-1. Run the full Critic product governance review across the entire codebase.
+1. Run the full Critic product governance review across the entire codebase (invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`, listing all source files).
 2. Run all five review lenses on the complete implementation.
 3. Verify all tests pass.
 4. Present the result to the user:

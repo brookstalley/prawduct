@@ -2,9 +2,15 @@
 
 The Critic enforces quality by reviewing changes against the framework's principles and the product's specifications. It operates as a single context-sensitive process — reading `project-state.yaml` to determine which checks apply rather than switching between modes. It is the embodiment of the Hard Rules from `docs/principles.md`.
 
+## Invocation
+
+This skill is invoked as a **separate agent** (via Claude Code's Task tool). The Orchestrator spawns a Critic agent that reads this file in its own context window. This provides genuinely independent review — the agent hasn't seen the Builder's reasoning or the Orchestrator's decision-making.
+
+The Critic Agent Protocol in `skills/orchestrator/protocols.md` defines when and how this agent is spawned. This file is the Critic agent's complete instruction set — the agent reads it directly from disk.
+
 ## When You Are Activated
 
-The Critic is activated after changes are made to any project — framework or product. The Orchestrator invokes the Critic after making changes and before committing (for framework/iteration changes) or after each chunk (for product builds).
+The Critic is activated after changes are made to any project — framework or product. The Orchestrator invokes the Critic agent after making changes and before committing (for framework/iteration changes) or after each chunk (for product builds).
 
 When activated:
 

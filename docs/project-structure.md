@@ -31,11 +31,11 @@ prawduct/
 │   │   ├── stage-6-iteration.md      # Stage 6: Iteration + Directional Change Protocol
 │   │   ├── onboarding.md            # Onboarding Mode: existing codebase → prawduct artifacts
 │   │   ├── migration.md             # Schema Migration: old prawduct versions → current format
-│   │   └── protocols.md              # FRP, Stage Transition, Expertise Calibration, Structural Critique
+│   │   └── protocols.md              # FRP, PFR, Stage Transition, Expertise Calibration, Structural Critique, Critic Agent Protocol
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
 │   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency — format specs live in templates
 │   ├── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
-│   ├── critic/SKILL.md                # Context-sensitive governance: applies checks based on project state
+│   ├── critic/SKILL.md                # Context-sensitive governance: invoked as subagent, reads checks from project state
 │   └── review-lenses/SKILL.md         # Five evaluation perspectives (product, design, arch, skeptic, testing)
 ├── tools/                             # Deterministic scripts (mechanical enforcement, 15 files + governance/)
 │   ├── governance-hook                # Single entry point for all Claude Code hooks (bash, delegates to Python)
