@@ -1,0 +1,20 @@
+---
+observation_id: 36a6cc53-4ff8-40c3-84d8-c19f43db688c
+timestamp: 2026-02-19T22:59:27Z
+session_type: framework_dev
+session_context:
+  framework_version: 2fc05ad
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "DCP tracking requires 5+ manual JSON edits per session because no tooling layer exists between agent intent and raw JSON manipulation. Stop hook blocks during retroactive review because state model has no intermediate state for active debt resolution. Critic Check 1 omits NFR compliance verification despite NFR artifact existing."
+    evidence: "Pattern Extractor Cluster 1 (14 observations): process friction from manual state management. Cluster 2 (8 observations): NFR gaps in cross-component verification. DCP classification alone requires setting active, needs_classification, tier, plan_description, retrospective_completed, observation_captured, artifacts_verified."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Governance friction dominates process observations; NFR compliance unverified"
+      root_cause: "Governance hooks designed for mechanical enforcement (binary checks) not workflow state management; NFR artifact added after Critic Check 1 was built and never integrated"
+      category: wrong_abstraction
+skills_affected:
+  - "tools/governance/state.py tools/governance/stop.py skills/critic/SKILL.md skills/artifact-generator/SKILL.md skills/orchestrator/stage-6-iteration.md"
+---

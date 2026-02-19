@@ -1,0 +1,20 @@
+---
+observation_id: 1a6b3ae3-d26b-4932-bd26-251451147eb3
+timestamp: 2026-02-19T23:16:55Z
+session_type: framework_dev
+session_context:
+  framework_version: 2fc05ad
+observations:
+  - type: governance_compliance
+    stage: 6
+    severity: warning
+    description: "commit.py _check_pfr_observation resolves pfr.observation_file relative to CWD instead of product directory. In cross-repo sessions where CWD differs from product root, the existence check fails on valid files, blocking commits with a false-positive."
+    evidence: "os.path.exists(pfr.observation_file) where observation_file is .prawduct/framework-observations/... — relative path resolved against CWD not product_dir."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Commit blocked with observation file not found despite file existing on disk"
+      root_cause: "_check_pfr_observation received only SessionState not Context, so had no product_dir to resolve relative paths against. Written assuming CWD equals product root."
+      category: incomplete_coverage
+skills_affected:
+  - "tools/governance/commit.py"
+---

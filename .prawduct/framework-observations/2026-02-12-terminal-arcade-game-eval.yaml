@@ -28,7 +28,7 @@ observations:
     description: "Review Lens findings during artifact generation were not persisted as a structured document. Findings were applied in-process (influencing artifact content) but not recorded for traceability."
     evidence: "No review findings document exists in the artifacts directory. The rubric criterion 'each finding has specific recommendation and severity' was met in-process but findings were not preserved as a durable artifact."
     proposed_action: "Consider whether Review Lens findings should be recorded as a structured document (e.g., artifacts/review-findings.md) or in project-state.yaml. The Orchestrator skill says findings are 'surfaced to the user' but doesn't specify persistence format. This may be intentional (findings are consumed and applied, not stored) or a gap."
-    status: triaged
+    status: acted_on
 
   - type: proportionality
     stage: 5

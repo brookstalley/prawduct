@@ -63,7 +63,7 @@ observations:
           answer: "The governance tracker was designed for the normal flow (build chunk → review chunk) where debt is never more than 1 chunk"
       root_cause: "Governance state model doesn't represent 'actively resolving inherited debt' as a distinct state from 'ignoring debt'"
       category: incomplete_coverage
-    status: triaged
+    status: acted_on
 
 skills_affected:
   - "skills/critic/SKILL.md"

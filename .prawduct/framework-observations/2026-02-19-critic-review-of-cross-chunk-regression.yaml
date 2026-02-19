@@ -1,0 +1,21 @@
+---
+observation_id: f47a429d-e163-4e2f-a370-3532e61db480
+timestamp: 2026-02-19T22:38:01Z
+session_type: framework_dev
+session_context:
+  framework_version: 2fc05ad
+observations:
+  - type: critic_gap
+    stage: 6
+    severity: note
+    description: "Critic review of cross-chunk regression fix caught template coherence gap (project-state.yaml history format comment not updated to match new Builder Step 5a format). Template files are downstream of skill changes but not automatically included in blast radius assessment."
+    evidence: "Critic flagged templates/project-state.yaml line 340 still describing old format (chunk_id, tests_added, assertions_added, all_passing) after Builder SKILL.md was updated to require (chunk_id, full_suite_result, tests_run, tests_passed, tests_failed). Fixed in same session."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Template comment described old test history format after Builder skill was updated"
+      root_cause: "DCP blast radius assessment and Critic coherence checks do not automatically include templates that generate the structures modified by skill changes. Template-to-skill traceability is one-directional (skill references template) not bidirectional."
+      category: incomplete_coverage
+skills_affected:
+  - "skills/critic/SKILL.md"
+  - "skills/builder/SKILL.md"
+---
