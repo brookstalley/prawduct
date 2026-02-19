@@ -337,7 +337,7 @@ build_state:
     test_count: 0
     assertion_count: 0
     test_files: []
-    # History per chunk: { chunk_id, tests_added, assertions_added, all_passing }
+    # History per chunk: { chunk_id, full_suite_result, tests_run, tests_passed, tests_failed }
     history: []
 
   # Requirement → implementation tracking.

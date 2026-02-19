@@ -118,7 +118,18 @@ Update `project-state.yaml` with the following sub-steps. All three are required
 
 **Step 5a: Test tracking**
 
-Update `build_state.test_tracking`: `test_count`, `assertion_count`, `test_files`, and add a `history` entry for this chunk.
+Update `build_state.test_tracking`: `test_count`, `assertion_count`, `test_files`, and add a `history` entry for this chunk. The history entry must include the full suite run result from Step 4:
+
+```yaml
+history:
+  - chunk_id: "chunk-03"
+    full_suite_result: "pass"  # "pass" or "fail"
+    tests_run: 47
+    tests_passed: 47
+    tests_failed: 0
+```
+
+This enables the Critic to verify cross-chunk regression detection mechanically. The `full_suite_result` records the final state after Step 4 completes (all tests passing). If regressions were encountered and fixed during Step 4, note what initially failed in the chunk's `build_state.reviews` entry for audit purposes.
 
 **Step 5b: Spec compliance — MANDATORY**
 

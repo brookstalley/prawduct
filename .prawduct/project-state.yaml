@@ -75,9 +75,9 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-19)'
-    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-17 to 2026-02-18); Compaction enforcement:
-      governance-stop blocks on compaction debt, Session Re...'
+  - what: 'Summary: 2 entries compacted (2026-02-19 to 2026-02-19)'
+    why: '1 cosmetic, 1 enhancement covering: Cross-chunk regression detection: full-suite result recording in Builder, reg...;
+      Summary: 2 entries compacted (2026-02-17 to 2026-02-19)'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-19'
@@ -562,39 +562,14 @@ iteration_state:
 # Items removed when acted on; deferred items reviewed periodically.
 
 observation_backlog:
-  last_triage: 2026-02-18
+  last_triage: 2026-02-19
   deferred_file: observation-backlog-deferred.yaml  # 15 deferred items split for context efficiency
   items:
     # --- priority: next ---
-    - observation_file: "framework-observations/2026-02-18-observation-capture-gap.yaml"
-      type: governance_compliance
-      summary: "Observation capture after Critic review lacks mechanical enforcement"
-      target_files: [".prawduct/hooks/governance-stop.sh", "skills/critic/SKILL.md"]
-      priority: next
-      rationale: "RCA: process_not_enforced. GitHub issue #4."
-      added: 2026-02-18
-    - observation_file: "framework-observations/2026-02-17-capture-observation-sh-validation-list-is.yaml"
-      type: process_friction
-      summary: "capture-observation.sh validation list missing newer observation types"
-      target_files: ["tools/capture-observation.sh"]
-      priority: next
-      rationale: "Quick mechanical fix: add missing types to VALID_OBS_TYPES enum."
-      added: 2026-02-17
-    # --- priority: soon ---
-    - observation_file: "framework-observations/2026-02-18-retroactive-review-patterns.yaml"
-      type: critic_gap
-      summary: "Per-chunk Critic review doesn't detect cross-chunk test regression"
-      target_files: ["skills/critic/SKILL.md", "skills/builder/SKILL.md", "skills/orchestrator/stage-5-build.md"]
-      priority: soon
-      rationale: "RCA: missing_detection. 12+ broken tests in MetaLLM undetected."
-      added: 2026-02-18
-    - observation_file: "framework-observations/2026-02-18-retroactive-review-patterns.yaml"
-      type: critic_gap
-      summary: "spec_compliance evidence entries become stale across chunks"
-      target_files: ["skills/critic/SKILL.md", "skills/builder/SKILL.md"]
-      priority: soon
-      rationale: "RCA: missing_process. Fix: Critic spot-checks existing evidence entries."
-      added: 2026-02-18
+    # Removed: "Observation capture after Critic review lacks mechanical enforcement" — implemented in governance stop.py (2026-02-18)
+    # Removed: "capture-observation.sh validation list missing newer observation types" — types already synced with schema (2026-02-17)
+    # Removed: "Per-chunk Critic review doesn't detect cross-chunk test regression" — added full-suite regression check to Critic Check 2, Builder Step 5a history recording (2026-02-19)
+    # Removed: "spec_compliance evidence entries become stale across chunks" — added evidence freshness check to Critic Check 1 (2026-02-19)
     - observation_file: "framework-observations/2026-02-18-pfr-meta-fix-plan-identifies-code.yaml"
       type: process_friction
       summary: "PFR meta_fix_plan misses documentation blast radius"

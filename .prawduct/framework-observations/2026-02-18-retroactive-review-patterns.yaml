@@ -25,7 +25,7 @@ observations:
           answer: "The Builder skill doesn't track cross-chunk test dependencies, and the Critic has no 'regression check' that runs the full test suite"
       root_cause: "No mechanism exists to detect when implementation changes in one chunk invalidate tests written in a different chunk"
       category: missing_detection
-    status: triaged
+    status: acted_on
 
   - type: critic_gap
     stage: 5
@@ -44,7 +44,7 @@ observations:
           answer: "The Builder skill focuses on implementing the current chunk's deliverables, not maintaining prior chunks' evidence trail"
       root_cause: "No feedback loop exists between code modification and evidence freshness — evidence is write-once"
       category: missing_process
-    status: triaged
+    status: acted_on
 
   - type: process_friction
     stage: 5
