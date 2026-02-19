@@ -111,6 +111,14 @@ tools/capture-observation.sh --session-type framework_dev --type process_frictio
 # Observation status updates
 tools/update-observation-status.sh --file FILE --obs-index N --status acted_on
 tools/update-observation-status.sh --archive-all
+
+# DCP state management (replaces manual JSON edits to session-governance.json)
+tools/dcp-update.sh classify --tier enhancement --description "Add NFR traceability"
+tools/dcp-update.sh artifacts-verified --artifacts "build-plan.md nonfunctional-requirements.md"
+tools/dcp-update.sh observation-captured
+tools/dcp-update.sh retrospective-done
+tools/dcp-update.sh complete
+tools/dcp-update.sh status
 ```
 
 ## Conventions

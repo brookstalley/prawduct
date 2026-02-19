@@ -38,7 +38,7 @@ prawduct/
 │   ├── critic/SKILL.md                # Context-sensitive governance: invoked as subagent, reads checks from project state
 │   ├── review-lenses/SKILL.md         # Five evaluation perspectives: invoked as subagent for prospective artifact review
 │   └── pattern-extractor/SKILL.md     # Observation pattern analysis: invoked as subagent for systemic trend detection
-├── tools/                             # Deterministic scripts (mechanical enforcement, 19 files + governance/)
+├── tools/                             # Deterministic scripts (mechanical enforcement, 20 files + governance/)
 │   ├── governance-hook                # Single entry point for all Claude Code hooks (bash, delegates to Python)
 │   ├── governance/                    # Python module: all hook logic (12 submodules)
 │   │   ├── {context,classify,state}.py  # Foundation: path resolution, file classification, session state
@@ -50,6 +50,7 @@ prawduct/
 │   ├── prawduct-statusline.py         # Claude Code statusline: stage, governance alerts, context bar, git
 │   ├── session-health-check.sh        # Session orientation: patterns, backlog, divergence, trace analysis
 │   ├── extract-patterns.sh            # Pattern Extractor wrapper: threshold check, report recording
+│   ├── dcp-update.sh                  # DCP state management: classify, track phases, mark completion
 │   ├── record-lens-findings.sh        # Review Lenses evidence: structured findings for Orchestrator
 │   ├── measure-context-overhead.sh    # Token-approximate context budget measurement
 │   ├── prawduct-quick                 # One-command project setup for new users

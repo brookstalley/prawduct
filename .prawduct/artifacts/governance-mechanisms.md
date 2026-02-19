@@ -1,6 +1,6 @@
 ---
 artifact: governance-mechanisms
-version: 3
+version: 4
 depends_on:
   - artifact: pipeline-architecture
   - artifact: configuration-spec
@@ -97,6 +97,7 @@ All session state lives in `.prawduct/` within `$CLAUDE_PROJECT_DIR`. The govern
 | `schema_version` | state.py | state.py | Schema versioning (2 = current) |
 | `framework_edits.files[]` | tracker.py | stop.py | Edited framework files for Critic coverage |
 | `governance_state.chunks_completed_without_review` | tracker.py | gate.py, stop.py | Blocks product edits until review |
+| `governance_state.retroactive_review_in_progress` | Agent (via dcp-update.sh or direct) | stop.py | Suppresses chunk review debt during active review catchup |
 | `directional_change.needs_classification` | tracker.py (at 3+ files) | stop.py | Blocks until DCP tier is set |
 | `pfr_state.rca` | Agent (natural language) | gate.py | Unblocks governance-sensitive edits after RCA (>=50 chars) |
 | `pfr_state.observation_file` | Agent (after capture-observation.sh) | stop.py, commit.py | Unblocks commit after observation |
@@ -163,7 +164,8 @@ Agent edits 3+ distinct framework files
   → tracker.py: sets directional_change.needs_classification: true
   → stop.py: blocks until classified
   → Agent reads stage-6-iteration.md, classifies as mechanical/enhancement/structural
-  → Agent sets directional_change.active: true, .tier, .total_phases, etc.
+  → Agent runs tools/dcp-update.sh classify --tier <tier> --description "..."
+    (sets active, tier, plan_description, and clears needs_classification)
   → stop.py: checks per-tier requirements:
       - plan_stage_review_completed (structural only)
       - phases_reviewed_count vs total_phases (when > 1 phase)

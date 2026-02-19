@@ -60,7 +60,7 @@ artifact_manifest:
       version: 5
       depends_on: [high-level-design, principles]
       depended_on_by: [family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
-      last_validated: 2026-02-18
+      last_validated: 2026-02-19
       tier: 1
       notes: "Decomposed: SKILL.md (main) + stages-0-2.md, stages-3-4.md, stage-5-build.md, stage-6-iteration.md, onboarding.md, migration.md, protocols.md. Added Guidance Evaluation (pushback) to stage-6-iteration.md, cross-reference + verification opt-in to stages-0-2.md."
     - name: domain-analyzer
@@ -72,11 +72,12 @@ artifact_manifest:
       tier: 1
     - name: artifact-generator
       file_path: skills/artifact-generator/SKILL.md
-      version: 3
+      version: 4
       depends_on: [high-level-design, principles]
       depended_on_by: [human-interface-templates, unattended-operation-templates, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
-      last_validated: 2026-02-18
+      last_validated: 2026-02-19
       tier: 1
+      notes: "Added explicit NFR-to-chunk mapping format for build plan traceability"
     - name: review-lenses
       file_path: skills/review-lenses/SKILL.md
       version: 2
@@ -86,11 +87,12 @@ artifact_manifest:
       tier: 1
     - name: critic
       file_path: skills/critic/SKILL.md
-      version: 3
+      version: 4
       depends_on: [high-level-design, principles]
       depended_on_by: []
-      last_validated: 2026-02-18
+      last_validated: 2026-02-19
       tier: 1
+      notes: "Strengthened NFR compliance in Check 1 with per-chunk mapping verification"
     - name: builder
       file_path: skills/builder/SKILL.md
       version: 2
@@ -210,6 +212,7 @@ artifact_manifest:
       depended_on_by: [governance-mechanisms]
       last_validated: 2026-02-19
       tier: 1
+      notes: "Added retroactive_review_in_progress field, dcp-update.sh tool reference"
     - name: api-contract
       file_path: .prawduct/artifacts/api-contract.md
       version: 2
@@ -219,12 +222,12 @@ artifact_manifest:
       tier: 1
     - name: governance-mechanisms
       file_path: .prawduct/artifacts/governance-mechanisms.md
-      version: 3
+      version: 4
       depends_on: [pipeline-architecture, configuration-spec]
       depended_on_by: []
       last_validated: 2026-02-19
       tier: 1
-      notes: "Added enforcement chain 2 (Framework Version Staleness); updated prompt.py description"
+      notes: "Added retroactive_review_in_progress field, dcp-update.sh tool reference"
 
   # --- Evaluation scenarios ---
   test_specs:
