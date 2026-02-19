@@ -48,7 +48,7 @@ def check_and_archive(
         return CommitDecision(allowed=True)
 
     # 1. PFR observation gate
-    result = _check_pfr_observation(state)
+    result = _check_pfr_observation(state, ctx)
     if not result.allowed:
         tr.event(state, "commit_block", {"rule": "pfr_observation", "reason": result.reason})
         state.save()
@@ -72,7 +72,7 @@ def check_and_archive(
     return CommitDecision(allowed=True)
 
 
-def _check_pfr_observation(state: SessionState) -> CommitDecision:
+def _check_pfr_observation(state: SessionState, ctx: Context) -> CommitDecision:
     """If PFR required, observation file must exist."""
     pfr = state.pfr
     if not pfr.required:
@@ -88,10 +88,15 @@ def _check_pfr_observation(state: SessionState) -> CommitDecision:
             ),
         )
 
-    if not os.path.exists(pfr.observation_file):
+    # Resolve relative paths against product directory
+    obs_path = pfr.observation_file
+    if not os.path.isabs(obs_path):
+        obs_path = os.path.join(state.product_dir, obs_path)
+
+    if not os.path.exists(obs_path):
         return CommitDecision(
             allowed=False,
-            reason=f"BLOCKED: observation file not found: {pfr.observation_file}",
+            reason=f"BLOCKED: observation file not found: {pfr.observation_file} (resolved: {obs_path})",
         )
 
     return CommitDecision(allowed=True)
