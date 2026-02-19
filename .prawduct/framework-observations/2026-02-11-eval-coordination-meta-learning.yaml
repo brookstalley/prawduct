@@ -12,7 +12,7 @@ observations:
     description: "Orchestrator skill documentation is inconsistent about Framework Reflection Protocol execution. The protocol section states reflection is MANDATORY at every stage transition, but only Stage 2 mentions 'Stage Transition Protocol' and only Stage 3 explicitly says 'Run Framework Reflection Protocol.' Stages 0, 0.5, and 1 have no mention of reflection in their step lists. This caused the evaluation run to only capture 1 observation (at Stage 3) instead of 5+ (one per stage transition)."
     evidence: "family-utility-2026-02-11 evaluation produced observation file with only 1 observation at stage 3. Orchestrator skill lines 36, 63, 109 (stage 0, 0.5, 1 transitions) do not mention Framework Reflection Protocol. Only line 181 (stage 3) explicitly calls it out as MANDATORY. Framework Reflection Protocol section (line 188-220) says it's MANDATORY at every stage transition but this is not reflected in stage-specific instructions."
     proposed_action: "Add explicit 'Run Framework Reflection Protocol and write observations (MANDATORY)' step to EVERY stage transition (Stages 0→0.5, 0.5→1, 1→2, 2→3). Make it a numbered step in each stage definition, not just a general principle in a separate section."
-    status: requires_pattern
+    status: acted_on
   - type: rubric_issue
     stage: "meta"
     severity: warning

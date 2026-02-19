@@ -1,0 +1,22 @@
+---
+observation_id: 321266fc-4004-45b3-9a70-083b0043c2f8
+timestamp: 2026-02-19T14:41:24Z
+session_type: framework_dev
+session_context:
+  framework_version: 4a942a6
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Governance hooks mutate .session-governance.json on every tool call (appending trace events), causing race conditions when the agent tries to Edit the file. The Edit tool's staleness check correctly rejects the write, but the agent is forced to fall back to raw Bash JSON manipulation, bypassing the safe Edit tool."
+    evidence: "During session, Read of .session-governance.json followed by Edit failed twice with 'File has been unexpectedly modified' because the PreToolUse gate hook appended trace events between the Read and Edit calls."
+    proposed_action: "Separated trace events into .session-trace.jsonl with write-through on every event() call. Session state file no longer contains trace data. Hooks still record traces but don't mutate the state file."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Agent cannot Edit .session-governance.json because hooks mutate it between Read and Edit"
+      root_cause: "Trace events (append-only log) and session state (read-modify-write) have different I/O patterns but shared a single file, so every hook invocation mutated the file the agent was trying to edit"
+      category: wrong_abstraction
+skills_affected:
+  - "tools/governance/trace.py"
+  - "tools/governance/state.py"
+---

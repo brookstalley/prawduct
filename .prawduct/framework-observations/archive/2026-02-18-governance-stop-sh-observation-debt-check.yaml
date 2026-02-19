@@ -11,7 +11,7 @@ observations:
     description: "governance-stop.sh observation debt check does not scope findings to current session — stale .critic-findings.json from previous sessions triggers false positive blocking"
     evidence: "Research-only session (zero code changes) blocked by governance-stop because .critic-findings.json from earlier MetaLLM retroactive review (18:41:24Z) had warning severity. The framework edits path checks file age (2h max), but observation debt check at lines 149-164 has no age or session-scoping check."
     proposed_action: "Add session-scoping to observation debt check: compare findings timestamp to session_started, or check file_age like the framework edits path does"
-    status: noted
+    status: acted_on
     root_cause_analysis:
       symptom: "governance-stop blocks research sessions that made no changes and ran no Critic"
       root_cause: "Observation debt enforcement was modeled after chunk review debt but chunk review debt is session-scoped by construction (chunks only complete within sessions), while .critic-findings.json persists across sessions"

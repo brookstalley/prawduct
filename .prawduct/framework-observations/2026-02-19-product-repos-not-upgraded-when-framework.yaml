@@ -1,0 +1,20 @@
+---
+observation_id: fed4bc76-d9da-404a-9bdd-18f1b16d3ab0
+timestamp: 2026-02-19T15:37:16Z
+session_type: framework_dev
+session_context:
+  framework_version: 4a942a6
+observations:
+  - type: coverage
+    stage: 6
+    severity: warning
+    description: "Product repos not upgraded when framework version changes. session-health-check.sh did not compare .prawduct/framework-version against the running framework git hash, and no hook detected version staleness. The Orchestrator SKILL.md referenced a framework version changed divergence signal that the health check never produced — dead letter instruction."
+    evidence: "User opened a product repo (metallm) from the framework directory. Expected automatic upgrade detection. No signal was produced because session-health-check.sh section 5 (divergence) lacked version comparison, and no hook checked version freshness."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Product repos silently run with stale framework hooks and governance rules"
+      root_cause: "Orchestrator instruction referenced a version divergence signal never implemented in session-health-check.sh, and no mechanical hook enforced the version check"
+      category: missing_detection
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+---

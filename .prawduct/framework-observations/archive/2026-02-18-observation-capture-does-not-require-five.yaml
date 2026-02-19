@@ -27,7 +27,7 @@ observations:
           answer: "Failure Mode 10 (instance-specific fixes don't generalize) — the exact pattern PFR step 4 and DCP retrospective are supposed to prevent. The PFR fix itself fell victim to the problem it was designed to solve."
       root_cause: "PFR was an instance-specific fix that didn't generalize. RCA was bolted onto the fix flow but not onto observation capture, which is an analogous context. Failure Mode 10 in action."
       category: incomplete_coverage
-    status: noted
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/protocols.md"
   - ".prawduct/framework-observations/schema.yaml"

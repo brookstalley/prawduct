@@ -11,7 +11,7 @@ observations:
     description: "Product-to-framework observation contribution flow is almost entirely manual with no automation, prompting, or cross-product aggregation — observations accumulate in product repos but never feed framework pattern detection"
     evidence: "MetaLLM had 7 chunks with 15+ warning findings but .prawduct/framework-observations/ is empty. format-contribution.sh exists but requires manual invocation, manual GitHub issue creation, and manual YAML transfer. observation-analysis.sh reads only from framework repo observations directory. No mechanism surfaces uncontributed observations to users during session resumption."
     proposed_action: "Design automated contribution pipeline: (1) session-end prompt when observations exist, (2) observation-analysis that can read from multiple product repos, (3) contribution format that enables PR automation, (4) session resumption surfaces uncontributed observation count"
-    status: noted
+    status: acted_on
     root_cause_analysis:
       symptom: "Product observations sit in product repos indefinitely and never reach framework pattern detection"
       root_cause: "Observation system was designed for single-repo operation (framework self-development) and contribution from product repos was added as an afterthought with no mechanical enforcement or automation"

@@ -1,0 +1,24 @@
+---
+observation_id: b6a4f871-b28e-4565-8d29-5df4dc0599e1
+timestamp: 2026-02-19T01:24:38Z
+session_type: product_use
+session_context:
+  product_classification: "unattended_operation - Entertainment/Simulation"
+  framework_version: 4a942a6
+observations:
+  - type: process_friction
+    stage: 5
+    severity: warning
+    description: "Framework friction encountered during product builds has no automatic observation capture trigger — governance system operational failures fall outside all existing capture points"
+    evidence: "Two warning-level observations about governance hook failures (inherited debt catch-22, tracker recounting) were only identified when user explicitly asked about learnings. No governance checkpoint (PFR, FRP, DCP, terminal-mode reflection) fires for friction with the governance system itself. PFR requires blocking Critic findings; FRP requires stage transitions; DCP requires directional changes. The Critic reviews product code quality, not framework operational health."
+    proposed_action: "Add an observation capture trigger for framework operational friction during product builds — e.g. when Bash is used to work around a governance hook, or when a hook blocks an action that the agent then circumvents, prompt for observation capture. Could be a Critic checklist item: 'Did the governance system itself cause friction this chunk?'"
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Framework friction during product builds goes unrecorded unless user explicitly asks"
+      root_cause: "All observation capture triggers are gated on governance checkpoints (PFR/FRP/DCP) that assume friction surfaces through Critic review of product code, but friction with the governance machinery itself bypasses the Critic entirely"
+      category: missing_detection
+skills_affected:
+  - "skills/orchestrator/stage-5-build.md"
+  - "skills/orchestrator/protocols.md"
+  - "skills/critic/SKILL.md"
+---

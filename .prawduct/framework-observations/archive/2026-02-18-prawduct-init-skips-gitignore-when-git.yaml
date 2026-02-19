@@ -27,7 +27,7 @@ observations:
           answer: "No eval scenario tests the ordering where git init happens after prawduct-init. All scenarios assume git already exists or test the happy path."
       root_cause: "Wrong abstraction: .gitignore treated as a git operation rather than a plain file, compounded by no test coverage for git-after-init ordering."
       category: wrong_abstraction
-    status: noted
+    status: acted_on
 skills_affected:
   - "tools/prawduct-init.py"
   - "tools/prawduct-init.sh"
