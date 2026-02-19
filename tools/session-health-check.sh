@@ -244,7 +244,19 @@ fi
 
 # --- 4. Session edits pending review ---
 
-SESSION_GOV="$REPO_ROOT/.prawduct/.session-governance.json"
+# Resolve product .prawduct/ via .active-product pointer
+_AP="${CLAUDE_PROJECT_DIR:-.}/.prawduct/.active-product"
+if [[ -f "$_AP" ]]; then
+    _AP_DIR="$(cat "$_AP")"
+    if [[ -d "$_AP_DIR/.prawduct" ]]; then
+        _PRODUCT_PRAWDUCT="$_AP_DIR/.prawduct"
+    else
+        _PRODUCT_PRAWDUCT="$REPO_ROOT/.prawduct"
+    fi
+else
+    _PRODUCT_PRAWDUCT="$REPO_ROOT/.prawduct"
+fi
+SESSION_GOV="$_PRODUCT_PRAWDUCT/.session-governance.json"
 if [[ -f "$SESSION_GOV" ]]; then
     edit_count=$(python3 -c "
 import json
@@ -343,9 +355,32 @@ print(f'DIVERGENCE_WARNINGS: {warnings}')
 
 divergence_warnings=$(echo "$divergence_output" | grep "^DIVERGENCE_WARNINGS:" | head -1 | sed 's/.*: //')
 divergence_content=$(echo "$divergence_output" | grep -v "^DIVERGENCE_WARNINGS:" | grep -v "^$")
-if [[ "${divergence_warnings:-0}" -gt 0 && -n "$divergence_content" ]]; then
+
+# Framework version check (product repos only)
+# framework-path and framework-version are always in .prawduct/ regardless
+# of whether PRODUCT_ROOT resolved to .prawduct/ or repo root.
+fw_version_output=""
+PRAWDUCT_DIR="$REPO_ROOT/.prawduct"
+if [[ -f "$PRAWDUCT_DIR/framework-path" ]]; then
+    fw_path=$(cat "$PRAWDUCT_DIR/framework-path" 2>/dev/null || echo "")
+    if [[ -n "$fw_path" && -d "$fw_path" ]]; then
+        fw_current=$(git -C "$fw_path" rev-parse HEAD 2>/dev/null || echo "")
+        fw_stored=""
+        if [[ -f "$PRAWDUCT_DIR/framework-version" ]]; then
+            fw_stored=$(head -1 "$PRAWDUCT_DIR/framework-version" 2>/dev/null || echo "")
+        fi
+        if [[ -n "$fw_current" && -n "$fw_stored" && "$fw_current" != "$fw_stored" ]]; then
+            fw_version_output="  WARNING: Framework version mismatch — stored ${fw_stored:0:8}, current ${fw_current:0:8}."$'\n'
+            fw_version_output+="  ACTION: Run: python3 $fw_path/tools/prawduct-init.py --json $REPO_ROOT"
+            divergence_warnings=$((${divergence_warnings:-0} + 1))
+        fi
+    fi
+fi
+
+if [[ "${divergence_warnings:-0}" -gt 0 ]]; then
     echo "## Divergence Signals"
-    echo "$divergence_content"
+    [[ -n "$divergence_content" ]] && echo "$divergence_content"
+    [[ -n "$fw_version_output" ]] && echo "$fw_version_output"
     echo ""
 fi
 
@@ -774,6 +809,62 @@ except Exception as e:
     if [[ "${dep_graph_warnings:-0}" -gt 0 ]]; then
         echo "## Dependency Graph Consistency"
         echo "$dep_graph_output" | grep -v "^DEP_GRAPH_WARNINGS:" | grep -v "^$"
+        echo ""
+    fi
+fi
+
+# --- 10b. Trace Patterns (from governance module traces) ---
+
+trace_warnings=0
+TRACES_DIR="$PRODUCT_ROOT/traces"
+if [[ -f "$TRACES_DIR/session-log.jsonl" ]]; then
+    trace_output=$(python3 -c "
+import json, os, sys
+
+log_path = '$TRACES_DIR/session-log.jsonl'
+warnings = 0
+entries = []
+with open(log_path) as f:
+    for line in f:
+        line = line.strip()
+        if line:
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+if not entries:
+    print('TRACE_WARNINGS: 0')
+    sys.exit(0)
+
+# Look at last 10 sessions for patterns
+recent = entries[-10:]
+
+# High gate block rate
+total_blocks = sum(sum(e.get('gate_blocks', {}).values()) for e in recent)
+if total_blocks > 20:
+    print(f'  WARNING: {total_blocks} gate blocks in last {len(recent)} sessions. Run tools/analyze-session-traces.sh for details.')
+    warnings += 1
+
+# PFR trigger rate
+pfr_count = sum(1 for e in recent if e.get('pfr_triggered'))
+if pfr_count > len(recent) * 0.8:
+    print(f'  NOTE: PFR triggered in {pfr_count}/{len(recent)} recent sessions.')
+
+# Session count
+sessions_dir = '$TRACES_DIR/sessions'
+if os.path.isdir(sessions_dir):
+    archive_count = len([f for f in os.listdir(sessions_dir) if f.endswith('.json')])
+    print(f'  Session traces: {len(entries)} logged, {archive_count} archived')
+
+print(f'TRACE_WARNINGS: {warnings}')
+" 2>/dev/null || echo "TRACE_WARNINGS: 0")
+
+    trace_warnings=$(echo "$trace_output" | grep "^TRACE_WARNINGS:" | head -1 | sed 's/.*: //')
+    trace_content=$(echo "$trace_output" | grep -v "^TRACE_WARNINGS:" | grep -v "^$")
+    if [[ -n "$trace_content" ]]; then
+        echo "## Trace Patterns"
+        echo "$trace_content"
         echo ""
     fi
 fi
