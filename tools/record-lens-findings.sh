@@ -120,6 +120,9 @@ for lens_entry in "${LENSES[@]}"; do
         fi
     fi
 
+    # Normalize aliases
+    [[ "$lens_sev" == "info" ]] && lens_sev="note"
+
     if [[ -n "$lens_sev" ]]; then
         sev_valid=false
         for valid_sev in $VALID_SEVERITIES; do

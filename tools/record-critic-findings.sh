@@ -145,6 +145,9 @@ for check_entry in "${CHECKS[@]}"; do
         fi
     fi
 
+    # Normalize aliases
+    [[ "$check_sev" == "info" ]] && check_sev="note"
+
     # Validate severity
     if [[ -n "$check_sev" ]]; then
         sev_valid=false
