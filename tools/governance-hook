@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# governance-hook — Single entry point for all Claude Code governance hooks.
+#
+# Resolves framework root from this script's location and delegates to the
+# Python governance module. All subcommands (gate, track, failure, stop,
+# commit, prompt, compact-reinject) are handled by tools/governance/__main__.py.
+#
+# Usage (in .claude/settings.json):
+#   "$CLAUDE_PROJECT_DIR/tools/governance-hook" gate
+#   "$FW/tools/governance-hook" stop
+
+FW_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHONPATH="$FW_ROOT/tools" exec python3 -m governance "$@" --root "$FW_ROOT"
