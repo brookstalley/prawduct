@@ -76,8 +76,8 @@ current_stage: iteration
 
 change_log:
   - what: 'Summary: 2 entries compacted (2026-02-19 to 2026-02-19)'
-    why: '1 cosmetic, 1 enhancement covering: Cross-chunk regression detection: full-suite result recording in Builder, reg...;
-      Summary: 2 entries compacted (2026-02-17 to 2026-02-19)'
+    why: '1 cosmetic, 1 enhancement covering: Conservative governance friction reduction plus NFR traceability; Summary: 2 entries
+      compacted (2026-02-19 to 2026-02-19)'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-19'
