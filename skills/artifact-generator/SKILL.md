@@ -224,7 +224,17 @@ Read `templates/build-plan.md`. Generate from `project-state.yaml` → `technica
 
 7. **Verification infrastructure** (when user opted in during discovery). Include verification tooling in the scaffold chunk specification: what tools to install, how to configure them, and how they integrate with the dev workflow. Specify the verification strategy appropriate to the product's structural characteristics (see `docs/high-level-design.md` § Agent Verification Architecture). Verification infrastructure is development-only — include removal/disabling instructions for deployment (HR10: No Dev Tooling in Production).
 
-**NFR technique traceability:** For every NFR that constrains *how* something is built, the build plan must include a concrete implementation instruction in the relevant chunk.
+**NFR technique traceability:** For every NFR that constrains *how* something is built, the build plan must include a concrete implementation instruction in the relevant chunk. Produce an explicit NFR-to-chunk mapping in the build plan:
+
+```
+NFR Traceability:
+- NFR: [requirement name from nonfunctional-requirements.md]
+  Technique: [specific implementation approach]
+  Chunks: [chunk IDs where this is implemented]
+  Verification: [how the Critic can confirm compliance]
+```
+
+This mapping enables the Critic (Check 1) to mechanically verify NFR compliance per chunk rather than relying on ad-hoc cross-referencing. Every NFR must appear in at least one chunk's mapping. NFRs that span multiple chunks (e.g., response time budgets across a pipeline) must note per-chunk contributions.
 
 **Platform-specific scaffolding constraints:** Account for platform build system requirements (test target imports, packaging format, system integration).
 
