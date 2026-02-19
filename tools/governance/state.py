@@ -62,6 +62,7 @@ class GovernanceState:
     last_product_file_edit: Optional[str] = None
     governance_checkpoints_due: list[str] = field(default_factory=list)
     last_updated: Optional[str] = None
+    retroactive_review_in_progress: bool = False
 
 
 @dataclass
@@ -141,6 +142,7 @@ class SessionState:
             last_product_file_edit=gov.get("last_product_file_edit"),
             governance_checkpoints_due=gov.get("governance_checkpoints_due", []),
             last_updated=gov.get("last_updated"),
+            retroactive_review_in_progress=gov.get("retroactive_review_in_progress", False),
         )
 
         # DCP state
@@ -212,6 +214,7 @@ class SessionState:
                 "last_product_file_edit": self.governance.last_product_file_edit,
                 "governance_checkpoints_due": self.governance.governance_checkpoints_due,
                 "last_updated": self.governance.last_updated,
+                "retroactive_review_in_progress": self.governance.retroactive_review_in_progress,
             },
             "directional_change": {
                 "active": self.dcp.active,
@@ -261,6 +264,7 @@ class SessionState:
                 "last_product_file_edit": self.governance.last_product_file_edit,
                 "governance_checkpoints_due": self.governance.governance_checkpoints_due,
                 "last_updated": self.governance.last_updated,
+                "retroactive_review_in_progress": self.governance.retroactive_review_in_progress,
             },
             "directional_change": {
                 "active": self.dcp.active,

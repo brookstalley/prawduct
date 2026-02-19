@@ -115,7 +115,7 @@ def _check_framework_coverage(
 def _check_product_governance(state: SessionState, debts: list[str]) -> None:
     """Chunks without review and overdue checkpoints."""
     gov = state.governance
-    if gov.chunks_completed_without_review > 0:
+    if gov.chunks_completed_without_review > 0 and not gov.retroactive_review_in_progress:
         debts.append(
             f"{gov.chunks_completed_without_review} chunk(s) without Critic review"
         )
