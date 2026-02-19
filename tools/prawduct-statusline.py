@@ -404,43 +404,56 @@ def main() -> None:
     prawduct_dir = os.path.join(project_dir, ".prawduct")
     is_prawduct = os.path.isdir(prawduct_dir)
 
+    # --- Resolve product .prawduct/ via .active-product pointer ---
+    product_prawduct_dir = prawduct_dir
+    if is_prawduct:
+        ap_path = os.path.join(prawduct_dir, ".active-product")
+        try:
+            with open(ap_path) as f:
+                ap_dir = f.read().strip()
+            candidate = os.path.join(ap_dir, ".prawduct")
+            if os.path.isdir(candidate):
+                product_prawduct_dir = candidate
+        except Exception:
+            pass
+
     cache = _load_cache(project_dir)
 
-    # --- Project state (mtime-cached) ---
-    project_state = None
-    if is_prawduct:
-        ps_path = os.path.join(prawduct_dir, "project-state.yaml")
-        ps_mtime = _file_mtime(ps_path)
-        if cache.get("ps_mtime") == ps_mtime and "project_state" in cache:
-            project_state = cache["project_state"]
-        else:
-            project_state = extract_project_state(prawduct_dir)
-            cache["ps_mtime"] = ps_mtime
-            cache["project_state"] = project_state
-
-    # --- Session governance (mtime-cached) ---
+    # --- Session governance (mtime-cached, reads from product dir) ---
     gov = None
     if is_prawduct:
-        gov_path = os.path.join(prawduct_dir, ".session-governance.json")
+        gov_path = os.path.join(product_prawduct_dir, ".session-governance.json")
         gov_mtime = _file_mtime(gov_path)
         if cache.get("gov_mtime") == gov_mtime and "gov" in cache:
             gov = cache["gov"]
         else:
-            gov = extract_session_governance(prawduct_dir)
+            gov = extract_session_governance(product_prawduct_dir)
             cache["gov_mtime"] = gov_mtime
             cache["gov"] = gov
+
+    # --- Project state (mtime-cached, reads from product dir) ---
+    project_state = None
+    if is_prawduct:
+        ps_path = os.path.join(product_prawduct_dir, "project-state.yaml")
+        ps_mtime = _file_mtime(ps_path)
+        if cache.get("ps_mtime") == ps_mtime and "project_state" in cache:
+            project_state = cache["project_state"]
+        else:
+            project_state = extract_project_state(product_prawduct_dir)
+            cache["ps_mtime"] = ps_mtime
+            cache["project_state"] = project_state
 
     # --- Critic findings (mtime-cached, _age_seconds always fresh) ---
     critic = None
     if is_prawduct:
-        critic_path = os.path.join(prawduct_dir, ".critic-findings.json")
+        critic_path = os.path.join(product_prawduct_dir, ".critic-findings.json")
         critic_mtime = _file_mtime(critic_path)
         if cache.get("critic_mtime") == critic_mtime and "critic" in cache:
             critic = cache["critic"]
             if critic:
                 critic["_age_seconds"] = time.time() - critic_mtime
         else:
-            critic = extract_critic_findings(prawduct_dir)
+            critic = extract_critic_findings(product_prawduct_dir)
             cache["critic_mtime"] = critic_mtime
             cache["critic"] = critic
 

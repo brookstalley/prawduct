@@ -165,21 +165,21 @@ PFR ensures root cause analysis happens before fixes to governance-sensitive fil
 
 ### How it works
 
-1. **`governance-gate.sh`** independently detects governance-sensitive file edits and blocks them until `pfr_state.diagnosis_written: true` exists in `.session-governance.json`. This includes the very first edit — absence of `pfr_state` is treated as "diagnosis needed", not "PFR not triggered". The diagnosis must include `symptom`, `five_whys`, `root_cause`, `root_cause_category`, and `meta_fix_plan`. **`governance-tracker.sh`** (PostToolUse) handles bookkeeping — tracking which files were edited and maintaining `governance_sensitive_files` — but the gate does not depend on the tracker having run.
+1. **`gate.py`** (via `governance-gate.sh` shim) detects governance-sensitive file edits and blocks them until `pfr_state.rca` in `.session-governance.json` is non-empty and >= 50 chars. The RCA is natural language including the 5 whys: What's the immediate problem? Why does it happen? What's the deeper structural cause? What class of problem is this? What would prevent the class? **`tracker.py`** (PostToolUse) handles bookkeeping — tracking which files were edited and maintaining `governance_sensitive_files` — but the gate does not depend on the tracker having run.
 2. After implementing the fix, create an observation via `tools/capture-observation.sh` with a `root_cause_analysis` block and set `pfr_state.observation_file` to the observation file path.
-3. **`governance-stop.sh`** blocks session completion if PFR is required but no observation file is set.
-4. **`critic-gate.sh`** blocks commit if PFR is required but the observation file doesn't exist.
+3. **`stop.py`** blocks session completion if PFR is required but no observation file is set.
+4. **`commit.py`** blocks commit if PFR is required but the observation file doesn't exist.
 
 ### The flow
 
 ```
 1. Read files, understand the bug (reads are allowed)
-2. Write diagnosis to .session-governance.json pfr_state
-3. governance-gate now allows edits to governance-sensitive files
+2. Write natural language RCA to pfr_state.rca (>= 50 chars, include 5 whys)
+3. gate.py now allows edits to governance-sensitive files
 4. Implement fix
 5. Create observation with root_cause_analysis via capture-observation.sh
 6. Set pfr_state.observation_file in session state
-7. Commit — critic-gate validates observation file exists
+7. Commit — commit.py archives traces and validates observation file exists
 ```
 
 ### Cosmetic escape hatch

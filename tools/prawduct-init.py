@@ -25,9 +25,11 @@ from pathlib import Path
 
 FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
 
-# Hook scripts that identify a hook entry as prawduct's.
+# Patterns that identify a hook command as prawduct's.
 # Used for detection during settings.json merging.
-PRAWDUCT_HOOK_SCRIPTS = [
+PRAWDUCT_HOOK_IDENTIFIERS = [
+    "governance-hook",
+    # Legacy: detect old .prawduct/hooks/ shims for migration
     "governance-gate.sh",
     "governance-tracker.sh",
     "governance-prompt.sh",
@@ -96,8 +98,8 @@ def get_prawduct_hooks() -> dict:
         'FW="$HOME/.prawduct/framework"; else FW=""; fi; }'
     )
 
-    def fw_cmd(script: str) -> str:
-        return f'{fw_resolve}; if [ -n "$FW" ]; then "$FW/.prawduct/hooks/{script}"; fi'
+    def fw_cmd(subcommand: str) -> str:
+        return f'{fw_resolve}; if [ -n "$FW" ]; then "$FW/tools/governance-hook" {subcommand}; fi'
 
     return {
         "SessionStart": [
@@ -107,8 +109,20 @@ def get_prawduct_hooks() -> dict:
                     {
                         "type": "command",
                         "command": (
+                            '_AP="$CLAUDE_PROJECT_DIR/.prawduct/.active-product"; '
+                            'if [ -f "$_AP" ]; then '
+                            '_D=$(cat "$_AP"); '
+                            '[ -d "$_D/.prawduct" ] && '
+                            'rm -f "$_D/.prawduct/.session-governance.json" '
+                            '"$_D/.prawduct/.session-trace.jsonl" '
+                            '"$_D/.prawduct/.session-edits.json" '
+                            '"$_D/.prawduct/.product-session.json" '
+                            '"$_D/.prawduct/.critic-findings.json" '
+                            '"$_D/.prawduct/.critic-pending"; fi; '
                             'rm -f "$CLAUDE_PROJECT_DIR"/.prawduct/.orchestrator-activated '
+                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.active-product '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-governance.json '
+                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-trace.jsonl '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-edits.json '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.product-session.json'
                         ),
@@ -120,7 +134,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": fw_cmd("compact-governance-reinject.sh"),
+                        "command": fw_cmd("compact-reinject"),
                     }
                 ],
             },
@@ -131,7 +145,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": fw_cmd("governance-prompt.sh"),
+                        "command": fw_cmd("prompt"),
                     }
                 ],
             }
@@ -142,7 +156,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": fw_cmd("critic-gate.sh"),
+                        "command": fw_cmd("commit"),
                     }
                 ],
             },
@@ -151,7 +165,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": fw_cmd("governance-gate.sh"),
+                        "command": fw_cmd("gate"),
                     }
                 ],
             },
@@ -162,7 +176,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": fw_cmd("governance-tracker.sh"),
+                        "command": fw_cmd("track"),
                     }
                 ],
             }
@@ -173,7 +187,7 @@ def get_prawduct_hooks() -> dict:
                 "hooks": [
                     {
                         "type": "command",
-                        "command": fw_cmd("governance-stop.sh"),
+                        "command": fw_cmd("stop"),
                     }
                 ],
             }
@@ -559,13 +573,14 @@ def detect_onboarding_in_progress(target_dir: str) -> dict | None:
 PRAWDUCT_COMMAND_PATTERNS = [
     ".orchestrator-activated",
     ".session-governance.json",
+    ".active-product",
     ".prawduct/framework-path",
 ]
 
 
 def is_prawduct_hook(command: str) -> bool:
     """Check if a hook command is a prawduct hook."""
-    if any(script in command for script in PRAWDUCT_HOOK_SCRIPTS):
+    if any(ident in command for ident in PRAWDUCT_HOOK_IDENTIFIERS):
         return True
     if any(pattern in command for pattern in PRAWDUCT_COMMAND_PATTERNS):
         return True
@@ -1058,12 +1073,11 @@ def check_settings_json(target_dir: str, mode: str, local_mode: bool = False) ->
 
 
 def check_hook_accessibility(target_dir: str) -> list[str]:
-    """Verify each hook script exists at the framework path."""
-    hooks_dir = FRAMEWORK_DIR / ".prawduct" / "hooks"
+    """Verify the governance-hook entry point exists at the framework path."""
+    hook_path = FRAMEWORK_DIR / "tools" / "governance-hook"
     warnings = []
-    for script in PRAWDUCT_HOOK_SCRIPTS:
-        if not (hooks_dir / script).is_file():
-            warnings.append(f"Hook script not found: {hooks_dir / script}")
+    if not hook_path.is_file():
+        warnings.append(f"Hook entry point not found: {hook_path}")
     return warnings
 
 
@@ -1077,11 +1091,16 @@ PRAWDUCT_GITIGNORE_ENTRIES = [
     ".prawduct/.orchestrator-activated",
     ".prawduct/.session-governance.json",
     ".prawduct/.session-governance.json.bak",
+    ".prawduct/.session-trace.jsonl",
     ".prawduct/.session-edits.json",
     ".prawduct/.product-session.json",
     ".prawduct/.onboarding-state.json",
     ".prawduct/.critic-pending",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.active-product",
+    "",
+    "# Prawduct session traces (local-only, never shared automatically)",
+    ".prawduct/traces/",
 ]
 
 # In local mode, the entire .prawduct/ directory is gitignored.
@@ -1096,6 +1115,7 @@ PRAWDUCT_GITIGNORE_ENTRIES_LOCAL = [
 STALE_CLAUDE_SESSION_FILES = [
     ".orchestrator-activated",
     ".session-governance.json",
+    ".session-trace.jsonl",
     ".session-edits.json",
     ".product-session.json",
     ".critic-pending",

@@ -15,13 +15,6 @@ prawduct/
 │   ├── project-definition.yaml        # Split: classification, product_definition, technical/design decisions
 │   ├── artifact-manifest.yaml         # Split: full artifact manifest with dependency graph
 │   ├── observation-backlog-deferred.yaml # Split: deferred observation backlog items
-│   ├── hooks/                         # Governance hook scripts (6 hooks)
-│   │   ├── critic-gate.sh             # PreToolUse hook: blocks commit without structured Critic evidence
-│   │   ├── governance-gate.sh         # PreToolUse hook: blocks skill/template reads and governed edits without Orchestrator activation; blocks edits with chunk review debt
-│   │   ├── governance-tracker.sh      # PostToolUse hook: silently tracks edits in .session-governance.json
-│   │   ├── governance-prompt.sh       # UserPromptSubmit hook: enforces Orchestrator activation (HR9)
-│   │   ├── governance-stop.sh         # Stop hook: blocks completion when critical governance debt exists (incl. observation capture)
-│   │   └── compact-governance-reinject.sh # SessionStart hook (compact): re-injects governance instructions after compaction
 │   ├── artifacts/                     # 14 product specs (see doc-manifest.yaml); derived from docs/ + discovery
 │   ├── framework-observations/        # Automatic observation capture (Tier 1, lifecycle-managed)
 │   │   ├── README.md                  # Observation system documentation
@@ -44,10 +37,18 @@ prawduct/
 │   ├── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
 │   ├── critic/SKILL.md                # Context-sensitive governance: applies checks based on project state
 │   └── review-lenses/SKILL.md         # Five evaluation perspectives (product, design, arch, skeptic, testing)
-├── tools/                             # Deterministic scripts (mechanical enforcement, 14 files)
+├── tools/                             # Deterministic scripts (mechanical enforcement, 15 files + governance/)
+│   ├── governance-hook                # Single entry point for all Claude Code hooks (bash, delegates to Python)
+│   ├── governance/                    # Python module: all hook logic (12 submodules)
+│   │   ├── {context,classify,state}.py  # Foundation: path resolution, file classification, session state
+│   │   ├── {gate,tracker,stop,commit}.py  # Decision logic: PreToolUse, PostToolUse, Stop, Commit gates
+│   │   ├── {prompt,reinject}.py       # Advisory hooks: activation check, post-compaction reinject
+│   │   ├── trace.py                   # Local-only trace emission, persistence, rotation
+│   │   └── __main__.py                # CLI: python3 -m governance <gate|track|stop|commit|prompt|compact-reinject>
 │   ├── prawduct-init.{sh,py}         # Project setup, repair, settings.json merging, gitignore management
 │   ├── prawduct-statusline.py         # Claude Code statusline: stage, governance alerts, context bar, git
-│   ├── session-health-check.sh        # Session orientation: patterns, backlog, divergence, health
+│   ├── session-health-check.sh        # Session orientation: patterns, backlog, divergence, trace analysis
+│   ├── analyze-session-traces.sh      # Trace analysis: gate block rates, PFR/DCP trigger rates
 │   ├── compact-project-state.{sh,py}  # Mechanical compaction of growing project-state.yaml sections
 │   ├── contribute-observations.sh     # Check/format/submit product observations to framework repo
 │   └── ...                            # Observation lifecycle, Critic evidence, product root detection
@@ -61,7 +62,7 @@ prawduct/
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
 ├── .claude/                           # Claude Code integration (settings only)
-│   ├── settings.json                  # Project-level Claude Code settings (hooks point to .prawduct/hooks/)
+│   ├── settings.json                  # Project-level Claude Code settings (hooks call tools/governance-hook)
 │   └── settings.local.json            # Local overrides (not committed)
 └── docs/                              # Design documents (WHY — upstream, Tier 1; see high-level-design.md § Documentation Architecture)
     ├── vision.md

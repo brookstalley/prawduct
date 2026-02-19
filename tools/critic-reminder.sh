@@ -39,6 +39,19 @@ fi
 
 PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.prawduct"
 
+# Resolve product .prawduct/ via .active-product pointer
+_AP="${CLAUDE_PROJECT_DIR:-.}/.prawduct/.active-product"
+if [[ -f "$_AP" ]]; then
+    _AP_DIR="$(cat "$_AP")"
+    if [[ -d "$_AP_DIR/.prawduct" ]]; then
+        PRODUCT_PRAWDUCT="$_AP_DIR/.prawduct"
+    else
+        PRODUCT_PRAWDUCT="$PRAWDUCT_DIR"
+    fi
+else
+    PRODUCT_PRAWDUCT="$PRAWDUCT_DIR"
+fi
+
 FRAMEWORK_PATTERNS=(
     "CLAUDE.md"
     "README.md"
@@ -100,8 +113,8 @@ echo ""
 critic_evidence=false
 findings_file=""
 
-if [[ -n "$PRAWDUCT_DIR" ]]; then
-    findings_file="$PRAWDUCT_DIR/.critic-findings.json"
+if [[ -n "$PRODUCT_PRAWDUCT" ]]; then
+    findings_file="$PRODUCT_PRAWDUCT/.critic-findings.json"
 fi
 
 if [[ -n "$findings_file" && -f "$findings_file" ]]; then
@@ -202,8 +215,8 @@ fi
 
 if [[ "$critic_evidence" == true ]]; then
     # Clean up pending flags
-    if [[ -n "$PRAWDUCT_DIR" ]]; then
-        rm -f "$PRAWDUCT_DIR/.critic-pending"
+    if [[ -n "$PRODUCT_PRAWDUCT" ]]; then
+        rm -f "$PRODUCT_PRAWDUCT/.critic-pending"
     fi
     exit 0
 else

@@ -92,6 +92,27 @@ These are the ones most likely to be violated under pressure:
 
 **Testing:** Scenario-based evaluation with rubrics. See `docs/evaluation-methodology.md`.
 
+## Tool Invocation Quick Reference
+
+```bash
+# Critic findings — --files accepts space-separated, --check uses colon-delimited "Name:severity:summary"
+tools/record-critic-findings.sh --files file1.py file2.py \
+  --check 'Scope Discipline:pass:Changes within scope' \
+  --check 'Proportionality:pass:Weight appropriate' \
+  --check 'Coherence:pass:Artifacts consistent' \
+  --check 'Learning/Observability:pass:Observability preserved'
+
+# Observation capture — RCA uses --rca-symptom/--rca-root-cause/--rca-category (NOT --rca-why)
+tools/capture-observation.sh --session-type framework_dev --type process_friction \
+  --severity warning --stage 6 --status acted_on \
+  --description "..." --evidence "..." --skills-affected "skills/orchestrator/SKILL.md" \
+  --rca-symptom "..." --rca-root-cause "..." --rca-category wrong_abstraction
+
+# Observation status updates
+tools/update-observation-status.sh --file FILE --obs-index N --status acted_on
+tools/update-observation-status.sh --archive-all
+```
+
 ## Conventions
 
 - **Naming:** lowercase-with-hyphens. **Skills:** purpose paragraph first, then instructions.

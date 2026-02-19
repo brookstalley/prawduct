@@ -37,6 +37,7 @@ For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step
    - Were the artifact specs sufficient for this chunk? If not, that's an `artifact_insufficiency` observation.
    - Did the Critic catch real issues or produce noise? That informs Critic calibration.
    - If PFR was applied during this chunk (step 6 blocking finding fixes), verify observations were captured.
+   - **Framework friction check:** Did the governance system itself cause friction this chunk? If a governance hook blocked an action that required manual intervention, if Bash was used to work around a governance gate, or if a governance tool failed or produced incorrect results, capture a framework observation with type `process_friction`. Governance friction that goes uncaptured cannot be fixed.
    - After capturing any observations, increment `.prawduct/.session-governance.json` → `governance_state.observations_captured_this_session`.
 
 ### Governance checkpoints

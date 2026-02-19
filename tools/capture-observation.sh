@@ -42,7 +42,7 @@ set -euo pipefail
 
 VALID_SESSION_TYPES="product_use evaluation framework_dev"
 
-VALID_OBS_TYPES="proportionality coverage applicability missing_guidance rubric_issue process_friction artifact_insufficiency spec_ambiguity deployment_friction critic_gap skill_quality external_practice_drift documentation_drift structural_critique governance_compliance"
+VALID_OBS_TYPES="proportionality coverage applicability missing_guidance rubric_issue process_friction artifact_insufficiency spec_ambiguity deployment_friction critic_gap skill_quality external_practice_drift documentation_drift structural_critique governance_compliance architectural_inconsistency integration_friction pushback"
 
 VALID_SEVERITIES="note warning blocking"
 

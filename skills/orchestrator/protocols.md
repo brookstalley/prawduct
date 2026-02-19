@@ -37,10 +37,20 @@ At every stage transition, pause and assess: **did the framework serve this prod
    - `what: "Framework reflection: Stage N (name) complete"`
    - `why: "[assessment summary or 'no concerns']"`
    - **Update governance tracking (product builds only):** After recording the FRP, update `.prawduct/.session-governance.json` → `governance_state.last_frp_stage` to the current stage and reset `stage_transitions_without_frp` to 0.
-2. **If substantive findings exist**, run `tools/capture-observation.sh` with your findings. The tool handles schema compliance, UUIDs, timestamps, git SHAs, and write-access fallback automatically. Only create observations when there's signal — not for "no concerns." Non-substantive stage reflections are already recorded in `change_log`. See `framework-observations/README.md` for substantiveness criteria.
+2. **Capture substantive findings as observations.** If any dimension above produced a finding beyond "no concerns" — including documentation drift, missing guidance, proportionality issues, or coverage gaps — you MUST run `tools/capture-observation.sh` with the finding. This is not optional: substantive findings that remain only in `change_log` narrative are silently dropped from the learning system (HR2: No Silent Requirement Dropping). The tool handles schema compliance, UUIDs, timestamps, git SHAs, and write-access fallback automatically. Only create observations when there's signal — not for "no concerns." Non-substantive stage reflections are already recorded in `change_log`. See `framework-observations/README.md` for substantiveness criteria.
 3. **If documentation is stale, update it in this session — don't defer.** Documentation drift compounds: a stale doc misleads the next session, which produces more stale docs. File creation, capability changes, and structural additions are the most common triggers.
 4. **Surface findings to the user** briefly: "Framework note: [observation]." Keep to 1-2 sentences unless there's a significant finding. Don't slow down an eager user.
 5. Keep all observations **general, not product-specific**. The insight must apply across products.
+
+---
+
+## Framework Friction Protocol
+
+**When to apply:** During any session where the governance system itself caused friction — hooks blocking incorrectly, tools failing or producing wrong results, Bash workarounds for governance gates, or manual edits to `.session-governance.json`.
+
+**What to do:** Capture a framework observation with type `process_friction` via `tools/capture-observation.sh`. Include what the friction was, what workaround was used, and root cause analysis.
+
+**Why this exists:** PFR requires blocking Critic findings, FRP requires stage transitions, DCP requires directional changes. None fire when friction is with the governance machinery itself.
 
 ---
 
@@ -172,15 +182,13 @@ Apply the framework's principles to its own founding architectural decisions —
    - If no → product-specific. Record briefly in `change_log` and proceed directly to step 3 (implement the fix). Skip steps 2, 4-6.
 
 2. **Root Cause Analysis (5-whys) — before implementing.** For framework-relevant fixes only.
-   - State the immediate problem (the symptom).
-   - Ask "why?" iteratively until you reach a cause the framework can structurally prevent (usually 3-5 levels).
-   - Identify a root cause category:
-     - `missing_process` — No process existed for this situation
-     - `process_not_enforced` — Process existed but was optional/advisory
-     - `incomplete_coverage` — Process existed but didn't cover this case
-     - `wrong_abstraction` — The structural model doesn't match reality
-     - `missing_detection` — No mechanism to detect this class of problem
-     - `vocabulary_drift` — Concepts renamed/removed without lifecycle
+   - Write your RCA as natural language to `pfr_state.rca` in `.prawduct/.session-governance.json`. The governance gate blocks governance-sensitive file edits until this is written (>=50 chars). Include the 5 whys:
+     1. What's the immediate problem?
+     2. Why does it happen?
+     3. What's the deeper structural cause?
+     4. What class of problem is this?
+     5. What would prevent the class, not just this instance?
+   - Root cause categories for reference: `missing_process`, `process_not_enforced`, `incomplete_coverage`, `wrong_abstraction`, `missing_detection`, `vocabulary_drift`.
    - Document the analysis in the `change_log` entry (the `why` field should trace the causal chain, not just describe the symptom).
    - **The class test:** If your fix only prevents this exact symptom from recurring, you haven't gone deep enough. The fix should prevent the *class* of problem, not just the instance.
 
