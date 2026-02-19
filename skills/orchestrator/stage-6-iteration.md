@@ -120,13 +120,14 @@ Multi-file changes receive governance proportionate to their **impact**, not the
 | **Enhancement** | Adds/modifies capability, 3+ files, doesn't change framework concepts | Plan → Implement → Full Critic review. |
 | **Structural** | Changes framework concepts, modifies governance rules, introduces new vocabulary | Full protocol below. |
 
-**Mechanical enforcement:** When `governance-tracker.sh` detects 3+ distinct governed files edited without `directional_change.active = true`, it sets `directional_change.needs_classification = true` in `.prawduct/.session-governance.json`. The stop hook blocks until you classify. To unblock:
-- **Mechanical:** Set `needs_classification` to `false` (no DCP needed).
-- **Enhancement/Structural:** Set `active` to `true`, `needs_classification` to `false`, and follow the appropriate tier protocol below.
+**Mechanical enforcement:** When `governance-tracker.sh` detects 3+ distinct governed files edited without `directional_change.active = true`, it sets `directional_change.needs_classification = true` in `.prawduct/.session-governance.json`. The stop hook blocks until you classify. Use `tools/dcp-update.sh` to manage DCP state:
+- **Mechanical:** `tools/dcp-update.sh classify --tier mechanical`
+- **Enhancement:** `tools/dcp-update.sh classify --tier enhancement --description "..."`
+- **Structural:** `tools/dcp-update.sh classify --tier structural --description "..." --phases N`
 
 ### Mechanical changes
 
-No DCP needed. Implement the changes, invoke Critic agent review per the protocol in `skills/orchestrator/protocols.md`, commit. Set `directional_change.needs_classification` to `false` in `.prawduct/.session-governance.json` if the tracker flagged it.
+No DCP needed. Implement the changes, invoke Critic agent review per the protocol in `skills/orchestrator/protocols.md`, commit. If the tracker flagged `needs_classification`, run `tools/dcp-update.sh classify --tier mechanical` to clear it.
 
 ### Enhancement changes
 
@@ -136,13 +137,13 @@ No DCP needed. Implement the changes, invoke Critic agent review per the protoco
 4. **Run Critic review** — invoke the Critic agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`. All applicable checks.
 5. **Register deprecated terms** if any concepts were renamed/removed: write to `project-state.yaml` → `deprecated_terms` with replacement and grep patterns.
 
-Set `directional_change` in `.prawduct/.session-governance.json` to track: `{"active": true, "tier": "enhancement", "plan_description": "<summary>", "retrospective_completed": false, "artifacts_verified": []}`. Set `active` to `false` after commit.
+Track state via `tools/dcp-update.sh`: classify sets the initial state, then `artifacts-verified`, `observation-captured`, `retrospective-done`, and `complete` advance through the protocol. Run `tools/dcp-update.sh status` to check progress.
 
 ### Structural changes (full protocol)
 
 1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction?"
 2. **Reclassification check (product builds).** If the product's fundamental nature changed, re-run classification.
-3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Post-Fix Reflection Protocol in `skills/orchestrator/protocols.md` § PFR). Set `directional_change` in `.prawduct/.session-governance.json`: `{"active": true, "tier": "structural", "plan_description": "<summary>", "retrospective_completed": false, "plan_stage_review_completed": false, "total_phases": <N>, "phases_reviewed_count": 0, "observation_captured": false, "artifacts_verified": []}`.
+3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Post-Fix Reflection Protocol in `skills/orchestrator/protocols.md` § PFR). Run `tools/dcp-update.sh classify --tier structural --description "<summary>" --phases N`.
 4. **Plan-stage Critic review.** Invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`, specifying that only Generality, Coherence, and Learning/Observability checks apply (plan-stage review). Set `plan_stage_review_completed` to `true`.
 5. **Impact assessment.** Map blast radius via `artifact_manifest` (inline or at `artifact_manifest_file`). Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
 6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Increment `phases_reviewed_count` after each.
