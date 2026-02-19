@@ -1,79 +1,105 @@
 ---
 artifact: governance-mechanisms
-version: 1
+version: 3
 depends_on:
   - artifact: pipeline-architecture
   - artifact: configuration-spec
 depended_on_by: []
-last_validated: 2026-02-17
+last_validated: 2026-02-19
 ---
 
 # Governance Mechanisms
 
-<!-- sourced: .prawduct/hooks/*.sh (6 hooks), tools/record-critic-findings.sh, tools/capture-observation.sh, 2026-02-17 -->
+<!-- sourced: tools/governance-hook, tools/governance/ (Python module), 2026-02-19 -->
 
-This artifact documents how governance is mechanically enforced — the hooks, state files, and enforcement chains that ensure quality and learning processes actually fire. For *what* is monitored and *why*, see `monitoring-alerting-spec.md` and `docs/self-improvement-architecture.md`. For state file schemas, see `configuration-spec.md`.
+This artifact documents how governance is mechanically enforced — the hooks, state files, enforcement chains, and trace system that ensure quality and learning processes actually fire. For *what* is monitored and *why*, see `monitoring-alerting-spec.md` and `docs/self-improvement-architecture.md`. For state file schemas, see `configuration-spec.md`.
 
-## Hook Lifecycle
+## Architecture
 
-Six hooks in `.prawduct/hooks/` enforce governance at different points in the Claude Code tool lifecycle. Each hook derives `FRAMEWORK_ROOT` from its own script location, making hooks resilient to `framework-path` staleness.
+All governance logic lives in `tools/governance/` — a Python module with submodules for context resolution, file classification, session state management, gate decisions, edit tracking, stop validation, commit gating, prompt checks, post-compaction reinject, and trace emission. A single bash entry point (`tools/governance-hook`) resolves the framework root and delegates to the module.
+
+```
+tools/governance-hook           # Single bash entry point for all Claude Code hooks
+tools/governance/
+├── __init__.py        # Package init, version
+├── __main__.py        # CLI: python3 -m governance <gate|track|stop|commit|prompt|compact-reinject>
+├── context.py         # Path resolution (one implementation)
+├── classify.py        # File classification (one implementation)
+├── state.py           # Session state read/write (schema versioned)
+├── trace.py           # Trace event emission + persistence + rotation
+├── gate.py            # PreToolUse decisions
+├── tracker.py         # PostToolUse tracking
+├── stop.py            # Stop hook validation
+├── commit.py          # Commit gate + session archival + cleanup
+├── prompt.py          # UserPromptSubmit: activation reminder + framework version check
+├── failure.py         # PostToolUseFailure: investigation reminder on unexpected errors
+├── reinject.py        # SessionStart compact: post-compaction context recovery
+```
+
+### Hook Protocol
+
+`tools/governance-hook` is the single entry point for all hooks:
+1. Derives `FRAMEWORK_ROOT` from its own location (`dirname "$0"/..`)
+2. Sets `PYTHONPATH` and calls `python3 -m governance <command> --root $FRAMEWORK_ROOT`
+3. The module reads hook JSON from stdin (for commands that need it)
+4. Exits with the module's exit code (0=allow, 2=block)
 
 ### Event Ordering
 
 ```
 UserPromptSubmit  →  PreToolUse (per tool call)  →  PostToolUse (per tool call)  →  Stop
-governance-prompt     governance-gate                governance-tracker              governance-stop
-                      critic-gate (Bash only)
+prompt               gate (Edit/Write/Read)         track                           stop
+                     commit (Bash only)
 ```
 
-On compaction: `compact-governance-reinject` fires as a SessionStart hook.
+On compaction: `compact-reinject` fires as a SessionStart hook.
 
 ### Hook Summary
 
-| Hook | Event | Behavior | Can Block? |
-|------|-------|----------|------------|
-| `governance-prompt.sh` | UserPromptSubmit | If `.orchestrator-activated` marker missing, injects activation instruction into context | No (advisory) |
-| `governance-gate.sh` | PreToolUse (Read, Edit, Write) | Blocks skill/template reads without activation; blocks all governed edits without activation; blocks edits without PFR diagnosis; blocks product edits with chunk review debt | **Yes** (exit 2) |
-| `governance-tracker.sh` | PostToolUse (Edit, Write) | Silent bookkeeping: tracks framework/product edits, sets PFR state, triggers DCP classification at 3+ files, maintains `.critic-pending` | No (exit 0 always) |
-| `critic-gate.sh` | PreToolUse (Bash) | Only activates for `git commit` commands. Blocks if PFR observation file missing; delegates to `critic-reminder.sh` for Critic evidence check. On success: cleans up all session state files | **Yes** (exit 2) |
-| `governance-stop.sh` | Stop | Blocks session completion when critical debt exists (see Enforcement Chains below) | **Yes** (exit 2) |
-| `compact-governance-reinject.sh` | SessionStart (compact) | After context compaction, re-injects skill file locations and governance debt summary | No (advisory) |
+| Subcommand | Event | Module | Can Block? |
+|------------|-------|--------|------------|
+| `prompt` | UserPromptSubmit | `prompt.py` | No (advisory only: activation reminder + framework version staleness) |
+| `gate` | PreToolUse (Read, Edit, Write) | `gate.py` | **Yes** (exit 2) |
+| `track` | PostToolUse (Edit, Write) | `tracker.py` | No (exit 0 always) |
+| `failure` | PostToolUseFailure | `failure.py` | No (advisory only: investigation reminder) |
+| `commit` | PreToolUse (Bash) | `commit.py` | **Yes** (exit 2) |
+| `stop` | Stop | `stop.py` | **Yes** (exit 2) |
+| `compact-reinject` | SessionStart (compact) | `reinject.py` | No (advisory only) |
 
 ### File Classification
 
-Both `governance-gate.sh` and `governance-tracker.sh` classify files into three categories:
+`tools/governance/classify.py` classifies files into three categories (single implementation, previously duplicated across hooks):
 
-- **Framework files:** Match patterns (`skills/`, `tools/`, `docs/`, `CLAUDE.md`, `README.md`, `.prawduct/hooks/`, `.prawduct/artifacts/`, etc.) AND repo root equals framework root
+- **Framework files:** Match patterns (`skills/`, `tools/`, `docs/`, `CLAUDE.md`, `README.md`, `.prawduct/artifacts/`, etc.) AND repo root equals framework root
 - **Product files:** Inside the `product_dir` recorded in `.session-governance.json`
 - **Ungoverned files:** Everything else (e.g., `~/.claude/plans/`, temp files). Allowed without activation.
 
-A subset of framework files are **governance-sensitive** (`skills/`, `tools/`, `scripts/`, `.prawduct/hooks/`). These define framework behavior and trigger the PFR enforcement chain.
+A subset of framework files are **governance-sensitive** (`skills/`, `tools/`, `scripts/`). These define framework behavior and trigger the PFR enforcement chain.
 
 ## State Files
 
-All session state lives in `.prawduct/` within `$CLAUDE_PROJECT_DIR`. See `configuration-spec.md` for the complete schema.
+All session state lives in `.prawduct/` within `$CLAUDE_PROJECT_DIR`. The governance module resolves paths via `tools/governance/context.py` (one implementation). Session state uses schema versioning: reads v1 (pre-module format) and v2 (module format), always writes v2.
 
 | File | Created by | Read by | Lifecycle |
 |------|-----------|---------|-----------|
-| `.orchestrator-activated` | Orchestrator step 3 | governance-gate, governance-prompt | Cleared on commit (critic-gate) or `/clear` |
-| `.session-governance.json` | Orchestrator step 4 | All hooks | Cleared on commit (critic-gate) or `/clear` |
-| `.critic-pending` | governance-tracker (on framework edit) | critic-gate | Cleared on commit (critic-gate) |
-| `.critic-findings.json` | `record-critic-findings.sh` | governance-stop, critic-gate | Cleared on commit (critic-gate) |
+| `.orchestrator-activated` | Orchestrator step 3 | gate.py, prompt.py | Cleared on commit or `/clear` |
+| `.session-governance.json` | Orchestrator step 4 | All modules | Cleared on commit or `/clear` |
+| `.critic-pending` | tracker.py (on framework edit) | commit.py | Cleared on commit |
+| `.critic-findings.json` | `record-critic-findings.sh` | stop.py, commit.py | Cleared on commit |
+| `.session-trace.jsonl` | trace.py (write-through on every event) | commit.py (archival) | Cleared on commit or `/clear` |
+| `traces/session-log.jsonl` | commit.py (on commit) | analyze-session-traces.sh | Persistent, append-only |
+| `traces/sessions/<ts>.json` | commit.py (on commit) | analyze-session-traces.sh | Persistent, rotated to 20 |
 
-### `.session-governance.json` Key Fields
-
-The governance-tracker builds this file incrementally. Key fields and who sets them:
+### `.session-governance.json` Key Fields (v2 schema)
 
 | Field | Set by | Read by | Purpose |
 |-------|--------|---------|---------|
-| `framework_edits.files[]` | governance-tracker | governance-stop | List of edited framework files for Critic coverage check |
-| `governance_state.chunks_completed_without_review` | governance-tracker (on project-state.yaml edit) | governance-gate, governance-stop | Blocks product edits until review |
-| `directional_change.needs_classification` | governance-tracker (at 3+ files) | governance-stop | Blocks until DCP tier is set |
-| `directional_change.active`, `.tier`, etc. | Agent (per DCP instructions) | governance-stop | Blocks on incomplete DCP steps |
-| `pfr_state.required` | governance-tracker (on gov-sensitive edit) | governance-gate, governance-stop | Triggers PFR enforcement chain |
-| `pfr_state.diagnosis_written` | Agent (writes diagnosis) | governance-gate | Unblocks edits after diagnosis |
-| `pfr_state.observation_file` | Agent (after capture-observation.sh) | governance-stop, critic-gate | Unblocks commit after observation |
-| `governance_state.observations_captured_this_session` | Agent (after capturing observations) | governance-stop | Blocks stop when Critic findings >= warning and observations == 0 |
+| `schema_version` | state.py | state.py | Schema versioning (2 = current) |
+| `framework_edits.files[]` | tracker.py | stop.py | Edited framework files for Critic coverage |
+| `governance_state.chunks_completed_without_review` | tracker.py | gate.py, stop.py | Blocks product edits until review |
+| `directional_change.needs_classification` | tracker.py (at 3+ files) | stop.py | Blocks until DCP tier is set |
+| `pfr_state.rca` | Agent (natural language) | gate.py | Unblocks governance-sensitive edits after RCA (>=50 chars) |
+| `pfr_state.observation_file` | Agent (after capture-observation.sh) | stop.py, commit.py | Unblocks commit after observation |
 
 ## Enforcement Chains
 
@@ -83,47 +109,63 @@ The governance-tracker builds this file incrementally. Key fields and who sets t
 
 ```
 Session start
-  → governance-prompt.sh injects "activate now" message
-  → governance-gate.sh blocks all skill reads + governed edits
+  → prompt subcommand injects "activate now" message
+  → gate subcommand blocks all skill reads + governed edits
   → Agent reads orchestrator/SKILL.md (whitelisted) and follows activation
   → Writes .orchestrator-activated marker with timestamp + "praw-active" token
-  → governance-gate.sh validates marker (present, valid token, < 12 hours old)
+  → gate subcommand validates marker (present, valid token, < 12 hours old)
   → Reads and edits unblocked
 ```
 
-### 2. Post-Fix Reflection (PFR)
+### 2. Framework Version Staleness (Advisory)
+
+**Purpose:** Detect when a product repo's framework version is outdated and advise the agent to upgrade.
+
+```
+Agent activates Orchestrator (activation marker exists)
+  → prompt subcommand reads .prawduct/framework-version from active product
+  → Compares stored SHA against running framework's git HEAD
+  → Mismatch → injects additionalContext with upgrade command (prawduct-init.py --json)
+  → Agent sees advisory on next prompt submission and can offer upgrade
+```
+
+Additionally, `session-health-check.sh` produces a "Framework version mismatch" divergence signal during Session Resumption, giving the Orchestrator a second detection path.
+
+### 3. Post-Fix Reflection (PFR)
 
 **Purpose:** Every non-cosmetic change to governance-sensitive files requires root cause analysis before the fix and an observation after.
 
 ```
-Agent attempts to edit skills/, tools/, scripts/, or .prawduct/hooks/
-  → governance-gate.sh: no pfr_state yet → BLOCKS edit
-  → Agent writes pfr_state.diagnosis (symptom, five_whys, root_cause, category, meta_fix_plan)
-  → Agent sets pfr_state.diagnosis_written: true
-  → governance-gate.sh: diagnosis_written → allows edit
-  → governance-tracker.sh: adds file to governance_sensitive_files, sets pfr_state.required: true
+Agent attempts to edit skills/, tools/, or scripts/
+  → gate.py: pfr_state.rca missing or < 50 chars → BLOCKS edit
+  → Agent writes natural language RCA to pfr_state.rca (5 whys: immediate problem,
+    why it happens, deeper structural cause, class of problem, prevention)
+  → gate.py: rca present and >= 50 chars → allows edit
+  → tracker.py: adds file to governance_sensitive_files, sets pfr_state.required: true
   → Agent makes changes, runs Critic, then captures observation
   → Agent sets pfr_state.observation_file to observation path
-  → governance-stop.sh: checks observation_file is set → allows stop
-  → critic-gate.sh: checks observation file exists on disk → allows commit
+  → stop.py: checks observation_file is set → allows stop
+  → commit.py: checks observation file exists on disk → allows commit
 ```
+
+**Gate ensures ordering** (pause before fixing) and prompts for 5-whys structure. **Critic ensures quality** (the whys are substantive, the fix targets the root cause). Each does what it's good at.
 
 **Cosmetic escape:** Set `pfr_state.cosmetic_justification` and `pfr_state.required: false`.
 
-**RCA universality:** Root cause analysis is required for *all* observations, not just PFR-triggered ones. The observation schema mandates `root_cause_analysis` with `five_whys` as required fields, and `capture-observation.sh` requires `--rca-symptom`, `--rca-root-cause`, and `--rca-category` for every invocation.
+**RCA universality:** Root cause analysis is required for *all* observations, not just PFR-triggered ones. The observation schema mandates `root_cause_analysis` with `five_whys` as required fields.
 
-### 3. Directional Change Protocol (DCP)
+### 4. Directional Change Protocol (DCP)
 
 **Purpose:** Multi-file changes get governance proportionate to impact.
 
 ```
 Agent edits 3+ distinct framework files
-  → governance-tracker.sh: sets directional_change.needs_classification: true
-  → governance-stop.sh: blocks until classified
+  → tracker.py: sets directional_change.needs_classification: true
+  → stop.py: blocks until classified
   → Agent reads stage-6-iteration.md, classifies as mechanical/enhancement/structural
   → Agent sets directional_change.active: true, .tier, .total_phases, etc.
-  → governance-stop.sh: checks per-tier requirements:
-      - plan_stage_review_completed (enhancement/structural)
+  → stop.py: checks per-tier requirements:
+      - plan_stage_review_completed (structural only)
       - phases_reviewed_count vs total_phases (when > 1 phase)
       - observation_captured
       - retrospective_completed
@@ -131,65 +173,94 @@ Agent edits 3+ distinct framework files
   → All checks pass → allows stop
 ```
 
-### 4. Critic Evidence Gate
+### 5. Critic Evidence Gate
 
 **Purpose:** Framework commits require structured Critic review evidence.
 
 ```
 Agent runs `git commit`
-  → critic-gate.sh activates (only for git commit commands)
+  → commit.py activates (only for git commit commands)
   → Checks PFR observation gate (if pfr_state.required, observation file must exist)
-  → Delegates to tools/critic-reminder.sh:
-      - Checks staged files for framework patterns
-      - If framework files staged: looks for .critic-findings.json
-      - Validates findings cover edited files, have 4+ checks, are fresh (< 2 hours)
-  → All checks pass → cleans up session state → allows commit
+  → Delegates to tools/critic-reminder.sh for Critic evidence check
+  → All checks pass → archives session traces → cleans up session state → allows commit
   → Any check fails → BLOCKS with instructions to run Critic
 ```
 
-### 5. Compaction Enforcement
+### 6. Compaction Enforcement
 
 **Purpose:** project-state.yaml doesn't grow unbounded.
 
 ```
 Agent attempts to stop/complete session
-  → governance-stop.sh: runs compact-project-state.sh --check
+  → stop.py: runs compact-project-state.sh --check
   → If exit code 1 (compaction needed) → BLOCKS with instruction to run compaction
   → If exit code 0 (clean) or error → allows
 ```
 
-Session Resumption also runs compaction automatically when `session-health-check.sh` reports `STATE_WARNINGS > 0`.
-
-### 6. Chunk Review Gate (Product Builds)
+### 7. Chunk Review Gate (Product Builds)
 
 **Purpose:** Product build chunks get Critic review before more work proceeds.
 
 ```
 Builder completes a chunk, marks status as "review" in project-state.yaml
-  → governance-tracker.sh: detects completed chunks without reviews
+  → tracker.py: detects completed chunks without reviews
+      (matches chunk_id from build_state.reviews against id from build_plan.chunks)
   → Sets governance_state.chunks_completed_without_review > 0
-  → governance-gate.sh: blocks product file edits until review debt is 0
+  → gate.py: blocks product file edits until review debt is 0
+      (exempts project-state.yaml and .session-governance.json)
   → Agent reads Critic skill, reviews chunk, records findings
   → Updates project-state.yaml with review entry
-  → governance-tracker.sh: recalculates → chunks_completed_without_review: 0
+  → tracker.py: recalculates → chunks_completed_without_review: 0
   → Edits unblocked
 ```
 
-### 7. Observation Capture Enforcement
+### 8. Observation Capture Enforcement
 
 **Purpose:** Warning/blocking Critic findings must produce observations — the learning loop can't be skipped.
 
 ```
 Critic review produces findings with highest_severity >= warning
   → Agent records findings via record-critic-findings.sh
-  → .critic-findings.json has highest_severity: warning (or blocking)
   → Agent attempts to stop/complete session
-  → governance-stop.sh: reads .critic-findings.json and governance_state.observations_captured_this_session
+  → stop.py: reads .critic-findings.json and governance_state.observations_captured_this_session
   → If highest_severity in (warning, blocking) AND observations == 0 → BLOCKS
   → Agent captures observation(s) to framework-observations/
   → Agent increments observations_captured_this_session
-  → governance-stop.sh: observations > 0 → allows stop
+  → stop.py: observations > 0 → allows stop
 ```
+
+### 9. Investigation Reminder (PostToolUseFailure)
+
+**Purpose:** When a tool fails unexpectedly, nudge the agent to investigate root cause rather than silently working around it.
+
+```
+Any tool fails (PostToolUseFailure fires)
+  → failure.py: filters out routine errors (not unique, file not found, governance blocks)
+  → failure.py: filters out user interrupts (is_interrupt flag)
+  → Unexpected error survives filters → injects additionalContext advisory
+  → Advisory prompts agent to apply root cause analysis before working around
+  → Agent decides: one-off vs systemic. If systemic → captures as observation.
+```
+
+**Design rationale:** The 5-whys/PFR discipline is behavioral — under task pressure, behavioral instructions get deprioritized. This hook provides a mechanical trigger that fires exactly when the agent encounters the kind of failure that should be investigated, regardless of context (framework dev or product builds).
+
+## Trace System
+
+Every governance decision emits a trace event as a side effect of doing the work. Traces are local-only — they never leave the user's machine and make no network calls.
+
+### Three-level persistence
+
+| Level | Location | Contents | Lifecycle |
+|-------|----------|----------|-----------|
+| **3: In-session** | `.session-trace.jsonl` | Individual gate checks, edit tracking, stop validations (one JSON line per event, write-through) | Session-scoped, archived at commit |
+| **1: Summary** | `traces/session-log.jsonl` | One line per session: file counts, gate block counts, triggers | Append-only, persistent |
+| **2: Archive** | `traces/sessions/<ts>.json` | Complete session state including all trace events | Rotated to last 20 |
+
+### Privacy model
+
+- Traces contain governance decisions (gate results, file classifications). Never file contents, diffs, or user messages.
+- Written to `.prawduct/traces/` (gitignored by `prawduct-init.py`). No network calls.
+- `tools/analyze-session-traces.sh` runs locally for pattern analysis.
 
 ## Recovery
 

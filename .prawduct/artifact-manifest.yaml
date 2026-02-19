@@ -191,10 +191,10 @@ artifact_manifest:
       tier: 1
     - name: monitoring-alerting-spec
       file_path: .prawduct/artifacts/monitoring-alerting-spec.md
-      version: 1
+      version: 2
       depends_on: [pipeline-architecture, scheduling-spec, nonfunctional-requirements]
       depended_on_by: [failure-recovery-spec]
-      last_validated: 2026-02-16
+      last_validated: 2026-02-19
       tier: 1
     - name: failure-recovery-spec
       file_path: .prawduct/artifacts/failure-recovery-spec.md
@@ -205,25 +205,26 @@ artifact_manifest:
       tier: 1
     - name: configuration-spec
       file_path: .prawduct/artifacts/configuration-spec.md
-      version: 1
+      version: 2
       depends_on: [pipeline-architecture, failure-recovery-spec]
-      depended_on_by: []
-      last_validated: 2026-02-16
+      depended_on_by: [governance-mechanisms]
+      last_validated: 2026-02-19
       tier: 1
     - name: api-contract
       file_path: .prawduct/artifacts/api-contract.md
-      version: 1
+      version: 2
       depends_on: [product-brief, data-model]
       depended_on_by: []
-      last_validated: 2026-02-16
+      last_validated: 2026-02-19
       tier: 1
     - name: governance-mechanisms
       file_path: .prawduct/artifacts/governance-mechanisms.md
-      version: 1
+      version: 3
       depends_on: [pipeline-architecture, configuration-spec]
       depended_on_by: []
-      last_validated: 2026-02-17
+      last_validated: 2026-02-19
       tier: 1
+      notes: "Added enforcement chain 2 (Framework Version Staleness); updated prompt.py description"
 
   # --- Evaluation scenarios ---
   test_specs:

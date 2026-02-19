@@ -75,9 +75,9 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-18)'
-    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-17 to 2026-02-18); Post-Fix Reflection Protocol:
-      automatic root cause analysis and framework con...'
+  - what: 'Summary: 2 entries compacted (2026-02-18 to 2026-02-18)'
+    why: '1 cosmetic, 1 structural covering: Separate product session state from framework repo via .active-product pointer;
+      Summary: 3 entries compacted (2026-02-18 to 2026-02-18)'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-18'

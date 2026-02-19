@@ -7,7 +7,7 @@ depends_on:
   - artifact: nonfunctional-requirements
 depended_on_by:
   - artifact: failure-recovery-spec
-last_validated: 2026-02-16
+last_validated: 2026-02-19
 ---
 
 # Monitoring & Alerting Specification
@@ -41,7 +41,7 @@ Prawduct's monitoring system is `tools/session-health-check.sh` — it runs at s
 | Deprecated term survival | Any match found | warning |
 | Source-artifact divergence | > 10 commits since last .prawduct/ update | warning |
 | Missing governance state | .session-governance.json absent during active build | blocking |
-| PFR diagnosis missing | Governance-sensitive files edited without `pfr_state.diagnosis_written: true` in .session-governance.json | blocking |
+| PFR RCA missing | Governance-sensitive files edited without `pfr_state.rca` (>=50 chars) in .session-governance.json | blocking |
 | PFR observation missing | Governance-sensitive files edited but `pfr_state.observation_file` not set or file doesn't exist | blocking |
 | Uncontributed observations | `UNCONTRIBUTED_OBSERVATIONS > 0` in product repos | note (non-blocking, mentioned during session resumption) |
 

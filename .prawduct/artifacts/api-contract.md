@@ -5,7 +5,7 @@ depends_on:
   - artifact: product-brief
   - artifact: data-model
 depended_on_by: []
-last_validated: 2026-02-16
+last_validated: 2026-02-19
 ---
 
 # API Contract
@@ -89,7 +89,7 @@ Body is markdown — human-readable and LLM-consumable. Frontmatter enables mech
 
 | Tool | Interface | Output |
 |------|-----------|--------|
-| `capture-observation.sh` | `--type TYPE --description DESC --evidence EVID --severity SEV --skills-affected SKILLS --rca-symptom SYM --rca-root-cause RC --rca-category CAT` | Creates schema-compliant YAML file. The `--rca-*` flags are **required** for all observations (root cause analysis is mandatory — if an observation isn't worth analyzing causally, it isn't worth recording). The 5-whys analysis informing `--rca-root-cause` should be documented in the observation's `five_whys` field. After creation for PFR, set `pfr_state.observation_file` in `.session-governance.json` to the output path. |
+| `capture-observation.sh` | `--type TYPE --description DESC --evidence EVID --severity SEV --skills-affected SKILLS --rca-symptom SYM --rca-root-cause RC --rca-category CAT` | Creates schema-compliant YAML file. The `--rca-*` flags are **required** for all observations (root cause analysis is mandatory). The natural language RCA in `pfr_state.rca` (written before the fix, per the PFR gate) informs these structured fields. After creation for PFR, set `pfr_state.observation_file` in `.session-governance.json` to the output path. |
 | `update-observation-status.sh` | `FILE --status STATUS [--archive]` | Updates observation status, optionally moves to archive/ |
 | `observation-analysis.sh` | `[--patterns-only]` | Parses observations, applies tiered thresholds, reports patterns |
 
@@ -107,6 +107,21 @@ Body is markdown — human-readable and LLM-consumable. Frontmatter enables mech
 | `prawduct-init.sh` | `[--json] [--check] [--local] <target_dir>` | Detects/repairs integration state, returns JSON with next_action. `--check` detects without changes. `--local` skips git-tracked files (CLAUDE.md, .gitignore). |
 | `resolve-product-root.sh` | (sourceable or executable) | Prints absolute path to product root (.prawduct/) |
 | `compact-project-state.py` | `[--dry-run] <project-state-path>` | Compacts growing sections per lifecycle rules |
+
+### Governance Module
+
+All governance decision logic lives in `tools/governance/` — a Python module invoked by thin bash shims in `.prawduct/hooks/`. Shims pipe hook JSON from stdin through `PYTHONPATH="$FRAMEWORK_ROOT/tools" python3 -m governance <command> --root "$FRAMEWORK_ROOT"`.
+
+| Command | Hook | Event | Exit Codes |
+|---------|------|-------|------------|
+| `gate` | `governance-gate.sh` | PreToolUse (Read, Edit, Write) | 0=allow, 2=block |
+| `track` | `governance-tracker.sh` | PostToolUse (Edit, Write) | 0 (always) |
+| `stop` | `governance-stop.sh` | Stop | 0=allow, 2=block |
+| `commit` | `critic-gate.sh` | PreToolUse (Bash: git commit) | 0=allow, 2=block |
+
+| Tool | Interface | Output |
+|------|-----------|--------|
+| `analyze-session-traces.sh` | `[--summary] [--last N] [--drill-down TIMESTAMP]` | Gate block rates, PFR/DCP trigger rates, file edit patterns from local traces |
 
 ## Versioning Strategy
 
