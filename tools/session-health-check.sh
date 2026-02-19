@@ -12,6 +12,7 @@
 #   - Overdue triage (>2 days since last_triage)
 #   - Stale deferred items (>4 weeks)
 #   - Untransferred fallback observation files
+#   - Framework remote freshness (local clone behind upstream)
 #
 # Usage:
 #   tools/session-health-check.sh                  # Full report
@@ -381,6 +382,71 @@ if [[ "${divergence_warnings:-0}" -gt 0 ]]; then
     echo "## Divergence Signals"
     [[ -n "$divergence_content" ]] && echo "$divergence_content"
     [[ -n "$fw_version_output" ]] && echo "$fw_version_output"
+    echo ""
+fi
+
+# --- 5b. Framework Remote Freshness ---
+# Checks whether the local prawduct framework clone is behind its remote.
+# In product repos: checks the repo at .prawduct/framework-path.
+# In self-hosted (framework repo): checks the current repo.
+
+fw_remote_warnings=0
+fw_remote_output=""
+
+# Determine the framework git directory to check
+fw_check_dir=""
+if [[ -f "$PRAWDUCT_DIR/framework-path" ]]; then
+    # Product repo: check the framework repo pointed to by framework-path
+    _fw_path=$(cat "$PRAWDUCT_DIR/framework-path" 2>/dev/null || echo "")
+    if [[ -n "$_fw_path" && -d "$_fw_path" ]]; then
+        fw_check_dir="$_fw_path"
+    fi
+elif [[ -f "$REPO_ROOT/skills/orchestrator/SKILL.md" ]]; then
+    # Self-hosted: this repo IS the prawduct framework
+    fw_check_dir="$REPO_ROOT"
+fi
+
+if [[ -n "$fw_check_dir" ]]; then
+    # Check commits behind upstream tracking branch
+    behind_count=$(git -C "$fw_check_dir" rev-list --count HEAD..@{u} 2>/dev/null || echo "")
+
+    if [[ -n "$behind_count" && "$behind_count" -gt 0 ]]; then
+        tracking_branch=$(git -C "$fw_check_dir" rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "remote")
+        fw_remote_output="  WARNING: Prawduct framework is $behind_count commit(s) behind $tracking_branch."$'\n'
+        fw_remote_output+="  ACTION: Run: git -C \"$fw_check_dir\" pull"
+        fw_remote_warnings=1
+    fi
+
+    # Check when last fetch occurred
+    _fetch_head="$fw_check_dir/.git/FETCH_HEAD"
+    if [[ -f "$_fetch_head" ]]; then
+        fetch_age_days=$(python3 -c "
+import os, datetime
+mtime = os.path.getmtime('$_fetch_head')
+age = (datetime.datetime.now() - datetime.datetime.fromtimestamp(mtime)).days
+print(age)
+" 2>/dev/null || echo "")
+        if [[ -n "$fetch_age_days" && "$fetch_age_days" -gt 7 ]]; then
+            if [[ -n "$fw_remote_output" ]]; then
+                fw_remote_output+=$'\n'
+            fi
+            fw_remote_output+="  NOTE: Last fetch from remote was $fetch_age_days days ago. Remote status may be stale."$'\n'
+            fw_remote_output+="  ACTION: Run: git -C \"$fw_check_dir\" fetch"
+            fw_remote_warnings=$((fw_remote_warnings + 1))
+        fi
+    else
+        # No FETCH_HEAD — either never fetched or no remote
+        has_remote=$(git -C "$fw_check_dir" remote 2>/dev/null || echo "")
+        if [[ -n "$has_remote" && -z "$behind_count" ]]; then
+            fw_remote_output="  NOTE: Prawduct framework has a remote but no tracking branch. Remote freshness cannot be checked."
+            fw_remote_warnings=1
+        fi
+    fi
+fi
+
+if [[ "$fw_remote_warnings" -gt 0 ]]; then
+    echo "## Framework Remote Freshness"
+    echo "$fw_remote_output"
     echo ""
 fi
 
@@ -892,6 +958,7 @@ echo "INFRASTRUCTURE_WARNINGS: ${infra_warnings:-0}"
 echo "STATE_WARNINGS: ${state_warnings:-0}"
 echo "SKILL_WARNINGS: ${skill_warnings:-0}"
 echo "DIVERGENCE_WARNINGS: ${divergence_warnings:-0}"
+echo "FRAMEWORK_REMOTE_WARNINGS: ${fw_remote_warnings:-0}"
 echo "DEPRECATED_TERM_WARNINGS: ${deprecated_warnings:-0}"
 echo "DEP_GRAPH_WARNINGS: ${dep_graph_warnings:-0}"
 echo "UNCONTRIBUTED_OBSERVATIONS: ${uncontributed_count:-0}"
