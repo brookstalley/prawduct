@@ -144,13 +144,13 @@ Track state via `tools/dcp-update.sh`: classify sets the initial state, then `ar
 1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction?"
 2. **Reclassification check (product builds).** If the product's fundamental nature changed, re-run classification.
 3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Post-Fix Reflection Protocol in `skills/orchestrator/protocols.md` § PFR). Run `tools/dcp-update.sh classify --tier structural --description "<summary>" --phases N`.
-4. **Plan-stage Critic review.** Invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`, specifying that only Generality, Coherence, and Learning/Observability checks apply (plan-stage review). Set `plan_stage_review_completed` to `true`.
+4. **Plan-stage Critic review.** Invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`, specifying that only Generality, Coherence, and Learning/Observability checks apply (plan-stage review). Run `tools/dcp-update.sh plan-reviewed`.
 5. **Impact assessment.** Map blast radius via `artifact_manifest` (inline or at `artifact_manifest_file`). Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
-6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Increment `phases_reviewed_count` after each.
+6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Run `tools/dcp-update.sh phase-reviewed` after each.
 7. **Verify artifact freshness.** Same as Enhancement step 3: read `artifact_manifest`, identify artifacts describing affected behavior, verify each is current, update stale ones, record the list in `directional_change.artifacts_verified`. **Template propagation rule applies** — if templates were modified, artifacts generated from those templates are in the blast radius. **The stop hook enforces this.**
 8. **Final Critic review** — invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`. All applicable checks.
-9. **Observation.** Write an observation covering what the change accomplished, what governance caught, and what slipped through. Set `observation_captured` to `true`.
-10. **Retrospective.** Answer: (a) Could the learning system have caught this earlier? (b) What process gaps surfaced? (c) Does the fix generalize? Capture findings as observations. Set `retrospective_completed` to `true`. After commit, set `active` to `false`.
+9. **Observation.** Write an observation covering what the change accomplished, what governance caught, and what slipped through. Run `tools/dcp-update.sh observation-captured`.
+10. **Retrospective.** Answer: (a) Could the learning system have caught this earlier? (b) What process gaps surfaced? (c) Does the fix generalize? Capture findings as observations. Run `tools/dcp-update.sh retrospective-done`, then after commit run `tools/dcp-update.sh complete`.
 
 The governance-stop hook enforces DCP completion mechanically — it checks these tracking fields and blocks session completion when steps are incomplete.
 
