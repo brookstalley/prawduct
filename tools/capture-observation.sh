@@ -42,7 +42,7 @@ set -euo pipefail
 
 VALID_SESSION_TYPES="product_use evaluation framework_dev"
 
-VALID_OBS_TYPES="proportionality coverage applicability missing_guidance rubric_issue process_friction artifact_insufficiency spec_ambiguity deployment_friction critic_gap skill_quality external_practice_drift documentation_drift structural_critique governance_compliance architectural_inconsistency integration_friction pushback"
+VALID_OBS_TYPES="proportionality coverage applicability missing_guidance rubric_issue process_friction artifact_insufficiency spec_ambiguity deployment_friction critic_gap skill_quality external_practice_drift documentation_drift structural_critique governance_compliance architectural_inconsistency integration_friction pushback defect"
 
 VALID_SEVERITIES="note warning blocking"
 
@@ -50,7 +50,7 @@ VALID_STAGES="0 0.5 1 2 3 4 5 6 meta"
 
 VALID_STATUSES="noted triaged requires_pattern acted_on"
 
-VALID_RCA_CATEGORIES="missing_process process_not_enforced incomplete_coverage wrong_abstraction missing_detection vocabulary_drift"
+VALID_RCA_CATEGORIES="missing_process process_not_enforced incomplete_coverage wrong_abstraction missing_detection vocabulary_drift missing_guidance"
 
 # --- Parse arguments ---
 

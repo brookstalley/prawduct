@@ -92,6 +92,7 @@ observation_entry:
             - governance_compliance  # Mandatory governance step treated as optional or invocation ambiguity
             - integration_friction  # Framework outputs interact poorly with user environment (workspace clutter, path conflicts, tooling friction)
             - pushback              # Guidance Evaluation challenged user direction; tracks whether pushback was warranted, overridden, or accepted
+            - defect                # Code bug in framework tooling (governance hooks, scripts, Python modules)
           required: true
           description: "Category of observation"
 
@@ -187,6 +188,7 @@ observation_entry:
                 - wrong_abstraction
                 - missing_detection
                 - vocabulary_drift
+                - missing_guidance
               required: true
               description: "Category of root cause (enables cross-fix pattern detection)"
 
