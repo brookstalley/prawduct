@@ -45,7 +45,7 @@ For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step
 At points marked in `build_plan.governance_checkpoints`, run a broader cross-chunk review:
 
 1. Are the completed chunks cohering into a working product?
-2. Read `skills/review-lenses/SKILL.md` and apply Architecture, Skeptic, and Testing lenses to the implementation so far. (Testing Lens verifies implemented tests match specs and no coverage gaps have emerged.)
+2. Invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols.md`, requesting Architecture, Skeptic, and Testing lenses on the implementation so far. (Testing Lens verifies implemented tests match specs and no coverage gaps have emerged.)
 3. If issues found, address before continuing.
 
 ### Build pacing
@@ -63,7 +63,7 @@ At points marked in `build_plan.governance_checkpoints`, run a broader cross-chu
 When all chunks are complete:
 
 1. Run the full Critic product governance review across the entire codebase (invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`, listing all source files).
-2. Run all five review lenses on the complete implementation.
+2. Invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols.md`, requesting all five lenses on the complete implementation.
 3. Verify all tests pass.
 4. Present the result to the user:
 

@@ -1,11 +1,14 @@
 .claude/settings.local.json
 .prawduct/.critic-pending
 .prawduct/.critic-findings.json
+.prawduct/.lens-findings.json
+.prawduct/.pattern-report.json
 .prawduct/.active-product
 .prawduct/.session-edits.json
 .prawduct/.orchestrator-activated
 .prawduct/.session-governance.json
 .prawduct/.session-governance.json.bak
 .prawduct/.session-trace.jsonl
+.prawduct/.hook-timing.log
 .prawduct/traces/
 __pycache__/

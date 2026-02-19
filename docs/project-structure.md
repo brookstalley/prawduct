@@ -31,13 +31,14 @@ prawduct/
 │   │   ├── stage-6-iteration.md      # Stage 6: Iteration + Directional Change Protocol
 │   │   ├── onboarding.md            # Onboarding Mode: existing codebase → prawduct artifacts
 │   │   ├── migration.md             # Schema Migration: old prawduct versions → current format
-│   │   └── protocols.md              # FRP, PFR, Stage Transition, Expertise Calibration, Structural Critique, Critic Agent Protocol
+│   │   └── protocols.md              # FRP, PFR, Stage Transition, Expertise Calibration, Structural Critique, Critic Agent Protocol, Review Lenses Agent Protocol
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
 │   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency — format specs live in templates
 │   ├── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
 │   ├── critic/SKILL.md                # Context-sensitive governance: invoked as subagent, reads checks from project state
-│   └── review-lenses/SKILL.md         # Five evaluation perspectives (product, design, arch, skeptic, testing)
-├── tools/                             # Deterministic scripts (mechanical enforcement, 15 files + governance/)
+│   ├── review-lenses/SKILL.md         # Five evaluation perspectives: invoked as subagent for prospective artifact review
+│   └── pattern-extractor/SKILL.md     # Observation pattern analysis: invoked as subagent for systemic trend detection
+├── tools/                             # Deterministic scripts (mechanical enforcement, 19 files + governance/)
 │   ├── governance-hook                # Single entry point for all Claude Code hooks (bash, delegates to Python)
 │   ├── governance/                    # Python module: all hook logic (12 submodules)
 │   │   ├── {context,classify,state}.py  # Foundation: path resolution, file classification, session state
@@ -48,6 +49,10 @@ prawduct/
 │   ├── prawduct-init.{sh,py}         # Project setup, repair, settings.json merging, gitignore management
 │   ├── prawduct-statusline.py         # Claude Code statusline: stage, governance alerts, context bar, git
 │   ├── session-health-check.sh        # Session orientation: patterns, backlog, divergence, trace analysis
+│   ├── extract-patterns.sh            # Pattern Extractor wrapper: threshold check, report recording
+│   ├── record-lens-findings.sh        # Review Lenses evidence: structured findings for Orchestrator
+│   ├── measure-context-overhead.sh    # Token-approximate context budget measurement
+│   ├── prawduct-quick                 # One-command project setup for new users
 │   ├── analyze-session-traces.sh      # Trace analysis: gate block rates, PFR/DCP trigger rates
 │   ├── compact-project-state.{sh,py}  # Mechanical compaction of growing project-state.yaml sections
 │   ├── contribute-observations.sh     # Check/format/submit product observations to framework repo
@@ -58,13 +63,14 @@ prawduct/
 │   ├── human-interface/               # has_human_interface templates (6 files)
 │   └── unattended-operation/          # runs_unattended templates (5 files)
 ├── tests/                             # Evaluation rubrics for skill validation
-│   └── scenarios/                     # 3 scenarios: family-utility, background-data-pipeline, terminal-arcade-game
+│   └── scenarios/                     # 4 scenarios: family-utility, background-data-pipeline, terminal-arcade-game, quick-todo-app
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
 ├── .claude/                           # Claude Code integration (settings only)
 │   ├── settings.json                  # Project-level Claude Code settings (hooks call tools/governance-hook)
 │   └── settings.local.json            # Local overrides (not committed)
 └── docs/                              # Design documents (WHY — upstream, Tier 1; see high-level-design.md § Documentation Architecture)
+    ├── quickstart.md                   # 5-minute getting started guide
     ├── vision.md
     ├── requirements.md
     ├── principles.md

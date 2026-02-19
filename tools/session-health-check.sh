@@ -41,8 +41,14 @@ if [[ "$MODE" != "--actionable-only" ]]; then
     echo ""
 fi
 
-# --- 1. Actionable pattern analysis (parse observation files directly) ---
+# --- 1. Actionable pattern analysis ---
+# Uses extract-patterns.sh for threshold check and obs_utils for inline summary.
 
+extraction_status=$("$SCRIPT_DIR/extract-patterns.sh" --check 2>/dev/null || echo "EXTRACTION_NEEDED: false")
+extraction_needed=$(echo "$extraction_status" | grep "^EXTRACTION_NEEDED:" | head -1 | sed 's/.*: //')
+active_obs_count=$(echo "$extraction_status" | grep "^ACTIVE_OBSERVATIONS:" | head -1 | sed 's/.*: //')
+
+# Inline pattern summary (lightweight, always runs)
 actionable_output=$(python3 -c "
 import sys, os
 sys.path.insert(0, '$SCRIPT_DIR')
@@ -85,6 +91,10 @@ filtered_actionable=$(echo "$actionable_output" | grep -v "^PATTERNS_REQUIRING_A
 if [[ -n "$filtered_actionable" ]]; then
     echo "## Actionable Observation Patterns"
     echo "$filtered_actionable"
+    if [[ "$extraction_needed" == "true" ]]; then
+        echo ""
+        echo "  NOTE: ${active_obs_count:-?} active observations. Run Pattern Extractor for deeper analysis."
+    fi
     echo ""
 fi
 

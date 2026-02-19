@@ -90,7 +90,7 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 
 ### Review
 
-Before presenting to the user, read `skills/review-lenses/SKILL.md` and apply the Product, Design, Architecture, and Skeptic lenses to the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins. Even simple products benefit from clarity — the lenses are lightweight for simple products (they find less to flag), so the overhead is minimal. (The Testing Lens does not apply at this stage — no test specifications exist yet.)
+Before presenting to the user, invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols.md`, requesting Product, Design, Architecture, and Skeptic lenses on the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins. Even simple products benefit from clarity — the lenses are lightweight for simple products (they find less to flag), so the overhead is minimal. (The Testing Lens does not apply at this stage — no test specifications exist yet.)
 
 After each lens application, update `project-state.yaml` → `review_findings.entries` with structured findings (stage, phase, lens, findings with severity/recommendation/status).
 

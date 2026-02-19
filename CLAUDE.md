@@ -71,7 +71,7 @@ The Key Principles and Conventions sections below provide constraints the Orches
 If you cannot remember governance procedures (e.g., after context compaction), **read skill files from disk** — they always exist. Product state files live in the **product root** (`.prawduct/` for all repos). In product repos, read `.prawduct/framework-path` to get the framework location.
 
 - **After each chunk:** Invoke the Critic agent (see `skills/orchestrator/protocols.md` § Critic Agent Protocol)
-- **At governance checkpoints:** Read `skills/review-lenses/SKILL.md`, apply Architecture + Skeptic + Testing lenses
+- **At governance checkpoints:** Invoke Review Lenses agent (see `skills/orchestrator/protocols.md` § Review Lenses Agent Protocol)
 - **At stage transitions:** Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol
 - **If hooks block you:** Read the skill file named in the hook message
 

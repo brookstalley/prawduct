@@ -2,6 +2,12 @@
 
 The Critic enforces quality by reviewing changes against the framework's principles and the product's specifications. It operates as a single context-sensitive process — reading `project-state.yaml` to determine which checks apply rather than switching between modes. It is the embodiment of the Hard Rules from `docs/principles.md`.
 
+## Temporal Ownership: Retrospective Quality Gate
+
+The Critic owns **retrospective** evaluation — it reviews work *after* it's done. "Did the implementation match the spec? Did the code satisfy the principles? Are tests intact?" This is build-time and commit-time review.
+
+**See also: Review Lenses** (`skills/review-lenses/SKILL.md`) own **prospective** evaluation — they review artifacts *before* building begins. "Is this spec good enough to build from? Are the right things specified?" The Lenses evaluate spec quality; the Critic evaluates implementation fidelity. Both run as independent subagents.
+
 ## Invocation
 
 This skill is invoked as a **separate agent** (via Claude Code's Task tool). The Orchestrator spawns a Critic agent that reads this file in its own context window. This provides genuinely independent review — the agent hasn't seen the Builder's reasoning or the Orchestrator's decision-making.
@@ -74,7 +80,7 @@ After each chunk, diff the implementation against artifact specifications.
 
 ### Check 2: Test Integrity
 
-**Applies:** Build stages (Stage 5+), when tests exist.
+**Applies:** Build stages (Stage 5+), when tests exist. Evaluates test *implementation* integrity (code correctness, assertion strength, regression prevention). The Testing Lens evaluates test *specification* comprehensiveness — whether the right things are specified for testing.
 
 **Mechanical checks (binary pass/fail):**
 
@@ -91,7 +97,7 @@ After each chunk, diff the implementation against artifact specifications.
 
 ### Check 3: Scope Discipline
 
-**Applies:** Always.
+**Applies:** Always. Checks *implementation* scope — did the Builder build what was planned? Did the framework change stay within its stated purpose? The Product Lens (Review Lenses) checks *spec* scope — is the right thing being specified?
 
 This check catches out-of-scope work — whether it's a Builder making decisions that should have been made during planning, or a framework change that drifts beyond its stated purpose.
 

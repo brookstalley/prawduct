@@ -291,6 +291,82 @@ After the Critic agent completes successfully:
 
 ---
 
+## Review Lenses Agent Protocol
+
+The Review Lenses are invoked as a separate agent (via Claude Code's Task tool, `subagent_type: "general-purpose"`). This provides independent artifact evaluation — the agent starts with a clean context and evaluates artifact quality without being influenced by the generation conversation.
+
+### When to invoke
+
+- **Stage 2 (Definition):** Product, Design, Architecture, Skeptic lenses on crystallized decisions
+- **Stage 3 Phase A:** Product and Design lenses on the Product Brief
+- **Stage 3 Phase B:** Architecture lens on Data Model and NFRs
+- **Stage 3 Phase C:** All five lenses on the complete artifact set
+- **Stage 4:** Architecture and Skeptic lenses on the build plan
+- **Stage 5 checkpoints:** Architecture, Skeptic, and Testing lenses on implementation
+- **Stage 5 completion:** All five lenses on the complete implementation
+- **Stage 6:** Product and Architecture lenses on change requests (as needed)
+
+### Model requirement
+
+**Always use the best available model.** Do not specify a downgraded model. Omit the `model` parameter to inherit the parent's model.
+
+### Agent prompt
+
+Include these elements in the Task tool prompt:
+
+1. **Role:** "You are the Review Lenses evaluator for a Prawduct quality review."
+2. **Instructions source:** "Read `skills/review-lenses/SKILL.md` for your complete lens definitions, severity guide, and output format."
+3. **Review context:**
+   - Project directory path and product root (`.prawduct/`) path
+   - Current stage and phase (e.g., "Stage 3 Phase A")
+   - Which lenses to apply (e.g., "Product and Design lenses only")
+   - Artifact files to review (list relative paths)
+   - Product characteristics summary (structural characteristics, risk level, domain)
+4. **Task:** "Apply the specified lenses per the skill instructions. Run `tools/record-lens-findings.sh` with your findings. Return a structured summary."
+
+**Example invocation:**
+
+```
+Task(subagent_type="general-purpose", prompt="""
+You are the Review Lenses evaluator for a Prawduct quality review.
+
+Read skills/review-lenses/SKILL.md for your complete lens definitions,
+severity guide, and output format.
+
+Project: /path/to/project
+Product root: /path/to/project/.prawduct
+Stage: artifact-generation, Phase A (Foundation)
+Lenses to apply: Product, Design
+
+Artifacts to review:
+- .prawduct/artifacts/product-brief.md
+
+Product: Family score tracker. Structural: has_human_interface (screen, mobile).
+Risk: low. Domain: consumer utility.
+
+Apply the specified lenses. Run tools/record-lens-findings.sh with your findings.
+Return your full review.
+""")
+```
+
+### Output verification
+
+After the agent returns, verify:
+
+1. **Evidence exists:** `.prawduct/.lens-findings.json` was created or updated.
+2. **Lens coverage:** All requested lenses appear in the findings.
+3. **Substantiveness:** At least one lens has findings beyond "no issues."
+
+**If verification fails:** Re-invoke once with explicit guidance. If it fails again, conduct an in-context review as fallback.
+
+### Acting on findings
+
+- **Blocking:** Must resolve before proceeding to the next stage/phase.
+- **Warning:** Address before delivery; doesn't block forward progress.
+- **Note:** Informational. Consider but no required action.
+
+---
+
 ## Extending This Skill
 
 Remaining Orchestrator capabilities are tracked in `project-state.yaml` → `build_plan.remaining_work`.

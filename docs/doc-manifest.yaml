@@ -84,6 +84,16 @@ tier_1_documents:
     owner: framework
     last_validated: 2026-02-14
 
+  - path: skills/pattern-extractor/SKILL.md
+    purpose: "LLM instructions for observation pattern analysis: cluster identification, action proposals, subagent"
+    owner: framework
+    last_validated: 2026-02-19
+
+  - path: docs/quickstart.md
+    purpose: "5-minute getting started guide for new users"
+    owner: framework
+    last_validated: 2026-02-19
+
   - path: templates/project-state.yaml
     purpose: "Template for user project master state file — all skills read/write this (includes build_plan, build_state, iteration_state)"
     owner: framework

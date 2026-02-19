@@ -1,10 +1,22 @@
 # Review Lenses
 
-The Review Lenses provide multi-perspective evaluation of system output at every stage. They are five modes of critical thinking — Product, Design, Architecture, Skeptic, and Testing — applied to artifacts, decisions, and project state. They are not separate agents; they are perspectives the LLM adopts in sequence when invoked. The Review Lenses are invoked by the Orchestrator at stage transitions and at dependency boundaries during artifact generation.
+The Review Lenses provide multi-perspective evaluation of system output at every stage. They are five modes of critical thinking — Product, Design, Architecture, Skeptic, and Testing — applied to artifacts, decisions, and project state.
+
+## Temporal Ownership: Prospective Artifact Evaluation
+
+The Review Lenses own **prospective** evaluation — they review artifacts *before* building begins. "Is this spec good enough to build from? Are the right things specified? Is the design complete?" This is artifact-generation-time and planning-time review.
+
+**See also: The Critic** (`skills/critic/SKILL.md`) owns **retrospective** evaluation — it reviews work *after* implementation. "Did the code match the spec? Are tests intact? Did scope stay on target?" The Lenses evaluate spec quality; the Critic evaluates implementation fidelity. Both run as independent subagents.
+
+## Invocation
+
+This skill is invoked as a **separate agent** (via Claude Code's Task tool). The Orchestrator spawns a Review Lenses agent that reads this file in its own context window. This provides independent evaluation — the agent evaluates artifact quality without being influenced by the generation conversation.
+
+The Review Lenses Agent Protocol in `skills/orchestrator/protocols.md` defines when and how this agent is spawned. This file is the Lenses agent's complete instruction set.
 
 ## When You Are Activated
 
-The Orchestrator activates this skill:
+The Orchestrator invokes this skill as a subagent:
 
 - During **Stage 2 (Product Definition):** Product, Design, Architecture, and Skeptic lenses review crystallized decisions before artifact generation. (Testing Lens does not apply — no test specifications exist yet.)
 - During **Stage 3 (Artifact Generation):** Lenses are applied in phases as artifacts are generated, not as a single post-hoc review (see Orchestrator Stage 3):
@@ -41,7 +53,9 @@ For each lens, produce findings in this format:
 
 **Proportionality rule:** Severity must match the product's risk level. A note for a family utility might be a warning for a B2B platform. Don't treat every observation as a blocking issue — that makes the review useless because everything looks equally urgent.
 
-**Persistence:** After producing findings, the invoking skill (typically the Orchestrator) must record them in `project-state.yaml` → `review_findings.entries`. Each entry includes: `stage`, `phase` (if during artifact generation), `lens`, and `findings[]` (each with `finding`, `severity`, `recommendation`, `status`, `resolution`). This establishes a durable record — findings that vanish into narrative cannot be tracked, trended, or verified as resolved.
+**Record findings for persistence:** After completing your review, run `tools/record-lens-findings.sh` with your results. This creates a structured findings file that the Orchestrator reads after the agent returns. Pass `--stage` and `--phase` to identify context, `--lens` per lens applied, with severity and summary.
+
+**Persistence:** The Orchestrator reads the structured findings file and records them in `project-state.yaml` → `review_findings.entries`. Each entry includes: `stage`, `phase` (if during artifact generation), `lens`, and `findings[]` (each with `finding`, `severity`, `recommendation`, `status`, `resolution`). This establishes a durable record — findings that vanish into narrative cannot be tracked, trended, or verified as resolved.
 
 ## The Five Lenses
 

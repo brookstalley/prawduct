@@ -75,9 +75,9 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-18)'
-    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-18 to 2026-02-18); Fix doc-code divergence
-      blind spot in onboarding: add Phase 1h bidirectional ...'
+  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-19)'
+    why: '1 cosmetic, 1 functional covering: Summary: 2 entries compacted (2026-02-17 to 2026-02-18); Compaction enforcement:
+      governance-stop blocks on compaction debt, Session Re...'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-19'
@@ -293,17 +293,6 @@ change_log:
       skills/orchestrator/migration.md (new), .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
     date: 2026-02-16
-  - what: 'Compaction enforcement: governance-stop blocks on compaction debt, Session Resumption compacts automatically, Critic
-      Check 6 requires enforcement for lossless operations'
-    why: 'Advisory-only compaction drifted to non-compliance — project-state.yaml grew to 1172 lines (change_log 29 entries,
-      threshold 20) despite full infrastructure existing (tool, detection, instructions). Root cause: incomplete_coverage —
-      Critic Check 6 validates that growing collections have lifecycle + compaction + monitoring, but not enforcement that mechanisms
-      fire. Also fixed compact-project-state.py steady-state bug where --check reported compaction needed when preserved directional
-      entries made reduction impossible.'
-    blast_radius: .prawduct/hooks/governance-stop.sh, skills/orchestrator/SKILL.md, skills/critic/SKILL.md, tools/compact-project-state.py,
-      .prawduct/project-state.yaml
-    classification: functional
-    date: 2026-02-17
   - what: Document docs/ vs .prawduct/artifacts/ distinction in high-level-design.md, clarify CLAUDE.md tree, fix artifact count
     why: The principled distinction (docs/ = design documents explaining WHY, upstream; .prawduct/artifacts/ = product specifications
       describing WHAT/HOW, downstream) was sound and every file was correctly placed, but the principle was undocumented — invisible
@@ -393,6 +382,21 @@ change_log:
     blast_radius: .prawduct/hooks/governance-stop.sh, .prawduct/artifacts/governance-mechanisms.md, CLAUDE.md
     classification: functional
     date: 2026-02-18
+  - what: 'Audit items 1-5: governance measurement, Critic/Lenses temporal ownership + Lenses subagent, persona sharpening,
+      quickstart + todo scenario, Pattern Extractor subagent'
+    why: 'External audit identified 10 recommendations. Implemented top 5 by benefit/effort: (1) Hook timing instrumentation
+      + context overhead measurement — can now measure governance cost. (2) Critic/Lenses overlap resolved via temporal ownership
+      (retrospective vs prospective) + Lenses moved to subagent pattern (~5.5k tokens freed). (3) Target persona sharpened from
+      "anyone" to two specific primary personas. (4) Zero-friction quickstart: prawduct-quick script + docs/quickstart.md +
+      quick-todo-app test scenario. (5) Pattern Extractor subagent for automated observation triage with extract-patterns.sh
+      wrapper.'
+    blast_radius: tools/governance-hook, tools/measure-context-overhead.sh (new), .gitignore, skills/critic/SKILL.md, skills/review-lenses/SKILL.md,
+      skills/orchestrator/protocols.md, skills/orchestrator/stages-0-2.md, skills/orchestrator/stages-3-4.md, skills/orchestrator/stage-5-build.md,
+      skills/orchestrator/SKILL.md, tools/record-lens-findings.sh (new), docs/vision.md, README.md, tools/prawduct-quick (new),
+      docs/quickstart.md (new), tests/scenarios/quick-todo-app.md (new), skills/pattern-extractor/SKILL.md (new), tools/extract-patterns.sh
+      (new), tools/session-health-check.sh, docs/project-structure.md, .prawduct/project-state.yaml
+    classification: enhancement
+    date: 2026-02-19
   - what: 'Move Critic from in-context skill to subagent: Critic Agent Protocol, updated invocation in stage-5/6, simplified
       CLAUDE.md compaction recovery'
     why: 'Critic skill (6,900 tokens) loaded into main context caused three problems: cognitive interference with Builder instructions,
@@ -453,8 +457,8 @@ build_plan:
       phase: v1-widen
       requirements: [R5.4]
       skill: orchestrator
-    - item: "Critic-Review Lenses integration"
-      description: "Critic findings feed back to Review Lenses for pattern detection; Review Lens findings feed into Critic's continuous governance during build"
+    - item: "Critic-Review Lenses feedback loop"
+      description: "Critic findings feed back to Review Lenses for pattern detection across builds; Lens findings inform Critic focus areas. Both now run as subagents; integration is through shared findings files (.critic-findings.json, .lens-findings.json)"
       phase: v1-widen
       requirements: [R3.1]
       skill: critic
@@ -529,12 +533,13 @@ build_state:
   source_root: "."
 
   test_tracking:
-    test_count: 3
+    test_count: 4
     assertion_count: 0  # Scenario-based evaluation, not unit tests
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md
       - tests/scenarios/terminal-arcade-game.md
+      - tests/scenarios/quick-todo-app.md
     history: []
 
   spec_compliance:

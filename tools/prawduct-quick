@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+#
+# prawduct-quick — One-command project setup for Prawduct
+#
+# Checks prerequisites, installs the framework if needed, runs prawduct-init,
+# and reports what to do next.
+#
+# Usage:
+#   prawduct-quick <directory>
+#   prawduct-quick .                  # Current directory
+#
+# Exit codes:
+#   0 — Setup complete
+#   1 — Missing prerequisites or setup failed
+
+set -euo pipefail
+
+TARGET="${1:-.}"
+
+echo "=========================================="
+echo "  Prawduct Quick Setup"
+echo "=========================================="
+echo ""
+
+# --- 1. Check prerequisites ---
+
+errors=()
+
+if ! command -v python3 &>/dev/null; then
+    errors+=("python3 not found. Install Python 3.8+.")
+fi
+
+if ! command -v git &>/dev/null; then
+    errors+=("git not found. Install git.")
+fi
+
+if ! python3 -c "import yaml" 2>/dev/null; then
+    errors+=("PyYAML not installed. Run: pip3 install pyyaml")
+fi
+
+if [[ ${#errors[@]} -gt 0 ]]; then
+    echo "Missing prerequisites:"
+    for err in "${errors[@]}"; do
+        echo "  - $err"
+    done
+    exit 1
+fi
+
+echo "Prerequisites: OK"
+
+# --- 2. Check/install framework ---
+
+FW_DIR="$HOME/.prawduct/framework"
+
+if [[ -d "$FW_DIR/skills/orchestrator/SKILL.md" ]]; then
+    echo "Framework: found at $FW_DIR"
+else
+    echo ""
+    echo "Prawduct framework not found at $FW_DIR."
+    read -p "Clone it now? [Y/n] " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        echo "Cloning..."
+        mkdir -p "$HOME/.prawduct"
+        git clone https://github.com/brookstalley/prawduct "$FW_DIR"
+        echo "Installing dependencies..."
+        pip3 install -r "$FW_DIR/requirements.txt"
+        echo "Framework: installed"
+    else
+        echo "Setup cancelled. Install the framework manually:"
+        echo "  git clone https://github.com/brookstalley/prawduct ~/.prawduct/framework"
+        echo "  pip3 install -r ~/.prawduct/framework/requirements.txt"
+        exit 1
+    fi
+fi
+
+# --- 3. Run prawduct-init ---
+
+echo ""
+echo "Initializing project at: $TARGET"
+
+# Create target directory if it doesn't exist
+if [[ ! -d "$TARGET" ]]; then
+    mkdir -p "$TARGET"
+    echo "Created directory: $TARGET"
+fi
+
+python3 "$FW_DIR/tools/prawduct-init.py" --fix "$TARGET"
+
+# --- 4. Verify ---
+
+echo ""
+echo "Verifying setup..."
+python3 "$FW_DIR/tools/prawduct-init.py" --check "$TARGET"
+
+# --- 5. Report success ---
+
+echo ""
+echo "=========================================="
+echo "  Setup complete!"
+echo "=========================================="
+echo ""
+echo "Next steps:"
+echo "  1. Open $TARGET in Claude Code"
+echo "  2. Describe what you want to build"
+echo "  3. The framework takes it from there"
+echo ""
+echo "See docs/quickstart.md for a walkthrough."

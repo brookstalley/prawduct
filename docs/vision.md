@@ -33,4 +33,18 @@ The bottleneck in LLM-assisted development isn't code generation. It's everythin
 
 ## Who It's For
 
-Anyone building a software product with LLM assistance — from a non-technical person who wants a family score-tracking app, to an experienced technologist building a sophisticated platform. The system adapts to the user, meeting them where they are and filling in what they don't know.
+### Primary Personas
+
+**The Developer Who Needs Product Discipline.** Developers with technical skill but limited product or architecture experience, building real products (not toys) with LLM assistance. They know how to code — or the LLM does — but struggle with scoping, making architectural decisions, maintaining quality as complexity grows, and knowing when they're done. Prawduct fills the product-thinking and governance gaps so the technical execution succeeds.
+
+**The Product Expert Who Needs Faithful Execution.** Product thinkers with strong ideas, deep user empathy, and clear product vision who don't want to get deep into code or UX implementation details. They want the LLM to faithfully translate their product thinking into well-built software without losing the intent along the way. Prawduct ensures their vision survives the translation to code — the discovery process captures what matters, the artifacts preserve it, and the governance system enforces it through build.
+
+### Secondary Personas
+
+- Experienced developers who want structured governance for LLM-assisted builds
+- Technical founders building MVPs who need product discipline to ship
+
+### Non-Personas
+
+- Non-technical users expecting end-to-end code generation without engagement — Prawduct is a conversation, not a button
+- Enterprise teams needing RBAC, multi-user workflows, or audit trails — Prawduct is a single-agent framework

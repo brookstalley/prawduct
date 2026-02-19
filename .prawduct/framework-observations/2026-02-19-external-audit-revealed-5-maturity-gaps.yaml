@@ -1,0 +1,20 @@
+---
+observation_id: c4e19860-ccc9-4a7a-a49a-3eca68760f08
+timestamp: 2026-02-19T20:53:35Z
+session_type: framework_dev
+session_context:
+  framework_version: 0563bf8
+observations:
+  - type: process_friction
+    stage: 6
+    severity: note
+    description: "External audit revealed 5 maturity gaps invisible to internal learning system: no governance performance measurement, skill ownership overlap (Critic/Lenses), overly broad persona, missing quickstart path, manual observation triage. All were known weaknesses but none had been surfaced as actionable observations."
+    evidence: "Audit recommendations 1-5 implemented in single session. No prior observations captured for governance overhead, persona scope, or quickstart absence despite framework being in iteration for weeks."
+    status: noted
+    root_cause_analysis:
+      symptom: "Framework maturity gaps accumulate without internal detection"
+      root_cause: "Learning system optimizes for correctness (does this work?) not usability (is this accessible/measurable/clear?). No protocol for periodic self-assessment of framework UX, performance, or overlap."
+      category: incomplete_coverage
+skills_affected:
+  - "skills/orchestrator/SKILL.md skills/critic/SKILL.md skills/review-lenses/SKILL.md"
+---

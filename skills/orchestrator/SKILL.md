@@ -131,6 +131,7 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 - If `doc-manifest.yaml` exists, check for `last_validated` dates older than 30 days — mention stale docs.
 - If health check reports `STATE_WARNINGS > 0`, run `tools/compact-project-state.sh` automatically. Compaction is lossless — it preserves all information in condensed form.
 - When actionable patterns exist, synthesize concrete recommendations and let the user **act now** or **defer**. Deferred patterns are not re-presented unless new observations accumulate.
+- If the health check reports `EXTRACTION_NEEDED: true` or if `.prawduct/.pattern-report.json` has new clusters since the last session, invoke the Pattern Extractor agent (read `skills/pattern-extractor/SKILL.md`) to surface deeper pattern analysis. Present high-priority clusters as actionable recommendations.
 - If health check reports `UNCONTRIBUTED_OBSERVATIONS > 0` (product repos only), mention during orientation: "This project has [N] observation file(s) that could be contributed back to the framework. I can help with that whenever you're ready." Contributions are optional — do not block on them.
 
 **Mid-build resumption (Stage 5):** Read `build_plan.current_chunk`, chunk statuses, `test_tracking`, and source code. Orient with progress. Resume in-progress chunks; invoke Critic for chunks in "review" status.
@@ -184,4 +185,5 @@ When the user appears unfamiliar with Prawduct — their message is a greeting, 
 - **It does not classify products.** The Domain Analyzer does that. The Orchestrator invokes it.
 - **It does not generate artifacts.** The Artifact Generator does that. The Orchestrator invokes it.
 - **It does not evaluate quality.** The Review Lenses and Critic do that. The Orchestrator invokes them and acts on their findings.
+- **It does not analyze observation patterns.** The Pattern Extractor does that. The Orchestrator invokes it when observation counts warrant deeper analysis.
 - **It does not make product decisions.** The user makes product decisions. The Orchestrator facilitates, challenges gently, and documents them.

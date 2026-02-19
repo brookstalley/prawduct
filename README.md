@@ -1,12 +1,18 @@
 # Prawduct
 
-Prawduct turns product ideas into quality software.
+Prawduct turns product ideas into quality software — whether you're a developer who needs product discipline or a product thinker who needs faithful execution.
 
-LLM code generation is great. But it's so easy to go from "I need an app that does X" right to code, without applying product thinking. Who are the users? What are the edge cases, failure modes, and what does "done" look like? What needs to be tested, and how? And how do you ensure ongoing development adheres to best practices in product, architecture, engineering, testing, and documentation?
+LLM code generation is great. But going from "I need an app that does X" straight to code skips the hard questions: Who are the users? What are the edge cases, failure modes, and what does "done" look like? What needs to be tested, and how? Prawduct fills those gaps. It's the senior product thinker, the software architect, and the quality guardian — guiding the process from idea through working, tested code, and then to iteration and improvement.
 
-Prawduct fills those gaps. It's the senior product thinker, the software architect, and the quality guardian. Prawduct guides the entire process from idea through working, tested code... and then to iteration and improvement. 
+Prawduct supports everything from multi-user web applications to headless utility scripts. It adapts to you: if you bring deep product thinking, it focuses on faithful execution; if you bring technical skill, it fills in the product discipline. Extensive internal reflection extracts learnings that improve the framework over time — Prawduct itself is built and maintained using its own framework.
 
-Prawduct is designed to support everything from multi-user web applications to headless utility scripts. Extensive internal reflection extracts learnings that improve the framework for future usage -- Prawduct itself is built using Prawduct, and it is maintained and improved using its own framework.
+## Quick Start
+
+**New to Prawduct?** See the [5-minute quickstart guide](docs/quickstart.md) or run:
+
+```bash
+~/.prawduct/framework/tools/prawduct-quick my-project
+```
 
 ## Getting Started
 
@@ -93,7 +99,7 @@ See `docs/principles.md` for the hard rules that are never compromised.
 
 ```
 prawduct/
-├── skills/                  # LLM instruction sets (six skills)
+├── skills/                  # LLM instruction sets (seven skills)
 ├── templates/               # Starting templates for product artifacts
 ├── tools/                   # Mechanical enforcement scripts
 ├── scripts/                 # Validation helper scripts
