@@ -766,6 +766,10 @@ def check_prawduct_dir(target_dir: str, mode: str) -> dict:
     """Check/create .prawduct/ directory."""
     prawduct_dir = Path(target_dir) / ".prawduct"
     if prawduct_dir.is_dir():
+        if mode == "fix":
+            # Ensure subdirectories exist (may be missing from older onboardings)
+            for subdir in ("artifacts", "working-notes", "framework-observations"):
+                (prawduct_dir / subdir).mkdir(exist_ok=True)
         return {"name": "prawduct_dir", "status": "ok", "detail": str(prawduct_dir)}
 
     if mode == "fix":
