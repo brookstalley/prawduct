@@ -76,6 +76,16 @@ last_validated: 2026-02-16
 
 **Impact:** Hooks continue to function. `framework-path` staleness primarily affects product-repo bootstrap (CLAUDE.md instructions) and session-health-check divergence detection. Corrected by re-running `prawduct-init.sh`.
 
+### External Repository Edit (Unregistered Repo)
+
+**Failure mode:** Agent attempts to edit files in a git repository that hasn't been onboarded to Prawduct. Gate blocks the edit.
+
+**Recovery:**
+1. The block message provides two options: (a) onboard the repo by telling the Orchestrator to work on it (triggers `prawduct-init` automatically), or (b) restart Claude Code without Prawduct hooks if governance isn't wanted for that repo.
+2. No data loss — the edit was blocked before it could execute.
+
+**Impact:** Intentional blocking, not a failure. The block message is self-contained recovery guidance. This gate prevents governance escapes where an agent develops in a sibling repository without any quality enforcement.
+
 ## Partial Success Behavior
 
 Framework stages are designed to work with partial state:

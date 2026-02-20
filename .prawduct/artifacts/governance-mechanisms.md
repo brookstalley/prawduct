@@ -58,7 +58,7 @@ On compaction: `compact-reinject` fires as a SessionStart hook.
 
 | Subcommand | Event | Module | Can Block? |
 |------------|-------|--------|------------|
-| `prompt` | UserPromptSubmit | `prompt.py` | No (advisory only: activation reminder + framework version staleness) |
+| `prompt` | UserPromptSubmit | `prompt.py` | No (advisory only: activation reminder + product context validation + framework version staleness) |
 | `gate` | PreToolUse (Read, Edit, Write) | `gate.py` | **Yes** (exit 2) |
 | `track` | PostToolUse (Edit, Write) | `tracker.py` | No (exit 0 always) |
 | `failure` | PostToolUseFailure | `failure.py` | No (advisory only: investigation reminder) |
@@ -68,13 +68,16 @@ On compaction: `compact-reinject` fires as a SessionStart hook.
 
 ### File Classification
 
-`tools/governance/classify.py` classifies files into three categories (single implementation, previously duplicated across hooks):
+`tools/governance/classify.py` classifies files into four categories (single implementation, previously duplicated across hooks):
 
 - **Framework files:** Match patterns (`skills/`, `tools/`, `docs/`, `CLAUDE.md`, `README.md`, `.prawduct/artifacts/`, etc.) AND repo root equals framework root
 - **Product files:** Inside the `product_dir` recorded in `.session-governance.json`
-- **Ungoverned files:** Everything else (e.g., `~/.claude/plans/`, temp files). Allowed without activation.
+- **External repo files:** In a git repository (detected via `.git` directory walk, handling worktrees/submodules) that is neither the framework root nor the active product. **Blocked** by the gate — the repo must be onboarded via `prawduct-init` first.
+- **Ungoverned files:** Not in any git repo (e.g., `/tmp/`, `~/.claude/plans/`, downloaded files). Allowed without activation.
 
 A subset of framework files are **governance-sensitive** (`skills/`, `tools/`, `scripts/`). These define framework behavior and trigger the PFR enforcement chain.
+
+Git root detection results are cached by directory prefix to avoid repeated filesystem walks.
 
 ## State Files
 
@@ -232,7 +235,24 @@ Critic review produces findings with highest_severity >= warning
   → stop.py: observations > 0 → allows stop
 ```
 
-### 9. Investigation Reminder (PostToolUseFailure)
+### 9. External Repository Gate
+
+**Purpose:** Prevent governance escapes where an agent edits files in a sibling git repository without onboarding it to Prawduct.
+
+```
+Agent attempts to edit a file outside framework and active product
+  → classify.py: _find_git_root() walks up directories looking for .git (dir or file)
+  → File is in a git repo that isn't the framework root or product_dir → is_external_repo: true
+  → gate.py: _check_external_repo() fires
+  → If governance active (marker exists + valid): BLOCKS with "repo not onboarded" message
+  → If governance not active: BLOCKS with "activate first" message
+  → Both messages steer toward two options: onboard with prawduct-init, or restart without Prawduct
+  → File NOT in any git repo (temp, downloads): ungoverned, allowed
+```
+
+**Design:** The gate blocks both when governance is active and when it isn't. If Prawduct hooks are running, you're in a Prawduct context — editing unregistered repos should require conscious registration. The git-repo detection (`.git` directory/file walk) is lightweight and cached by directory prefix.
+
+### 10. Investigation Reminder (PostToolUseFailure)
 
 **Purpose:** When a tool fails unexpectedly, nudge the agent to investigate root cause rather than silently working around it.
 

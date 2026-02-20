@@ -84,9 +84,14 @@ def _check_edit(
     fc: FileClass, file_path: str, ctx: Context, state: SessionState
 ) -> Decision:
     """Gate for Edit/Write operations."""
-    # Ungoverned files: allow without activation
+    # Ungoverned files: allow unless they're in an unregistered git repo
     if not fc.is_framework and not fc.is_product:
-        tr.event(state, "gate_check", {"rule": "governed", "file": fc.rel_path, "result": "ungoverned"})
+        if fc.is_external_repo:
+            result = _check_external_repo(fc, ctx, state)
+            if not result.allowed:
+                tr.event(state, "gate_block", {"rule": "external_repo", "file": file_path, "repo": fc.external_repo_root, "reason": result.reason})
+                return result
+        tr.event(state, "gate_check", {"rule": "governed", "file": fc.rel_path or file_path, "result": "ungoverned"})
         return Decision(allowed=True)
 
     # 1. Activation gate
@@ -112,6 +117,53 @@ def _check_edit(
 
     tr.event(state, "gate_check", {"rule": "edit", "file": fc.rel_path, "result": "allow"})
     return Decision(allowed=True)
+
+
+def _is_governance_active(ctx: Context) -> bool:
+    """Check if governance is currently active (activation marker exists and valid)."""
+    marker_path = ctx.activation_marker
+    if not os.path.isfile(marker_path):
+        return False
+    return _validate_marker(marker_path) == "ok"
+
+
+def _check_external_repo(
+    fc: FileClass, ctx: Context, state: SessionState
+) -> Decision:
+    """Block edits to files in git repos not registered with Prawduct.
+
+    This prevents cross-repo governance escapes where an agent edits files
+    in a sibling repository without onboarding it.
+    """
+    repo_name = os.path.basename(fc.external_repo_root)
+
+    if _is_governance_active(ctx):
+        return Decision(
+            allowed=False,
+            reason=(
+                f"BLOCKED: This file is in a git repository ({repo_name}) that isn't "
+                f"onboarded to Prawduct. You're using Prawduct but this repo isn't registered.\n"
+                f"\n"
+                f"To continue, either:\n"
+                f"  1. Onboard this repo: tell the Orchestrator to work on {fc.external_repo_root}\n"
+                f"     (it will run prawduct-init automatically)\n"
+                f"  2. If you don't want Prawduct governance for this repo, restart Claude Code\n"
+                f"     without Prawduct hooks."
+            ),
+            rule="external_repo",
+        )
+
+    return Decision(
+        allowed=False,
+        reason=(
+            f"BLOCKED: Prawduct hooks are active but the Orchestrator hasn't been loaded (HR9). "
+            f"This file is in {repo_name}, which isn't onboarded.\n"
+            f"\n"
+            f"Read {ctx.framework_root}/skills/orchestrator/SKILL.md first to activate governance.\n"
+            f"If you don't want Prawduct governance, restart Claude Code without Prawduct hooks."
+        ),
+        rule="external_repo_no_activation",
+    )
 
 
 def _check_activation(ctx: Context, state: SessionState, rule_name: str) -> Decision:

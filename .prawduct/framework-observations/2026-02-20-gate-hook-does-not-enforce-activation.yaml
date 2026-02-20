@@ -1,0 +1,20 @@
+---
+observation_id: 8d5a3acc-6cd6-4a44-9b75-a3f71fc7d59d
+timestamp: 2026-02-20T14:40:09Z
+session_type: framework_dev
+session_context:
+  framework_version: 1db4274
+observations:
+  - type: defect
+    stage: 6
+    severity: blocking
+    description: "Gate hook does not enforce activation for ungoverned files. Files outside the framework repo and any registered product_dir bypass ALL governance checks including activation. Edits to any unregistered external repo proceed without orchestrator activation, session tracking, or critic review."
+    evidence: "During session continuation, all edits to /Users/brookstalley/source/worldground/ passed through gate hook unchecked because worldground had no .prawduct/ and was classified as ungoverned by classify.py. Prompt hook injected advisory but gate never blocked."
+    status: noted
+    root_cause_analysis:
+      symptom: "Entire multi-session development effort on worldground proceeded without any governance enforcement"
+      root_cause: "Gate hook file classification treats unregistered repos as ungoverned and skips all checks including activation. Combined with advisory-only prompt hook and session continuation not having a hard gate."
+      category: missing_guidance
+skills_affected:
+  - "tools/governance/gate.py tools/governance/classify.py"
+---

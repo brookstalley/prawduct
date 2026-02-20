@@ -75,12 +75,12 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 2 entries compacted (2026-02-19 to 2026-02-19)'
-    why: '1 cosmetic, 1 enhancement covering: Conservative governance friction reduction plus NFR traceability; Summary: 2 entries
-      compacted (2026-02-19 to 2026-02-19)'
+  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-19)'
+    why: '1 cosmetic, 1 enhancement covering: Summary: 2 entries compacted (2026-02-19 to 2026-02-19); Document docs/ vs .prawduct/artifacts/
+      distinction in high-level-design.md, c...'
     blast_radius: compacted
     classification: cosmetic
-    date: '2026-02-19'
+    date: '2026-02-20'
   - what: Replaced product shape taxonomy with concern-based classification
     why: Fixed shapes (UI Application, API, Automation, Multi-Party, Hybrid) violated 'Generality Over Enumeration' principle.
       Products like earbud firmware, browser extensions, smart contracts don't fit any shape. Replaced with 7 composable concern
@@ -293,15 +293,6 @@ change_log:
       skills/orchestrator/migration.md (new), .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
     date: 2026-02-16
-  - what: Document docs/ vs .prawduct/artifacts/ distinction in high-level-design.md, clarify CLAUDE.md tree, fix artifact count
-    why: The principled distinction (docs/ = design documents explaining WHY, upstream; .prawduct/artifacts/ = product specifications
-      describing WHAT/HOW, downstream) was sound and every file was correctly placed, but the principle was undocumented — invisible
-      and vulnerable to drift. Added Documentation Architecture subsection to high-level-design.md as canonical reference. Updated
-      CLAUDE.md project structure comments for at-a-glance visibility. Fixed doc-manifest.yaml artifact count (13 → 14, governance-mechanisms.md
-      was missing).
-    blast_radius: docs/high-level-design.md, CLAUDE.md, docs/doc-manifest.yaml, .prawduct/project-state.yaml
-    classification: enhancement
-    date: 2026-02-17
   - what: 'CLAUDE.md context footprint optimization: condense tree, Framework Status, Testing Strategy'
     why: 'CLAUDE.md (always-loaded, ~6k tokens) had grown organically with exhaustive file listings (14 artifacts, 13 tools,
       17 templates individually enumerated), detailed Framework Status capability bullets (redundant with project-state.yaml
@@ -424,6 +415,27 @@ change_log:
       from NOT seeing the main conversation? Builder does not (needs interaction), Orchestrator does not (IS the conversation),
       Domain Analyzer might not (somewhat interactive). Review skills benefit most because independence is a feature, not a
       limitation.'
+  - what: 'Close fail-open governance escape: external git repo detection in edit gate'
+    why: 'Cross-repo governance escape — an entire product (worldground) was built without governance because the edit gate
+      treated files outside known repos as "ungoverned" and auto-allowed them. 5-whys root cause: gate.py classified files into
+      framework/product/ungoverned with ungoverned=auto-allow; files in unregistered git repos fell into ungoverned bucket;
+      no backstop when Orchestrator wasn''t loaded. Fix: classify.py gains is_external_repo flag via lightweight .git directory
+      walk (handles worktrees/submodules, cached by directory prefix). gate.py blocks external-repo edits with actionable messages
+      ("onboard this repo or restart without Prawduct"). prompt.py gains product-context validation (detects broken .active-product
+      pointer). Governance perimeter now: framework files = governed, product files = governed, external git repo files = blocked,
+      non-repo files = allowed.'
+    blast_radius: tools/governance/classify.py, tools/governance/gate.py, tools/governance/prompt.py, .prawduct/artifacts/governance-mechanisms.md,
+      .prawduct/artifacts/failure-recovery-spec.md, .prawduct/project-state.yaml
+    classification: structural
+    date: 2026-02-20
+    retrospective: 'Detection: Related observation existed (2026-02-17, marker-write bypass, same process_not_enforced category)
+      but the learning system did not generalize from "markers can be faked" to "what else does the gate fail to check?" Structural
+      Critique Protocol could have caught this deductively ("does ungoverned=auto-allow satisfy fail-closed principle?") but
+      triggers too infrequently. Process: Session-governance file was deleted mid-session (likely SessionStart cleanup from
+      a previous/parallel session), causing PFR gate to read wrong product state (blobdrop instead of prawduct). The .active-product
+      pointer is a shared resource vulnerable to concurrent session clobber — known limitation but caused real friction. Generalization:
+      The pattern "classify unknown inputs as suspicious rather than safe" applies to any gate with an unrecognized-input default.
+      Git-repo detection is a general, dimensional discriminator (not enumeration).'
 build_plan:
   strategy: "Vertical slice, then widen (see docs/high-level-design.md § Bootstrapping)"
   # remaining_work is the canonical tracker for what remains to build.
