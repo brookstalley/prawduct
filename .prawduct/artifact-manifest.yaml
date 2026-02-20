@@ -71,28 +71,45 @@ artifact_manifest:
       last_validated: 2026-02-11
       tier: 1
     - name: artifact-generator
-      file_path: skills/artifact-generator/SKILL.md
-      version: 4
+      file_path: agents/artifact-generator/SKILL.md
+      version: 5
       depends_on: [high-level-design, principles]
       depended_on_by: [human-interface-templates, unattended-operation-templates, family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
-      last_validated: 2026-02-19
+      last_validated: 2026-02-20
       tier: 1
-      notes: "Added explicit NFR-to-chunk mapping format for build plan traceability"
+      notes: "Migrated to agents/; added Invocation section for per-phase subagent execution"
     - name: review-lenses
-      file_path: skills/review-lenses/SKILL.md
-      version: 2
+      file_path: agents/review-lenses/SKILL.md
+      version: 3
       depends_on: [high-level-design, principles]
       depended_on_by: [family-utility-scenario, background-data-pipeline-scenario, terminal-arcade-game-scenario]
-      last_validated: 2026-02-11
+      last_validated: 2026-02-20
       tier: 1
+      notes: "Migrated to agents/; updated cross-reference to agents/critic/"
     - name: critic
-      file_path: skills/critic/SKILL.md
-      version: 4
+      file_path: agents/critic/SKILL.md
+      version: 5
       depends_on: [high-level-design, principles]
       depended_on_by: []
-      last_validated: 2026-02-19
+      last_validated: 2026-02-20
       tier: 1
-      notes: "Strengthened NFR compliance in Check 1 with per-chunk mapping verification"
+      notes: "Migrated to agents/; updated cross-reference to agents/review-lenses/"
+    - name: pattern-extractor
+      file_path: agents/pattern-extractor/SKILL.md
+      version: 2
+      depends_on: [high-level-design]
+      depended_on_by: []
+      last_validated: 2026-02-20
+      tier: 1
+      notes: "Migrated to agents/"
+    - name: observation-triage
+      file_path: agents/observation-triage/SKILL.md
+      version: 1
+      depends_on: [high-level-design]
+      depended_on_by: []
+      last_validated: 2026-02-20
+      tier: 1
+      notes: "New agent: reads observations, proposes priorities and archive candidates"
     - name: builder
       file_path: skills/builder/SKILL.md
       version: 2

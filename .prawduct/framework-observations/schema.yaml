@@ -217,8 +217,10 @@ observation_entry:
       examples:
         - "skills/orchestrator/SKILL.md"
         - "skills/domain-analyzer/SKILL.md"
-        - "skills/artifact-generator/SKILL.md"
-        - "skills/review-lenses/SKILL.md"
+        - "agents/artifact-generator/SKILL.md"
+        - "agents/review-lenses/SKILL.md"
+        - "agents/critic/SKILL.md"
+        - "agents/observation-triage/SKILL.md"
         - "templates/security-model.md"
         - "framework-observations/README.md"
 

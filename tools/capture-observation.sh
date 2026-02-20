@@ -20,7 +20,7 @@
 #     --severity warning \
 #     --description "Observation capture requires hand-writing 194-line schema YAML" \
 #     --evidence "Existing observation files have inconsistent formats" \
-#     --skills-affected "skills/orchestrator/SKILL.md,skills/critic/SKILL.md" \
+#     --skills-affected "skills/orchestrator/SKILL.md,agents/critic/SKILL.md" \
 #     [--stage meta] \
 #     [--proposed-action "Create capture tool"] \
 #     [--status noted] \

@@ -64,30 +64,35 @@ tier_1_documents:
     owner: framework
     last_validated: 2026-02-11
 
-  - path: skills/artifact-generator/SKILL.md
-    purpose: "LLM instructions for artifact selection, phasing, and consistency — format specs live in templates"
+  - path: agents/artifact-generator/SKILL.md
+    purpose: "LLM instructions for artifact selection, phasing, and consistency — format specs live in templates. Invoked as subagent per phase."
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-20
 
-  - path: skills/review-lenses/SKILL.md
-    purpose: "LLM instructions for five-perspective evaluation (product, design, architecture, skeptic, testing)"
+  - path: agents/review-lenses/SKILL.md
+    purpose: "LLM instructions for five-perspective evaluation (product, design, architecture, skeptic, testing). Invoked as subagent."
     owner: framework
-    last_validated: 2026-02-12
+    last_validated: 2026-02-20
 
   - path: skills/builder/SKILL.md
     purpose: "LLM instructions for code generation: executes build plan chunks, writes tests, flags spec gaps"
     owner: framework
     last_validated: 2026-02-11
 
-  - path: skills/critic/SKILL.md
-    purpose: "LLM instructions for context-sensitive governance: 9 checks with applicability based on project state"
+  - path: agents/critic/SKILL.md
+    purpose: "LLM instructions for context-sensitive governance: 9 checks with applicability based on project state. Invoked as subagent."
     owner: framework
-    last_validated: 2026-02-14
+    last_validated: 2026-02-20
 
-  - path: skills/pattern-extractor/SKILL.md
-    purpose: "LLM instructions for observation pattern analysis: cluster identification, action proposals, subagent"
+  - path: agents/pattern-extractor/SKILL.md
+    purpose: "LLM instructions for observation pattern analysis: cluster identification, action proposals. Invoked as subagent."
     owner: framework
-    last_validated: 2026-02-19
+    last_validated: 2026-02-20
+
+  - path: agents/observation-triage/SKILL.md
+    purpose: "LLM instructions for observation priority/archive triage: reads observations, proposes priorities and archive candidates. Invoked as subagent."
+    owner: framework
+    last_validated: 2026-02-20
 
   - path: docs/quickstart.md
     purpose: "5-minute getting started guide for new users"

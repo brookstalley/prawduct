@@ -73,22 +73,22 @@ documents:
     purpose: "Product classification, discovery question generation"
     last_reviewed: null
 
-  - path: skills/artifact-generator/SKILL.md
+  - path: agents/artifact-generator/SKILL.md
     tier: 1
     owner: framework-maintainer
-    purpose: "Artifact selection, generation, cross-artifact consistency"
+    purpose: "Artifact selection, generation, cross-artifact consistency (subagent)"
     last_reviewed: null
 
-  - path: skills/review-lenses/SKILL.md
+  - path: agents/review-lenses/SKILL.md
     tier: 1
     owner: framework-maintainer
-    purpose: "Four evaluation perspectives for generated artifacts"
+    purpose: "Five evaluation perspectives for generated artifacts (subagent)"
     last_reviewed: null
 
-  - path: skills/critic/SKILL.md
+  - path: agents/critic/SKILL.md
     tier: 1
     owner: framework-maintainer
-    purpose: "Framework self-governance and product build governance"
+    purpose: "Framework self-governance and product build governance (subagent)"
     last_reviewed: null
 
   # --- Tier 1: Templates ---

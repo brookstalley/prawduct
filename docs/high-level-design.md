@@ -411,7 +411,7 @@ Project State
 
 **Purpose:** Automated quality enforcement during development. The embodiment of the Hard Rules from principles.md.
 
-The Critic uses 9 general-purpose checks with an applicability table that determines which checks fire based on project context. New concerns strengthen existing checks rather than creating enumerated sub-components (Generality Over Enumeration principle). See `skills/critic/SKILL.md` for the full check architecture, applicability table, review cycle, and output format. See `CLAUDE.md` for mechanical governance hooks.
+The Critic uses 9 general-purpose checks with an applicability table that determines which checks fire based on project context. New concerns strengthen existing checks rather than creating enumerated sub-components (Generality Over Enumeration principle). See `agents/critic/SKILL.md` for the full check architecture, applicability table, review cycle, and output format. See `CLAUDE.md` for mechanical governance hooks.
 
 ### C7: Trajectory Monitor
 
