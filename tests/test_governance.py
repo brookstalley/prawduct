@@ -21,7 +21,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 
-from governance.context import Context, resolve, _resolve_product_prawduct
+from governance.context import Context, ProductPaths, resolve, resolve_product_for_file
 from governance.prompt import check as prompt_check, _check_framework_version
 from governance.failure import check as failure_check
 from governance.classify import (
@@ -64,7 +64,6 @@ def tmp_context(tmp_framework):
     return Context(
         framework_root=str(tmp_framework),
         prawduct_dir=str(prawduct_dir),
-        product_prawduct=str(prawduct_dir),
         repo_root=str(tmp_framework),
     )
 
@@ -76,7 +75,7 @@ def session_file(tmp_context):
     data = {
         "schema_version": 2,
         "product_dir": tmp_context.framework_root,
-        "product_output_dir": tmp_context.product_prawduct,
+        "product_output_dir": str(tmp_context.prawduct_dir),
         "current_stage": "iteration",
         "session_started": now_iso(),
         "framework_edits": {"files": [], "total_edits": 0},
@@ -112,8 +111,18 @@ class TestContext:
         ctx = tmp_context
         assert ctx.session_file.endswith(".session-governance.json")
         assert ctx.activation_marker.endswith(".orchestrator-activated")
+        # Marker should be under prawduct_dir
+        assert ctx.activation_marker.startswith(ctx.prawduct_dir)
         assert ctx.critic_pending.endswith(".critic-pending")
         assert ctx.critic_findings.endswith(".critic-findings.json")
+
+    def test_product_paths_activation_marker(self, tmp_path):
+        """ProductPaths resolves activation marker to its own prawduct_dir."""
+        product_prawduct = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(product_prawduct, exist_ok=True)
+
+        pp = ProductPaths(prawduct_dir=product_prawduct)
+        assert pp.activation_marker == os.path.join(product_prawduct, ".orchestrator-activated")
 
     def test_resolve_with_explicit_root(self, tmp_framework):
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_framework)}):
@@ -127,31 +136,54 @@ class TestContext:
             with pytest.raises(ValueError):
                 resolve()
 
-    def test_product_prawduct_with_active_product(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-        prawduct = project / ".prawduct"
-        prawduct.mkdir()
+    def test_product_paths_properties(self, tmp_path):
+        """ProductPaths provides correct path derivation."""
+        prawduct = str(tmp_path / "product" / ".prawduct")
+        pp = ProductPaths(prawduct_dir=prawduct)
+        assert pp.session_file == os.path.join(prawduct, ".session-governance.json")
+        assert pp.activation_marker == os.path.join(prawduct, ".orchestrator-activated")
+        assert pp.critic_pending == os.path.join(prawduct, ".critic-pending")
+        assert pp.critic_findings == os.path.join(prawduct, ".critic-findings.json")
 
-        target = tmp_path / "target"
-        target.mkdir()
-        target_prawduct = target / ".prawduct"
-        target_prawduct.mkdir()
+    def test_resolve_product_for_file_with_prawduct(self, tmp_path):
+        """File in a git repo with .prawduct/ resolves to that repo's .prawduct/."""
+        repo = tmp_path / "myrepo"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        test_file = str(repo / "src" / "app.py")
 
-        active_product = prawduct / ".active-product"
-        active_product.write_text(str(target))
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
 
-        result = _resolve_product_prawduct(str(project), str(prawduct))
-        assert result == str(target_prawduct)
+        result = resolve_product_for_file(test_file, "/fallback/.prawduct")
+        assert result.prawduct_dir == str(repo / ".prawduct")
 
-    def test_product_prawduct_fallback(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-        prawduct = project / ".prawduct"
-        prawduct.mkdir()
+    def test_resolve_product_for_file_fallback(self, tmp_path):
+        """File not in a git repo falls back to session-level prawduct_dir."""
+        test_file = str(tmp_path / "random" / "file.txt")
+        fallback = str(tmp_path / "session" / ".prawduct")
 
-        result = _resolve_product_prawduct(str(project), str(prawduct))
-        assert result == str(prawduct)
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        result = resolve_product_for_file(test_file, fallback)
+        assert result.prawduct_dir == fallback
+
+    def test_resolve_product_for_file_no_prawduct_dir(self, tmp_path):
+        """Git repo without .prawduct/ falls back to session-level."""
+        repo = tmp_path / "bare_repo"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        test_file = str(repo / "file.py")
+        fallback = str(tmp_path / "session" / ".prawduct")
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        result = resolve_product_for_file(test_file, fallback)
+        assert result.prawduct_dir == fallback
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +241,87 @@ class TestClassify:
                 path = os.path.join(tmp_context.framework_root, pattern)
             fc = classify(path, tmp_context)
             assert fc.is_framework is True, f"Pattern {pattern} not recognized as framework"
+
+    def test_product_file_during_bootstrap(self, tmp_path):
+        """Product dir has .prawduct/ and .git but no session file yet — is_product=True."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+        (product / ".git").mkdir()  # Git root marker
+        # No .session-governance.json — this is the bootstrap window
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(fw_prawduct),
+            repo_root=str(fw),
+        )
+        # File inside the product dir
+        (product / "src").mkdir(exist_ok=True)
+        path = os.path.join(str(product), "src", "app.py")
+        fc = classify(path, ctx)
+        assert fc.is_product is True
+        assert fc.is_external_repo is False
+
+    def test_no_bootstrap_false_prefix_match(self, tmp_path):
+        """File in sibling dir bar-baz should NOT match product dir bar's .prawduct/."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "bar"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        (product / ".git").mkdir()
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(fw_prawduct),
+
+            repo_root=str(fw),
+        )
+        # File in a directory that shares a prefix but is NOT the product
+        sibling = tmp_path / "bar-baz"
+        sibling.mkdir()
+        path = os.path.join(str(sibling), "file.py")
+        fc = classify(path, ctx)
+        assert fc.is_product is False
+
+    def test_no_bootstrap_without_prawduct_dir(self, tmp_path):
+        """File in a git repo without .prawduct/ is not a product file."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        other = tmp_path / "other"
+        other.mkdir()
+        (other / ".git").mkdir()  # Git repo but no .prawduct/
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(fw_prawduct),
+
+            repo_root=str(fw),
+        )
+        path = os.path.join(str(other), "file.py")
+        fc = classify(path, ctx)
+        assert fc.is_product is False
 
 
 # ---------------------------------------------------------------------------
@@ -800,6 +913,76 @@ class TestCommit:
         assert result.allowed is False
         assert "observation" in result.reason.lower()
 
+    def test_cross_repo_critic_pending_at_framework_root(self, tmp_path):
+        """When tracker writes .critic-pending to the framework's .prawduct/
+        but ctx points to a different session-level dir, the commit gate
+        should still detect the pending flag via framework_root fallback."""
+        # Set up: session-level prawduct_dir != framework .prawduct/
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+        (fw / "skills").mkdir()
+        (fw / "tools").mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+
+        # Context: session-level is the product, framework_root is the framework
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(product_prawduct),
+            repo_root=str(product),
+        )
+
+        # Write activation marker for the context
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(ctx.activation_marker, "w") as f:
+            f.write(f"{ts} praw-active")
+
+        # Session state (at product prawduct)
+        session_data = {
+            "schema_version": 2,
+            "product_dir": str(product),
+            "product_output_dir": str(product_prawduct),
+            "session_started": now_iso(),
+            "framework_edits": {"files": [{"path": "tools/gate.py", "first_modified": now_iso(), "last_modified": now_iso(), "edit_count": 1}], "total_edits": 1},
+            "governance_state": {},
+            "directional_change": {},
+            "pfr_state": {},
+        }
+        with open(ctx.session_file, "w") as f:
+            json.dump(session_data, f)
+        state = SessionState.load(ctx.session_file)
+
+        # Simulate tracker writing .critic-pending to framework's .prawduct/
+        # (per-file resolution would put it there, not at product's .prawduct/)
+        framework_critic_pending = fw_prawduct / ".critic-pending"
+        framework_critic_pending.write_text(now_iso())
+
+        # Verify: session-level .critic-pending does NOT exist
+        assert not os.path.isfile(ctx.critic_pending)
+
+        # The commit gate should still detect the pending flag via framework root
+        # and proceed to call critic-reminder.sh (which would block).
+        # Since critic-reminder.sh doesn't exist in our tmp dir, it falls through
+        # to allowed=True — the key assertion is that we don't short-circuit.
+        # To test the detection, we create a mock critic-reminder.sh that exits 2.
+        critic_tool = fw / "tools" / "critic-reminder.sh"
+        critic_tool.write_text("#!/bin/bash\nexit 2\n")
+        critic_tool.chmod(0o755)
+
+        result = check_and_archive(
+            {"tool_input": {"command": "git commit -m 'test'"}},
+            ctx,
+            state,
+        )
+        # Should be blocked because critic-reminder.sh exits 2
+        assert result.allowed is False
+        assert "critic" in result.reason.lower() or "review" in result.reason.lower()
+
 
 # ---------------------------------------------------------------------------
 # Integration Test
@@ -873,7 +1056,7 @@ class TestPromptVersionCheck:
 
     def test_matching_version_returns_none(self, tmp_context):
         """When stored hash matches current framework, no advisory."""
-        version_file = os.path.join(tmp_context.product_prawduct, "framework-version")
+        version_file = os.path.join(tmp_context.prawduct_dir, "framework-version")
         with patch(
             "governance.prompt._git_hash", return_value="abc123def456"
         ):
@@ -883,7 +1066,7 @@ class TestPromptVersionCheck:
 
     def test_stale_version_returns_advisory(self, tmp_context):
         """When stored hash differs from current, return upgrade advisory."""
-        version_file = os.path.join(tmp_context.product_prawduct, "framework-version")
+        version_file = os.path.join(tmp_context.prawduct_dir, "framework-version")
         with patch(
             "governance.prompt._git_hash", return_value="newversion123456"
         ):
@@ -906,7 +1089,7 @@ class TestPromptVersionCheck:
     def test_prompt_check_version_after_activation(self, activated_context):
         """When activated with stale version, get version advisory."""
         version_file = os.path.join(
-            activated_context.product_prawduct, "framework-version"
+            activated_context.prawduct_dir, "framework-version"
         )
         with patch(
             "governance.prompt._git_hash", return_value="currenthash123"
