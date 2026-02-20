@@ -109,18 +109,7 @@ def get_prawduct_hooks() -> dict:
                     {
                         "type": "command",
                         "command": (
-                            '_AP="$CLAUDE_PROJECT_DIR/.prawduct/.active-product"; '
-                            'if [ -f "$_AP" ]; then '
-                            '_D=$(cat "$_AP"); '
-                            '[ -d "$_D/.prawduct" ] && '
-                            'rm -f "$_D/.prawduct/.session-governance.json" '
-                            '"$_D/.prawduct/.session-trace.jsonl" '
-                            '"$_D/.prawduct/.session-edits.json" '
-                            '"$_D/.prawduct/.product-session.json" '
-                            '"$_D/.prawduct/.critic-findings.json" '
-                            '"$_D/.prawduct/.critic-pending"; fi; '
                             'rm -f "$CLAUDE_PROJECT_DIR"/.prawduct/.orchestrator-activated '
-                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.active-product '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-governance.json '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-trace.jsonl '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-edits.json '
@@ -573,7 +562,6 @@ def detect_onboarding_in_progress(target_dir: str) -> dict | None:
 PRAWDUCT_COMMAND_PATTERNS = [
     ".orchestrator-activated",
     ".session-governance.json",
-    ".active-product",
     ".prawduct/framework-path",
 ]
 
@@ -1097,7 +1085,6 @@ PRAWDUCT_GITIGNORE_ENTRIES = [
     ".prawduct/.onboarding-state.json",
     ".prawduct/.critic-pending",
     ".prawduct/.critic-findings.json",
-    ".prawduct/.active-product",
     "",
     "# Prawduct session traces (local-only, never shared automatically)",
     ".prawduct/traces/",
