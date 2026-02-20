@@ -4,6 +4,7 @@
 .prawduct/.lens-findings.json
 .prawduct/.pattern-report.json
 .prawduct/.session-edits.json
+.prawduct/.active-product
 .prawduct/.orchestrator-activated
 .prawduct/.session-governance.json
 .prawduct/.session-governance.json.bak

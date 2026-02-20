@@ -3,6 +3,11 @@
 Single implementation of the context resolution that was previously duplicated
 across governance-gate.sh, governance-tracker.sh, governance-stop.sh, and
 critic-gate.sh. Resolves framework root, prawduct dir, and repo root.
+
+Active-product pointer: In cross-repo sessions (framework hooks managing a
+separate product repo), gate/track write an .active-product pointer file
+so that stop/commit/prompt resolve the correct product directory. The pointer
+is cleaned up on session restart.
 """
 
 from __future__ import annotations
@@ -11,38 +16,6 @@ import os
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
-
-
-@dataclass(frozen=True)
-class ProductPaths:
-    """Resolved paths for a specific product's .prawduct/ directory.
-
-    Used by gate/track to operate on the correct product when multiple
-    repos are active concurrently. Derived from the file being operated
-    on (its git root), not from a global pointer.
-    """
-
-    prawduct_dir: str  # e.g. /path/to/worldground/.prawduct
-
-    @property
-    def session_file(self) -> str:
-        return os.path.join(self.prawduct_dir, ".session-governance.json")
-
-    @property
-    def activation_marker(self) -> str:
-        return os.path.join(self.prawduct_dir, ".orchestrator-activated")
-
-    @property
-    def trace_file(self) -> str:
-        return os.path.join(self.prawduct_dir, ".session-trace.jsonl")
-
-    @property
-    def critic_pending(self) -> str:
-        return os.path.join(self.prawduct_dir, ".critic-pending")
-
-    @property
-    def critic_findings(self) -> str:
-        return os.path.join(self.prawduct_dir, ".critic-findings.json")
 
 
 @dataclass(frozen=True)
@@ -88,8 +61,13 @@ def _git_toplevel() -> str:
         return ""
 
 
-def resolve_product_for_file(file_path: str, fallback_prawduct_dir: str) -> ProductPaths:
-    """Resolve the product .prawduct/ for a specific file path.
+def _active_product_path(prawduct_dir: str) -> str:
+    """Path to the active-product pointer file."""
+    return os.path.join(prawduct_dir, ".active-product")
+
+
+def resolve_product_for_file(file_path: str, fallback_prawduct_dir: str) -> str:
+    """Resolve the product .prawduct/ directory for a specific file path.
 
     Derives the product from the file's git root rather than a global
     pointer. If the file's git root contains .prawduct/, use that.
@@ -100,7 +78,7 @@ def resolve_product_for_file(file_path: str, fallback_prawduct_dir: str) -> Prod
         fallback_prawduct_dir: Session-level .prawduct/ (from Context).
 
     Returns:
-        ProductPaths for the resolved product.
+        The prawduct_dir string for the resolved product.
     """
     from .classify import _find_git_root
 
@@ -109,12 +87,75 @@ def resolve_product_for_file(file_path: str, fallback_prawduct_dir: str) -> Prod
         if git_root:
             candidate = os.path.join(git_root, ".prawduct")
             if os.path.isdir(candidate):
-                return ProductPaths(prawduct_dir=candidate)
-    return ProductPaths(prawduct_dir=fallback_prawduct_dir)
+                return candidate
+    return fallback_prawduct_dir
+
+
+def write_active_product(session_prawduct_dir: str, product_prawduct_dir: str) -> None:
+    """Write the active-product pointer file.
+
+    Only writes if the product differs from the session (cross-repo).
+    The pointer is a plain text file containing the absolute path to
+    the product's .prawduct/ directory.
+
+    Args:
+        session_prawduct_dir: The session-level .prawduct/ (from CLAUDE_PROJECT_DIR).
+        product_prawduct_dir: The resolved product's .prawduct/.
+    """
+    if os.path.realpath(product_prawduct_dir) == os.path.realpath(session_prawduct_dir):
+        return  # Same dir — no pointer needed (self-hosted or same-repo)
+
+    pointer_path = _active_product_path(session_prawduct_dir)
+    try:
+        with open(pointer_path, "w") as f:
+            f.write(product_prawduct_dir)
+    except OSError:
+        pass  # Best effort — never block on pointer write failure
+
+
+def update_product_context(file_path: str, ctx: Context) -> Context:
+    """Resolve product from file path and update context if needed.
+
+    If the file belongs to a different product than ctx currently points to,
+    writes the active-product pointer and returns a NEW Context with the
+    updated prawduct_dir. Context is frozen, so we create a new instance.
+
+    Args:
+        file_path: Absolute path to the file being operated on.
+        ctx: Current resolved governance context.
+
+    Returns:
+        Context — either the original (if no change) or a new one pointing
+        to the resolved product.
+    """
+    product_prawduct_dir = resolve_product_for_file(file_path, ctx.prawduct_dir)
+
+    if os.path.realpath(product_prawduct_dir) == os.path.realpath(ctx.prawduct_dir):
+        return ctx  # No change
+
+    # Cross-repo: write pointer and return updated context.
+    # The session prawduct_dir (where the pointer lives) is derived from
+    # CLAUDE_PROJECT_DIR — which is always the framework repo in cross-repo
+    # sessions. We need the *original* session dir, not the already-redirected
+    # ctx.prawduct_dir (which may have been updated by a previous pointer read).
+    session_prawduct_dir = os.path.join(
+        os.environ.get("CLAUDE_PROJECT_DIR", ctx.framework_root), ".prawduct"
+    )
+    write_active_product(session_prawduct_dir, product_prawduct_dir)
+
+    return Context(
+        framework_root=ctx.framework_root,
+        prawduct_dir=product_prawduct_dir,
+        repo_root=ctx.repo_root,
+    )
 
 
 def resolve(framework_root: Optional[str] = None) -> Context:
     """Resolve all governance paths from environment.
+
+    After computing the initial prawduct_dir from CLAUDE_PROJECT_DIR,
+    checks for an .active-product pointer file. If present and pointing
+    to a valid directory, redirects prawduct_dir to the product.
 
     Args:
         framework_root: Explicit framework root. If None, derived from
@@ -139,6 +180,17 @@ def resolve(framework_root: Optional[str] = None) -> Context:
         prawduct_dir = os.path.join(repo_root, ".prawduct")
     else:
         prawduct_dir = os.path.join(framework_root, ".prawduct")
+
+    # Follow active-product pointer if present
+    pointer_path = _active_product_path(prawduct_dir)
+    if os.path.isfile(pointer_path):
+        try:
+            with open(pointer_path) as f:
+                target = f.read().strip()
+            if target and os.path.isdir(target):
+                prawduct_dir = target
+        except OSError:
+            pass  # Fall back to original prawduct_dir
 
     return Context(
         framework_root=framework_root,

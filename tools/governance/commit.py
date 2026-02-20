@@ -143,11 +143,7 @@ def _check_critic_evidence(ctx: Context) -> CommitDecision:
     if not os.path.isfile(critic_tool):
         return CommitDecision(allowed=True)
 
-    # Check for .critic-pending at both session-level and framework-level paths.
-    # In cross-repo scenarios, tracker writes .critic-pending to the framework's
-    # .prawduct/ (per-file resolution), but ctx points to the session-level dir.
-    framework_critic_pending = os.path.join(ctx.framework_root, ".prawduct", ".critic-pending")
-    if not os.path.isfile(ctx.critic_pending) and not os.path.isfile(framework_critic_pending):
+    if not os.path.isfile(ctx.critic_pending):
         return CommitDecision(allowed=True)
 
     try:

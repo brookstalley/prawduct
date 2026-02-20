@@ -13,7 +13,7 @@ from typing import Optional
 
 from . import trace as tr
 from .classify import GOVERNANCE_SENSITIVE_PREFIXES, classify
-from .context import Context, ProductPaths
+from .context import Context
 from .state import SessionState, now_iso
 
 
@@ -35,14 +35,13 @@ DOC_ONLY_FILES = (
 )
 
 
-def track(tool_input: dict, ctx: Context, state: SessionState, product: ProductPaths = None) -> None:
+def track(tool_input: dict, ctx: Context, state: SessionState) -> None:
     """Track an edit. Update state, trigger DCP/PFR if needed.
 
     Args:
         tool_input: Hook JSON with tool_name and tool_input.
-        ctx: Resolved governance context.
+        ctx: Resolved governance context (already points to correct product).
         state: Session state to update (modified in place, caller saves).
-        product: Per-file product paths (resolved from file's git root).
     """
     inner = tool_input.get("tool_input", {})
     file_path = inner.get("file_path", "")
@@ -58,7 +57,7 @@ def track(tool_input: dict, ctx: Context, state: SessionState, product: ProductP
     timestamp = now_iso()
 
     if fc.is_framework:
-        _track_framework_edit(fc, file_path, timestamp, ctx, state, product=product)
+        _track_framework_edit(fc, file_path, timestamp, ctx, state)
     elif fc.is_product:
         _track_product_edit(fc, file_path, timestamp, ctx, state)
 
@@ -66,7 +65,7 @@ def track(tool_input: dict, ctx: Context, state: SessionState, product: ProductP
 
 
 def _track_framework_edit(
-    fc, file_path: str, timestamp: str, ctx: Context, state: SessionState, product: ProductPaths = None
+    fc, file_path: str, timestamp: str, ctx: Context, state: SessionState
 ) -> None:
     """Track a framework file edit."""
     rel_path = fc.rel_path
@@ -90,7 +89,7 @@ def _track_framework_edit(
     edits.total_edits += 1
 
     # Maintain .critic-pending flag
-    pending_path = product.critic_pending if product else ctx.critic_pending
+    pending_path = ctx.critic_pending
     try:
         with open(pending_path, "w") as f:
             f.write(timestamp)

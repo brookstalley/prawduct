@@ -17,7 +17,7 @@ from typing import Optional
 
 from . import trace as tr
 from .classify import classify, FileClass
-from .context import Context, ProductPaths
+from .context import Context
 from .state import SessionState, PFRState
 
 
@@ -35,14 +35,13 @@ MARKER_MAX_AGE = timedelta(hours=12)
 
 
 
-def check(tool_input: dict, ctx: Context, state: SessionState, product: ProductPaths = None) -> Decision:
+def check(tool_input: dict, ctx: Context, state: SessionState) -> Decision:
     """Run all applicable gate checks. Return allow or block.
 
     Args:
         tool_input: Hook JSON with tool_name and tool_input.
-        ctx: Resolved governance context.
+        ctx: Resolved governance context (already points to correct product).
         state: Current session state (read-only for gate; trace events appended).
-        product: Per-file product paths (resolved from file's git root).
 
     Returns:
         Decision with allowed=True or allowed=False + reason.
@@ -55,7 +54,7 @@ def check(tool_input: dict, ctx: Context, state: SessionState, product: ProductP
     # These tools are never needed for the bootstrap sequence (steps 1-5 of
     # Orchestrator activation use only Read, Bash, and Write).
     if not file_path and tool_name in ("Task", "Glob", "Grep"):
-        result = _check_activation(ctx, state, rule_name="research_activation", product=product)
+        result = _check_activation(ctx, state, rule_name="research_activation")
         if not result.allowed:
             tr.event(state, "gate_block", {"rule": "research_activation", "tool": tool_name, "reason": result.reason})
             return result
@@ -68,20 +67,20 @@ def check(tool_input: dict, ctx: Context, state: SessionState, product: ProductP
 
     # --- Read gate: only skill/template files ---
     if tool_name == "Read":
-        return _check_read(fc, ctx, state, product=product)
+        return _check_read(fc, ctx, state)
 
     # --- Edit/Write gate ---
-    return _check_edit(fc, file_path, ctx, state, product=product)
+    return _check_edit(fc, file_path, ctx, state)
 
 
-def _check_read(fc: FileClass, ctx: Context, state: SessionState, product: ProductPaths = None) -> Decision:
+def _check_read(fc: FileClass, ctx: Context, state: SessionState) -> Decision:
     """Gate for Read operations on skill/template files."""
     if not fc.is_read_gated:
         tr.event(state, "gate_check", {"rule": "read_gated", "result": "skip"})
         return Decision(allowed=True)
 
     # Check activation
-    result = _check_activation(ctx, state, rule_name="read_activation", product=product)
+    result = _check_activation(ctx, state, rule_name="read_activation")
     if not result.allowed:
         return result
 
@@ -90,13 +89,13 @@ def _check_read(fc: FileClass, ctx: Context, state: SessionState, product: Produ
 
 
 def _check_edit(
-    fc: FileClass, file_path: str, ctx: Context, state: SessionState, product: ProductPaths = None
+    fc: FileClass, file_path: str, ctx: Context, state: SessionState
 ) -> Decision:
     """Gate for Edit/Write operations."""
     # Ungoverned files: allow unless they're in an unregistered git repo
     if not fc.is_framework and not fc.is_product:
         if fc.is_external_repo:
-            result = _check_external_repo(fc, ctx, state, product=product)
+            result = _check_external_repo(fc, ctx, state)
             if not result.allowed:
                 tr.event(state, "gate_block", {"rule": "external_repo", "file": file_path, "repo": fc.external_repo_root, "reason": result.reason})
                 return result
@@ -104,7 +103,7 @@ def _check_edit(
         return Decision(allowed=True)
 
     # 1. Activation gate
-    result = _check_activation(ctx, state, rule_name="edit_activation", product=product)
+    result = _check_activation(ctx, state, rule_name="edit_activation")
     if not result.allowed:
         tr.event(state, "gate_block", {"rule": "activation", "file": fc.rel_path, "reason": result.reason})
         return result
@@ -128,16 +127,16 @@ def _check_edit(
     return Decision(allowed=True)
 
 
-def _is_governance_active(ctx: Context, product: ProductPaths = None) -> bool:
+def _is_governance_active(ctx: Context) -> bool:
     """Check if governance is currently active (activation marker exists and valid)."""
-    marker_path = product.activation_marker if product else ctx.activation_marker
+    marker_path = ctx.activation_marker
     if not os.path.isfile(marker_path):
         return False
     return _validate_marker(marker_path) == "ok"
 
 
 def _check_external_repo(
-    fc: FileClass, ctx: Context, state: SessionState, product: ProductPaths = None
+    fc: FileClass, ctx: Context, state: SessionState
 ) -> Decision:
     """Block edits to files in git repos not registered with Prawduct.
 
@@ -146,7 +145,7 @@ def _check_external_repo(
     """
     repo_name = os.path.basename(fc.external_repo_root)
 
-    if _is_governance_active(ctx, product=product):
+    if _is_governance_active(ctx):
         return Decision(
             allowed=False,
             reason=(
@@ -175,9 +174,9 @@ def _check_external_repo(
     )
 
 
-def _check_activation(ctx: Context, state: SessionState, rule_name: str, product: ProductPaths = None) -> Decision:
+def _check_activation(ctx: Context, state: SessionState, rule_name: str) -> Decision:
     """Verify Orchestrator activation marker exists, is valid, and is fresh."""
-    marker_path = product.activation_marker if product else ctx.activation_marker
+    marker_path = ctx.activation_marker
     if not os.path.isfile(marker_path):
         return Decision(
             allowed=False,

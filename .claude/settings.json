@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.prawduct/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-governance.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-trace.jsonl \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-edits.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.product-session.json"
+            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.prawduct/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-governance.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-trace.jsonl \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-edits.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.product-session.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.active-product"
           }
         ]
       },
