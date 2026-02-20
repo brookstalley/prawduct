@@ -6,7 +6,7 @@ The Critic enforces quality by reviewing changes against the framework's princip
 
 The Critic owns **retrospective** evaluation — it reviews work *after* it's done. "Did the implementation match the spec? Did the code satisfy the principles? Are tests intact?" This is build-time and commit-time review.
 
-**See also: Review Lenses** (`skills/review-lenses/SKILL.md`) own **prospective** evaluation — they review artifacts *before* building begins. "Is this spec good enough to build from? Are the right things specified?" The Lenses evaluate spec quality; the Critic evaluates implementation fidelity. Both run as independent subagents.
+**See also: Review Lenses** (`agents/review-lenses/SKILL.md`) own **prospective** evaluation — they review artifacts *before* building begins. "Is this spec good enough to build from? Are the right things specified?" The Lenses evaluate spec quality; the Critic evaluates implementation fidelity. Both run as independent subagents.
 
 ## Invocation
 

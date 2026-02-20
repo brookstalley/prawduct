@@ -62,7 +62,7 @@ Framework development is managed by the Orchestrator. The framework's own `proje
 The Key Principles and Conventions sections below provide constraints the Orchestrator needs when making framework changes.
 
 ### After modifying skills, templates, or principles:
-**Critic review is mandatory for every framework change. Run it automatically** — do not ask the user. Run it as a **separate, final step** after all modifications are complete and before reporting results. Invoke the Critic as an agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`; the agent reads `skills/critic/SKILL.md` and records findings via `tools/record-critic-findings.sh`. Include "Governance Review" in the commit message.
+**Critic review is mandatory for every framework change. Run it automatically** — do not ask the user. Run it as a **separate, final step** after all modifications are complete and before reporting results. Invoke the Critic as an agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`; the agent reads `agents/critic/SKILL.md` and records findings via `tools/record-critic-findings.sh`. Include "Governance Review" in the commit message.
 
 **For multi-file changes:** Follow the Directional Change Protocol in `skills/orchestrator/stage-6-iteration.md`, which classifies changes into three tiers (mechanical, enhancement, structural) with governance proportionate to impact.
 

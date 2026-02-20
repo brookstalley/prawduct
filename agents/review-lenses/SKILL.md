@@ -6,7 +6,7 @@ The Review Lenses provide multi-perspective evaluation of system output at every
 
 The Review Lenses own **prospective** evaluation — they review artifacts *before* building begins. "Is this spec good enough to build from? Are the right things specified? Is the design complete?" This is artifact-generation-time and planning-time review.
 
-**See also: The Critic** (`skills/critic/SKILL.md`) owns **retrospective** evaluation — it reviews work *after* implementation. "Did the code match the spec? Are tests intact? Did scope stay on target?" The Lenses evaluate spec quality; the Critic evaluates implementation fidelity. Both run as independent subagents.
+**See also: The Critic** (`agents/critic/SKILL.md`) owns **retrospective** evaluation — it reviews work *after* implementation. "Did the code match the spec? Are tests intact? Did scope stay on target?" The Lenses evaluate spec quality; the Critic evaluates implementation fidelity. Both run as independent subagents.
 
 ## Invocation
 
