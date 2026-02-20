@@ -1,0 +1,21 @@
+---
+observation_id: 3a477863-000b-41e2-b521-7565fccd8c00
+timestamp: 2026-02-20T23:11:59Z
+session_type: product_use
+session_context:
+  product_classification: "enhancement"
+  framework_version: 0bdcabd
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Orchestrator governance bypassed when user provided detailed implementation plan. Agent jumped straight to implementation without reading skills/orchestrator/SKILL.md, violating HR9 (No Governance Bypass). CLAUDE.md explicitly states detailed plans are input to the Orchestrator, not replacements for it. Critic review was also skipped."
+    evidence: "User said 'Implement the following plan:' with a multi-file plan (protocol.rs, viewer/index.html, generation.rs, simulation/mod.rs). Agent created tasks and began editing immediately. No orchestrator skill file was read. No DCP classification. No Critic invocation after completion."
+    status: noted
+    root_cause_analysis:
+      symptom: "Agent treated a detailed implementation plan as direct instructions, bypassing orchestrator governance entirely"
+      root_cause: "The hook enforcement mechanism did not trigger or was insufficient to prevent governance bypass when the task appeared fully specified. The specificity of the plan created false confidence that governance was unnecessary."
+      category: process_not_enforced
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+---
