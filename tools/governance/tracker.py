@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from typing import Optional
 
 from . import trace as tr
@@ -18,6 +19,20 @@ from .state import SessionState, now_iso
 
 # DCP trigger threshold: distinct governed files before classification required
 DCP_FILE_THRESHOLD = 3
+
+# File prefixes that are documentation/config — not behavioral changes.
+# When ALL edited files match these, DCP auto-classifies as mechanical.
+DOC_ONLY_PREFIXES = (
+    "docs/",
+    "templates/",
+    ".prawduct/artifacts/",
+    ".prawduct/framework-observations/",
+)
+DOC_ONLY_FILES = (
+    "README.md",
+    "CLAUDE.md",
+    ".claude/settings.json",
+)
 
 
 def track(tool_input: dict, ctx: Context, state: SessionState, product: ProductPaths = None) -> None:
@@ -92,15 +107,26 @@ def _track_framework_edit(
         and not dcp.needs_classification
         and not already_classified
     ):
-        dcp.needs_classification = True
-        dcp.triggered_at_file_count = distinct_files
+        # Auto-classify as mechanical if all edits are doc/config only
+        if _all_doc_only(edits.files):
+            dcp.tier = "mechanical"
+            dcp.triggered_at_file_count = distinct_files
+        else:
+            dcp.needs_classification = True
+            dcp.triggered_at_file_count = distinct_files
 
-    # PFR trigger: governance-sensitive files
+    # PFR trigger: governance-sensitive files (existing only).
+    # New files are additive — they can't break existing behavior, so they
+    # don't require root cause analysis. PFR protects against thoughtless
+    # modifications to existing governance code, not new capability creation.
+    # Note: this hook runs PostToolUse (file already on disk), so we use
+    # git ls-files to check if the file is tracked — untracked = new.
     is_gov_sensitive = any(
         rel_path.startswith(p) for p in GOVERNANCE_SENSITIVE_PREFIXES
     )
+    is_new_file = is_gov_sensitive and not _is_git_tracked(file_path)
 
-    if is_gov_sensitive:
+    if is_gov_sensitive and not is_new_file:
         pfr = state.pfr
         if not pfr.required:
             # First governance-sensitive edit — initialize PFR
@@ -207,6 +233,36 @@ def _track_project_state_change(file_path: str, state: SessionState) -> None:
                         overdue.append(f'after "{trigger}"')
                         break
     gov.governance_checkpoints_due = overdue
+
+
+def _is_git_tracked(file_path: str) -> bool:
+    """Check if a file is tracked by git (exists in the index).
+
+    Untracked files are new — they were just created by the current tool
+    call and haven't been committed yet. This is safe in PostToolUse
+    because git index state doesn't change until git add.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", file_path],
+            capture_output=True,
+            timeout=3,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return True  # Fail safe: assume tracked (trigger PFR)
+
+
+def _all_doc_only(files: list[dict]) -> bool:
+    """Check if all tracked files are documentation/config (not behavioral)."""
+    for entry in files:
+        path = entry.get("path", "")
+        if any(path.startswith(p) for p in DOC_ONLY_PREFIXES):
+            continue
+        if path in DOC_ONLY_FILES:
+            continue
+        return False
+    return True
 
 
 def _active_triggers(state: SessionState) -> list[str]:
