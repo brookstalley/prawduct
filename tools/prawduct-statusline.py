@@ -3,8 +3,8 @@
 prawduct-statusline.py — Claude Code statusline for prawduct sessions.
 
 Reads Claude Code's stdin JSON, combines with project state and governance
-data, and outputs a 1-2 line statusline. Line 1 shows prawduct state (stage,
-chunk progress, governance alerts). Line 2 shows universal session info
+data, and outputs a 1-2 line statusline. Line 1 shows prawduct state (session
+state, work detail, governance todos). Line 2 shows universal session info
 (context bar, git, duration). Non-prawduct projects get only Line 2.
 
 Performance target: <100ms. Key optimizations:
@@ -224,79 +224,81 @@ def get_git_state(project_dir: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Alert generation
+# Todo generation
 # ---------------------------------------------------------------------------
 
-def generate_alerts(gov: dict | None, critic: dict | None) -> list[tuple[str, str]]:
-    """Generate (label, color) alert tuples from governance/critic state."""
-    alerts: list[tuple[str, str]] = []
+def generate_todos(gov: dict | None, critic: dict | None) -> list[tuple[str, str]]:
+    """Generate (label, color) todo tuples from governance/critic state."""
+    todos: list[tuple[str, str]] = []
     if not gov:
-        return alerts
+        return todos
 
     gs = gov.get("governance_state", {})
     dc = gov.get("directional_change", {})
     pfr = gov.get("pfr_state", {})
     fe = gov.get("framework_edits", {})
 
-    # Critic review debt: files edited without review
+    # --- Red: blockers ---
+
+    # Review debt (merged: unreviewed files + stale findings)
     edited_files = [f.get("path", "") for f in fe.get("files", [])]
     reviewed = set(critic.get("reviewed_files", [])) if critic else set()
     unreviewed = [f for f in edited_files if f not in reviewed]
-    if unreviewed:
-        n = len(unreviewed)
-        alerts.append((f"critic: {n} file{'s' if n != 1 else ''}", BOLD_RED))
+    stale = critic and (critic.get("_age_seconds", 0) > 7200
+                        or critic.get("total_checks", 0) < 4)
+    if unreviewed or (edited_files and stale):
+        todos.append(("critic", BOLD_RED))
 
-    # Critic findings stale or insufficient
-    if critic:
-        age = critic.get("_age_seconds", 0)
-        total_checks = critic.get("total_checks", 0)
-        if age > 7200 or total_checks < 4:
-            alerts.append(("stale review", BOLD_RED))
-
-    # Chunks without review
+    # Chunk review debt
     chunks_no_review = gs.get("chunks_completed_without_review", 0)
     if chunks_no_review > 0:
-        alerts.append((f"{chunks_no_review} chunk{'s' if chunks_no_review != 1 else ''} unreviewed", BOLD_RED))
+        todos.append((f"{chunks_no_review} chunk{'s' if chunks_no_review != 1 else ''} unreviewed", BOLD_RED))
 
-    # Overdue governance checkpoints
-    cp_due = gs.get("governance_checkpoints_due", [])
-    if cp_due:
-        alerts.append(("checkpoint due", BOLD_RED))
+    # Checkpoint
+    if gs.get("governance_checkpoints_due"):
+        todos.append(("checkpoint", BOLD_RED))
 
-    # PFR state (handle both v1 diagnosis_written and v2 rca fields)
+    # PFR: RCA needed
     if pfr.get("required"):
         has_rca = bool(pfr.get("rca")) or pfr.get("diagnosis_written", False)
         if not has_rca:
-            alerts.append(("need RCA", BOLD_RED))
-        elif not pfr.get("observation_file"):
-            alerts.append(("need obs", YELLOW))
+            todos.append(("RCA", BOLD_RED))
 
-    # DCP state — show specific incomplete items
+    # --- Yellow: advisories ---
+
+    # Observation debt (deduplicated across PFR, DCP, critic)
+    needs_obs = False
+    if pfr.get("required") and (bool(pfr.get("rca")) or pfr.get("diagnosis_written")) \
+       and not pfr.get("observation_file"):
+        needs_obs = True
+    if dc.get("active") and not dc.get("observation_captured"):
+        needs_obs = True
+    if critic and gs.get("observations_captured_this_session", 0) == 0 \
+       and critic.get("highest_severity") in ("warning", "blocking"):
+        needs_obs = True
+    if needs_obs:
+        todos.append(("obs", YELLOW))
+
+    # DCP: classify
     if dc.get("needs_classification") and not dc.get("tier"):
-        alerts.append(("need classify", YELLOW))
-    elif dc.get("active"):
-        tier = dc.get("tier", "")
-        if not dc.get("retrospective_completed"):
-            alerts.append(("create retro", YELLOW))
-        if not dc.get("observation_captured"):
-            alerts.append(("capture obs", YELLOW))
-        if tier in ("enhancement", "structural") and not dc.get("artifacts_verified"):
-            alerts.append(("verify docs", YELLOW))
+        todos.append(("classify", YELLOW))
 
-    # Observation capture debt
-    obs_count = gs.get("observations_captured_this_session", 0)
-    if critic and obs_count == 0:
-        sev = critic.get("highest_severity", "pass")
-        if sev in ("warning", "blocking"):
-            alerts.append(("create obs", YELLOW))
+    # DCP: retro
+    if dc.get("active") and not dc.get("retrospective_completed"):
+        todos.append(("retro", YELLOW))
+
+    # DCP: artifact check
+    if dc.get("active") and dc.get("tier") in ("enhancement", "structural") \
+       and not dc.get("artifacts_verified"):
+        todos.append(("artifact check", YELLOW))
 
     # Cap at 4 + overflow
-    if len(alerts) > 4:
-        overflow = len(alerts) - 4
-        alerts = alerts[:4]
-        alerts.append((f"+{overflow} more", YELLOW))
+    if len(todos) > 4:
+        overflow = len(todos) - 4
+        todos = todos[:4]
+        todos.append((f"+{overflow} more", YELLOW))
 
-    return alerts
+    return todos
 
 
 # ---------------------------------------------------------------------------
@@ -313,67 +315,71 @@ STAGE_DISPLAY = {
     "build-planning": "Planning",
     "build": "Build",
     "building": "Build",
-    "iteration": "Iteration",
 }
 
 MAX_ACTIVITY_LEN = 40
 
 
-def _resolve_activity(project_state: dict, gov: dict | None, stage: str) -> str:
-    """Determine the most useful activity description."""
-    # DCP with a description is the most specific
+def _resolve_state(project_state: dict, gov: dict | None,
+                   governance_active: bool) -> tuple[str, str | None]:
+    """Return (state, detail) tuple describing what the session is doing."""
+    if not governance_active:
+        return ("Starting", None)
+
+    stage = project_state.get("current_stage", "")
+
+    # Product build stages use stage name directly
+    if stage in ("intake", "discovery", "definition",
+                 "artifact_generation", "artifact-generation",
+                 "build_planning", "build-planning"):
+        return (STAGE_DISPLAY.get(stage, stage.capitalize()), None)
+
+    if stage in ("build", "building"):
+        chunk = project_state.get("current_chunk")
+        total = project_state.get("total_chunks", 0)
+        if chunk:
+            detail = f"{chunk} [{total}]" if total else chunk
+            return ("Build", detail)
+        return ("Build", None)
+
+    # Iteration / framework dev: contextual state
     if gov:
         dc = gov.get("directional_change", {})
         if dc.get("active") and dc.get("plan_description"):
             desc = dc["plan_description"]
             if len(desc) > MAX_ACTIVITY_LEN:
                 desc = desc[:MAX_ACTIVITY_LEN - 1] + "\u2026"
-            return desc
+            return ("Working", desc)
 
-    # Framework files edited (no DCP yet)
-    if gov:
         fe = gov.get("framework_edits", {})
         files = fe.get("files", [])
         if files:
             n = len(files)
-            return f"{n} file{'s' if n != 1 else ''} edited"
+            return ("Working", f"{n} file{'s' if n != 1 else ''} edited")
 
-    # Product build chunk
-    chunk = project_state.get("current_chunk")
-    total = project_state.get("total_chunks", 0)
-    if chunk:
-        if total > 0:
-            return f"{chunk} [{total}]"
-        return chunk
-
-    # Non-iteration stage
-    if stage != "iteration":
-        return STAGE_DISPLAY.get(stage, stage.capitalize())
-
-    # Clean state
-    return "Clean"
+    return ("Ready", None)
 
 
 def render_line1(project_state: dict | None, gov: dict | None,
-                 alerts: list[tuple[str, str]], governance_active: bool) -> str | None:
+                 todos: list[tuple[str, str]],
+                 governance_active: bool) -> str | None:
     """Render prawduct state line. Returns None if not a prawduct project."""
     if not project_state or not project_state.get("current_stage"):
         return None
 
-    stage = project_state["current_stage"]
-    sep = f" {DIM}\u00b7{RESET} "
+    state, detail = _resolve_state(project_state, gov, governance_active)
 
-    if not governance_active:
-        # Orchestrator hasn't activated yet — show startup state
-        return f"{ORANGE}{SHRIMP}{RESET} {DIM}Starting...{RESET}"
+    # State (always shown)
+    line = f"{ORANGE}{SHRIMP}{RESET} {BOLD_CYAN}{state}{RESET}"
 
-    activity = _resolve_activity(project_state, gov, stage)
-    line = f"{ORANGE}{SHRIMP}{RESET} {BOLD_CYAN}{activity}{RESET} | {GREEN}gov{RESET}"
+    # Detail (optional)
+    if detail:
+        line += f": {detail}"
 
-    # Debt items separated by ·
-    if alerts:
-        alert_strs = [f"{color}{label}{RESET}" for label, color in alerts]
-        line += f"{GREEN}: {RESET}" + sep.join(alert_strs)
+    # Todos (optional) — "TODO: critic, RCA, obs, ..."
+    if todos:
+        todo_strs = [f"{color}{label}{RESET}" for label, color in todos]
+        line += f"  \u26a0 TODO: " + ", ".join(todo_strs)
 
     return line
 
@@ -534,8 +540,8 @@ def main() -> None:
         critic = None
 
     # --- Generate output ---
-    alerts = generate_alerts(gov, critic) if is_prawduct else []
-    line1 = render_line1(project_state, gov, alerts, governance_active) if is_prawduct else None
+    todos = generate_todos(gov, critic) if is_prawduct else []
+    line1 = render_line1(project_state, gov, todos, governance_active) if is_prawduct else None
     line2 = render_line2(model_name, pct, duration_ms, git, lines_added, lines_removed)
 
     output_lines = []

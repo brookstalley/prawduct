@@ -49,7 +49,7 @@ prawduct/
 │   │   ├── trace.py                   # Local-only trace emission, persistence, rotation
 │   │   └── __main__.py                # CLI: python3 -m governance <gate|track|stop|commit|prompt|compact-reinject>
 │   ├── prawduct-init.{sh,py}         # Project setup, repair, settings.json merging, gitignore management
-│   ├── prawduct-statusline.py         # Claude Code statusline: stage, governance alerts, context bar, git
+│   ├── prawduct-statusline.py         # Claude Code statusline: session state, governance todos, context bar, git
 │   ├── session-health-check.sh        # Session orientation: patterns, backlog, divergence, trace analysis
 │   ├── extract-patterns.sh            # Pattern Extractor wrapper: threshold check, report recording
 │   ├── dcp-update.sh                  # DCP state management: classify, track phases, mark completion
