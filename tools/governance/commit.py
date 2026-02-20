@@ -63,7 +63,7 @@ def check_and_archive(
 
     # 3. Archive session traces
     tr.event(state, "commit_allowed", {"command": "git commit"})
-    traces_dir = os.path.join(ctx.product_prawduct, "traces")
+    traces_dir = os.path.join(ctx.prawduct_dir, "traces")
     tr.persist(state, traces_dir)
 
     # 4. Clean up session files
@@ -108,8 +108,11 @@ def _check_critic_evidence(ctx: Context) -> CommitDecision:
     if not os.path.isfile(critic_tool):
         return CommitDecision(allowed=True)
 
-    # Only check if .critic-pending exists
-    if not os.path.isfile(ctx.critic_pending):
+    # Check for .critic-pending at both session-level and framework-level paths.
+    # In cross-repo scenarios, tracker writes .critic-pending to the framework's
+    # .prawduct/ (per-file resolution), but ctx points to the session-level dir.
+    framework_critic_pending = os.path.join(ctx.framework_root, ".prawduct", ".critic-pending")
+    if not os.path.isfile(ctx.critic_pending) and not os.path.isfile(framework_critic_pending):
         return CommitDecision(allowed=True)
 
     try:
@@ -138,13 +141,12 @@ def _check_critic_evidence(ctx: Context) -> CommitDecision:
 def _cleanup(ctx: Context) -> None:
     """Clean up session files after successful commit."""
     for path in [
-        os.path.join(ctx.product_prawduct, ".critic-pending"),
-        os.path.join(ctx.product_prawduct, ".critic-findings.json"),
-        os.path.join(ctx.product_prawduct, ".session-edits.json"),
-        os.path.join(ctx.product_prawduct, ".session-governance.json"),
-        os.path.join(ctx.product_prawduct, ".session-trace.jsonl"),
+        os.path.join(ctx.prawduct_dir, ".critic-pending"),
+        os.path.join(ctx.prawduct_dir, ".critic-findings.json"),
+        os.path.join(ctx.prawduct_dir, ".session-edits.json"),
+        os.path.join(ctx.prawduct_dir, ".session-governance.json"),
+        os.path.join(ctx.prawduct_dir, ".session-trace.jsonl"),
         os.path.join(ctx.prawduct_dir, ".orchestrator-activated"),
-        os.path.join(ctx.prawduct_dir, ".active-product"),
     ]:
         try:
             os.remove(path)
