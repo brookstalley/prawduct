@@ -21,7 +21,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 
-from governance.context import Context, ProductPaths, resolve, resolve_product_for_file
+from governance.context import Context, resolve, resolve_product_for_file, update_product_context, write_active_product, _active_product_path
 from governance.prompt import check as prompt_check, _check_framework_version
 from governance.failure import check as failure_check
 from governance.classify import (
@@ -116,14 +116,6 @@ class TestContext:
         assert ctx.critic_pending.endswith(".critic-pending")
         assert ctx.critic_findings.endswith(".critic-findings.json")
 
-    def test_product_paths_activation_marker(self, tmp_path):
-        """ProductPaths resolves activation marker to its own prawduct_dir."""
-        product_prawduct = str(tmp_path / "product" / ".prawduct")
-        os.makedirs(product_prawduct, exist_ok=True)
-
-        pp = ProductPaths(prawduct_dir=product_prawduct)
-        assert pp.activation_marker == os.path.join(product_prawduct, ".orchestrator-activated")
-
     def test_resolve_with_explicit_root(self, tmp_framework):
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_framework)}):
             ctx = resolve(framework_root=str(tmp_framework))
@@ -136,14 +128,102 @@ class TestContext:
             with pytest.raises(ValueError):
                 resolve()
 
-    def test_product_paths_properties(self, tmp_path):
-        """ProductPaths provides correct path derivation."""
-        prawduct = str(tmp_path / "product" / ".prawduct")
-        pp = ProductPaths(prawduct_dir=prawduct)
-        assert pp.session_file == os.path.join(prawduct, ".session-governance.json")
-        assert pp.activation_marker == os.path.join(prawduct, ".orchestrator-activated")
-        assert pp.critic_pending == os.path.join(prawduct, ".critic-pending")
-        assert pp.critic_findings == os.path.join(prawduct, ".critic-findings.json")
+    def test_resolve_follows_active_product_pointer(self, tmp_path):
+        """resolve() follows .active-product pointer to redirect prawduct_dir."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+
+        # Write pointer
+        pointer_path = fw_prawduct / ".active-product"
+        pointer_path.write_text(str(product_prawduct))
+
+        with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
+            ctx = resolve(framework_root=str(fw))
+            assert ctx.prawduct_dir == str(product_prawduct)
+
+    def test_resolve_ignores_invalid_pointer(self, tmp_path):
+        """resolve() ignores pointer pointing to nonexistent directory."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        # Write pointer to nonexistent dir
+        pointer_path = fw_prawduct / ".active-product"
+        pointer_path.write_text("/nonexistent/path/.prawduct")
+
+        with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
+            ctx = resolve(framework_root=str(fw))
+            assert ctx.prawduct_dir == str(fw_prawduct)
+
+    def test_write_active_product_skips_same_dir(self, tmp_path):
+        """write_active_product() is a no-op when dirs are the same."""
+        prawduct = str(tmp_path / "same" / ".prawduct")
+        os.makedirs(prawduct, exist_ok=True)
+        write_active_product(prawduct, prawduct)
+        assert not os.path.isfile(_active_product_path(prawduct))
+
+    def test_update_product_context_cross_repo(self, tmp_path):
+        """update_product_context() returns new ctx for cross-repo file."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+        (product / ".git").mkdir()
+        (product / "src").mkdir()
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(fw_prawduct),
+            repo_root=str(fw),
+        )
+
+        file_path = str(product / "src" / "app.py")
+        with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
+            new_ctx = update_product_context(file_path, ctx)
+            assert new_ctx.prawduct_dir == str(product_prawduct)
+            # Pointer should have been written
+            pointer_path = _active_product_path(str(fw_prawduct))
+            assert os.path.isfile(pointer_path)
+            with open(pointer_path) as f:
+                assert f.read().strip() == str(product_prawduct)
+
+    def test_update_product_context_same_repo(self, tmp_path):
+        """update_product_context() returns same ctx for same-repo file."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+        (fw / ".git").mkdir()
+        (fw / "tools").mkdir()
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(fw_prawduct),
+            repo_root=str(fw),
+        )
+
+        file_path = str(fw / "tools" / "test.py")
+        new_ctx = update_product_context(file_path, ctx)
+        assert new_ctx is ctx  # Same object — no change
 
     def test_resolve_product_for_file_with_prawduct(self, tmp_path):
         """File in a git repo with .prawduct/ resolves to that repo's .prawduct/."""
@@ -158,7 +238,7 @@ class TestContext:
         _git_root_cache.clear()
 
         result = resolve_product_for_file(test_file, "/fallback/.prawduct")
-        assert result.prawduct_dir == str(repo / ".prawduct")
+        assert result == str(repo / ".prawduct")
 
     def test_resolve_product_for_file_fallback(self, tmp_path):
         """File not in a git repo falls back to session-level prawduct_dir."""
@@ -169,7 +249,7 @@ class TestContext:
         _git_root_cache.clear()
 
         result = resolve_product_for_file(test_file, fallback)
-        assert result.prawduct_dir == fallback
+        assert result == fallback
 
     def test_resolve_product_for_file_no_prawduct_dir(self, tmp_path):
         """Git repo without .prawduct/ falls back to session-level."""
@@ -183,7 +263,7 @@ class TestContext:
         _git_root_cache.clear()
 
         result = resolve_product_for_file(test_file, fallback)
-        assert result.prawduct_dir == fallback
+        assert result == fallback
 
 
 # ---------------------------------------------------------------------------
@@ -684,11 +764,14 @@ class TestTracker:
     def test_pfr_triggers_on_gov_sensitive(self, activated_context, session_file):
         state = SessionState.load(session_file)
         path = os.path.join(activated_context.framework_root, "skills", "test.md")
-        track(
-            {"tool_name": "Write", "tool_input": {"file_path": path}},
-            activated_context,
-            state,
-        )
+        # Mock _is_git_tracked: tmp dirs aren't git repos, so without this
+        # the tracker treats the file as "new" (untracked) and skips PFR.
+        with patch("governance.tracker._is_git_tracked", return_value=True):
+            track(
+                {"tool_name": "Write", "tool_input": {"file_path": path}},
+                activated_context,
+                state,
+            )
         assert state.pfr.required is True
         assert "skills/test.md" in state.pfr.governance_sensitive_files
 
@@ -913,11 +996,9 @@ class TestCommit:
         assert result.allowed is False
         assert "observation" in result.reason.lower()
 
-    def test_cross_repo_critic_pending_at_framework_root(self, tmp_path):
-        """When tracker writes .critic-pending to the framework's .prawduct/
-        but ctx points to a different session-level dir, the commit gate
-        should still detect the pending flag via framework_root fallback."""
-        # Set up: session-level prawduct_dir != framework .prawduct/
+    def test_unified_ctx_critic_pending_detected(self, tmp_path):
+        """With unified resolution, ctx.critic_pending points to the right
+        place and the commit gate detects it without a dual-path fallback."""
         fw = tmp_path / "framework"
         fw.mkdir()
         fw_prawduct = fw / ".prawduct"
@@ -925,28 +1006,23 @@ class TestCommit:
         (fw / "skills").mkdir()
         (fw / "tools").mkdir()
 
-        product = tmp_path / "product"
-        product.mkdir()
-        product_prawduct = product / ".prawduct"
-        product_prawduct.mkdir()
-
-        # Context: session-level is the product, framework_root is the framework
+        # Context already points to the framework (unified resolution did its job)
         ctx = Context(
             framework_root=str(fw),
-            prawduct_dir=str(product_prawduct),
-            repo_root=str(product),
+            prawduct_dir=str(fw_prawduct),
+            repo_root=str(fw),
         )
 
-        # Write activation marker for the context
+        # Write activation marker
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with open(ctx.activation_marker, "w") as f:
             f.write(f"{ts} praw-active")
 
-        # Session state (at product prawduct)
+        # Session state with framework edits
         session_data = {
             "schema_version": 2,
-            "product_dir": str(product),
-            "product_output_dir": str(product_prawduct),
+            "product_dir": str(fw),
+            "product_output_dir": str(fw_prawduct),
             "session_started": now_iso(),
             "framework_edits": {"files": [{"path": "tools/gate.py", "first_modified": now_iso(), "last_modified": now_iso(), "edit_count": 1}], "total_edits": 1},
             "governance_state": {},
@@ -957,19 +1033,11 @@ class TestCommit:
             json.dump(session_data, f)
         state = SessionState.load(ctx.session_file)
 
-        # Simulate tracker writing .critic-pending to framework's .prawduct/
-        # (per-file resolution would put it there, not at product's .prawduct/)
-        framework_critic_pending = fw_prawduct / ".critic-pending"
-        framework_critic_pending.write_text(now_iso())
+        # Tracker writes .critic-pending to ctx.critic_pending (unified path)
+        with open(ctx.critic_pending, "w") as f:
+            f.write(now_iso())
 
-        # Verify: session-level .critic-pending does NOT exist
-        assert not os.path.isfile(ctx.critic_pending)
-
-        # The commit gate should still detect the pending flag via framework root
-        # and proceed to call critic-reminder.sh (which would block).
-        # Since critic-reminder.sh doesn't exist in our tmp dir, it falls through
-        # to allowed=True — the key assertion is that we don't short-circuit.
-        # To test the detection, we create a mock critic-reminder.sh that exits 2.
+        # Mock critic-reminder.sh that exits 2 (blocks)
         critic_tool = fw / "tools" / "critic-reminder.sh"
         critic_tool.write_text("#!/bin/bash\nexit 2\n")
         critic_tool.chmod(0o755)
@@ -1015,12 +1083,13 @@ class TestIntegration:
         )
         assert gate_result.allowed is True
 
-        # 3. Track the edit
-        track(
-            {"tool_name": "Write", "tool_input": {"file_path": path}},
-            ctx,
-            state,
-        )
+        # 3. Track the edit (mock git tracking — tmp dirs aren't git repos)
+        with patch("governance.tracker._is_git_tracked", return_value=True):
+            track(
+                {"tool_name": "Write", "tool_input": {"file_path": path}},
+                ctx,
+                state,
+            )
         assert len(state.framework_edits.files) == 1
         assert state.pfr.required is True
 
