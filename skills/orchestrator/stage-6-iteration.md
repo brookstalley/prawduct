@@ -17,7 +17,7 @@ The user has a working product and provides feedback. Handle feedback in lightwe
    - **Cosmetic** (wording, formatting, minor adjustments that don't change behavior or contracts): Implement directly. No artifact updates needed. Quick cycle: fix → test → done.
    - **Functional** (new feature, changed behavior, different flow): Update affected artifacts first, then build. This is a mini Stage 5 loop:
      1. Assess change impact: what artifacts change? What chunks are affected? Any regressions? Consult `artifact_manifest` (in `project-state.yaml` or the file at `artifact_manifest_file`) to identify affected artifacts.
-     2. Update the relevant artifacts (whichever are affected).
+     2. Update the relevant artifacts by invoking the AG agent with a scoped task per the Artifact Generator Agent Protocol in `skills/orchestrator/protocols.md`. The prompt should specify which artifacts to update and why (e.g., "Update the data model and test specs to reflect [change]. Read the existing artifacts and modify only what's affected."). Do NOT load `agents/artifact-generator/SKILL.md` into your context.
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
    - **Directional** (fundamentally different product vision, or structural framework changes): Follow the Directional Change Protocol below.
@@ -162,7 +162,7 @@ PFR ensures root cause analysis happens before fixes to governance-sensitive fil
 
 ### Governance-sensitive files
 
-`skills/`, `tools/`, `scripts/`, `.prawduct/hooks/`. These define framework behavior. Changes to docs, templates, config, and artifacts are NOT governance-sensitive.
+`skills/`, `agents/`, `tools/`, `scripts/`, `.prawduct/hooks/`. These define framework behavior. Changes to docs, templates, config, and artifacts are NOT governance-sensitive.
 
 ### How it works
 

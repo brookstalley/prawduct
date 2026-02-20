@@ -231,7 +231,7 @@ The Critic is invoked as a separate agent (via Claude Code's Task tool, `subagen
 Include these elements in the Task tool prompt:
 
 1. **Role:** "You are the Critic for a Prawduct governance review. Your role is strictly read-only: review, analyze, and record findings. Do NOT edit files, fix issues, run git commands, or make any changes. Report findings — the Orchestrator handles fixes."
-2. **Instructions source:** "Read `skills/critic/SKILL.md` for your complete check definitions, applicability table, and output format."
+2. **Instructions source:** "Read `agents/critic/SKILL.md` for your complete check definitions, applicability table, and output format."
 3. **Project context:**
    - Project directory path
    - Product root (`.prawduct/`) path
@@ -249,7 +249,7 @@ You are the Critic for a Prawduct governance review.
 Your role is strictly read-only: review, analyze, and record findings.
 Do NOT edit files, fix issues, run git commands, or make any changes.
 
-Read skills/critic/SKILL.md for your complete check definitions, applicability table,
+Read agents/critic/SKILL.md for your complete check definitions, applicability table,
 and output format. Read docs/principles.md for the Hard Rules.
 
 Project: /path/to/project
@@ -277,7 +277,7 @@ After the agent returns, verify these four conditions:
 3. **Substantiveness:** At least one check has a summary longer than 5 words. An agent returning only "pass" or "ok" for every check without analysis is rubber-stamping.
 4. **Check count:** `total_checks >= 4` (the minimum always-applicable checks).
 
-**If verification fails:** Re-invoke the agent once with an explicit note: "Your previous review was incomplete — [specific failure]. Provide substantive analysis for each check." If it fails again, conduct an in-context review as fallback (read `skills/critic/SKILL.md` and apply checks manually).
+**If verification fails:** Re-invoke the agent once with an explicit note: "Your previous review was incomplete — [specific failure]. Provide substantive analysis for each check." If it fails again, conduct an in-context review as fallback (read `agents/critic/SKILL.md` and apply checks manually).
 
 ### Acting on findings
 
@@ -321,7 +321,7 @@ The Review Lenses are invoked as a separate agent (via Claude Code's Task tool, 
 Include these elements in the Task tool prompt:
 
 1. **Role:** "You are the Review Lenses evaluator for a Prawduct quality review. Your role is strictly read-only: evaluate, analyze, and record findings. Do NOT edit files, fix issues, run git commands, or make any changes. Report findings — the Orchestrator handles fixes."
-2. **Instructions source:** "Read `skills/review-lenses/SKILL.md` for your complete lens definitions, severity guide, and output format."
+2. **Instructions source:** "Read `agents/review-lenses/SKILL.md` for your complete lens definitions, severity guide, and output format."
 3. **Review context:**
    - Project directory path and product root (`.prawduct/`) path
    - Current stage and phase (e.g., "Stage 3 Phase A")
@@ -338,7 +338,7 @@ You are the Review Lenses evaluator for a Prawduct quality review.
 Your role is strictly read-only: evaluate, analyze, and record findings.
 Do NOT edit files, fix issues, run git commands, or make any changes.
 
-Read skills/review-lenses/SKILL.md for your complete lens definitions,
+Read agents/review-lenses/SKILL.md for your complete lens definitions,
 severity guide, and output format.
 
 Project: /path/to/project
@@ -372,6 +372,135 @@ After the agent returns, verify:
 - **Blocking:** Must resolve before proceeding to the next stage/phase.
 - **Warning:** Address before delivery; doesn't block forward progress.
 - **Note:** Informational. Consider but no required action.
+
+---
+
+## Observation Triage Agent Protocol
+
+The Observation Triage agent is invoked as a separate agent (via Claude Code's Task tool, `subagent_type: "general-purpose"`). It reads active observations, the deferred backlog, and pattern reports, then returns structured JSON recommendations for archiving and prioritization.
+
+### When to invoke
+
+- **Session resumption:** After the health check reports active observations (> 0 observation files in `.prawduct/framework-observations/`)
+- **After Pattern Extractor:** When new pattern clusters are available
+- **On user request:** When the user asks about observation status or priorities
+
+### Model requirement
+
+**Use the default model.** Omit the `model` parameter to inherit the parent's model.
+
+### Agent prompt
+
+Include these elements in the Task tool prompt:
+
+1. **Role:** "You are the Observation Triage agent. Your role is strictly read-only: read observation files, assess priorities, and return structured JSON recommendations. Do NOT write files, move observations, or update project-state.yaml."
+2. **Instructions source:** "Read `agents/observation-triage/SKILL.md` for your complete triage rules, priority scoring, and output format."
+3. **Paths:**
+   - Framework root directory path
+   - Observation directory: `.prawduct/framework-observations/`
+   - Project state: `.prawduct/project-state.yaml`
+   - Pattern report: `.prawduct/.pattern-report.json` (if exists)
+   - Deferred backlog: `.prawduct/observation-backlog-deferred.yaml` (if exists)
+4. **Task:** "Read all active observation files, apply triage rules, and return a JSON object with archive_recommendations, priority_items, stale_backlog_entries, and summary."
+
+### Output verification
+
+After the agent returns, verify:
+
+1. **Valid JSON:** Output parses as JSON
+2. **Archive safety:** Every file in `archive_recommendations` exists on disk and all its observation entries have terminal status (`acted_on`, `wont_fix`, `duplicate`)
+3. **Priority limit:** `priority_items` has at most 5 entries
+4. **File existence:** Every file referenced in `priority_items` exists on disk
+
+**If verification fails:** Fall back to in-context triage (read observation files directly and present a summary).
+
+### Applying recommendations
+
+After verification, the Orchestrator applies recommendations:
+
+- **Archive candidates:** Run `tools/update-observation-status.sh --archive-all` for each recommended file, or archive selectively
+- **Priority items:** Present the top items during session orientation as actionable work
+- **Stale backlog:** Mention stale entries and offer to re-evaluate or archive
+
+---
+
+## Artifact Generator Agent Protocol
+
+The Artifact Generator is invoked as a separate agent (via Claude Code's Task tool, `subagent_type: "general-purpose"`). The Orchestrator spawns one AG agent per phase (A, B, C, D) rather than a single monolithic call. Between phases, the Orchestrator applies Review Lenses as a separate agent — agents do not invoke each other.
+
+### When to invoke
+
+- **Stage 3 (Artifact Generation):** One call per phase — Phase A (Foundation), Phase B (Structure), Phase C (Integration)
+- **Stage 4 (Build Planning):** Phase D (Build Planning)
+- **Stage 6 (Iteration):** Scoped artifact updates when functional changes affect artifacts
+
+### Model requirement
+
+**Always use the best available model.** Omit the `model` parameter to inherit the parent's model.
+
+### Role boundary
+
+The AG agent writes artifacts to `.prawduct/artifacts/` and updates the artifact manifest. It does NOT make product decisions, skip phases, invoke other agents, or modify project-state.yaml beyond the artifact manifest.
+
+### Agent prompt (per-phase)
+
+Include these elements in the Task tool prompt:
+
+1. **Role:** "You are the Artifact Generator for a Prawduct product build. Generate artifacts for [Phase X] per your skill instructions. Write artifacts to the product's `.prawduct/artifacts/` directory and update the artifact manifest."
+2. **Instructions source:** "Read `agents/artifact-generator/SKILL.md` for your complete artifact selection, phasing, and consistency rules."
+3. **Project context:**
+   - Project directory path and product root (`.prawduct/`) path
+   - Framework directory path (for template resolution at `{framework_root}/templates/`)
+   - Structural characteristics summary, risk level, domain
+   - Current phase to execute (A, B, C, or D)
+4. **Phase-specific task:**
+   - **Phase A:** "Generate the Product Brief. Read `{framework_root}/templates/product-brief.md` for the template. Run the Phase A incremental check."
+   - **Phase B:** "Generate Data Model and NFRs. Read existing Product Brief at `.prawduct/artifacts/product-brief.md` (generated in Phase A). Read templates from `{framework_root}/templates/`. Run the Phase B incremental check."
+   - **Phase C:** "Generate remaining artifacts (Security Model, Test Specs, Operational Spec, Dependency Manifest, and structural artifacts). Read all prior artifacts. Run the full cross-artifact consistency check."
+   - **Phase D:** "Generate the build plan. Read all artifacts and `{framework_root}/templates/build-plan.md`. Populate `build_plan` in project-state.yaml."
+5. **Re-invocation variant** (when Review Lenses found blocking findings): Include the blocking findings and instruction to address them in the affected artifacts.
+
+**Example invocation (Phase A):**
+
+```
+Task(subagent_type="general-purpose", prompt="""
+You are the Artifact Generator for a Prawduct product build.
+Generate artifacts for Phase A (Foundation).
+
+Read agents/artifact-generator/SKILL.md for your complete instructions.
+
+Project: /path/to/project
+Product root: /path/to/project/.prawduct
+Framework root: /path/to/prawduct (for templates at /path/to/prawduct/templates/)
+Stage: artifact-generation, Phase A
+
+Product: Family score tracker. Structural: has_human_interface (screen, mobile).
+Risk: low. Domain: consumer utility.
+
+Task: Generate the Product Brief from project-state.yaml. Read the template at
+{framework_root}/templates/product-brief.md. Run the Phase A incremental check.
+Write the artifact to .prawduct/artifacts/product-brief.md.
+""")
+```
+
+### Output verification
+
+After each phase agent returns, verify:
+
+1. **Artifact files exist:** Expected artifacts for this phase are written to `.prawduct/artifacts/`
+2. **YAML frontmatter present:** Each artifact has the standard frontmatter (artifact name, version, depends_on, depended_on_by)
+3. **Manifest updated:** `artifact_manifest` in project-state.yaml (or `artifact_manifest_file`) includes entries for the new artifacts
+4. **Incremental check passed:** The phase-specific consistency check was executed (visible in agent output)
+
+**If verification fails:** Re-invoke the agent once with explicit guidance about what's missing. If it fails again, fall back to in-context generation (read `agents/artifact-generator/SKILL.md` and generate manually).
+
+### Cross-phase state
+
+Each phase writes artifacts to disk. The next phase reads them from disk — no conversation context carries between phases. Phase B's prompt says "Read `.prawduct/artifacts/product-brief.md` (generated in Phase A)."
+
+### Template resolution
+
+Product repos store the framework path in `.prawduct/framework-path`. The Orchestrator includes the framework directory in the agent prompt so the agent can find templates at `{framework_root}/templates/`.
 
 ---
 

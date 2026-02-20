@@ -264,7 +264,7 @@ else:
 
 1. **Read the structural characteristics** from the migrated `classification.structural` section.
 
-2. **List expected artifacts:** 7 universal artifacts + characteristic-specific artifacts (from Artifact Generator amplification rules in `skills/artifact-generator/SKILL.md`).
+2. **List expected artifacts:** 7 universal artifacts + characteristic-specific artifacts (from Artifact Generator amplification rules in `agents/artifact-generator/SKILL.md`).
 
 3. **List discovered artifacts** in `.prawduct/artifacts/`.
 
