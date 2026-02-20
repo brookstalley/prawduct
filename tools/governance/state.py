@@ -31,6 +31,42 @@ class PFRState:
     _v1_diagnosis_written: bool = False
     _v1_diagnosis: Optional[dict] = None
 
+    # Minimum length for a non-trivial RCA
+    _RCA_MIN_LENGTH: int = 50
+
+    def is_satisfied(self, file_path: str = "") -> bool:
+        """Check if PFR requirements are met for a given file.
+
+        Shared evaluation used by gate, commit, stop, and tracker to ensure
+        consistent PFR behavior across all enforcement points.
+
+        Args:
+            file_path: Relative path of the file being checked (for
+                cosmetic escape scope). Empty string matches any file.
+
+        Returns:
+            True if PFR is not required, is cosmetic, or has sufficient RCA.
+        """
+        if not self.required:
+            return True
+
+        # Cosmetic escape: justification covers known files
+        if self.cosmetic_justification:
+            if not file_path or not self.governance_sensitive_files:
+                return True
+            if file_path in self.governance_sensitive_files:
+                return True
+
+        # Substantive RCA
+        if self.rca and len(self.rca.strip()) >= self._RCA_MIN_LENGTH:
+            return True
+
+        # v1 compat
+        if self._v1_diagnosis_written:
+            return True
+
+        return False
+
 
 @dataclass
 class DCPState:

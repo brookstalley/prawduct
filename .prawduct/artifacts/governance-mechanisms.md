@@ -59,7 +59,7 @@ On compaction: `compact-reinject` fires as a SessionStart hook.
 
 | Subcommand | Event | Module | Can Block? |
 |------------|-------|--------|------------|
-| `prompt` | UserPromptSubmit | `prompt.py` | No (advisory only: activation reminder + product context validation + framework version staleness) |
+| `prompt` | UserPromptSubmit | `prompt.py` | No (advisory only: activation reminder + product context validation + framework version staleness + stage-aware protocol reminders) |
 | `gate` | PreToolUse (Read, Edit, Write, Task, Glob, Grep) | `gate.py` | **Yes** (exit 2) |
 | `track` | PostToolUse (Edit, Write) | `tracker.py` | No (exit 0 always) |
 | `failure` | PostToolUseFailure | `failure.py` | No (advisory only: investigation reminder) |
@@ -141,11 +141,12 @@ Additionally, `session-health-check.sh` produces a "Framework version mismatch" 
 **Purpose:** Every non-cosmetic change to governance-sensitive files requires root cause analysis before the fix and an observation after.
 
 ```
-Agent attempts to edit skills/, tools/, or scripts/
+Agent attempts to edit existing (git-tracked) file in skills/, tools/, or scripts/
   → gate.py: pfr_state.rca missing or < 50 chars → BLOCKS edit
   → Agent writes natural language RCA to pfr_state.rca (5 whys: immediate problem,
     why it happens, deeper structural cause, class of problem, prevention)
   → gate.py: rca present and >= 50 chars → allows edit
+  → tracker.py: checks git ls-files — new (untracked) files skip PFR (additive, no existing behavior broken)
   → tracker.py: adds file to governance_sensitive_files, sets pfr_state.required: true
   → Agent makes changes, invokes Critic agent for review, then captures observation
   → Agent sets pfr_state.observation_file to observation path

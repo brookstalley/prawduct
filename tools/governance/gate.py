@@ -18,7 +18,7 @@ from typing import Optional
 from . import trace as tr
 from .classify import classify, FileClass
 from .context import Context, ProductPaths
-from .state import SessionState
+from .state import SessionState, PFRState
 
 
 @dataclass
@@ -33,8 +33,6 @@ class Decision:
 # Maximum age of an activation marker before it's considered stale
 MARKER_MAX_AGE = timedelta(hours=12)
 
-# Minimum length for a non-trivial PFR RCA
-PFR_RCA_MIN_LENGTH = 50
 
 
 def check(tool_input: dict, ctx: Context, state: SessionState, product: ProductPaths = None) -> Decision:
@@ -235,30 +233,29 @@ def _validate_marker(marker_path: str) -> str:
 def _check_pfr(fc: FileClass, state: SessionState) -> Decision:
     """PFR gate: governance-sensitive files need RCA before editing.
 
-    v2 behavior: checks for non-empty pfr_state.rca (natural language, >=50 chars)
-    instead of 5 structured JSON fields.
+    The gate has different semantics than stop/commit: here, required=False
+    means PFR hasn't been triggered yet (should block), whereas in stop/commit
+    it means no PFR is needed (should allow). So the gate checks for explicit
+    escapes rather than using is_satisfied() directly.
     """
     pfr = state.pfr
 
-    # Cosmetic escape: only applies to files already covered by the justification.
-    # If governance_sensitive_files is non-empty and the current file isn't in it,
-    # this is a NEW governance-sensitive edit not covered by the cosmetic justification.
-    if pfr.required is False and pfr.cosmetic_justification:
+    # Cosmetic escape: required=False + justification, scoped to known files.
+    if not pfr.required and pfr.cosmetic_justification:
         known_files = pfr.governance_sensitive_files
         if not known_files or fc.rel_path in known_files:
             return Decision(allowed=True)
         # Fall through: new file not covered by existing cosmetic justification
 
-    # Check if RCA exists and is substantive
-    if pfr.rca and len(pfr.rca.strip()) >= PFR_RCA_MIN_LENGTH:
+    # Substantive RCA
+    if pfr.rca and len(pfr.rca.strip()) >= PFRState._RCA_MIN_LENGTH:
         return Decision(allowed=True)
 
-    # v1 compat: if diagnosis_written is true (from v1 session), allow
+    # v1 compat
     if pfr._v1_diagnosis_written:
         return Decision(allowed=True)
 
-    # No PFR state at all yet — this is the first governance-sensitive edit attempt
-    # The gate blocks to force the agent to write RCA first
+    # No PFR escape — block to force the agent to write RCA first
     return Decision(
         allowed=False,
         reason=(

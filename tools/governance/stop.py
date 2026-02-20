@@ -126,27 +126,27 @@ def _check_product_governance(state: SessionState, debts: list[str]) -> None:
 
 
 def _check_pfr(state: SessionState, debts: list[str]) -> None:
-    """PFR completion requirements."""
+    """PFR completion requirements.
+
+    Uses PFRState.is_satisfied() for consistent evaluation across all
+    enforcement points (gate, commit, stop, tracker).
+    """
     pfr = state.pfr
-    if not pfr.required:
+    if pfr.is_satisfied():
+        # Satisfied (not required, cosmetic, or has RCA).
+        # Still check for observation file if RCA was provided.
+        if pfr.required and pfr.rca and not pfr.cosmetic_justification and not pfr.observation_file:
+            gov_files = ", ".join(pfr.governance_sensitive_files[:5])
+            debts.append(
+                f"PFR: governance-sensitive files edited ({gov_files}) but no observation captured. "
+                "Create observation via tools/capture-observation.sh, then set pfr_state.observation_file."
+            )
         return
 
-    # v2: check for substantive RCA
-    has_rca = pfr.rca and len(pfr.rca.strip()) >= 50
-    # v1 compat
-    has_v1_diagnosis = pfr._v1_diagnosis_written
-
-    if not has_rca and not has_v1_diagnosis:
-        debts.append(
-            "PFR: governance-sensitive files edited without root cause analysis. "
-            "Write RCA to pfr_state.rca in .prawduct/.session-governance.json."
-        )
-    elif not pfr.observation_file:
-        gov_files = ", ".join(pfr.governance_sensitive_files[:5])
-        debts.append(
-            f"PFR: governance-sensitive files edited ({gov_files}) but no observation captured. "
-            "Create observation via tools/capture-observation.sh, then set pfr_state.observation_file."
-        )
+    debts.append(
+        "PFR: governance-sensitive files edited without root cause analysis. "
+        "Write RCA to pfr_state.rca in .prawduct/.session-governance.json."
+    )
 
 
 def _check_dcp(state: SessionState, ctx: Context, debts: list[str]) -> None:

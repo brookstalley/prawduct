@@ -79,33 +79,51 @@ def check_and_archive(
 
 
 def _check_pfr_observation(state: SessionState, ctx: Context) -> CommitDecision:
-    """If PFR required, observation file must exist."""
+    """If PFR required with RCA, observation file must exist.
+
+    Uses PFRState.is_satisfied() for consistent evaluation across all
+    enforcement points (gate, commit, stop, tracker).
+    """
     pfr = state.pfr
-    if not pfr.required:
+
+    if pfr.is_satisfied():
+        # Cosmetic or not required: no observation needed
+        if pfr.cosmetic_justification or not pfr.required:
+            return CommitDecision(allowed=True)
+
+        # Satisfied via RCA: observation file required
+        if not pfr.observation_file:
+            return CommitDecision(
+                allowed=False,
+                reason=(
+                    "BLOCKED: PFR requires an observation file for governance-sensitive changes.\n"
+                    "Create one via: tools/capture-observation.sh with root_cause_analysis block,\n"
+                    "then set pfr_state.observation_file in .prawduct/.session-governance.json."
+                ),
+            )
+
+        # Resolve relative paths against product directory
+        obs_path = pfr.observation_file
+        if not os.path.isabs(obs_path):
+            obs_path = os.path.join(state.product_dir, obs_path)
+
+        if not os.path.exists(obs_path):
+            return CommitDecision(
+                allowed=False,
+                reason=f"BLOCKED: observation file not found: {pfr.observation_file} (resolved: {obs_path})",
+            )
+
         return CommitDecision(allowed=True)
 
-    if not pfr.observation_file:
-        return CommitDecision(
-            allowed=False,
-            reason=(
-                "BLOCKED: PFR requires an observation file for governance-sensitive changes.\n"
-                "Create one via: tools/capture-observation.sh with root_cause_analysis block,\n"
-                "then set pfr_state.observation_file in .prawduct/.session-governance.json."
-            ),
-        )
-
-    # Resolve relative paths against product directory
-    obs_path = pfr.observation_file
-    if not os.path.isabs(obs_path):
-        obs_path = os.path.join(state.product_dir, obs_path)
-
-    if not os.path.exists(obs_path):
-        return CommitDecision(
-            allowed=False,
-            reason=f"BLOCKED: observation file not found: {pfr.observation_file} (resolved: {obs_path})",
-        )
-
-    return CommitDecision(allowed=True)
+    # Not satisfied — block with guidance
+    return CommitDecision(
+        allowed=False,
+        reason=(
+            "BLOCKED: PFR: governance-sensitive files edited without root cause analysis.\n"
+            "Write RCA to pfr_state.rca in .prawduct/.session-governance.json,\n"
+            "or set pfr_state.cosmetic_justification if the change is cosmetic."
+        ),
+    )
 
 
 def _check_critic_evidence(ctx: Context) -> CommitDecision:
