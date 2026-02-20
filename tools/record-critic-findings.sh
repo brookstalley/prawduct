@@ -17,7 +17,7 @@
 #
 # Usage:
 #   tools/record-critic-findings.sh \
-#     --files skills/orchestrator/SKILL.md skills/critic/SKILL.md \
+#     --files skills/orchestrator/SKILL.md agents/critic/SKILL.md \
 #     --check "Spec Compliance:not-applicable:No build-stage implementation to review" \
 #     --check "Test Integrity:not-applicable:No build-stage tests to review" \
 #     --check "Scope Discipline:pass:Changes stay within stated scope" \
@@ -34,7 +34,7 @@
 
 set -euo pipefail
 
-# --- Known Critic checks (from skills/critic/SKILL.md) ---
+# --- Known Critic checks (from agents/critic/SKILL.md) ---
 # Checks 3-6 are always applicable; Checks 1-2 apply at build stages, Checks 7-9 apply when reviewing skill/template files.
 
 ALL_VALID_CHECKS=(
@@ -204,35 +204,10 @@ fi
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-# Determine output location via .active-product pointer.
-# Session files live in the product's .prawduct/, resolved the same way hooks do.
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+# Determine output location via git-root-based product resolution.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-FRAMEWORK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-# Multi-location .active-product lookup (matches hook resolution pattern)
-_AP=""
-for _base in "${CLAUDE_PROJECT_DIR:-}" "$FRAMEWORK_ROOT" "$REPO_ROOT"; do
-    if [[ -n "$_base" && -f "$_base/.prawduct/.active-product" ]]; then
-        _AP="$_base/.prawduct/.active-product"
-        break
-    fi
-done
-
-if [[ -n "$_AP" ]]; then
-    _AP_DIR="$(cat "$_AP")"
-    if [[ -d "$_AP_DIR/.prawduct" ]]; then
-        OUTPUT_DIR="$_AP_DIR/.prawduct"
-    else
-        OUTPUT_DIR="${CLAUDE_PROJECT_DIR:-.}/.prawduct"
-    fi
-elif [[ -n "${CLAUDE_PROJECT_DIR:-}" && -d "$CLAUDE_PROJECT_DIR/.prawduct" ]]; then
-    OUTPUT_DIR="$CLAUDE_PROJECT_DIR/.prawduct"
-elif [[ -n "$REPO_ROOT" ]]; then
-    OUTPUT_DIR="$REPO_ROOT/.prawduct"
-else
-    OUTPUT_DIR=".prawduct"
-fi
+source "$SCRIPT_DIR/resolve-product-root.sh"
+OUTPUT_DIR="$PRODUCT_ROOT"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_FILE="$OUTPUT_DIR/.critic-findings.json"
 

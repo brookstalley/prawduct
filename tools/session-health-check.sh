@@ -255,19 +255,8 @@ fi
 
 # --- 4. Session edits pending review ---
 
-# Resolve product .prawduct/ via .active-product pointer
-_AP="${CLAUDE_PROJECT_DIR:-.}/.prawduct/.active-product"
-if [[ -f "$_AP" ]]; then
-    _AP_DIR="$(cat "$_AP")"
-    if [[ -d "$_AP_DIR/.prawduct" ]]; then
-        _PRODUCT_PRAWDUCT="$_AP_DIR/.prawduct"
-    else
-        _PRODUCT_PRAWDUCT="$REPO_ROOT/.prawduct"
-    fi
-else
-    _PRODUCT_PRAWDUCT="$REPO_ROOT/.prawduct"
-fi
-SESSION_GOV="$_PRODUCT_PRAWDUCT/.session-governance.json"
+# Use PRODUCT_ROOT already resolved by resolve-product-root.sh (sourced above)
+SESSION_GOV="$PRODUCT_ROOT/.session-governance.json"
 if [[ -f "$SESSION_GOV" ]]; then
     edit_count=$(python3 -c "
 import json

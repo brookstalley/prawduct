@@ -404,18 +404,8 @@ def main() -> None:
     prawduct_dir = os.path.join(project_dir, ".prawduct")
     is_prawduct = os.path.isdir(prawduct_dir)
 
-    # --- Resolve product .prawduct/ via .active-product pointer ---
+    # Product resolution: use session-level prawduct_dir (no global pointer)
     product_prawduct_dir = prawduct_dir
-    if is_prawduct:
-        ap_path = os.path.join(prawduct_dir, ".active-product")
-        try:
-            with open(ap_path) as f:
-                ap_dir = f.read().strip()
-            candidate = os.path.join(ap_dir, ".prawduct")
-            if os.path.isdir(candidate):
-                product_prawduct_dir = candidate
-        except Exception:
-            pass
 
     cache = _load_cache(project_dir)
 

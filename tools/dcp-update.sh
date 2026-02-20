@@ -21,29 +21,10 @@
 
 set -euo pipefail
 
-# Resolve framework root (same as governance-hook shim)
+# Resolve product root via git-root-based detection
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-FRAMEWORK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-# Resolve product .prawduct dir
-if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
-    PRAWDUCT_DIR="$CLAUDE_PROJECT_DIR/.prawduct"
-else
-    PRAWDUCT_DIR="$FRAMEWORK_ROOT/.prawduct"
-fi
-
-# Follow .active-product pointer if it exists
-ACTIVE_PRODUCT="$PRAWDUCT_DIR/.active-product"
-if [[ -f "$ACTIVE_PRODUCT" ]]; then
-    TARGET_DIR=$(cat "$ACTIVE_PRODUCT" | tr -d '[:space:]')
-    if [[ -d "$TARGET_DIR/.prawduct" ]]; then
-        PRODUCT_PRAWDUCT="$TARGET_DIR/.prawduct"
-    else
-        PRODUCT_PRAWDUCT="$PRAWDUCT_DIR"
-    fi
-else
-    PRODUCT_PRAWDUCT="$PRAWDUCT_DIR"
-fi
+source "$SCRIPT_DIR/resolve-product-root.sh"
+PRODUCT_PRAWDUCT="$PRODUCT_ROOT"
 
 SESSION_FILE="$PRODUCT_PRAWDUCT/.session-governance.json"
 

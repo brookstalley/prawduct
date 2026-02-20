@@ -25,7 +25,7 @@
 
 set -euo pipefail
 
-# --- Known lenses (from skills/review-lenses/SKILL.md) ---
+# --- Known lenses (from agents/review-lenses/SKILL.md) ---
 
 ALL_VALID_LENSES=(
     "Product"
@@ -153,33 +153,10 @@ fi
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# Determine output location via .active-product pointer
+# Determine output location via git-root-based product resolution.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-FRAMEWORK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-
-_AP=""
-for _base in "${CLAUDE_PROJECT_DIR:-}" "$FRAMEWORK_ROOT" "$REPO_ROOT"; do
-    if [[ -n "$_base" && -f "$_base/.prawduct/.active-product" ]]; then
-        _AP="$_base/.prawduct/.active-product"
-        break
-    fi
-done
-
-if [[ -n "$_AP" ]]; then
-    _AP_DIR="$(cat "$_AP")"
-    if [[ -d "$_AP_DIR/.prawduct" ]]; then
-        OUTPUT_DIR="$_AP_DIR/.prawduct"
-    else
-        OUTPUT_DIR="${CLAUDE_PROJECT_DIR:-.}/.prawduct"
-    fi
-elif [[ -n "${CLAUDE_PROJECT_DIR:-}" && -d "$CLAUDE_PROJECT_DIR/.prawduct" ]]; then
-    OUTPUT_DIR="$CLAUDE_PROJECT_DIR/.prawduct"
-elif [[ -n "$REPO_ROOT" ]]; then
-    OUTPUT_DIR="$REPO_ROOT/.prawduct"
-else
-    OUTPUT_DIR=".prawduct"
-fi
+source "$SCRIPT_DIR/resolve-product-root.sh"
+OUTPUT_DIR="$PRODUCT_ROOT"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_FILE="$OUTPUT_DIR/.lens-findings.json"
 

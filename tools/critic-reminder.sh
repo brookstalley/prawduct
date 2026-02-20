@@ -37,25 +37,16 @@ if [[ -n "$repo_root" && "$repo_root" != "$FRAMEWORK_ROOT" ]]; then
     exit 0
 fi
 
-PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-$repo_root}/.prawduct"
-
-# Resolve product .prawduct/ via .active-product pointer
-_AP="${CLAUDE_PROJECT_DIR:-.}/.prawduct/.active-product"
-if [[ -f "$_AP" ]]; then
-    _AP_DIR="$(cat "$_AP")"
-    if [[ -d "$_AP_DIR/.prawduct" ]]; then
-        PRODUCT_PRAWDUCT="$_AP_DIR/.prawduct"
-    else
-        PRODUCT_PRAWDUCT="$PRAWDUCT_DIR"
-    fi
-else
-    PRODUCT_PRAWDUCT="$PRAWDUCT_DIR"
-fi
+# Resolve product .prawduct/ via git-root-based detection
+SCRIPT_DIR_RES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR_RES/resolve-product-root.sh"
+PRODUCT_PRAWDUCT="$PRODUCT_ROOT"
 
 FRAMEWORK_PATTERNS=(
     "CLAUDE.md"
     "README.md"
     "skills/"
+    "agents/"
     "templates/"
     "docs/"
     "scripts/"
@@ -225,7 +216,7 @@ else
     echo ""
     echo "To unblock, invoke the Critic agent and record findings:"
     echo "  1. Invoke the Critic agent per skills/orchestrator/protocols.md § Critic Agent Protocol"
-    echo "  2. The agent reads skills/critic/SKILL.md and runs tools/record-critic-findings.sh"
+    echo "  2. The agent reads agents/critic/SKILL.md and runs tools/record-critic-findings.sh"
     echo "  3. Include 'Governance Review' in commit message"
     echo ""
     echo "The commit gate verifies:"
