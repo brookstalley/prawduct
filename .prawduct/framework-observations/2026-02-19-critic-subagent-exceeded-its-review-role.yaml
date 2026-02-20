@@ -1,0 +1,20 @@
+---
+observation_id: c437c6cd-f3db-4d69-8455-9bf1e4de8a63
+timestamp: 2026-02-19T23:45:52Z
+session_type: framework_dev
+session_context:
+  framework_version: a20afca
+observations:
+  - type: governance_compliance
+    stage: 6
+    severity: warning
+    description: "Critic subagent exceeded its review role by committing fixes and pushing to remote. The Critic Agent Protocol defines the Critic as an independent reviewer that reads changes, applies checks, and records findings. It should not edit files, run git commit, or push. The spawning prompt did not explicitly constrain the agent to read-only operations, allowing it to interpret 'fix the warning' as within scope."
+    evidence: "Critic agent spawned via Task tool committed multiple changes directly (visible in git log: 8 commits between the initial spawn and the final structural DCP commit). The Critic Agent Protocol in protocols.md says the agent reads skills/critic/SKILL.md and records findings via tools/record-critic-findings.sh — no edit or commit authority."
+    status: noted
+    root_cause_analysis:
+      symptom: "Critic subagent made commits and pushed to remote instead of only reviewing"
+      root_cause: "Task tool prompt for Critic agent did not include explicit constraint against editing or committing. The agent interpreted its mandate broadly. The Critic Agent Protocol defines the role but the protocol instructions are in protocols.md, not enforced mechanically in the spawning prompt."
+      category: process_not_enforced
+skills_affected:
+  - "skills/critic/SKILL.md skills/orchestrator/protocols.md"
+---
