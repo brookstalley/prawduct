@@ -244,7 +244,7 @@ def generate_alerts(gov: dict | None, critic: dict | None) -> list[tuple[str, st
     unreviewed = [f for f in edited_files if f not in reviewed]
     if unreviewed:
         n = len(unreviewed)
-        alerts.append((f"review: {n} file{'s' if n != 1 else ''}", BOLD_RED))
+        alerts.append((f"critic: {n} file{'s' if n != 1 else ''}", BOLD_RED))
 
     # Critic findings stale or insufficient
     if critic:
@@ -367,12 +367,12 @@ def render_line1(project_state: dict | None, gov: dict | None,
     line = f"{ORANGE}{SHRIMP}{RESET} {BOLD_CYAN}{activity}{RESET}"
 
     if governance_active:
-        line += sep + f"{GREEN}gov {RESET}"
+        line += f" | {GREEN}gov{RESET}"
 
     # Debt items separated by ·
     if alerts:
         alert_strs = [f"{color}{label}{RESET}" for label, color in alerts]
-        line += "{GREEN}: {RESET}" + sep.join(alert_strs)
+        line += f"{GREEN}: {RESET}" + sep.join(alert_strs)
 
     return line
 
