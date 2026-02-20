@@ -49,7 +49,7 @@
         ]
       },
       {
-        "matcher": "Edit|Write|Read",
+        "matcher": "Edit|Write|Read|Task|Glob|Grep",
         "hooks": [
           {
             "type": "command",

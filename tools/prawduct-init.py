@@ -150,7 +150,7 @@ def get_prawduct_hooks() -> dict:
                 ],
             },
             {
-                "matcher": "Edit|Write|Read",
+                "matcher": "Edit|Write|Read|Task|Glob|Grep",
                 "hooks": [
                     {
                         "type": "command",

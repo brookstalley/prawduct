@@ -3,7 +3,7 @@
 Usage: python3 -m governance <command> [--root DIR]
 
 Commands:
-  gate             — PreToolUse gate (Edit/Write/Read). Exit 0=allow, 2=block.
+  gate             — PreToolUse gate (Edit/Write/Read/Task/Glob/Grep). Exit 0=allow, 2=block.
   track            — PostToolUse tracker (Edit/Write). Exit 0 always.
   failure          — PostToolUseFailure PFR reminder (Edit/Write). Exit 0 always.
   stop             — Stop hook validation. Exit 0=allow, 2=block.

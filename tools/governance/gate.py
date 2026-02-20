@@ -53,6 +53,16 @@ def check(tool_input: dict, ctx: Context, state: SessionState, product: ProductP
     inner = tool_input.get("tool_input", {})
     file_path = inner.get("file_path", "")
 
+    # Non-file-based tools (Task, Glob, Grep): require activation unconditionally.
+    # These tools are never needed for the bootstrap sequence (steps 1-5 of
+    # Orchestrator activation use only Read, Bash, and Write).
+    if not file_path and tool_name in ("Task", "Glob", "Grep"):
+        result = _check_activation(ctx, state, rule_name="research_activation", product=product)
+        if not result.allowed:
+            tr.event(state, "gate_block", {"rule": "research_activation", "tool": tool_name, "reason": result.reason})
+            return result
+        return Decision(allowed=True)
+
     if not file_path:
         return Decision(allowed=True)
 
