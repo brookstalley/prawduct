@@ -31,7 +31,7 @@ from governance.classify import (
     GOVERNANCE_SENSITIVE_PREFIXES,
 )
 from governance.state import SessionState, PFRState, CURRENT_SCHEMA_VERSION, now_iso
-from governance.gate import check, Decision, PFR_RCA_MIN_LENGTH
+from governance.gate import check, Decision
 from governance.tracker import track, DCP_FILE_THRESHOLD
 from governance.stop import validate, StopDecision
 from governance.commit import check_and_archive
@@ -515,7 +515,7 @@ class TestGate:
     def test_pfr_allows_with_rca(self, activated_context, session_file):
         """Governance-sensitive file allowed with substantive RCA."""
         state = SessionState.load(session_file)
-        state.pfr.rca = "A" * PFR_RCA_MIN_LENGTH  # Exactly minimum length
+        state.pfr.rca = "A" * PFRState._RCA_MIN_LENGTH  # Exactly minimum length
         state.save()
 
         state = SessionState.load(session_file)
