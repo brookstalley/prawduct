@@ -361,13 +361,14 @@ def render_line1(project_state: dict | None, gov: dict | None,
         return None
 
     stage = project_state["current_stage"]
-    activity = _resolve_activity(project_state, gov, stage)
     sep = f" {DIM}\u00b7{RESET} "
 
-    line = f"{ORANGE}{SHRIMP}{RESET} {BOLD_CYAN}{activity}{RESET}"
+    if not governance_active:
+        # Orchestrator hasn't activated yet — show startup state
+        return f"{ORANGE}{SHRIMP}{RESET} {DIM}Starting...{RESET}"
 
-    if governance_active:
-        line += f" | {GREEN}gov{RESET}"
+    activity = _resolve_activity(project_state, gov, stage)
+    line = f"{ORANGE}{SHRIMP}{RESET} {BOLD_CYAN}{activity}{RESET} | {GREEN}gov{RESET}"
 
     # Debt items separated by ·
     if alerts:
