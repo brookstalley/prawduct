@@ -1,0 +1,26 @@
+---
+observation_id: 070da64b-ef6c-4849-bb41-0ce88e83d397
+timestamp: 2026-02-20T16:17:40Z
+session_type: framework_dev
+session_context:
+  framework_version: 25d8560
+observations:
+  - type: process_friction
+    stage: 6
+    severity: note
+    description: "Agent skills (Critic, Review Lenses, Pattern Extractor, Artifact Generator) lived in skills/ alongside in-context skills, making the invocation model invisible from the file tree. No structural convention distinguished subprocess agents from main-context skills."
+    evidence: "All 4 agent skills were in skills/ despite being invoked via Task tool as subagents. Orchestrator, Domain Analyzer, and Builder remain in skills/ as in-context skills. New Observation Triage agent added directly to agents/."
+    proposed_action: "Maintain agents/ vs skills/ distinction: agents/ = spawned as subprocesses via Task tool, skills/ = loaded into main context"
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Agent skills were indistinguishable from in-context skills at the filesystem level"
+      root_cause: "Original directory structure predates the agent invocation pattern; all skills started as in-context loads and some were later migrated to agents without moving their files"
+      category: wrong_abstraction
+skills_affected:
+  - "agents/critic/SKILL.md"
+  - "agents/review-lenses/SKILL.md"
+  - "agents/pattern-extractor/SKILL.md"
+  - "agents/artifact-generator/SKILL.md"
+  - "agents/observation-triage/SKILL.md"
+  - "skills/orchestrator/SKILL.md"
+---
