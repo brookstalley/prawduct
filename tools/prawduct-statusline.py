@@ -367,12 +367,12 @@ def render_line1(project_state: dict | None, gov: dict | None,
     line = f"{ORANGE}{SHRIMP}{RESET} {BOLD_CYAN}{activity}{RESET}"
 
     if governance_active:
-        line += sep + f"{GREEN}governance{RESET}"
+        line += sep + f"{GREEN}gov {RESET}"
 
     # Debt items separated by ·
     if alerts:
         alert_strs = [f"{color}{label}{RESET}" for label, color in alerts]
-        line += sep + sep.join(alert_strs)
+        line += "{GREEN}: {RESET}" + sep.join(alert_strs)
 
     return line
 

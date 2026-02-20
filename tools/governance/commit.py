@@ -66,7 +66,13 @@ def check_and_archive(
     traces_dir = os.path.join(ctx.prawduct_dir, "traces")
     tr.persist(state, traces_dir)
 
-    # 4. Clean up session files
+    # 4. Reset per-commit tracking in session state
+    # Framework edits and PFR are per-commit concerns — after a successful
+    # commit (which required critic review + PFR observation), they should
+    # reset so the stop hook doesn't flag already-committed work as debt.
+    _reset_per_commit_state(state)
+
+    # 5. Clean up per-commit files
     _cleanup(ctx)
 
     return CommitDecision(allowed=True)
@@ -136,6 +142,22 @@ def _check_critic_evidence(ctx: Context) -> CommitDecision:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         # Never block on tool failure
         return CommitDecision(allowed=True)
+
+
+def _reset_per_commit_state(state: SessionState) -> None:
+    """Reset per-commit tracking after successful commit.
+
+    Framework edits and PFR state are per-commit concerns — they track what
+    needs critic review and observation capture before the next commit. After
+    a successful commit (which already passed those gates), reset them so
+    the stop hook doesn't flag already-committed work as governance debt.
+    Session-level state (governance_state, dcp, current_stage) is preserved.
+    """
+    from .state import FrameworkEdits, PFRState
+
+    state.framework_edits = FrameworkEdits()
+    state.pfr = PFRState()
+    state.save()
 
 
 def _cleanup(ctx: Context) -> None:

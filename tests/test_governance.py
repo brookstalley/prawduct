@@ -1084,7 +1084,7 @@ class TestPromptVersionCheck:
         result = prompt_check(tmp_context)
         assert result is not None
         parsed = json.loads(result)
-        assert "not activated" in parsed["additionalContext"]
+        assert "NOT active" in parsed["additionalContext"]
 
     def test_prompt_check_version_after_activation(self, activated_context):
         """When activated with stale version, get version advisory."""
