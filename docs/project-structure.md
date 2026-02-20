@@ -23,7 +23,7 @@ prawduct/
 │   │   └── {date}-{description}.yaml  # Per-session observations
 │   └── working-notes/                 # Tier 3 ephemeral docs (auto-expire after 2 weeks)
 │       └── .gitkeep
-├── skills/                            # LLM instruction sets (your behavior)
+├── skills/                            # LLM instruction sets loaded into main context
 │   ├── orchestrator/SKILL.md          # Activation, routing, session resumption (~180 lines always loaded)
 │   │   ├── stages-0-2.md             # Stages 0-2: Intake, Discovery, Definition
 │   │   ├── stages-3-4.md             # Stages 3-4: Artifact Generation, Build Planning
@@ -31,13 +31,15 @@ prawduct/
 │   │   ├── stage-6-iteration.md      # Stage 6: Iteration + Directional Change Protocol
 │   │   ├── onboarding.md            # Onboarding Mode: existing codebase → prawduct artifacts
 │   │   ├── migration.md             # Schema Migration: old prawduct versions → current format
-│   │   └── protocols.md              # FRP, PFR, Stage Transition, Expertise Calibration, Structural Critique, Critic Agent Protocol, Review Lenses Agent Protocol
+│   │   └── protocols.md              # FRP, PFR, Stage Transition, Expertise Calibration, Critic/Lenses/AG/Triage Agent Protocols
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
-│   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency — format specs live in templates
-│   ├── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
+│   └── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
+├── agents/                            # LLM instruction sets spawned as subprocesses via Task tool
 │   ├── critic/SKILL.md                # Context-sensitive governance: invoked as subagent, reads checks from project state
 │   ├── review-lenses/SKILL.md         # Five evaluation perspectives: invoked as subagent for prospective artifact review
-│   └── pattern-extractor/SKILL.md     # Observation pattern analysis: invoked as subagent for systemic trend detection
+│   ├── pattern-extractor/SKILL.md     # Observation pattern analysis: invoked as subagent for systemic trend detection
+│   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency: invoked per-phase as subagent
+│   └── observation-triage/SKILL.md    # Observation priority/archive triage: invoked as subagent during session resumption
 ├── tools/                             # Deterministic scripts (mechanical enforcement, 20 files + governance/)
 │   ├── governance-hook                # Single entry point for all Claude Code hooks (bash, delegates to Python)
 │   ├── governance/                    # Python module: all hook logic (12 submodules)

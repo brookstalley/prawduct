@@ -634,3 +634,23 @@ deprecated_terms:
     replacement: "contribute-observations.sh"
     removed_date: 2026-02-18
     patterns: ["format-contribution\\.sh", "format-contribution"]
+  - term: "skills/critic/"
+    replacement: "agents/critic/"
+    removed_date: 2026-02-20
+    patterns: ["skills/critic/"]
+  - term: "skills/review-lenses/"
+    replacement: "agents/review-lenses/"
+    removed_date: 2026-02-20
+    patterns: ["skills/review-lenses/"]
+  - term: "skills/pattern-extractor/"
+    replacement: "agents/pattern-extractor/"
+    removed_date: 2026-02-20
+    patterns: ["skills/pattern-extractor/"]
+  - term: "skills/artifact-generator/"
+    replacement: "agents/artifact-generator/"
+    removed_date: 2026-02-20
+    patterns: ["skills/artifact-generator/"]
+  - term: ".active-product"
+    replacement: "resolve_product_for_file() — file-based product resolution from git root"
+    removed_date: 2026-02-20
+    patterns: ["\\.active-product"]

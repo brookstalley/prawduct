@@ -70,22 +70,22 @@ On compaction: `compact-reinject` fires as a SessionStart hook.
 
 `tools/governance/classify.py` classifies files into four categories (single implementation, previously duplicated across hooks):
 
-- **Framework files:** Match patterns (`skills/`, `tools/`, `docs/`, `CLAUDE.md`, `README.md`, `.prawduct/artifacts/`, etc.) AND repo root equals framework root
+- **Framework files:** Match patterns (`skills/`, `agents/`, `tools/`, `docs/`, `CLAUDE.md`, `README.md`, `.prawduct/artifacts/`, etc.) AND repo root equals framework root
 - **Product files:** Inside the `product_dir` recorded in `.session-governance.json`
-- **External repo files:** In a git repository (detected via `.git` directory walk, handling worktrees/submodules) that is neither the framework root nor the active product. **Blocked** by the gate — the repo must be onboarded via `prawduct-init` first.
+- **External repo files:** In a git repository (detected via `.git` directory walk, handling worktrees/submodules) that is neither the framework root nor an onboarded product (no `.prawduct/` directory). **Blocked** by the gate — the repo must be onboarded via `prawduct-init` first.
 - **Ungoverned files:** Not in any git repo (e.g., `/tmp/`, `~/.claude/plans/`, downloaded files). Allowed without activation.
 
-A subset of framework files are **governance-sensitive** (`skills/`, `tools/`, `scripts/`). These define framework behavior and trigger the PFR enforcement chain.
+A subset of framework files are **governance-sensitive** (`skills/`, `agents/`, `tools/`, `scripts/`). These define framework behavior and trigger the PFR enforcement chain.
 
 Git root detection results are cached by directory prefix to avoid repeated filesystem walks.
 
 ## State Files
 
-All session state lives in `.prawduct/` within `$CLAUDE_PROJECT_DIR`. The governance module resolves paths via `tools/governance/context.py` (one implementation). Session state uses schema versioning: reads v1 (pre-module format) and v2 (module format), always writes v2.
+All session state lives in `.prawduct/` within the product directory (resolved from the file's git root by `resolve_product_for_file()` in `tools/governance/context.py`). Session state uses schema versioning: reads v1 (pre-module format) and v2 (module format), always writes v2.
 
 | File | Created by | Read by | Lifecycle |
 |------|-----------|---------|-----------|
-| `.orchestrator-activated` | Orchestrator step 3 | gate.py, prompt.py | Cleared on commit or `/clear` |
+| `.orchestrator-activated` | Orchestrator step 3 | gate.py, prompt.py | Lives in product's `.prawduct/`; cleared on commit or `/clear` |
 | `.session-governance.json` | Orchestrator step 4 | All modules | Cleared on commit or `/clear` |
 | `.critic-pending` | tracker.py (on framework edit) | commit.py | Cleared on commit |
 | `.critic-findings.json` | `record-critic-findings.sh` | stop.py, commit.py | Cleared on commit |
@@ -116,7 +116,7 @@ Session start
   → prompt subcommand injects "activate now" message
   → gate subcommand blocks all skill reads + governed edits
   → Agent reads orchestrator/SKILL.md (whitelisted) and follows activation
-  → Writes .orchestrator-activated marker with timestamp + "praw-active" token
+  → Writes .orchestrator-activated marker to product's .prawduct/ with timestamp + "praw-active" token
   → gate subcommand validates marker (present, valid token, < 12 hours old)
   → Reads and edits unblocked
 ```
@@ -127,7 +127,7 @@ Session start
 
 ```
 Agent activates Orchestrator (activation marker exists)
-  → prompt subcommand reads .prawduct/framework-version from active product
+  → prompt subcommand reads .prawduct/framework-version from session-level prawduct dir
   → Compares stored SHA against running framework's git HEAD
   → Mismatch → injects additionalContext with upgrade command (prawduct-init.py --json)
   → Agent sees advisory on next prompt submission and can offer upgrade
@@ -213,7 +213,7 @@ Builder completes a chunk, marks status as "review" in project-state.yaml
   → Sets governance_state.chunks_completed_without_review > 0
   → gate.py: blocks product file edits until review debt is 0
       (exempts project-state.yaml and .session-governance.json)
-  → Orchestrator invokes Critic agent (separate context, reads skills/critic/SKILL.md)
+  → Orchestrator invokes Critic agent (separate context, reads agents/critic/SKILL.md)
   → Agent reviews chunk, runs record-critic-findings.sh
   → Orchestrator updates project-state.yaml with review entry
   → tracker.py: recalculates → chunks_completed_without_review: 0
@@ -240,7 +240,7 @@ Critic review produces findings with highest_severity >= warning
 **Purpose:** Prevent governance escapes where an agent edits files in a sibling git repository without onboarding it to Prawduct.
 
 ```
-Agent attempts to edit a file outside framework and active product
+Agent attempts to edit a file outside framework and onboarded products
   → classify.py: _find_git_root() walks up directories looking for .git (dir or file)
   → File is in a git repo that isn't the framework root or product_dir → is_external_repo: true
   → gate.py: _check_external_repo() fires
