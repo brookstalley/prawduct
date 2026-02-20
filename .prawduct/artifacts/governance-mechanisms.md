@@ -23,7 +23,7 @@ tools/governance-hook           # Single bash entry point for all Claude Code ho
 tools/governance/
 ├── __init__.py        # Package init, version
 ├── __main__.py        # CLI: python3 -m governance <gate|track|stop|commit|prompt|compact-reinject>
-├── context.py         # Path resolution (one implementation)
+├── context.py         # Path resolution: unified via active-product pointer
 ├── classify.py        # File classification (one implementation)
 ├── state.py           # Session state read/write (schema versioned)
 ├── trace.py           # Trace event emission + persistence + rotation
@@ -36,13 +36,29 @@ tools/governance/
 ├── reinject.py        # SessionStart compact: post-compaction context recovery
 ```
 
+### Unified Product Resolution (Active-Product Pointer)
+
+In cross-repo sessions (framework hooks managing a separate product repo), `context.py` uses an `.active-product` pointer file to ensure **all** hook commands resolve to the correct product directory. This eliminates the asymmetry where gate/track would resolve per-file but stop/commit/prompt would use the session-level (framework) directory.
+
+**How it works:**
+1. `__main__.py` calls `update_product_context(file_path, ctx)` for gate/track commands
+2. `update_product_context()` resolves the product from the file's git root (via `resolve_product_for_file()`)
+3. If the product differs from the session-level dir, it writes `.prawduct/.active-product` with the product's `.prawduct/` path
+4. `resolve()` reads this pointer on every invocation — stop/commit/prompt automatically get the right context
+5. `.active-product` is cleaned up on session restart (`SessionStart clear|startup` hook)
+
+**Self-hosted/same-repo:** No pointer is written (resolve_product_for_file returns the same dir). No change in behavior.
+
+**Fail-safe:** If the pointer doesn't exist, points to a nonexistent directory, or can't be read, `resolve()` falls back to `CLAUDE_PROJECT_DIR` — identical to previous behavior.
+
 ### Hook Protocol
 
 `tools/governance-hook` is the single entry point for all hooks:
 1. Derives `FRAMEWORK_ROOT` from its own location (`dirname "$0"/..`)
 2. Sets `PYTHONPATH` and calls `python3 -m governance <command> --root $FRAMEWORK_ROOT`
 3. The module reads hook JSON from stdin (for commands that need it)
-4. Exits with the module's exit code (0=allow, 2=block)
+4. For gate/track: `__main__.py` updates product context from the file path before loading state
+5. Exits with the module's exit code (0=allow, 2=block)
 
 ### Event Ordering
 
@@ -82,10 +98,11 @@ Git root detection results are cached by directory prefix to avoid repeated file
 
 ## State Files
 
-All session state lives in `.prawduct/` within the product directory (resolved from the file's git root by `resolve_product_for_file()` in `tools/governance/context.py`). Session state uses schema versioning: reads v1 (pre-module format) and v2 (module format), always writes v2.
+All session state lives in `.prawduct/` within the product directory (resolved from the file's git root by `resolve_product_for_file()` in `tools/governance/context.py`, with cross-repo redirection via the `.active-product` pointer). Session state uses schema versioning: reads v1 (pre-module format) and v2 (module format), always writes v2.
 
 | File | Created by | Read by | Lifecycle |
 |------|-----------|---------|-----------|
+| `.active-product` | context.py (on cross-repo gate/track) | context.py resolve() | Lives in session-level `.prawduct/` (CLAUDE_PROJECT_DIR); cleared on `/clear` or startup |
 | `.orchestrator-activated` | Orchestrator step 3 | gate.py, prompt.py | Lives in product's `.prawduct/`; cleared on commit or `/clear` |
 | `.session-governance.json` | Orchestrator step 4 | All modules | Cleared on commit or `/clear` |
 | `.critic-pending` | tracker.py (on framework edit) | commit.py | Cleared on commit |

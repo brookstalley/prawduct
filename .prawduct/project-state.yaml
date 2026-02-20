@@ -663,7 +663,4 @@ deprecated_terms:
     replacement: "agents/artifact-generator/"
     removed_date: 2026-02-20
     patterns: ["skills/artifact-generator/"]
-  - term: ".active-product"
-    replacement: "resolve_product_for_file() — file-based product resolution from git root"
-    removed_date: 2026-02-20
-    patterns: ["\\.active-product"]
+  # .active-product reinstated as cross-repo pointer mechanism (2026-02-20)

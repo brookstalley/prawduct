@@ -267,28 +267,28 @@ def generate_alerts(gov: dict | None, critic: dict | None) -> list[tuple[str, st
     if pfr.get("required"):
         has_rca = bool(pfr.get("rca")) or pfr.get("diagnosis_written", False)
         if not has_rca:
-            alerts.append(("needs RCA", BOLD_RED))
+            alerts.append(("need RCA", BOLD_RED))
         elif not pfr.get("observation_file"):
-            alerts.append(("needs obs", YELLOW))
+            alerts.append(("need obs", YELLOW))
 
     # DCP state — show specific incomplete items
     if dc.get("needs_classification") and not dc.get("tier"):
-        alerts.append(("classify change", YELLOW))
+        alerts.append(("need classify", YELLOW))
     elif dc.get("active"):
         tier = dc.get("tier", "")
         if not dc.get("retrospective_completed"):
-            alerts.append(("finish retro", YELLOW))
+            alerts.append(("create retro", YELLOW))
         if not dc.get("observation_captured"):
             alerts.append(("capture obs", YELLOW))
         if tier in ("enhancement", "structural") and not dc.get("artifacts_verified"):
-            alerts.append(("verify artifacts", YELLOW))
+            alerts.append(("verify docs", YELLOW))
 
     # Observation capture debt
     obs_count = gs.get("observations_captured_this_session", 0)
     if critic and obs_count == 0:
         sev = critic.get("highest_severity", "pass")
         if sev in ("warning", "blocking"):
-            alerts.append(("capture obs", YELLOW))
+            alerts.append(("create obs", YELLOW))
 
     # Cap at 4 + overflow
     if len(alerts) > 4:
