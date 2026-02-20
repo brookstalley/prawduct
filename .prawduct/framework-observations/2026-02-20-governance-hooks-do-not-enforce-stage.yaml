@@ -1,0 +1,22 @@
+---
+observation_id: 0e4f24a0-4032-4a14-bf8e-91108f46b4e3
+timestamp: 2026-02-20T18:11:42Z
+session_type: framework_dev
+session_context:
+  framework_version: 735a6c0
+observations:
+  - type: coverage
+    stage: 6
+    severity: warning
+    description: "Governance hooks do not enforce Stage 6 iteration protocol ordering. When user provides feedback, agent should classify (cosmetic/functional/directional), apply PFR for non-cosmetic changes, then assess impact before exploring code. Agent skipped all three steps and jumped directly to code exploration. UserPromptSubmit hook fired successfully but did not remind agent of protocol ordering."
+    evidence: "User reported performance regression. Agent immediately spawned Explore subagent to read code. No classification, no PFR consideration, no impact assessment. UserPromptSubmit hook returned Success without injecting Stage 6 protocol reminders."
+    proposed_action: "Consider having governance-prompt hook check current_stage and inject stage-specific protocol reminders. For iteration stage: remind agent to classify feedback before acting. This is conversational governance, not just file-edit governance."
+    status: noted
+    root_cause_analysis:
+      symptom: "Agent skipped feedback classification, PFR, and impact assessment — jumped straight to code exploration"
+      root_cause: "Governance hooks are edit-oriented (gate blocks writes, tracker counts writes, stop blocks completion). No hook enforces conversation-level protocol ordering. The Stage 6 protocol is in the skill file but nothing mechanically reminds the agent to follow the sequence when new feedback arrives."
+      category: incomplete_coverage
+skills_affected:
+  - "skills/orchestrator/stage-6-iteration.md"
+  - "skills/orchestrator/protocols.md"
+---

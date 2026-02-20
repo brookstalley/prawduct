@@ -18,17 +18,32 @@
 #   tools/session-health-check.sh                  # Full report
 #   tools/session-health-check.sh --actionable-only # Only patterns needing action
 #
+# Options:
+#   --product-dir DIR  Resolve product root from DIR instead of CWD.
+#                      Use when a subagent's CWD differs from the target product.
+#
 # Exit codes:
 #   0 — Report produced (even if empty)
 #   1 — Missing prerequisites (not in repo root, missing files)
 
 set -uo pipefail
 
+# Parse --product-dir before positional args
+_PRODUCT_DIR_OVERRIDE=""
+_remaining_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --product-dir) _PRODUCT_DIR_OVERRIDE="$2"; shift 2 ;;
+        *) _remaining_args+=("$1"); shift ;;
+    esac
+done
+set -- "${_remaining_args[@]+"${_remaining_args[@]}"}"
+
 MODE="${1:---full}"
 
 # Resolve product root (shared detection logic)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/resolve-product-root.sh"
+source "$SCRIPT_DIR/resolve-product-root.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"}
 
 PROJECT_STATE="$PRODUCT_ROOT/project-state.yaml"
 OBS_DIR="$PRODUCT_ROOT/framework-observations"
@@ -44,7 +59,7 @@ fi
 # --- 1. Actionable pattern analysis ---
 # Uses extract-patterns.sh for threshold check and obs_utils for inline summary.
 
-extraction_status=$("$SCRIPT_DIR/extract-patterns.sh" --check 2>/dev/null || echo "EXTRACTION_NEEDED: false")
+extraction_status=$("$SCRIPT_DIR/extract-patterns.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"} --check 2>/dev/null || echo "EXTRACTION_NEEDED: false")
 extraction_needed=$(echo "$extraction_status" | grep "^EXTRACTION_NEEDED:" | head -1 | sed 's/.*: //')
 active_obs_count=$(echo "$extraction_status" | grep "^ACTIVE_OBSERVATIONS:" | head -1 | sed 's/.*: //')
 

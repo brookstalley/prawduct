@@ -19,15 +19,30 @@
 #   ./tools/observation-analysis.sh --patterns-only    # Only show 2+ occurrences
 #   ./tools/observation-analysis.sh --blocking         # Only show blocking severity
 #
+# Options:
+#   --product-dir DIR  Resolve product root from DIR instead of CWD.
+#                      Use when a subagent's CWD differs from the target product.
+#
 # Output: Human-readable summary to stdout.
 
 set -uo pipefail
+
+# Parse --product-dir before positional args
+_PRODUCT_DIR_OVERRIDE=""
+_remaining_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --product-dir) _PRODUCT_DIR_OVERRIDE="$2"; shift 2 ;;
+        *) _remaining_args+=("$1"); shift ;;
+    esac
+done
+set -- "${_remaining_args[@]+"${_remaining_args[@]}"}"
 
 MODE="${1:---full}"
 
 # Resolve product root (shared detection logic)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/resolve-product-root.sh"
+source "$SCRIPT_DIR/resolve-product-root.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"}
 OBS_DIR="$PRODUCT_ROOT/framework-observations"
 
 if [[ ! -d "$OBS_DIR" ]]; then

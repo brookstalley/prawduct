@@ -1,0 +1,20 @@
+---
+observation_id: a42dc7a3-d6cd-45a4-998b-901221e613a9
+timestamp: 2026-02-20T18:07:52Z
+session_type: framework_dev
+session_context:
+  framework_version: 735a6c0
+observations:
+  - type: defect
+    stage: 6
+    severity: warning
+    description: "capture-observation.sh --append mode fails with awk newline-in-string error when the observation entry contains newlines. The awk -v entry passes multiline content which awk cannot handle in a string variable. This forces creating separate files instead of consolidating related observations."
+    evidence: "Running capture-observation.sh with --append produced: awk: newline in string - type: process_fr... at source line 1. The multiline OBS_ENTRY variable breaks awk -v assignment."
+    status: noted
+    root_cause_analysis:
+      symptom: "Append mode fails with awk newline error on multiline observation entries"
+      root_cause: "The script builds a multiline OBS_ENTRY string and passes it via awk -v entry=, but awk does not accept literal newlines in -v string assignments. Needs to use a different insertion method (temp file, sed, or piping)."
+      category: wrong_abstraction
+skills_affected:
+  - "tools/capture-observation.sh"
+---

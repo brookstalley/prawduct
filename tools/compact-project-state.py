@@ -451,6 +451,8 @@ def main():
                         help="Compact only specified section(s) (repeatable)")
     parser.add_argument('--verbose', action='store_true',
                         help="Show detailed before/after for each section")
+    parser.add_argument('--product-dir',
+                        help="Resolve product root from DIR instead of CWD")
 
     args = parser.parse_args()
 
@@ -460,8 +462,11 @@ def main():
         # Use shared product root resolution
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
+            cmd = [os.path.join(script_dir, 'resolve-product-root.sh')]
+            if args.product_dir:
+                cmd.extend(['--product-dir', args.product_dir])
             result = subprocess.run(
-                [os.path.join(script_dir, 'resolve-product-root.sh')],
+                cmd,
                 capture_output=True, text=True, check=True
             )
             product_root = result.stdout.strip()

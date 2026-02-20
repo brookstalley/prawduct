@@ -28,6 +28,10 @@
 #     --check "Instruction Clarity:pass:Instructions are imperative" \
 #     --check "Cumulative Health:pass:Skill length proportionate"
 #
+# Options:
+#   --product-dir DIR  Resolve product root from DIR instead of CWD.
+#                      Use when a subagent's CWD differs from the target product.
+#
 # Exit codes:
 #   0 — Findings recorded to .prawduct/.critic-findings.json
 #   1 — Validation failure (missing checks, invalid names/severities)
@@ -63,9 +67,11 @@ VALID_SEVERITIES="pass not-applicable note warning blocking"
 
 FILES=""
 declare -a CHECKS=()
+_PRODUCT_DIR_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --product-dir) _PRODUCT_DIR_OVERRIDE="$2"; shift 2 ;;
         --files)
             # Accept comma-separated, repeated --files, or space-separated args
             # e.g., --files "a,b" OR --files a --files b OR --files a b c
@@ -206,7 +212,7 @@ GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Determine output location via git-root-based product resolution.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/resolve-product-root.sh"
+source "$SCRIPT_DIR/resolve-product-root.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"}
 OUTPUT_DIR="$PRODUCT_ROOT"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_FILE="$OUTPUT_DIR/.critic-findings.json"

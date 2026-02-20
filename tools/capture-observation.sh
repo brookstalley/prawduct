@@ -24,7 +24,8 @@
 #     [--stage meta] \
 #     [--proposed-action "Create capture tool"] \
 #     [--status noted] \
-#     [--append path/to/existing-file.yaml]
+#     [--append path/to/existing-file.yaml] \
+#     [--product-dir /path/to/project]
 #
 # For evaluation sessions, also pass:
 #     --scenario-name family-utility
@@ -69,9 +70,11 @@ PRODUCT_CLASSIFICATION=""
 RCA_SYMPTOM=""
 RCA_ROOT_CAUSE=""
 RCA_CATEGORY=""
+_PRODUCT_DIR_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --product-dir)        _PRODUCT_DIR_OVERRIDE="$2"; shift 2 ;;
         --session-type)       SESSION_TYPE="$2"; shift 2 ;;
         --type)               OBS_TYPE="$2"; shift 2 ;;
         --severity)           SEVERITY="$2"; shift 2 ;;
@@ -200,7 +203,7 @@ GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Resolve product root (shared detection logic)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/resolve-product-root.sh"
+source "$SCRIPT_DIR/resolve-product-root.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"}
 OBS_DIR=""
 
 if [[ -n "$APPEND_FILE" ]]; then

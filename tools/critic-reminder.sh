@@ -10,6 +10,11 @@
 # Usage:
 #   ./tools/critic-reminder.sh              # Check staged changes
 #   ./tools/critic-reminder.sh --last       # Check most recent commit
+#   ./tools/critic-reminder.sh --product-dir /path/to/project
+#
+# Options:
+#   --product-dir DIR  Resolve product root from DIR instead of CWD.
+#                      Use when a subagent's CWD differs from the target product.
 #
 # What it checks:
 #   1. Are any skill, template, principle, or design docs being modified?
@@ -27,11 +32,26 @@
 
 set -euo pipefail
 
+# Parse --product-dir before positional args
+_PRODUCT_DIR_OVERRIDE=""
+_remaining_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --product-dir) _PRODUCT_DIR_OVERRIDE="$2"; shift 2 ;;
+        *) _remaining_args+=("$1"); shift ;;
+    esac
+done
+set -- "${_remaining_args[@]+"${_remaining_args[@]}"}"
+
 # Derive framework root from this script's location (tools/ is one level below framework root)
 FRAMEWORK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Early exit for product repos — product commits don't contain framework files
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+if [[ -n "$_PRODUCT_DIR_OVERRIDE" ]]; then
+    repo_root=$(git -C "$_PRODUCT_DIR_OVERRIDE" rev-parse --show-toplevel 2>/dev/null || echo "")
+else
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+fi
 if [[ -n "$repo_root" && "$repo_root" != "$FRAMEWORK_ROOT" ]]; then
     echo "Product repo — framework governance not applicable."
     exit 0
@@ -39,7 +59,7 @@ fi
 
 # Resolve product .prawduct/ via git-root-based detection
 SCRIPT_DIR_RES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR_RES/resolve-product-root.sh"
+source "$SCRIPT_DIR_RES/resolve-product-root.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"}
 PRODUCT_PRAWDUCT="$PRODUCT_ROOT"
 
 FRAMEWORK_PATTERNS=(
@@ -180,7 +200,7 @@ if [[ "$critic_evidence" == false ]]; then
     today=$(date +%Y-%m-%d)
     # Resolve product root for observation file location
     SCRIPT_DIR_CR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    source "$SCRIPT_DIR_CR/resolve-product-root.sh"
+    source "$SCRIPT_DIR_CR/resolve-product-root.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"}
     obs_search_dir="$PRODUCT_ROOT/framework-observations"
     if ls "$obs_search_dir"/"${today}"*.yaml >/dev/null 2>&1; then
         for obs_file in "$obs_search_dir"/"${today}"*.yaml; do

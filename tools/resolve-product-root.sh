@@ -10,9 +10,23 @@
 #
 # Usage (as command — prints product root path):
 #   PRODUCT_ROOT=$(tools/resolve-product-root.sh)
+#   PRODUCT_ROOT=$(tools/resolve-product-root.sh --product-dir /path/to/project)
 #
 # Usage (sourced — sets PRODUCT_ROOT and REPO_ROOT variables):
 #   source tools/resolve-product-root.sh
+#   source tools/resolve-product-root.sh --product-dir /path/to/project
+#
+# Options:
+#   --product-dir DIR  Resolve product root from DIR instead of CWD.
+#                      Use when a subagent's CWD differs from the target product.
+#
+# Environment:
+#   PRAWDUCT_PRODUCT_DIR  If set, resolves product root from this directory.
+#                         --product-dir flag takes priority over this env var.
+#                         Set once in the subagent's environment so all tool
+#                         calls inherit it without repeating --product-dir.
+#
+# Resolution priority: --product-dir flag > PRAWDUCT_PRODUCT_DIR > CWD
 #
 # Detection order:
 #   1. .prawduct/project-state.yaml → product root is .prawduct/
@@ -24,7 +38,20 @@
 #   0 — Product root resolved (path printed to stdout)
 #   1 — Not in a git repository
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+# Parse optional --product-dir argument (works both when sourced and executed).
+# Priority: --product-dir flag > PRAWDUCT_PRODUCT_DIR env var > CWD
+_RESOLVE_TARGET_DIR=""
+if [[ "${1:-}" == "--product-dir" && -n "${2:-}" ]]; then
+    _RESOLVE_TARGET_DIR="$2"
+elif [[ -n "${PRAWDUCT_PRODUCT_DIR:-}" ]]; then
+    _RESOLVE_TARGET_DIR="$PRAWDUCT_PRODUCT_DIR"
+fi
+
+if [[ -n "$_RESOLVE_TARGET_DIR" ]]; then
+    REPO_ROOT=$(git -C "$_RESOLVE_TARGET_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")
+else
+    REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+fi
 if [[ -z "$REPO_ROOT" ]]; then
     echo "Error: Not in a git repository." >&2
     exit 1

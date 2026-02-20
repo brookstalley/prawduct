@@ -11,7 +11,7 @@ observations:
     severity: warning
     description: "Cross-repo .active-product pointer resets during background agent writes, causing governance-gate hook to block all writes to the target product repo. 5 of 5 background agents failed during worldground onboarding artifact generation. The pointer at $CLAUDE_PROJECT_DIR/.prawduct/.active-product was set to the product repo but reverted to the framework repo between write operations."
     evidence: "All 5 background agents reported: BLOCKED: This file is in a git repository (worldground) that isn't onboarded to Prawduct. Only sequential writes from the main conversation thread succeeded. The data-model agent worked around it using bash heredoc instead of the Write tool."
-    status: noted
+    status: acted_on
     root_cause_analysis:
       symptom: "Background agents writing to cross-repo product have their writes blocked by governance-gate hook"
       root_cause: "The .active-product pointer is not stable across concurrent tool invocations — something in the hook chain or session management resets it to the framework repo, causing the governance-gate to see the product repo as unregistered"

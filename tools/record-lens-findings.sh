@@ -19,6 +19,10 @@
 #     --lens "Skeptic:not-applied:Phase A - not applicable" \
 #     --lens "Testing:not-applied:No test specs yet"
 #
+# Options:
+#   --product-dir DIR  Resolve product root from DIR instead of CWD.
+#                      Use when a subagent's CWD differs from the target product.
+#
 # Exit codes:
 #   0 — Findings recorded to .prawduct/.lens-findings.json
 #   1 — Validation failure
@@ -43,9 +47,11 @@ FILES=""
 STAGE=""
 PHASE=""
 declare -a LENSES=()
+_PRODUCT_DIR_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --product-dir) _PRODUCT_DIR_OVERRIDE="$2"; shift 2 ;;
         --stage)   STAGE="$2"; shift 2 ;;
         --phase)   PHASE="$2"; shift 2 ;;
         --files)
@@ -155,7 +161,7 @@ TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Determine output location via git-root-based product resolution.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/resolve-product-root.sh"
+source "$SCRIPT_DIR/resolve-product-root.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"}
 OUTPUT_DIR="$PRODUCT_ROOT"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_FILE="$OUTPUT_DIR/.lens-findings.json"

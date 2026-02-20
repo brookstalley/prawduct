@@ -18,12 +18,23 @@
 #   tools/dcp-update.sh retrospective-done
 #   tools/dcp-update.sh complete
 #   tools/dcp-update.sh status
+#
+# Options:
+#   --product-dir DIR  Resolve product root from DIR instead of CWD.
+#                      Use when a subagent's CWD differs from the target product.
 
 set -euo pipefail
 
+# Parse --product-dir before subcommand (must come first if present)
+_PRODUCT_DIR_OVERRIDE=""
+if [[ "${1:-}" == "--product-dir" && -n "${2:-}" ]]; then
+    _PRODUCT_DIR_OVERRIDE="$2"
+    shift 2
+fi
+
 # Resolve product root via git-root-based detection
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/resolve-product-root.sh"
+source "$SCRIPT_DIR/resolve-product-root.sh" ${_PRODUCT_DIR_OVERRIDE:+--product-dir "$_PRODUCT_DIR_OVERRIDE"}
 PRODUCT_PRAWDUCT="$PRODUCT_ROOT"
 
 SESSION_FILE="$PRODUCT_PRAWDUCT/.session-governance.json"

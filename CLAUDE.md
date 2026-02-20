@@ -119,6 +119,17 @@ tools/dcp-update.sh observation-captured
 tools/dcp-update.sh retrospective-done
 tools/dcp-update.sh complete
 tools/dcp-update.sh status
+
+# Cross-repo usage: all tools accept --product-dir to resolve a different product root
+# Use when subagent CWD differs from the target product (e.g., CWD=prawduct, target=worldground)
+tools/dcp-update.sh --product-dir /path/to/worldground status
+tools/capture-observation.sh --product-dir /path/to/worldground --session-type product_use ...
+tools/record-critic-findings.sh --product-dir /path/to/worldground --files ...
+
+# Or set PRAWDUCT_PRODUCT_DIR once so all tool calls inherit it:
+export PRAWDUCT_PRODUCT_DIR=/path/to/worldground
+tools/dcp-update.sh status          # resolves worldground automatically
+tools/capture-observation.sh ...    # same — no --product-dir needed
 ```
 
 ## Conventions

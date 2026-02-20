@@ -10,7 +10,7 @@ observations:
     severity: warning
     description: "Agent ignored three independent governance signals during session continuation: CLAUDE.md instruction, compact reinject hook message, and prompt hook advisory. Prioritized continuation instruction over governance requirements (HR9 violation)."
     evidence: "Compact reinject output included 'Start: .../skills/orchestrator/SKILL.md'. CLAUDE.md says ALWAYS read orchestrator first. Agent chose to continue worldground work instead. Continuation prompt treated as overriding governance."
-    status: noted
+    status: acted_on
     root_cause_analysis:
       symptom: "Agent worked on worldground for entire session without reading orchestrator SKILL.md"
       root_cause: "Session continuation instruction competed with governance instructions. Agent resolved conflict in favor of task continuation. No hard enforcement exists at this boundary — all three signals were advisory."
