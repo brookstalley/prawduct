@@ -47,8 +47,9 @@ tools/governance/
 ### Event Ordering
 
 ```
-UserPromptSubmit  →  PreToolUse (per tool call)  →  PostToolUse (per tool call)  →  Stop
-prompt               gate (Edit/Write/Read)         track                           stop
+UserPromptSubmit  →  PreToolUse (per tool call)       →  PostToolUse (per tool call)  →  Stop
+prompt               gate (Edit/Write/Read/              track                           stop
+                           Task/Glob/Grep)
                      commit (Bash only)
 ```
 
@@ -59,7 +60,7 @@ On compaction: `compact-reinject` fires as a SessionStart hook.
 | Subcommand | Event | Module | Can Block? |
 |------------|-------|--------|------------|
 | `prompt` | UserPromptSubmit | `prompt.py` | No (advisory only: activation reminder + product context validation + framework version staleness) |
-| `gate` | PreToolUse (Read, Edit, Write) | `gate.py` | **Yes** (exit 2) |
+| `gate` | PreToolUse (Read, Edit, Write, Task, Glob, Grep) | `gate.py` | **Yes** (exit 2) |
 | `track` | PostToolUse (Edit, Write) | `tracker.py` | No (exit 0 always) |
 | `failure` | PostToolUseFailure | `failure.py` | No (advisory only: investigation reminder) |
 | `commit` | PreToolUse (Bash) | `commit.py` | **Yes** (exit 2) |
@@ -114,11 +115,11 @@ All session state lives in `.prawduct/` within the product directory (resolved f
 ```
 Session start
   → prompt subcommand injects "activate now" message
-  → gate subcommand blocks all skill reads + governed edits
+  → gate subcommand blocks all skill reads + governed edits + research tools (Task, Glob, Grep)
   → Agent reads orchestrator/SKILL.md (whitelisted) and follows activation
   → Writes .orchestrator-activated marker to product's .prawduct/ with timestamp + "praw-active" token
   → gate subcommand validates marker (present, valid token, < 12 hours old)
-  → Reads and edits unblocked
+  → All tools unblocked
 ```
 
 ### 2. Framework Version Staleness (Advisory)
