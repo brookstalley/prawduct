@@ -67,8 +67,12 @@ def check(ctx: Context) -> str | None:
     marker = ctx.activation_marker
     if not os.path.isfile(marker):
         msg = (
-            f"Orchestrator not activated (HR9). "
-            f"Read {ctx.framework_root}/skills/orchestrator/SKILL.md steps 2-4 first."
+            f"CRITICAL: Governance is NOT active. You MUST read "
+            f"{ctx.framework_root}/skills/orchestrator/SKILL.md and complete "
+            f"steps 1-4 (establish project directory, read project-state.yaml, "
+            f"activate governance, initialize tracking) BEFORE taking any other action. "
+            f"This is HR9 (No Governance Bypass) — no edits, no research, no responses "
+            f"until governance is activated."
         )
         return json.dumps({"additionalContext": msg})
 

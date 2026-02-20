@@ -1,0 +1,20 @@
+---
+observation_id: bc5984a4-344c-403a-8a62-cf1766197b7b
+timestamp: 2026-02-20T18:46:36Z
+session_type: framework_dev
+session_context:
+  framework_version: 1ea4d3e
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "commit.py cleanup deleted session-level governance files after every commit, leaving multi-commit sessions ungoverned after the first commit. Fix: only clean per-commit artifacts (critic-findings, pending flags), preserve session state for SessionStart hook cleanup."
+    evidence: "commit.py._cleanup() removed .session-governance.json, .session-trace.jsonl, .orchestrator-activated after every commit. Sessions with multiple commits lost governance tracking."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Governance files disappear after first commit in a session"
+      root_cause: "Cleanup assumed one commit equals one session end; sessions contain multiple commits, so session cleanup belongs at session boundaries not commit time"
+      category: wrong_abstraction
+skills_affected:
+  - "tools/governance/commit.py"
+---

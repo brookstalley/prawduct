@@ -139,14 +139,18 @@ def _check_critic_evidence(ctx: Context) -> CommitDecision:
 
 
 def _cleanup(ctx: Context) -> None:
-    """Clean up session files after successful commit."""
+    """Clean up per-commit artifacts after successful commit.
+
+    Only removes artifacts that are per-commit (critic evidence, pending flags).
+    Session-level state (.session-governance.json, .orchestrator-activated,
+    .session-trace.jsonl) is preserved — sessions often contain multiple commits,
+    and cleaning up after the first would leave subsequent work ungoverned.
+    Session-level cleanup happens in the SessionStart hook on /clear or new startup.
+    """
     for path in [
         os.path.join(ctx.prawduct_dir, ".critic-pending"),
         os.path.join(ctx.prawduct_dir, ".critic-findings.json"),
         os.path.join(ctx.prawduct_dir, ".session-edits.json"),
-        os.path.join(ctx.prawduct_dir, ".session-governance.json"),
-        os.path.join(ctx.prawduct_dir, ".session-trace.jsonl"),
-        os.path.join(ctx.prawduct_dir, ".orchestrator-activated"),
     ]:
         try:
             os.remove(path)
