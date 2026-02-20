@@ -1,8 +1,10 @@
-"""UserPromptSubmit hook: activation reminder + framework version check.
+"""UserPromptSubmit hook: activation reminder + framework version check + stage reminders.
 
 If the Orchestrator hasn't been activated, injects an additionalContext
 message reminding Claude to read SKILL.md (HR9). If activated but the
 framework version is stale, injects an advisory to run prawduct-init.
+When governance is active, injects stage-appropriate protocol reminders
+based on current governance state.
 Always exits 0 — UserPromptSubmit hooks don't block.
 """
 
@@ -13,6 +15,7 @@ import os
 import subprocess
 
 from .context import Context
+from .state import SessionState
 
 
 def _git_hash(repo_dir: str) -> str | None:
@@ -81,4 +84,47 @@ def check(ctx: Context) -> str | None:
     if version_msg:
         return json.dumps({"additionalContext": version_msg})
 
+    # Stage-aware protocol reminders (lightweight, only when debt exists)
+    reminder = _stage_reminders(ctx)
+    if reminder:
+        return json.dumps({"additionalContext": reminder})
+
     return None
+
+
+def _stage_reminders(ctx: Context) -> str | None:
+    """Generate contextual reminders based on current governance state."""
+    state = SessionState.load(ctx.session_file)
+    if not state.current_stage:
+        return None
+
+    parts: list[str] = []
+
+    # DCP classification pending
+    if state.dcp.needs_classification:
+        n = state.dcp.triggered_at_file_count
+        parts.append(
+            f"{n} files edited — classify this change (mechanical/enhancement/structural) "
+            f"before continuing. See stage-6-iteration.md DCP."
+        )
+
+    # PFR required but no RCA yet
+    if state.pfr.required and not state.pfr.rca and not state.pfr.cosmetic_justification:
+        files = ", ".join(state.pfr.governance_sensitive_files[:3])
+        parts.append(
+            f"Governance-sensitive file(s) edited ({files}). "
+            f"Write root cause analysis to pfr_state.rca before continuing."
+        )
+
+    # Chunks without review (Stage 5/6 with active build)
+    debt = state.governance.chunks_completed_without_review
+    if debt > 0:
+        parts.append(
+            f"{debt} chunk(s) completed without Critic review. "
+            f"Run Governance Review before editing product files."
+        )
+
+    if not parts:
+        return None
+
+    return "Governance reminders: " + " | ".join(parts)
