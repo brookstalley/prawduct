@@ -20,6 +20,7 @@ FRAMEWORK_PATTERNS = (
     "CLAUDE.md",
     "README.md",
     "skills/",
+    "agents/",
     "templates/",
     "docs/",
     "scripts/",
@@ -34,6 +35,7 @@ FRAMEWORK_PATTERNS = (
 # Edits require PFR. Docs/templates/config are NOT governance-sensitive.
 GOVERNANCE_SENSITIVE_PREFIXES = (
     "skills/",
+    "agents/",
     "tools/",
     "scripts/",
 )
@@ -41,6 +43,7 @@ GOVERNANCE_SENSITIVE_PREFIXES = (
 # Skill/template files gated for Read operations
 READ_GATED_PREFIXES = (
     "skills/",
+    "agents/",
     "templates/",
 )
 
@@ -170,6 +173,17 @@ def classify(file_path: str, ctx: Context) -> FileClass:
             if norm_file.startswith(product_dir):
                 is_product = True
 
+    # Bootstrap fallback: file's git root has .prawduct/ but session file
+    # doesn't exist yet. Covers the window between Orchestrator step 3 and step 4.
+    if not is_product:
+        git_root = _find_git_root(file_path)
+        if git_root:
+            candidate = os.path.join(git_root, ".prawduct")
+            if os.path.isdir(candidate):
+                norm_file = _normalize_path(file_path)
+                if norm_file.startswith(git_root + os.sep) or norm_file == git_root:
+                    is_product = True
+
     # Governance-sensitive: framework file matching sensitive prefixes
     is_governance_sensitive = False
     if is_framework and rel_path:
@@ -193,10 +207,11 @@ def classify(file_path: str, ctx: Context) -> FileClass:
     # External repo: file is in a git repo that is neither the framework
     # nor the active product. This catches cross-repo governance escapes
     # (e.g., editing ../worldground/ without onboarding it).
+    # git_root is already set by the bootstrap fallback above (both blocks
+    # share the same `not is_product` precondition).
     is_external_repo = False
     external_repo_root = ""
     if not is_framework and not is_product:
-        git_root = _find_git_root(file_path)
         if git_root is not None:
             # Normalize framework_root for comparison
             fw_root_real = os.path.realpath(ctx.framework_root)

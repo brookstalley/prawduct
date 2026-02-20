@@ -2,8 +2,7 @@
 
 Single implementation of the context resolution that was previously duplicated
 across governance-gate.sh, governance-tracker.sh, governance-stop.sh, and
-critic-gate.sh. Resolves framework root, prawduct dir, product prawduct dir,
-and repo root.
+critic-gate.sh. Resolves framework root, prawduct dir, and repo root.
 """
 
 from __future__ import annotations
@@ -15,17 +14,19 @@ from typing import Optional
 
 
 @dataclass(frozen=True)
-class Context:
-    """Resolved governance paths."""
+class ProductPaths:
+    """Resolved paths for a specific product's .prawduct/ directory.
 
-    framework_root: str
-    prawduct_dir: str
-    product_prawduct: str
-    repo_root: str
+    Used by gate/track to operate on the correct product when multiple
+    repos are active concurrently. Derived from the file being operated
+    on (its git root), not from a global pointer.
+    """
+
+    prawduct_dir: str  # e.g. /path/to/worldground/.prawduct
 
     @property
     def session_file(self) -> str:
-        return os.path.join(self.product_prawduct, ".session-governance.json")
+        return os.path.join(self.prawduct_dir, ".session-governance.json")
 
     @property
     def activation_marker(self) -> str:
@@ -33,15 +34,44 @@ class Context:
 
     @property
     def trace_file(self) -> str:
-        return os.path.join(self.product_prawduct, ".session-trace.jsonl")
+        return os.path.join(self.prawduct_dir, ".session-trace.jsonl")
 
     @property
     def critic_pending(self) -> str:
-        return os.path.join(self.product_prawduct, ".critic-pending")
+        return os.path.join(self.prawduct_dir, ".critic-pending")
 
     @property
     def critic_findings(self) -> str:
-        return os.path.join(self.product_prawduct, ".critic-findings.json")
+        return os.path.join(self.prawduct_dir, ".critic-findings.json")
+
+
+@dataclass(frozen=True)
+class Context:
+    """Resolved governance paths (session-level)."""
+
+    framework_root: str
+    prawduct_dir: str
+    repo_root: str
+
+    @property
+    def session_file(self) -> str:
+        return os.path.join(self.prawduct_dir, ".session-governance.json")
+
+    @property
+    def activation_marker(self) -> str:
+        return os.path.join(self.prawduct_dir, ".orchestrator-activated")
+
+    @property
+    def trace_file(self) -> str:
+        return os.path.join(self.prawduct_dir, ".session-trace.jsonl")
+
+    @property
+    def critic_pending(self) -> str:
+        return os.path.join(self.prawduct_dir, ".critic-pending")
+
+    @property
+    def critic_findings(self) -> str:
+        return os.path.join(self.prawduct_dir, ".critic-findings.json")
 
 
 def _git_toplevel() -> str:
@@ -58,23 +88,29 @@ def _git_toplevel() -> str:
         return ""
 
 
-def _resolve_product_prawduct(claude_project_dir: str, prawduct_dir: str) -> str:
-    """Resolve product .prawduct/ via .active-product pointer.
+def resolve_product_for_file(file_path: str, fallback_prawduct_dir: str) -> ProductPaths:
+    """Resolve the product .prawduct/ for a specific file path.
 
-    Checks: claude_project_dir/.prawduct/.active-product -> target_dir/.prawduct
-    Falls back to prawduct_dir.
+    Derives the product from the file's git root rather than a global
+    pointer. If the file's git root contains .prawduct/, use that.
+    Otherwise fall back to the session-level prawduct_dir.
+
+    Args:
+        file_path: Absolute path to the file being operated on.
+        fallback_prawduct_dir: Session-level .prawduct/ (from Context).
+
+    Returns:
+        ProductPaths for the resolved product.
     """
-    active_product_path = os.path.join(claude_project_dir, ".prawduct", ".active-product")
-    if os.path.isfile(active_product_path):
-        try:
-            with open(active_product_path) as f:
-                target_dir = f.read().strip()
-            target_prawduct = os.path.join(target_dir, ".prawduct")
-            if os.path.isdir(target_prawduct):
-                return target_prawduct
-        except OSError:
-            pass
-    return prawduct_dir
+    from .classify import _find_git_root
+
+    if file_path:
+        git_root = _find_git_root(file_path)
+        if git_root:
+            candidate = os.path.join(git_root, ".prawduct")
+            if os.path.isdir(candidate):
+                return ProductPaths(prawduct_dir=candidate)
+    return ProductPaths(prawduct_dir=fallback_prawduct_dir)
 
 
 def resolve(framework_root: Optional[str] = None) -> Context:
@@ -104,14 +140,8 @@ def resolve(framework_root: Optional[str] = None) -> Context:
     else:
         prawduct_dir = os.path.join(framework_root, ".prawduct")
 
-    if claude_project_dir:
-        product_prawduct = _resolve_product_prawduct(claude_project_dir, prawduct_dir)
-    else:
-        product_prawduct = prawduct_dir
-
     return Context(
         framework_root=framework_root,
         prawduct_dir=prawduct_dir,
-        product_prawduct=product_prawduct,
         repo_root=repo_root,
     )

@@ -21,7 +21,7 @@ import sys
 from typing import NoReturn
 
 from . import __version__
-from .context import resolve
+from .context import resolve, resolve_product_for_file
 from .state import SessionState
 
 
@@ -75,12 +75,21 @@ def main() -> NoReturn:
         except ValueError as e:
             print(str(e), file=sys.stderr)
             sys.exit(1)
-        state = SessionState.load(ctx.session_file)
+
+        # For gate/track: resolve product from the file being operated on
+        # so concurrent agents on different repos get the correct state.
+        if command in ("gate", "track"):
+            file_path = hook_input.get("tool_input", {}).get("file_path", "")
+            product = resolve_product_for_file(file_path, ctx.prawduct_dir)
+            state = SessionState.load(product.session_file)
+        else:
+            product = None
+            state = SessionState.load(ctx.session_file)
 
         if command == "gate":
-            _run_gate(hook_input, ctx, state)
+            _run_gate(hook_input, ctx, state, product)
         elif command == "track":
-            _run_track(hook_input, ctx, state)
+            _run_track(hook_input, ctx, state, product)
         elif command == "stop":
             _run_stop(hook_input, ctx, state)
         elif command == "commit":
@@ -129,10 +138,10 @@ def _run_compact_reinject(root: str | None) -> NoReturn:
     sys.exit(0)
 
 
-def _run_gate(hook_input: dict, ctx, state: SessionState) -> NoReturn:
+def _run_gate(hook_input: dict, ctx, state: SessionState, product=None) -> NoReturn:
     from .gate import check
 
-    decision = check(hook_input, ctx, state)
+    decision = check(hook_input, ctx, state, product=product)
     # Gate checks are read-only — they never mutate session state.
     # Trace events go to .session-trace.jsonl via tr.event(), not
     # through state.save(). Saving here would rewrite the file on
@@ -146,10 +155,10 @@ def _run_gate(hook_input: dict, ctx, state: SessionState) -> NoReturn:
         sys.exit(2)
 
 
-def _run_track(hook_input: dict, ctx, state: SessionState) -> NoReturn:
+def _run_track(hook_input: dict, ctx, state: SessionState, product=None) -> NoReturn:
     from .tracker import track
 
-    track(hook_input, ctx, state)
+    track(hook_input, ctx, state, product=product)
     state.save()
     sys.exit(0)
 
