@@ -252,17 +252,33 @@ if [[ -n "$APPEND_FILE" ]]; then
     OBS_ENTRY+=$'\n'"      category: $RCA_CATEGORY"
 
     # Append before the skills_affected line
-    # Use a temp file for safe in-place edit
+    # Write entry to a temp file, then use sed to insert it (awk -v cannot
+    # handle multi-line strings — the newlines in $OBS_ENTRY break it).
+    ENTRY_FILE=$(mktemp)
+    printf '%s\n' "$OBS_ENTRY" > "$ENTRY_FILE"
     TMPFILE=$(mktemp)
     if grep -q "^skills_affected:" "$APPEND_FILE"; then
-        # Insert observation before skills_affected
-        awk -v entry="$OBS_ENTRY" '/^skills_affected:/ { print entry; } { print }' "$APPEND_FILE" > "$TMPFILE"
+        # Insert observation entry before skills_affected
+        while IFS= read -r line; do
+            if [[ "$line" == "skills_affected:"* ]]; then
+                cat "$ENTRY_FILE"
+            fi
+            printf '%s\n' "$line"
+        done < "$APPEND_FILE" > "$TMPFILE"
         mv "$TMPFILE" "$APPEND_FILE"
     else
         # No skills_affected found — append before closing ---
-        awk -v entry="$OBS_ENTRY" '/^---$/ && NR>1 { print entry; } { print }' "$APPEND_FILE" > "$TMPFILE"
+        found_first=false
+        while IFS= read -r line; do
+            if [[ "$line" == "---" && "$found_first" == true ]]; then
+                cat "$ENTRY_FILE"
+            fi
+            printf '%s\n' "$line"
+            found_first=true
+        done < "$APPEND_FILE" > "$TMPFILE"
         mv "$TMPFILE" "$APPEND_FILE"
     fi
+    rm -f "$ENTRY_FILE"
 
     # Add any new skills to skills_affected
     IFS=',' read -ra NEW_SKILLS <<< "$SKILLS_AFFECTED"
