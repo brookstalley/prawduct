@@ -574,27 +574,23 @@ iteration_state:
 # Items removed when acted on; deferred items reviewed periodically.
 
 observation_backlog:
-  last_triage: 2026-02-19
-  deferred_file: observation-backlog-deferred.yaml  # 15 deferred items split for context efficiency
+  last_triage: 2026-02-20
+  deferred_file: observation-backlog-deferred.yaml  # 17 deferred items split for context efficiency
   items:
     # --- priority: next ---
     # Removed: "Observation capture after Critic review lacks mechanical enforcement" — implemented in governance stop.py (2026-02-18)
     # Removed: "capture-observation.sh validation list missing newer observation types" — types already synced with schema (2026-02-17)
     # Removed: "Per-chunk Critic review doesn't detect cross-chunk test regression" — added full-suite regression check to Critic Check 2, Builder Step 5a history recording (2026-02-19)
     # Removed: "spec_compliance evidence entries become stale across chunks" — added evidence freshness check to Critic Check 1 (2026-02-19)
-    - observation_file: "framework-observations/2026-02-18-pfr-meta-fix-plan-identifies-code.yaml"
-      type: process_friction
-      summary: "PFR meta_fix_plan misses documentation blast radius"
-      target_files: ["skills/orchestrator/protocols.md", "skills/orchestrator/stage-6-iteration.md", "skills/critic/SKILL.md"]
-      priority: soon
-      rationale: "RCA: incomplete_coverage. Missed 2 doc updates."
-      added: 2026-02-18
+    # Removed: "PFR commit gate uses relative path" — acted_on: commit.py now resolves against product_dir then framework_root (2026-02-20)
+    # --- priority: soon ---
+    # Removed: "PFR meta_fix_plan misses documentation blast radius" — acted_on: added doc blast radius to PFR step 4 in protocols.md (2026-02-20)
     - observation_file: "framework-observations/2026-02-17-agent-bypassed-orchestrator-activation-by-writing.yaml"
       type: process_friction
       summary: "Agent bypassed Orchestrator activation via Bash marker write"
-      target_files: [".prawduct/hooks/governance-prompt.sh"]
+      target_files: ["tools/governance/prompt.py"]
       priority: soon
-      rationale: "RCA: process_not_enforced. Markers can be created via Bash."
+      rationale: "RCA: process_not_enforced. Markers can be created via Bash. Partially mitigated by external-repo gate fix (2026-02-20)."
       added: 2026-02-17
     - observation_file: "framework-observations/2026-02-17-self-hosting-blind-spot-code-generators.yaml"
       type: coverage
@@ -603,6 +599,23 @@ observation_backlog:
       priority: soon
       rationale: "Structural gap in prawduct-init.py."
       added: 2026-02-17
+    # Removed: "PFR detection can't distinguish new feature additions from fixes" — acted_on: already fixed in tracker.py (git ls-files new-file detection, lines 118-128)
+    - observation_file: "framework-observations/2026-02-18-approved-plan-execution-bypassed-orchestrator-governance.yaml"
+      type: governance_compliance
+      summary: "Approved plan execution bypassed Orchestrator governance (HR9)"
+      target_files: ["skills/orchestrator/SKILL.md", "tools/governance/prompt.py"]
+      priority: soon
+      rationale: "RCA: process_not_enforced. No handoff between plan mode and Orchestrator. Hook checks flag, not process."
+      added: 2026-02-20
+    # Removed: "Critic subagent exceeded review role" — acted_on: explicit no-commit/no-push constraint + tool whitelist added to Critic Agent Protocol (2026-02-20)
+    - observation_file: "framework-observations/2026-02-20-governance-hooks-do-not-enforce-stage.yaml"
+      type: coverage
+      summary: "Governance hooks don't enforce Stage 6 protocol ordering (classify before act)"
+      target_files: ["skills/orchestrator/stage-6-iteration.md", "tools/governance/prompt.py"]
+      priority: soon
+      rationale: "RCA: incomplete_coverage. Hooks are edit-oriented; no conversation-level protocol enforcement. Agent skipped classification and jumped to code exploration."
+      added: 2026-02-20
+    # Removed: "Product file edits in Stage 6 have no Critic enforcement" — acted_on: stop.py now flags 3+ product file edits without Critic review in Stage 6 (2026-02-20)
 
 # =============================================================================
 # DEPRECATED TERMS

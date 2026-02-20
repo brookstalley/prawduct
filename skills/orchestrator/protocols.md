@@ -195,8 +195,8 @@ Apply the framework's principles to its own founding architectural decisions —
 3. **Implement the fix** targeting the root cause identified in step 2. For product-specific fixes (step 1), implement targeting the immediate issue.
 
 4. **Meta-fix.** Check the user's product for other manifestations of the same root cause.
-   - **Search scope:** Same-stage artifacts, same module/component as the original fix.
-   - **Fix scope:** No count cap — if 10 instances exist, fix all 10. A high instance count is itself evidence of a systematic gap; note the count in the observation.
+   - **Code blast radius:** Same-stage artifacts, same module/component as the original fix. No count cap — if 10 instances exist, fix all 10. A high instance count is itself evidence of a systematic gap; note the count in the observation.
+   - **Documentation blast radius:** Identify artifacts and docs that describe the behavior you just changed. If any artifact says "X works like this" and you changed how X works, update the artifact. Check `artifact_manifest` in project-state.yaml and `doc-manifest.yaml` for files describing the affected area.
 
 5. **Framework observation.** Capture via `tools/capture-observation.sh` with `--rca-symptom`, `--rca-root-cause`, and `--rca-category` arguments (these are always required — see note below). The observation must be generalized (not product-specific) per standard observation rules in `framework-observations/README.md`.
 
@@ -230,7 +230,7 @@ The Critic is invoked as a separate agent (via Claude Code's Task tool, `subagen
 
 Include these elements in the Task tool prompt:
 
-1. **Role:** "You are the Critic for a Prawduct governance review. Your role is strictly read-only: review, analyze, and record findings. Do NOT edit files, fix issues, run git commands, or make any changes. Report findings — the Orchestrator handles fixes."
+1. **Role and constraints:** "You are the Critic for a Prawduct governance review. Your role is strictly read-only: review, analyze, and record findings. Do NOT edit files, fix issues, create commits, push to remote, or make any changes to the codebase. If you find issues, report them in your findings — the Orchestrator decides what to fix. You must ONLY use Read, Glob, Grep, and Bash (for `tools/record-critic-findings.sh`) tools."
 2. **Instructions source:** "Read `agents/critic/SKILL.md` for your complete check definitions, applicability table, and output format."
 3. **Project context:**
    - Project directory path
@@ -247,7 +247,8 @@ Include these elements in the Task tool prompt:
 Task(subagent_type="general-purpose", prompt="""
 You are the Critic for a Prawduct governance review.
 Your role is strictly read-only: review, analyze, and record findings.
-Do NOT edit files, fix issues, run git commands, or make any changes.
+Do NOT edit files, fix issues, create commits, push to remote, or make
+any changes. Only use Read, Glob, Grep, and Bash (for record-critic-findings.sh).
 
 Read agents/critic/SKILL.md for your complete check definitions, applicability table,
 and output format. Read docs/principles.md for the Hard Rules.

@@ -12,7 +12,8 @@ observations:
     description: "PFR meta_fix_plan identifies code blast radius but not documentation blast radius — doc artifacts describing changed behavior are not prompted for update"
     evidence: "governance-stop.sh observation enforcement fix required updating governance-mechanisms.md (Enforcement Chain 7) and CLAUDE.md (hook comment), but the PFR meta_fix_plan stated 'Only governance-stop.sh needs the check' and the agent completed the code fix without touching docs. User spot-check caught the gap."
     proposed_action: "Add explicit documentation blast radius prompt to PFR meta_fix_plan template or governance-stop.sh doc check: after code fix, prompt agent to identify which artifacts describe the changed behavior. Alternatively, extend Critic Check 5 (Concept Ripple) to check whether edited files are described by any artifact and flag stale descriptions."
-    status: noted
+    status: acted_on
+    resolution: "Added documentation blast radius to PFR step 4 in protocols.md: prompt to check artifact_manifest and doc-manifest for artifacts describing changed behavior (2026-02-20)."
     root_cause_analysis:
       symptom: "Documentation artifacts not updated when governance-stop.sh gained new enforcement chain"
       root_cause: "PFR meta_fix_plan is designed to catch code blast radius (what other files might have the same bug) but has no prompt for documentation blast radius (what artifacts describe the behavior being changed). Documentation freshness is a Critic concern (Check 5 Concept Ripple) but runs after the fact, not during PFR planning."

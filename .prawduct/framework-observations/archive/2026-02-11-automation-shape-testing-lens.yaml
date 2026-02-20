@@ -35,7 +35,8 @@ observations:
     description: "Framework Governance (Critic) self-review by the same author who wrote the changes produced 0 blocking/0 warning findings across a large multi-file change. This may indicate the Critic checks are working correctly for well-planned changes, or it may indicate insufficient adversarial rigor when author and reviewer are the same context."
     evidence: "All 5 Critic checks produced only 'note' severity findings for a change spanning 9 files with a new lens, a new product shape, and 5 new templates. The Critic's mental three-product test was applied but may have been biased by the author's knowledge of the design."
     proposed_action: null
-    status: triaged
+    status: acted_on
+    resolution: "Critic moved to subagent (2026-02-19), providing genuinely independent review. Self-review concern structurally resolved."
 
 skills_affected:
   - "skills/domain-analyzer/SKILL.md"

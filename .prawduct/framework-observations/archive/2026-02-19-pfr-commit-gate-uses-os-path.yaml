@@ -10,7 +10,8 @@ observations:
     severity: warning
     description: "PFR commit gate uses os.path.exists on relative observation_file path. In cross-repo sessions, CWD is product repo so relative path resolves against wrong directory."
     evidence: "commit.py:91 checks os.path.exists(pfr.observation_file) where path is relative .prawduct/framework-observations/... Fails when CWD is worldground."
-    status: noted
+    status: acted_on
+    resolution: "Fixed: commit.py now resolves observation_file against product_dir first, then framework_root as fallback for cross-repo sessions (2026-02-20)."
     root_cause_analysis:
       symptom: "Commit blocked with observation file not found despite file existing"
       root_cause: "os.path.exists uses CWD for relative paths; cross-repo sessions have CWD in product repo but observation in framework repo"

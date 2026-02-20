@@ -12,7 +12,8 @@ observations:
     description: "Entertainment domain overlay in Domain Analyzer lacks structured game design guidance. Game design expertise (difficulty curves, wave design, scoring feel, game states) was contributed successfully but relied on general LLM knowledge rather than framework-guided proactive expertise items."
     evidence: "Domain Analyzer Entertainment overlay has only two items: 'Ask what makes it fun' and 'If competitive: how are disputes handled?' The system contributed difficulty progression, wave design, visual feedback, and game state management proactively, but these weren't surfaced by structured guidance — they came from general game design knowledge."
     proposed_action: "Monitor across future entertainment/game evaluations. If game design expertise contributions are inconsistent, consider adding game-specific proactive expertise items (difficulty curves, game state design, visual feedback/juice, progression systems) while maintaining generality."
-    status: triaged
+    status: acted_on
+    resolution: "Tracked in deferred backlog. Dynamic domain depth (2026-02-13) replaced static overlays, addressing the structural issue. Monitor for recurrence."
 
   - type: applicability
     stage: 3
@@ -36,7 +37,8 @@ observations:
     description: "Building a fully functional real-time game in a simulation evaluation is the most time-intensive eval step. The architecture and test quality can be validated, but gameplay feel, visual rendering quality, and responsive controls cannot be verified without interactive testing."
     evidence: "Builder rubric has 3 criteria marked 'unable to evaluate' (player rendering responsiveness, cross-platform behavior, gameplay feel). These are arguably the most important criteria for a game product — they address whether the product achieves its core goal."
     proposed_action: "Consider adding a rubric annotation for criteria that require interactive evaluation. For simulation evals, these should be flagged as 'requires-interactive' rather than 'unable' so regression tracking can distinguish between simulation limitations and genuine failures."
-    status: triaged
+    status: acted_on
+    resolution: "Tracked in deferred backlog. Agent verification architecture (2026-02-18) will address interactive testing when implemented."
 
   - type: coverage
     stage: 5

@@ -1,0 +1,20 @@
+---
+observation_id: c9ef0022-629f-4d8a-b9b8-91e4dc5ae53c
+timestamp: 2026-02-20T20:37:15Z
+session_type: framework_dev
+session_context:
+  framework_version: 0382938
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Five governance enforcement gaps fixed in batch: (1) commit.py PFR observation_file resolved against product_dir only, failing in cross-repo sessions — added framework_root fallback. (2) Critic Agent Protocol lacked explicit no-commit/no-push constraint — agent committed and pushed during review. (3) PFR new-file detection already fixed in tracker.py but observation was stale. (4) Product file edits in Stage 6 had no Critic enforcement — added stop.py check for 3+ files. (5) PFR meta-fix step missed documentation blast radius — added to protocols.md step 4."
+    evidence: "commit.py:105-116 cross-repo fallback. protocols.md Critic prompt element 1 now includes tool whitelist. tracker.py:118-128 already had git ls-files check. stop.py _check_product_governance gains Stage 6 product edit check. protocols.md PFR step 4 gains doc blast radius."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Five governance enforcement gaps across cross-repo paths, agent scope, stale observations, product file enforcement, and doc blast radius"
+      root_cause: "Governance hooks grew incrementally — each new capability added enforcement for its specific concern without auditing interactions between enforcement points"
+      category: incomplete_coverage
+skills_affected:
+  - "tools/governance/commit.py tools/governance/stop.py skills/orchestrator/protocols.md"
+---

@@ -1,16 +1,16 @@
 ---
 artifact: governance-mechanisms
-version: 4
+version: 5
 depends_on:
   - artifact: pipeline-architecture
   - artifact: configuration-spec
 depended_on_by: []
-last_validated: 2026-02-19
+last_validated: 2026-02-20
 ---
 
 # Governance Mechanisms
 
-<!-- sourced: tools/governance-hook, tools/governance/ (Python module), 2026-02-19 -->
+<!-- sourced: tools/governance-hook, tools/governance/ (Python module), 2026-02-20 -->
 
 This artifact documents how governance is mechanically enforced — the hooks, state files, enforcement chains, and trace system that ensure quality and learning processes actually fire. For *what* is monitored and *why*, see `monitoring-alerting-spec.md` and `docs/self-improvement-architecture.md`. For state file schemas, see `configuration-spec.md`.
 
@@ -151,7 +151,8 @@ Agent attempts to edit existing (git-tracked) file in skills/, tools/, or script
   → Agent makes changes, invokes Critic agent for review, then captures observation
   → Agent sets pfr_state.observation_file to observation path
   → stop.py: checks observation_file is set → allows stop
-  → commit.py: checks observation file exists on disk → allows commit
+  → commit.py: resolves observation file path (product_dir first, framework_root fallback
+    for cross-repo sessions where observations are in the framework repo) → allows commit
 ```
 
 **Gate ensures ordering** (pause before fixing) and prompts for 5-whys structure. **Critic ensures quality** (the whys are substantive, the fix targets the root cause). Each does what it's good at.
@@ -254,7 +255,23 @@ Agent attempts to edit a file outside framework and onboarded products
 
 **Design:** The gate blocks both when governance is active and when it isn't. If Prawduct hooks are running, you're in a Prawduct context — editing unregistered repos should require conscious registration. The git-repo detection (`.git` directory/file walk) is lightweight and cached by directory prefix.
 
-### 10. Investigation Reminder (PostToolUseFailure)
+### 10. Product File Critic Enforcement (Stage 6)
+
+**Purpose:** Ad-hoc product edits in Stage 6 iteration get Critic review — not just structured Stage 5 chunks.
+
+```
+Agent edits product source files during Stage 6 iteration
+  → tracker.py: increments product_files_changed (excludes .prawduct/ state files)
+  → Agent attempts to stop session
+  → stop.py: if current_stage == "iteration" AND product_files_changed >= 3
+      AND no Critic review this session (last_critic_review_chunk is null) → BLOCKS
+  → Agent runs Critic review, Orchestrator sets last_critic_review_chunk
+  → stop.py: Critic review present → allows stop
+```
+
+**Threshold:** 3+ files, matching DCP proportionality. Low-count edits don't require mandatory review.
+
+### 11. Investigation Reminder (PostToolUseFailure)
 
 **Purpose:** When a tool fails unexpectedly, nudge the agent to investigate root cause rather than silently working around it.
 

@@ -10,7 +10,8 @@ observations:
     severity: warning
     description: "Critic background agent committed and pushed code changes instead of only reviewing and recording findings. The Critic Agent Protocol specifies review-only behavior but the agent prompt does not explicitly prohibit making edits or commits."
     evidence: "Agent a891722 created commit f076c4e and pushed to origin during what was supposed to be a review-only task."
-    status: noted
+    status: duplicate
+    resolution: "Duplicate of 2026-02-19-critic-subagent-exceeded-its-review-role.yaml. Same incident, same root cause."
     root_cause_analysis:
       symptom: "Critic agent committed and pushed framework changes during a review task"
       root_cause: "Critic Agent Protocol specifies what to do (review, record findings) but not what NOT to do. The general-purpose subagent has full tool access with no explicit constraints against write operations."

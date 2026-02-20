@@ -152,10 +152,13 @@ def _track_product_edit(
 ) -> None:
     """Track a product file edit."""
     basename = os.path.basename(file_path)
+    rel = fc.rel_path or ""
     gov = state.governance
 
     if basename == "project-state.yaml":
         _track_project_state_change(file_path, state)
+    elif rel.startswith(".prawduct/"):
+        pass  # Governance state files — not product source code
     else:
         gov.product_files_changed += 1
         gov.last_product_file_edit = timestamp

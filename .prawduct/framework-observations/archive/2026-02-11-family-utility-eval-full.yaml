@@ -46,7 +46,8 @@ observations:
     description: "Critic did not flag getWinsLeaderboard as a scope addition during chunk-05 review. The build plan specified 'rankings by total points' for chunk-05, but the Builder added wins leaderboard from the product brief. The Critic should have noted this as a scope expansion even if not blocking."
     evidence: "build_state.spec_compliance shows getWinsLeaderboard implemented. Build plan chunk-05 deliverables: 'Leaderboard component with rankings by total points, filter by game.' The Critic's chunk-05 review did not flag the addition."
     proposed_action: "Review whether the Critic's scope-violation detection is sensitive enough. The Critic should note when a chunk implements more than its deliverables specify, even if the addition is correct per the product brief. This is a traceability concern, not a quality concern."
-    status: triaged
+    status: acted_on
+    resolution: "Tracked in deferred backlog. Critic architecture changed (subagent, 2026-02-19) with strengthened scope checks. Single instance, not recurring."
 
   - type: scenario_design
     stage: 6

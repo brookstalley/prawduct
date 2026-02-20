@@ -102,10 +102,21 @@ def _check_pfr_observation(state: SessionState, ctx: Context) -> CommitDecision:
                 ),
             )
 
-        # Resolve relative paths against product directory
+        # Resolve relative paths: try product directory, then framework root
+        # (cross-repo sessions capture observations in the framework repo)
         obs_path = pfr.observation_file
         if not os.path.isabs(obs_path):
-            obs_path = os.path.join(state.product_dir, obs_path)
+            candidate = os.path.join(state.product_dir, obs_path)
+            if os.path.exists(candidate):
+                obs_path = candidate
+            elif ctx.framework_root:
+                framework_candidate = os.path.join(ctx.framework_root, obs_path)
+                if os.path.exists(framework_candidate):
+                    obs_path = framework_candidate
+                else:
+                    obs_path = candidate  # Use product path for error message
+            else:
+                obs_path = candidate
 
         if not os.path.exists(obs_path):
             return CommitDecision(

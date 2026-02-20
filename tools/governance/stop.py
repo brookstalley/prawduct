@@ -113,7 +113,7 @@ def _check_framework_coverage(
 
 
 def _check_product_governance(state: SessionState, debts: list[str]) -> None:
-    """Chunks without review and overdue checkpoints."""
+    """Chunks without review, overdue checkpoints, and unreviewed product edits."""
     gov = state.governance
     if gov.chunks_completed_without_review > 0 and not gov.retroactive_review_in_progress:
         debts.append(
@@ -122,6 +122,19 @@ def _check_product_governance(state: SessionState, debts: list[str]) -> None:
     if gov.governance_checkpoints_due:
         debts.append(
             f"{len(gov.governance_checkpoints_due)} governance checkpoint(s) overdue"
+        )
+
+    # Stage 6: ad-hoc product edits without Critic review
+    # In Stage 5, chunks have built-in review gates. In Stage 6, ad-hoc edits
+    # need explicit review. Threshold of 3+ files matches DCP proportionality.
+    if (
+        state.current_stage == "iteration"
+        and gov.product_files_changed >= 3
+        and not gov.last_critic_review_chunk
+    ):
+        debts.append(
+            f"{gov.product_files_changed} product file(s) edited without Critic review. "
+            "Run a Critic review before ending the session."
         )
 
 

@@ -1,0 +1,20 @@
+---
+observation_id: 12b02a79-ad9b-4cf9-a6e1-a67ab618b87b
+timestamp: 2026-02-20T20:37:21Z
+session_type: framework_dev
+session_context:
+  framework_version: 0382938
+observations:
+  - type: process_friction
+    stage: 6
+    severity: note
+    description: "PFR evaluation was duplicated across gate/stop/commit with inconsistent cosmetic escape behavior. Extracted shared is_satisfied() method as single source of truth."
+    evidence: "commit.py and stop.py checked pfr.required directly instead of using shared evaluation. Cosmetic escape only worked in gate.py. Fixed by adding PFRState.is_satisfied() to state.py, used by all enforcement points."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Cosmetic PFR escape only worked in gate.py — commit and stop hooks still blocked after valid cosmetic justification"
+      root_cause: "PFR evaluation logic was copy-pasted across 3 enforcement points instead of shared; each copy drifted independently"
+      category: wrong_abstraction
+skills_affected:
+  - "tools/governance/state.py tools/governance/commit.py tools/governance/stop.py"
+---
