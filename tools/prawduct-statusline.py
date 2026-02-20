@@ -522,10 +522,18 @@ def main() -> None:
 
     _save_cache(project_dir, cache)
 
-    # --- Generate output ---
-    alerts = generate_alerts(gov, critic) if is_prawduct else []
+    # --- Activation marker is the authority for session-level data ---
     governance_active = is_prawduct and os.path.isfile(
         os.path.join(prawduct_dir, ".orchestrator-activated"))
+    if not governance_active:
+        # Session files are ephemeral; suppress stale cached data when
+        # the activation marker is absent (e.g., new session before
+        # Orchestrator runs, or between /clear and reactivation).
+        gov = None
+        critic = None
+
+    # --- Generate output ---
+    alerts = generate_alerts(gov, critic) if is_prawduct else []
     line1 = render_line1(project_state, gov, alerts, governance_active) if is_prawduct else None
     line2 = render_line2(model_name, pct, duration_ms, git, lines_added, lines_removed)
 
