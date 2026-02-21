@@ -1,0 +1,22 @@
+---
+observation_id: bd3788e4-1c24-41fd-9e92-8c127d9b6736
+timestamp: 2026-02-20T18:07:42Z
+session_type: framework_dev
+session_context:
+  framework_version: 735a6c0
+observations:
+  - type: coverage
+    stage: 6
+    severity: warning
+    description: "Agent behavioral errors during session initialization have no observation trigger. PFR fires on governance-sensitive file edits, FRP on stage transitions, DCP on multi-file changes. Framework Friction Protocol covers governance friction but is voluntary. When the agent makes errors during startup, no trigger fires."
+    evidence: "Four agent errors in a single session startup (model:haiku, Bash workaround, hallucinated arg, append-mode bug) -- none triggered any observation protocol. User caught them all manually."
+    proposed_action: "Consider making Framework Friction Protocol mechanically triggered -- e.g. governance-tracker detects Bash file creation targeting .prawduct/ paths, or a PostToolUse hook detects Task calls with model parameter set."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Four agent errors during session startup produced zero automatic observations"
+      root_cause: "All observation triggers are event-driven (file edit, stage transition) or voluntary (Framework Friction Protocol). Session initialization is a gap: it involves tool calls and decisions but no governance-sensitive file edits, so no trigger fires."
+      category: missing_detection
+skills_affected:
+  - "skills/orchestrator/protocols.md"
+  - "skills/orchestrator/SKILL.md"
+---

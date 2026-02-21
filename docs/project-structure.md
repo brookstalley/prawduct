@@ -31,11 +31,18 @@ prawduct/
 │   │   ├── stage-6-iteration.md      # Stage 6: Iteration + Directional Change Protocol
 │   │   ├── onboarding.md            # Onboarding Mode: existing codebase → prawduct artifacts
 │   │   ├── migration.md             # Schema Migration: old prawduct versions → current format
-│   │   └── protocols.md              # FRP, PFR, Stage Transition, Expertise Calibration, Critic/Lenses/AG/Triage Agent Protocols
+│   │   ├── observation-contribution.md  # Product repo observation submission flow
+│   │   └── protocols/
+│   │       ├── agent-invocation.md    # Critic, Lenses, Obs Triage, Artifact Generator agent protocols
+│   │       ├── governance.md          # FRP, PFR, Stage Transition, Expertise Calibration, Structural Critique
+│   │       └── stage-prerequisites.md # Per-stage prerequisite checklists
 │   ├── domain-analyzer/SKILL.md       # Product classification, discovery questions, principles
 │   └── builder/SKILL.md               # Code generation: executes build plan chunks, writes tests
 ├── agents/                            # LLM instruction sets spawned as subprocesses via Task tool
-│   ├── critic/SKILL.md                # Context-sensitive governance: invoked as subagent, reads checks from project state
+│   ├── critic/
+│   │   ├── SKILL.md                  # Context-sensitive governance: invoked as subagent, reads checks from project state
+│   │   ├── framework-checks.md       # Checks 7-9 (Generality, Instruction Clarity, Cumulative Health) — framework only
+│   │   └── review-cycle.md           # Product build chunk review lifecycle, output format, recording
 │   ├── review-lenses/SKILL.md         # Five evaluation perspectives: invoked as subagent for prospective artifact review
 │   ├── pattern-extractor/SKILL.md     # Observation pattern analysis: invoked as subagent for systemic trend detection
 │   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency: invoked per-phase as subagent

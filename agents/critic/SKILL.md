@@ -12,7 +12,7 @@ The Critic owns **retrospective** evaluation — it reviews work *after* it's do
 
 This skill is invoked as a **separate agent** (via Claude Code's Task tool). The Orchestrator spawns a Critic agent that reads this file in its own context window. This provides genuinely independent review — the agent hasn't seen the Builder's reasoning or the Orchestrator's decision-making.
 
-The Critic Agent Protocol in `skills/orchestrator/protocols.md` defines when and how this agent is spawned. This file is the Critic agent's complete instruction set — the agent reads it directly from disk.
+The Critic Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md` defines when and how this agent is spawned. This file is the Critic agent's complete instruction set — the agent reads it directly from disk.
 
 ## When You Are Activated
 
@@ -65,19 +65,22 @@ After each chunk, diff the implementation against artifact specifications.
 - **Over-implemented** (code does more than spec requires) → **WARNING**. The Builder should not add features beyond the spec. Remove the excess or justify it.
 
 **What to check:**
-- Data entities match `data-model.md`: field names, types, relationships, constraints, state machines.
-- User flows match `product-brief.md`: the code implements what the flows describe.
-- Security patterns match `security-model.md`: access controls are present where specified.
-- **NFR compliance:** For every NFR in `nonfunctional-requirements.md` that applies to this chunk (via the build plan's NFR-to-chunk mapping), verify: (a) the implementation technique matches the NFR specification — if the NFR says "use connection pooling" and the code opens fresh connections, that's a discrepancy; (b) performance targets have corresponding tests or measurable acceptance criteria, not just assertions that the target is met; (c) constraints that span multiple chunks (e.g., response time budgets across a request pipeline) have their per-chunk contributions tracked. Missing NFR implementation for a chunk that the build plan maps to that NFR → **BLOCKING**. NFR implemented but without verification → **WARNING**.
-- Test scenarios match `test-specifications.md`: every scenario for this chunk has a corresponding test.
-- **Builder recorded spec compliance:** Verify that `build_state.spec_compliance.requirements` contains entries with `chunk_id` matching the current chunk. If not, that is a **WARNING**.
-- **Evidence freshness (cross-chunk):** When this chunk modifies files referenced in prior chunks' spec_compliance evidence entries, spot-check 2-3 of those entries against the current code. Evidence that describes past state rather than current reality (e.g., "ConversationState dataclass" when the code now uses TypedDict) is documentation fiction (HR3) → **WARNING**. The Builder should update stale evidence entries when the underlying code changes.
-- **Process constraint verification:** Verify that all process constraints for active structural characteristics (defined in Artifact Generator's "Structural Amplification Rules for Artifact Generation" section) are satisfied in generated artifacts and implementation. For example: if `runs_unattended` is active, verify every pipeline stage has failure handling; if `has_human_interface` is active, verify all user-facing states are specified.
-- **Accessibility alongside features** (when `has_human_interface` is active): Verify that accessibility requirements are specified alongside features, not deferred to a later phase (HR7). Features delivered without accessibility specifications are a **WARNING**.
-- **Ongoing cost identification** (when `runs_unattended` or `exposes_programmatic_interface` is active): Verify that ongoing operational costs are identified in the operational spec or nonfunctional requirements (HR8). Infrastructure, API calls, storage, and compute costs that appear in the implementation but are absent from specs are a **WARNING**.
-- **Operational readiness** (when `runs_unattended` or `exposes_programmatic_interface` is active): Verify monitoring is implemented (not just specified), failure recovery paths are tested, alerting thresholds are configured, deployment procedure is documented and reproducible. Missing operational implementation for an active operational characteristic is a **WARNING**.
-- **Verification coverage** (when verification infrastructure was opted into): Verify that runtime verification scenarios exist in test specifications, that verification infrastructure is included in the build plan scaffold, and that the Builder's Step 4b was executed for chunks with user-facing deliverables. Missing verification for opted-in products is a **WARNING**.
-- **Dev tooling isolation** (HR10): Verify that verification infrastructure (MCP servers, debug endpoints, test harnesses) is development-only. Check that build/deployment configurations exclude dev tooling. Dev tools accessible in production builds are **BLOCKING**.
+
+| Check | Against | Condition | Severity |
+|-------|---------|-----------|----------|
+| Data entities | `data-model.md` | Fields, types, relationships, constraints, state machines match | BLOCKING if missing |
+| User flows | `product-brief.md` | Code implements described flows | BLOCKING if missing |
+| Security patterns | `security-model.md` | Access controls present where specified | BLOCKING if missing |
+| NFR compliance | `nonfunctional-requirements.md` | (a) technique matches spec, (b) targets have tests/criteria, (c) cross-chunk constraints tracked | BLOCKING if unmapped; WARNING if unverified |
+| Test scenarios | `test-specifications.md` | Every scenario for this chunk has a test | BLOCKING if missing |
+| Builder compliance record | `build_state.spec_compliance` | Entries exist with matching `chunk_id` | WARNING if absent |
+| Evidence freshness | Prior chunks' spec_compliance | Spot-check 2-3 entries when this chunk modifies referenced files; stale evidence = HR3 | WARNING |
+| Process constraints | Structural amplification rules | Active characteristic constraints satisfied (e.g., `runs_unattended` → failure handling) | WARNING |
+| Accessibility | `has_human_interface` active | A11y requirements alongside features, not deferred (HR7) | WARNING |
+| Ongoing costs | `runs_unattended`/`exposes_programmatic_interface` | Operational costs identified in specs (HR8) | WARNING |
+| Operational readiness | `runs_unattended`/`exposes_programmatic_interface` | Monitoring implemented, recovery tested, alerting configured, deploy documented | WARNING |
+| Verification coverage | Verification opted in | Runtime scenarios exist, infra in scaffold, Builder Step 4b executed | WARNING |
+| Dev tooling isolation | HR10 | Verification infra is dev-only; excluded from production builds | BLOCKING |
 
 ### Check 2: Test Integrity
 
@@ -135,12 +138,14 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 
 **For skill/instruction changes:** Does this change maintain the skill's internal logic and its contracts with other skills?
 
-- If the Orchestrator's stage transition prerequisites change, do the skills that populate those fields still align?
-- If a discovery question changes, does the artifact generator still have the information it needs?
-- If a principle changes, do the skills that reference it still comply?
-- If a skill declares dependency structures (artifact dependency chains, stage ordering, risk levels), do those structures actually influence the skill's process behavior? Inert structure is a subtle form of documentation fiction (HR3).
-- When CLAUDE.md is modified or when new files are added, verify that CLAUDE.md's project structure tree includes all files that actually exist (and doesn't list files that don't).
-- When README.md or other external-facing documentation is modified, verify that capability claims match what the framework actually implements. Cross-reference assertions about features against the skills, templates, and tools on disk. **Proactive check:** When reviewing directional changes that modify vocabulary, project layout, or structural characteristics, verify README.md still uses current terminology and describes the current layout — README drifts silently because it's human-facing and the framework doesn't read it during normal operation.
+| If changed... | Then verify... |
+|--------------|----------------|
+| Stage transition prerequisites | Skills populating those fields still align |
+| Discovery questions | Artifact generator still has needed information |
+| Principles | Referencing skills still comply |
+| Dependency structures | Structures actually influence process behavior (inert structure = HR3) |
+| CLAUDE.md or new files added | Project structure tree matches actual files on disk |
+| README.md or external docs | Capability claims match implementation; vocabulary is current (README drifts silently) |
 
 **Artifact freshness (DCP enhancement/structural):** When reviewing changes under an active DCP, verify that `directional_change.artifacts_verified` in `.prawduct/.session-governance.json` is non-empty. Read each listed artifact and confirm it still describes current behavior — don't trust the list at face value. If the changes modified hooks, tools, or governance mechanics, check artifacts that describe those systems (configuration-spec, failure-recovery-spec, operational-spec, api-contract, monitoring-alerting-spec, pipeline-architecture). If the changes modified skills, check artifacts that describe skill interaction (api-contract, pipeline-architecture). Missing or stale artifacts in `artifacts_verified` → **warning**. Empty `artifacts_verified` with an active DCP → **blocking** (the DCP protocol requires this step).
 
@@ -178,62 +183,11 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - Terminal mode without reflection step → **warning**
 - Change that may benefit from a new eval scenario → **note**
 
-### Check 7: Generality
+### Checks 7-9: Framework-Only (Generality, Instruction Clarity, Cumulative Health)
 
-**Applies:** When reviewing skill files, template files, or framework structural decisions. Also applies when `classification.domain_characteristics` indicates an LLM instruction framework.
+**Applies:** When reviewing skill files, template files, or framework structural decisions. Product builds that don't modify framework files skip these entirely.
 
-**Principle:** Generality Over Enumeration (`docs/principles.md`)
-
-**Ask:** Does this change work for products the framework has never seen?
-
-- If a modification adds a specific concern as an enumerated item rather than strengthening the dynamic generation system, it fails this check.
-- If a modification strengthens a general principle or structural amplification rule so the LLM naturally surfaces the concern for any relevant product, it passes.
-- **Test:** Mentally apply the modified skill to three very different products. Does the modification help with all three, or only the product that triggered it?
-- **Plan-level generality:** When reviewing design plans, working notes, or proposed approaches (not just skill file changes): mentally apply the planned approach to three very different products (e.g., a web app, a CLI tool, and firmware). Does the approach help all three, or does it assume one product type? Plans that name a specific technology as *the* solution where a general principle would serve better fail this check — the technology should be positioned as one implementation of the general principle.
-
-**Severity guide:**
-- Enumerated concern that doesn't generalize → **blocking**
-- Plan that assumes one product type where a general principle would serve better → **warning**
-- General principle worded to favor one product type → **warning**
-- Slight specificity that doesn't harm generality → **note**
-
-### Check 8: Instruction Clarity
-
-**Applies:** When reviewing skill files (files that contain LLM instructions).
-
-**Principle:** Skills are LLM instructions, not descriptions.
-
-**Ask:** Would an LLM following these instructions produce the intended behavior?
-
-- Instructions should be imperative ("do X") not descriptive ("the system does X").
-- Instructions should be unambiguous — if two reasonable LLMs might interpret differently with meaningfully different outputs, it's unclear.
-- Instructions should not contradict each other within or across skills.
-- Check for S1 violations (multi-level conditionals in prose), S2 violations (subjective thresholds without concrete definitions), and S6 violations (unresolved contradictions).
-
-**Severity guide:**
-- Ambiguous instruction that could produce wrong behavior → **warning**
-- Structural standard violation (S1, S2, S6) → **warning**
-- Slightly unclear wording, unlikely to cause problems → **note**
-
-### Check 9: Cumulative Health
-
-**Applies:** When reviewing skill files (substantial modifications, not typos/formatting).
-
-**Principle:** Skills accumulate changes. Individual changes may each be sound, but their aggregate can degrade instruction quality.
-
-**Ask:** Is this skill, as a whole, still clear, proportionate, and internally consistent?
-
-**What to evaluate:**
-- **Length proportionality:** Is the skill proportionate to its responsibility?
-- **Voice consistency:** Are instructions consistently imperative throughout?
-- **Structural clarity:** Are conditions and decisions easy to scan?
-- **Cross-section consistency:** Do different sections contradict each other?
-
-**Severity guide:**
-- Sections contradict each other → **warning**
-- Key instructions buried in paragraphs → **warning**
-- Voice inconsistency within the same section → **note**
-- Overall length growing without clear justification → **note**
+Read `agents/critic/framework-checks.md` for the complete check definitions. The applicability table above shows when each applies.
 
 ## Output Format
 
@@ -263,89 +217,11 @@ If there are no findings, say so explicitly: "No issues found. Changes maintain 
 
 **Record findings for the governance gate:** After completing your review, run `tools/record-critic-findings.sh` with your results. The governance gate (`governance-gate.sh`, PreToolUse hook) blocks product file edits when chunks are completed without Critic review — recording findings resets this counter. The commit gate (`critic-gate.sh`) also verifies structured findings exist. Without recording, both gates will block. Pass all reviewed files via `--files` and one `--check` per applicable Critic check with its severity and a one-sentence summary.
 
-## Review Cycle (Product Builds)
+## Review Cycle
 
-1. Builder marks chunk status as "review" in `project-state.yaml`.
-2. Critic runs all applicable checks: Spec Compliance → Test Integrity → Scope Discipline → (others as applicable).
-3. **If BLOCKING findings exist:**
-   - Builder fixes the issues.
-   - Critic re-reviews — specifically watching for **fix-by-fudging**:
-     - Weakening a test to make it pass instead of fixing the code → **BLOCKING**
-     - Changing a spec to match wrong implementation instead of fixing the code → **BLOCKING**
-     - Adding a workaround instead of addressing root cause → **WARNING**
-   - Repeat until no blocking findings remain.
-4. **Record findings in project state.** This step is mandatory for every chunk, regardless of whether findings exist. Update `project-state.yaml` → `build_state.reviews` with findings from this review cycle (see Recording Reviews below).
-5. **If no BLOCKING findings:** chunk status → "complete", proceed to next chunk.
+**Product builds:** Read `agents/critic/review-cycle.md` for the per-chunk lifecycle (Builder → Critic → fix-by-fudging watch → recording), directional change review, per-chunk output format, and mandatory review recording.
 
-### Directional Change Review
-
-This review is invoked by the Orchestrator after all chunks from a directional change are complete — not after each individual chunk (per-chunk checks still apply during the build).
-
-**When to invoke:** The Orchestrator's Directional Change Protocol invokes this after implementation and before the retrospective.
-
-**What to check:**
-
-- **Artifact consistency:** Were all affected artifacts updated before building? If implementation references stale artifact content → **BLOCKING**.
-- **Retrospective completeness:** Did the Orchestrator run the post-shift retrospective? If missing → **WARNING**.
-- **Observation capture:** Were substantive findings captured as observations? If the retrospective identified gaps but no observations created → **WARNING**.
-- **Regression check:** Do pre-existing tests still pass? → **BLOCKING** if violated (HR1: No Test Corruption).
-
-### Per-Chunk Output Format
-
-```
-## Governance Review — Chunk [ID]: [Name]
-
-### Spec Compliance
-[Checklist table]
-
-### Test Integrity
-- Test count: [before] → [after] [PASS/FAIL]
-- Test files deleted: [none / list] [PASS/FAIL]
-- New tests added: [count] [PASS/WARNING]
-- Behavior vs. implementation testing: [assessment]
-- Error case coverage: [assessment]
-
-### Scope Discipline
-- Unlisted dependencies: [none / list]
-- Unspecified patterns: [none / list]
-- Extra functionality: [none / list]
-
-### Findings
-
-#### [Finding Name]
-**Check:** [Check Name]
-**Severity:** blocking | warning | note
-**Description:** [Specific observation]
-**Recommendation:** [What the Builder should do]
-
-### Summary
-[Total findings by severity. Whether the chunk passes review.]
-```
-
-### Recording Reviews — MANDATORY
-
-**Every review cycle must produce a `build_state.reviews` entry.** This is not optional — governance without an audit trail violates HR3 (No Documentation Fiction).
-
-After each review cycle, update `project-state.yaml` → `build_state.reviews` with:
-```yaml
-- chunk_id: "[current chunk]"
-  findings:
-    - description: "[finding]"
-      severity: blocking | warning | note
-      status: open | resolved | deferred
-```
-
-**When no findings exist**, record an empty-findings entry:
-```yaml
-- chunk_id: "[current chunk]"
-  findings: []
-```
-
-**Verification:** After recording, confirm that `build_state.reviews` contains an entry for the current chunk before proceeding.
-
-### Framework Review
-
-Framework changes follow the same check application logic (use the applicability table above) but without the chunk status lifecycle. The Critic reviews all edited files in the session, records findings via `tools/record-critic-findings.sh`, and the commit gate validates coverage. There is no chunk-to-review status transition — the review happens once after all modifications are complete and before committing.
+**Framework changes:** Same check application logic (use the applicability table above) but without the chunk status lifecycle. Review all edited files, record findings via `tools/record-critic-findings.sh`, commit gate validates coverage. One review after all modifications, before committing.
 
 ## Extending This Skill
 

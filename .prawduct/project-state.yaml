@@ -75,6 +75,11 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
+  - what: 'Token discipline: split protocols.md into focused files, tighten main-context files and Critic SKILL.md'
+    why: 'protocols.md (35KB) loaded entirely when any single protocol needed — Critic spawn loads 4KB but was forced to read 35KB. Root cause: Orchestrator decomposition grouped by authoring locality rather than load-time access patterns. Split into protocols/agent-invocation.md (13KB, agent spawns), protocols/governance.md (18KB, PFR/FRP/transitions), protocols/stage-prerequisites.md (3KB, transitions). Also tightened CLAUDE.md (-938B), SKILL.md (-1822B), stage-6-iteration.md (-2360B), and Critic SKILL.md (-9139B) by extracting product-only sections and converting prose to tables.'
+    blast_radius: 'skills/orchestrator/protocols/ (3 new), skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, skills/orchestrator/stage-5-build.md, skills/orchestrator/stages-0-2.md, skills/orchestrator/stages-3-4.md, skills/orchestrator/onboarding.md, skills/orchestrator/observation-contribution.md (new), CLAUDE.md, agents/critic/SKILL.md, agents/critic/framework-checks.md (new), agents/critic/review-cycle.md (new), agents/artifact-generator/SKILL.md, agents/review-lenses/SKILL.md, docs/project-structure.md, docs/self-improvement-architecture.md, tools/governance/__main__.py, tools/critic-reminder.sh, tools/governance/commit.py, tools/governance/reinject.py'
+    classification: enhancement
+    date: 2026-02-20
   - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-19)'
     why: '1 cosmetic, 1 enhancement covering: Summary: 2 entries compacted (2026-02-19 to 2026-02-19); Document docs/ vs .prawduct/artifacts/
       distinction in high-level-design.md, c...'
@@ -663,4 +668,8 @@ deprecated_terms:
     replacement: "agents/artifact-generator/"
     removed_date: 2026-02-20
     patterns: ["skills/artifact-generator/"]
+  - term: "protocols.md"
+    replacement: "protocols/agent-invocation.md, protocols/governance.md, protocols/stage-prerequisites.md"
+    removed_date: 2026-02-20
+    patterns: ["skills/orchestrator/protocols\\.md"]
   # .active-product reinstated as cross-repo pointer mechanism (2026-02-20)
