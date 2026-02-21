@@ -40,9 +40,14 @@ def validate(
 ) -> StopDecision:
     """Check all session-end governance requirements.
 
-    Validates only the session-level governance state (from CLAUDE_PROJECT_DIR).
-    Does NOT check cross-repo product state — each repo's agent manages its
-    own governance debt independently.
+    Validates session-level governance state (from CLAUDE_PROJECT_DIR).
+    Does NOT follow the .active-product pointer — the pointer is shared
+    between concurrent sessions, so following it would expose stop to
+    another session's governance debt. In cross-repo sessions this means
+    the stop hook only sees framework-level debt (edits to framework files
+    from this CLAUDE_PROJECT_DIR), not product-level debt (which lives in
+    the product's .prawduct/). This is a known limitation; proper fix
+    requires per-session state isolation.
 
     Args:
         hook_input: Hook JSON (may contain stop_hook_active flag).
@@ -272,7 +277,3 @@ def _check_observation_gaps(
     except (OSError, json.JSONDecodeError):
         pass  # Never block on file read failure
 
-
-    # NOTE: No cross-repo product checks. Each repo's agent manages its own
-    # governance debt. The stop hook only validates the session-level state
-    # (CLAUDE_PROJECT_DIR). Product repos have their own hooks and agents.

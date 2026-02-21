@@ -1,0 +1,20 @@
+---
+observation_id: ecd5d330-241a-43a4-a7e8-7470579b66f9
+timestamp: 2026-02-21T19:31:10Z
+session_type: framework_dev
+session_context:
+  framework_version: 9b345cb
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Gate cross-validation creates chicken-and-egg during cross-repo bootstrap: _check_activation requires .session-governance.json to exist, but step 4 IS the creation of that file. Agents using Write (not Bash) hit this every time."
+    evidence: "Cross-repo worldground session: Write to .session-governance.json blocked twice with 'Activation marker exists but session state is missing (HR9)' before agent fell back to Bash."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Gate blocks creation of .session-governance.json during Orchestrator step 4"
+      root_cause: "Anti-spoofing cross-validation in _check_activation has no bootstrap exemption for the step3-to-step4 window"
+      category: incomplete_coverage
+skills_affected:
+  - "tools/governance/gate.py"
+---

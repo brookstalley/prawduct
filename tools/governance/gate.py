@@ -103,6 +103,17 @@ def _check_edit(
         tr.event(state, "gate_check", {"rule": "governed", "file": fc.rel_path or file_path, "result": "ungoverned"})
         return Decision(allowed=True)
 
+    # Bootstrap exemption: allow creating the session-governance file when
+    # the activation marker is valid but the session file doesn't exist yet.
+    # This is the Orchestrator's step 3→4 window: step 3 writes the marker,
+    # step 4 creates the session file. Without this, step 4 is blocked by
+    # _check_activation's cross-validation (chicken-and-egg). No new attack
+    # surface — agents that can Bash-write the marker can already Bash-write
+    # the session file, bypassing the gate entirely.
+    if _is_bootstrap_session_write(file_path, ctx):
+        tr.event(state, "gate_check", {"rule": "bootstrap_session_file", "file": file_path, "result": "allow"})
+        return Decision(allowed=True)
+
     # 1. Activation gate
     result = _check_activation(ctx, state, rule_name="edit_activation")
     if not result.allowed:
@@ -126,6 +137,34 @@ def _check_edit(
 
     tr.event(state, "gate_check", {"rule": "edit", "file": fc.rel_path, "result": "allow"})
     return Decision(allowed=True)
+
+
+def _is_bootstrap_session_write(file_path: str, ctx: Context) -> bool:
+    """Check if this is a bootstrap write to the session-governance file.
+
+    During Orchestrator step 4, the session file is created for the first
+    time. The activation marker (step 3) is valid but the session file
+    doesn't exist yet. This function detects that exact window so the
+    gate can allow the write without hitting the cross-validation check.
+
+    Returns True only when ALL conditions hold:
+    - The file being written IS the session-governance file
+    - The activation marker is valid (step 3 completed)
+    - The session file doesn't exist yet (this is the initial creation)
+    """
+    try:
+        if os.path.realpath(file_path) != os.path.realpath(ctx.session_file):
+            return False
+    except (OSError, ValueError):
+        return False
+
+    if _validate_marker(ctx.activation_marker) != "ok":
+        return False
+
+    if os.path.isfile(ctx.session_file):
+        return False  # File already exists — not a bootstrap write
+
+    return True
 
 
 def _is_governance_active(ctx: Context) -> bool:

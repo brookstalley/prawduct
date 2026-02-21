@@ -7,8 +7,10 @@ critic-gate.sh. Resolves framework root, prawduct dir, and repo root.
 Active-product pointer: In cross-repo sessions (framework hooks managing a
 separate product repo), gate/track write an .active-product pointer file
 so they resolve the correct product directory per-file. Stop/commit/prompt
-do NOT follow the pointer — they validate session-level governance state.
-The pointer is cleaned up on session restart.
+do NOT follow the pointer — the pointer is shared between concurrent
+sessions from the same CLAUDE_PROJECT_DIR, so following it would expose
+stop/commit to another session's governance debt. The pointer is cleaned
+up on session restart.
 """
 
 from __future__ import annotations
@@ -135,10 +137,10 @@ def update_product_context(file_path: str, ctx: Context) -> Context:
         return ctx  # No change
 
     # Cross-repo: write pointer and return updated context.
-    # The session prawduct_dir (where the pointer lives) is derived from
-    # CLAUDE_PROJECT_DIR — which is always the framework repo in cross-repo
-    # sessions. We need the *original* session dir, not the already-redirected
-    # ctx.prawduct_dir (which may have been updated by a previous pointer read).
+    # The pointer lives in the session-level .prawduct/ (from CLAUDE_PROJECT_DIR).
+    # CLAUDE_PROJECT_DIR is the framework repo when starting from prawduct, or
+    # the product repo when starting from the product. We need the *original*
+    # session dir, not the already-redirected ctx.prawduct_dir.
     session_prawduct_dir = os.path.join(
         os.environ.get("CLAUDE_PROJECT_DIR", ctx.framework_root), ".prawduct"
     )
@@ -166,8 +168,9 @@ def resolve(
             GOVERNANCE_FRAMEWORK_ROOT env var (set by hook shims).
         follow_pointer: Whether to follow the .active-product pointer.
             True for gate/track (need product context for the file being
-            edited). False for stop/commit/prompt (validate session-level
-            state, not a cross-repo product's state).
+            edited). False for stop/commit/prompt — the pointer is shared
+            between concurrent sessions, so following it would expose these
+            hooks to another session's governance debt.
 
     Returns:
         Context with all resolved paths.
@@ -191,10 +194,9 @@ def resolve(
 
     # Follow active-product pointer if present and requested.
     # Gate/track follow the pointer to resolve per-file product context.
-    # Stop/commit/prompt do NOT follow — they validate the session's own
-    # governance state. Following the pointer causes stop to check a
-    # different repo's DCP/PFR state, blocking the session with another
-    # repo's governance debt.
+    # Stop/commit/prompt do NOT follow — the pointer is shared between
+    # concurrent sessions from the same CLAUDE_PROJECT_DIR, so following
+    # it would expose stop/commit to another session's governance debt.
     if follow_pointer:
         pointer_path = _active_product_path(prawduct_dir)
         if os.path.isfile(pointer_path):

@@ -104,15 +104,15 @@ def get_prawduct_hooks() -> dict:
     return {
         "SessionStart": [
             {
-                "matcher": "clear|startup",
+                "matcher": "clear",
                 "hooks": [
                     {
                         "type": "command",
                         "command": (
                             # Clean session files from both the active product (if pointer
-                            # exists) and the session-level dir (CLAUDE_PROJECT_DIR). This
-                            # handles the common case where CLAUDE_PROJECT_DIR is the framework
-                            # repo, not the product repo.
+                            # exists) and the session-level dir (CLAUDE_PROJECT_DIR). Only
+                            # on /clear, NOT on startup — startup cleanup destroys concurrent
+                            # sessions' state when they share the same CLAUDE_PROJECT_DIR.
                             'PROD=$(cat "$CLAUDE_PROJECT_DIR/.prawduct/.active-product" 2>/dev/null); '
                             'if [ -n "$PROD" ] && [ -d "$PROD" ]; then '
                             'rm -f "$PROD/.orchestrator-activated" '

@@ -71,10 +71,12 @@ def main() -> NoReturn:
         # Standard hook commands: read JSON from stdin, load state
         hook_input = _read_hook_json()
 
-        # Stop/commit validate session-level state — they must NOT follow
-        # the .active-product pointer, which may point to a different repo
-        # with its own governance debt. Gate/track follow the pointer to
-        # resolve the correct product for the file being edited.
+        # Stop/commit must NOT follow the .active-product pointer. The pointer
+        # is shared between concurrent sessions from the same CLAUDE_PROJECT_DIR,
+        # so following it would expose stop/commit to another session's governance
+        # debt. Gate/track follow the pointer (and also call update_product_context)
+        # because they operate per-file — they need the correct product context
+        # for classification and state tracking.
         session_level = command in ("stop", "commit")
         try:
             ctx = resolve(framework_root=root, follow_pointer=not session_level)

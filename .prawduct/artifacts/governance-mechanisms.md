@@ -44,8 +44,8 @@ In cross-repo sessions (framework hooks managing a separate product repo), `cont
 1. `__main__.py` calls `update_product_context(file_path, ctx)` for gate/track commands
 2. `update_product_context()` resolves the product from the file's git root (via `resolve_product_for_file()`)
 3. If the product differs from the session-level dir, it writes `.prawduct/.active-product` with the product's `.prawduct/` path
-4. `resolve(follow_pointer=True)` (gate/track) reads the pointer to get product context; `resolve(follow_pointer=False)` (stop/commit/prompt) ignores it — each repo's agent manages its own governance debt independently
-5. `.active-product` is cleaned up on session restart (`SessionStart clear|startup` hook); SessionStart also cleans the pointed-to product's session files before clearing the pointer
+4. `resolve(follow_pointer=True)` (gate/track) reads the pointer to get product context; `resolve(follow_pointer=False)` (stop/commit/prompt) ignores it — the pointer is shared between concurrent sessions so stop/commit cannot safely follow it
+5. `.active-product` is cleaned up on explicit `/clear` (`SessionStart clear` hook); SessionStart also cleans the pointed-to product's session files before clearing the pointer. Cleanup does NOT fire on `startup` to avoid destroying concurrent sessions' state
 
 **Self-hosted/same-repo:** No pointer is written (resolve_product_for_file returns the same dir). No change in behavior.
 

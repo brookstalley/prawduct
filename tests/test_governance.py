@@ -698,6 +698,97 @@ class TestGate:
         if result.allowed is False:
             assert "chunk" in result.reason.lower() or "review" in result.reason.lower()
 
+    def test_bootstrap_session_write_allowed(self, tmp_path):
+        """Writing .session-governance.json is allowed when marker is valid but session file doesn't exist."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+        (product / ".git").mkdir()
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        # Context points to product (as update_product_context would resolve)
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(product_prawduct),
+            repo_root=str(fw),
+        )
+
+        # Write a valid activation marker (step 3)
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(ctx.activation_marker, "w") as f:
+            f.write(f"{ts} praw-active")
+
+        # No session file exists yet — this is the bootstrap window
+        assert not os.path.isfile(ctx.session_file)
+
+        # Gate should allow writing the session file
+        state = SessionState.load(ctx.session_file)
+        result = check(
+            {"tool_name": "Write", "tool_input": {"file_path": ctx.session_file}},
+            ctx,
+            state,
+        )
+        assert result.allowed is True
+
+    def test_bootstrap_exemption_not_for_other_files(self, tmp_path):
+        """Bootstrap exemption only applies to the session-governance file, not other product files."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+        (product / ".git").mkdir()
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(product_prawduct),
+            repo_root=str(fw),
+        )
+
+        # Write a valid activation marker
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(ctx.activation_marker, "w") as f:
+            f.write(f"{ts} praw-active")
+
+        # No session file — but trying to write a different product file
+        state = SessionState.load(ctx.session_file)
+        other_file = str(product / "src" / "app.py")
+        result = check(
+            {"tool_name": "Write", "tool_input": {"file_path": other_file}},
+            ctx,
+            state,
+        )
+        # Should be blocked — activation cross-validation fails for non-session files
+        assert result.allowed is False
+        assert "session state" in result.reason.lower()
+
+    def test_bootstrap_exemption_not_when_session_exists(self, activated_context, session_file):
+        """Once session file exists, no bootstrap exemption — normal gate applies."""
+        # session_file fixture already created the file
+        state = SessionState.load(session_file)
+        result = check(
+            {"tool_name": "Write", "tool_input": {"file_path": activated_context.session_file}},
+            activated_context,
+            state,
+        )
+        # Should be allowed via normal path (activation + session valid)
+        assert result.allowed is True
+
     def test_chunk_review_exempts_project_state(self, activated_context, session_file):
         """project-state.yaml exempt from chunk review gate."""
         state = SessionState.load(session_file)
@@ -911,6 +1002,58 @@ class TestStop:
         result = validate({}, tmp_context, state)
         assert result.allowed is False
         assert any("chunk" in d for d in result.debts)
+
+    def test_cross_repo_stop_ignores_product_pointer(self, tmp_path):
+        """Stop hook does NOT follow pointer — avoids concurrent session contamination.
+
+        The .active-product pointer is shared between concurrent sessions from
+        the same CLAUDE_PROJECT_DIR. Stop must not follow it, or it would see
+        another session's governance debt. Instead, stop checks session-level
+        state only (from CLAUDE_PROJECT_DIR/.prawduct/).
+        """
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+
+        # Simulate pointer written by ANOTHER concurrent session
+        pointer_path = fw_prawduct / ".active-product"
+        pointer_path.write_text(str(product_prawduct))
+
+        # Product has governance debt from the other session
+        product_session = product_prawduct / ".session-governance.json"
+        session_data = {
+            "schema_version": 2,
+            "product_dir": str(product),
+            "product_output_dir": str(product_prawduct),
+            "current_stage": "building",
+            "session_started": now_iso(),
+            "framework_edits": {"files": [{"path": "tools/test.py"}], "total_edits": 1},
+            "governance_state": {
+                "chunks_completed_without_review": 2,
+                "observations_captured_this_session": 0,
+            },
+            "directional_change": {"active": False, "needs_classification": False},
+            "pfr_state": {"required": False, "rca": ""},
+        }
+        with open(product_session, "w") as f:
+            json.dump(session_data, f)
+
+        # Stop resolves with follow_pointer=False — stays at session level
+        with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
+            ctx = resolve(framework_root=str(fw), follow_pointer=False)
+            # Should stay at framework's prawduct dir, NOT follow pointer
+            assert ctx.prawduct_dir == str(fw_prawduct)
+
+        # Session-level has no state → stop allows (no contamination)
+        state = SessionState.load(ctx.session_file)
+        result = validate({}, ctx, state)
+        assert result.allowed is True
 
 
 # ---------------------------------------------------------------------------
