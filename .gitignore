@@ -4,7 +4,6 @@
 .prawduct/.lens-findings.json
 .prawduct/.pattern-report.json
 .prawduct/.session-edits.json
-.prawduct/.active-product
 .prawduct/.active-products/
 .prawduct/.session.lock
 .prawduct/.orchestrator-activated

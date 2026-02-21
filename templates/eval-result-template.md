@@ -24,7 +24,7 @@ result:
     C5_project_state: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
     end_to_end: { pass: 0, partial: 0, fail: 0, deferred: 0, unable: 0 }
 skills_updated: []                     # List of modified skill files with brief change description
-                                       # Example: { file: "skills/review-lenses/SKILL.md", change: "Made accessibility evaluation mandatory for UI apps" }
+                                       # Example: { file: "agents/review-lenses/SKILL.md", change: "Made accessibility evaluation mandatory for UI apps" }
 notes: ""                              # Free-form observations, limitations, context
 ---
 

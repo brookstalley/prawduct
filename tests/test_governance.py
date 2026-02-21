@@ -1518,6 +1518,39 @@ class TestProductRegistry:
         products = enumerate_active_products(session_dir)
         assert len(products) == 0
 
+    def test_enumerate_min_timestamp_filters_old_registrations(self, tmp_path):
+        """Products registered before min_timestamp are excluded."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        old_product = str(tmp_path / "old" / ".prawduct")
+        new_product = str(tmp_path / "new" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(old_product, exist_ok=True)
+        os.makedirs(new_product, exist_ok=True)
+
+        products_dir = _active_products_dir(session_dir)
+        os.makedirs(products_dir, exist_ok=True)
+
+        midpoint = time.time() - 3600  # 1 hour ago
+
+        # Old product: registered before midpoint
+        h_old = _product_hash(old_product)
+        with open(os.path.join(products_dir, h_old), "w") as f:
+            f.write(f"{os.path.realpath(old_product)}\n{midpoint - 100}\n")
+
+        # New product: registered after midpoint
+        h_new = _product_hash(new_product)
+        with open(os.path.join(products_dir, h_new), "w") as f:
+            f.write(f"{os.path.realpath(new_product)}\n{midpoint + 100}\n")
+
+        # Without filter: both returned
+        all_products = enumerate_active_products(session_dir)
+        assert len(all_products) == 2
+
+        # With filter: only new product returned
+        filtered = enumerate_active_products(session_dir, min_timestamp=midpoint)
+        assert len(filtered) == 1
+        assert filtered[0] == os.path.realpath(new_product)
+
     def test_enumerate_skips_missing_dirs(self, tmp_path):
         """Nonexistent product paths are filtered out."""
         session_dir = str(tmp_path / "session" / ".prawduct")

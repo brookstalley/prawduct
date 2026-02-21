@@ -372,11 +372,11 @@ This process transforms evaluation observations into framework improvements. Bas
 
 **Decision**: Update skill immediately (hard failure of must-do criterion).
 
-**Skill update**: Modified `skills/review-lenses/SKILL.md` — Design Lens now explicitly evaluates accessibility for all UI applications, ensuring it appears as a finding (not just in project-state).
+**Skill update**: Modified `agents/review-lenses/SKILL.md` — Design Lens now explicitly evaluates accessibility for all UI applications, ensuring it appears as a finding (not just in project-state).
 
 **Commit message**: "Fix accessibility evaluation gap found in family-utility eval: Design Lens must explicitly evaluate accessibility for UI apps. See eval-history/family-utility-2026-02-10.md Issue 1"
 
-**Provenance**: Updated `skills_updated` field in eval result with: `{ file: "skills/review-lenses/SKILL.md", change: "Made accessibility evaluation mandatory for UI apps" }`
+**Provenance**: Updated `skills_updated` field in eval result with: `{ file: "agents/review-lenses/SKILL.md", change: "Made accessibility evaluation mandatory for UI apps" }`
 
 ---
 
