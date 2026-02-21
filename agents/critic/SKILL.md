@@ -43,6 +43,7 @@ Apply these checks based on context. Each check is a thinking principle, not a m
 | Generality | When `classification.domain_characteristics` includes LLM instruction framework characteristics, or when reviewing skill/template files |
 | Instruction Clarity | When reviewing skill files (files that contain LLM instructions) |
 | Cumulative Health | When reviewing skill files (substantial modifications, not typos) |
+| Pipeline Coverage | When adding new artifact templates, discovery dimensions, Critic checks, or Review Lenses |
 
 ### Check 1: Spec Compliance
 
@@ -184,7 +185,7 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 - Terminal mode without reflection step → **warning**
 - Change that may benefit from a new eval scenario → **note**
 
-### Checks 7-9: Framework-Only (Generality, Instruction Clarity, Cumulative Health)
+### Checks 7-10: Framework-Only (Generality, Instruction Clarity, Cumulative Health, Pipeline Coverage)
 
 **Applies:** When reviewing skill files, template files, or framework structural decisions. Product builds that don't modify framework files skip these entirely.
 
@@ -226,7 +227,7 @@ If there are no findings, say so explicitly: "No issues found. Changes maintain 
 
 ## Extending This Skill
 
-**Prefer strengthening existing checks over adding new enumerated sub-components.** The 9 checks are general-purpose — when a new concern surfaces, first ask whether an existing check can absorb it by expanding its scope. Architectural consistency is part of Coherence (Check 5), not a separate checker. Operational readiness is part of Spec Compliance (Check 1), not a separate checker. Documentation integrity is part of Scope Discipline (Check 3), not a separate checker. New checks should only be added when a concern is genuinely orthogonal to all existing checks.
+**Prefer strengthening existing checks over adding new enumerated sub-components.** The 10 checks are general-purpose — when a new concern surfaces, first ask whether an existing check can absorb it by expanding its scope. Architectural consistency is part of Coherence (Check 5), not a separate checker. Operational readiness is part of Spec Compliance (Check 1), not a separate checker. Documentation integrity is part of Scope Discipline (Check 3), not a separate checker. New checks should only be added when a concern is genuinely orthogonal to all existing checks.
 
 When strengthening an existing check:
 1. Add the new concern to the check's "What to check" or description section.

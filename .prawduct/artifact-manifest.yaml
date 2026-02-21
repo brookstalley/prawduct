@@ -245,6 +245,14 @@ artifact_manifest:
       last_validated: 2026-02-19
       tier: 1
       notes: "Added retroactive_review_in_progress field, dcp-update.sh tool reference"
+    - name: cross-cutting-concerns-registry
+      file_path: .prawduct/artifacts/cross-cutting-concerns-registry.md
+      version: 1
+      depends_on: [product-brief, test-specifications]
+      depended_on_by: []
+      last_validated: 2026-02-21
+      tier: 1
+      notes: "Pipeline coverage tracking for cross-cutting concerns"
 
   # --- Evaluation scenarios ---
   test_specs:

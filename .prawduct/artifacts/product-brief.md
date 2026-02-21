@@ -90,7 +90,7 @@ Framework development follows the same Orchestrator process → observations cap
 - Five structural characteristics plus dynamic domain-specific depth
 - Full stage pipeline (0 through 6)
 - Five review lenses with concern-appropriate application
-- Critic with context-sensitive governance (9 checks, applicability based on project state)
+- Critic with context-sensitive governance (10 checks, applicability based on project state)
 - Builder skill for code generation from build plans
 - Observation capture at every stage transition
 - Three test scenarios with evaluation rubrics (family-utility, background-data-pipeline, terminal-arcade-game)

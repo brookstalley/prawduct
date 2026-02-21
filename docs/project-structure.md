@@ -42,7 +42,7 @@ prawduct/
 ├── agents/                            # LLM instruction sets spawned as subprocesses via Task tool
 │   ├── critic/
 │   │   ├── SKILL.md                  # Context-sensitive governance: invoked as subagent, reads checks from project state
-│   │   ├── framework-checks.md       # Checks 7-9 (Generality, Instruction Clarity, Cumulative Health) — framework only
+│   │   ├── framework-checks.md       # Checks 7-10 (Generality, Instruction Clarity, Cumulative Health, Pipeline Coverage) — framework only
 │   │   └── review-cycle.md           # Product build chunk review lifecycle, output format, recording
 │   ├── review-lenses/SKILL.md         # Five evaluation perspectives: invoked as subagent for prospective artifact review
 │   ├── pattern-extractor/SKILL.md     # Observation pattern analysis: invoked as subagent for systemic trend detection

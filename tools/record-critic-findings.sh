@@ -13,7 +13,7 @@
 #
 # The Critic applies context-dependent checks — not every check applies to every
 # review. The required minimum is 4 checks (the always-applicable checks 3-6), but
-# build-stage reviews include checks 1-2 and skill file reviews add checks 7-9.
+# build-stage reviews include checks 1-2 and skill file reviews add checks 7-10.
 #
 # Usage:
 #   tools/record-critic-findings.sh \
@@ -39,7 +39,7 @@
 set -euo pipefail
 
 # --- Known Critic checks (from agents/critic/SKILL.md) ---
-# Checks 3-6 are always applicable; Checks 1-2 apply at build stages, Checks 7-9 apply when reviewing skill/template files.
+# Checks 3-6 are always applicable; Checks 1-2 apply at build stages, Checks 7-10 apply when reviewing skill/template files.
 
 ALL_VALID_CHECKS=(
     "Spec Compliance"
@@ -51,6 +51,7 @@ ALL_VALID_CHECKS=(
     "Generality"
     "Instruction Clarity"
     "Cumulative Health"
+    "Pipeline Coverage"
 )
 
 # Minimum required: the 4 always-applicable checks
