@@ -437,6 +437,18 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Learning**: Fixing an instance without checking for the general pattern is a form of silent requirement dropping (HR2) at the meta level. The fix was correct but incomplete. Retrospectives that ask "what did we learn?" without asking "where else does this apply?" will systematically produce instance-specific fixes.
 
+### Failure Mode 11: Omission Gaps Invisible to Reactive Learning
+
+**Symptom**: Entire categories of concern (e.g., design systems, observability, analytics) persist as pipeline gaps through many evaluations without being detected or addressed.
+
+**Root cause**: The learning system is reactive — it generates observations when something goes wrong during a session. But if a concern is absent from the pipeline entirely, no session will exercise it, no friction will occur, and no observation will be generated. Coherence audits (Critic Checks 5/6) verify consistency of what exists but cannot identify what *should* exist but doesn't. Incompleteness is invisible to consistency checks.
+
+**Discovered**: 2026-02-21. Design systems and observability persisted as gaps through 13+ evaluations because no mechanism asked "what should we cover that we don't?"
+
+**Fix**: Cross-cutting concerns registry (`.prawduct/artifacts/cross-cutting-concerns-registry.md`) maps each concern to its pipeline coverage across 5 dimensions (Discovery, Artifact, Builder, Critic, Review Lens). Session health check reports gap counts. Critic Check 10 (Pipeline Coverage) flags incomplete pipelines when new artifacts or dimensions are added. Structural Critique Protocol includes a coverage audit question. All gaps are informational — they enter the normal observation > triage > action cycle.
+
+**Learning**: Reactive observation catches inconsistency but not incompleteness. Coherence audits answer "is what we have consistent?" but not "is what we have sufficient?" Coverage audits fill this gap by maintaining a registry of what the pipeline *should* cover, making omissions visible as data rather than requiring someone to notice their absence.
+
 ---
 
 ## References

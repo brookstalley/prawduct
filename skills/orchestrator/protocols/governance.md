@@ -195,6 +195,7 @@ Apply the framework's principles to its own founding architectural decisions —
    - Does it still satisfy them given current evidence?
    - Would a different choice better satisfy them given what we now know?
    - Are there parallel implementations for different contexts (e.g., "framework" vs. "product") that should be unified? Parallel paths that diverge only in naming, not behavior, violate Eat Your Own Cooking.
+   - Does the cross-cutting concerns registry (`.prawduct/artifacts/cross-cutting-concerns-registry.md`) include all concerns relevant to products in the current domain? Omission gaps — concerns absent from the registry entirely — are invisible to reactive learning and must be checked deductively.
 2. Record findings as `structural_critique` observations in `framework-observations/`.
 3. If a founding decision violates a principle, propose a change through the normal observation → triage → action cycle. Structural critiques do not bypass governance — they feed the same process with a different evidence source.
 

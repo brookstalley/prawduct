@@ -413,7 +413,7 @@ Project State
 
 **Purpose:** Automated quality enforcement during development. The embodiment of the Hard Rules from principles.md.
 
-The Critic uses 9 general-purpose checks with an applicability table that determines which checks fire based on project context. New concerns strengthen existing checks rather than creating enumerated sub-components (Generality Over Enumeration principle). See `agents/critic/SKILL.md` for the full check architecture, applicability table, review cycle, and output format. See `CLAUDE.md` for mechanical governance hooks.
+The Critic uses 10 general-purpose checks with an applicability table that determines which checks fire based on project context. New concerns strengthen existing checks rather than creating enumerated sub-components (Generality Over Enumeration principle). See `agents/critic/SKILL.md` for the full check architecture, applicability table, review cycle, and output format. See `CLAUDE.md` for mechanical governance hooks.
 
 ### C7: Trajectory Monitor
 
@@ -639,6 +639,9 @@ Decision changes flow: Project State (C5) identifies affected decisions and arti
 ### Feedback Integration
 User reacts to build → Orchestrator (C1) classifies feedback → if directional, Domain Analyzer (C2) re-evaluates → if reclassification, discovery reopens for changed structural characteristics → Project State (C5) updates → change propagation follows.
 
+### Pipeline Coverage Tracking
+The cross-cutting concerns registry (`.prawduct/artifacts/cross-cutting-concerns-registry.md`) maps each concern to its coverage across five pipeline dimensions: Discovery, Artifact, Builder, Critic, and Review Lens. Session health checks report gap counts; the Critic's Pipeline Coverage check (Check 10) flags incomplete pipelines when new dimensions or artifacts are added.
+
 ### Cost Tracking
 Surfaces during discovery (C2 flags cost-relevant design choices), quantified during artifact generation (C3 includes cost estimates in operational spec), monitored during build (C6 checks for cost-relevant deviations), validated during trajectory review (C7 catches cost drift).
 
@@ -659,5 +662,5 @@ These are acknowledged gaps that require further work. Per our own principles, w
 
 4. **Multi-user collaboration.** Current design assumes single user. Team scenarios need coordination design. [v1.5 or later — no user projects to learn from yet.]
 5. **Structural characteristics we haven't tested.** The 5 structural characteristics cover artifact routing, but domain-specific depth is dynamic and untested across diverse domains (games, content platforms, developer tools, IoT-adjacent, data-intensive products). [Will surface during Phase 2 widening via `missing_guidance` observations. Dynamic domain depth should naturally adapt — that's the design — but verification is needed.]
-6. **~~Minimum viable Critic.~~** Resolved: The Critic uses 9 general-purpose checks with applicability determined by project context. Architectural consistency is part of Coherence (Check 5), operational readiness is part of Spec Compliance (Check 1), documentation integrity is part of Scope Discipline (Check 3). No enumerated sub-components needed.
+6. **~~Minimum viable Critic.~~** Resolved: The Critic uses 10 general-purpose checks with applicability determined by project context. Architectural consistency is part of Coherence (Check 5), operational readiness is part of Spec Compliance (Check 1), documentation integrity is part of Scope Discipline (Check 3). No enumerated sub-components needed.
 8. **Observation capture during product sessions requires framework repo write access.** The Orchestrator instructs writing observation files to `{prawduct-repo}/framework-observations/`, but during product sessions the LLM may be working in a different directory without access to the framework repo. V1 mitigation: fallback to writing observations in the user's project `working-notes/` for manual transfer. Proper fix: a mechanism (MCP server, post-session hook, or shared observation store) that doesn't require direct filesystem access to the framework repo. [Will surface during real product usage.]

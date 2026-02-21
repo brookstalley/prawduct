@@ -542,6 +542,71 @@ if [[ "${infra_warnings:-0}" -gt 0 ]]; then
     echo ""
 fi
 
+# --- 6b. Coverage Audit ---
+# Reads cross-cutting-concerns-registry.md and reports gap/partial counts.
+# Informational only — no blocking, no exit code changes.
+
+coverage_gaps=0
+REGISTRY_FILE="$PRODUCT_ROOT/artifacts/cross-cutting-concerns-registry.md"
+if [[ -f "$REGISTRY_FILE" ]]; then
+    coverage_output=$(python3 -c "
+import re, sys
+
+registry_path = '$REGISTRY_FILE'
+gaps = []
+partials = []
+
+with open(registry_path) as f:
+    content = f.read()
+
+# Parse the coverage matrix table rows
+# Look for lines starting with | ** (bold concern names)
+for line in content.split('\n'):
+    line = line.strip()
+    if not line.startswith('|'):
+        continue
+    # Split table columns
+    cols = [c.strip() for c in line.split('|')]
+    if len(cols) < 4:
+        continue
+    concern = cols[1] if len(cols) > 1 else ''
+    status = cols[2] if len(cols) > 2 else ''
+
+    # Skip header rows and separator rows
+    if 'Concern' in concern or '---' in concern or not concern:
+        continue
+
+    # Clean bold markers
+    concern_clean = concern.replace('**', '').strip()
+    status_clean = status.replace('**', '').strip()
+
+    if status_clean == 'Gap':
+        gaps.append(concern_clean)
+    elif status_clean == 'Partial':
+        partials.append(concern_clean)
+
+total = len(gaps) + len(partials)
+if total > 0:
+    if gaps:
+        for g in gaps:
+            print(f'  Gap: {g} — no pipeline coverage')
+    if partials:
+        for p in partials:
+            print(f'  Partial: {p} — incomplete pipeline coverage')
+
+print(f'COVERAGE_GAPS: {total} concerns with incomplete pipeline coverage')
+" 2>/dev/null || echo "COVERAGE_GAPS: 0")
+
+    coverage_gaps=$(echo "$coverage_output" | grep "^COVERAGE_GAPS:" | head -1 | sed 's/.*: //' | sed 's/ .*//')
+    coverage_content=$(echo "$coverage_output" | grep -v "^COVERAGE_GAPS:" | grep -v "^$")
+
+    if [[ -n "$coverage_content" ]]; then
+        echo "## Coverage Audit"
+        echo "$coverage_content"
+        echo ""
+    fi
+fi
+
 # --- 7. Project State File Health ---
 
 state_warnings=0
@@ -975,6 +1040,7 @@ echo "DIVERGENCE_WARNINGS: ${divergence_warnings:-0}"
 echo "FRAMEWORK_REMOTE_WARNINGS: ${fw_remote_warnings:-0}"
 echo "DEPRECATED_TERM_WARNINGS: ${deprecated_warnings:-0}"
 echo "DEP_GRAPH_WARNINGS: ${dep_graph_warnings:-0}"
+echo "COVERAGE_GAPS: ${coverage_gaps:-0}"
 echo "UNCONTRIBUTED_OBSERVATIONS: ${uncontributed_count:-0}"
 echo ""
 echo "=========================================="
