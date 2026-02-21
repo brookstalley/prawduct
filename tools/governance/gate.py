@@ -246,6 +246,11 @@ def _validate_marker(marker_path: str) -> str:
 def _validate_session_state(session_file: str) -> str:
     """Validate session governance file exists with required structure.
 
+    Checks for fields that proper Orchestrator init always sets.
+    This makes Bash-based marker spoofing harder — writing a valid
+    activation marker alone is insufficient; the session state must
+    also exist with a valid timestamp and stage.
+
     Returns: "ok", "missing", or "malformed".
     """
     if not os.path.isfile(session_file):
@@ -260,7 +265,22 @@ def _validate_session_state(session_file: str) -> str:
     # Require key fields that proper init always sets
     if not data.get("product_dir"):
         return "malformed"
-    if not data.get("session_started"):
+
+    # session_started must be a valid ISO-8601 timestamp
+    session_started = data.get("session_started", "")
+    if not session_started:
+        return "malformed"
+    try:
+        datetime.fromisoformat(session_started.rstrip("Z"))
+    except (ValueError, AttributeError):
+        return "malformed"
+
+    # current_stage must be present (Orchestrator always sets it from project-state)
+    if not data.get("current_stage"):
+        return "malformed"
+
+    # governance_state must exist as a dict (not just product_dir + timestamp)
+    if not isinstance(data.get("governance_state"), dict):
         return "malformed"
 
     return "ok"

@@ -1,0 +1,20 @@
+---
+observation_id: 05f4d699-761e-4b2a-9223-b41fcd9888c1
+timestamp: 2026-02-21T19:08:41Z
+session_type: framework_dev
+session_context:
+  framework_version: 3b55fb6
+observations:
+  - type: coverage
+    stage: 6
+    severity: warning
+    description: "Cross-repo governance: stop/commit/prompt hooks followed .active-product pointer to a different repo's session-governance.json, blocking sessions with foreign governance debt. Also: SessionStart cleanup only targeted CLAUDE_PROJECT_DIR, not the active product's session files; concurrent sessions from the same CLAUDE_PROJECT_DIR share the pointer file. Fixed: resolve() gains follow_pointer parameter (stop/commit/prompt=False), stop adds _check_cross_repo_product for labeled product-level debt, SessionStart cleans both active product and session-level files."
+    evidence: "Stop hook reported worldground's DCP debt (enhancement: macro weather system) as prawduct's. Root cause: .active-product pointer at .prawduct/.active-product contained worldground path, and resolve() uniformly followed it."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Stop hook blocks with foreign repo governance debt"
+      root_cause: "resolve() uniformly followed .active-product pointer for all hook types; pointer designed for per-file routing (gate/track) was applied to session-level validation (stop/commit/prompt)"
+      category: wrong_abstraction
+skills_affected:
+  - "tools/governance/context.py tools/governance/__main__.py tools/governance/stop.py tools/governance/prompt.py tools/governance/gate.py tools/prawduct-init.py"
+---

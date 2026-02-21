@@ -70,8 +70,14 @@ def main() -> NoReturn:
     else:
         # Standard hook commands: read JSON from stdin, load state
         hook_input = _read_hook_json()
+
+        # Stop/commit validate session-level state — they must NOT follow
+        # the .active-product pointer, which may point to a different repo
+        # with its own governance debt. Gate/track follow the pointer to
+        # resolve the correct product for the file being edited.
+        session_level = command in ("stop", "commit")
         try:
-            ctx = resolve(framework_root=root)
+            ctx = resolve(framework_root=root, follow_pointer=not session_level)
         except ValueError as e:
             print(str(e), file=sys.stderr)
             sys.exit(1)
@@ -110,7 +116,7 @@ def _run_prompt(root: str | None) -> NoReturn:
     from .prompt import check
 
     try:
-        ctx = resolve(framework_root=root)
+        ctx = resolve(framework_root=root, follow_pointer=False)
     except ValueError:
         sys.exit(0)  # no framework = no activation check
 
@@ -124,7 +130,7 @@ def _run_compact_reinject(root: str | None) -> NoReturn:
     from .reinject import build_reinject
 
     try:
-        ctx = resolve(framework_root=root)
+        ctx = resolve(framework_root=root, follow_pointer=False)
     except ValueError as e:
         # Minimal fallback if context resolution fails
         print("CONTEXT RESTORED AFTER COMPACTION.")

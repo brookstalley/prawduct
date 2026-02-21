@@ -10,7 +10,7 @@ observations:
     severity: warning
     description: "DCP observation_captured flag and governance_state.observations_captured_this_session counter are set/checked independently. The DCP flag was set via tools/dcp-update.sh without verifying an actual observation file was captured. The session counter remained 0 despite an observation file existing on disk. Two gaps: (1) dcp-update.sh observation-captured trusts the caller — no verification that an observation was actually written; (2) capture-observation.sh doesn't increment observations_captured_this_session in session-governance.json."
     evidence: "After completing DCP: observations_captured_this_session=0 despite observation file existing, and DCP observation_captured=true set without verification"
-    status: noted
+    status: triaged
     root_cause_analysis:
       symptom: "DCP marked observation as captured but session counter showed 0 observations"
       root_cause: "capture-observation.sh and dcp-update.sh operate on independent state without cross-validation"

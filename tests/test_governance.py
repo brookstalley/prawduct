@@ -148,6 +148,26 @@ class TestContext:
             ctx = resolve(framework_root=str(fw))
             assert ctx.prawduct_dir == str(product_prawduct)
 
+    def test_resolve_ignores_pointer_when_follow_false(self, tmp_path):
+        """resolve(follow_pointer=False) ignores .active-product pointer."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+
+        # Write pointer
+        pointer_path = fw_prawduct / ".active-product"
+        pointer_path.write_text(str(product_prawduct))
+
+        with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
+            ctx = resolve(framework_root=str(fw), follow_pointer=False)
+            assert ctx.prawduct_dir == str(fw_prawduct)
+
     def test_resolve_ignores_invalid_pointer(self, tmp_path):
         """resolve() ignores pointer pointing to nonexistent directory."""
         fw = tmp_path / "framework"

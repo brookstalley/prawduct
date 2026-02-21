@@ -39,9 +39,14 @@ def validate(
 ) -> StopDecision:
     """Check all session-end governance requirements.
 
+    Validates the session-level governance state (from CLAUDE_PROJECT_DIR).
+    If an active-product pointer exists pointing to a different repo, also
+    validates that product's governance state. This ensures cross-repo work
+    is checked at session end without contaminating session-level checks.
+
     Args:
         hook_input: Hook JSON (may contain stop_hook_active flag).
-        ctx: Resolved governance context.
+        ctx: Resolved governance context (session-level, pointer NOT followed).
         state: Session state to check.
 
     Returns:
@@ -56,12 +61,17 @@ def validate(
 
     debts: list[str] = []
 
+    # Session-level checks (framework repo's own governance)
     _check_framework_coverage(state, ctx, debts)
     _check_product_governance(state, debts)
     _check_pfr(state, debts)
     _check_dcp(state, ctx, debts)
     _check_compaction(ctx, debts)
     _check_observation_gaps(state, ctx, debts)
+
+    # Cross-repo product checks: if .active-product points elsewhere,
+    # also validate that product's governance state.
+    _check_cross_repo_product(ctx, debts)
 
     tr.event(state, "stop_check", {
         "debts_found": len(debts),
@@ -262,3 +272,56 @@ def _check_observation_gaps(
             )
     except (OSError, json.JSONDecodeError):
         pass  # Never block on file read failure
+
+
+def _check_cross_repo_product(ctx: Context, debts: list[str]) -> None:
+    """Check governance state of the active cross-repo product if any.
+
+    When CLAUDE_PROJECT_DIR is the framework repo but the agent was working
+    on a product in a different repo, the .active-product pointer tells us
+    which product's governance state to also check. This ensures product-
+    level governance debt is surfaced at session end.
+
+    Only checks DCP and chunk review debt — PFR and framework coverage are
+    session-level concerns handled by the main checks.
+    """
+    pointer_path = os.path.join(ctx.prawduct_dir, ".active-product")
+    if not os.path.isfile(pointer_path):
+        return
+
+    try:
+        with open(pointer_path) as f:
+            product_dir = f.read().strip()
+    except OSError:
+        return
+
+    if not product_dir or not os.path.isdir(product_dir):
+        return
+
+    # Don't double-check if pointer points to session dir
+    if os.path.realpath(product_dir) == os.path.realpath(ctx.prawduct_dir):
+        return
+
+    product_session_file = os.path.join(product_dir, ".session-governance.json")
+    product_state = SessionState.load(product_session_file)
+    if not os.path.isfile(product_state.path):
+        return
+
+    product_name = os.path.basename(os.path.dirname(product_dir))
+
+    # Check product DCP
+    dcp = product_state.dcp
+    if dcp.active:
+        if not dcp.observation_captured:
+            debts.append(f"[{product_name}] DCP: observation not captured")
+        if not dcp.retrospective_completed:
+            debts.append(f"[{product_name}] DCP: retrospective incomplete")
+        if dcp.tier in ("enhancement", "structural") and not dcp.artifacts_verified:
+            debts.append(f"[{product_name}] DCP: artifact freshness not verified")
+
+    # Check product chunk review debt
+    gov = product_state.governance
+    if gov.chunks_completed_without_review > 0:
+        debts.append(
+            f"[{product_name}] {gov.chunks_completed_without_review} chunk(s) without Critic review"
+        )

@@ -75,6 +75,11 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
+  - what: 'Fix cross-repo governance contamination + 4 soon-priority observations (activation bypass, build-time paths, plan-mode handoff, Stage 6 ordering)'
+    why: 'Stop hook followed .active-product pointer to another repo session-governance.json, blocking sessions with foreign governance debt. Root cause: resolve() uniformly followed pointer for all hook types, but stop/commit/prompt validate session state, not per-file product state. Also: activation marker spoofable via Bash, plan-mode bypass of HR9, Stage 6 classification reminder suppressed by other debt, SessionStart cleanup missed active-product files.'
+    blast_radius: 'tools/governance/context.py, tools/governance/__main__.py, tools/governance/gate.py, tools/governance/prompt.py, tools/governance/stop.py, tools/prawduct-init.py, .claude/settings.json, tests/test_governance.py, .prawduct/artifacts/governance-mechanisms.md'
+    classification: enhancement
+    date: 2026-02-21
   - what: 'Token discipline: split protocols.md into focused files, tighten main-context files and Critic SKILL.md'
     why: 'protocols.md (35KB) loaded entirely when any single protocol needed — Critic spawn loads 4KB but was forced to read 35KB. Root cause: Orchestrator decomposition grouped by authoring locality rather than load-time access patterns. Split into protocols/agent-invocation.md (13KB, agent spawns), protocols/governance.md (18KB, PFR/FRP/transitions), protocols/stage-prerequisites.md (3KB, transitions). Also tightened CLAUDE.md (-938B), SKILL.md (-1822B), stage-6-iteration.md (-2360B), and Critic SKILL.md (-9139B) by extracting product-only sections and converting prose to tables.'
     blast_radius: 'skills/orchestrator/protocols/ (3 new), skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, skills/orchestrator/stage-5-build.md, skills/orchestrator/stages-0-2.md, skills/orchestrator/stages-3-4.md, skills/orchestrator/onboarding.md, skills/orchestrator/observation-contribution.md (new), CLAUDE.md, agents/critic/SKILL.md, agents/critic/framework-checks.md (new), agents/critic/review-cycle.md (new), agents/artifact-generator/SKILL.md, agents/review-lenses/SKILL.md, docs/project-structure.md, docs/self-improvement-architecture.md, tools/governance/__main__.py, tools/critic-reminder.sh, tools/governance/commit.py, tools/governance/reinject.py'
@@ -594,8 +599,8 @@ iteration_state:
 # Items removed when acted on; deferred items reviewed periodically.
 
 observation_backlog:
-  last_triage: 2026-02-20
-  deferred_file: observation-backlog-deferred.yaml  # 17 deferred items split for context efficiency
+  last_triage: 2026-02-21
+  deferred_file: observation-backlog-deferred.yaml  # 25 deferred items split for context efficiency
   items:
     # --- priority: next ---
     # Removed: "Observation capture after Critic review lacks mechanical enforcement" — implemented in governance stop.py (2026-02-18)
@@ -605,36 +610,12 @@ observation_backlog:
     # Removed: "PFR commit gate uses relative path" — acted_on: commit.py now resolves against product_dir then framework_root (2026-02-20)
     # --- priority: soon ---
     # Removed: "PFR meta_fix_plan misses documentation blast radius" — acted_on: added doc blast radius to PFR step 4 in protocols.md (2026-02-20)
-    - observation_file: "framework-observations/2026-02-17-agent-bypassed-orchestrator-activation-by-writing.yaml"
-      type: process_friction
-      summary: "Agent bypassed Orchestrator activation via Bash marker write"
-      target_files: ["tools/governance/prompt.py"]
-      priority: soon
-      rationale: "RCA: process_not_enforced. Markers can be created via Bash. Partially mitigated by external-repo gate fix (2026-02-20)."
-      added: 2026-02-17
-    - observation_file: "framework-observations/2026-02-17-self-hosting-blind-spot-code-generators.yaml"
-      type: coverage
-      summary: "Code generators embed build-time paths instead of runtime resolution"
-      target_files: ["tools/prawduct-init.py"]
-      priority: soon
-      rationale: "Structural gap in prawduct-init.py."
-      added: 2026-02-17
+    # Removed: "Agent bypassed Orchestrator activation via Bash marker write" — acted_on: strengthened _validate_session_state (ISO timestamp, current_stage, governance_state dict) (2026-02-21)
+    # Removed: "Code generators embed build-time paths" — acted_on: SessionStart cleanup now cleans active product's files + CLAUDE_PROJECT_DIR's; .active-product added to cleanup (2026-02-21)
     # Removed: "PFR detection can't distinguish new feature additions from fixes" — acted_on: already fixed in tracker.py (git ls-files new-file detection, lines 118-128)
-    - observation_file: "framework-observations/2026-02-18-approved-plan-execution-bypassed-orchestrator-governance.yaml"
-      type: governance_compliance
-      summary: "Approved plan execution bypassed Orchestrator governance (HR9)"
-      target_files: ["skills/orchestrator/SKILL.md", "tools/governance/prompt.py"]
-      priority: soon
-      rationale: "RCA: process_not_enforced. No handoff between plan mode and Orchestrator. Hook checks flag, not process."
-      added: 2026-02-20
+    # Removed: "Approved plan execution bypassed Orchestrator governance (HR9)" — acted_on: prompt hook detects plan files and injects HR9 reminder (2026-02-21)
     # Removed: "Critic subagent exceeded review role" — acted_on: explicit no-commit/no-push constraint + tool whitelist added to Critic Agent Protocol (2026-02-20)
-    - observation_file: "framework-observations/2026-02-20-governance-hooks-do-not-enforce-stage.yaml"
-      type: coverage
-      summary: "Governance hooks don't enforce Stage 6 protocol ordering (classify before act)"
-      target_files: ["skills/orchestrator/stage-6-iteration.md", "tools/governance/prompt.py"]
-      priority: soon
-      rationale: "RCA: incomplete_coverage. Hooks are edit-oriented; no conversation-level protocol enforcement. Agent skipped classification and jumped to code exploration."
-      added: 2026-02-20
+    # Removed: "Governance hooks don't enforce Stage 6 protocol ordering" — acted_on: Stage 6 classification reminder now always fires and includes step reference (2026-02-21)
     # Removed: "Product file edits in Stage 6 have no Critic enforcement" — acted_on: stop.py now flags 3+ product file edits without Critic review in Stage 6 (2026-02-20)
 
 # =============================================================================

@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "rm -f \"$CLAUDE_PROJECT_DIR\"/.prawduct/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-governance.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-trace.jsonl \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-edits.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.product-session.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.active-product"
+            "command": "PROD=$(cat \"$CLAUDE_PROJECT_DIR/.prawduct/.active-product\" 2>/dev/null); if [ -n \"$PROD\" ] && [ -d \"$PROD\" ]; then rm -f \"$PROD/.orchestrator-activated\" \"$PROD/.session-governance.json\" \"$PROD/.session-trace.jsonl\" \"$PROD/.session-edits.json\" \"$PROD/.product-session.json\"; fi; rm -f \"$CLAUDE_PROJECT_DIR\"/.prawduct/.orchestrator-activated \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-governance.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-trace.jsonl \"$CLAUDE_PROJECT_DIR\"/.prawduct/.session-edits.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.product-session.json \"$CLAUDE_PROJECT_DIR\"/.prawduct/.active-product"
           }
         ]
       },

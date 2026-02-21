@@ -10,7 +10,7 @@ observations:
     severity: warning
     description: "Explore subagents blocked by stale activation marker in long sessions. Marker uses point-in-time timestamp but long sessions (especially plan mode) can run for extended periods without refreshing it. Subagents inherit the stale timestamp."
     evidence: "During project-preferences planning session, early explore agents ran fine but later ones were blocked by BLOCKED: Stale activation marker (HR9)"
-    status: noted
+    status: triaged
     root_cause_analysis:
       symptom: "Explore agent blocked by stale activation marker"
       root_cause: "Activation marker uses point-in-time timestamp with no refresh mechanism for long sessions"

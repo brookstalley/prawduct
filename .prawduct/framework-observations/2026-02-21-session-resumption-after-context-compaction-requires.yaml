@@ -1,0 +1,20 @@
+---
+observation_id: e51a9168-9b0b-4966-bd4c-afb280ba7486
+timestamp: 2026-02-21T18:42:35Z
+session_type: framework_dev
+session_context:
+  framework_version: 3b55fb6
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Session resumption after context compaction requires manual re-initialization of activation marker AND session-governance.json. Three sequential errors before success: wrong date format, stale marker, missing session state. Error messages name the problem but don't explain the required format (ISO-8601 timestamp + praw-active token). Compaction loses the session-governance.json state entirely."
+    evidence: "After /compact, edits blocked 3 times: (1) activation marker used 'date' output instead of ISO-8601 (2) marker existed but session-governance.json was from previous session (3) had to manually recreate full JSON structure from memory of SKILL.md step 4"
+    status: triaged
+    root_cause_analysis:
+      symptom: "Edits blocked after compaction despite legitimate session continuity"
+      root_cause: "Compaction clears session-governance.json (SessionStart hook) but doesn't re-initialize it; activation marker format not obvious from error message"
+      category: incomplete_coverage
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+---

@@ -36,16 +36,17 @@ tools/governance/
 ├── reinject.py        # SessionStart compact: post-compaction context recovery
 ```
 
-### Unified Product Resolution (Active-Product Pointer)
+### Active-Product Pointer (Cross-Repo Resolution)
 
-In cross-repo sessions (framework hooks managing a separate product repo), `context.py` uses an `.active-product` pointer file to ensure **all** hook commands resolve to the correct product directory. This eliminates the asymmetry where gate/track would resolve per-file but stop/commit/prompt would use the session-level (framework) directory.
+In cross-repo sessions (framework hooks managing a separate product repo), `context.py` uses an `.active-product` pointer file to route per-file hooks (gate/track) to the correct product. Session-level hooks (stop/commit/prompt) do NOT follow the pointer — they validate the session's own governance state to avoid contamination from another repo's governance debt.
 
 **How it works:**
 1. `__main__.py` calls `update_product_context(file_path, ctx)` for gate/track commands
 2. `update_product_context()` resolves the product from the file's git root (via `resolve_product_for_file()`)
 3. If the product differs from the session-level dir, it writes `.prawduct/.active-product` with the product's `.prawduct/` path
-4. `resolve()` reads this pointer on every invocation — stop/commit/prompt automatically get the right context
-5. `.active-product` is cleaned up on session restart (`SessionStart clear|startup` hook)
+4. `resolve(follow_pointer=True)` (gate/track) reads the pointer to get product context; `resolve(follow_pointer=False)` (stop/commit/prompt) ignores it
+5. Stop hook reads the pointer separately via `_check_cross_repo_product()` to surface product-level DCP and chunk review debt at session end — labeled with the product name to distinguish from session-level debt
+6. `.active-product` is cleaned up on session restart (`SessionStart clear|startup` hook); SessionStart also cleans the pointed-to product's session files before clearing the pointer
 
 **Self-hosted/same-repo:** No pointer is written (resolve_product_for_file returns the same dir). No change in behavior.
 
@@ -102,7 +103,7 @@ All session state lives in `.prawduct/` within the product directory (resolved f
 
 | File | Created by | Read by | Lifecycle |
 |------|-----------|---------|-----------|
-| `.active-product` | context.py (on cross-repo gate/track) | context.py resolve() | Lives in session-level `.prawduct/` (CLAUDE_PROJECT_DIR); cleared on `/clear` or startup |
+| `.active-product` | context.py (on cross-repo gate/track) | gate/track via `resolve(follow_pointer=True)`; stop via `_check_cross_repo_product()` | Lives in session-level `.prawduct/` (CLAUDE_PROJECT_DIR); cleared on `/clear` or startup |
 | `.orchestrator-activated` | Orchestrator step 3 | gate.py, prompt.py | Lives in product's `.prawduct/`; cleared on commit or `/clear` |
 | `.session-governance.json` | Orchestrator step 4 | All modules | Cleared on commit or `/clear` |
 | `.critic-pending` | tracker.py (on framework edit) | commit.py | Cleared on commit |

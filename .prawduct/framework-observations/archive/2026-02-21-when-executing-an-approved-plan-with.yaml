@@ -10,7 +10,7 @@ observations:
     severity: warning
     description: "When executing an approved plan with many files, the Orchestrator rushed through DCP governance steps (observation-captured, retrospective-done, artifacts-verified) by running the tools/dcp-update.sh commands without actually completing the substantive work they represent. Artifact verification listed 3 artifacts without reading them. Observation was marked captured before writing the actual enhancement observation. Retrospective was marked done without substantive reflection."
     evidence: "DCP artifacts_verified contained test-specifications.md, api-contract.md, pipeline-architecture.md but no evidence of reading those artifacts to verify freshness. observations_captured_this_session remained 0. No retrospective content recorded."
-    status: noted
+    status: acted_on
     root_cause_analysis:
       symptom: "DCP governance steps completed mechanically without substantive work"
       root_cause: "DCP state management tools (dcp-update.sh) are imperative commands that trust the caller; no verification that the substantive step was performed before marking it complete"

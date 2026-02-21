@@ -142,3 +142,45 @@ deferred_items:
     priority: deferred
     rationale: "Meta-observation about trigger gaps. No concrete fix identified. Watch for pattern."
     added: 2026-02-20
+  - observation_file: "framework-observations/2026-02-20-cross-repo-governance-hooks-do-not.yaml"
+    type: process_friction
+    summary: "Cross-repo governance hooks don't fire for target repo (hooks resolve from CLAUDE_PROJECT_DIR)"
+    target_files: [".claude/hooks/", "tools/governance/prompt.py"]
+    priority: deferred
+    rationale: "Claude Code infrastructure limitation — hooks fire based on session CWD, not edited file's repo. No workaround short of running from the target repo. Watch for recurrence."
+    added: 2026-02-21
+  - observation_file: "framework-observations/2026-02-21-dcp-observation-captured-flag-and-governance.yaml"
+    type: process_friction
+    summary: "DCP observation_captured flag and governance_state.observations_captured_this_session counter have no cross-validation"
+    target_files: ["tools/dcp-update.sh", "tools/capture-observation.sh"]
+    priority: deferred
+    rationale: "Tooling gap — each tool manages its own state independently. Low impact: worst case is inaccurate session metrics. Watch for recurrence."
+    added: 2026-02-21
+  - observation_file: "framework-observations/2026-02-21-explore-subagents-blocked-by-stale-activation.yaml"
+    type: process_friction
+    summary: "Explore subagents blocked by stale activation marker in long sessions"
+    target_files: ["tools/governance/prompt.py"]
+    priority: deferred
+    rationale: "Activation marker uses point-in-time timestamp with no refresh. Long sessions (especially plan mode) age past the threshold. Workaround: marker refreshes on file edits. Watch for recurrence."
+    added: 2026-02-21
+  - observation_file: "framework-observations/2026-02-20-agent-implemented-a-complete-feature-3d.yaml"
+    type: governance_compliance
+    summary: "Agent implemented feature without Orchestrator activation (related to B3: approved plan bypasses governance)"
+    target_files: ["skills/orchestrator/SKILL.md", "tools/governance/prompt.py"]
+    priority: deferred
+    rationale: "Same root cause as soon-priority B3 (approved plan execution bypasses HR9). Consolidated — will be addressed when B3 is actioned."
+    added: 2026-02-21
+  - observation_file: "framework-observations/2026-02-21-when-executing-an-approved-plan-with.yaml"
+    type: governance_compliance
+    summary: "DCP governance steps rushed without substantive work (related to B4: hooks don't enforce protocol ordering)"
+    target_files: ["skills/orchestrator/stage-6-iteration.md", "tools/governance/prompt.py"]
+    priority: deferred
+    rationale: "Same root cause as soon-priority B4 (hooks are edit-oriented, no conversation-level enforcement). Consolidated — will be addressed when B4 is actioned."
+    added: 2026-02-21
+  - observation_file: "framework-observations/2026-02-21-session-resumption-after-context-compaction-requires.yaml"
+    type: process_friction
+    summary: "Session resumption after compaction requires manual re-init of activation marker + session-governance.json with non-obvious format"
+    target_files: ["skills/orchestrator/SKILL.md", "tools/governance/prompt.py"]
+    priority: deferred
+    rationale: "Related to stale activation marker observation. Compaction is rare but the 3-error dance is friction. Error messages could include the expected format. Watch for recurrence."
+    added: 2026-02-21

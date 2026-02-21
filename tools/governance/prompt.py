@@ -69,13 +69,29 @@ def check(ctx: Context) -> str | None:
     """Return JSON additionalContext string if activation needed or version stale, else None."""
     marker = ctx.activation_marker
     if not os.path.isfile(marker):
+        # Check for plan file — if present, the agent may try to execute it directly
+        plan_note = ""
+        plan_dir = os.path.join(
+            os.path.expanduser("~"), ".claude", "plans"
+        )
+        if os.path.isdir(plan_dir):
+            try:
+                plans = [f for f in os.listdir(plan_dir) if f.endswith(".md")]
+                if plans:
+                    plan_note = (
+                        " NOTE: An approved plan exists — it is INPUT to the Orchestrator's "
+                        "process, not a replacement for it (HR9). The Orchestrator will use "
+                        "the plan but still applies governance (classification, PFR, Critic review)."
+                    )
+            except OSError:
+                pass
         msg = (
             f"CRITICAL: Governance is NOT active. You MUST read "
             f"{ctx.framework_root}/skills/orchestrator/SKILL.md and complete "
             f"steps 1-4 (establish project directory, read project-state.yaml, "
             f"activate governance, initialize tracking) BEFORE taking any other action. "
             f"This is HR9 (No Governance Bypass) — no edits, no research, no responses "
-            f"until governance is activated."
+            f"until governance is activated.{plan_note}"
         )
         return json.dumps({"additionalContext": msg})
 
@@ -124,14 +140,18 @@ def _stage_reminders(ctx: Context) -> str | None:
             f"Run Governance Review before editing product files."
         )
 
-    # Stage 6: classify feedback before acting (no state tracking needed —
-    # this is a standing reminder that fires when no other debt exists)
-    if state.current_stage == "iteration" and not parts:
+    # Stage 6: always remind about classification protocol.
+    # This fires regardless of other debt because classification is the
+    # FIRST step — skipping it to address other debt is still a protocol
+    # violation. The reminder is lightweight and prevents the common failure
+    # mode of jumping to code exploration before classifying feedback.
+    if state.current_stage == "iteration":
         dcp = state.dcp
         if not dcp.active and not dcp.needs_classification:
             parts.append(
-                "Stage 6: classify feedback (cosmetic/functional/directional) before "
-                "implementing. See stage-6-iteration.md."
+                "Stage 6 protocol: classify user feedback FIRST "
+                "(cosmetic/functional/directional/preference) before exploring code "
+                "or making changes. Read stage-6-iteration.md step 2."
             )
 
     if not parts:

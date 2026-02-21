@@ -10,7 +10,7 @@ observations:
     severity: note
     description: "External audit revealed 5 maturity gaps invisible to internal learning system: no governance performance measurement, skill ownership overlap (Critic/Lenses), overly broad persona, missing quickstart path, manual observation triage. All were known weaknesses but none had been surfaced as actionable observations."
     evidence: "Audit recommendations 1-5 implemented in single session. No prior observations captured for governance overhead, persona scope, or quickstart absence despite framework being in iteration for weeks."
-    status: noted
+    status: triaged
     root_cause_analysis:
       symptom: "Framework maturity gaps accumulate without internal detection"
       root_cause: "Learning system optimizes for correctness (does this work?) not usability (is this accessible/measurable/clear?). No protocol for periodic self-assessment of framework UX, performance, or overlap."

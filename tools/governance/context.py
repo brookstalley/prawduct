@@ -6,8 +6,9 @@ critic-gate.sh. Resolves framework root, prawduct dir, and repo root.
 
 Active-product pointer: In cross-repo sessions (framework hooks managing a
 separate product repo), gate/track write an .active-product pointer file
-so that stop/commit/prompt resolve the correct product directory. The pointer
-is cleaned up on session restart.
+so they resolve the correct product directory per-file. Stop/commit/prompt
+do NOT follow the pointer — they validate session-level governance state.
+The pointer is cleaned up on session restart.
 """
 
 from __future__ import annotations
@@ -150,16 +151,23 @@ def update_product_context(file_path: str, ctx: Context) -> Context:
     )
 
 
-def resolve(framework_root: Optional[str] = None) -> Context:
+def resolve(
+    framework_root: Optional[str] = None,
+    follow_pointer: bool = True,
+) -> Context:
     """Resolve all governance paths from environment.
 
     After computing the initial prawduct_dir from CLAUDE_PROJECT_DIR,
-    checks for an .active-product pointer file. If present and pointing
-    to a valid directory, redirects prawduct_dir to the product.
+    optionally checks for an .active-product pointer file to redirect
+    to a cross-repo product.
 
     Args:
         framework_root: Explicit framework root. If None, derived from
             GOVERNANCE_FRAMEWORK_ROOT env var (set by hook shims).
+        follow_pointer: Whether to follow the .active-product pointer.
+            True for gate/track (need product context for the file being
+            edited). False for stop/commit/prompt (validate session-level
+            state, not a cross-repo product's state).
 
     Returns:
         Context with all resolved paths.
@@ -181,16 +189,22 @@ def resolve(framework_root: Optional[str] = None) -> Context:
     else:
         prawduct_dir = os.path.join(framework_root, ".prawduct")
 
-    # Follow active-product pointer if present
-    pointer_path = _active_product_path(prawduct_dir)
-    if os.path.isfile(pointer_path):
-        try:
-            with open(pointer_path) as f:
-                target = f.read().strip()
-            if target and os.path.isdir(target):
-                prawduct_dir = target
-        except OSError:
-            pass  # Fall back to original prawduct_dir
+    # Follow active-product pointer if present and requested.
+    # Gate/track follow the pointer to resolve per-file product context.
+    # Stop/commit/prompt do NOT follow — they validate the session's own
+    # governance state. Following the pointer causes stop to check a
+    # different repo's DCP/PFR state, blocking the session with another
+    # repo's governance debt.
+    if follow_pointer:
+        pointer_path = _active_product_path(prawduct_dir)
+        if os.path.isfile(pointer_path):
+            try:
+                with open(pointer_path) as f:
+                    target = f.read().strip()
+                if target and os.path.isdir(target):
+                    prawduct_dir = target
+            except OSError:
+                pass  # Fall back to original prawduct_dir
 
     return Context(
         framework_root=framework_root,

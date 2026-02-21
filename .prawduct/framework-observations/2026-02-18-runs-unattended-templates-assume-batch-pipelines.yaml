@@ -12,7 +12,7 @@ observations:
     description: "runs_unattended templates assume batch pipelines; always-on simulations need different artifact structure"
     evidence: "Building always-on simulation. Pipeline-architecture template framed around fetch/process/deliver. Scheduling-spec entirely N/A. Had to reframe using dynamic generation."
     proposed_action: "Differentiate by trigger type in amplification rules. Suppress scheduling-spec for always-on. Adapt pipeline framing."
-    status: noted
+    status: triaged
     root_cause_analysis:
       symptom: "Scheduling spec generated for product with no schedule; pipeline template misleading for perpetual simulation"
       root_cause: "runs_unattended treats all unattended systems as batch pipelines without differentiating by trigger type"

@@ -109,11 +109,23 @@ def get_prawduct_hooks() -> dict:
                     {
                         "type": "command",
                         "command": (
+                            # Clean session files from both the active product (if pointer
+                            # exists) and the session-level dir (CLAUDE_PROJECT_DIR). This
+                            # handles the common case where CLAUDE_PROJECT_DIR is the framework
+                            # repo, not the product repo.
+                            'PROD=$(cat "$CLAUDE_PROJECT_DIR/.prawduct/.active-product" 2>/dev/null); '
+                            'if [ -n "$PROD" ] && [ -d "$PROD" ]; then '
+                            'rm -f "$PROD/.orchestrator-activated" '
+                            '"$PROD/.session-governance.json" '
+                            '"$PROD/.session-trace.jsonl" '
+                            '"$PROD/.session-edits.json" '
+                            '"$PROD/.product-session.json"; fi; '
                             'rm -f "$CLAUDE_PROJECT_DIR"/.prawduct/.orchestrator-activated '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-governance.json '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-trace.jsonl '
                             '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-edits.json '
-                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.product-session.json'
+                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.product-session.json '
+                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.active-product'
                         ),
                     }
                 ],
