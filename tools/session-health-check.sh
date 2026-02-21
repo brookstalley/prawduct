@@ -488,11 +488,11 @@ if len(active_files) > 50:
     print(f'  WARNING: {len(active_files)} active observation files (threshold: 50).')
     warnings += 1
 
-# --- Archive backlog ---
+# --- Archive backlog (auto-archive terminal observations) ---
 archivable = obs_utils.find_archivable(obs_dir)
 if archivable:
-    print(f'  WARNING: {len(archivable)} file(s) ready to archive. Run: tools/update-observation-status.sh --archive-all')
-    warnings += 1
+    obs_utils.archive_files(obs_dir, archivable)
+    print(f'  Auto-archived {len(archivable)} terminal observation file(s).')
 
 # --- Stale observations ---
 all_obs = obs_utils.parse_observations(active_files)

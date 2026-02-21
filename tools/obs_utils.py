@@ -140,6 +140,15 @@ def find_archivable(obs_dir):
     return [f for f in find_observation_files(obs_dir) if all_terminal(f)]
 
 
+def archive_files(obs_dir, files):
+    """Move observation files to obs_dir/archive/. Files must already be terminal."""
+    archive_dir = os.path.join(obs_dir, 'archive')
+    os.makedirs(archive_dir, exist_ok=True)
+    for f in files:
+        dest = os.path.join(archive_dir, os.path.basename(f))
+        os.rename(f, dest)
+
+
 def is_contributed(filepath):
     """Check if an observation file has been contributed to the framework."""
     try:
