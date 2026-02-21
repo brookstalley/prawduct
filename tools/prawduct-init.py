@@ -109,23 +109,28 @@ def get_prawduct_hooks() -> dict:
                     {
                         "type": "command",
                         "command": (
-                            # Clean session files from both the active product (if pointer
-                            # exists) and the session-level dir (CLAUDE_PROJECT_DIR). Only
-                            # on /clear, NOT on startup — startup cleanup destroys concurrent
+                            # Clean session files from all registered products and the
+                            # session-level dir (CLAUDE_PROJECT_DIR). Only on /clear,
+                            # NOT on startup — startup cleanup destroys concurrent
                             # sessions' state when they share the same CLAUDE_PROJECT_DIR.
-                            'PROD=$(cat "$CLAUDE_PROJECT_DIR/.prawduct/.active-product" 2>/dev/null); '
+                            'CPD="$CLAUDE_PROJECT_DIR"; '
+                            'for f in "$CPD/.prawduct/.active-products"/*; do '
+                            '[ -f "$f" ] || continue; '
+                            'PROD=$(head -1 "$f"); '
                             'if [ -n "$PROD" ] && [ -d "$PROD" ]; then '
                             'rm -f "$PROD/.orchestrator-activated" '
                             '"$PROD/.session-governance.json" '
                             '"$PROD/.session-trace.jsonl" '
                             '"$PROD/.session-edits.json" '
-                            '"$PROD/.product-session.json"; fi; '
-                            'rm -f "$CLAUDE_PROJECT_DIR"/.prawduct/.orchestrator-activated '
-                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-governance.json '
-                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-trace.jsonl '
-                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.session-edits.json '
-                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.product-session.json '
-                            '"$CLAUDE_PROJECT_DIR"/.prawduct/.active-product'
+                            '"$PROD/.product-session.json" '
+                            '"$PROD/.session.lock"; fi; done; '
+                            'rm -rf "$CPD/.prawduct/.active-products"; '
+                            'rm -f "$CPD"/.prawduct/.orchestrator-activated '
+                            '"$CPD"/.prawduct/.session-governance.json '
+                            '"$CPD"/.prawduct/.session-trace.jsonl '
+                            '"$CPD"/.prawduct/.session-edits.json '
+                            '"$CPD"/.prawduct/.product-session.json '
+                            '"$CPD"/.prawduct/.session.lock'
                         ),
                     }
                 ],
@@ -575,6 +580,7 @@ PRAWDUCT_COMMAND_PATTERNS = [
     ".orchestrator-activated",
     ".session-governance.json",
     ".prawduct/framework-path",
+    ".active-products",
 ]
 
 
@@ -1101,6 +1107,8 @@ PRAWDUCT_GITIGNORE_ENTRIES = [
     ".prawduct/.onboarding-state.json",
     ".prawduct/.critic-pending",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.active-products/",
+    ".prawduct/.session.lock",
     "",
     "# Prawduct session traces (local-only, never shared automatically)",
     ".prawduct/traces/",
