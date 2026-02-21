@@ -235,7 +235,7 @@ else
     echo "BLOCKED: Framework files were modified but no Critic review evidence found."
     echo ""
     echo "To unblock, invoke the Critic agent and record findings:"
-    echo "  1. Invoke the Critic agent per skills/orchestrator/protocols.md § Critic Agent Protocol"
+    echo "  1. Invoke the Critic agent per skills/orchestrator/protocols/agent-invocation.md § Critic Agent Protocol"
     echo "  2. The agent reads agents/critic/SKILL.md and runs tools/record-critic-findings.sh"
     echo "  3. Include 'Governance Review' in commit message"
     echo ""

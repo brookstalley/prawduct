@@ -39,7 +39,7 @@ def build_reinject(ctx: Context) -> str:
         "",
         f"Skill files are on disk \u2014 read them when needed or when hooks block you.",
         f"Start: {ctx.framework_root}/skills/orchestrator/SKILL.md",
-        f"Critic: invoke as agent per {ctx.framework_root}/skills/orchestrator/protocols.md \u00a7 Critic Agent Protocol",
+        f"Critic: invoke as agent per {ctx.framework_root}/skills/orchestrator/protocols/agent-invocation.md \u00a7 Critic Agent Protocol",
     ]
 
     if debt_lines:

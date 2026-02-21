@@ -238,7 +238,7 @@ Populate `artifact_manifest.artifacts` in project-state.yaml with all generated 
 
 3. **If substantive findings exist**, run `tools/capture-observation.sh` with `--session-type product_use --stage meta`. Substantive findings include: framework missed structural characteristics evident in the codebase, artifact generation made incorrect inferences, user made significant corrections, or the process required improvisation beyond documented guidance. "Onboarding completed successfully" is not substantive.
 
-3a. **Post-Fix Reflection for user corrections.** If user corrections in Phase 2 revealed framework gaps (the framework missed features, made incorrect inferences, or required improvisation), apply PFR steps 2-5 (from `skills/orchestrator/protocols.md` § PFR) for each correction that indicates a framework-relevant issue. This captures root cause analysis for systematic onboarding blind spots.
+3a. **Post-Fix Reflection for user corrections.** If user corrections in Phase 2 revealed framework gaps (the framework missed features, made incorrect inferences, or required improvisation), apply PFR steps 2-5 (from `skills/orchestrator/protocols/governance.md` § PFR) for each correction that indicates a framework-relevant issue. This captures root cause analysis for systematic onboarding blind spots.
 
 4. Present a summary to the user:
 

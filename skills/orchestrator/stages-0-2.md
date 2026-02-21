@@ -12,7 +12,7 @@
 2. Follow the Domain Analyzer's classification process (Steps 1-4): detect structural characteristics, identify domain-specific characteristics, classify domain, and assess risk profile.
 3. The Domain Analyzer will state the classification to the user in plain language. Do not wait for confirmation — keep moving unless the classification is genuinely ambiguous (e.g., the product could plausibly be two fundamentally different things). Example: "This looks like a [domain] product with [characteristics]. Moving into discovery..."
 4. Update `project-state.yaml` with classification results and initial `user_expertise` inferences from the user's opening message.
-5. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols.md` § FRP if not already loaded). Record reflection in `change_log`.
+5. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols/governance.md` § FRP if not already loaded). Record reflection in `change_log`.
 6. Update `current_stage` to "discovery".
 
 **Transition to Stage 1** immediately after classification. The user can correct the classification at any time — if they do, update and continue.
@@ -57,13 +57,13 @@
 
 5. **Surface proactive expertise** from the Domain Analyzer's question tiers (items marked for surfacing as considerations, not asking as questions) and its Proactive Expertise section. Frame as helpful observations or recommendations, not additional questions.
 
-   **Guidance Evaluation during discovery.** When the user provides direction during discovery (technology preferences, architecture constraints, design requirements), apply the Guidance Evaluation trigger signals from `skills/orchestrator/stage-6-iteration.md` § Guidance Evaluation. Calibrate challenge tone to the user's expertise level (see Expertise Calibration in `skills/orchestrator/protocols.md`): technical users get direct challenges with technical rationale; non-technical users get gentler framing focused on outcomes rather than principles.
+   **Guidance Evaluation during discovery.** When the user provides direction during discovery (technology preferences, architecture constraints, design requirements), apply the Guidance Evaluation trigger signals from `skills/orchestrator/stage-6-iteration.md` § Guidance Evaluation. Calibrate challenge tone to the user's expertise level (see Expertise Calibration in `skills/orchestrator/protocols/governance.md`): technical users get direct challenges with technical rationale; non-technical users get gentler framing focused on outcomes rather than principles.
 
    **Verification tooling opt-in.** When `has_human_interface` is active (especially web or desktop modality), surface agent verification as a consideration during discovery: "Products with user interfaces benefit from agent-accessible verification — tools that let the building agent observe and test the running product during development. Want to include verification infrastructure in the build plan?" If yes, record in `project-state.yaml` → `technical_decisions` and the Artifact Generator will include verification specifications. See `docs/high-level-design.md` § Agent Verification Architecture for the general principle.
 
 6. **Re-evaluate risk profile.** Before transitioning, check whether discovery revealed complexity not apparent at classification time. The user's initial description may understate technical depth (e.g., "an app that plays sounds" may turn out to require real-time audio synthesis). If any risk factor has materially changed, update `classification.risk_profile` in `project-state.yaml`. If overall risk has increased, consider whether additional discovery is warranted before proceeding — but don't re-run discovery just because risk increased; only if the higher risk reveals gaps in what you've learned.
 
-7. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols.md` § FRP if not already loaded). Record reflection in `change_log`.
+7. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols/governance.md` § FRP if not already loaded). Record reflection in `change_log`.
 
 8. Update `current_stage` to "definition".
 
@@ -90,7 +90,7 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 
 ### Review
 
-Before presenting to the user, invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols.md`, requesting Product, Design, Architecture, and Skeptic lenses on the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins. Even simple products benefit from clarity — the lenses are lightweight for simple products (they find less to flag), so the overhead is minimal. (The Testing Lens does not apply at this stage — no test specifications exist yet.)
+Before presenting to the user, invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`, requesting Product, Design, Architecture, and Skeptic lenses on the product definition. Surface any blocking findings. This catches fundamental issues (wrong scope, missing personas, infeasible architecture) before artifact generation begins. Even simple products benefit from clarity — the lenses are lightweight for simple products (they find less to flag), so the overhead is minimal. (The Testing Lens does not apply at this stage — no test specifications exist yet.)
 
 After each lens application, update `project-state.yaml` → `review_findings.entries` with structured findings (stage, phase, lens, findings with severity/recommendation/status).
 
@@ -100,9 +100,9 @@ After each lens application, update `project-state.yaml` → `review_findings.en
 
    > "Here's what I'm building: **[product name]** — **[vision]**. Main users: **[personas]**. In v1: **[core flows]**. Deferring: **[later items]** because **[rationale]**. Assumptions: **[technical/design assumptions]**. I'll keep going — interrupt me if any of this is wrong."
 
-2. Run the Stage Transition Protocol (read `skills/orchestrator/protocols.md` § Stage Transition Protocol if not already loaded) to verify prerequisites are met.
+2. Run the Stage Transition Protocol (read `skills/orchestrator/protocols/governance.md` § Stage Transition Protocol if not already loaded) to verify prerequisites are met.
 
-3. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols.md` § FRP if not already loaded). Record reflection in `change_log`.
+3. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols/governance.md` § FRP if not already loaded). Record reflection in `change_log`.
 
 4. Update `current_stage` to "artifact-generation".
 

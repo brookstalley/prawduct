@@ -12,7 +12,7 @@ The Review Lenses own **prospective** evaluation — they review artifacts *befo
 
 This skill is invoked as a **separate agent** (via Claude Code's Task tool). The Orchestrator spawns a Review Lenses agent that reads this file in its own context window. This provides independent evaluation — the agent evaluates artifact quality without being influenced by the generation conversation.
 
-The Review Lenses Agent Protocol in `skills/orchestrator/protocols.md` defines when and how this agent is spawned. This file is the Lenses agent's complete instruction set.
+The Review Lenses Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md` defines when and how this agent is spawned. This file is the Lenses agent's complete instruction set.
 
 ## When You Are Activated
 

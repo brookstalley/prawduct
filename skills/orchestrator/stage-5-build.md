@@ -25,10 +25,10 @@ For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step
    - If the gap is real: update the relevant artifact, note the change in `change_log`, and write an observation to `framework-observations/`. Then let the Builder continue.
    - If the gap requires a user decision: ask the user, update artifacts, continue.
 
-5. **Invoke the Critic agent.** Spawn a Critic review agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`. The agent runs in a separate context — it reads `agents/critic/SKILL.md` itself and hasn't seen the Builder's reasoning. Include in the prompt: project paths, current stage, files changed in this chunk, chunk summary, any accepted tradeoffs, and whether this chunk modified shared types or modules used by other chunks (so the Critic can verify cross-chunk regression was checked). Verify the agent's output per the protocol's verification steps.
+5. **Invoke the Critic agent.** Spawn a Critic review agent per the Critic Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`. The agent runs in a separate context — it reads `agents/critic/SKILL.md` itself and hasn't seen the Builder's reasoning. Include in the prompt: project paths, current stage, files changed in this chunk, chunk summary, any accepted tradeoffs, and whether this chunk modified shared types or modules used by other chunks (so the Critic can verify cross-chunk regression was checked). Verify the agent's output per the protocol's verification steps.
 
 6. **Handle Critic findings.**
-   - **Blocking findings:** Before the Builder fixes a blocking finding, apply PFR steps 1-2 (classify + RCA) from `skills/orchestrator/protocols.md` § PFR. If framework-relevant, the RCA informs the fix — the Builder targets the root cause, not just the symptom. After the fix, apply PFR steps 4-6 (meta-fix across the product, capture framework observation, present contribution pathway). The Critic re-reviews. Repeat until clear. Watch for fix-by-fudging (the Critic checks for this).
+   - **Blocking findings:** Before the Builder fixes a blocking finding, apply PFR steps 1-2 (classify + RCA) from `skills/orchestrator/protocols/governance.md` § PFR. If framework-relevant, the RCA informs the fix — the Builder targets the root cause, not just the symptom. After the fix, apply PFR steps 4-6 (meta-fix across the product, capture framework observation, present contribution pathway). The Critic re-reviews. Repeat until clear. Watch for fix-by-fudging (the Critic checks for this).
    - **Warnings:** Note them. The Builder addresses warnings that are quick to fix. Others are tracked in `build_state.reviews` for later.
    - **Clear:** Chunk status → "complete". Proceed to next chunk.
    - **Update governance tracking:** After Critic review, update `.prawduct/.session-governance.json` → `governance_state.chunks_completed_without_review` to 0 and set `last_critic_review_chunk` to the reviewed chunk name. (The PostToolUse hook also derives this mechanically from project-state.yaml, but explicit updates ensure consistency.)
@@ -45,7 +45,7 @@ For each chunk in `build_plan.chunks` (in dependency order), execute this 7-step
 At points marked in `build_plan.governance_checkpoints`, run a broader cross-chunk review:
 
 1. Are the completed chunks cohering into a working product?
-2. Invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols.md`, requesting Architecture, Skeptic, and Testing lenses on the implementation so far. (Testing Lens verifies implemented tests match specs and no coverage gaps have emerged.)
+2. Invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`, requesting Architecture, Skeptic, and Testing lenses on the implementation so far. (Testing Lens verifies implemented tests match specs and no coverage gaps have emerged.)
 3. If issues found, address before continuing.
 
 ### Build pacing
@@ -62,8 +62,8 @@ At points marked in `build_plan.governance_checkpoints`, run a broader cross-chu
 
 When all chunks are complete:
 
-1. Run the full Critic product governance review across the entire codebase (invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`, listing all source files).
-2. Invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols.md`, requesting all five lenses on the complete implementation.
+1. Run the full Critic product governance review across the entire codebase (invoke the Critic agent per the protocol in `skills/orchestrator/protocols/agent-invocation.md`, listing all source files).
+2. Invoke the Review Lenses agent per the Review Lenses Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`, requesting all five lenses on the complete implementation.
 3. Verify all tests pass.
 4. Present the result to the user:
 
@@ -71,7 +71,7 @@ When all chunks are complete:
 
 5. **Mention contribution opportunity.** After presenting the build result, briefly note that the framework captured observations during the build. These can be contributed back to the framework — the Orchestrator's Observation Contribution Flow (in `skills/orchestrator/SKILL.md`) will prompt for this during the next session resumption, or the user can run `tools/contribute-observations.sh --check` to see what's available. Also suggest periodic `git pull` to pick up improvements from other sessions. Keep this to 1-2 sentences — it's an FYI, not a pitch.
 
-6. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols.md` § FRP if not already loaded). Record reflection in `change_log`.
+6. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols/governance.md` § FRP if not already loaded). Record reflection in `change_log`.
 
    **FRP focus for Stage 5:** Were artifact specs sufficient to build from? Did the Critic add value? Were the chunks the right size? Did proportionality hold — was the process appropriate for the product's complexity?
 

@@ -180,7 +180,7 @@ The Phase 1-3 architecture is **inductive**: observations accumulate → pattern
 
 But some framework problems are **structural** — they don't produce repeated observations because the failure mode is invisible from inside the system. Example: if the framework classifies products into fixed categories, no individual product session will observe "this should use dimensions instead of categories." Each session either fits a category or gets classified as ambiguous. The structural issue only becomes visible through deductive analysis: applying the framework's own principles (Generality Over Enumeration) to its own architecture.
 
-**The gap:** Inductive learning requires volume. Deductive analysis requires principles + research → questioning. Phase 1-3 handles the first. The Structural Critique Protocol (see `skills/orchestrator/protocols.md` § "Structural Critique Protocol") handles the second.
+**The gap:** Inductive learning requires volume. Deductive analysis requires principles + research → questioning. Phase 1-3 handles the first. The Structural Critique Protocol (see `skills/orchestrator/protocols/governance.md` § "Structural Critique Protocol") handles the second.
 
 **How they complement each other:**
 

@@ -124,7 +124,7 @@ deferred_items:
   - observation_file: "framework-observations/2026-02-20-agent-specified-model-haiku-for-explore.yaml"
     type: process_friction
     summary: "System prompt 'prefer haiku' conflicts with prawduct protocol guidance on model selection"
-    target_files: ["skills/orchestrator/protocols.md"]
+    target_files: ["skills/orchestrator/protocols/agent-invocation.md"]
     priority: deferred
     rationale: "System prompt vs framework instruction conflict. No mechanical enforcement possible. Watch for recurrence."
     added: 2026-02-20
@@ -138,7 +138,7 @@ deferred_items:
   - observation_file: "framework-observations/2026-02-20-agent-behavioral-errors-during-session-initialization.yaml"
     type: coverage
     summary: "Session initialization agent errors have no observation trigger"
-    target_files: ["skills/orchestrator/protocols.md", "skills/orchestrator/SKILL.md"]
+    target_files: ["skills/orchestrator/protocols/governance.md", "skills/orchestrator/SKILL.md"]
     priority: deferred
     rationale: "Meta-observation about trigger gaps. No concrete fix identified. Watch for pattern."
     added: 2026-02-20

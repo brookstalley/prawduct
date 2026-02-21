@@ -6,7 +6,7 @@ The Artifact Generator produces the build plan artifacts for a user's product. I
 
 This skill is invoked as a **separate agent** (via Claude Code's Task tool). The Orchestrator spawns an AG agent per phase — one invocation per phase (A, B, C, D), not one monolithic call. This file is the agent's complete instruction set.
 
-The Artifact Generator Agent Protocol in `skills/orchestrator/protocols.md` defines when and how this agent is spawned. Between phases, the Orchestrator applies Review Lenses as a separate agent — the AG agent does not invoke other agents.
+The Artifact Generator Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md` defines when and how this agent is spawned. Between phases, the Orchestrator applies Review Lenses as a separate agent — the AG agent does not invoke other agents.
 
 ## When You Are Activated
 
