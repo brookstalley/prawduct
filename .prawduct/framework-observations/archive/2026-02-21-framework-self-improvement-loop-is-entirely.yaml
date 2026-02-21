@@ -1,0 +1,20 @@
+---
+observation_id: eb3f941a-3399-4ece-ba7c-500b17dc4dbc
+timestamp: 2026-02-21T23:37:51Z
+session_type: framework_dev
+session_context:
+  framework_version: 68bab2a
+observations:
+  - type: critic_gap
+    stage: 6
+    severity: warning
+    description: "Framework self-improvement loop is entirely reactive — it catches friction during use but cannot detect omission gaps (entire categories of concern absent from the pipeline). Design systems and observability persisted as gaps through 13+ evaluations because no mechanism asked 'what should we cover that we don't?'"
+    evidence: "Design System and Observability had Partial coverage for weeks; Analytics/Product Metrics and Schema/Data Migration had Gap (zero coverage). None surfaced as observations because no session exercised the missing concern."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Entire categories of cross-cutting concern persist as pipeline gaps without detection"
+      root_cause: "Reactive observation system cannot detect what is absent — coherence audits verify consistency of what exists but cannot identify what should exist but does not"
+      category: missing_detection
+skills_affected:
+  - "agents/critic/framework-checks.md tools/session-health-check.sh skills/orchestrator/protocols/governance.md docs/self-improvement-architecture.md"
+---
