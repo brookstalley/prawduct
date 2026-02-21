@@ -17,11 +17,12 @@ Hook JSON is read from stdin for gate/track/failure/stop/commit.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import NoReturn
 
 from . import __version__
-from .context import resolve, update_product_context
+from .context import resolve, update_product_context, enumerate_active_products
 from .state import SessionState
 
 
@@ -71,10 +72,10 @@ def main() -> NoReturn:
         # Standard hook commands: read JSON from stdin, load state
         hook_input = _read_hook_json()
 
-        # Stop/commit must NOT follow the .active-product pointer. The pointer
-        # is shared between concurrent sessions from the same CLAUDE_PROJECT_DIR,
-        # so following it would expose stop/commit to another session's governance
-        # debt. Gate/track follow the pointer (and also call update_product_context)
+        # Stop/commit do NOT follow the active-products registry via resolve().
+        # Stop enumerates all registered products itself (multi-product debt check).
+        # Commit operates per-commit at session level only.
+        # Gate/track follow the registry (and also call update_product_context)
         # because they operate per-file — they need the correct product context
         # for classification and state tracking.
         session_level = command in ("stop", "commit")
@@ -171,9 +172,37 @@ def _run_track(hook_input: dict, ctx, state: SessionState) -> NoReturn:
 
 def _run_stop(hook_input: dict, ctx, state: SessionState) -> NoReturn:
     from .stop import validate
+    from .context import Context
 
+    all_debts: list[str] = []
+
+    # 1. Check session-level debt (framework repo's own governance)
     decision = validate(hook_input, ctx, state)
-    if decision.allowed:
+    all_debts.extend(decision.debts)
+
+    # 2. Enumerate registered products and check each one's debt
+    session_prawduct_dir = ctx.prawduct_dir
+    session_real = os.path.realpath(session_prawduct_dir)
+    for product_dir in enumerate_active_products(session_prawduct_dir):
+        product_real = os.path.realpath(product_dir)
+        if product_real == session_real:
+            continue  # Already checked above
+
+        try:
+            product_ctx = Context(
+                framework_root=ctx.framework_root,
+                prawduct_dir=product_dir,
+                repo_root=os.path.dirname(product_dir),
+            )
+            product_state = SessionState.load(product_ctx.session_file)
+            product_decision = validate(hook_input, product_ctx, product_state)
+            product_name = os.path.basename(os.path.dirname(product_dir))
+            for debt in product_decision.debts:
+                all_debts.append(f"[{product_name}] {debt}")
+        except Exception:
+            continue  # Never block on product enumeration failure
+
+    if not all_debts:
         sys.exit(0)
     else:
         print("", file=sys.stderr)
@@ -181,7 +210,7 @@ def _run_stop(hook_input: dict, ctx, state: SessionState) -> NoReturn:
             f"BLOCKED: Governance debt. Read {ctx.framework_root}/skills/orchestrator/protocols/governance.md and resolve:",
             file=sys.stderr,
         )
-        print("; ".join(decision.debts), file=sys.stderr)
+        print("; ".join(all_debts), file=sys.stderr)
         print("", file=sys.stderr)
         sys.exit(2)
 

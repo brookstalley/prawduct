@@ -13,7 +13,7 @@ from typing import Optional
 
 from . import trace as tr
 from .classify import GOVERNANCE_SENSITIVE_PREFIXES, classify
-from .context import Context
+from .context import Context, touch_session_lock
 from .state import SessionState, now_iso
 
 
@@ -67,6 +67,9 @@ def track(tool_input: dict, ctx: Context, state: SessionState) -> None:
         _track_product_edit(fc, file_path, timestamp, ctx, state)
 
     state.governance.last_updated = timestamp
+
+    # Heartbeat: keep advisory session lock fresh
+    touch_session_lock(ctx.prawduct_dir)
 
 
 def _track_framework_edit(

@@ -18,7 +18,7 @@ from typing import Optional
 
 from . import trace as tr
 from .classify import classify, FileClass
-from .context import Context
+from .context import Context, touch_session_lock, check_session_lock
 from .state import SessionState, PFRState
 
 
@@ -59,6 +59,7 @@ def check(tool_input: dict, ctx: Context, state: SessionState) -> Decision:
         if not result.allowed:
             tr.event(state, "gate_block", {"rule": "research_activation", "tool": tool_name, "reason": result.reason})
             return result
+        touch_session_lock(ctx.prawduct_dir)
         return Decision(allowed=True)
 
     if not file_path:
@@ -68,10 +69,16 @@ def check(tool_input: dict, ctx: Context, state: SessionState) -> Decision:
 
     # --- Read gate: only skill/template files ---
     if tool_name == "Read":
-        return _check_read(fc, ctx, state)
+        decision = _check_read(fc, ctx, state)
+        if decision.allowed:
+            touch_session_lock(ctx.prawduct_dir)
+        return decision
 
     # --- Edit/Write gate ---
-    return _check_edit(fc, file_path, ctx, state)
+    decision = _check_edit(fc, file_path, ctx, state)
+    if decision.allowed:
+        touch_session_lock(ctx.prawduct_dir)
+    return decision
 
 
 def _check_read(fc: FileClass, ctx: Context, state: SessionState) -> Decision:
@@ -111,6 +118,10 @@ def _check_edit(
     # surface — agents that can Bash-write the marker can already Bash-write
     # the session file, bypassing the gate entirely.
     if _is_bootstrap_session_write(file_path, ctx):
+        # Advisory lock: check if another session is active on this product
+        lock_warning = check_session_lock(ctx.prawduct_dir)
+        if lock_warning:
+            tr.event(state, "gate_advisory", {"rule": "session_lock", "warning": lock_warning})
         tr.event(state, "gate_check", {"rule": "bootstrap_session_file", "file": file_path, "result": "allow"})
         return Decision(allowed=True)
 
