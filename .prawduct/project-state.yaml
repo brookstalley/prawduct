@@ -75,22 +75,13 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Fix cross-repo governance contamination + 4 soon-priority observations (activation bypass, build-time paths, plan-mode handoff, Stage 6 ordering)'
-    why: 'Stop hook followed .active-product pointer to another repo session-governance.json, blocking sessions with foreign governance debt. Root cause: resolve() uniformly followed pointer for all hook types, but stop/commit/prompt validate session state, not per-file product state. Also: activation marker spoofable via Bash, plan-mode bypass of HR9, Stage 6 classification reminder suppressed by other debt, SessionStart cleanup missed active-product files.'
-    blast_radius: 'tools/governance/context.py, tools/governance/__main__.py, tools/governance/gate.py, tools/governance/prompt.py, tools/governance/stop.py, tools/prawduct-init.py, .claude/settings.json, tests/test_governance.py, .prawduct/artifacts/governance-mechanisms.md'
-    classification: enhancement
-    date: 2026-02-21
-  - what: 'Token discipline: split protocols.md into focused files, tighten main-context files and Critic SKILL.md'
-    why: 'protocols.md (35KB) loaded entirely when any single protocol needed — Critic spawn loads 4KB but was forced to read 35KB. Root cause: Orchestrator decomposition grouped by authoring locality rather than load-time access patterns. Split into protocols/agent-invocation.md (13KB, agent spawns), protocols/governance.md (18KB, PFR/FRP/transitions), protocols/stage-prerequisites.md (3KB, transitions). Also tightened CLAUDE.md (-938B), SKILL.md (-1822B), stage-6-iteration.md (-2360B), and Critic SKILL.md (-9139B) by extracting product-only sections and converting prose to tables.'
-    blast_radius: 'skills/orchestrator/protocols/ (3 new), skills/orchestrator/SKILL.md, skills/orchestrator/stage-6-iteration.md, skills/orchestrator/stage-5-build.md, skills/orchestrator/stages-0-2.md, skills/orchestrator/stages-3-4.md, skills/orchestrator/onboarding.md, skills/orchestrator/observation-contribution.md (new), CLAUDE.md, agents/critic/SKILL.md, agents/critic/framework-checks.md (new), agents/critic/review-cycle.md (new), agents/artifact-generator/SKILL.md, agents/review-lenses/SKILL.md, docs/project-structure.md, docs/self-improvement-architecture.md, tools/governance/__main__.py, tools/critic-reminder.sh, tools/governance/commit.py, tools/governance/reinject.py'
-    classification: enhancement
-    date: 2026-02-20
-  - what: 'Summary: 2 entries compacted (2026-02-17 to 2026-02-19)'
-    why: '1 cosmetic, 1 enhancement covering: Summary: 2 entries compacted (2026-02-19 to 2026-02-19); Document docs/ vs .prawduct/artifacts/
-      distinction in high-level-design.md, c...'
+  - what: 'Summary: 4 entries compacted (2026-02-17 to 2026-02-21)'
+    why: '1 cosmetic, 3 enhancement covering: Fix cross-repo governance contamination + 4 soon-priority observations (activ...;
+      Token discipline: split protocols.md into focused files, tighten main-context...; Summary: 2 entries compacted (2026-02-17
+      to 2026-02-19); CLAUDE.md context footprint optimization: condense tree, Framework Status, Te...'
     blast_radius: compacted
     classification: cosmetic
-    date: '2026-02-20'
+    date: '2026-02-21'
   - what: Replaced product shape taxonomy with concern-based classification
     why: Fixed shapes (UI Application, API, Automation, Multi-Party, Hybrid) violated 'Generality Over Enumeration' principle.
       Products like earbud firmware, browser extensions, smart contracts don't fit any shape. Replaced with 7 composable concern
@@ -303,16 +294,6 @@ change_log:
       skills/orchestrator/migration.md (new), .prawduct/project-state.yaml, CLAUDE.md
     classification: directional
     date: 2026-02-16
-  - what: 'CLAUDE.md context footprint optimization: condense tree, Framework Status, Testing Strategy'
-    why: 'CLAUDE.md (always-loaded, ~6k tokens) had grown organically with exhaustive file listings (14 artifacts, 13 tools,
-      17 templates individually enumerated), detailed Framework Status capability bullets (redundant with project-state.yaml
-      read during Session Resumption), and eval-run procedures in Testing Strategy (redundant with docs/evaluation-methodology.md).
-      Condensed: artifacts/ 14→1 line, tools/ 13→4 lines, templates/ 17→4 lines, scripts/ 3→1 line, tests/ 4→2 lines. Framework
-      Status 24→10 lines. Testing Strategy Recording subsection 9→1 line. Removed stray # test. 257→185 lines (~1,000 tokens
-      saved from every session start). No information lost — all removed content available on-demand from canonical sources.'
-    blast_radius: CLAUDE.md, .prawduct/project-state.yaml
-    classification: enhancement
-    date: 2026-02-17
   - what: 'Create governance-mechanisms.md artifact: consolidate enforcement chain documentation, slim 4 files'
     why: Enforcement mechanism descriptions were duplicated across 5+ files (self-improvement-architecture.md, failure-recovery-spec.md,
       framework-observations/README.md, CLAUDE.md) with no single reference for hook lifecycle, state files, or enforcement
@@ -434,10 +415,9 @@ change_log:
       in Stage 1, project-preferences.md as a user-authored artifact tracked in artifact_manifest with dependency graph participation,
       convention inference for existing codebase onboarding, preference propagation to AG/Builder/Critic, and preference lifecycle
       management during iteration.'
-    blast_radius: templates/project-state.yaml, skills/domain-analyzer/SKILL.md, skills/orchestrator/stages-0-2.md,
-      skills/orchestrator/stage-6-iteration.md, skills/orchestrator/onboarding.md, agents/artifact-generator/SKILL.md,
-      skills/builder/SKILL.md, agents/critic/SKILL.md, docs/requirements.md, docs/principles.md, docs/high-level-design.md,
-      docs/project-structure.md, docs/glossary.md, docs/evaluation-methodology.md
+    blast_radius: templates/project-state.yaml, skills/domain-analyzer/SKILL.md, skills/orchestrator/stages-0-2.md, skills/orchestrator/stage-6-iteration.md,
+      skills/orchestrator/onboarding.md, agents/artifact-generator/SKILL.md, skills/builder/SKILL.md, agents/critic/SKILL.md,
+      docs/requirements.md, docs/principles.md, docs/high-level-design.md, docs/project-structure.md, docs/glossary.md, docs/evaluation-methodology.md
     classification: enhancement
     date: 2026-02-21
   - what: 'Close fail-open governance escape: external git repo detection in edit gate'
