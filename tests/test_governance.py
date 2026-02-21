@@ -21,7 +21,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 
-from governance.context import Context, resolve, resolve_product_for_file, update_product_context, write_active_product, _active_product_path
+from governance.context import (
+    Context, resolve, resolve_product_for_file, update_product_context,
+    register_active_product, enumerate_active_products, cleanup_active_products,
+    _product_hash, _active_products_dir,
+    check_session_lock, write_session_lock, touch_session_lock,
+    REGISTRATION_MAX_AGE, SESSION_LOCK_FRESHNESS,
+)
 from governance.prompt import check as prompt_check, _check_framework_version
 from governance.failure import check as failure_check
 from governance.classify import (
@@ -128,8 +134,8 @@ class TestContext:
             with pytest.raises(ValueError):
                 resolve()
 
-    def test_resolve_follows_active_product_pointer(self, tmp_path):
-        """resolve() follows .active-product pointer to redirect prawduct_dir."""
+    def test_resolve_follows_active_products_registry(self, tmp_path):
+        """resolve() follows .active-products/ registry to redirect prawduct_dir."""
         fw = tmp_path / "framework"
         fw.mkdir()
         fw_prawduct = fw / ".prawduct"
@@ -140,16 +146,15 @@ class TestContext:
         product_prawduct = product / ".prawduct"
         product_prawduct.mkdir()
 
-        # Write pointer
-        pointer_path = fw_prawduct / ".active-product"
-        pointer_path.write_text(str(product_prawduct))
+        # Register product
+        register_active_product(str(fw_prawduct), str(product_prawduct))
 
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
             ctx = resolve(framework_root=str(fw))
-            assert ctx.prawduct_dir == str(product_prawduct)
+            assert ctx.prawduct_dir == str(product_prawduct.resolve())
 
-    def test_resolve_ignores_pointer_when_follow_false(self, tmp_path):
-        """resolve(follow_pointer=False) ignores .active-product pointer."""
+    def test_resolve_ignores_registry_when_follow_false(self, tmp_path):
+        """resolve(follow_pointer=False) ignores .active-products/ registry."""
         fw = tmp_path / "framework"
         fw.mkdir()
         fw_prawduct = fw / ".prawduct"
@@ -160,35 +165,37 @@ class TestContext:
         product_prawduct = product / ".prawduct"
         product_prawduct.mkdir()
 
-        # Write pointer
-        pointer_path = fw_prawduct / ".active-product"
-        pointer_path.write_text(str(product_prawduct))
+        # Register product
+        register_active_product(str(fw_prawduct), str(product_prawduct))
 
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
             ctx = resolve(framework_root=str(fw), follow_pointer=False)
             assert ctx.prawduct_dir == str(fw_prawduct)
 
-    def test_resolve_ignores_invalid_pointer(self, tmp_path):
-        """resolve() ignores pointer pointing to nonexistent directory."""
+    def test_resolve_ignores_stale_registration(self, tmp_path):
+        """resolve() ignores registrations older than 12h."""
         fw = tmp_path / "framework"
         fw.mkdir()
         fw_prawduct = fw / ".prawduct"
         fw_prawduct.mkdir()
 
-        # Write pointer to nonexistent dir
-        pointer_path = fw_prawduct / ".active-product"
-        pointer_path.write_text("/nonexistent/path/.prawduct")
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+
+        # Register product with a stale timestamp
+        products_dir = _active_products_dir(str(fw_prawduct))
+        os.makedirs(products_dir, exist_ok=True)
+        h = _product_hash(str(product_prawduct))
+        entry_path = os.path.join(products_dir, h)
+        stale_ts = time.time() - REGISTRATION_MAX_AGE - 100
+        with open(entry_path, "w") as f:
+            f.write(f"{os.path.realpath(str(product_prawduct))}\n{stale_ts}\n")
 
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
             ctx = resolve(framework_root=str(fw))
             assert ctx.prawduct_dir == str(fw_prawduct)
-
-    def test_write_active_product_skips_same_dir(self, tmp_path):
-        """write_active_product() is a no-op when dirs are the same."""
-        prawduct = str(tmp_path / "same" / ".prawduct")
-        os.makedirs(prawduct, exist_ok=True)
-        write_active_product(prawduct, prawduct)
-        assert not os.path.isfile(_active_product_path(prawduct))
 
     def test_update_product_context_cross_repo(self, tmp_path):
         """update_product_context() returns new ctx for cross-repo file."""
@@ -217,11 +224,11 @@ class TestContext:
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
             new_ctx = update_product_context(file_path, ctx)
             assert new_ctx.prawduct_dir == str(product_prawduct)
-            # Pointer should have been written
-            pointer_path = _active_product_path(str(fw_prawduct))
-            assert os.path.isfile(pointer_path)
-            with open(pointer_path) as f:
-                assert f.read().strip() == str(product_prawduct)
+            # Registration should have been written in .active-products/
+            products_dir = _active_products_dir(str(fw_prawduct))
+            assert os.path.isdir(products_dir)
+            entries = os.listdir(products_dir)
+            assert len(entries) == 1
 
     def test_update_product_context_same_repo(self, tmp_path):
         """update_product_context() returns same ctx for same-repo file."""
@@ -1003,13 +1010,11 @@ class TestStop:
         assert result.allowed is False
         assert any("chunk" in d for d in result.debts)
 
-    def test_cross_repo_stop_ignores_product_pointer(self, tmp_path):
-        """Stop hook does NOT follow pointer — avoids concurrent session contamination.
+    def test_stop_enumerates_active_products(self, tmp_path):
+        """Stop hook enumerates .active-products/ to check multi-product debt.
 
-        The .active-product pointer is shared between concurrent sessions from
-        the same CLAUDE_PROJECT_DIR. Stop must not follow it, or it would see
-        another session's governance debt. Instead, stop checks session-level
-        state only (from CLAUDE_PROJECT_DIR/.prawduct/).
+        When a product is registered with governance debt, stop detects it
+        via enumeration rather than following a singleton pointer.
         """
         fw = tmp_path / "framework"
         fw.mkdir()
@@ -1021,11 +1026,10 @@ class TestStop:
         product_prawduct = product / ".prawduct"
         product_prawduct.mkdir()
 
-        # Simulate pointer written by ANOTHER concurrent session
-        pointer_path = fw_prawduct / ".active-product"
-        pointer_path.write_text(str(product_prawduct))
+        # Register product in .active-products/
+        register_active_product(str(fw_prawduct), str(product_prawduct))
 
-        # Product has governance debt from the other session
+        # Product has governance debt
         product_session = product_prawduct / ".session-governance.json"
         session_data = {
             "schema_version": 2,
@@ -1044,16 +1048,30 @@ class TestStop:
         with open(product_session, "w") as f:
             json.dump(session_data, f)
 
-        # Stop resolves with follow_pointer=False — stays at session level
+        # Enumerate should find the product
+        products = enumerate_active_products(str(fw_prawduct))
+        assert len(products) == 1
+        assert products[0] == str(product_prawduct.resolve())
+
+        # Stop at session-level (no session state) should allow
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}):
             ctx = resolve(framework_root=str(fw), follow_pointer=False)
-            # Should stay at framework's prawduct dir, NOT follow pointer
             assert ctx.prawduct_dir == str(fw_prawduct)
 
-        # Session-level has no state → stop allows (no contamination)
         state = SessionState.load(ctx.session_file)
         result = validate({}, ctx, state)
-        assert result.allowed is True
+        assert result.allowed is True  # Session-level is clean
+
+        # But the product has debt — _run_stop in __main__ would catch it
+        product_ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(product_prawduct),
+            repo_root=str(product),
+        )
+        product_state = SessionState.load(product_ctx.session_file)
+        product_result = validate({}, product_ctx, product_state)
+        assert product_result.allowed is False
+        assert any("chunk" in d for d in product_result.debts)
 
 
 # ---------------------------------------------------------------------------
@@ -1409,3 +1427,191 @@ class TestFailureCheck:
         assert result is not None
         parsed = json.loads(result)
         assert "additionalContext" in parsed
+
+
+# ---------------------------------------------------------------------------
+# Product Registry Tests
+# ---------------------------------------------------------------------------
+
+
+class TestProductRegistry:
+    """Tests for the .active-products/ directory-based registry."""
+
+    def test_register_creates_directory_and_file(self, tmp_path):
+        """Basic registration creates .active-products/<hash> file."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_dir = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        register_active_product(session_dir, product_dir)
+
+        products_dir = _active_products_dir(session_dir)
+        assert os.path.isdir(products_dir)
+        entries = os.listdir(products_dir)
+        assert len(entries) == 1
+
+        # Verify file contents
+        entry_path = os.path.join(products_dir, entries[0])
+        with open(entry_path) as f:
+            lines = f.read().strip().split("\n")
+        assert lines[0] == os.path.realpath(product_dir)
+        assert float(lines[1]) > 0
+
+    def test_register_same_product_idempotent(self, tmp_path):
+        """Same product always maps to same hash file."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_dir = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        register_active_product(session_dir, product_dir)
+        register_active_product(session_dir, product_dir)
+
+        entries = os.listdir(_active_products_dir(session_dir))
+        assert len(entries) == 1  # Same file, not two
+
+    def test_register_multiple_products(self, tmp_path):
+        """Different products create different files."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_a = str(tmp_path / "product-a" / ".prawduct")
+        product_b = str(tmp_path / "product-b" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_a, exist_ok=True)
+        os.makedirs(product_b, exist_ok=True)
+
+        register_active_product(session_dir, product_a)
+        register_active_product(session_dir, product_b)
+
+        entries = os.listdir(_active_products_dir(session_dir))
+        assert len(entries) == 2
+
+    def test_enumerate_returns_valid_products(self, tmp_path):
+        """Round-trip register → enumerate returns correct paths."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_dir = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        register_active_product(session_dir, product_dir)
+        products = enumerate_active_products(session_dir)
+
+        assert len(products) == 1
+        assert products[0] == os.path.realpath(product_dir)
+
+    def test_enumerate_skips_stale_registrations(self, tmp_path):
+        """Registrations older than 12h are filtered out."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_dir = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        # Write a stale entry manually
+        products_dir = _active_products_dir(session_dir)
+        os.makedirs(products_dir, exist_ok=True)
+        h = _product_hash(product_dir)
+        entry_path = os.path.join(products_dir, h)
+        stale_ts = time.time() - REGISTRATION_MAX_AGE - 100
+        with open(entry_path, "w") as f:
+            f.write(f"{os.path.realpath(product_dir)}\n{stale_ts}\n")
+
+        products = enumerate_active_products(session_dir)
+        assert len(products) == 0
+
+    def test_enumerate_skips_missing_dirs(self, tmp_path):
+        """Nonexistent product paths are filtered out."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+
+        # Write entry pointing to nonexistent dir
+        products_dir = _active_products_dir(session_dir)
+        os.makedirs(products_dir, exist_ok=True)
+        entry_path = os.path.join(products_dir, "abcdef123456")
+        with open(entry_path, "w") as f:
+            f.write(f"/nonexistent/path/.prawduct\n{time.time()}\n")
+
+        products = enumerate_active_products(session_dir)
+        assert len(products) == 0
+
+    def test_enumerate_empty_directory(self, tmp_path):
+        """Empty .active-products/ returns empty list."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+
+        products = enumerate_active_products(session_dir)
+        assert products == []
+
+    def test_cleanup_removes_directory(self, tmp_path):
+        """cleanup_active_products removes the directory and all entries."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_dir = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        register_active_product(session_dir, product_dir)
+        assert os.path.isdir(_active_products_dir(session_dir))
+
+        cleanup_active_products(session_dir)
+        assert not os.path.isdir(_active_products_dir(session_dir))
+
+
+# ---------------------------------------------------------------------------
+# Advisory Lock Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAdvisoryLock:
+    """Tests for the .session.lock advisory lock mechanism."""
+
+    def test_session_lock_warns_on_concurrent(self, tmp_path):
+        """Fresh lock returns warning message."""
+        prawduct_dir = str(tmp_path / ".prawduct")
+        os.makedirs(prawduct_dir, exist_ok=True)
+
+        write_session_lock(prawduct_dir)
+        warning = check_session_lock(prawduct_dir)
+
+        assert warning is not None
+        assert "Another session" in warning
+
+    def test_session_lock_ignores_stale(self, tmp_path):
+        """Lock older than 1h returns None."""
+        prawduct_dir = str(tmp_path / ".prawduct")
+        os.makedirs(prawduct_dir, exist_ok=True)
+
+        lock_path = os.path.join(prawduct_dir, ".session.lock")
+        with open(lock_path, "w") as f:
+            f.write(f"{time.time()}\n")
+
+        # Backdate mtime to beyond freshness threshold
+        old_time = time.time() - SESSION_LOCK_FRESHNESS - 100
+        os.utime(lock_path, (old_time, old_time))
+
+        warning = check_session_lock(prawduct_dir)
+        assert warning is None
+
+    def test_session_lock_touch_updates_mtime(self, tmp_path):
+        """Heartbeat (touch) keeps the lock fresh."""
+        prawduct_dir = str(tmp_path / ".prawduct")
+        os.makedirs(prawduct_dir, exist_ok=True)
+
+        write_session_lock(prawduct_dir)
+        lock_path = os.path.join(prawduct_dir, ".session.lock")
+
+        # Backdate the lock
+        old_time = time.time() - SESSION_LOCK_FRESHNESS - 100
+        os.utime(lock_path, (old_time, old_time))
+        assert check_session_lock(prawduct_dir) is None  # Stale
+
+        # Touch should refresh it
+        touch_session_lock(prawduct_dir)
+        warning = check_session_lock(prawduct_dir)
+        assert warning is not None  # Fresh again
+
+    def test_no_lock_returns_none(self, tmp_path):
+        """No lock file returns None."""
+        prawduct_dir = str(tmp_path / ".prawduct")
+        os.makedirs(prawduct_dir, exist_ok=True)
+
+        warning = check_session_lock(prawduct_dir)
+        assert warning is None

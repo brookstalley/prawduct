@@ -36,20 +36,37 @@ tools/governance/
 ├── reinject.py        # SessionStart compact: post-compaction context recovery
 ```
 
-### Active-Product Pointer (Cross-Repo Resolution)
+### Active-Products Registry (Cross-Repo Resolution)
 
-In cross-repo sessions (framework hooks managing a separate product repo), `context.py` uses an `.active-product` pointer file to route per-file hooks (gate/track) to the correct product. Session-level hooks (stop/commit/prompt) do NOT follow the pointer — they validate the session's own governance state to avoid contamination from another repo's governance debt.
+In cross-repo sessions (framework hooks managing separate product repos), `context.py` uses an `.active-products/` directory to register each product by a deterministic hash of its realpath. This allows multiple products to be tracked concurrently from the same `CLAUDE_PROJECT_DIR` without clobbering — different products create different files, same product always maps to the same file (idempotent).
 
 **How it works:**
 1. `__main__.py` calls `update_product_context(file_path, ctx)` for gate/track commands
 2. `update_product_context()` resolves the product from the file's git root (via `resolve_product_for_file()`)
-3. If the product differs from the session-level dir, it writes `.prawduct/.active-product` with the product's `.prawduct/` path
-4. `resolve(follow_pointer=True)` (gate/track) reads the pointer to get product context; `resolve(follow_pointer=False)` (stop/commit/prompt) ignores it — the pointer is shared between concurrent sessions so stop/commit cannot safely follow it
-5. `.active-product` is cleaned up on explicit `/clear` (`SessionStart clear` hook); SessionStart also cleans the pointed-to product's session files before clearing the pointer. Cleanup does NOT fire on `startup` to avoid destroying concurrent sessions' state
+3. If the product differs from the session-level dir, it calls `register_active_product()` which creates `.prawduct/.active-products/<SHA256[:12]>` containing the product path and a timestamp
+4. `resolve(follow_pointer=True)` (gate/track) reads the registry (most recent entry) for initial product resolution; `update_product_context()` then refines per-file
+5. `resolve(follow_pointer=False)` (commit/prompt) stays at session level
+6. **Stop** enumerates all registered products via `enumerate_active_products()` and checks governance debt in each one, prefixing product debts with `[product-name]`
+7. Cleanup on `/clear` enumerates all registered products, cleans each one's session files, then removes the `.active-products/` directory
 
-**Self-hosted/same-repo:** No pointer is written (resolve_product_for_file returns the same dir). No change in behavior.
+**Stale filtering:** Registrations include a timestamp. Entries older than 12h are filtered out by `enumerate_active_products()`.
 
-**Fail-safe:** If the pointer doesn't exist, points to a nonexistent directory, or can't be read, `resolve()` falls back to `CLAUDE_PROJECT_DIR` — identical to previous behavior.
+**Self-hosted/same-repo:** No registration is written (resolve_product_for_file returns the same dir). No change in behavior.
+
+**Fail-safe:** If the directory doesn't exist or is empty, `resolve()` and `enumerate_active_products()` return the session-level dir / empty list respectively.
+
+### Advisory Session Lock
+
+A `.session.lock` file in each product's `.prawduct/` detects concurrent sessions on the same product. Without Claude Code session IDs, two sessions on the same product share state (last-writer-wins).
+
+**How it works:**
+1. At activation (Orchestrator step 3 / bootstrap gate exemption): `check_session_lock()` checks if a fresh lock (mtime < 1h) exists
+2. If fresh lock found: a warning is emitted via trace event — "Another session appears active on this product"
+3. After activation: `write_session_lock()` creates/overwrites `.session.lock` with timestamp + `CLAUDE_PROJECT_DIR`
+4. On each gate/track invocation: `touch_session_lock()` updates the lock's mtime (heartbeat)
+5. On `/clear`: `.session.lock` is removed along with other session files
+
+**Limitations:** Same-product concurrent sessions are detected but not isolated. State is last-writer-wins. Full isolation requires Claude Code session ID support.
 
 ### Hook Protocol
 
@@ -98,11 +115,12 @@ Git root detection results are cached by directory prefix to avoid repeated file
 
 ## State Files
 
-All session state lives in `.prawduct/` within the product directory (resolved from the file's git root by `resolve_product_for_file()` in `tools/governance/context.py`, with cross-repo redirection via the `.active-product` pointer). Session state uses schema versioning: reads v1 (pre-module format) and v2 (module format), always writes v2.
+All session state lives in `.prawduct/` within the product directory (resolved from the file's git root by `resolve_product_for_file()` in `tools/governance/context.py`, with cross-repo registration via the `.active-products/` directory). Session state uses schema versioning: reads v1 (pre-module format) and v2 (module format), always writes v2.
 
 | File | Created by | Read by | Lifecycle |
 |------|-----------|---------|-----------|
-| `.active-product` | context.py (on cross-repo gate/track) | gate/track via `resolve(follow_pointer=True)` | Lives in session-level `.prawduct/` (CLAUDE_PROJECT_DIR); cleared on `/clear` or startup |
+| `.active-products/<hash>` | context.py `register_active_product()` (on cross-repo gate/track) | `resolve(follow_pointer=True)`, `enumerate_active_products()` (stop) | Lives in session-level `.prawduct/`; directory removed on `/clear`. Stale entries (>12h) filtered. |
+| `.session.lock` | Orchestrator step 3 / gate heartbeat | gate.py `check_session_lock()` at bootstrap | Lives in product's `.prawduct/`; removed on `/clear`. Advisory only. |
 | `.orchestrator-activated` | Orchestrator step 3 | gate.py, prompt.py | Lives in product's `.prawduct/`; cleared on commit or `/clear` |
 | `.session-governance.json` | Orchestrator step 4 | All modules | Cleared on commit or `/clear` |
 | `.critic-pending` | tracker.py (on framework edit) | commit.py | Cleared on commit |
