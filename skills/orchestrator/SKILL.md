@@ -70,11 +70,11 @@ This is the default skill. When using Prawduct to build a user's product:
 
 Across all stages, the Orchestrator:
 
-- **Manages the user relationship.** You are the user's conversational partner. Be warm, clear, and proportionate. Match your language to the user's expertise level (inferred, never asked — see Expertise Calibration in `skills/orchestrator/protocols.md`).
+- **Manages the user relationship.** You are the user's conversational partner. Be warm, clear, and proportionate. Match your language to the user's expertise level (inferred, never asked — see Expertise Calibration in `skills/orchestrator/protocols/governance.md`).
 - **Enforces pacing.** Discovery depth is calibrated to product risk. A low-risk utility gets 1-2 rounds of questions. A high-risk B2B platform gets more. Never hold the user hostage to a process they find tedious.
 - **Makes decisions the user can't.** When the user lacks expertise to choose (architecture, security approach, deployment strategy), make a reasonable choice, state it as an assumption, and move on. Don't ask a non-technical user to pick between PostgreSQL and MongoDB.
 - **Tracks stage transitions.** Stages are fuzzy, not rigid gates. Discovery and definition interleave. But you must know what stage you're in so you know what to do next and can update `project-state.yaml` → `current_stage` at each transition.
-- **Reflects on the framework at every stage transition.** See the Framework Reflection Protocol in `skills/orchestrator/protocols.md`.
+- **Reflects on the framework at every stage transition.** See the Framework Reflection Protocol in `skills/orchestrator/protocols/governance.md`.
 - **Treats approved plans as input, not bypass.** When the user provides an approved plan (from plan mode, a prior session, or explicit instructions), that plan is input to the Orchestrator's process. The Orchestrator still activates governance (step 3), initializes tracking (step 4), classifies the change, and applies appropriate governance (PFR, DCP, Critic). An approved plan tells the Orchestrator *what* to implement — it does not skip *how* governance works. This is HR9.
 
 ---
@@ -99,19 +99,13 @@ Read the sub-file for the current stage. Each sub-file is self-contained for its
 
 ## Protocol References
 
-These protocols are in `skills/orchestrator/protocols.md`. Read on demand at stage boundaries or when referenced.
+Protocols are split by access pattern — load only what you need:
 
-| Protocol | When to use |
-|----------|-------------|
-| **Framework Reflection Protocol (FRP)** | At every stage transition — assess whether the framework served well |
-| **Post-Fix Reflection Protocol (PFR)** | Every non-cosmetic fix — classify, RCA before fix, meta-fix, observe, contribute |
-| **Stage Transition Protocol** | Before transitioning to a new stage — verify prerequisites are met |
-| **Expertise Calibration** | Throughout all stages — infer user expertise from signals, adapt behavior |
-| **Structural Critique Protocol** | After every 3 evals, after directional changes, or on request |
-| **Critic Agent Protocol** | When invoking Critic review — spawn agent per this protocol |
-| **Review Lenses Agent Protocol** | When invoking artifact evaluation — spawn agent per this protocol |
-| **Observation Triage Agent Protocol** | During session resumption or after Pattern Extractor — triage observations |
-| **Extending This Skill** | When adding new Orchestrator capabilities |
+| File | Protocols | When to read |
+|------|-----------|--------------|
+| `protocols/agent-invocation.md` | Critic, Review Lenses, Observation Triage, Artifact Generator agent protocols | When spawning any agent |
+| `protocols/governance.md` | FRP, Stage Transition, Expertise Calibration, PFR, Structural Critique, Extending This Skill | At stage boundaries, during fixes, or when referenced |
+| `protocols/stage-prerequisites.md` | Per-stage prerequisite checklists | During stage transitions |
 
 ---
 
@@ -133,7 +127,7 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 - If health check reports `STATE_WARNINGS > 0`, run `tools/compact-project-state.sh` automatically. Compaction is lossless — it preserves all information in condensed form.
 - When actionable patterns exist, synthesize concrete recommendations and let the user **act now** or **defer**. Deferred patterns are not re-presented unless new observations accumulate.
 - If the health check reports `EXTRACTION_NEEDED: true` or if `.prawduct/.pattern-report.json` has new clusters since the last session, invoke the Pattern Extractor agent (read `agents/pattern-extractor/SKILL.md`) to surface deeper pattern analysis. Present high-priority clusters as actionable recommendations.
-- **Observation triage:** If active observation files exist in `.prawduct/framework-observations/`, invoke the Observation Triage agent per the Observation Triage Agent Protocol in `skills/orchestrator/protocols.md`. Apply the agent's recommendations: archive files where all entries are terminal (via `tools/update-observation-status.sh --archive-all`), update `observation_backlog` priorities in project-state.yaml, and present `priority: next` items during orientation.
+- **Observation triage:** If active observation files exist in `.prawduct/framework-observations/`, invoke the Observation Triage agent per the Observation Triage Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`. Apply the agent's recommendations: archive files where all entries are terminal (via `tools/update-observation-status.sh --archive-all`), update `observation_backlog` priorities in project-state.yaml, and present `priority: next` items during orientation.
 - If health check reports `UNCONTRIBUTED_OBSERVATIONS > 0` (product repos only), mention during orientation: "This project has [N] observation file(s) that could be contributed back to the framework. I can help with that whenever you're ready." Contributions are optional — do not block on them.
 
 **Mid-build resumption (Stage 5):** Read `build_plan.current_chunk`, chunk statuses, `test_tracking`, and source code. Orient with progress. Resume in-progress chunks; invoke Critic for chunks in "review" status.
@@ -142,19 +136,7 @@ If `project-state.yaml` exists and `current_stage` is not "intake", this is a re
 
 ## Observation Contribution Flow (Product Repos Only)
 
-When a product repo has uncontributed observations, the Orchestrator facilitates submission. This flow is triggered during session resumption (when `UNCONTRIBUTED_OBSERVATIONS > 0`) or on user request.
-
-**Steps:**
-
-1. **Check.** Run `tools/contribute-observations.sh --check <product-dir>` to get the count and file list.
-2. **Present.** Read the observation files and present a summary in conversation — observation types, severities, and key descriptions.
-3. **Privacy notice.** Tell the user: "These will be posted as a public GitHub issue on the framework repo. Please review for any information you don't want shared publicly."
-4. **User review.** If the user wants to edit observations before contributing, make the edits via Claude (modify the YAML files directly). If the user wants to skip some files, note which ones to exclude.
-5. **Submit.** Run `tools/contribute-observations.sh --submit <product-dir> [approved-files...]` with only the user-approved files. If `gh` is not available (exit 2), show the user the install instructions from stderr and offer `--format` as a fallback.
-6. **Report.** Show the issue URL to the user.
-7. **Partial submission.** If the user skipped some files, those remain uncontributed and will be surfaced again next session. No pressure.
-
-**Self-hosted note:** The framework repo's own observations are acted on directly — they never go through this flow. `--check` returns `self_hosted: true` and count 0.
+Read `skills/orchestrator/observation-contribution.md` when triggered (session resumption with `UNCONTRIBUTED_OBSERVATIONS > 0`, or on user request).
 
 ---
 

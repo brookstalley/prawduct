@@ -10,21 +10,21 @@
 
 The user has a working product and provides feedback. Handle feedback in lightweight cycles.
 
-1. **Receive user feedback.** Listen for what the user wants to change. For all non-cosmetic changes, apply the Post-Fix Reflection Protocol (see `skills/orchestrator/protocols.md` § PFR) — classify the issue and, if framework-relevant, perform root cause analysis before planning the fix. The RCA informs what to fix: the implementation should target the root cause, not just the surface symptom.
+1. **Receive user feedback.** Listen for what the user wants to change. For all non-cosmetic changes, apply the Post-Fix Reflection Protocol (see `skills/orchestrator/protocols/governance.md` § PFR) — classify the issue and, if framework-relevant, perform root cause analysis before planning the fix. The RCA informs what to fix: the implementation should target the root cause, not just the surface symptom.
 
 2. **Classify the feedback:**
 
    - **Cosmetic** (wording, formatting, minor adjustments that don't change behavior or contracts): Implement directly. No artifact updates needed. Quick cycle: fix → test → done.
    - **Functional** (new feature, changed behavior, different flow): Update affected artifacts first, then build. This is a mini Stage 5 loop:
      1. Assess change impact: what artifacts change? What chunks are affected? Any regressions? Consult `artifact_manifest` (in `project-state.yaml` or the file at `artifact_manifest_file`) to identify affected artifacts.
-     2. Update the relevant artifacts by invoking the AG agent with a scoped task per the Artifact Generator Agent Protocol in `skills/orchestrator/protocols.md`. The prompt should specify which artifacts to update and why (e.g., "Update the data model and test specs to reflect [change]. Read the existing artifacts and modify only what's affected."). Do NOT load `agents/artifact-generator/SKILL.md` into your context.
+     2. Update the relevant artifacts by invoking the AG agent with a scoped task per the Artifact Generator Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`. The prompt should specify which artifacts to update and why (e.g., "Update the data model and test specs to reflect [change]. Read the existing artifacts and modify only what's affected."). Do NOT load `agents/artifact-generator/SKILL.md` into your context.
      3. Create new chunk(s) or identify existing chunks to modify.
      4. Builder implements → Critic reviews → tests pass.
    - **Directional** (fundamentally different product vision, or structural framework changes): Follow the Directional Change Protocol below.
 
    **Change governance (all sizes)**
 
-   Every file change in a governed project requires Critic review before committing. Invoke the Critic as an agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`. This is automatic — do not ask the user.
+   Every file change in a governed project requires Critic review before committing. Invoke the Critic as an agent per the Critic Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`. This is automatic — do not ask the user.
 
    | Change type | Protocol |
    |---|---|
@@ -51,7 +51,7 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 7. **Check for "done."** After each iteration cycle, ask: "Anything else you'd like to change?" For low-risk products, this is lightweight. Don't over-process: "Want to tweak anything?" is fine.
 
-8. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols.md` § FRP if not already loaded) when the user indicates they're satisfied (or after 3+ iteration cycles).
+8. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols/governance.md` § FRP if not already loaded) when the user indicates they're satisfied (or after 3+ iteration cycles).
 
    **FRP focus for Stage 6:** Was the feedback classification accurate? Did the change impact assessment help? Were artifacts sufficient for the iteration, or did gaps surface?
 
@@ -85,15 +85,17 @@ When a trigger signal fires:
 
 ### Proportionality
 
-Pushback fires whenever guidance conflicts with quality principles — at any level of granularity. The test is not "how big is this decision?" but "does this conflict with a principle the framework cares about?"
+The test is "does this conflict with a principle?" not "how big is this decision?"
 
-- **Cosmetic choices that don't violate principles** (app name, font preference, layout ordering): don't challenge.
-- **Cosmetic choices that DO violate principles** (inaccessible color combos, unreadable font sizes): challenge via trigger signal 3 (principle conflict with HR7).
-- **Implementation details**: challenge if they conflict with artifacts or principles.
-- **Architectural choices**: always evaluate against trigger signals.
-- **Framework-level guidance**: always evaluate against all triggers.
+| Guidance type | Challenge? |
+|--------------|-----------|
+| Cosmetic, no principle conflict (app name, font preference) | No |
+| Cosmetic, violates principle (inaccessible colors → HR7) | Yes (trigger 3) |
+| Implementation details conflicting with artifacts/principles | Yes |
+| Architectural choices | Always evaluate |
+| Framework-level guidance | Always evaluate all triggers |
 
-No per-session ceiling on challenges. If pushback becomes overbearing in practice, tune based on observation data rather than pre-limiting.
+No per-session ceiling. Tune via observation data if pushback becomes overbearing.
 
 ### Scope
 
@@ -127,14 +129,14 @@ Multi-file changes receive governance proportionate to their **impact**, not the
 
 ### Mechanical changes
 
-No DCP needed. Implement the changes, invoke Critic agent review per the protocol in `skills/orchestrator/protocols.md`, commit. If the tracker flagged `needs_classification`, run `tools/dcp-update.sh classify --tier mechanical` to clear it.
+No DCP needed. Implement the changes, invoke Critic agent review per the protocol in `skills/orchestrator/protocols/agent-invocation.md`, commit. If the tracker flagged `needs_classification`, run `tools/dcp-update.sh classify --tier mechanical` to clear it.
 
 ### Enhancement changes
 
 1. **Write a brief plan** in `working-notes/` describing the change, motivation, and affected files. Before implementing, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned approach — prior observations may identify risks or constraints that should inform the plan. Apply PFR steps 1-2 (classify + RCA) before implementation if the enhancement addresses a known issue or gap. After implementation and Critic review, complete PFR steps 4-6.
 2. **Implement** the change.
 3. **Verify artifact freshness.** Read `artifact_manifest` (in `project-state.yaml`, or from the file at `artifact_manifest_file` if that pointer exists). For each artifact, ask: "does this artifact describe behavior affected by my changes?" Read each candidate artifact and verify it still matches implementation. **Template propagation rule:** If any templates were modified, artifacts generated from those templates are automatically in the blast radius — template structural additions (new sections, new fields) make existing artifacts stale even if the artifact's "behavior" didn't change. For self-hosted repos, check `.prawduct/artifacts/` for artifacts matching modified templates. Update any stale artifacts. Record which artifacts you verified in `directional_change.artifacts_verified` (list of artifact names). **The stop hook enforces this** — it blocks completion when `artifacts_verified` is empty for enhancement/structural DCPs.
-4. **Run Critic review** — invoke the Critic agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`. All applicable checks.
+4. **Run Critic review** — invoke the Critic agent per the Critic Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`. All applicable checks.
 5. **Register deprecated terms** if any concepts were renamed/removed: write to `project-state.yaml` → `deprecated_terms` with replacement and grep patterns.
 
 Track state via `tools/dcp-update.sh`: classify sets the initial state, then `artifacts-verified`, `observation-captured`, `retrospective-done`, and `complete` advance through the protocol. Run `tools/dcp-update.sh status` to check progress.
@@ -143,12 +145,12 @@ Track state via `tools/dcp-update.sh`: classify sets the initial state, then `ar
 
 1. **Flag and confirm.** "That's a significant shift — it would mean rethinking [X]. Want to explore that direction?"
 2. **Reclassification check (product builds).** If the product's fundamental nature changed, re-run classification.
-3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Post-Fix Reflection Protocol in `skills/orchestrator/protocols.md` § PFR). Run `tools/dcp-update.sh classify --tier structural --description "<summary>" --phases N`.
-4. **Plan-stage Critic review.** Invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`, specifying that only Generality, Coherence, and Learning/Observability checks apply (plan-stage review). Run `tools/dcp-update.sh plan-reviewed`.
+3. **Write a plan** in `working-notes/` describing the change, motivation, affected files, and phases. Before planning, check `observation_backlog` in `project-state.yaml` and recent `framework-observations/` for patterns relevant to the planned change — incorporate relevant findings into the plan to avoid repeating known issues. For observation-driven changes, include root cause analysis (see Post-Fix Reflection Protocol in `skills/orchestrator/protocols/governance.md` § PFR). Run `tools/dcp-update.sh classify --tier structural --description "<summary>" --phases N`.
+4. **Plan-stage Critic review.** Invoke the Critic agent per the protocol in `skills/orchestrator/protocols/agent-invocation.md`, specifying that only Generality, Coherence, and Learning/Observability checks apply (plan-stage review). Run `tools/dcp-update.sh plan-reviewed`.
 5. **Impact assessment.** Map blast radius via `artifact_manifest` (inline or at `artifact_manifest_file`). Register deprecated terms in `project-state.yaml` → `deprecated_terms`.
 6. **Implement.** For multi-phase changes, run lightweight Coherence + Learning/Observability reviews between phases. Run `tools/dcp-update.sh phase-reviewed` after each.
 7. **Verify artifact freshness.** Same as Enhancement step 3: read `artifact_manifest`, identify artifacts describing affected behavior, verify each is current, update stale ones, record the list in `directional_change.artifacts_verified`. **Template propagation rule applies** — if templates were modified, artifacts generated from those templates are in the blast radius. **The stop hook enforces this.**
-8. **Final Critic review** — invoke the Critic agent per the protocol in `skills/orchestrator/protocols.md`. All applicable checks.
+8. **Final Critic review** — invoke the Critic agent per the protocol in `skills/orchestrator/protocols/agent-invocation.md`. All applicable checks.
 9. **Observation.** Write an observation covering what the change accomplished, what governance caught, and what slipped through. Run `tools/dcp-update.sh observation-captured`.
 10. **Retrospective.** Answer: (a) Could the learning system have caught this earlier? (b) What process gaps surfaced? (c) Does the fix generalize? Capture findings as observations. Run `tools/dcp-update.sh retrospective-done`, then after commit run `tools/dcp-update.sh complete`.
 
@@ -158,37 +160,4 @@ The governance-stop hook enforces DCP completion mechanically — it checks thes
 
 ## Post-Fix Reflection (PFR) — Mechanical Enforcement
 
-PFR ensures root cause analysis happens before fixes to governance-sensitive files, and that learning is captured as an observation. It is orthogonal to DCP — a mechanical DCP change still needs PFR if it touches governance-sensitive files.
-
-### Governance-sensitive files
-
-`skills/`, `agents/`, `tools/`, `scripts/`, `.prawduct/hooks/`. These define framework behavior. Changes to docs, templates, config, and artifacts are NOT governance-sensitive.
-
-### How it works
-
-1. **`gate.py`** (via `governance-gate.sh` shim) detects governance-sensitive file edits and blocks them until `pfr_state.rca` in `.session-governance.json` is non-empty and >= 50 chars. The RCA is natural language including the 5 whys: What's the immediate problem? Why does it happen? What's the deeper structural cause? What class of problem is this? What would prevent the class? **`tracker.py`** (PostToolUse) handles bookkeeping — tracking which files were edited and maintaining `governance_sensitive_files` — but the gate does not depend on the tracker having run.
-2. After implementing the fix, create an observation via `tools/capture-observation.sh` with a `root_cause_analysis` block and set `pfr_state.observation_file` to the observation file path.
-3. **`stop.py`** blocks session completion if PFR is required but no observation file is set.
-4. **`commit.py`** blocks commit if PFR is required but the observation file doesn't exist.
-
-### The flow
-
-```
-1. Read files, understand the bug (reads are allowed)
-2. Write natural language RCA to pfr_state.rca (>= 50 chars, include 5 whys)
-3. gate.py now allows edits to governance-sensitive files
-4. Implement fix
-5. Create observation with root_cause_analysis via capture-observation.sh
-6. Set pfr_state.observation_file in session state
-7. Commit — commit.py archives traces and validates observation file exists
-```
-
-### Cosmetic escape hatch
-
-If a change is truly cosmetic (typo fix in an error message, formatting), set `pfr_state.cosmetic_justification` to describe why and `pfr_state.required` to `false`. Both gates accept this. The Critic can flag insufficient justification as a warning.
-
-### `root_cause_category` values
-
-`missing_process` | `process_not_enforced` | `incomplete_coverage` | `wrong_abstraction` | `missing_detection` | `vocabulary_drift`
-
-These enable mechanical pattern detection across fixes — if multiple fixes share the same category, that's a systematic gap.
+See `skills/orchestrator/protocols/governance.md` § "PFR — Mechanical Enforcement" for the complete enforcement flow (governance-sensitive file detection, RCA gate, observation requirement, cosmetic escape hatch, root_cause_category values).

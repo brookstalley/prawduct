@@ -51,9 +51,7 @@ my-product/
 └── ...
 ```
 
-**Distribution model:** Product repos default to shared mode — artifacts are committed, machine-specific files (`framework-path`, `framework-version`) and session files are gitignored by `prawduct-init`. The CLAUDE.md bootstrap includes installation instructions for cloners: clone the framework to `~/.prawduct/framework/` and run `prawduct-init.py --fix .`. Hook commands resolve the framework at runtime — first from `.prawduct/framework-path`, then from the well-known `~/.prawduct/framework/` location. Power users can use `prawduct-init --local` for local-only mode (entire `.prawduct/` gitignored, hooks in `settings.local.json`).
-
-**The framework repo** (self-hosted) uses the same `.prawduct/` layout. See `docs/project-structure.md` for the full tree.
+**Distribution:** Shared mode by default (artifacts committed, machine-specific files gitignored). See `docs/project-structure.md` for full details including local-only mode, cloner setup, and the framework repo's own layout.
 
 ## Framework Development
 
@@ -62,7 +60,7 @@ Framework development is managed by the Orchestrator. The framework's own `proje
 The Key Principles and Conventions sections below provide constraints the Orchestrator needs when making framework changes.
 
 ### After modifying skills, templates, or principles:
-**Critic review is mandatory for every framework change. Run it automatically** — do not ask the user. Run it as a **separate, final step** after all modifications are complete and before reporting results. Invoke the Critic as an agent per the Critic Agent Protocol in `skills/orchestrator/protocols.md`; the agent reads `agents/critic/SKILL.md` and records findings via `tools/record-critic-findings.sh`. Include "Governance Review" in the commit message.
+**Critic review is mandatory for every framework change. Run it automatically** — do not ask the user. Run it as a **separate, final step** after all modifications are complete and before reporting results. Invoke the Critic as an agent per the Critic Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`; the agent reads `agents/critic/SKILL.md` and records findings via `tools/record-critic-findings.sh`. Include "Governance Review" in the commit message.
 
 **For multi-file changes:** Follow the Directional Change Protocol in `skills/orchestrator/stage-6-iteration.md`, which classifies changes into three tiers (mechanical, enhancement, structural) with governance proportionate to impact.
 
@@ -70,9 +68,9 @@ The Key Principles and Conventions sections below provide constraints the Orches
 
 If you cannot remember governance procedures (e.g., after context compaction), **read skill files from disk** — they always exist. Product state files live in the **product root** (`.prawduct/` for all repos). In product repos, read `.prawduct/framework-path` to get the framework location.
 
-- **After each chunk:** Invoke the Critic agent (see `skills/orchestrator/protocols.md` § Critic Agent Protocol)
-- **At governance checkpoints:** Invoke Review Lenses agent (see `skills/orchestrator/protocols.md` § Review Lenses Agent Protocol)
-- **At stage transitions:** Read `skills/orchestrator/protocols.md` for the Framework Reflection Protocol
+- **After each chunk:** Invoke the Critic agent (see `skills/orchestrator/protocols/agent-invocation.md` § Critic Agent Protocol)
+- **At governance checkpoints:** Invoke Review Lenses agent (see `skills/orchestrator/protocols/agent-invocation.md` § Review Lenses Agent Protocol)
+- **At stage transitions:** Read `skills/orchestrator/protocols/governance.md` for the Framework Reflection Protocol
 - **If hooks block you:** Read the skill file named in the hook message
 
 Hooks survive compaction. When a hook blocks you, the skill file it references contains the full procedure.
@@ -120,16 +118,9 @@ tools/dcp-update.sh retrospective-done
 tools/dcp-update.sh complete
 tools/dcp-update.sh status
 
-# Cross-repo usage: all tools accept --product-dir to resolve a different product root
-# Use when subagent CWD differs from the target product (e.g., CWD=prawduct, target=worldground)
-tools/dcp-update.sh --product-dir /path/to/worldground status
-tools/capture-observation.sh --product-dir /path/to/worldground --session-type product_use ...
-tools/record-critic-findings.sh --product-dir /path/to/worldground --files ...
-
-# Or set PRAWDUCT_PRODUCT_DIR once so all tool calls inherit it:
-export PRAWDUCT_PRODUCT_DIR=/path/to/worldground
-tools/dcp-update.sh status          # resolves worldground automatically
-tools/capture-observation.sh ...    # same — no --product-dir needed
+# Cross-repo usage: all tools accept --product-dir or PRAWDUCT_PRODUCT_DIR env var
+tools/dcp-update.sh --product-dir /path/to/other-project status
+export PRAWDUCT_PRODUCT_DIR=/path/to/other-project  # all tools inherit
 ```
 
 ## Conventions
