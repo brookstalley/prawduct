@@ -61,6 +61,41 @@
 
    **Verification tooling opt-in.** When `has_human_interface` is active (especially web or desktop modality), surface agent verification as a consideration during discovery: "Products with user interfaces benefit from agent-accessible verification — tools that let the building agent observe and test the running product during development. Want to include verification infrastructure in the build plan?" If yes, record in `project-state.yaml` → `technical_decisions` and the Artifact Generator will include verification specifications. See `docs/high-level-design.md` § Agent Verification Architecture for the general principle.
 
+5b. **Project Preferences Elicitation** (Universal Discovery Dimension 11: Development Standards and Conventions). After product-focused questions, ask ONE adaptive question about development preferences. This is for ALL users — depth adapts naturally, no hidden modes:
+
+   **Adaptive question by expertise level:**
+
+   | `user_expertise.technical_depth` | Question phrasing |
+   |---|---|
+   | advanced or intermediate | "What development standards or conventions should this project follow? Testing approach, logging, code style, tooling — anything you care about." |
+   | basic or none | "Any preferences for how the code should be organized or written?" |
+
+   **If the user says "no" or shows no interest:** Move on. No preferences file is created. No manifest entry. The framework uses intelligent defaults. This takes one second.
+
+   **If the user mentions specifics:** Probe EACH mentioned area with adaptive follow-up:
+   - "You mentioned TDD — any specific test framework or coverage targets?"
+   - "For structured logging — what fields should every log line include? Any specific destination?"
+   - "Code style — any linter config, naming conventions, or documentation format?"
+
+   Follow-up depth matches expertise — don't interrogate, probe naturally. Stop when the user has said what they want to say.
+
+   **After elicitation (when preferences were expressed):**
+   1. Generate `.prawduct/project-preferences.md` with H2 sections for each topic area. Content is natural-language, not structured YAML. Show the user: "Here's what I captured — anything to add or change?"
+   2. Add a `project-preferences` entry to `artifact_manifest`:
+      ```yaml
+      - name: project-preferences
+        file_path: project-preferences.md
+        version: 1
+        source: user-authored
+        depends_on: []
+        depended_on_by: [test-specifications, dependency-manifest, build-plan]
+        last_validated: <today>
+        tier: 2
+      ```
+   3. Update `project-state.yaml` → `build_preferences`: set `file_path` to `project-preferences.md`, `last_updated` to today, `source` to `discovery`.
+
+   **Preference conflict with Hard Rules:** If a preference would violate a Hard Rule (e.g., "no tests" → HR1, "skip code review" → HR9), explain the constraint and offer to discuss alternatives: "I can't skip tests entirely (that's a framework hard rule), but we can discuss testing methodology — unit-only, integration-focused, whatever works for your project."
+
 6. **Re-evaluate risk profile.** Before transitioning, check whether discovery revealed complexity not apparent at classification time. The user's initial description may understate technical depth (e.g., "an app that plays sounds" may turn out to require real-time audio synthesis). If any risk factor has materially changed, update `classification.risk_profile` in `project-state.yaml`. If overall risk has increased, consider whether additional discovery is warranted before proceeding — but don't re-run discovery just because risk increased; only if the higher risk reveals gaps in what you've learned.
 
 7. Run the Framework Reflection Protocol (read `skills/orchestrator/protocols/governance.md` § FRP if not already loaded). Record reflection in `change_log`.
@@ -85,8 +120,9 @@ The Domain Analyzer will have populated many fields during Stage 1. Complete the
 4. Make `product_definition.scope` decisions explicit: what's in v1, what's accommodated but not built, what's deferred to later (with rationale), and what's out of scope entirely (with rationale). Every feature discussed should land in exactly one bucket.
 5. Set `product_definition.nonfunctional` values proportionate to the product's risk level.
 6. Populate `technical_decisions` with proportionate architecture choices. Every decision must include rationale and alternatives considered (HR4). The guiding principle: **identify every architectural choice that would significantly affect implementation complexity, cost, or user experience if decided differently.** For low-risk products, make these decisions as assumptions and state them plainly. For higher-risk products, surface the tradeoffs. Common decisions include data storage, deployment target, and key technology choices — but don't limit yourself to a fixed checklist. If the product's nature raises architectural questions (e.g., how data stays in sync, how identity works, how components communicate), those are technical decisions too.
-7. For UI applications, set basic `design_decisions`: at minimum, `accessibility_approach` (even "standard platform accessibility" is fine for low-risk) and general `interaction_patterns` (e.g., "mobile-first, touch-friendly"). Also set `visual_direction` — translate `product_definition.product_identity.personality` and `visual_preferences` into a concrete direction. If the user expressed preferences ("playful," "clean and minimal," "dark and moody"), translate those into a direction the Design Direction artifact can build on. If no preferences were expressed, choose a style appropriate to the platform and domain and state it as a design choice with rationale. Even for low-risk products, a one-line `visual_direction` prevents the Builder from guessing.
-8. Populate `product_definition.cost_estimates` with at least a rough hosting/operational cost expectation, even if the answer is "$0 — free tier."
+7. If `build_preferences.file_path` exists, verify that preferences are consistent with `technical_decisions`. For example, if the user prefers pytest but the technical decision specifies Jest, surface the conflict. Preferences customize how code is written; technical decisions choose what technologies to use. When they conflict, ask the user which takes precedence.
+8. For UI applications, set basic `design_decisions`: at minimum, `accessibility_approach` (even "standard platform accessibility" is fine for low-risk) and general `interaction_patterns` (e.g., "mobile-first, touch-friendly"). Also set `visual_direction` — translate `product_definition.product_identity.personality` and `visual_preferences` into a concrete direction. If the user expressed preferences ("playful," "clean and minimal," "dark and moody"), translate those into a direction the Design Direction artifact can build on. If no preferences were expressed, choose a style appropriate to the platform and domain and state it as a design choice with rationale. Even for low-risk products, a one-line `visual_direction` prevents the Builder from guessing.
+9. Populate `product_definition.cost_estimates` with at least a rough hosting/operational cost expectation, even if the answer is "$0 — free tier."
 
 ### Review
 

@@ -753,6 +753,39 @@ notes: ""                              # Free-form observations, limitations, co
 
 ---
 
+## F2. Preference Elicitation Evaluation Criteria
+
+Scenarios should include criteria for evaluating project preference elicitation (R1.10). These criteria apply to any scenario where the test persona has technical expertise.
+
+**Must-do criteria:**
+
+| # | Criterion | Eval mode |
+|---|-----------|-----------|
+| 1 | Preference question asked at appropriate depth for user expertise (light for non-technical, adaptive for technical) | [interactive] |
+| 2 | If preferences expressed: `project-preferences.md` created with stated preferences | [simulation] |
+| 3 | If preferences expressed: `build_preferences` section populated in project-state.yaml | [simulation] |
+| 4 | If preferences expressed: manifest entry exists with `source: user-authored` and `depended_on_by` | [simulation] |
+| 5 | Stated preferences propagated to downstream artifacts (test-specifications reflects testing methodology, dependency-manifest includes preferred libraries) | [simulation] |
+| 6 | Preference changes during iteration trigger artifact freshness cascade | [simulation] |
+
+**Must-not-do criteria:**
+
+| # | Criterion | Eval mode |
+|---|-----------|-----------|
+| 1 | Must not burden non-technical users with preference elicitation (more than one light question) | [interactive] |
+| 2 | Must not create preferences file when user has no preferences | [simulation] |
+| 3 | Must not allow preferences to override Hard Rules (e.g., "no tests" accepted as preference) | [interactive] |
+
+**Quality criteria:**
+
+| # | Criterion | Eval mode |
+|---|-----------|-----------|
+| 1 | Follow-up questions are natural and probe mentioned areas, not interrogate | [interactive] |
+| 2 | Preferences file uses natural language organized by H2 headers, not structured YAML | [simulation] |
+| 3 | For existing codebase onboarding: conventions inferred from code signals and confirmed with user | [hybrid] |
+
+---
+
 ## G. External Best Practice Review
 
 ### Purpose

@@ -102,7 +102,7 @@ Catches: untested failure modes, Skeptic findings with no corresponding tests, g
 Every question has a cost (user patience) and a value (decision impact). The system must maximize the ratio. Ask the questions whose answers most change the direction of the project. Defer questions whose answers don't matter yet.
 
 ### Bring Expertise, Don't Just Extract Requirements
-The system's value is not in converting user wishes to text. It's in raising considerations the user hasn't thought of, particularly in areas where the user lacks expertise. A non-technical user needs the system to think about architecture. A non-designer needs the system to think about UX. Everyone needs the system to think about edge cases, operations, and accessibility.
+The system's value is not in converting user wishes to text. It's in raising considerations the user hasn't thought of, particularly in areas where the user lacks expertise. A non-technical user needs the system to think about architecture. A non-designer needs the system to think about UX. Everyone needs the system to think about edge cases, operations, and accessibility. This extends to developer methodology — technical users have opinions on testing approach, logging, code style, and tooling that shape how code is written. Not asking is a gap.
 
 ### Infer, Confirm, Proceed
 Don't interrogate. Infer likely answers from context, confirm the inference briefly, and move on. "Since this is a family app, I'm assuming we don't need enterprise-grade auth — a simple invite system should work. Sound right?" is better than "What authentication system do you want?"

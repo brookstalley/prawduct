@@ -65,6 +65,22 @@ Scan test files to understand:
 - Coverage gaps (directories with no corresponding test files)
 - Test naming patterns and quality signals
 
+### 1e2. Convention Inference
+
+Infer developer conventions from code signals. Group findings by confidence:
+
+| Confidence | Signal | Example inference |
+|------------|--------|-------------------|
+| High | Config files (`.eslintrc`, `pytest.ini`, `tsconfig.json strict`, `.prettierrc`) | "You use ESLint with Airbnb rules" |
+| High | Package manifest (test/lint/logging deps) | "You use Jest + Prettier + Winston" |
+| High | Lock files (`pnpm-lock.yaml`, `yarn.lock`, `poetry.lock`) | "You use pnpm as package manager" |
+| Medium | Source file patterns (naming, imports, error handling) | "Functions use snake_case, errors are returned not thrown" |
+| Medium | Test organization (`__tests__/` vs `*.test.ts` vs `tests/`) | "Tests live alongside source files" |
+| Medium | Git log patterns (if accessible) | "Commit messages follow Conventional Commits" |
+| Low | Git history ordering | "Possible TDD practice (tests committed before implementation)" |
+
+Record detected conventions with their confidence level. These will be presented to the user in Phase 2 for confirmation.
+
 ### 1f. Risk Assessment
 
 Infer from:
@@ -136,6 +152,8 @@ Present the analysis as a readable summary. This is a **genuine blocking questio
 >
 > **Things I'm less sure about:** [uncertainties — e.g., 'I see auth but not sure if there are distinct user types', 'the docs mention an API but I didn't find route definitions']
 >
+> **Conventions I detected:** [If Phase 1e2 found conventions — present grouped by confidence. High-confidence items stated as facts: "You use ESLint with Airbnb rules." Medium-confidence items stated as inferences: "It looks like functions use snake_case." Low-confidence items stated as tentative: "Git history suggests possible TDD practice." Omit section if no conventions detected.]
+>
 > Does this match your understanding? Anything I'm missing or getting wrong?"
 
 **Key principles:**
@@ -206,6 +224,43 @@ For each artifact, mark inferred sections: "Inferred from codebase analysis — 
 ### 3c. Build Plan (Retroactive)
 
 Create `.prawduct/artifacts/build-plan.md` with chunks that map to existing modules/features. Mark all chunks as "complete" since the code exists. This provides a structural map of what was built and how it fits together.
+
+### 3c2. Project Preferences (from confirmed conventions)
+
+If Phase 1e2 detected conventions and the user confirmed them in Phase 2, generate `.prawduct/project-preferences.md` from the confirmed conventions. Mark each entry as `(inferred, confirmed)`. Example:
+
+```markdown
+# Project Preferences
+
+## Testing
+Uses Jest with test files alongside source (`*.test.ts`). (inferred, confirmed)
+
+## Code Style
+ESLint with Airbnb rules, Prettier for formatting. Functions use camelCase.
+(inferred, confirmed)
+
+## Package Management
+pnpm as package manager. (inferred, confirmed)
+```
+
+Update `project-state.yaml`:
+- Set `build_preferences.file_path` to `project-preferences.md`
+- Set `build_preferences.last_updated` to today
+- Set `build_preferences.source` to `inferred`
+
+Add a `project-preferences` entry to `artifact_manifest`:
+```yaml
+- name: project-preferences
+  file_path: project-preferences.md
+  version: 1
+  source: user-authored
+  depends_on: []
+  depended_on_by: [test-specifications, dependency-manifest, build-plan]
+  last_validated: <today>
+  tier: 2
+```
+
+If no conventions were detected or the user didn't confirm any, skip this step.
 
 ### 3d. Artifact Manifest
 

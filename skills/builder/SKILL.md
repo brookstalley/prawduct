@@ -23,6 +23,7 @@ When activated:
 - `artifacts/security-model.md` — access patterns the code must enforce
 - `artifacts/test-specifications.md` — test scenarios the code must satisfy
 - `artifacts/product-brief.md` — user flows the code must support
+- `project-preferences.md` — (optional) developer conventions for coding style, testing methodology, logging, error handling. Read when `project-state.yaml` → `build_preferences.file_path` is non-null. Preferences that affect code style (naming, documentation, error patterns) flow directly to implementation — they don't need artifact mediation. Preferences that affect specs (testing methodology, logging strategy) flow through artifacts.
 
 ## Outputs (Writes)
 
@@ -55,7 +56,7 @@ If any verification fails, raise a flag (see Flags above) and wait for resolutio
 
 ### Step 2: Write Tests
 
-Write tests first (or alongside implementation) for this chunk. Tests are mapped from `artifacts/test-specifications.md`:
+Write tests first (or alongside implementation) for this chunk — unless `project-preferences.md` specifies a different testing methodology (e.g., TDD means write tests first and verify they fail before implementing; test-after means implement first). Tests are mapped from `artifacts/test-specifications.md`:
 
 - Each test scenario in the test spec that maps to this chunk becomes one or more test cases.
 - Tests verify **behavior**, not implementation details. Test what the user experiences or what the API returns, not internal data structures.
@@ -86,6 +87,7 @@ Write the implementation for this chunk, following the artifacts exactly:
 - **User flows** match `product-brief.md` — the code implements exactly what the flows describe.
 - **Security patterns** match `security-model.md` — access controls, data visibility, and privacy rules.
 - **Project structure** matches `build-plan.md` — files go in the directories specified.
+- **Coding conventions** follow `project-preferences.md` when it exists — naming style, documentation format, error handling approach, logging patterns. These flow directly from preferences to code without artifact mediation.
 
 ### Step 4: Run Tests
 
@@ -217,6 +219,8 @@ The Builder follows the build plan for **what** to build, and applies proportion
 - Error handling, logging, and monitoring as specified in the operational spec.
 
 The risk level is in `project-state.yaml` → `classification.risk_profile.overall`. When in doubt, follow the build plan exactly — it should already encode the right level of complexity.
+
+**Preferences override proportionality defaults for areas they cover.** A user who wants structured JSON logging gets it even for a low-risk product, because it's their explicit preference. Preferences are the user saying "I care about this" — respect that even when proportionality would suggest simpler defaults.
 
 ## What the Builder Does NOT Do
 

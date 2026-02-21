@@ -15,6 +15,7 @@ prawduct/
 │   ├── project-definition.yaml        # Split: classification, product_definition, technical/design decisions
 │   ├── artifact-manifest.yaml         # Split: full artifact manifest with dependency graph
 │   ├── observation-backlog-deferred.yaml # Split: deferred observation backlog items
+│   ├── project-preferences.md          # Optional: developer conventions (testing, logging, code style) — user-authored
 │   ├── artifacts/                     # 14 product specs (see doc-manifest.yaml); derived from docs/ + discovery
 │   ├── framework-observations/        # Automatic observation capture (Tier 1, lifecycle-managed)
 │   │   ├── README.md                  # Observation system documentation

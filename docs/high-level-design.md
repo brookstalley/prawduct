@@ -114,7 +114,7 @@ Each characteristic uses a three-layer approach for artifact generation: **ampli
 
 Domain-specific discovery depth is generated dynamically by the LLM using its own knowledge, guided by:
 
-1. **10 Universal Discovery Dimensions** — categories that must be explored for every product: users, core experience, data, security, failure modes, performance, operational lifecycle, dependencies, regulatory, product identity.
+1. **11 Universal Discovery Dimensions** — categories that must be explored for every product: users, core experience, data, security, failure modes, performance, operational lifecycle, dependencies, regulatory, product identity, development standards and conventions.
 2. **Structural Amplification Rules** — each structural characteristic amplifies specific dimensions (e.g., `runs_unattended` amplifies failure modes, operational lifecycle, and dependencies).
 3. **Domain Characteristics** — LLM-identified properties specific to this product's domain, persisted in `classification.domain_characteristics` for session resumption context.
 
@@ -173,6 +173,8 @@ Orchestrator manages:
 - Recognition of when discovery is "good enough"
 
 Output: Populated Project State (C5) with decisions, open questions, and rationale.
+
+**Developer Methodology Preferences (R1.10):** After product-focused questions, one adaptive question elicits development preferences (testing approach, logging, code style, tooling). Depth scales with `user_expertise.technical_depth`. Captured preferences go to `.prawduct/project-preferences.md` — a natural-language markdown file tracked in `artifact_manifest` as a `user-authored` artifact with dependency graph participation. Two propagation paths: through artifacts (methodology → specs via AG) and direct to Builder (code style → implementation). The Critic checks preference compliance (Check 1, WARNING severity) and preference-artifact coherence (Check 5). For existing codebases, onboarding infers conventions from code signals and confirms them with the user. See `skills/orchestrator/stages-0-2.md` § Stage 1 step 5b.
 
 ### Stage 2: Product Definition
 **Owner:** Orchestrator (C1) + Review Lenses (C4)

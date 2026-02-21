@@ -420,6 +420,21 @@ change_log:
       from NOT seeing the main conversation? Builder does not (needs interaction), Orchestrator does not (IS the conversation),
       Domain Analyzer might not (somewhat interactive). Review skills benefit most because independence is a feature, not a
       limitation.'
+  - what: 'Project Preferences: adaptive elicitation of developer standards and methodology preferences'
+    why: 'Three user complaints exposed the same gap: prawduct asks what to BUILD but never how to BUILD it. Discovery dimensions
+      were product-only (10 dimensions), user_expertise inferred skill level but captured no preferences, and technical_decisions
+      captured architecture but not methodology. Expert users had zero input on coding conventions, testing methodology, logging
+      strategy, or tooling preferences. RCA: framework over-indexed on product requirements and under-indexed on developer expertise
+      as input. Fix: Added 11th Universal Discovery Dimension (Development Standards and Conventions), adaptive preference elicitation
+      in Stage 1, project-preferences.md as a user-authored artifact tracked in artifact_manifest with dependency graph participation,
+      convention inference for existing codebase onboarding, preference propagation to AG/Builder/Critic, and preference lifecycle
+      management during iteration.'
+    blast_radius: templates/project-state.yaml, skills/domain-analyzer/SKILL.md, skills/orchestrator/stages-0-2.md,
+      skills/orchestrator/stage-6-iteration.md, skills/orchestrator/onboarding.md, agents/artifact-generator/SKILL.md,
+      skills/builder/SKILL.md, agents/critic/SKILL.md, docs/requirements.md, docs/principles.md, docs/high-level-design.md,
+      docs/project-structure.md, docs/glossary.md, docs/evaluation-methodology.md
+    classification: enhancement
+    date: 2026-02-21
   - what: 'Close fail-open governance escape: external git repo detection in edit gate'
     why: 'Cross-repo governance escape — an entire product (worldground) was built without governance because the edit gate
       treated files outside known repos as "ungoverned" and auto-allowed them. 5-whys root cause: gate.py classified files into

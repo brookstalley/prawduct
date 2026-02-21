@@ -150,7 +150,7 @@ Two rules govern the budget:
 
 ### Universal Discovery Dimensions
 
-These 10 dimensions MUST be explored for every product. For each dimension, generate 1-3 questions specific to THIS product using your domain knowledge. Not every dimension needs a direct question — some can be covered by inference, and the budget constrains total questions. But every dimension must be considered, and gaps should be noted.
+These 11 dimensions MUST be explored for every product. For each dimension, generate 1-3 questions specific to THIS product using your domain knowledge. Not every dimension needs a direct question — some can be covered by inference, and the budget constrains total questions. But every dimension must be considered, and gaps should be noted.
 
 #### 1. Users and Stakeholders
 Who uses this? How many? What's their expertise? What's their context?
@@ -188,6 +188,22 @@ interfaces, API design voice for developer-facing products. For background syste
 and automations, it may be just a name and output formatting style. Identity
 preferences are creative choices where the user is the expert — prefer asking over
 inferring, especially for products where identity shapes the experience.
+
+#### 11. Development Standards and Conventions
+How does the user (or their team) want the code built? This dimension covers
+methodology preferences: testing approach (TDD, BDD, test-after), logging strategy
+(structured vs unstructured, destinations, fields), code style (naming, documentation,
+linting), error handling philosophy (exceptions vs result types, error granularity),
+and tooling preferences (specific libraries, frameworks, package managers). These are
+distinct from technical decisions (architecture choices) — they are conventions that
+shape how every line of code is written, not what the system does.
+
+Not every user has preferences here, and that's fine. Non-technical users typically
+have none. Technical users almost always do. The Orchestrator asks one adaptive
+question after product-focused discovery (see `skills/orchestrator/stages-0-2.md`
+§ Stage 1 step 5b) and follows up on whatever the user mentions. When the user
+expresses no preferences, the framework uses intelligent defaults and no preferences
+file is created.
 
 ### Structural Amplification Rules
 
@@ -247,6 +263,7 @@ After generating questions, identify considerations the user is unlikely to rais
 | **Technical user** (jargon, specific technology mentions, architecture opinions) | Engage at their level but lead with product questions, not technology questions. Challenge premature technology assumptions: "You mentioned [X] — let's nail down what the app needs first, then see if that fits." |
 | **Non-technical + automation** (plain language, focus on "what it should do") | Avoid infrastructure questions. Frame operationally: "How would you know if this stopped working?" Make deployment and scheduling decisions as assumptions and state them plainly. |
 | **Technical + automation** (jargon, mentions of specific tools or services) | Engage on infrastructure but don't assume ops/SRE expertise. A developer comfortable with APIs may not have cron/serverless/monitoring experience. Challenge premature infrastructure decisions the same way: "Let's nail down what the pipeline needs first." |
+| **Technical users (any product type)** | Technical users almost certainly have methodology opinions — testing approach, logging strategy, code style, tooling preferences. Not asking is a gap. The Orchestrator's preference elicitation (Stage 1 step 5b) handles this, but surface methodology-relevant considerations here too. |
 
 **For all users, regardless of expertise:**
 - Data model clarity: help the user think through what entities exist, how they relate, and how they're identified. Follow each entity to its implications — if users create an entity, how is it referenced later? If entities are shared, how do participants find or distinguish them? If an entity represents a person, how is identity established? The goal is to surface the structural concerns that are invisible during casual conversation but cause real problems during implementation.
@@ -288,7 +305,7 @@ After classification and discovery, produce:
    - What remains open
    - Whether discovery is sufficient to proceed to product definition, or more questions are needed
    - Any concerns to surface (from proactive expertise)
-   - **Coverage assessment:** For each of the 10 Universal Discovery Dimensions, briefly note whether it has adequate coverage from what was learned. Flag underexplored dimensions.
+   - **Coverage assessment:** For each of the 11 Universal Discovery Dimensions, briefly note whether it has adequate coverage from what was learned. Flag underexplored dimensions.
 
 ## Extending This Skill
 

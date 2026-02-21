@@ -131,7 +131,7 @@ How user feedback is categorized in Stage 6:
 
 **Compaction** -- Mechanical archiving of completed sections in `project-state.yaml` to prevent unbounded growth. Run via `tools/compact-project-state.sh`.
 
-**Discovery Dimensions** -- Ten mandatory areas explored for every product: Users, Core Experience, Data, Security, Failure Modes, Performance, Operational Lifecycle, Dependencies, Regulatory, Product Identity.
+**Discovery Dimensions** -- Eleven mandatory areas explored for every product: Users, Core Experience, Data, Security, Failure Modes, Performance, Operational Lifecycle, Dependencies, Regulatory, Product Identity, Development Standards and Conventions.
 
 **Domain Characteristics** -- Product-specific properties identified by the LLM during classification (e.g., "realtime audio processing," "casual family gaming context"). Distinct from structural characteristics.
 
@@ -142,6 +142,8 @@ How user feedback is categorized in Stage 6:
 **Minimal Artifact** -- An artifact assessed as not substantively applicable. Generated with standard frontmatter and a brief explanation. Product Brief and Test Specifications are never minimal.
 
 **Observation** -- A structured YAML file in `framework-observations/` capturing a finding about the framework's behavior. Created via `tools/capture-observation.sh`. Has lifecycle states (active, resolved, archived).
+
+**Project Preferences** -- User-authored, natural-language markdown file (`.prawduct/project-preferences.md`) capturing developer/team standards, conventions, and methodology preferences. Tracked in `artifact_manifest` as a `user-authored` artifact with dependency graph participation. Created during discovery (from conversation), onboarding (inferred from code, confirmed by user), or iteration (captured from feedback). Optional — only exists when the user expresses preferences. Preferences customize framework defaults without overriding Hard Rules.
 
 **Product Root** -- The `.prawduct/` subdirectory where all prawduct outputs live (project state, artifacts, observations, working notes).
 

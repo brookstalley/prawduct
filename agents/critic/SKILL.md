@@ -74,6 +74,7 @@ After each chunk, diff the implementation against artifact specifications.
 | NFR compliance | `nonfunctional-requirements.md` | (a) technique matches spec, (b) targets have tests/criteria, (c) cross-chunk constraints tracked | BLOCKING if unmapped; WARNING if unverified |
 | Test scenarios | `test-specifications.md` | Every scenario for this chunk has a test | BLOCKING if missing |
 | Builder compliance record | `build_state.spec_compliance` | Entries exist with matching `chunk_id` | WARNING if absent |
+| Build preferences compliance | `project-preferences.md` exists | Implementation follows stated conventions (naming, logging, error handling, testing methodology) | WARNING |
 | Evidence freshness | Prior chunks' spec_compliance | Spot-check 2-3 entries when this chunk modifies referenced files; stale evidence = HR3 | WARNING |
 | Process constraints | Structural amplification rules | Active characteristic constraints satisfied (e.g., `runs_unattended` → failure handling) | WARNING |
 | Accessibility | `has_human_interface` active | A11y requirements alongside features, not deferred (HR7) | WARNING |
@@ -134,7 +135,7 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 
 **Applies:** Always. The specific focus depends on context.
 
-**For product builds:** Are the artifacts internally consistent? Do changes to one artifact cascade correctly to dependent artifacts? Does implementation match specs? **Architectural consistency:** Verify module boundaries match the architecture artifact, dependency directions are respected (no imports against the designed dependency flow), and data flow matches designed patterns. Implementation that contradicts the architecture artifact is **BLOCKING**.
+**For product builds:** Are the artifacts internally consistent? Do changes to one artifact cascade correctly to dependent artifacts? Does implementation match specs? **Architectural consistency:** Verify module boundaries match the architecture artifact, dependency directions are respected (no imports against the designed dependency flow), and data flow matches designed patterns. Implementation that contradicts the architecture artifact is **BLOCKING**. **Preference coherence:** When `project-preferences.md` exists, check that artifacts are consistent with stated preferences. If an artifact contradicts a preference (e.g., test-specifications says BDD but preferences say TDD), flag as **WARNING** with reconciliation recommendation: update the preference, revert the artifact, or specialize (e.g., BDD for integration tests, TDD for unit tests).
 
 **For skill/instruction changes:** Does this change maintain the skill's internal logic and its contracts with other skills?
 

@@ -10,11 +10,12 @@
 
 The user has a working product and provides feedback. Handle feedback in lightweight cycles.
 
-1. **Receive user feedback.** Listen for what the user wants to change. For all non-cosmetic changes, apply the Post-Fix Reflection Protocol (see `skills/orchestrator/protocols/governance.md` § PFR) — classify the issue and, if framework-relevant, perform root cause analysis before planning the fix. The RCA informs what to fix: the implementation should target the root cause, not just the surface symptom.
+1. **Receive user feedback.** Listen for what the user wants to change. Recognize methodology preferences as distinct from functional changes — "let's use TDD" or "switch to structured logging" is a preference, not a bug fix or feature request. For all non-cosmetic changes, apply the Post-Fix Reflection Protocol (see `skills/orchestrator/protocols/governance.md` § PFR) — classify the issue and, if framework-relevant, perform root cause analysis before planning the fix. The RCA informs what to fix: the implementation should target the root cause, not just the surface symptom.
 
 2. **Classify the feedback:**
 
    - **Cosmetic** (wording, formatting, minor adjustments that don't change behavior or contracts): Implement directly. No artifact updates needed. Quick cycle: fix → test → done.
+   - **Preference** (methodology or convention change — testing approach, logging strategy, code style, tooling): Update `project-preferences.md` (create it if it doesn't exist). Then assess blast radius: read `artifact_manifest` → identify artifacts in the preferences entry's `depended_on_by` list. For each, assess if the preference change affects the artifact's content. Update affected artifacts via AG agent (mini Stage 5 loop). If code already exists and the preference change affects existing code, propose: "Should I also retrofit existing code, or apply this going forward only?" Update `build_preferences` in `project-state.yaml`. If the user consistently expresses a pattern not yet in preferences (e.g., always requests async/await), offer to add it: "I notice you consistently prefer async/await. Want me to add that as a project preference?"
    - **Functional** (new feature, changed behavior, different flow): Update affected artifacts first, then build. This is a mini Stage 5 loop:
      1. Assess change impact: what artifacts change? What chunks are affected? Any regressions? Consult `artifact_manifest` (in `project-state.yaml` or the file at `artifact_manifest_file`) to identify affected artifacts.
      2. Update the relevant artifacts by invoking the AG agent with a scoped task per the Artifact Generator Agent Protocol in `skills/orchestrator/protocols/agent-invocation.md`. The prompt should specify which artifacts to update and why (e.g., "Update the data model and test specs to reflect [change]. Read the existing artifacts and modify only what's affected."). Do NOT load `agents/artifact-generator/SKILL.md` into your context.
@@ -47,7 +48,7 @@ The user has a working product and provides feedback. Handle feedback in lightwe
 
 5a. **Post-Fix Reflection (completion).** For **functional** changes that PFR classified as framework-relevant in step 1: now that the fix is verified, apply PFR steps 4-6 (meta-fix across the product, capture framework observation, present contribution pathway). For product-specific changes, skip. For directional changes, the DCP retrospective (step 9) handles this.
 
-6. **Update iteration state.** Add an entry to `project-state.yaml` → `iteration_state.feedback_cycles` with the feedback, classification, affected artifacts/chunks, and status. Run `tools/compact-project-state.sh --section change_log --section feedback_cycles` if session-health-check reports state warnings.
+6. **Update iteration state.** Add an entry to `project-state.yaml` → `iteration_state.feedback_cycles` with the feedback, classification (including "preference" as a valid classification), affected artifacts/chunks, and status. For preference changes, also update `build_preferences.last_updated`. Run `tools/compact-project-state.sh --section change_log --section feedback_cycles` if session-health-check reports state warnings.
 
 7. **Check for "done."** After each iteration cycle, ask: "Anything else you'd like to change?" For low-risk products, this is lightweight. Don't over-process: "Want to tweak anything?" is fine.
 

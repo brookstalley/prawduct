@@ -1,0 +1,20 @@
+---
+observation_id: 2dc13a88-58b9-4a7c-ac59-4b9ecb146933
+timestamp: 2026-02-21T18:12:29Z
+session_type: framework_dev
+session_context:
+  framework_version: 414a93a
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Explore subagents blocked by stale activation marker in long sessions. Marker uses point-in-time timestamp but long sessions (especially plan mode) can run for extended periods without refreshing it. Subagents inherit the stale timestamp."
+    evidence: "During project-preferences planning session, early explore agents ran fine but later ones were blocked by BLOCKED: Stale activation marker (HR9)"
+    status: noted
+    root_cause_analysis:
+      symptom: "Explore agent blocked by stale activation marker"
+      root_cause: "Activation marker uses point-in-time timestamp with no refresh mechanism for long sessions"
+      category: incomplete_coverage
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+---

@@ -82,6 +82,9 @@ The system must recognize and adapt to user impatience. Some users want thorough
 ### R1.9: Regulatory and Compliance Discovery [v1.5]
 For products in regulated domains or with specific legal requirements (health data, children's data, financial transactions, EU users, accessibility law), the system must identify applicable regulatory constraints during discovery and surface them as architectural and design requirements, not afterthoughts.
 
+### R1.10: Developer Methodology Elicitation [v1]
+The system must elicit development methodology preferences from all users during discovery. Elicitation depth scales naturally with the user's technical expertise — non-technical users get a light question and move on quickly; technical users get adaptive follow-up on each area they mention (testing, logging, code style, error handling, tooling). Preferences are captured in a natural-language markdown file, tracked in the artifact manifest with dependency graph participation, and propagated to downstream artifacts and code. For existing codebases during onboarding, the system must infer conventions from code signals (config files, dependencies, source patterns) and confirm them with the user. Preferences customize framework defaults without overriding Hard Rules.
+
 ## R2: Artifact Generation
 
 ### R2.1: Structurally-Appropriate Artifacts [v1]

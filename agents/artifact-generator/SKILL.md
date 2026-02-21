@@ -14,7 +14,7 @@ The Orchestrator spawns an AG agent with a phase-specific prompt. The prompt spe
 
 When activated:
 
-1. Read `project-state.yaml` in the user's project directory. If `definition_file` exists, also read that file for classification and product definition. The state must have classification, product definition, and scope decisions populated (inline or via split files).
+1. Read `project-state.yaml` in the user's project directory. If `definition_file` exists, also read that file for classification and product definition. The state must have classification, product definition, and scope decisions populated (inline or via split files). If `build_preferences.file_path` is non-null, also read the project preferences file — it contains developer methodology preferences that affect artifact content.
 2. Determine which artifacts to generate based on the product's active structural characteristics and domain characteristics.
 3. Generate artifacts in phased dependency order, writing files to the `artifacts/` directory within the product root. Create this directory if it doesn't exist. All artifact file paths in this skill are relative to the product root (`.prawduct/` for all repos).
 4. Update `artifact_manifest` with each generated artifact (in `project-state.yaml` or in the file at `artifact_manifest_file` if that pointer exists).
@@ -192,6 +192,11 @@ Generate the remaining artifacts: Security Model, Test Specifications, Operation
 
 Read the corresponding template for each artifact. For structurally-triggered artifacts, read from the characteristic's template directory.
 
+**Project preferences incorporation:** When `project-preferences.md` exists, incorporate stated preferences into generated artifacts:
+- **Test Specifications:** Methodology preferences (TDD, BDD, test framework) shape the Test Strategy section.
+- **Operational Spec:** Logging and monitoring preferences shape observability sections.
+- **Dependency Manifest:** Preferred libraries included with rationale "Developer preference (project-preferences.md)".
+
 **Risk-proportionate phasing:**
 
 | Risk Level | Phases | Notes |
@@ -212,7 +217,7 @@ Read `templates/build-plan.md`. Generate from `project-state.yaml` → `technica
 
 2. **Concrete project structure.** Directory layout and module boundaries derived from the data model and structural characteristics. Test infrastructure must match the test strategy: test directory structure accommodating all test levels specified in the strategy, per-level runner configuration, mock library setup when the strategy calls for mocking external services, and coverage tool configuration (always — coverage measurement is baseline regardless of risk level).
 
-3. **Feature-first build chunks.** Each chunk delivers one user-visible flow end-to-end (data + logic + interface + tests). Chunk ordering depends on structural characteristics:
+3. **Feature-first build chunks.** Each chunk delivers one user-visible flow end-to-end (data + logic + interface + tests). When `project-preferences.md` exists, chunk execution instructions reflect methodology preferences — e.g., "write tests first, verify they fail, then implement" for TDD; "use structured JSON logging for all new code" for logging preferences. Chunk ordering depends on structural characteristics:
    - Chunk 01 is always scaffold: project init, dependencies, build config, test runner.
    - When `has_human_interface`: interface shell → first user flow end-to-end → remaining flows → polish. For screen-modality: navigation shell with routing. For terminal: display framework with input handling. For minimal: I/O initialization with feedback loop.
    - When `runs_unattended`: data entities → first pipeline stage → stages in flow order → output delivery → monitoring.
@@ -293,7 +298,11 @@ If any inconsistency is found, fix it before presenting artifacts to the user.
 
 ## Step 4: Update Artifact Manifest
 
-Write each generated artifact to `project-state.yaml` → `artifact_manifest.artifacts`:
+Write each generated artifact to `project-state.yaml` → `artifact_manifest.artifacts`.
+
+**Project preferences manifest entry:** If `build_preferences.file_path` exists and the preferences file has content, verify a `project-preferences` entry exists in the manifest. If the Orchestrator already created it during discovery, leave it. If missing (e.g., preferences were added during iteration), create it with `source: user-authored`, `depends_on: []`, and `depended_on_by` pointing to artifacts that consumed the preferences (typically `test-specifications`, `dependency-manifest`, `build-plan`).
+
+Standard artifact manifest format:
 
 ```yaml
 artifacts:

@@ -231,6 +231,28 @@ user_expertise:
   evidence: []
 
 # =============================================================================
+# BUILD PREFERENCES
+# =============================================================================
+# Developer methodology preferences captured during discovery or iteration.
+# Natural-language markdown file tracking coding conventions, testing approach,
+# logging strategy, error handling philosophy, and tooling preferences.
+# Optional — only populated when the user expresses preferences.
+# Tracked in artifact_manifest as a user-authored artifact with dependency graph.
+# See docs/glossary.md for full definition.
+
+build_preferences:
+  # Path to project-preferences.md, relative to product root (.prawduct/).
+  # null when no preferences have been captured.
+  file_path: null
+  # When the preferences were last updated.
+  last_updated: null
+  # How preferences were initially captured.
+  # discovery: elicited during Stage 1 discovery
+  # inferred: detected from existing codebase during onboarding
+  # iteration: captured during Stage 6 feedback
+  source: null
+
+# =============================================================================
 # PROCESS STATE
 # =============================================================================
 # Current stage in the Prawduct process.
