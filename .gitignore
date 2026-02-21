@@ -9,6 +9,7 @@
 .prawduct/.orchestrator-activated
 .prawduct/.session-governance.json
 .prawduct/.session-governance.json.bak
+.prawduct/.cross-repo-edits
 .prawduct/.session-trace.jsonl
 .prawduct/.hook-timing.log
 .prawduct/traces/

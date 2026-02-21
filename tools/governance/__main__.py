@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import NoReturn
 
 from . import __version__
-from .context import resolve, update_product_context, enumerate_active_products
+from .context import resolve, update_product_context
 from .state import SessionState
 
 
@@ -74,11 +74,11 @@ def main() -> NoReturn:
         hook_input = _read_hook_json()
 
         # Stop/commit do NOT follow the active-products registry via resolve().
-        # Stop enumerates all registered products itself (multi-product debt check).
-        # Commit operates per-commit at session level only.
-        # Gate/track follow the registry (and also call update_product_context)
-        # because they operate per-file — they need the correct product context
-        # for classification and state tracking.
+        # Stop validates only cross-repo products this session actually edited
+        # (tracked in .cross-repo-edits). Commit operates per-commit at session
+        # level only. Gate/track follow the registry (and also call
+        # update_product_context) because they operate per-file — they need
+        # the correct product context for classification and state tracking.
         session_level = command in ("stop", "commit")
         try:
             ctx = resolve(framework_root=root, follow_pointer=not session_level)
@@ -95,7 +95,18 @@ def main() -> NoReturn:
             file_path = hook_input.get("tool_input", {}).get("file_path", "")
             tool_name = hook_input.get("tool_name", "")
             register = command == "track" or tool_name not in ("Read",)
+            session_prawduct_dir = ctx.prawduct_dir
             ctx = update_product_context(file_path, ctx, register=register)
+            # Record cross-repo edits so the stop hook knows which
+            # products THIS session actually touched.
+            if (
+                command == "track"
+                and os.path.realpath(ctx.prawduct_dir)
+                != os.path.realpath(session_prawduct_dir)
+            ):
+                _record_cross_repo_edit(
+                    session_prawduct_dir, ctx.prawduct_dir
+                )
 
         state = SessionState.load(ctx.session_file)
 
@@ -176,6 +187,43 @@ def _run_track(hook_input: dict, ctx, state: SessionState) -> NoReturn:
     sys.exit(0)
 
 
+def _record_cross_repo_edit(
+    session_prawduct_dir: str, product_prawduct_dir: str
+) -> None:
+    """Record that this session edited files in a cross-repo product.
+
+    Appends the product path to a .cross-repo-edits file in the session-level
+    .prawduct/. The stop hook reads this file to determine which cross-repo
+    products to validate. Only products this session actually edited are
+    checked — products registered by other concurrent sessions are skipped.
+    """
+    edits_path = os.path.join(session_prawduct_dir, ".cross-repo-edits")
+    real_path = os.path.realpath(product_prawduct_dir)
+    try:
+        # Read existing entries to avoid duplicates
+        existing: set[str] = set()
+        if os.path.isfile(edits_path):
+            with open(edits_path) as f:
+                existing = {line.strip() for line in f if line.strip()}
+        if real_path not in existing:
+            with open(edits_path, "a") as f:
+                f.write(real_path + "\n")
+    except OSError:
+        pass  # Best effort — never block on tracking failure
+
+
+def _load_cross_repo_edits(session_prawduct_dir: str) -> set[str]:
+    """Load the set of cross-repo products this session edited."""
+    edits_path = os.path.join(session_prawduct_dir, ".cross-repo-edits")
+    if not os.path.isfile(edits_path):
+        return set()
+    try:
+        with open(edits_path) as f:
+            return {line.strip() for line in f if line.strip()}
+    except OSError:
+        return set()
+
+
 def _run_stop(hook_input: dict, ctx, state: SessionState) -> NoReturn:
     from .stop import validate
     from .context import Context
@@ -186,25 +234,15 @@ def _run_stop(hook_input: dict, ctx, state: SessionState) -> NoReturn:
     decision = validate(hook_input, ctx, state)
     all_debts.extend(decision.debts)
 
-    # 2. Enumerate registered products and check each one's debt.
-    # Only check products registered during THIS session — stale registrations
-    # from prior conversations should not block session exit.
+    # 2. Check cross-repo products THIS session actually edited.
+    # Only validate products recorded in .cross-repo-edits (written by the
+    # tracker when this session edits a file in a different repo). Products
+    # registered by other concurrent sessions are not our debt to resolve.
     session_prawduct_dir = ctx.prawduct_dir
-    session_real = os.path.realpath(session_prawduct_dir)
-    session_start_ts = 0.0
-    if state.session_started:
-        try:
-            session_start_ts = datetime.fromisoformat(
-                state.session_started.replace("Z", "+00:00")
-            ).timestamp()
-        except (ValueError, TypeError):
-            pass
-    for product_dir in enumerate_active_products(
-        session_prawduct_dir, min_timestamp=session_start_ts
-    ):
-        product_real = os.path.realpath(product_dir)
-        if product_real == session_real:
-            continue  # Already checked above
+    cross_repo_edits = _load_cross_repo_edits(session_prawduct_dir)
+    for product_dir in cross_repo_edits:
+        if not os.path.isdir(product_dir):
+            continue
 
         try:
             product_ctx = Context(
@@ -244,4 +282,5 @@ def _run_commit(hook_input: dict, ctx, state: SessionState) -> NoReturn:
         sys.exit(2)
 
 
-main()
+if __name__ == "__main__":
+    main()

@@ -42,6 +42,7 @@ from governance.tracker import track, DCP_FILE_THRESHOLD
 from governance.stop import validate, StopDecision
 from governance.commit import check_and_archive
 from governance import trace as tr
+from governance.__main__ import _record_cross_repo_edit, _load_cross_repo_edits
 
 
 # ---------------------------------------------------------------------------
@@ -1586,6 +1587,84 @@ class TestProductRegistry:
 
         cleanup_active_products(session_dir)
         assert not os.path.isdir(_active_products_dir(session_dir))
+
+
+# ---------------------------------------------------------------------------
+# Cross-Repo Edit Tracking Tests
+# ---------------------------------------------------------------------------
+
+
+class TestCrossRepoEdits:
+    """Tests for the .cross-repo-edits tracking used by the stop hook."""
+
+    def test_record_creates_file(self, tmp_path):
+        """Recording a cross-repo edit creates .cross-repo-edits."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_dir = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        _record_cross_repo_edit(session_dir, product_dir)
+
+        edits_path = os.path.join(session_dir, ".cross-repo-edits")
+        assert os.path.isfile(edits_path)
+        with open(edits_path) as f:
+            lines = [l.strip() for l in f if l.strip()]
+        assert len(lines) == 1
+        assert lines[0] == os.path.realpath(product_dir)
+
+    def test_record_deduplicates(self, tmp_path):
+        """Recording the same product twice doesn't duplicate."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_dir = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        _record_cross_repo_edit(session_dir, product_dir)
+        _record_cross_repo_edit(session_dir, product_dir)
+
+        edits_path = os.path.join(session_dir, ".cross-repo-edits")
+        with open(edits_path) as f:
+            lines = [l.strip() for l in f if l.strip()]
+        assert len(lines) == 1
+
+    def test_record_multiple_products(self, tmp_path):
+        """Recording different products creates separate entries."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_a = str(tmp_path / "product-a" / ".prawduct")
+        product_b = str(tmp_path / "product-b" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_a, exist_ok=True)
+        os.makedirs(product_b, exist_ok=True)
+
+        _record_cross_repo_edit(session_dir, product_a)
+        _record_cross_repo_edit(session_dir, product_b)
+
+        edits = _load_cross_repo_edits(session_dir)
+        assert len(edits) == 2
+        assert os.path.realpath(product_a) in edits
+        assert os.path.realpath(product_b) in edits
+
+    def test_load_empty_when_no_file(self, tmp_path):
+        """Loading when no .cross-repo-edits file returns empty set."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+
+        edits = _load_cross_repo_edits(session_dir)
+        assert edits == set()
+
+    def test_load_roundtrip(self, tmp_path):
+        """Record then load returns the same paths."""
+        session_dir = str(tmp_path / "session" / ".prawduct")
+        product_dir = str(tmp_path / "product" / ".prawduct")
+        os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        _record_cross_repo_edit(session_dir, product_dir)
+        edits = _load_cross_repo_edits(session_dir)
+
+        assert len(edits) == 1
+        assert os.path.realpath(product_dir) in edits
 
 
 # ---------------------------------------------------------------------------

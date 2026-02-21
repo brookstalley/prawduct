@@ -8,9 +8,10 @@ Active-products registry: In cross-repo sessions (framework hooks managing
 separate product repos), gate/track register each product in an
 `.active-products/` directory keyed by hash of the product's realpath.
 This allows multiple products to be tracked concurrently from the same
-CLAUDE_PROJECT_DIR without clobbering. Stop enumerates all registered
-products to check governance debt across all active products. Registrations
-include a timestamp; entries older than 12h are considered stale.
+CLAUDE_PROJECT_DIR without clobbering. The stop hook validates only
+cross-repo products this session actually edited (tracked via
+`.cross-repo-edits`), not all registered products. Registrations include
+a timestamp; entries older than 12h are considered stale.
 
 Advisory lock: A `.session.lock` file in each product's `.prawduct/`
 detects concurrent sessions on the same product. The lock is refreshed on
@@ -348,7 +349,7 @@ def resolve(
 
     # Follow active-products registry if requested.
     # Gate/track follow the pointer to resolve per-file product context.
-    # Stop enumerates all products separately via enumerate_active_products().
+    # Stop validates cross-repo products via .cross-repo-edits (not registry).
     # Commit/prompt operate session-level only.
     if follow_pointer:
         products = enumerate_active_products(prawduct_dir)

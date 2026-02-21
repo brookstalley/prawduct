@@ -1,0 +1,20 @@
+---
+observation_id: 7f6f682d-0e64-4cbf-949b-ee929f0cb3a4
+timestamp: 2026-02-21T22:43:09Z
+session_type: framework_dev
+session_context:
+  framework_version: 0120f4c
+observations:
+  - type: coverage
+    stage: 6
+    severity: warning
+    description: "Framework learning system (observation pipeline + Critic + Structural Critique Protocol) is blind to omission gaps — cross-cutting concerns that are never addressed at all. Design systems and observability persisted as gaps through 13+ evaluations, 6+ sessions, and 2 audits undetected because the learning loop is reactive (observes friction) not proactive (audits coverage). Proposed fix: cross-cutting concerns registry + coverage audit protocol."
+    evidence: "Two significant gaps (design systems, observability) identified only by human domain expertise review. Three self-improvement mechanisms (observations, Critic, SCP) all structurally incapable of detecting what-is-absent."
+    status: noted
+    root_cause_analysis:
+      symptom: "Framework cannot detect when an entire cross-cutting concern (e.g., design systems, observability) is missing from its pipeline"
+      root_cause: "All three self-improvement mechanisms are reactive — they evaluate what exists for quality but cannot identify what should exist but does not. No mechanism compares framework coverage against external standards or domain knowledge."
+      category: incomplete_coverage
+skills_affected:
+  - "skills/orchestrator/protocols/governance.md agents/critic/SKILL.md"
+---
