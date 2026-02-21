@@ -61,18 +61,25 @@ def check_and_archive(
         state.save()
         return result
 
-    # 3. Archive session traces
+    # 3. DCP completion check
+    result = _check_dcp(state)
+    if not result.allowed:
+        tr.event(state, "commit_block", {"rule": "dcp_incomplete", "reason": result.reason})
+        state.save()
+        return result
+
+    # 4. Archive session traces
     tr.event(state, "commit_allowed", {"command": "git commit"})
     traces_dir = os.path.join(ctx.prawduct_dir, "traces")
     tr.persist(state, traces_dir)
 
-    # 4. Reset per-commit tracking in session state
+    # 5. Reset per-commit tracking in session state
     # Framework edits and PFR are per-commit concerns — after a successful
     # commit (which required critic review + PFR observation), they should
     # reset so the stop hook doesn't flag already-committed work as debt.
     _reset_per_commit_state(state)
 
-    # 5. Clean up per-commit files
+    # 6. Clean up per-commit files
     _cleanup(ctx)
 
     return CommitDecision(allowed=True)
@@ -167,6 +174,39 @@ def _check_critic_evidence(ctx: Context) -> CommitDecision:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         # Never block on tool failure
         return CommitDecision(allowed=True)
+
+
+def _check_dcp(state: SessionState) -> CommitDecision:
+    """If DCP is active, require completion before commit.
+
+    DCP tracks a directional change (enhancement/structural work). All DCP
+    items — observation, retrospective, artifact verification — must be
+    complete before the work can be committed. This prevents governance debt
+    from being pushed to the remote.
+    """
+    dcp = state.dcp
+    if not dcp.active:
+        return CommitDecision(allowed=True)
+
+    debts: list[str] = []
+
+    if not dcp.observation_captured:
+        debts.append("observation not captured")
+    if not dcp.retrospective_completed:
+        debts.append("retrospective incomplete")
+    if dcp.tier in ("enhancement", "structural") and not dcp.artifacts_verified:
+        debts.append("artifact freshness not verified")
+    if dcp.tier == "structural" and not dcp.plan_stage_review_completed:
+        debts.append("plan-stage review incomplete")
+
+    if debts:
+        items = ", ".join(debts)
+        return CommitDecision(
+            allowed=False,
+            reason=f"BLOCKED: DCP incomplete — {items}. Complete these before committing.",
+        )
+
+    return CommitDecision(allowed=True)
 
 
 def _reset_per_commit_state(state: SessionState) -> None:
