@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime
 from typing import NoReturn
 
 from . import __version__
@@ -87,9 +88,14 @@ def main() -> NoReturn:
 
         # For gate/track: resolve product from the file being operated on
         # and update ctx so all downstream code uses the correct paths.
+        # Read operations resolve context but don't register products —
+        # reading a file is passive and shouldn't cause the stop hook
+        # to validate that repo's governance debt.
         if command in ("gate", "track"):
             file_path = hook_input.get("tool_input", {}).get("file_path", "")
-            ctx = update_product_context(file_path, ctx)
+            tool_name = hook_input.get("tool_name", "")
+            register = command == "track" or tool_name not in ("Read",)
+            ctx = update_product_context(file_path, ctx, register=register)
 
         state = SessionState.load(ctx.session_file)
 
@@ -180,10 +186,22 @@ def _run_stop(hook_input: dict, ctx, state: SessionState) -> NoReturn:
     decision = validate(hook_input, ctx, state)
     all_debts.extend(decision.debts)
 
-    # 2. Enumerate registered products and check each one's debt
+    # 2. Enumerate registered products and check each one's debt.
+    # Only check products registered during THIS session — stale registrations
+    # from prior conversations should not block session exit.
     session_prawduct_dir = ctx.prawduct_dir
     session_real = os.path.realpath(session_prawduct_dir)
-    for product_dir in enumerate_active_products(session_prawduct_dir):
+    session_start_ts = 0.0
+    if state.session_started:
+        try:
+            session_start_ts = datetime.fromisoformat(
+                state.session_started.replace("Z", "+00:00")
+            ).timestamp()
+        except (ValueError, TypeError):
+            pass
+    for product_dir in enumerate_active_products(
+        session_prawduct_dir, min_timestamp=session_start_ts
+    ):
         product_real = os.path.realpath(product_dir)
         if product_real == session_real:
             continue  # Already checked above

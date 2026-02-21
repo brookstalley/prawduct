@@ -1,0 +1,20 @@
+---
+observation_id: 80c81247-4e07-4072-a56a-db39b4fa05f5
+timestamp: 2026-02-21T21:41:47Z
+session_type: framework_dev
+session_context:
+  framework_version: 643932c
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Gate hook registers products on Read operations, not just Edit/Write. Reading any file in an external repo (e.g. to check its state) re-registers that product in .active-products/, causing the stop hook to validate it. This means 'rm' of a stale registration is undone by the next Read of any file in that repo."
+    evidence: "Reading worldground/.prawduct/.session-governance.json via Read tool triggered gate hook → update_product_context → register_active_product, re-creating the registration entry that was just deleted. User had to clear worldground DCP and observation debt to unblock prawduct session."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Stale cross-repo product registration persists despite manual removal"
+      root_cause: "Gate hook calls update_product_context for all gated operations including Read, but Read is passive — it should not have the side effect of registering a product for stop-hook governance validation"
+      category: wrong_abstraction
+skills_affected:
+  - "tools/governance/__main__.py tools/governance/gate.py"
+---

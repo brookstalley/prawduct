@@ -267,8 +267,8 @@ def _check_observation_gaps(
         if highest_sev in ("warning", "blocking"):
             debts.append(
                 f"Critic findings have {highest_sev}-severity issues but 0 observations "
-                "captured this session. Capture observations to framework-observations/ "
-                "and increment observations_captured_this_session."
+                "captured this session. Capture observations via tools/capture-observation.sh "
+                "(counter is incremented automatically)."
             )
     except (OSError, json.JSONDecodeError):
         pass  # Never block on file read failure

@@ -415,7 +415,7 @@ Automatic skill updates without validation are dangerous. The system must valida
 
 **Symptom**: A problem is fixed, but the same class of problem recurs because only the specific instance was addressed, not the structural cause.
 
-**Root cause**: The fix flow (discover problem → implement fix → commit) had no step requiring causal analysis. The Root Cause Protocol existed but was advisory — it triggered only for observation-driven fixes, not for routine bug fixes or Critic findings.
+**Root cause**: The fix flow (discover problem → implement fix → commit) had no step requiring causal analysis. The Post-Fix Reflection Protocol (PFR) existed in an earlier form but was advisory — it triggered only for observation-driven fixes, not for routine bug fixes or Critic findings.
 
 **Discovered**: 2026-02-17. User observed that results improve when they explicitly request 5-whys analysis, but this should be automatic.
 

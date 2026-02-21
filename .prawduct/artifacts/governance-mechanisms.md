@@ -23,7 +23,7 @@ tools/governance-hook           # Single bash entry point for all Claude Code ho
 tools/governance/
 ├── __init__.py        # Package init, version
 ├── __main__.py        # CLI: python3 -m governance <gate|track|stop|commit|prompt|compact-reinject>
-├── context.py         # Path resolution: unified via active-product pointer
+├── context.py         # Path resolution: active-products registry + advisory lock
 ├── classify.py        # File classification (one implementation)
 ├── state.py           # Session state read/write (schema versioned)
 ├── trace.py           # Trace event emission + persistence + rotation
@@ -41,12 +41,12 @@ tools/governance/
 In cross-repo sessions (framework hooks managing separate product repos), `context.py` uses an `.active-products/` directory to register each product by a deterministic hash of its realpath. This allows multiple products to be tracked concurrently from the same `CLAUDE_PROJECT_DIR` without clobbering — different products create different files, same product always maps to the same file (idempotent).
 
 **How it works:**
-1. `__main__.py` calls `update_product_context(file_path, ctx)` for gate/track commands
+1. `__main__.py` calls `update_product_context(file_path, ctx, register=...)` for gate/track commands. Read operations pass `register=False` (passive — no side effects); Edit/Write and track pass `register=True`
 2. `update_product_context()` resolves the product from the file's git root (via `resolve_product_for_file()`)
-3. If the product differs from the session-level dir, it calls `register_active_product()` which creates `.prawduct/.active-products/<SHA256[:12]>` containing the product path and a timestamp
+3. If the product differs from the session-level dir and `register=True`, it calls `register_active_product()` which creates `.prawduct/.active-products/<SHA256[:12]>` containing the product path and a timestamp
 4. `resolve(follow_pointer=True)` (gate/track) reads the registry (most recent entry) for initial product resolution; `update_product_context()` then refines per-file
 5. `resolve(follow_pointer=False)` (commit/prompt) stays at session level
-6. **Stop** enumerates all registered products via `enumerate_active_products()` and checks governance debt in each one, prefixing product debts with `[product-name]`
+6. **Stop** enumerates products registered during the current session (filtered by `session_started` timestamp) and checks governance debt in each, prefixing debts with `[product-name]`. Products registered in prior conversations are skipped
 7. Cleanup on `/clear` enumerates all registered products, cleans each one's session files, then removes the `.active-products/` directory
 
 **Stale filtering:** Registrations include a timestamp. Entries older than 12h are filtered out by `enumerate_active_products()`.
@@ -268,8 +268,8 @@ Critic review produces findings with highest_severity >= warning
   → Agent attempts to stop/complete session
   → stop.py: reads .critic-findings.json and governance_state.observations_captured_this_session
   → If highest_severity in (warning, blocking) AND observations == 0 → BLOCKS
-  → Agent captures observation(s) to framework-observations/
-  → Agent increments observations_captured_this_session
+  → Agent captures observation(s) via tools/capture-observation.sh
+  → capture-observation.sh auto-increments observations_captured_this_session
   → stop.py: observations > 0 → allows stop
 ```
 

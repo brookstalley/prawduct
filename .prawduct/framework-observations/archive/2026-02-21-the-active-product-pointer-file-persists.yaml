@@ -1,0 +1,20 @@
+---
+observation_id: 155e2644-2c34-4be4-8ac3-42dcf4ff9463
+timestamp: 2026-02-21T18:45:02Z
+session_type: framework_dev
+session_context:
+  framework_version: 3b55fb6
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "The .active-product pointer file persists through context compaction, causing stop hook to read a different repo's .session-governance.json. SessionStart DOES clear .active-product, but /compact does not trigger SessionStart — it preserves context continuity. A previous session (or earlier in the same long session) set the pointer to worldground/.prawduct. After compaction, the pointer survived, and the stop hook reported worldground's DCP debt as if it were prawduct's."
+    evidence: "Stop hook reported 'DCP: observation not captured; DCP: retrospective incomplete; DCP: artifact freshness not verified' — all from worldground's active DCP (enhancement: macro weather system). Prawduct's own DCP was inactive (active: false). Root cause: .prawduct/.active-product contained '/Users/brookstalley/source/worldground/.prawduct'."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Stop hook blocks prawduct session with another repo's governance debt"
+      root_cause: ".active-product pointer survives context compaction; SessionStart clears it but /compact doesn't trigger SessionStart"
+      category: incomplete_coverage
+skills_affected:
+  - "tools/governance/context.py"
+---

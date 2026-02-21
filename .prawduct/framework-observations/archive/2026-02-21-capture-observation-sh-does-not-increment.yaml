@@ -1,0 +1,20 @@
+---
+observation_id: 1f863a13-ceb3-4147-a6f1-fd2d302969c8
+timestamp: 2026-02-21T21:42:01Z
+session_type: framework_dev
+session_context:
+  framework_version: 643932c
+observations:
+  - type: governance_compliance
+    stage: 6
+    severity: warning
+    description: "capture-observation.sh does not increment observations_captured_this_session in .session-governance.json. This is a common failure mode: the observation is written to disk but the governance counter stays at 0, causing the stop hook to block with 'warning-severity issues but 0 observations captured'. The counter must be manually incremented after every capture."
+    evidence: "Captured worldground observation via capture-observation.sh, but stop hook still blocked because observations_captured_this_session remained 0. Required manual python3 fix to update the counter. Same pattern seen in prawduct session — observation captured but stop hook blocked until counter manually set."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Stop hook blocks despite observation being captured"
+      root_cause: "capture-observation.sh writes the observation YAML file but has no integration with session-governance.json — the counter and the capture are independent operations with no mechanical link"
+      category: process_not_enforced
+skills_affected:
+  - "tools/capture-observation.sh tools/governance/stop.py"
+---

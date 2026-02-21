@@ -648,4 +648,7 @@ deprecated_terms:
     replacement: "protocols/agent-invocation.md, protocols/governance.md, protocols/stage-prerequisites.md"
     removed_date: 2026-02-20
     patterns: ["skills/orchestrator/protocols\\.md"]
-  # .active-product reinstated as cross-repo pointer mechanism (2026-02-20)
+  - term: ".active-product"
+    replacement: ".active-products/ directory registry"
+    removed_date: 2026-02-21
+    patterns: ["\\.active-product[^s]", "\\.active-product$"]

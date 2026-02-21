@@ -130,7 +130,7 @@ try:
     with open('$PROJECT_STATE') as f:
         data = yaml.safe_load(f)
     backlog = data.get('observation_backlog', {})
-    items = backlog.get('items', [])
+    items = backlog.get('items') or []
     next_items = [i for i in items if i.get('priority') == 'next']
     if next_items:
         for item in next_items:
@@ -184,7 +184,7 @@ try:
                 deferred_data = yaml.safe_load(df)
             deferred = deferred_data.get('deferred_items', []) if deferred_data else []
     if not deferred:
-        items = backlog.get('items', [])
+        items = backlog.get('items') or []
         deferred = [i for i in items if i.get('priority') == 'deferred']
     stale = []
     for item in deferred:

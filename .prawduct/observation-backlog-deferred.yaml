@@ -11,7 +11,7 @@ deferred_items:
   - observation_file: "framework-observations/archive/2026-02-11-family-utility-eval-full.yaml"
     type: critic_gap
     summary: "Critic missed scope addition outside chunk deliverables"
-    target_files: ["skills/critic/SKILL.md"]
+    target_files: ["agents/critic/SKILL.md"]
     priority: deferred
     rationale: "Single instance, note severity. Revisit if recurs in future evals."
     added: 2026-02-11
@@ -47,7 +47,7 @@ deferred_items:
   - observation_file: "framework-observations/archive/2026-02-12-terminal-arcade-game-eval.yaml"
     type: coverage
     summary: "Review Lens findings not persisted to project-state.yaml"
-    target_files: ["skills/review-lenses/SKILL.md", "skills/orchestrator/SKILL.md"]
+    target_files: ["agents/review-lenses/SKILL.md", "skills/orchestrator/SKILL.md"]
     priority: deferred
     rationale: "Related to existing Critic-Review Lenses integration backlog item. At requires_pattern across 2 files."
     added: 2026-02-14
@@ -96,14 +96,14 @@ deferred_items:
   - observation_file: "framework-observations/2026-02-17-external-audit-severity-assessments-should-verify.yaml"
     type: critic_gap
     summary: "External audit severity assessments should verify tool scope before reporting compliance"
-    target_files: ["skills/critic/SKILL.md"]
+    target_files: ["agents/critic/SKILL.md"]
     priority: deferred
     rationale: "Single instance, note severity. Guidance improvement for Critic proportionality check. Watch for recurrence."
     added: 2026-02-17
   - observation_file: "framework-observations/2026-02-17-requirement-version-tags-drift-from-actual.yaml"
     type: process_friction
     summary: "Requirement version tags drift from actual build state with no update process"
-    target_files: ["skills/critic/SKILL.md"]
+    target_files: ["agents/critic/SKILL.md"]
     priority: deferred
     rationale: "Immediate tags fixed this session. Process fix (Critic coherence check extension) is the proposed action. Single instance."
     added: 2026-02-17
@@ -149,13 +149,7 @@ deferred_items:
     priority: deferred
     rationale: "Claude Code infrastructure limitation — hooks fire based on session CWD, not edited file's repo. No workaround short of running from the target repo. Watch for recurrence."
     added: 2026-02-21
-  - observation_file: "framework-observations/2026-02-21-dcp-observation-captured-flag-and-governance.yaml"
-    type: process_friction
-    summary: "DCP observation_captured flag and governance_state.observations_captured_this_session counter have no cross-validation"
-    target_files: ["tools/dcp-update.sh", "tools/capture-observation.sh"]
-    priority: deferred
-    rationale: "Tooling gap — each tool manages its own state independently. Low impact: worst case is inaccurate session metrics. Watch for recurrence."
-    added: 2026-02-21
+  # Removed: "DCP observation_captured flag and governance_state counter have no cross-validation" (2026-02-21-dcp-observation-captured-flag-and-governance.yaml) — acted_on: capture-observation.sh now auto-increments observations_captured_this_session
   - observation_file: "framework-observations/2026-02-21-explore-subagents-blocked-by-stale-activation.yaml"
     type: process_friction
     summary: "Explore subagents blocked by stale activation marker in long sessions"
@@ -183,4 +177,11 @@ deferred_items:
     target_files: ["skills/orchestrator/SKILL.md", "tools/governance/prompt.py"]
     priority: deferred
     rationale: "Related to stale activation marker observation. Compaction is rare but the 3-error dance is friction. Error messages could include the expected format. Watch for recurrence."
+    added: 2026-02-21
+  - observation_file: "framework-observations/2026-02-21-automating-a-previously-manual-step-capture.yaml"
+    type: process_friction
+    summary: "Automating a manual step leaves stale instructions — no behavioral change detection in DCP or Critic"
+    target_files: ["skills/orchestrator/stage-6-iteration.md", "agents/critic/SKILL.md"]
+    priority: deferred
+    rationale: "Single instance, caught by user. Proposed fix: DCP step to grep for manual instructions when automating. Watch for recurrence."
     added: 2026-02-21

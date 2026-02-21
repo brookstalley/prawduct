@@ -120,7 +120,10 @@ def register_active_product(
         pass  # Best effort — never block on registration failure
 
 
-def enumerate_active_products(session_prawduct_dir: str) -> list[str]:
+def enumerate_active_products(
+    session_prawduct_dir: str,
+    min_timestamp: float = 0.0,
+) -> list[str]:
     """Return paths of all active (non-stale) registered products.
 
     Reads all entries from `.active-products/`, filters out stale (>12h)
@@ -128,6 +131,8 @@ def enumerate_active_products(session_prawduct_dir: str) -> list[str]:
 
     Args:
         session_prawduct_dir: The session-level .prawduct/.
+        min_timestamp: If > 0, skip products registered before this time.
+            Used by stop hook to filter out products from prior conversations.
 
     Returns:
         List of product .prawduct/ directory paths.
@@ -151,7 +156,9 @@ def enumerate_active_products(session_prawduct_dir: str) -> list[str]:
                 product_path = lines[0].strip()
                 ts = float(lines[1].strip())
                 if now - ts > REGISTRATION_MAX_AGE:
-                    continue  # Stale
+                    continue  # Stale (>12h)
+                if min_timestamp > 0 and ts < min_timestamp:
+                    continue  # Registered before session boundary
                 if not os.path.isdir(product_path):
                     continue  # Directory gone
                 result.append(product_path)
@@ -259,17 +266,20 @@ def resolve_product_for_file(file_path: str, fallback_prawduct_dir: str) -> str:
     return fallback_prawduct_dir
 
 
-def update_product_context(file_path: str, ctx: Context) -> Context:
+def update_product_context(
+    file_path: str, ctx: Context, register: bool = True
+) -> Context:
     """Resolve product from file path and update context if needed.
 
     If the file belongs to a different product than ctx currently points to,
-    registers the product in the active-products directory and returns a
-    NEW Context with the updated prawduct_dir. Context is frozen, so we
-    create a new instance.
+    optionally registers the product in the active-products directory and
+    returns a NEW Context with the updated prawduct_dir.
 
     Args:
         file_path: Absolute path to the file being operated on.
         ctx: Current resolved governance context.
+        register: Whether to register the product for stop-hook validation.
+            True for Edit/Write (mutations), False for Read (passive).
 
     Returns:
         Context — either the original (if no change) or a new one pointing
@@ -280,12 +290,16 @@ def update_product_context(file_path: str, ctx: Context) -> Context:
     if os.path.realpath(product_prawduct_dir) == os.path.realpath(ctx.prawduct_dir):
         return ctx  # No change
 
-    # Cross-repo: register product and return updated context.
+    # Cross-repo: optionally register product and return updated context.
     # The registry lives in the session-level .prawduct/ (from CLAUDE_PROJECT_DIR).
-    session_prawduct_dir = os.path.join(
-        os.environ.get("CLAUDE_PROJECT_DIR", ctx.framework_root), ".prawduct"
-    )
-    register_active_product(session_prawduct_dir, product_prawduct_dir)
+    # Read operations resolve context (for correct classification) but don't
+    # register — reading a file shouldn't cause the stop hook to validate
+    # that repo's governance debt.
+    if register:
+        session_prawduct_dir = os.path.join(
+            os.environ.get("CLAUDE_PROJECT_DIR", ctx.framework_root), ".prawduct"
+        )
+        register_active_product(session_prawduct_dir, product_prawduct_dir)
 
     return Context(
         framework_root=ctx.framework_root,

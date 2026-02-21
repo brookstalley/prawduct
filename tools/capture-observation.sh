@@ -345,4 +345,25 @@ YAMLEOF
     echo "Observation written to: $OUTPUT_FILE"
 fi
 
+# --- Increment observations_captured_this_session in session-governance.json ---
+# Resolves the desync between observation file capture and governance counter.
+# Without this, the stop hook blocks with "warning-severity issues but 0 observations".
+SESSION_GOV="$PRODUCT_ROOT/.session-governance.json"
+if [[ -f "$SESSION_GOV" ]]; then
+    python3 -c "
+import json, sys
+try:
+    with open('$SESSION_GOV') as f:
+        data = json.load(f)
+    gs = data.get('governance_state', {})
+    gs['observations_captured_this_session'] = gs.get('observations_captured_this_session', 0) + 1
+    data['governance_state'] = gs
+    with open('$SESSION_GOV', 'w') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
+except Exception as e:
+    print(f'Warning: Could not update session counter: {e}', file=sys.stderr)
+" 2>/dev/null || true
+fi
+
 exit 0
