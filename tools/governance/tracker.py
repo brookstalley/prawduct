@@ -27,11 +27,16 @@ DOC_ONLY_PREFIXES = (
     "templates/",
     ".prawduct/artifacts/",
     ".prawduct/framework-observations/",
+    ".prawduct/working-notes/",
 )
 DOC_ONLY_FILES = (
     "README.md",
     "CLAUDE.md",
     ".claude/settings.json",
+    ".prawduct/project-state.yaml",
+    ".prawduct/glossary.yaml",
+    ".prawduct/doc-manifest.yaml",
+    ".prawduct/dependency-manifest.yaml",
 )
 
 

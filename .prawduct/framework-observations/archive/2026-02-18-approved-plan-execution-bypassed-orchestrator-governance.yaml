@@ -27,7 +27,7 @@ observations:
           answer: "Mechanical enforcement is binary (activated or not). The Orchestrator's process is multi-step (read skill → session resumption → classify → route). Verifying the full process mechanically would require tracking each step, which the hook system doesn't support."
       root_cause: "No handoff between plan mode (Claude Code feature) and the Orchestrator (prawduct skill). Mechanical enforcement checks activation state but not whether the Orchestrator's multi-step process was actually followed."
       category: process_not_enforced
-    status: triaged
+    status: acted_on
 skills_affected:
   - "skills/orchestrator/SKILL.md"
   - ".prawduct/hooks/governance-prompt.sh"

@@ -124,6 +124,16 @@ def _stage_reminders(ctx: Context) -> str | None:
             f"Run Governance Review before editing product files."
         )
 
+    # Stage 6: classify feedback before acting (no state tracking needed —
+    # this is a standing reminder that fires when no other debt exists)
+    if state.current_stage == "iteration" and not parts:
+        dcp = state.dcp
+        if not dcp.active and not dcp.needs_classification:
+            parts.append(
+                "Stage 6: classify feedback (cosmetic/functional/directional) before "
+                "implementing. See stage-6-iteration.md."
+            )
+
     if not parts:
         return None
 

@@ -9,6 +9,7 @@ Replaces governance-gate.sh logic (~340 lines bash+Python). Handles:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -198,6 +199,19 @@ def _check_activation(ctx: Context, state: SessionState, rule_name: str) -> Deci
             rule=rule_name,
         )
 
+    # Cross-validate: session governance file must exist with valid structure.
+    # Prevents bypass via direct Bash marker write without proper init.
+    session_status = _validate_session_state(ctx.session_file)
+    if session_status != "ok":
+        return Decision(
+            allowed=False,
+            reason=(
+                f"BLOCKED: Activation marker exists but session state is {session_status} (HR9). "
+                f"Complete Orchestrator steps 3-4: read {ctx.framework_root}/skills/orchestrator/SKILL.md."
+            ),
+            rule=rule_name,
+        )
+
     return Decision(allowed=True)
 
 
@@ -227,6 +241,29 @@ def _validate_marker(marker_path: str) -> str:
         return "ok" if age < MARKER_MAX_AGE else "stale"
     except (ValueError, OSError):
         return "invalid"
+
+
+def _validate_session_state(session_file: str) -> str:
+    """Validate session governance file exists with required structure.
+
+    Returns: "ok", "missing", or "malformed".
+    """
+    if not os.path.isfile(session_file):
+        return "missing"
+
+    try:
+        with open(session_file) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return "malformed"
+
+    # Require key fields that proper init always sets
+    if not data.get("product_dir"):
+        return "malformed"
+    if not data.get("session_started"):
+        return "malformed"
+
+    return "ok"
 
 
 def _check_pfr(fc: FileClass, state: SessionState) -> Decision:

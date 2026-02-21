@@ -11,7 +11,7 @@ observations:
     description: "Self-hosting blind spot: code generators embed build-time values instead of runtime resolution. When a tool is its own customer, the self-hosted code path gets full testing while the external-customer code path is systematically under-tested. Values constant during development (paths, usernames) get hardcoded because there is no forcing function to surface portability failures."
     evidence: "prawduct-init.py hardcoded absolute framework paths into product repos settings.json and CLAUDE.md. Framework's own settings.json used CLAUDE_PROJECT_DIR (runtime resolution) proving the right pattern was known but the product-repo code path was never portability-tested because self-hosted development bypasses it entirely (is_framework_repo returns true, skipping settings.json and CLAUDE.md generation)."
     proposed_action: "Add mechanical check to prawduct-init.py: after generating any config file, verify it contains no paths from the generation environment. More broadly: any generated config that embeds environment-specific values must use runtime resolution instead."
-    status: triaged
+    status: acted_on
 skills_affected:
   - "tools/prawduct-init.py"
 ---
