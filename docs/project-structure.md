@@ -70,7 +70,7 @@ prawduct/
 │   └── ...                            # Observation lifecycle, Critic evidence, product root detection
 ├── scripts/                           # Eval/validation helpers (validate-eval-output, validate-schema, check-artifacts)
 ├── templates/                         # Starting templates for user project artifacts
-│   ├── project-state.yaml, build-plan.md, + 9 artifact templates  # Core templates
+│   ├── project-state.yaml, build-plan.md, + 10 artifact templates  # Core templates (includes observability-strategy.md)
 │   ├── human-interface/               # has_human_interface templates (6 files)
 │   └── unattended-operation/          # runs_unattended templates (5 files)
 ├── tests/                             # Evaluation rubrics for skill validation

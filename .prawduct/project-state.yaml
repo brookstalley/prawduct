@@ -75,10 +75,9 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
-  - what: 'Summary: 4 entries compacted (2026-02-17 to 2026-02-21)'
-    why: '1 cosmetic, 3 enhancement covering: Fix cross-repo governance contamination + 4 soon-priority observations (activ...;
-      Token discipline: split protocols.md into focused files, tighten main-context...; Summary: 2 entries compacted (2026-02-17
-      to 2026-02-19); CLAUDE.md context footprint optimization: condense tree, Framework Status, Te...'
+  - what: 'Summary: 2 entries compacted (2026-02-21 to 2026-02-21)'
+    why: '1 cosmetic, 1 structural covering: Universal observability strategy: template, discovery/AG/builder/critic/lense...;
+      Summary: 4 entries compacted (2026-02-17 to 2026-02-21)'
     blast_radius: compacted
     classification: cosmetic
     date: '2026-02-21'

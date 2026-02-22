@@ -56,6 +56,26 @@ Infer from codebase signals:
 | `has_multiple_party_types` | Multiple auth roles, admin vs user routes, distinct user models, role-based access |
 | `handles_sensitive_data` | Auth/password handling, encryption libraries, PII fields in models, compliance configs, health/financial data models |
 
+### 1e0. Observability Pattern Detection
+
+Scan for existing observability infrastructure:
+
+| Pattern | Signals |
+|---------|---------|
+| **Logging** | Log library imports (winston, pino, log4j, slog, spdlog), log configuration files, logging calls in source |
+| **Metrics** | Prometheus client, StatsD, CloudWatch SDK, Datadog client, custom metrics counters |
+| **Tracing** | OpenTelemetry imports, Jaeger/Zipkin/X-Ray client code, trace context propagation |
+| **Error tracking** | Sentry, Bugsnag, Rollbar, Airbrake initialization or SDK imports |
+| **Health checks** | Health endpoints (`/health`, `/healthz`, `/ready`), readiness probes, liveness probes |
+
+Classify what you find:
+- What's instrumented (which flows, which events are logged)
+- What's measured (which metrics are collected)
+- What's alerted on (alerting rules or notification setup)
+- What's missing (key flows without instrumentation, no health check)
+
+Record findings for Phase 2 presentation and Phase 3 artifact generation.
+
 ### 1e. Test Coverage Analysis
 
 Scan test files to understand:
@@ -214,6 +234,7 @@ For each artifact, mark inferred sections: "Inferred from codebase analysis — 
 5. **Non-functional Requirements** — from configs, performance budgets, existing SLAs if documented.
 6. **Operational Spec** — from deployment configs, CI/CD, monitoring setup.
 7. **Dependency Manifest** — populated directly from package manifests with actual dependencies and their purposes.
+8. **Observability Strategy** — from Phase 1e0 analysis: document discovered logging patterns, metrics, error tracking, health checks. Mark gaps. For codebases with no observability infrastructure, generate a minimal strategy proportionate to risk.
 
 **Generate only for detected characteristics:**
 

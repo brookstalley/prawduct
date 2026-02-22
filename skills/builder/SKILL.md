@@ -23,6 +23,7 @@ When activated:
 - `artifacts/security-model.md` — access patterns the code must enforce
 - `artifacts/test-specifications.md` — test scenarios the code must satisfy
 - `artifacts/product-brief.md` — user flows the code must support
+- `artifacts/observability-strategy.md` — logging, metrics, health signals the code must implement
 - `project-preferences.md` — (optional) developer conventions for coding style, testing methodology, logging, error handling. Read when `project-state.yaml` → `build_preferences.file_path` is non-null. Preferences that affect code style (naming, documentation, error patterns) flow directly to implementation — they don't need artifact mediation. Preferences that affect specs (testing methodology, logging strategy) flow through artifacts.
 
 ## Outputs (Writes)
@@ -87,6 +88,7 @@ Write the implementation for this chunk, following the artifacts exactly:
 - **User flows** match `product-brief.md` — the code implements exactly what the flows describe.
 - **Security patterns** match `security-model.md` — access controls, data visibility, and privacy rules.
 - **Project structure** matches `build-plan.md` — files go in the directories specified.
+- **Observability** matches `observability-strategy.md` — key operations in this chunk are instrumented (logging with appropriate levels, error paths include structured context). Import the logging utility set up in the scaffold; don't create ad hoc logging.
 - **Coding conventions** follow `project-preferences.md` when it exists — naming style, documentation format, error handling approach, logging patterns. These flow directly from preferences to code without artifact mediation.
 
 ### Step 4: Run Tests
@@ -197,6 +199,8 @@ The first chunk is always the project scaffold. This is a special case:
    - The build command succeeds (e.g., `npm run build` exits 0)
    - The dev server starts (e.g., `npm run dev` serves a page)
    - The test runner executes (e.g., `npm test` runs with 0 tests, exits 0)
+
+6. **Set up observability infrastructure** as specified in `observability-strategy.md`: configure the logging library, set up standard log fields and levels, and establish the logging utility that subsequent chunks will import. For medium/high-risk products, also configure metrics collection and health check infrastructure.
 
 Do not write application code in the scaffold chunk. Its only deliverables are project infrastructure.
 

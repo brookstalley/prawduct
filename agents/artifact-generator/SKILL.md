@@ -33,11 +33,12 @@ Read `classification.structural` and `classification.domain_characteristics` fro
 | Test Specifications | `templates/test-specifications.md` | Concrete test scenarios at all levels |
 | Non-Functional Requirements | `templates/nonfunctional-requirements.md` | Performance, scalability, uptime, cost |
 | Operational Specification | `templates/operational-spec.md` | Deployment, monitoring, alerting, recovery |
+| Observability Strategy | `templates/observability-strategy.md` | Logging, metrics, alerting, health signals |
 | Dependency Manifest | `templates/dependency-manifest.yaml` | External deps with justification |
 
 **When `structural.runs_unattended` is active:**
 
-Read templates from `templates/unattended-operation/`. Generate: Pipeline Architecture, Scheduling Spec, Monitoring & Alerting, Failure Recovery, Configuration.
+Read templates from `templates/unattended-operation/`. Generate: Pipeline Architecture, Scheduling Spec, Monitoring & Alerting, Failure Recovery, Configuration. The Monitoring & Alerting Spec is a structural amplification of the universal Observability Strategy — it deepens the universal logging/metrics/alerting approach with pipeline-specific monitoring thresholds, failure detection patterns, and operational dashboards.
 
 Notes for `runs_unattended`: "Core Flows" become pipeline stages. Data Model captures processed entities. NFRs emphasize runtime constraints and operational requirements.
 
@@ -188,13 +189,21 @@ Read `templates/data-model.md` and `templates/nonfunctional-requirements.md`.
 
 ### Phase C: Integration
 
-Generate the remaining artifacts: Security Model, Test Specifications, Operational Spec, Dependency Manifest, and any structurally-triggered artifacts. The Orchestrator applies all five review lenses after this phase.
+Generate the remaining artifacts: Security Model, Observability Strategy, Test Specifications, Operational Spec, Dependency Manifest, and any structurally-triggered artifacts. The Orchestrator applies all five review lenses after this phase.
+
+**Observability Strategy proportionality:** Generate depth proportionate to risk:
+- **Low-risk:** 1-2 paragraphs. Error logging to console, basic health signal. Metrics, alerting, and tracing sections marked "Not applicable."
+- **Medium-risk:** Half a page. Structured logging with key events, basic application metrics, health check endpoint, error reporting approach.
+- **High-risk:** Full document. Structured logging with correlation IDs, application and business metrics, alerting rules, tracing if multi-service, error tracking service, health check with degraded state detection.
+
+When `runs_unattended` is active, the Observability Strategy establishes the principles; the Monitoring & Alerting Spec (generated from `templates/unattended-operation/`) deepens with pipeline-specific monitoring. Ensure consistency between the two.
 
 Read the corresponding template for each artifact. For structurally-triggered artifacts, read from the characteristic's template directory.
 
 **Project preferences incorporation:** When `project-preferences.md` exists, incorporate stated preferences into generated artifacts:
 - **Test Specifications:** Methodology preferences (TDD, BDD, test framework) shape the Test Strategy section.
-- **Operational Spec:** Logging and monitoring preferences shape observability sections.
+- **Observability Strategy:** Logging preferences (format, library) from project-preferences shape the Logging and Instrumentation Approach sections.
+- **Operational Spec:** Monitoring preferences shape operational monitoring sections.
 - **Dependency Manifest:** Preferred libraries included with rationale "Developer preference (project-preferences.md)".
 
 **Risk-proportionate phasing:**
@@ -292,6 +301,7 @@ After generating all Phase C artifacts, run the full cross-artifact consistency 
 - Retention enforcement: every retention policy has an enforcement mechanism.
 
 **Universal (all products):**
+- **Observability consistency:** Observability Strategy logging approach is consistent with project-preferences.md logging preferences (if they exist). When `runs_unattended` is active, Monitoring & Alerting Spec is consistent with the Observability Strategy (monitoring deepens observability, doesn't contradict it). Health signals in the Observability Strategy align with health metrics in the Operational Spec.
 - **Test infrastructure alignment:** Every test level in the test strategy (unit, integration, E2E) has corresponding infrastructure in the build plan scaffold: directory structure, runner configuration, and any required libraries (mock framework, coverage tool). A test strategy that specifies three levels but a scaffold that only configures one runner is an inconsistency.
 
 If any inconsistency is found, fix it before presenting artifacts to the user.

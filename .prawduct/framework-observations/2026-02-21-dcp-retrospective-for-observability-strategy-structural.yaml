@@ -1,0 +1,20 @@
+---
+observation_id: 2fb5c7d9-155c-4681-8dcc-1131a357915b
+timestamp: 2026-02-22T00:18:22Z
+session_type: framework_dev
+session_context:
+  framework_version: 397c7e0
+observations:
+  - type: process_friction
+    stage: 6
+    severity: note
+    description: "DCP retrospective for observability-strategy structural change: (a) The learning system could have caught this earlier if the cross-cutting concerns registry had existed sooner — the gap between dimension 7 (technical considerations) and dimension 11 (logging) masked the missing observability coverage. (b) Process gap: structural characteristics that gate artifact generation (like runs_unattended) can silently exclude entire concern areas. The registry now tracks this. (c) The fix generalizes well: the universal-template-with-proportionality pattern applies to any concern that was previously gated by a single structural characteristic."
+    evidence: "Observability was gated by runs_unattended. Cross-cutting concerns registry added in same session to prevent similar gaps."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "DCP retrospective incomplete for observability strategy structural change"
+      root_cause: "Prior session ran out of context before completing DCP steps 4 and 10"
+      category: missing_process
+skills_affected:
+  - "skills/orchestrator/stage-6-iteration.md"
+---

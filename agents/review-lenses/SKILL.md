@@ -114,6 +114,7 @@ For each lens, produce findings in this format:
 - Is the deployment strategy realistic for the product's scale?
 - Are there obvious performance concerns given the NFRs?
 - Is the technology appropriate for the problem? (Not using a sledgehammer for a nail.)
+- Is the observability architecture connected? (Logs have a destination, metrics have collection, errors have reporting — proportionate to risk. Can someone debug a production issue with the instrumentation provided?)
 
 **Typical findings:**
 - Data model missing an entity implied by core flows (blocking)
@@ -121,6 +122,8 @@ For each lens, produce findings in this format:
 - Security model over-engineered for risk level (note)
 - NFRs specify targets the architecture can't meet (warning)
 - Deployment strategy assumes infrastructure the product doesn't need (note)
+- Observability pieces not connected — logs generated but no way to access them in production (warning)
+- Observability infrastructure disproportionate to product scale (note)
 
 **What this lens does NOT do:** It doesn't evaluate whether the product is worth building (that's Product) or what could go wrong socially/operationally (that's Skeptic).
 
@@ -135,6 +138,7 @@ For each lens, produce findings in this format:
 - **Cost surprises:** Will this cost more to run than expected? Are there per-use APIs or storage that could grow unexpectedly?
 - **Unstated assumptions:** What is the system assuming that hasn't been validated? (E.g., "assumes all users have modern smartphones.")
 - **Data loss risk:** Can the user lose their data? Is there a backup strategy?
+- **Debuggability:** If a user reports a bug, can a developer reproduce it from the available logs and context? Can you tell when this product is failing? (Not just for `runs_unattended` — interactive products fail too.)
 
 **Typical findings:**
 - No backup strategy — user could lose all data (warning for low-risk, blocking for higher)

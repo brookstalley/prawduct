@@ -642,6 +642,9 @@ User reacts to build → Orchestrator (C1) classifies feedback → if directiona
 ### Pipeline Coverage Tracking
 The cross-cutting concerns registry (`.prawduct/artifacts/cross-cutting-concerns-registry.md`) maps each concern to its coverage across five pipeline dimensions: Discovery, Artifact, Builder, Critic, and Review Lens. Session health checks report gap counts; the Critic's Pipeline Coverage check (Check 10) flags incomplete pipelines when new dimensions or artifacts are added.
 
+### Observability
+Every product addresses observability proportionate to risk via `observability-strategy.md` (universal artifact). Low-risk products get console logging and a basic health signal; medium-risk products get structured logging, key metrics, and alerting; high-risk products get full instrumentation including tracing. For `runs_unattended` products, `monitoring-alerting-spec.md` deepens the universal strategy with pipeline-specific monitoring thresholds and failure detection. Observability is implemented from chunk 1 (scaffold sets up logging infrastructure), not bolted on at the end.
+
 ### Cost Tracking
 Surfaces during discovery (C2 flags cost-relevant design choices), quantified during artifact generation (C3 includes cost estimates in operational spec), monitored during build (C6 checks for cost-relevant deviations), validated during trajectory review (C7 catches cost drift).
 

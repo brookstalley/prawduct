@@ -76,6 +76,7 @@ After each chunk, diff the implementation against artifact specifications.
 | Test scenarios | `test-specifications.md` | Every scenario for this chunk has a test | BLOCKING if missing |
 | Builder compliance record | `build_state.spec_compliance` | Entries exist with matching `chunk_id` | WARNING if absent |
 | Build preferences compliance | `project-preferences.md` exists | Implementation follows stated conventions (naming, logging, error handling, testing methodology) | WARNING |
+| Observability compliance | `observability-strategy.md` exists | Key flows instrumented per strategy; error handling includes logging with context; log levels appropriate; health check implemented if specified | WARNING |
 | Evidence freshness | Prior chunks' spec_compliance | Spot-check 2-3 entries when this chunk modifies referenced files; stale evidence = HR3 | WARNING |
 | Process constraints | Structural amplification rules | Active characteristic constraints satisfied (e.g., `runs_unattended` → failure handling) | WARNING |
 | Accessibility | `has_human_interface` active | A11y requirements alongside features, not deferred (HR7) | WARNING |
@@ -137,6 +138,8 @@ This check catches out-of-scope work — whether it's a Builder making decisions
 **Applies:** Always. The specific focus depends on context.
 
 **For product builds:** Are the artifacts internally consistent? Do changes to one artifact cascade correctly to dependent artifacts? Does implementation match specs? **Architectural consistency:** Verify module boundaries match the architecture artifact, dependency directions are respected (no imports against the designed dependency flow), and data flow matches designed patterns. Implementation that contradicts the architecture artifact is **BLOCKING**. **Preference coherence:** When `project-preferences.md` exists, check that artifacts are consistent with stated preferences. If an artifact contradicts a preference (e.g., test-specifications says BDD but preferences say TDD), flag as **WARNING** with reconciliation recommendation: update the preference, revert the artifact, or specialize (e.g., BDD for integration tests, TDD for unit tests).
+
+**Observability coherence:** When `observability-strategy.md` exists, check: (a) implementation matches the strategy (logging approach, metrics, health check), (b) `monitoring-alerting-spec.md` (for `runs_unattended`) is consistent with the observability strategy (deepens it, doesn't contradict it), (c) logging preferences in `project-preferences.md` align with the strategy's logging approach.
 
 **For skill/instruction changes:** Does this change maintain the skill's internal logic and its contracts with other skills?
 

@@ -80,7 +80,7 @@ tier_1_documents:
     last_validated: 2026-02-11
 
   - path: agents/critic/SKILL.md
-    purpose: "LLM instructions for context-sensitive governance: 9 checks with applicability based on project state. Invoked as subagent."
+    purpose: "LLM instructions for context-sensitive governance: 10 checks with applicability based on project state. Invoked as subagent."
     owner: framework
     last_validated: 2026-02-20
 

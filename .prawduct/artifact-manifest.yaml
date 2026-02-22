@@ -134,6 +134,14 @@ artifact_manifest:
       depended_on_by: []
       last_validated: 2026-02-13
       tier: 1
+    - name: observability-strategy-template
+      file_path: templates/observability-strategy.md
+      version: 1
+      depends_on: [artifact-generator]
+      depended_on_by: []
+      last_validated: 2026-02-21
+      tier: 1
+      notes: "Universal observability template — logging, metrics, alerting, health signals"
     - name: unattended-operation-templates
       file_path: templates/unattended-operation/
       version: 1
@@ -148,7 +156,7 @@ artifact_manifest:
       file_path: .prawduct/artifacts/product-brief.md
       version: 1
       depends_on: [project-state]
-      depended_on_by: [data-model, security-model, test-specifications, nonfunctional-requirements, pipeline-architecture, api-contract, dependency-manifest]
+      depended_on_by: [data-model, security-model, test-specifications, nonfunctional-requirements, observability-strategy, pipeline-architecture, api-contract, dependency-manifest]
       last_validated: 2026-02-16
       tier: 1
     - name: data-model
@@ -162,7 +170,7 @@ artifact_manifest:
       file_path: .prawduct/artifacts/nonfunctional-requirements.md
       version: 1
       depends_on: [product-brief]
-      depended_on_by: [operational-spec, scheduling-spec, monitoring-alerting-spec]
+      depended_on_by: [observability-strategy, operational-spec, scheduling-spec, monitoring-alerting-spec]
       last_validated: 2026-02-16
       tier: 1
     - name: security-model

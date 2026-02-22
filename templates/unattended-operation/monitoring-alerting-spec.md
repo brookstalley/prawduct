@@ -2,6 +2,7 @@
 artifact: monitoring-alerting-spec
 version: 1
 depends_on:
+  - artifact: observability-strategy
   - artifact: pipeline-architecture
   - artifact: scheduling-spec
   - artifact: nonfunctional-requirements

@@ -171,7 +171,13 @@ What happens when things go wrong? What's the worst failure? How would you know 
 What are the latency, throughput, or resource expectations? Are there hard limits (memory, CPU, cost, bandwidth)?
 
 #### 7. Operational Lifecycle
-How is this deployed? Updated? Monitored? What does day-2 operation look like?
+How is this deployed? Updated? Monitored? What does day-2 operation look like? Observability architecture lives here — not just "how do you deploy" but "how do you know it's working, and how do you debug it when it's not?"
+
+Observability sub-questions (Tier 2 — ask if not inferable):
+- "What do you need to see about how the product is running?" (surfaces observability depth)
+- "When something goes wrong, what information helps you fix it?" (surfaces logging/debugging needs)
+
+For low-risk products, infer: "errors logged to console, no formal monitoring." For medium/high-risk products, these questions surface the difference between "we need basic logging" and "we need structured logs, metrics, and alerting."
 
 #### 8. Dependencies and Integration Points
 What external services, APIs, or systems does this depend on? What happens when they're down?
@@ -191,12 +197,20 @@ inferring, especially for products where identity shapes the experience.
 
 #### 11. Development Standards and Conventions
 How does the user (or their team) want the code built? This dimension covers
-methodology preferences: testing approach (TDD, BDD, test-after), logging strategy
-(structured vs unstructured, destinations, fields), code style (naming, documentation,
-linting), error handling philosophy (exceptions vs result types, error granularity),
-and tooling preferences (specific libraries, frameworks, package managers). These are
-distinct from technical decisions (architecture choices) — they are conventions that
-shape how every line of code is written, not what the system does.
+methodology preferences: testing approach (TDD, BDD, test-after), logging preferences
+(structured vs unstructured format, specific logging library, log destinations),
+code style (naming, documentation, linting), error handling philosophy (exceptions
+vs result types, error granularity), and tooling preferences (specific libraries,
+frameworks, package managers). These are distinct from technical decisions
+(architecture choices) — they are conventions that shape how every line of code
+is written, not what the system does.
+
+**Scope clarification:** Logging *preferences* (format, library choice, destination)
+belong here — they are methodology choices. Observability *architecture* (what to
+instrument, what to measure, how to know when something's wrong) belongs in
+dimension 7 (Operational Lifecycle). The Artifact Generator routes dimension 7
+observability answers to `observability-strategy.md` and dimension 11 logging
+preferences to `project-preferences.md`.
 
 Not every user has preferences here, and that's fine. Non-technical users typically
 have none. Technical users almost always do. The Orchestrator asks one adaptive
