@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# reflection-hook — Lightweight session reflection enforcement.
+#
+# Stop hook: checks if files were modified and reflection was captured.
+# Clear hook: resets session state for a fresh session.
+#
+# Usage (in .claude/settings.json):
+#   "$CLAUDE_PROJECT_DIR/tools/reflection-hook" stop
+#   "$CLAUDE_PROJECT_DIR/tools/reflection-hook" clear
+
+set -euo pipefail
+
+PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-.}/.prawduct"
+REFLECTED_FILE="$PRAWDUCT_DIR/.session-reflected"
+SESSION_START_FILE="$PRAWDUCT_DIR/.session-start"
+
+case "${1:-}" in
+  clear)
+    # Reset session state
+    rm -f "$REFLECTED_FILE" "$SESSION_START_FILE"
+    if [[ -d "$PRAWDUCT_DIR" ]]; then
+      date -u +%Y-%m-%dT%H:%M:%SZ > "$SESSION_START_FILE"
+    fi
+    ;;
+
+  stop)
+    # Skip if no .prawduct directory (not a prawduct project)
+    [[ -d "$PRAWDUCT_DIR" ]] || exit 0
+
+    # Check if any tracked files were modified since session start
+    HAS_CHANGES=""
+    if command -v git &>/dev/null && git rev-parse --git-dir &>/dev/null 2>&1; then
+      HAS_CHANGES=$(git diff --name-only 2>/dev/null | head -1)
+      HAS_STAGED=$(git diff --cached --name-only 2>/dev/null | head -1)
+      [[ -z "$HAS_CHANGES" ]] && HAS_CHANGES="$HAS_STAGED"
+    fi
+
+    # If files were changed and no reflection captured, block
+    if [[ -n "$HAS_CHANGES" && ! -f "$REFLECTED_FILE" ]]; then
+      echo ""
+      echo "BLOCKED: Files were modified but no session reflection was captured."
+      echo ""
+      echo "Before ending the session:"
+      echo "  1. Reflect on what changed and what you learned"
+      echo "  2. Update .prawduct/learnings.md if anything is worth capturing"
+      echo "  3. Write your reflection to .prawduct/.session-reflected"
+      echo ""
+      echo "Read methodology/reflection.md for the reflection protocol."
+      exit 2
+    fi
+
+    exit 0
+    ;;
+
+  *)
+    echo "Usage: reflection-hook {clear|stop}" >&2
+    exit 1
+    ;;
+esac

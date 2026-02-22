@@ -2,10 +2,6 @@
   "companyAnnouncements": [
     "\u001b[1;34m ▗▟███▙▖\u001b[0m    \u001b[1mPrawduct\u001b[0m\n\u001b[1;34m ▐▘ █ ▝▌\u001b[0m    \u001b[38;2;153;153;153mProduct development framework\u001b[0m\n\u001b[1;34m ▝▜███▛▘\u001b[0m    \u001b[38;2;153;153;153mDescribe an idea or say \u001b[0m\u001b[1mhello\u001b[0m"
   ],
-  "statusLine": {
-    "type": "command",
-    "command": "CCPID=$PPID python3 \"$CLAUDE_PROJECT_DIR/tools/prawduct-statusline.py\" 2>/dev/null || cat > /dev/null"
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -13,69 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CCPID=$PPID; CPD=\"$CLAUDE_PROJECT_DIR\"; SESS_PROD=\"\"; if [ -n \"$CCPID\" ] && [ -f \"$CPD/.prawduct/.sessions/$CCPID/product\" ]; then SESS_PROD=$(head -1 \"$CPD/.prawduct/.sessions/$CCPID/product\"); fi; if [ -n \"$SESS_PROD\" ] && [ -d \"$SESS_PROD\" ]; then PROD=\"$SESS_PROD/.prawduct\"; rm -f \"$PROD/.orchestrator-activated\" \"$PROD/.session-governance.json\" \"$PROD/.session-trace.jsonl\" \"$PROD/.session-edits.json\" \"$PROD/.product-session.json\" \"$PROD/.session.lock\"; rm -rf \"$CPD/.prawduct/.sessions/$CCPID\"; else for f in \"$CPD/.prawduct/.active-products\"/*; do [ -f \"$f\" ] || continue; AP=$(head -1 \"$f\"); if [ -n \"$AP\" ] && [ -d \"$AP\" ]; then rm -f \"$AP/.orchestrator-activated\" \"$AP/.session-governance.json\" \"$AP/.session-trace.jsonl\" \"$AP/.session-edits.json\" \"$AP/.product-session.json\" \"$AP/.session.lock\"; fi; done; rm -rf \"$CPD/.prawduct/.active-products\"; fi; rm -f \"$CPD\"/.prawduct/.orchestrator-activated \"$CPD\"/.prawduct/.session-governance.json \"$CPD\"/.prawduct/.session-trace.jsonl \"$CPD\"/.prawduct/.session-edits.json \"$CPD\"/.prawduct/.product-session.json \"$CPD\"/.prawduct/.session.lock; for d in \"$CPD/.prawduct/.sessions\"/*/; do [ -d \"$d\" ] || continue; SPID=$(basename \"$d\"); [ \"$SPID\" = \"$CCPID\" ] && continue; kill -0 \"$SPID\" 2>/dev/null && continue; find \"$d\" -maxdepth 0 -mmin +1440 -exec rm -rf {} \\; 2>/dev/null; done"
-          }
-        ]
-      },
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" compact-reinject"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" prompt"
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" commit"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|Read|Task|Glob|Grep",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" gate"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" track"
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" failure"
+            "command": "\"$CLAUDE_PROJECT_DIR/tools/reflection-hook\" clear"
           }
         ]
       }
@@ -86,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" stop"
+            "command": "\"$CLAUDE_PROJECT_DIR/tools/reflection-hook\" stop"
           }
         ]
       }

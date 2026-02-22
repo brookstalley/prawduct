@@ -75,6 +75,23 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
+  - what: 'Architecture shift: principles-based system with learning loop replaces process engine'
+    why: 'Three converging problems: (1) self-improvement not working without manual prompting — observations
+      were write-only (filed in YAML, nothing reads them before decisions), (2) framework too complex and
+      prescriptive — 8 hooks, 3600 lines of governance Python, multi-step DCP, detailed SKILL.md procedures
+      constraining LLM judgment rather than leveraging it, (3) centralized runtime coupling made distribution
+      impossible. Root cause: every past failure added mechanism instead of strengthening principles, creating
+      complexity that bred more complexity. Fix: replaced process engine with three layers — (Layer 1) 22
+      principles inline in CLAUDE.md always in context, (Layer 2) learnings.md with narrative worked examples
+      that evolve over time, (Layer 3) 2 hooks (clear + stop) enforcing reflection habit. Added methodology/
+      directory with 4 narrative guides (discovery, planning, building, reflection) replacing procedural
+      SKILL.md files. Kept existing governance module and agent skills intact but disconnected hooks — old
+      system available for reference, new system active. Critic agent preserved as independent reviewer.'
+    blast_radius: CLAUDE.md (complete rewrite), docs/principles.md (refined 22 principles), methodology/
+      (4 new files), .prawduct/learnings.md (new — seeded from observations), tools/reflection-hook (new),
+      .claude/settings.json (8 hooks → 2), docs/project-structure.md, .gitignore
+    classification: structural
+    date: 2026-02-21
   - what: 'Summary: 2 entries compacted (2026-02-21 to 2026-02-21)'
     why: '1 cosmetic, 1 structural covering: Universal observability strategy: template, discovery/AG/builder/critic/lense...;
       Summary: 4 entries compacted (2026-02-17 to 2026-02-21)'

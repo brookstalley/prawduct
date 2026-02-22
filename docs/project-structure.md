@@ -8,9 +8,15 @@ The framework repo (self-hosted) uses the same `.prawduct/` layout as product re
 ```
 prawduct/
 ├── README.md                          # Human-facing project overview and getting started
-├── CLAUDE.md                          # Agent instructions (always loaded)
+├── CLAUDE.md                          # Primary instruction surface: principles inline + methodology pointers
 ├── requirements.txt                   # Python dependencies (pyyaml)
+├── methodology/                       # Narrative guides (essays, not checklists)
+│   ├── discovery.md                  # How to explore a problem space and understand what to build
+│   ├── planning.md                   # How to design artifacts and decompose into buildable chunks
+│   ├── building.md                   # How to build with quality, including Critic review cycle
+│   └── reflection.md                 # The learning loop: how the system gets smarter over time
 ├── .prawduct/                         # Product specifications (WHAT/HOW — downstream from docs/)
+│   ├── learnings.md                   # Accumulated project wisdom (read at session start, evolves over time)
 │   ├── project-state.yaml             # Framework's own project state (core; pointers to split files)
 │   ├── project-definition.yaml        # Split: classification, product_definition, technical/design decisions
 │   ├── artifact-manifest.yaml         # Split: full artifact manifest with dependency graph
@@ -49,7 +55,8 @@ prawduct/
 │   ├── artifact-generator/SKILL.md    # Artifact selection, phasing, consistency: invoked per-phase as subagent
 │   └── observation-triage/SKILL.md    # Observation priority/archive triage: invoked as subagent during session resumption
 ├── tools/                             # Deterministic scripts (mechanical enforcement, 20 files + governance/)
-│   ├── governance-hook                # Single entry point for all Claude Code hooks (bash, delegates to Python)
+│   ├── reflection-hook                # Lightweight reflection enforcement (clear + stop hooks only)
+│   ├── governance-hook                # Legacy governance entry point (retained for reference; hooks disconnected)
 │   ├── governance/                    # Python module: all hook logic (12 submodules)
 │   │   ├── {context,classify,state}.py  # Foundation: path resolution, file classification, session state
 │   │   ├── {gate,tracker,stop,commit}.py  # Decision logic: PreToolUse, PostToolUse, Stop, Commit gates
@@ -78,7 +85,7 @@ prawduct/
 ├── eval-history/                      # Evaluation results (Tier 1, append-only)
 │   └── {scenario}-{date}.md           # Per-run results with YAML frontmatter
 ├── .claude/                           # Claude Code integration (settings only)
-│   ├── settings.json                  # Project-level Claude Code settings (hooks call tools/governance-hook)
+│   ├── settings.json                  # Project-level Claude Code settings (2 hooks: clear + stop via reflection-hook)
 │   └── settings.local.json            # Local overrides (not committed)
 └── docs/                              # Design documents (WHY — upstream, Tier 1; see high-level-design.md § Documentation Architecture)
     ├── quickstart.md                   # 5-minute getting started guide
