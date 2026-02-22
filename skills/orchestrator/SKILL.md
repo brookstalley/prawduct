@@ -32,6 +32,11 @@ This is the default skill. When using Prawduct to build a user's product:
 3. **Activate governance.** Write `<ISO-8601 timestamp> praw-active` to both `$CLAUDE_PROJECT_DIR/.prawduct/.orchestrator-activated` (session-level) and `<target_dir>/.prawduct/.orchestrator-activated` (product-level, for cross-repo). Example: `echo "2026-02-17T18:00:00Z praw-active" > <target_dir>/.prawduct/.orchestrator-activated`. The timestamp and activation token are both required — the governance-gate hook validates both. This signals that the Orchestrator is loaded and governance is active for this session. (HR9)
    Hooks resolve the product from the file's git root — each repo with `.prawduct/` gets its own activation marker and governance state.
    **Advisory lock check:** Before writing the activation marker, check for an existing `.session.lock` in `<target_dir>/.prawduct/`. If it exists and is less than 1 hour old, warn the user: "Another session appears active on this product (lock age: Ns). Proceeding with last-writer-wins semantics." After writing the activation marker, write the session lock: `echo "<timestamp>\n$CLAUDE_PROJECT_DIR" > <target_dir>/.prawduct/.session.lock`.
+   **Declare session product:** After writing the activation marker, declare which product this session is working on. This scopes all governance hooks to this product, preventing cross-session contamination when multiple agents share the same `CLAUDE_PROJECT_DIR`:
+   ```bash
+   CCPID=$PPID tools/governance-hook declare-product /absolute/path/to/target/project
+   ```
+   This creates `.prawduct/.sessions/<ccpid>/product` containing the product path. All subsequent hook invocations (gate, track, stop) use this declaration to scope governance to this product only.
 4. **Initialize governance tracking.** Create `<target_dir>/.prawduct/.session-governance.json` to enable mechanical governance enforcement for all projects. The file lives in the **product's** `.prawduct/` — hooks resolve it from the file's git root. `product_dir` and `product_output_dir` MUST point to the **target directory**:
    ```json
    {

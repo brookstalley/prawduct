@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -242,6 +243,156 @@ def touch_session_lock(prawduct_dir: str) -> None:
         pass
 
 
+# --- CCPID session isolation ---
+
+# Stale session cleanup threshold (24 hours)
+STALE_SESSION_AGE = 24 * 60 * 60
+
+
+def _get_ccpid() -> Optional[str]:
+    """Read the CCPID (Claude Code PID) from environment.
+
+    Returns the CCPID string, or None if not set (legacy mode).
+    """
+    val = os.environ.get("CCPID", "").strip()
+    return val if val else None
+
+
+def _sessions_dir(prawduct_dir: str) -> str:
+    """Path to the .prawduct/.sessions/ directory."""
+    return os.path.join(prawduct_dir, ".sessions")
+
+
+def _session_dir(prawduct_dir: str, ccpid: str) -> str:
+    """Path to a specific session's directory: .prawduct/.sessions/<ccpid>/."""
+    return os.path.join(prawduct_dir, ".sessions", ccpid)
+
+
+def declare_session_product(prawduct_dir: str, product_dir: str) -> None:
+    """Declare which product this session is working on.
+
+    Creates .prawduct/.sessions/<ccpid>/product containing the absolute
+    path to the product directory. This is the CCPID session's product
+    declaration — all governance state is scoped to this product.
+
+    Args:
+        prawduct_dir: The session-level .prawduct/ (from CLAUDE_PROJECT_DIR).
+        product_dir: Absolute path to the product directory being worked on.
+    """
+    ccpid = _get_ccpid()
+    if not ccpid:
+        return  # Legacy mode — no session isolation
+
+    session_d = _session_dir(prawduct_dir, ccpid)
+    try:
+        os.makedirs(session_d, exist_ok=True)
+        product_file = os.path.join(session_d, "product")
+        with open(product_file, "w") as f:
+            f.write(os.path.realpath(product_dir) + "\n")
+    except OSError:
+        pass  # Best effort — never block on declaration failure
+
+
+def get_session_product(prawduct_dir: str) -> Optional[str]:
+    """Read the product path declared for this session.
+
+    Args:
+        prawduct_dir: The session-level .prawduct/ (from CLAUDE_PROJECT_DIR).
+
+    Returns:
+        Absolute path to the declared product directory, or None if no
+        CCPID or no declaration exists (legacy mode).
+    """
+    ccpid = _get_ccpid()
+    if not ccpid:
+        return None
+
+    product_file = os.path.join(_session_dir(prawduct_dir, ccpid), "product")
+    try:
+        with open(product_file) as f:
+            path = f.read().strip()
+        if path and os.path.isdir(path):
+            return path
+    except OSError:
+        pass
+    return None
+
+
+def cleanup_session(prawduct_dir: str) -> None:
+    """Remove this session's .sessions/<ccpid>/ directory.
+
+    Args:
+        prawduct_dir: The session-level .prawduct/ (from CLAUDE_PROJECT_DIR).
+    """
+    import shutil
+
+    ccpid = _get_ccpid()
+    if not ccpid:
+        return
+
+    session_d = _session_dir(prawduct_dir, ccpid)
+    try:
+        if os.path.isdir(session_d):
+            shutil.rmtree(session_d)
+    except OSError:
+        pass
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Check if a process with the given PID is alive."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def cleanup_stale_sessions(prawduct_dir: str) -> None:
+    """Remove session directories where the PID is dead and age > 24h.
+
+    Opportunistic cleanup — called during /clear to prevent buildup.
+    Only removes sessions where BOTH conditions hold (dead PID + stale).
+
+    Args:
+        prawduct_dir: The session-level .prawduct/ (from CLAUDE_PROJECT_DIR).
+    """
+    import shutil
+
+    sessions = _sessions_dir(prawduct_dir)
+    if not os.path.isdir(sessions):
+        return
+
+    now = time.time()
+    try:
+        for entry in os.listdir(sessions):
+            session_d = os.path.join(sessions, entry)
+            if not os.path.isdir(session_d):
+                continue
+
+            # Check PID liveness
+            try:
+                pid = int(entry)
+            except ValueError:
+                continue  # Not a PID-named directory
+
+            if _is_pid_alive(pid):
+                continue  # Session still alive
+
+            # Check age — use directory mtime
+            try:
+                age = now - os.path.getmtime(session_d)
+            except OSError:
+                continue
+
+            if age > STALE_SESSION_AGE:
+                try:
+                    shutil.rmtree(session_d)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 def resolve_product_for_file(file_path: str, fallback_prawduct_dir: str) -> str:
     """Resolve the product .prawduct/ directory for a specific file path.
 
@@ -300,7 +451,13 @@ def update_product_context(
         session_prawduct_dir = os.path.join(
             os.environ.get("CLAUDE_PROJECT_DIR", ctx.framework_root), ".prawduct"
         )
-        register_active_product(session_prawduct_dir, product_prawduct_dir)
+        ccpid = _get_ccpid()
+        if ccpid:
+            # CCPID mode: declare product via session directory
+            declare_session_product(session_prawduct_dir, os.path.dirname(product_prawduct_dir))
+        else:
+            # Legacy mode: register in .active-products/
+            register_active_product(session_prawduct_dir, product_prawduct_dir)
 
     return Context(
         framework_root=ctx.framework_root,
@@ -347,11 +504,22 @@ def resolve(
     else:
         prawduct_dir = os.path.join(framework_root, ".prawduct")
 
-    # Follow active-products registry if requested.
+    # CCPID session isolation: when CCPID is set, read the declared
+    # product from .sessions/<ccpid>/product. This replaces the
+    # active-products registry for session-scoped product resolution.
+    ccpid = _get_ccpid()
+    if ccpid and follow_pointer:
+        session_product = get_session_product(prawduct_dir)
+        if session_product:
+            product_prawduct = os.path.join(session_product, ".prawduct")
+            if os.path.isdir(product_prawduct):
+                prawduct_dir = product_prawduct
+
+    # Legacy fallback: follow active-products registry when no CCPID.
     # Gate/track follow the pointer to resolve per-file product context.
     # Stop validates cross-repo products via .cross-repo-edits (not registry).
     # Commit/prompt operate session-level only.
-    if follow_pointer:
+    elif not ccpid and follow_pointer:
         products = enumerate_active_products(prawduct_dir)
         if products:
             # Use the most recently registered product

@@ -27,6 +27,10 @@ from governance.context import (
     _product_hash, _active_products_dir,
     check_session_lock, write_session_lock, touch_session_lock,
     REGISTRATION_MAX_AGE, SESSION_LOCK_FRESHNESS,
+    _get_ccpid, _sessions_dir, _session_dir,
+    declare_session_product, get_session_product,
+    cleanup_session, cleanup_stale_sessions,
+    STALE_SESSION_AGE,
 )
 from governance.prompt import check as prompt_check, _check_framework_version
 from governance.failure import check as failure_check
@@ -1727,3 +1731,274 @@ class TestAdvisoryLock:
 
         warning = check_session_lock(prawduct_dir)
         assert warning is None
+
+
+# ---------------------------------------------------------------------------
+# Session Isolation Tests (CCPID)
+# ---------------------------------------------------------------------------
+
+
+class TestSessionIsolation:
+    """Tests for CCPID-based session isolation."""
+
+    def test_declare_and_get_session_product(self, tmp_path):
+        """Round-trip declare/get for session product."""
+        prawduct_dir = str(tmp_path / ".prawduct")
+        product_dir = str(tmp_path / "myproduct")
+        os.makedirs(prawduct_dir, exist_ok=True)
+        os.makedirs(product_dir, exist_ok=True)
+
+        with patch.dict(os.environ, {"CCPID": "12345"}):
+            declare_session_product(prawduct_dir, product_dir)
+            result = get_session_product(prawduct_dir)
+            assert result == os.path.realpath(product_dir)
+
+    def test_get_session_product_no_ccpid(self, tmp_path):
+        """Without CCPID, get_session_product returns None (legacy mode)."""
+        prawduct_dir = str(tmp_path / ".prawduct")
+        os.makedirs(prawduct_dir, exist_ok=True)
+
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CCPID", None)
+            result = get_session_product(prawduct_dir)
+            assert result is None
+
+    def test_concurrent_sessions_isolated(self, tmp_path):
+        """Two CCPIDs get different products — sessions don't interfere."""
+        prawduct_dir = str(tmp_path / ".prawduct")
+        product_a = str(tmp_path / "product-a")
+        product_b = str(tmp_path / "product-b")
+        os.makedirs(prawduct_dir, exist_ok=True)
+        os.makedirs(product_a, exist_ok=True)
+        os.makedirs(product_b, exist_ok=True)
+
+        # Session 1 declares product-a
+        with patch.dict(os.environ, {"CCPID": "1001"}):
+            declare_session_product(prawduct_dir, product_a)
+
+        # Session 2 declares product-b
+        with patch.dict(os.environ, {"CCPID": "1002"}):
+            declare_session_product(prawduct_dir, product_b)
+
+        # Each session sees its own product
+        with patch.dict(os.environ, {"CCPID": "1001"}):
+            assert get_session_product(prawduct_dir) == os.path.realpath(product_a)
+        with patch.dict(os.environ, {"CCPID": "1002"}):
+            assert get_session_product(prawduct_dir) == os.path.realpath(product_b)
+
+    def test_resolve_uses_session_product(self, tmp_path):
+        """resolve() follows session product declaration when CCPID is set."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+
+        # Declare product for this session
+        with patch.dict(os.environ, {"CCPID": "9999", "CLAUDE_PROJECT_DIR": str(fw)}):
+            declare_session_product(str(fw_prawduct), str(product))
+
+            ctx = resolve(framework_root=str(fw))
+            assert ctx.prawduct_dir == str(product_prawduct)
+
+    def test_resolve_legacy_without_ccpid(self, tmp_path):
+        """resolve() uses active-products registry when CCPID is not set."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+
+        # Register product the legacy way
+        register_active_product(str(fw_prawduct), str(product_prawduct))
+
+        with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(fw)}, clear=False):
+            # Remove CCPID if present
+            os.environ.pop("CCPID", None)
+            ctx = resolve(framework_root=str(fw))
+            assert ctx.prawduct_dir == str(product_prawduct.resolve())
+
+    def test_cleanup_only_own_session(self, tmp_path):
+        """cleanup_session doesn't touch other sessions."""
+        prawduct_dir = str(tmp_path / ".prawduct")
+        product_a = str(tmp_path / "product-a")
+        product_b = str(tmp_path / "product-b")
+        os.makedirs(prawduct_dir, exist_ok=True)
+        os.makedirs(product_a, exist_ok=True)
+        os.makedirs(product_b, exist_ok=True)
+
+        # Create two sessions
+        with patch.dict(os.environ, {"CCPID": "2001"}):
+            declare_session_product(prawduct_dir, product_a)
+
+        with patch.dict(os.environ, {"CCPID": "2002"}):
+            declare_session_product(prawduct_dir, product_b)
+
+        # Clean up session 2001
+        with patch.dict(os.environ, {"CCPID": "2001"}):
+            cleanup_session(prawduct_dir)
+
+        # Session 2001 is gone
+        assert not os.path.isdir(_session_dir(prawduct_dir, "2001"))
+
+        # Session 2002 is still there
+        with patch.dict(os.environ, {"CCPID": "2002"}):
+            assert get_session_product(prawduct_dir) == os.path.realpath(product_b)
+
+    def test_stop_validates_only_declared_product(self, tmp_path):
+        """Stop hook validates only the declared product, not cross-repo."""
+        from governance.__main__ import _run_stop
+        from governance.stop import validate
+
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        product_prawduct = product / ".prawduct"
+        product_prawduct.mkdir()
+
+        # Create session governance for the product (clean)
+        session_data = {
+            "schema_version": 2,
+            "product_dir": str(product),
+            "product_output_dir": str(product_prawduct),
+            "current_stage": "building",
+            "session_started": now_iso(),
+            "framework_edits": {"files": [], "total_edits": 0},
+            "governance_state": {
+                "chunks_completed_without_review": 0,
+                "observations_captured_this_session": 0,
+            },
+            "directional_change": {"active": False, "needs_classification": False},
+            "pfr_state": {"required": False, "rca": ""},
+        }
+        with open(str(product_prawduct / ".session-governance.json"), "w") as f:
+            json.dump(session_data, f)
+
+        # Declare product for this session
+        with patch.dict(os.environ, {"CCPID": "3001", "CLAUDE_PROJECT_DIR": str(fw)}):
+            declare_session_product(str(fw_prawduct), str(product))
+
+            # Validate product governance — should pass (clean state)
+            product_ctx = Context(
+                framework_root=str(fw),
+                prawduct_dir=str(product_prawduct),
+                repo_root=str(product),
+            )
+            product_state = SessionState.load(product_ctx.session_file)
+            result = validate({}, product_ctx, product_state)
+            assert result.allowed is True
+
+    def test_cross_product_gate_blocks(self, tmp_path):
+        """Edit to wrong product blocked when CCPID is set."""
+        from governance.gate import _check_cross_product
+
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        (product / ".git").mkdir()
+
+        other = tmp_path / "other"
+        other.mkdir()
+        (other / ".prawduct").mkdir()
+        (other / ".git").mkdir()
+        (other / "src").mkdir()
+
+        from governance.classify import _git_root_cache
+        _git_root_cache.clear()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(fw_prawduct),
+            repo_root=str(fw),
+        )
+        state = SessionState(str(fw_prawduct / ".session-governance.json"))
+
+        with patch.dict(os.environ, {"CCPID": "4001", "CLAUDE_PROJECT_DIR": str(fw)}):
+            declare_session_product(str(fw_prawduct), str(product))
+
+            # Writing to other product should be blocked
+            other_file = str(other / "src" / "app.py")
+            result = _check_cross_product(other_file, "Write", ctx, state)
+            assert result is not None
+            assert result.allowed is False
+            assert "other" in result.reason.lower()
+
+    def test_cross_product_gate_allows_own_product(self, tmp_path):
+        """Edit to own product allowed when CCPID is set."""
+        from governance.gate import _check_cross_product
+
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        (product / "src").mkdir()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(fw_prawduct),
+            repo_root=str(fw),
+        )
+        state = SessionState(str(fw_prawduct / ".session-governance.json"))
+
+        with patch.dict(os.environ, {"CCPID": "5001", "CLAUDE_PROJECT_DIR": str(fw)}):
+            declare_session_product(str(fw_prawduct), str(product))
+
+            # Writing to own product should be allowed (returns None = no block)
+            own_file = str(product / "src" / "app.py")
+            result = _check_cross_product(own_file, "Write", ctx, state)
+            assert result is None
+
+    def test_cross_product_gate_allows_framework_read(self, tmp_path):
+        """Framework files readable by product sessions."""
+        from governance.gate import _check_cross_product
+
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        fw_prawduct = fw / ".prawduct"
+        fw_prawduct.mkdir()
+        (fw / "skills").mkdir()
+
+        product = tmp_path / "product"
+        product.mkdir()
+
+        ctx = Context(
+            framework_root=str(fw),
+            prawduct_dir=str(fw_prawduct),
+            repo_root=str(fw),
+        )
+        state = SessionState(str(fw_prawduct / ".session-governance.json"))
+
+        with patch.dict(os.environ, {"CCPID": "6001", "CLAUDE_PROJECT_DIR": str(fw)}):
+            declare_session_product(str(fw_prawduct), str(product))
+
+            # Reading framework files should be allowed
+            fw_file = str(fw / "skills" / "test.md")
+            result = _check_cross_product(fw_file, "Read", ctx, state)
+            assert result is None  # None = no block
+
+            # Writing framework files by product session should be blocked
+            result = _check_cross_product(fw_file, "Write", ctx, state)
+            assert result is not None
+            assert result.allowed is False
+            assert "read-only" in result.reason.lower()

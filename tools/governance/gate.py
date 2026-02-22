@@ -18,7 +18,7 @@ from typing import Optional
 
 from . import trace as tr
 from .classify import classify, FileClass
-from .context import Context, touch_session_lock, check_session_lock
+from .context import Context, touch_session_lock, check_session_lock, _get_ccpid, get_session_product
 from .state import SessionState, PFRState
 
 
@@ -66,6 +66,11 @@ def check(tool_input: dict, ctx: Context, state: SessionState) -> Decision:
         return Decision(allowed=True)
 
     fc = classify(file_path, ctx)
+
+    # --- Cross-product isolation (CCPID mode) ---
+    cross_product = _check_cross_product(file_path, tool_name, ctx, state)
+    if cross_product is not None:
+        return cross_product
 
     # --- Read gate: only skill/template files ---
     if tool_name == "Read":
@@ -223,6 +228,91 @@ def _check_external_repo(
         ),
         rule="external_repo_no_activation",
     )
+
+
+def _check_cross_product(
+    file_path: str, tool_name: str, ctx: Context, state: SessionState
+) -> Decision | None:
+    """Enforce cross-product isolation when CCPID is set.
+
+    When a session has declared a product, this check ensures:
+    - Framework files (skills/, tools/, templates/, docs/) are readable
+      by all sessions but writable only by the framework session.
+    - The declared product's files are read+write.
+    - Other product files are blocked entirely.
+
+    Returns a Decision if blocked, or None if allowed (no cross-product issue).
+    """
+    ccpid = _get_ccpid()
+    if not ccpid:
+        return None  # Legacy mode — no cross-product enforcement
+
+    claude_project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
+    if not claude_project_dir:
+        return None
+
+    session_prawduct_dir = os.path.join(claude_project_dir, ".prawduct")
+    session_product = get_session_product(session_prawduct_dir)
+    if not session_product:
+        return None  # No product declared — no isolation to enforce
+
+    is_write = tool_name in ("Edit", "Write")
+
+    # Determine what the file belongs to
+    file_real = os.path.realpath(file_path) if file_path else ""
+    framework_real = os.path.realpath(ctx.framework_root)
+    product_real = os.path.realpath(session_product)
+
+    # Check if file is in the framework
+    if file_real.startswith(framework_real + os.sep) or file_real == framework_real:
+        if is_write and product_real != framework_real:
+            # Product session trying to write framework files
+            product_name = os.path.basename(product_real)
+            tr.event(state, "gate_block", {
+                "rule": "cross_product_framework_write",
+                "file": file_path,
+                "session_product": product_name,
+            })
+            return Decision(
+                allowed=False,
+                reason=(
+                    f"BLOCKED: This session is working on {product_name}. "
+                    f"Framework files are read-only for product sessions. "
+                    f"Use the framework agent to modify skills/tools/templates."
+                ),
+                rule="cross_product_framework_write",
+            )
+        return None  # Read allowed for framework files
+
+    # Check if file is in the declared product
+    if file_real.startswith(product_real + os.sep) or file_real == product_real:
+        return None  # Own product — always allowed
+
+    # Check if file is in a different product (has .prawduct/)
+    from .classify import _find_git_root
+    file_git_root = _find_git_root(file_path) if file_path else None
+    if file_git_root:
+        other_prawduct = os.path.join(file_git_root, ".prawduct")
+        if os.path.isdir(other_prawduct):
+            other_name = os.path.basename(file_git_root)
+            product_name = os.path.basename(product_real)
+            tr.event(state, "gate_block", {
+                "rule": "cross_product_other",
+                "file": file_path,
+                "session_product": product_name,
+                "other_product": other_name,
+            })
+            return Decision(
+                allowed=False,
+                reason=(
+                    f"BLOCKED: This session is working on {product_name}, "
+                    f"but this file belongs to {other_name}. "
+                    f"Use the agent working on {other_name}."
+                ),
+                rule="cross_product_other",
+            )
+
+    return None  # Not a known product — let other gates handle it
 
 
 def _check_activation(ctx: Context, state: SessionState, rule_name: str) -> Decision:

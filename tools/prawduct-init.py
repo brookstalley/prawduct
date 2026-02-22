@@ -63,7 +63,7 @@ def get_statusline_config() -> dict:
     return {
         "type": "command",
         "command": (
-            f'{fw_resolve}; if [ -n "$FW" ]; then '
+            f'CCPID=$PPID {fw_resolve}; if [ -n "$FW" ]; then '
             f'python3 "$FW/tools/prawduct-statusline.py" 2>/dev/null || cat > /dev/null; '
             f'else cat > /dev/null; fi'
         ),
@@ -99,7 +99,7 @@ def get_prawduct_hooks() -> dict:
     )
 
     def fw_cmd(subcommand: str) -> str:
-        return f'{fw_resolve}; if [ -n "$FW" ]; then "$FW/tools/governance-hook" {subcommand}; fi'
+        return f'CCPID=$PPID {fw_resolve}; if [ -n "$FW" ]; then "$FW/tools/governance-hook" {subcommand}; fi'
 
     return {
         "SessionStart": [
@@ -109,28 +109,47 @@ def get_prawduct_hooks() -> dict:
                     {
                         "type": "command",
                         "command": (
-                            # Clean session files from all registered products and the
-                            # session-level dir (CLAUDE_PROJECT_DIR). Only on /clear,
-                            # NOT on startup — startup cleanup destroys concurrent
-                            # sessions' state when they share the same CLAUDE_PROJECT_DIR.
-                            'CPD="$CLAUDE_PROJECT_DIR"; '
-                            'for f in "$CPD/.prawduct/.active-products"/*; do '
-                            '[ -f "$f" ] || continue; '
-                            'PROD=$(head -1 "$f"); '
-                            'if [ -n "$PROD" ] && [ -d "$PROD" ]; then '
+                            # CCPID-scoped cleanup: clean only this session's declared
+                            # product. Falls back to legacy .active-products/ cleanup
+                            # when no session product is declared.
+                            'CCPID=$PPID; CPD="$CLAUDE_PROJECT_DIR"; '
+                            'SESS_PROD=""; '
+                            'if [ -n "$CCPID" ] && [ -f "$CPD/.prawduct/.sessions/$CCPID/product" ]; then '
+                            'SESS_PROD=$(head -1 "$CPD/.prawduct/.sessions/$CCPID/product"); fi; '
+                            'if [ -n "$SESS_PROD" ] && [ -d "$SESS_PROD" ]; then '
+                            'PROD="$SESS_PROD/.prawduct"; '
                             'rm -f "$PROD/.orchestrator-activated" '
                             '"$PROD/.session-governance.json" '
                             '"$PROD/.session-trace.jsonl" '
                             '"$PROD/.session-edits.json" '
                             '"$PROD/.product-session.json" '
-                            '"$PROD/.session.lock"; fi; done; '
-                            'rm -rf "$CPD/.prawduct/.active-products"; '
+                            '"$PROD/.session.lock"; '
+                            'rm -rf "$CPD/.prawduct/.sessions/$CCPID"; '
+                            'else '
+                            'for f in "$CPD/.prawduct/.active-products"/*; do '
+                            '[ -f "$f" ] || continue; '
+                            'AP=$(head -1 "$f"); '
+                            'if [ -n "$AP" ] && [ -d "$AP" ]; then '
+                            'rm -f "$AP/.orchestrator-activated" '
+                            '"$AP/.session-governance.json" '
+                            '"$AP/.session-trace.jsonl" '
+                            '"$AP/.session-edits.json" '
+                            '"$AP/.product-session.json" '
+                            '"$AP/.session.lock"; fi; done; '
+                            'rm -rf "$CPD/.prawduct/.active-products"; fi; '
                             'rm -f "$CPD"/.prawduct/.orchestrator-activated '
                             '"$CPD"/.prawduct/.session-governance.json '
                             '"$CPD"/.prawduct/.session-trace.jsonl '
                             '"$CPD"/.prawduct/.session-edits.json '
                             '"$CPD"/.prawduct/.product-session.json '
-                            '"$CPD"/.prawduct/.session.lock'
+                            '"$CPD"/.prawduct/.session.lock; '
+                            # Opportunistically clean stale sessions (dead PID + >24h old)
+                            'for d in "$CPD/.prawduct/.sessions"/*/; do '
+                            '[ -d "$d" ] || continue; '
+                            'SPID=$(basename "$d"); '
+                            '[ "$SPID" = "$CCPID" ] && continue; '
+                            'kill -0 "$SPID" 2>/dev/null && continue; '
+                            'find "$d" -maxdepth 0 -mmin +1440 -exec rm -rf {} \\; 2>/dev/null; done'
                         ),
                     }
                 ],
@@ -581,6 +600,7 @@ PRAWDUCT_COMMAND_PATTERNS = [
     ".session-governance.json",
     ".prawduct/framework-path",
     ".active-products",
+    ".prawduct/.sessions",
 ]
 
 
@@ -1108,6 +1128,7 @@ PRAWDUCT_GITIGNORE_ENTRIES = [
     ".prawduct/.critic-pending",
     ".prawduct/.critic-findings.json",
     ".prawduct/.active-products/",
+    ".prawduct/.sessions/",
     ".prawduct/.session.lock",
     "",
     "# Prawduct session traces (local-only, never shared automatically)",

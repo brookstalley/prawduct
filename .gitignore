@@ -5,6 +5,7 @@
 .prawduct/.pattern-report.json
 .prawduct/.session-edits.json
 .prawduct/.active-products/
+.prawduct/.sessions/
 .prawduct/.session.lock
 .prawduct/.orchestrator-activated
 .prawduct/.session-governance.json

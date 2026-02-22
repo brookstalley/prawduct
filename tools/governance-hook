@@ -12,6 +12,11 @@
 
 FW_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Export CCPID so the Python governance module can read it from os.environ.
+# CCPID is set by hook commands in settings.json as CCPID=$PPID, where $PPID
+# is Claude Code's PID — stable across all hook invocations for one session.
+export CCPID="${CCPID:-}"
+
 # Timing instrumentation: log elapsed time per hook invocation
 _START_NS=$(python3 -c "import time; print(int(time.time_ns()))" 2>/dev/null || echo "")
 

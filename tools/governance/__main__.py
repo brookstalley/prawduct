@@ -3,13 +3,14 @@
 Usage: python3 -m governance <command> [--root DIR]
 
 Commands:
-  gate             — PreToolUse gate (Edit/Write/Read/Task/Glob/Grep). Exit 0=allow, 2=block.
-  track            — PostToolUse tracker (Edit/Write). Exit 0 always.
-  failure          — PostToolUseFailure PFR reminder (Edit/Write). Exit 0 always.
-  stop             — Stop hook validation. Exit 0=allow, 2=block.
-  commit           — Commit gate (Bash with git commit). Exit 0=allow, 2=block.
-  prompt           — UserPromptSubmit activation check. Exit 0 always.
-  compact-reinject — SessionStart compact reinject. Exit 0 always.
+  gate              — PreToolUse gate (Edit/Write/Read/Task/Glob/Grep). Exit 0=allow, 2=block.
+  track             — PostToolUse tracker (Edit/Write). Exit 0 always.
+  failure           — PostToolUseFailure PFR reminder (Edit/Write). Exit 0 always.
+  stop              — Stop hook validation. Exit 0=allow, 2=block.
+  commit            — Commit gate (Bash with git commit). Exit 0=allow, 2=block.
+  prompt            — UserPromptSubmit activation check. Exit 0 always.
+  compact-reinject  — SessionStart compact reinject. Exit 0 always.
+  declare-product   — Declare session product (no stdin). Exit 0=ok, 1=error.
 
 Hook JSON is read from stdin for gate/track/failure/stop/commit.
 """
@@ -23,7 +24,7 @@ from datetime import datetime
 from typing import NoReturn
 
 from . import __version__
-from .context import resolve, update_product_context
+from .context import resolve, update_product_context, _get_ccpid, get_session_product, declare_session_product
 from .state import SessionState
 
 
@@ -61,7 +62,9 @@ def main() -> NoReturn:
     root = _parse_root(args)
 
     # Lightweight advisory commands (no session state needed)
-    if command == "failure":
+    if command == "declare-product":
+        _run_declare_product(args, root)
+    elif command == "failure":
         hook_input = _read_hook_json()
         _run_failure(hook_input)
     elif command == "prompt":
@@ -99,8 +102,11 @@ def main() -> NoReturn:
             ctx = update_product_context(file_path, ctx, register=register)
             # Record cross-repo edits so the stop hook knows which
             # products THIS session actually touched.
+            # When CCPID is set, cross-repo tracking is unnecessary —
+            # the session product declaration handles scoping.
             if (
                 command == "track"
+                and not _get_ccpid()
                 and os.path.realpath(ctx.prawduct_dir)
                 != os.path.realpath(session_prawduct_dir)
             ):
@@ -159,6 +165,50 @@ def _run_compact_reinject(root: str | None) -> NoReturn:
         sys.exit(0)
 
     print(build_reinject(ctx))
+    sys.exit(0)
+
+
+def _run_declare_product(args: list[str], root: str | None) -> NoReturn:
+    """Handle the declare-product command.
+
+    Usage: governance-hook declare-product /path/to/product
+    Reads CCPID from env, creates .sessions/<ccpid>/product.
+    """
+    # Find the product path argument (skip 'declare-product' and '--root DIR')
+    product_path = None
+    skip_next = False
+    for arg in args[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--root":
+            skip_next = True
+            continue
+        if not arg.startswith("--"):
+            product_path = arg
+            break
+
+    if not product_path:
+        print("Usage: governance-hook declare-product /path/to/product", file=sys.stderr)
+        sys.exit(1)
+
+    product_path = os.path.abspath(product_path)
+    if not os.path.isdir(product_path):
+        print(f"Product directory does not exist: {product_path}", file=sys.stderr)
+        sys.exit(1)
+
+    ccpid = _get_ccpid()
+    if not ccpid:
+        print("CCPID not set — session isolation requires CCPID=$PPID", file=sys.stderr)
+        sys.exit(1)
+
+    claude_project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")
+    if not claude_project_dir:
+        print("CLAUDE_PROJECT_DIR not set", file=sys.stderr)
+        sys.exit(1)
+
+    prawduct_dir = os.path.join(claude_project_dir, ".prawduct")
+    declare_session_product(prawduct_dir, product_path)
     sys.exit(0)
 
 
@@ -230,33 +280,59 @@ def _run_stop(hook_input: dict, ctx, state: SessionState) -> NoReturn:
 
     all_debts: list[str] = []
 
-    # 1. Check session-level debt (framework repo's own governance)
-    decision = validate(hook_input, ctx, state)
-    all_debts.extend(decision.debts)
+    ccpid = _get_ccpid()
+    if ccpid:
+        # CCPID mode: validate ONLY the declared product's governance state.
+        # Each agent is responsible for its own product — no cross-repo validation.
+        session_prawduct_dir = os.path.join(
+            os.environ.get("CLAUDE_PROJECT_DIR", ctx.framework_root), ".prawduct"
+        )
+        session_product = get_session_product(session_prawduct_dir)
+        if session_product:
+            product_prawduct = os.path.join(session_product, ".prawduct")
+            if os.path.isdir(product_prawduct):
+                product_ctx = Context(
+                    framework_root=ctx.framework_root,
+                    prawduct_dir=product_prawduct,
+                    repo_root=session_product,
+                )
+                product_state = SessionState.load(product_ctx.session_file)
+                decision = validate(hook_input, product_ctx, product_state)
+                all_debts.extend(decision.debts)
+        else:
+            # No product declared — fall back to session-level validation
+            decision = validate(hook_input, ctx, state)
+            all_debts.extend(decision.debts)
+    else:
+        # Legacy mode: session-level + cross-repo validation.
 
-    # 2. Check cross-repo products THIS session actually edited.
-    # Only validate products recorded in .cross-repo-edits (written by the
-    # tracker when this session edits a file in a different repo). Products
-    # registered by other concurrent sessions are not our debt to resolve.
-    session_prawduct_dir = ctx.prawduct_dir
-    cross_repo_edits = _load_cross_repo_edits(session_prawduct_dir)
-    for product_dir in cross_repo_edits:
-        if not os.path.isdir(product_dir):
-            continue
+        # 1. Check session-level debt (framework repo's own governance)
+        decision = validate(hook_input, ctx, state)
+        all_debts.extend(decision.debts)
 
-        try:
-            product_ctx = Context(
-                framework_root=ctx.framework_root,
-                prawduct_dir=product_dir,
-                repo_root=os.path.dirname(product_dir),
-            )
-            product_state = SessionState.load(product_ctx.session_file)
-            product_decision = validate(hook_input, product_ctx, product_state)
-            product_name = os.path.basename(os.path.dirname(product_dir))
-            for debt in product_decision.debts:
-                all_debts.append(f"[{product_name}] {debt}")
-        except Exception:
-            continue  # Never block on product enumeration failure
+        # 2. Check cross-repo products THIS session actually edited.
+        # Only validate products recorded in .cross-repo-edits (written by the
+        # tracker when this session edits a file in a different repo). Products
+        # registered by other concurrent sessions are not our debt to resolve.
+        session_prawduct_dir = ctx.prawduct_dir
+        cross_repo_edits = _load_cross_repo_edits(session_prawduct_dir)
+        for product_dir in cross_repo_edits:
+            if not os.path.isdir(product_dir):
+                continue
+
+            try:
+                product_ctx = Context(
+                    framework_root=ctx.framework_root,
+                    prawduct_dir=product_dir,
+                    repo_root=os.path.dirname(product_dir),
+                )
+                product_state = SessionState.load(product_ctx.session_file)
+                product_decision = validate(hook_input, product_ctx, product_state)
+                product_name = os.path.basename(os.path.dirname(product_dir))
+                for debt in product_decision.debts:
+                    all_debts.append(f"[{product_name}] {debt}")
+            except Exception:
+                continue  # Never block on product enumeration failure
 
     if not all_debts:
         sys.exit(0)

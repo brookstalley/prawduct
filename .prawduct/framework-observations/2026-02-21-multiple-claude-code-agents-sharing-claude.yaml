@@ -1,0 +1,20 @@
+---
+observation_id: 272f045a-dee7-43a3-93e8-6772239352f3
+timestamp: 2026-02-22T03:35:19Z
+session_type: framework_dev
+session_context:
+  framework_version: 3f28c40
+observations:
+  - type: process_friction
+    stage: 6
+    severity: warning
+    description: "Multiple Claude Code agents sharing CLAUDE_PROJECT_DIR contaminate each other's governance state. The worldground agent pushed prawduct because the stop hook validated prawduct's debt instead of worldground's."
+    evidence: "Session state (.active-products/, .cross-repo-edits) was anchored to CLAUDE_PROJECT_DIR, not to the product being worked on. When multiple agents share CLAUDE_PROJECT_DIR, they share session state."
+    status: acted_on
+    root_cause_analysis:
+      symptom: "Stop hook from agent working on worldground forced a push of prawduct changes"
+      root_cause: "No per-session identity mechanism existed to scope governance state. Session state was shared via CLAUDE_PROJECT_DIR, which is immutable and shared across all agents in the same project."
+      category: wrong_abstraction
+skills_affected:
+  - "skills/orchestrator/SKILL.md"
+---

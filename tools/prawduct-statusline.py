@@ -475,8 +475,22 @@ def main() -> None:
     prawduct_dir = os.path.join(project_dir, ".prawduct")
     is_prawduct = os.path.isdir(prawduct_dir)
 
-    # Product resolution: use session-level prawduct_dir (no global pointer)
+    # CCPID-aware product resolution: if CCPID is set, read the declared
+    # product from .sessions/<ccpid>/product and use that product's .prawduct/
+    # for governance state and project-state display.
     product_prawduct_dir = prawduct_dir
+    ccpid = os.environ.get("CCPID", "").strip()
+    if ccpid and is_prawduct:
+        product_file = os.path.join(prawduct_dir, ".sessions", ccpid, "product")
+        try:
+            with open(product_file) as f:
+                session_product = f.read().strip()
+            if session_product and os.path.isdir(session_product):
+                candidate = os.path.join(session_product, ".prawduct")
+                if os.path.isdir(candidate):
+                    product_prawduct_dir = candidate
+        except OSError:
+            pass  # Fall back to session-level
 
     cache = _load_cache(project_dir)
 

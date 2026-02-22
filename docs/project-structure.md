@@ -55,7 +55,7 @@ prawduct/
 │   │   ├── {gate,tracker,stop,commit}.py  # Decision logic: PreToolUse, PostToolUse, Stop, Commit gates
 │   │   ├── {prompt,reinject}.py       # Advisory hooks: activation check, post-compaction reinject
 │   │   ├── trace.py                   # Local-only trace emission, persistence, rotation
-│   │   └── __main__.py                # CLI: python3 -m governance <gate|track|stop|commit|prompt|compact-reinject>
+│   │   └── __main__.py                # CLI: python3 -m governance <gate|track|stop|commit|prompt|compact-reinject|declare-product|failure>
 │   ├── prawduct-init.{sh,py}         # Project setup, repair, settings.json merging, gitignore management
 │   ├── prawduct-statusline.py         # Claude Code statusline: session state, governance todos, context bar, git
 │   ├── session-health-check.sh        # Session orientation: patterns, backlog, divergence, trace analysis

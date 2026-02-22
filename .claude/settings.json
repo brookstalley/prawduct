@@ -4,7 +4,7 @@
   ],
   "statusLine": {
     "type": "command",
-    "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/prawduct-statusline.py\" 2>/dev/null || cat > /dev/null"
+    "command": "CCPID=$PPID python3 \"$CLAUDE_PROJECT_DIR/tools/prawduct-statusline.py\" 2>/dev/null || cat > /dev/null"
   },
   "hooks": {
     "SessionStart": [
@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CPD=\"$CLAUDE_PROJECT_DIR\"; for f in \"$CPD/.prawduct/.active-products\"/*; do [ -f \"$f\" ] || continue; PROD=$(head -1 \"$f\"); if [ -n \"$PROD\" ] && [ -d \"$PROD\" ]; then rm -f \"$PROD/.orchestrator-activated\" \"$PROD/.session-governance.json\" \"$PROD/.session-trace.jsonl\" \"$PROD/.session-edits.json\" \"$PROD/.product-session.json\" \"$PROD/.session.lock\"; fi; done; rm -rf \"$CPD/.prawduct/.active-products\"; rm -f \"$CPD\"/.prawduct/.orchestrator-activated \"$CPD\"/.prawduct/.session-governance.json \"$CPD\"/.prawduct/.session-trace.jsonl \"$CPD\"/.prawduct/.session-edits.json \"$CPD\"/.prawduct/.product-session.json \"$CPD\"/.prawduct/.session.lock"
+            "command": "CCPID=$PPID; CPD=\"$CLAUDE_PROJECT_DIR\"; SESS_PROD=\"\"; if [ -n \"$CCPID\" ] && [ -f \"$CPD/.prawduct/.sessions/$CCPID/product\" ]; then SESS_PROD=$(head -1 \"$CPD/.prawduct/.sessions/$CCPID/product\"); fi; if [ -n \"$SESS_PROD\" ] && [ -d \"$SESS_PROD\" ]; then PROD=\"$SESS_PROD/.prawduct\"; rm -f \"$PROD/.orchestrator-activated\" \"$PROD/.session-governance.json\" \"$PROD/.session-trace.jsonl\" \"$PROD/.session-edits.json\" \"$PROD/.product-session.json\" \"$PROD/.session.lock\"; rm -rf \"$CPD/.prawduct/.sessions/$CCPID\"; else for f in \"$CPD/.prawduct/.active-products\"/*; do [ -f \"$f\" ] || continue; AP=$(head -1 \"$f\"); if [ -n \"$AP\" ] && [ -d \"$AP\" ]; then rm -f \"$AP/.orchestrator-activated\" \"$AP/.session-governance.json\" \"$AP/.session-trace.jsonl\" \"$AP/.session-edits.json\" \"$AP/.product-session.json\" \"$AP/.session.lock\"; fi; done; rm -rf \"$CPD/.prawduct/.active-products\"; fi; rm -f \"$CPD\"/.prawduct/.orchestrator-activated \"$CPD\"/.prawduct/.session-governance.json \"$CPD\"/.prawduct/.session-trace.jsonl \"$CPD\"/.prawduct/.session-edits.json \"$CPD\"/.prawduct/.product-session.json \"$CPD\"/.prawduct/.session.lock; for d in \"$CPD/.prawduct/.sessions\"/*/; do [ -d \"$d\" ] || continue; SPID=$(basename \"$d\"); [ \"$SPID\" = \"$CCPID\" ] && continue; kill -0 \"$SPID\" 2>/dev/null && continue; find \"$d\" -maxdepth 0 -mmin +1440 -exec rm -rf {} \\; 2>/dev/null; done"
           }
         ]
       },
@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/governance-hook\" compact-reinject"
+            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" compact-reinject"
           }
         ]
       }
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/governance-hook\" prompt"
+            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" prompt"
           }
         ]
       }
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/governance-hook\" commit"
+            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" commit"
           }
         ]
       },
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/governance-hook\" gate"
+            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" gate"
           }
         ]
       }
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/governance-hook\" track"
+            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" track"
           }
         ]
       }
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/governance-hook\" failure"
+            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" failure"
           }
         ]
       }
@@ -86,7 +86,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/governance-hook\" stop"
+            "command": "CCPID=$PPID \"$CLAUDE_PROJECT_DIR/tools/governance-hook\" stop"
           }
         ]
       }
