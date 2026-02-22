@@ -33,12 +33,10 @@ case "${1:-}" in
 
     BLOCKERS=""
 
-    # Check if any tracked files were modified since session start
+    # Check if any files were modified or added since session start
     HAS_CHANGES=""
     if command -v git &>/dev/null && git rev-parse --git-dir &>/dev/null 2>&1; then
-      HAS_CHANGES=$(git diff --name-only 2>/dev/null | head -1)
-      HAS_STAGED=$(git diff --cached --name-only 2>/dev/null | head -1)
-      [[ -z "$HAS_CHANGES" ]] && HAS_CHANGES="$HAS_STAGED"
+      HAS_CHANGES=$(git status --porcelain 2>/dev/null | head -1)
     fi
 
     # Gate 1: Reflection
@@ -56,9 +54,7 @@ case "${1:-}" in
       # Check if any non-.prawduct files were modified (actual code, not just state)
       HAS_CODE_CHANGES=""
       if command -v git &>/dev/null && git rev-parse --git-dir &>/dev/null 2>&1; then
-        HAS_CODE_CHANGES=$(git diff --name-only 2>/dev/null | grep -v '^\.prawduct/' | head -1 || true)
-        HAS_CODE_STAGED=$(git diff --cached --name-only 2>/dev/null | grep -v '^\.prawduct/' | head -1 || true)
-        [[ -z "$HAS_CODE_CHANGES" ]] && HAS_CODE_CHANGES="$HAS_CODE_STAGED"
+        HAS_CODE_CHANGES=$(git status --porcelain 2>/dev/null | awk '{print $NF}' | grep -v '^\.prawduct/' | head -1 || true)
       fi
 
       if [[ -n "$HAS_CODE_CHANGES" ]]; then

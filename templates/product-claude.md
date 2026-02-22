@@ -112,7 +112,7 @@ The stop hook enforces session-end reflection. Keep `learnings.md` under ~3,000 
 The Critic runs in a separate context (via the Task tool), providing genuinely independent review — it hasn't seen your reasoning or decision-making. The stop hook enforces this: if you modified code with an active build plan, it will block session end without Critic findings.
 
 **To invoke the Critic**, spawn a new agent with the Task tool and tell it:
-> Read `.prawduct/critic-review.md` for your review instructions. Review the changes made in this session. The project is at `{{PROJECT_DIR}}`.
+> Read `.prawduct/critic-review.md` for your review instructions. Review the changes made in this session.
 
 The Critic checks: Spec Compliance, Test Integrity, Scope Discipline, Proportionality, Coherence, and Learning/Observability. See `.prawduct/critic-review.md` for complete instructions.
 

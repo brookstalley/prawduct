@@ -176,7 +176,6 @@ def run_init(target_dir: str, product_name: str) -> dict:
 
     subs = {
         "{{PRODUCT_NAME}}": product_name,
-        "{{PROJECT_DIR}}": str(target),
     }
 
     # 1. .prawduct/ structure

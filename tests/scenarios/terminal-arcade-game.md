@@ -73,18 +73,14 @@ This scenario creates productive tension across multiple framework dimensions:
 
 ### Setup
 
-1. Create an isolated project directory for the evaluation. This must be **outside the prawduct repo** to avoid polluting the framework tree:
+1. Create an isolated project directory for the evaluation using prawduct-init:
    ```bash
-   mkdir -p /tmp/eval-terminal-arcade
-   ```
-2. Copy the project-state template into it:
-   ```bash
-   cp templates/project-state.yaml /tmp/eval-terminal-arcade/project-state.yaml
+   python3 tools/prawduct-init.py /tmp/eval-terminal-arcade --name "Terminal Invaders"
    ```
 
 ### Running the evaluation
 
-3. Start a new LLM conversation. Provide the prawduct framework context (CLAUDE.md, skills/, templates/, docs/) as reference material the LLM can read from, but set `/tmp/eval-terminal-arcade` as the project directory where all output files go.
+3. Start a new LLM conversation in `/tmp/eval-terminal-arcade`. The generated repo is self-contained (own CLAUDE.md, hooks, Critic instructions).
 4. Send the Input prompt (below) as the user's opening message.
 5. For each system question, respond using the scripted Test Conversation responses below. If the system asks about a topic not covered, respond in character as Jordan Reyes (see Test Persona).
 6. Let the system run through Stages 0 → 0.5 → 1 → 2 → 3.
@@ -99,15 +95,7 @@ This scenario creates productive tension across multiple framework dimensions:
 
 ### Recording results
 
-9. **Before cleanup**, write the evaluation results to `eval-history/terminal-arcade-game-{YYYY-MM-DD}.md` in the prawduct repo. This file must include:
-   - YAML frontmatter with scenario name, date, evaluator type, framework version (git SHA), and pass/partial/fail/unable counts per component.
-   - Detailed pass/fail per rubric criterion with evidence.
-   - Issues found and any skill updates made as a result.
-   - Meta-observations about the evaluation process itself.
-
-   **This step is mandatory.** Unrecorded evaluations are wasted work — the results are needed to detect regressions across framework changes.
-
-   **For the complete recording format and evaluation procedures**, see `docs/evaluation-methodology.md`.
+9. **Before cleanup**, record evaluation results. Include: scenario name, date, framework version (git SHA), pass/fail per rubric criterion with evidence, and issues found.
 
 ### Cleanup
 
