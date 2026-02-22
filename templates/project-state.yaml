@@ -1,43 +1,25 @@
-# Project State — Master state file for a Prawduct-managed project
+# Project State — {{PRODUCT_NAME}}
 #
-# This file is the single source of truth for all project decisions.
-# All skills read from and write to this file.
-# See docs/high-level-design.md § "C5: Project State" for the specification.
+# Single source of truth for all project decisions.
+# Read at session start to understand where things stand.
 #
-# Location: For product repos, this file lives in `.prawduct/` within the project
-# directory. For the self-hosted framework repo, it lives at the repo root.
-# The `source_root` field below is relative to the project directory (not .prawduct/).
-#
-# Tier: 1 (Source of Truth)
-# Owner: Orchestrator (C1) manages; all skills may read/write their sections.
-#
-# Usage: Copy this template to the product root (.prawduct/ for new projects)
-# and populate during the discovery process. Fields start as null and are filled
-# as decisions are made. Partially-populated state is normal and expected throughout
-# discovery — the system works productively with incomplete state.
-# Compaction: tools/compact-project-state.sh implements LIFECYCLE rules mechanically.
-
-# Schema version for migration detection. Current: 2.
-# Missing or old version triggers Migration Mode during Session Resumption.
-schema_version: 2
+# Fields start as null and are filled during discovery.
+# Partially-populated state is normal throughout discovery.
 
 # =============================================================================
 # CLASSIFICATION
 # =============================================================================
-# Populated during Stage 0 (Intake & Triage) by the Domain Analyzer (C2).
-# Confirmed with the user before proceeding to discovery.
+# Populated during discovery. Confirmed with the user before planning.
 
 classification:
   # Product domain. Values: utility, social, marketplace, productivity, b2b,
   # content, automation, developer-tool, education, health, finance,
-  # entertainment, communication.
-  # May have multiple domains for hybrid products.
+  # entertainment, communication. May be multiple for hybrid products.
   domain: null
 
   # Structural characteristics — architectural facts that determine what KINDS
   # of artifacts a product needs. These are a small, stable set (5) that drive
-  # artifact routing. null = not applicable.
-  # Each characteristic, when active, contains a map of relevant properties.
+  # artifact generation. null = not applicable.
   structural:
     # User-facing interface. modality: screen|terminal|voice|spatial|minimal; platform: mobile|web|desktop|cross-platform
     has_human_interface: null
@@ -51,8 +33,7 @@ classification:
     handles_sensitive_data: null
 
   # Domain-specific characteristics — what makes THIS product unique in its domain.
-  # These are dynamically identified by the LLM, not from a predefined list.
-  # They provide rich session-resumption context and guide dynamic discovery depth.
+  # Dynamically identified, not from a predefined list.
   # Each: { characteristic: string, implications: [string] }
   domain_characteristics: []
 
@@ -61,96 +42,65 @@ classification:
     # Overall risk: low, medium, high.
     # Drives discovery depth (low: 5-8 questions, medium: 8-15, high: 15-25).
     overall: null
-
     # Specific risk factors identified during classification.
     # Each: { factor, level (low/medium/high), rationale }
-    # Common factors: user-count, data-sensitivity, failure-impact,
-    # technical-complexity, regulatory-exposure.
     factors: []
 
 # =============================================================================
 # PRODUCT DEFINITION
 # =============================================================================
-# Populated during Stages 1-2 (Discovery and Product Definition).
-# Items may be resolved (have a value) or open (null, with a corresponding
-# entry in open_questions).
+# Populated during discovery and definition.
 
 product_definition:
   # One-sentence description of what this product is and why it exists.
   vision: null
 
   # Measurable success criteria. What does "this worked" look like?
-  # Each: a concrete, evaluable statement.
   goals: []
 
   # Who uses this product and what they need.
   users:
     # Each persona:
-    #   name: string (e.g., "Family Scorekeeper")
+    #   name: string
     #   description: string
     #   technical_level: none | basic | intermediate | advanced
     #   primary_needs: [string]
-    #   constraints: [string]  (accessibility, device, connectivity, etc.)
+    #   constraints: [string]
     personas: []
 
   # Core user flows (UI), operations (API), or pipeline stages (automation).
   # Each: { name, description, steps (optional), priority (must-have/nice-to-have) }
   core_flows: []
 
-  # Scope decisions. Every feature/capability should land in exactly one bucket.
+  # Scope decisions.
   scope:
-    # Must have for initial release.
-    v1: []
-    # Design to accommodate but don't build yet.
-    accommodate: []
-    # Genuinely later — not needed for v1 to be useful.
-    later: []
-    # Explicitly out of scope, with rationale.
-    # Each: { item, rationale }
-    never: []
+    v1: []                # Must have for initial release
+    accommodate: []       # Design for but don't build yet
+    later: []             # Not needed for v1 to be useful
+    never: []             # Explicitly out of scope. Each: { item, rationale }
 
-  # Product identity — name and creative direction.
-  # Discovered during Stage 1, crystallized in Stage 2.
-  # Feeds Product Brief identity section and design_decisions.visual_direction.
+  # Product identity.
   product_identity:
-    # What the product is called. Even a working name is better than none.
-    name: null
-    # Brand personality, mood, character — the user's creative vision.
-    # null for products where personality is not relevant (internal tools, pipelines).
-    personality: null
-    # Any expressed preferences about look, feel, or visual style.
-    # null for products without a visual interface.
-    visual_preferences: null
+    name: "{{PRODUCT_NAME}}"
+    personality: null     # Brand personality, mood (null for internal tools)
+    visual_preferences: null  # Look/feel preferences (null for non-visual products)
 
-  # Where this runs.
-  # Examples: "mobile (iOS + Android)", "web", "desktop", "CLI"
-  platform: null
+  platform: null          # Where this runs (web, mobile, CLI, etc.)
 
-  # Non-functional requirements, calibrated to product risk.
+  # Non-functional requirements, calibrated to risk.
   nonfunctional:
-    # Target response time or throughput.
     performance: null
-    # Expected user/data growth.
     scalability: null
-    # Availability target (e.g., "best-effort" for a family app, "99.9%" for B2B).
     uptime: null
-    # Budget constraints for hosting, APIs, services.
     cost_constraints: null
 
-  # Regulatory or compliance constraints.
-  # Each: { regulation, applicability, impact }
-  # Empty for most low-risk products.
-  regulatory: []
-
-  # Estimated ongoing operational costs.
-  # Each: { item, estimated_monthly_cost, notes }
-  cost_estimates: []
+  regulatory: []          # Each: { regulation, applicability, impact }
+  cost_estimates: []      # Each: { item, estimated_monthly_cost, notes }
 
 # =============================================================================
 # TECHNICAL DECISIONS
 # =============================================================================
-# Architecture, technology, and integration choices.
-# Every entry must include rationale (HR4: No Unexamined Decisions).
+# Every entry includes rationale.
 # Each: { decision, rationale, alternatives_considered, date }
 
 technical_decisions:
@@ -158,13 +108,12 @@ technical_decisions:
   technology: []
   data_model: []
   integrations: []
-  # Deployment, monitoring, recovery decisions.
   operational: []
 
 # =============================================================================
 # DESIGN DECISIONS
 # =============================================================================
-# UX, IA, and visual direction. Populated only for products with a UI.
+# UX, IA, and visual direction. Only for products with a UI.
 # Each: { decision, rationale, date }
 
 design_decisions:
@@ -174,273 +123,106 @@ design_decisions:
   visual_direction: null
 
 # =============================================================================
-# ARTIFACT MANIFEST
-# =============================================================================
-# Tracks all generated artifacts, their versions, and relationships.
-# Maintained by the Artifact Generator (C3) and validated by the Critic (C6).
-
-artifact_manifest:
-  # Each artifact entry:
-  #   name: string (matches artifact frontmatter)
-  #   file_path: string (relative to project root)
-  #   version: integer
-  #   depends_on: [artifact names]
-  #   depended_on_by: [artifact names]
-  #   last_validated: date or null
-  #   tier: 1 | 2 | 3
-  artifacts: []
-
-# =============================================================================
-# DEPENDENCY GRAPH
-# =============================================================================
-# Maps decisions to their downstream impacts. Used for change propagation.
-# Each: { decision_id, description, affects_decisions: [], affects_artifacts: [] }
-
-dependency_graph: []
-
-# =============================================================================
 # OPEN QUESTIONS
 # =============================================================================
-# Unresolved decisions. Normal during discovery, should shrink toward zero
-# as the project approaches artifact generation.
+# Unresolved decisions. Normal during discovery, shrinks toward zero
+# before artifact generation.
 # Each:
 #   question: string
-#   blocking: string (what can't proceed until this is answered)
-#   waiting_on: "user" | "system" | "research"
+#   blocking: string (what can't proceed)
+#   waiting_on: "user" | "research"
 #   priority: high | medium | low
-#   raised_at_stage: string
 
 open_questions: []
 
 # =============================================================================
 # USER EXPERTISE PROFILE
 # =============================================================================
-# Inferred from conversation signals, never self-assessed (R1.3).
-# Updated continuously by the Orchestrator.
+# Inferred from conversation signals, never self-assessed.
 # Drives vocabulary, explanation depth, and involvement calibration.
 
 user_expertise:
-  # Each dimension: none | basic | intermediate | advanced
-  product_thinking: null
+  product_thinking: null      # none | basic | intermediate | advanced
   technical_depth: null
   design_sensibility: null
   domain_knowledge: null
   operational_awareness: null
-  # Evidence supporting inferences.
-  # Each: { dimension, signal, inferred_from }
-  evidence: []
+  evidence: []                # Each: { dimension, signal, inferred_from }
 
 # =============================================================================
 # BUILD PREFERENCES
 # =============================================================================
-# Developer methodology preferences captured during discovery or iteration.
-# Natural-language markdown file tracking coding conventions, testing approach,
-# logging strategy, error handling philosophy, and tooling preferences.
-# Optional — only populated when the user expresses preferences.
-# Tracked in artifact_manifest as a user-authored artifact with dependency graph.
-# See docs/glossary.md for full definition.
+# Developer preferences captured during discovery (testing approach, code style,
+# tooling). Optional — only when the user expresses preferences.
 
 build_preferences:
-  # Path to project-preferences.md, relative to product root (.prawduct/).
-  # null when no preferences have been captured.
-  file_path: null
-  # When the preferences were last updated.
+  file_path: null             # Path to project-preferences.md (relative to .prawduct/)
   last_updated: null
-  # How preferences were initially captured.
-  # discovery: elicited during Stage 1 discovery
-  # inferred: detected from existing codebase during onboarding
-  # iteration: captured during Stage 6 feedback
-  source: null
+  source: null                # discovery | inferred | iteration
 
 # =============================================================================
 # PROCESS STATE
 # =============================================================================
-# Current stage in the Prawduct process.
-# Values: intake, validation, discovery, definition, artifact-generation,
-#          build-planning, building, iteration
+# Current phase. Values: discovery, planning, building, iteration
 
-current_stage: intake
+current_phase: discovery
 
 # =============================================================================
-# CHANGE LOG
+# ARTIFACT MANIFEST
 # =============================================================================
-# Record of significant changes to project state.
-# Each:
-#   what: string
-#   why: string
-#   blast_radius: string (what else is affected)
-#   classification: cosmetic | functional | directional
-#   date: YYYY-MM-DD
-#   retrospective: string | null  # For directional changes: key learnings from
-#     the post-change retrospective (DCP step 7). Summarizes detection gaps,
-#     process findings, and architecture observations. Not required for cosmetic
-#     or functional changes. Populated by the Directional Change Protocol.
-#
-# Also records framework reflections at each stage transition:
-#   what: "Framework reflection: Stage N (name) complete"
-#   why: "[assessment summary or 'no concerns']"
-#   blast_radius: "none"
-#   classification: cosmetic
-#   date: YYYY-MM-DD
-#
-# LIFECYCLE: When entries exceed 20, the Orchestrator compacts older entries —
-# keeps the 10 most recent plus a summary block. Directional entries and their
-# retrospectives are preserved verbatim; cosmetic/functional entries are
-# condensed to: {what (first sentence), classification, date}.
+# Tracks generated artifacts and their relationships.
 
-change_log: []
+artifact_manifest:
+  # Each:
+  #   name: string
+  #   file_path: string (relative to project root)
+  #   version: integer
+  #   depends_on: [artifact names]
+  artifacts: []
 
 # =============================================================================
 # BUILD PLAN
 # =============================================================================
-# Populated during Stage 4 (Build Planning) by the Artifact Generator Phase D.
-# Tracked during Stage 5 (Building) by the Orchestrator and Builder.
+# Populated during planning. Tracked during building.
 
 build_plan:
-  # Build strategy. Values: feature-first, layer-first, hybrid.
-  # Feature-first: each chunk delivers one user-visible flow end-to-end.
-  # Layer-first: build infrastructure first, then features on top.
-  # Hybrid: scaffold first, then feature-first.
+  # Build strategy: feature-first | layer-first | hybrid
   strategy: null
 
-  # Ordered build tasks. Each chunk is a unit of work the Builder executes.
-  # Chunks are executed in order, respecting depends_on.
-  #
-  # LIFECYCLE: At build completion (Stage 5→6 transition), the Orchestrator
-  # compacts completed chunks to {id, name, status}. Full details are preserved
-  # in artifacts/build-plan.md and git history.
+  # Ordered build chunks. Each is a unit of work.
   chunks: []
   #   - id: "chunk-01"
   #     name: "Project scaffold"
   #     description: "Initialize project, install dependencies, verify build and test"
   #     depends_on: []
-  #     artifacts_consumed: [build-plan, dependency-manifest]
   #     deliverables: ["package.json", "build config", "test runner"]
   #     acceptance_criteria: ["npm install succeeds", "npm run dev starts", "npm test runs"]
   #     status: pending  # pending | in_progress | review | complete | blocked
 
-  # Which chunk is currently being worked on.
   current_chunk: null
-
-  # When full Critic reviews run (not just per-chunk).
-  # Each: { after_chunk, review_type (cross-chunk | full), rationale }
-  governance_checkpoints: []
-
-# =============================================================================
-# DEV TOOLS
-# =============================================================================
-# Agent verification infrastructure opted into during discovery.
-# Populated during Stage 1-2 when user opts into verification tooling.
-# Consumed by Artifact Generator (Phase D) and Builder (Step 4b).
-# See docs/high-level-design.md § Agent Verification Architecture.
-
-dev_tools:
-  # Whether verification infrastructure is enabled for this product.
-  enabled: false
-  # Verification strategy appropriate to the product's structural characteristics.
-  # Values: mcp (MCP server), bash (CLI-driven), none
-  strategy: none
-  # Current state of verification infrastructure.
-  # Values: not-started, scaffolded, operational, removed (for deployment)
-  infrastructure_status: not-started
 
 # =============================================================================
 # BUILD STATE
 # =============================================================================
-# Runtime tracking during Stage 5 (Building).
-# Updated by the Builder after each chunk.
+# Runtime tracking during building. Updated after each chunk.
 
 build_state:
-  # Where source code lives, relative to the project directory.
-  source_root: null  # e.g., "src/"
+  source_root: null           # Where source code lives (e.g., "src/")
 
-  # Test tracking — updated after each chunk completes.
   test_tracking:
     test_count: 0
-    assertion_count: 0
     test_files: []
-    # History per chunk: { chunk_id, full_suite_result, tests_run, tests_passed, tests_failed }
+    # Per-chunk history: { chunk_id, tests_run, tests_passed, tests_failed }
     history: []
 
-  # Requirement → implementation tracking.
-  # Updated by the Builder after each chunk with concrete evidence.
-  spec_compliance:
-    # Each entry traces a requirement to its implementation evidence:
-    #   requirement: string (from test-specifications.md)
-    #   source_section: string (which spec section this traces to)
-    #   status: implemented | partial | not-started
-    #   evidence: string (test file:line or specific behavior proof)
-    #   chunk_id: string (which chunk implemented this)
-    requirements: []
-
-  # Critic review results during build.
-  # Each: { chunk_id, findings: [{ description, severity, status (open | resolved | deferred) }] }
-  #
-  # LIFECYCLE: At build completion (Stage 5→6 transition), the Orchestrator
-  # compacts reviews with all findings resolved/deferred to
-  # {chunk_id, summary, deferred_items}. Full details preserved in git history.
-  reviews: []
-
 # =============================================================================
-# REVIEW FINDINGS
+# CHANGE LOG
 # =============================================================================
-# Structured record of Review Lens findings across all stages.
-# Written by the Orchestrator after each lens application (Stages 0.5-6).
-# Separate from build_state.reviews (which tracks Critic findings during Stage 5).
-# Review Lenses apply across stages — they're not build-phase-only.
+# Significant changes to project state.
+# Each:
+#   what: string
+#   why: string
+#   classification: cosmetic | functional | directional
+#   date: YYYY-MM-DD
 
-review_findings:
-  # Each entry records one lens application:
-  #   stage: string (e.g., "0.5", "2", "3-phase-a", "3-phase-c", "5-checkpoint-1")
-  #   phase: string | null (artifact generation phase if applicable: "A", "B", "C")
-  #   lens: string (product | design | architecture | skeptic | testing)
-  #   findings:
-  #     - finding: string (specific, concrete observation)
-  #       severity: blocking | warning | note
-  #       recommendation: string (what to do about it)
-  #       status: open | resolved | deferred
-  #       resolution: string | null (how it was resolved, if resolved)
-  #
-  # LIFECYCLE: At build completion (Stage 5→6 transition), the Orchestrator
-  # compacts resolved entries to summary form: {stage, lens, summary, deferred_count}.
-  # Entries with deferred findings are preserved in full.
-  entries: []
-
-# =============================================================================
-# ITERATION STATE
-# =============================================================================
-# Stage 6 feedback cycles. Populated when user provides feedback on built product.
-
-iteration_state:
-  # Each feedback cycle:
-  #   feedback: string (what the user said)
-  #   classification: cosmetic | functional | directional
-  #   affected_artifacts: [artifact names that need updating]
-  #   affected_chunks: [chunk ids that need rework or new chunks]
-  #   status: received | assessing | implementing | complete
-  #
-  # LIFECYCLE: After every 10 completed cycles, the Orchestrator compacts
-  # completed entries to {feedback (first sentence), classification, status}.
-  feedback_cycles: []
-
-# =============================================================================
-# OBSERVATION BACKLOG
-# =============================================================================
-# Observation capture is available for any project. Observations about the build
-# process help the framework improve. This section tracks observations that have
-# been triaged but not yet incorporated.
-#
-# For product builds: observations capture what worked and what didn't about the
-# framework's guidance — artifact gaps, missing discovery questions, governance
-# friction, etc. These feed back to improve the framework for all users.
-
-observation_backlog:
-  last_triage: null
-  items: []
-  #   - observation_file: "framework-observations/YYYY-MM-DD-description.yaml"
-  #     type: string  # observation type from schema
-  #     summary: string  # one-line description
-  #     target_files: [string]  # files that would need to change
-  #     priority: next | soon | deferred
-  #     rationale: string  # why this priority
-  #     added: YYYY-MM-DD
+change_log: []

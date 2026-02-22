@@ -63,22 +63,19 @@ These checks apply only when reviewing skill files, template files, or framework
 
 ### Check 10: Pipeline Coverage
 
-**Applies:** When a new artifact template, discovery dimension, Critic check, or Review Lens is added or substantially modified.
+**Applies:** When a new artifact template, discovery dimension, or Critic check is added or substantially modified.
 
-**Principle:** Cross-cutting concerns should have complete pipeline coverage — discovery surfaces them, artifacts specify them, the Builder implements them, the Critic validates them, and Review Lenses evaluate them.
+**Principle:** Cross-cutting concerns should have complete pipeline coverage — discovery surfaces them, artifacts specify them, implementation follows them, and the Critic validates them.
 
 **Ask:** Is the pipeline complete for the concern this change addresses?
 
-- Does the concern have discovery questions that surface it during Stages 0-1?
+- Does the concern have discovery questions that surface it?
 - Does at least one artifact template specify it?
-- Does the Builder have instructions for implementing it?
+- Does the methodology guide the builder on implementing it?
 - Does the Critic have a check that validates it?
-- Does at least one Review Lens evaluate it?
-- Is the concern registered in `.prawduct/artifacts/cross-cutting-concerns-registry.md`?
 
-If any dimension is missing, flag it as a warning. The registry should be updated to reflect the new coverage.
+If any dimension is missing, flag it as a warning.
 
 **Severity guide:**
-- New artifact/dimension with no corresponding Critic check or Review Lens → **warning**
-- Concern not registered in the cross-cutting concerns registry → **warning**
+- New artifact/dimension with no corresponding Critic check → **warning**
 - Minor coverage gap in a non-critical dimension → **note**
