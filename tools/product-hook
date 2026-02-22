@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+#
+# product-hook — Session governance for Prawduct products.
+#
+# Enforces two structural gates:
+# 1. Reflection: files modified → reflection must be captured before session end
+# 2. Critic review: code built against a plan → independent review must happen
+#
+# Usage (in .claude/settings.json):
+#   "$CLAUDE_PROJECT_DIR/tools/product-hook" stop
+#   "$CLAUDE_PROJECT_DIR/tools/product-hook" clear
+
+set -euo pipefail
+
+PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-.}/.prawduct"
+REFLECTED_FILE="$PRAWDUCT_DIR/.session-reflected"
+SESSION_START_FILE="$PRAWDUCT_DIR/.session-start"
+CRITIC_FINDINGS="$PRAWDUCT_DIR/.critic-findings.json"
+BUILD_PLAN="$PRAWDUCT_DIR/artifacts/build-plan.md"
+
+case "${1:-}" in
+  clear)
+    # Reset session state
+    rm -f "$REFLECTED_FILE" "$SESSION_START_FILE"
+    if [[ -d "$PRAWDUCT_DIR" ]]; then
+      date -u +%Y-%m-%dT%H:%M:%SZ > "$SESSION_START_FILE"
+    fi
+    ;;
+
+  stop)
+    # Skip if no .prawduct directory (not initialized yet)
+    [[ -d "$PRAWDUCT_DIR" ]] || exit 0
+
+    BLOCKERS=""
+
+    # Check if any tracked files were modified since session start
+    HAS_CHANGES=""
+    if command -v git &>/dev/null && git rev-parse --git-dir &>/dev/null 2>&1; then
+      HAS_CHANGES=$(git diff --name-only 2>/dev/null | head -1)
+      HAS_STAGED=$(git diff --cached --name-only 2>/dev/null | head -1)
+      [[ -z "$HAS_CHANGES" ]] && HAS_CHANGES="$HAS_STAGED"
+    fi
+
+    # Gate 1: Reflection
+    if [[ -n "$HAS_CHANGES" && ! -f "$REFLECTED_FILE" ]]; then
+      BLOCKERS="${BLOCKERS}REFLECTION: Files were modified but no session reflection was captured.
+  1. Reflect on what changed and what you learned
+  2. Update .prawduct/learnings.md if anything is worth capturing
+  3. Write your reflection to .prawduct/.session-reflected
+
+"
+    fi
+
+    # Gate 2: Critic review (only when building against a plan)
+    if [[ -n "$HAS_CHANGES" && -f "$BUILD_PLAN" ]]; then
+      # Check if any non-.prawduct files were modified (actual code, not just state)
+      HAS_CODE_CHANGES=""
+      if command -v git &>/dev/null && git rev-parse --git-dir &>/dev/null 2>&1; then
+        HAS_CODE_CHANGES=$(git diff --name-only 2>/dev/null | grep -v '^\.prawduct/' | head -1 || true)
+        HAS_CODE_STAGED=$(git diff --cached --name-only 2>/dev/null | grep -v '^\.prawduct/' | head -1 || true)
+        [[ -z "$HAS_CODE_CHANGES" ]] && HAS_CODE_CHANGES="$HAS_CODE_STAGED"
+      fi
+
+      if [[ -n "$HAS_CODE_CHANGES" ]]; then
+        NEEDS_REVIEW=true
+
+        # Check if critic findings exist and are from this session
+        if [[ -f "$CRITIC_FINDINGS" && -f "$SESSION_START_FILE" ]]; then
+          SESSION_START=$(cat "$SESSION_START_FILE")
+          FINDINGS_MTIME=$(date -r "$CRITIC_FINDINGS" -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+          if [[ -n "$FINDINGS_MTIME" && "$FINDINGS_MTIME" > "$SESSION_START" ]]; then
+            NEEDS_REVIEW=false
+          fi
+        fi
+
+        if [[ "$NEEDS_REVIEW" == "true" ]]; then
+          BLOCKERS="${BLOCKERS}CRITIC REVIEW: Code was modified with an active build plan but no Critic review was recorded this session.
+  Invoke the Critic as a separate agent (Task tool) for independent review before ending.
+  The Critic should read .prawduct/critic-review.md for its review instructions.
+  After review, record findings to .prawduct/.critic-findings.json
+
+"
+        fi
+      fi
+    fi
+
+    # Report blockers or exit clean
+    if [[ -n "$BLOCKERS" ]]; then
+      echo "" >&2
+      echo "BLOCKED — resolve before ending session:" >&2
+      echo "" >&2
+      echo "$BLOCKERS" >&2
+      exit 2
+    fi
+
+    exit 0
+    ;;
+
+  *)
+    echo "Usage: product-hook {clear|stop}" >&2
+    exit 1
+    ;;
+esac

@@ -146,7 +146,7 @@ Framework repo (prawduct/)           Product repos (generated)
 │   └── reflection.md                │   ├── methodology/  (optional full copies)
 ├── agents/critic/SKILL.md           │   ├── artifacts/
 ├── tools/reflection-hook            │   └── .session-reflected
-├── tools/prawduct-hook              ├── .claude/settings.json (local hooks)
+├── tools/product-hook               ├── .claude/settings.json (local hooks)
 └── .prawduct/ (framework state)     └── src/ ...
 ```
 
@@ -205,17 +205,17 @@ Multi-agent safety: each product repo is fully independent. No paths point outsi
 - After Chunk 2: Review — are the condensed Critic instructions sufficient? Test with a real review.
 - After Chunk 5: Full integration test — generate a product repo, verify it works standalone.
 
-## Open Questions (remaining)
+## Design Decisions (resolved 2026-02-22)
 
-1. **Hook format**: Should `tools/product-hook` be bash (portable, simple) or Python (more capability)? Leaning bash for simplicity and because the v2 reflection-hook proved bash is sufficient for this.
+**D6: Hook format → Bash.** Zero dependencies, proven sufficient by the framework's own reflection-hook (103 lines), and acts as a natural complexity governor — when it gets hard in bash, that's a signal you're adding too much. If we outgrow bash, we can switch.
 
-2. **Methodology file copying**: Should `prawduct-init` copy the full methodology files into `.prawduct/methodology/`? Or is the condensed CLAUDE.md section sufficient? Could offer as a flag: `--full-methodology`.
+**D7: Methodology → Condensed inline only.** ~500 words in CLAUDE.md, no full methodology copies. The v2 failure was a process-interruption problem (now solved by structural gates), not a "Claude doesn't know how to build" problem. Copying creates staleness without adding independence. If the condensed version proves insufficient, improve it — don't maintain a second copy.
 
-3. **Critic findings format**: Should products use the same `.critic-findings.json` format as the framework, or something simpler? Simpler is easier to gate-check; same format enables tooling reuse.
+**D8: Critic findings format → Same JSON as framework.** The stop hook only checks file existence + mtime (doesn't parse JSON), so format has no gate impact. Same format enables future cross-repo tooling. The format is already minimal. The Critic agent writes it, and there's no reason to invent a second format.
 
 ## Risks
 
 - **Gate circumvention**: Claude might write perfunctory critic-findings.json without actually running the Critic. Mitigation: the stop hook checks for the file, but the CLAUDE.md instructions and building methodology both emphasize genuine independent review. The gate prevents forgetting; it can't prevent bad faith. But bad faith is a much rarer failure mode than forgetting.
 - **Product CLAUDE.md staleness**: Products carry their own principles and may diverge from framework updates. Mitigation: version tracking in generated comments, but accept divergence as the cost of independence.
 - **Over-correction slide**: Adding structural gates could restart the complexity cycle. Mitigation: strict budget (max 4 hooks, max 200 lines enforcement code). This risk is in learnings.md. Any proposal to add a 5th hook must clear a high bar.
-- **Condensed methodology insufficiency**: The ~500-word condensed methodology might miss important guidance. Mitigation: offer full methodology files as optional copies; strengthen based on testing.
+- **Condensed methodology insufficiency**: The condensed methodology might miss important guidance. Mitigation: strengthen based on testing. If proven insufficient, we can add a `--full-methodology` flag to prawduct-init later.
