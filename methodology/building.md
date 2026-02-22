@@ -21,7 +21,9 @@ Depth is proportionate to risk. A personal utility needs basic happy-path and cr
 
 **Verify.** Run all tests — not just the ones you wrote, but the full suite. A new chunk shouldn't break existing chunks. Check that acceptance criteria are met. Check that the implementation matches the spec.
 
-**Request review.** After completing a chunk, invoke the Critic agent for independent review. The Critic runs in a separate context, providing genuine independence — it's not reviewing its own work. This is how Principle 13 (Independent Review) works in practice.
+**Request Critic review.** This step is mandatory — do not skip it, defer it, or self-review instead. After completing a chunk, invoke the Critic agent as a separate agent (via the Task tool). The Critic runs in its own context, providing genuine independence — it hasn't seen your reasoning. Tell it to read `agents/critic/SKILL.md` (or `.prawduct/critic-review.md` in product repos) and review the changes. The stop hook will block session end if you skip this step.
+
+**Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document any notes or disagreements with rationale.
 
 **Update state.** Record what was built, what tests were added, and any issues discovered. Update the project state so the next session has accurate context.
 

@@ -75,6 +75,20 @@ current_stage: iteration
 # =============================================================================
 
 change_log:
+  - what: 'V3 discovery: structural gates on principles foundation, multi-agent parallelism requirement'
+    why: 'V2 experiment (principles-only) tested in Hum chunk 1 build. Results: Claude never invoked Critic,
+      never read building methodology, self-declared chunk complete with 15 undetected findings. Root cause:
+      principles govern how-to-work behaviors but not when-to-interrupt behaviors. Momentum and helpfulness
+      training override process interruption principles. Additionally, multi-agent parallelism (multiple agents
+      building different products simultaneously) identified as critical requirement — rules out shared state,
+      runtime framework dependency, PID-based session tracking. V3 direction: keep v2 principles foundation,
+      add back structural gates for the 2-3 behaviors Claude demonstrably cannot self-regulate (Critic invocation,
+      phase-transition methodology reading), design product repos as fully self-contained (no framework runtime
+      dependency).'
+    blast_radius: '.prawduct/learnings.md (2 new entries), .prawduct/working-notes/v3-structural-gates.md (new),
+      .prawduct/project-state.yaml (change_log)'
+    classification: discovery
+    date: 2026-02-22
   - what: 'Architecture shift: principles-based system with learning loop replaces process engine'
     why: 'Three converging problems: (1) self-improvement not working without manual prompting — observations
       were write-only (filed in YAML, nothing reads them before decisions), (2) framework too complex and

@@ -63,12 +63,20 @@ When someone opens this directory, route based on context:
 
 ## Methodology
 
-These narrative guides teach the approach. Read the relevant one when entering that phase:
+These narrative guides teach the approach. **Read the relevant guide when entering each phase** — not from memory, actually read the file:
 
-- `methodology/discovery.md` — How to explore a problem space and understand what to build
-- `methodology/planning.md` — How to design artifacts and decompose into buildable chunks
-- `methodology/building.md` — How to build with quality, including the Critic review cycle
-- `methodology/reflection.md` — The learning loop: how the system gets smarter over time
+- `methodology/discovery.md` — Read this before starting discovery
+- `methodology/planning.md` — Read this before designing artifacts or build plans
+- `methodology/building.md` — **Read this before writing ANY code.** It defines the build cycle including mandatory Critic review after each chunk. Skipping this guide is the #1 cause of governance failures.
+- `methodology/reflection.md` — Read this before session-end reflection
+
+## The Critic — Independent Review
+
+**After completing each chunk of work, invoke the Critic as a separate agent.** This is not optional and not deferrable to a later governance checkpoint. The Critic runs in a separate context (via the Task tool), providing genuinely independent review — it hasn't seen your reasoning or decision-making.
+
+The stop hook enforces this: if you modified code with an active build plan, it will block session end without Critic findings. Don't wait until you're blocked — invoke the Critic after each chunk.
+
+See `agents/critic/SKILL.md` for the Critic's full instructions. For product repos, see `.prawduct/critic-review.md`.
 
 ## The Learning Loop
 
@@ -111,6 +119,7 @@ When compacting this conversation, preserve:
 - Which product is being built and its current phase
 - Any unresolved issues, blocked work, or pending decisions
 - The instruction to re-read CLAUDE.md and `.prawduct/learnings.md` after compaction
+- The requirement for Critic review after each chunk (invoke via Task tool as separate agent)
 - The requirement for reflection before session end
 - Any in-progress learnings or observations not yet captured
 
