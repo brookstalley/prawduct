@@ -42,6 +42,8 @@ The right amount of discovery is the minimum that prevents building the wrong th
 
 **Detect domain-specific concerns dynamically.** Don't rely on hardcoded lists of domain questions. Use your knowledge of the domain to surface what matters. A marketplace has different critical questions than a data pipeline. A healthcare app has different concerns than a game. Your domain knowledge is the source; the structural characteristics tell you where to focus it.
 
+**Read the room on pacing.** Every question costs user patience, and patience is finite. Watch for fatigue signals: answers getting shorter, repeated agreement without elaboration ("yes", "sure", "sounds good"), or explicit redirects ("just build it", "whatever you think"). When you see these, adapt — compress remaining questions into a single confirm-or-correct batch, shift to pure confirmation mode, or infer more aggressively and move on. Sometimes moving to the next phase is the right call even if discovery feels incomplete. Under-discovery that preserves engagement beats thorough discovery that loses the user entirely. This isn't a state machine with defined thresholds — it's a judgment call about reading the conversation, and erring toward action is usually correct.
+
 ## Surface Prior Art
 
 After you understand the concept and structural characteristics — typically after the first exchange — search for what already exists in this space. This isn't a gate or a report; it's expertise you bring to the conversation (Principle #6).
@@ -54,11 +56,44 @@ After you understand the concept and structural characteristics — typically af
 
 **Capture what you found.** Record relevant prior art in `project-state.yaml` under `classification.prior_art`. Each entry includes: name, url (if available), relevance to this project, and relationship (alternative, complement, or reference). This informs scope decisions downstream — it's not a gate.
 
+## Surface Operational Costs
+
+When structural characteristics indicate ongoing costs — `runs_unattended`, uses external APIs, deploys to cloud infrastructure — surface them during discovery, not after deployment (Principle 8).
+
+**Use infer-confirm-proceed.** "Since this calls the OpenAI API, it'll have per-request costs — probably a few dollars/month at the usage you're describing. Want me to estimate more precisely, or is 'low single digits' enough to proceed?" Don't interrogate about budgets; make a reasonable inference and let the user correct.
+
+**Scale to risk.** Low-risk (personal tool, free tier likely): acknowledge briefly — "This should stay within free tiers." Medium-risk (team tool, moderate API usage): provide a ballpark — "Expect $10-50/month for hosting plus API costs." High-risk (production service, significant compute): itemize cost components and capture constraints.
+
+**Capture to `project-state.yaml`** under `product_definition.nonfunctional.cost_constraints` (user's budget limits) and `product_definition.cost_estimates` (your estimates of ongoing costs). These fields already exist in the template.
+
+## Surface Accessibility Needs
+
+When `has_human_interface` is detected, accessibility is a structural concern — not an afterthought (Principle 7).
+
+**Use infer-confirm-proceed.** "Since this has a user interface, I'll design with standard accessibility for the platform — sufficient contrast, keyboard or alternative navigation, and meaningful labels. Any specific accessibility needs I should know about?" This establishes the baseline without interrogating.
+
+**Scale to risk.** Low-risk (personal or family use): platform accessibility defaults are sufficient. Medium-risk (team or small audience): target WCAG 2.1 AA as the baseline. High-risk (public-facing, accessibility-critical, or regulatory): specify WCAG target explicitly and build deep accessibility into the spec.
+
+**Capture to `project-state.yaml`** under `design_decisions.accessibility_approach`. This field already exists in the template.
+
+## Surface Error Handling Approach
+
+Every product needs error handling; the question is how much design it needs upfront. Most products can rely on standard patterns — catch at boundaries, log with context, surface a clear message to the user or caller. High-risk products need deliberate error architecture.
+
+**Use infer-confirm-proceed.** "I'll handle errors with standard patterns — catch at boundaries, log with context, surface a clear message. Anything unusual about error handling for this project?" This establishes the baseline. Most users will confirm and move on.
+
+**Scale to risk.** Low-risk (personal tool, single user): standard patterns are sufficient — no dedicated design needed. The build methodology's test discipline already requires error case coverage, and that's enough. Medium-risk (team tool, external consumers): surface the error taxonomy — what's recoverable vs. fatal, what the user or caller sees on error. Capture the approach. High-risk (financial, health, multi-party): design the full error handling strategy — taxonomy, recovery patterns, error UX or error response contracts, reporting and alerting. This becomes a first-class section in the product brief.
+
+**Capture to `project-state.yaml`** under `design_decisions.error_handling_approach`. This connects discovery decisions to the build phase, where test discipline (building.md) and the Critic (Check 6) validate that error cases are actually covered.
+
 ## What Discovery Produces
 
 Discovery produces a `project-state.yaml` with:
 - **Classification**: structural characteristics, domain, risk level, prior art
 - **Product definition**: vision, personas, core flows, scope (v1 / accommodate / later / out of scope)
+- **Cost awareness**: operational cost estimates and constraints (when applicable)
+- **Accessibility approach**: accessibility baseline scaled to risk (for human interfaces)
+- **Error handling approach**: error handling strategy scaled to risk
 - **User expertise profile**: what the user knows and doesn't, inferred from conversation
 - **Product identity**: name, personality, technology preferences
 
@@ -79,3 +114,7 @@ Discovery is done when you have enough understanding to design artifacts that wo
 **Overweighting prior art**: Spending too much time researching existing solutions instead of understanding the user's specific needs. Prior art informs the conversation; it doesn't drive it. A few focused searches are enough.
 
 **Using prior art to gatekeep**: "This already exists, so why build it?" is never the right response. People build things for many valid reasons — learning, customization, ownership, fun. Respect the user's choice to build. Surface what exists, then help them build something great.
+
+**Cost blindness**: Not surfacing operational costs for products with external dependencies, cloud deployments, or API usage. The user finds out about costs after deployment instead of during design. If the product runs unattended or calls external services, mention costs during discovery.
+
+**Accessibility afterthought**: Detecting `has_human_interface` but not establishing an accessibility baseline. Accessibility bolted on later is expensive and incomplete. When you detect a human interface, state your accessibility assumptions and let the user adjust.

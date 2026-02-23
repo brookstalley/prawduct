@@ -152,6 +152,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[interactive]` Ask about scheduling/trigger frequency.
 - `[interactive]` Ask about cost sensitivity or infrastructure constraints.
 - `[interactive]` Surface monitoring and alerting as a consideration (pipeline runs unattended — how do you know it's working?).
+- `[interactive]` Surface error handling approach using infer-confirm-proceed. For a low-medium risk unattended pipeline, this should go beyond "standard patterns" — at minimum surface recoverable vs. fatal errors and what happens on failure (retry? skip? alert?).
 - `[interactive]` Surface configuration management (filter criteria will change over time — how is that handled?).
 - `[interactive]` Limit total discovery questions to 8-12 for this risk level (more than low-risk family utility, fewer than a high-risk B2B platform).
 

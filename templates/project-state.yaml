@@ -118,13 +118,15 @@ technical_decisions:
 # =============================================================================
 # DESIGN DECISIONS
 # =============================================================================
-# UX, IA, and visual direction. Only for products with a UI.
+# UX, IA, and design decisions. Some fields (like error_handling_approach) apply
+# to all products; others (like visual_direction) only apply to products with a UI.
 # Each: { decision, rationale, date }
 
 design_decisions:
   information_architecture: []
   interaction_patterns: []
   accessibility_approach: null
+  error_handling_approach: null
   visual_direction: null
 
 # =============================================================================

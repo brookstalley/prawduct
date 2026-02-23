@@ -88,3 +88,5 @@ If the Critic finds something you disagree with, think carefully before dismissi
 **Ignoring the Critic**: Dismissing findings without genuine reflection. The Critic exists because self-review doesn't work. If you find yourself routinely disagreeing with the Critic, something is wrong — either the Critic's checks need updating (propose amendments) or your building practices need adjusting.
 
 **Verification theater**: Claiming verification without actually exercising the product. "I verified it works" without evidence is worse than "I couldn't verify this — here's what to check." Honest confidence (Principle 5).
+
+**Pacing blindness during builds**: Asking implementation questions when the user is waiting for progress. During building, the user's primary signal is usually "show me something working." Decide autonomously on minor implementation details — naming, internal structure, error message wording — unless you're genuinely blocked or the choice has user-visible consequences. Save questions for decisions that would be expensive to reverse.
