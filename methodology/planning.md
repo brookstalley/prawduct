@@ -21,6 +21,7 @@ Artifacts are specification files that guide building. They ensure you think thr
 - *Programmatic interface*: API contract (operations, request/response formats, error codes, authentication, rate limits)
 - *Multiple party types*: Per-party experience specifications, trust boundary analysis, data isolation rules
 - *Sensitive data*: Deepens existing artifacts (data lifecycle, security model, audit trails) rather than creating new ones
+- *Multi-process or distributed*: System architecture — process topology, communication channels (patterns, endpoints, protocols), concurrency model, persistence boundaries (what's durable vs. ephemeral, what lives where)
 
 ### Artifact Dependencies
 

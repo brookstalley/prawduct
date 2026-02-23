@@ -6,7 +6,7 @@ The goal of discovery is to understand the problem space deeply enough to design
 
 Before you can build anything well, you need to understand what kind of thing you're building. Not in abstract terms — in structural terms that determine what artifacts you'll need and what risks you'll face.
 
-**Five structural characteristics** shape every product. Detect these early from user language and context:
+**Six structural characteristics** shape every product. Detect these early from user language and context:
 
 - **Has human interface** — Users see screens, hear audio, read output. Signals: "dashboard", "app", "users will see", "button". Implications: need interaction design, accessibility, onboarding, state handling (empty, loading, error).
 
@@ -17,6 +17,8 @@ Before you can build anything well, you need to understand what kind of thing yo
 - **Has multiple party types** — Different user types with different privileges. Signals: "buyers and sellers", "admin panel", "teachers and students". Implications: need per-party specs, trust boundaries, data isolation.
 
 - **Handles sensitive data** — Data that has regulatory, privacy, or safety implications. Signals: "health", "payments", "children", "PII". Implications: need data lifecycle design, breach scenarios, audit trails, regulatory awareness.
+
+- **Multi-process or distributed** — Multiple processes or services that communicate at runtime. Signals: "message queue", "microservice", "worker", "broker", "IPC", multiple ports/processes described. Implications: need system architecture document covering process topology, communication channels (patterns, endpoints, protocols), concurrency model, and persistence boundaries (what's durable vs. ephemeral, what lives where).
 
 These are independent dimensions, not categories. A product can have any combination. Each one you detect changes what you need to build and how deeply you need to think about it.
 

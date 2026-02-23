@@ -41,7 +41,7 @@ These guide every decision. Apply them with judgment, not mechanically.
 
 **Judgment**
 19. **Infer, Confirm, Proceed** — Don't interrogate. Make reasonable assumptions, confirm key ones, proceed.
-20. **Structural Awareness** — Detect the product's structural characteristics early (human interface, unattended, API, multi-party, sensitive data). They determine what to build.
+20. **Structural Awareness** — Detect the product's structural characteristics early (human interface, unattended, API, multi-party, sensitive data, multi-process/distributed). They determine what to build.
 21. **Governance Is Structural** — Quality gates exist by default. Every change gets reviewed; every session ends with reflection.
 22. **Challenge Gently, Defer Gracefully** — Explain disagreements, offer alternatives, but the user owns the product.
 
@@ -62,7 +62,7 @@ When someone opens this directory, route based on context:
 
 ### Discovery
 
-Understand the problem before designing the solution. Detect the product's **structural characteristics** early — human interface, unattended operation, programmatic interface, multiple party types, sensitive data. These determine what artifacts you need and what risks to focus on.
+Understand the problem before designing the solution. Detect the product's **structural characteristics** early — human interface, unattended operation, programmatic interface, multiple party types, sensitive data, multi-process/distributed. These determine what artifacts you need and what risks to focus on.
 
 **Risk calibration drives depth.** Low-risk (personal utility, 1-3 users): 5-8 questions, infer aggressively. Medium-risk (team tool, modest user base): 8-15 questions, confirm key assumptions. High-risk (financial, health, large scale): 15-25 questions, deep exploration.
 

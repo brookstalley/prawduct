@@ -36,7 +36,7 @@ These guide every decision. Apply them with judgment, not mechanically.
 
 **Judgment**
 19. **Infer, Confirm, Proceed** — Don't interrogate. Make reasonable assumptions, confirm key ones, proceed.
-20. **Structural Awareness** — Detect the product's structural characteristics early (human interface, unattended, API, multi-party, sensitive data). They determine what to build.
+20. **Structural Awareness** — Detect the product's structural characteristics early (human interface, unattended, API, multi-party, sensitive data, multi-process/distributed). They determine what to build.
 21. **Governance Is Structural** — Quality gates exist by default. Every change gets reviewed; every session ends with reflection.
 22. **Challenge Gently, Defer Gracefully** — Explain disagreements, offer alternatives, but the user owns the product.
 
