@@ -52,12 +52,18 @@ When someone opens this directory, route based on context:
 **Onboarding another product** ("let's work on ../my-app", "set up prawduct for ../foo")
 → Determine the target directory path. Then:
   1. If the directory doesn't exist, create it and ask for a product name.
-  2. Run `detect_version` logic: check for `.prawduct/framework-path` (v1) and `tools/product-hook` (v3).
+  2. Run `detect_version` logic: check for `.prawduct/framework-path` (v1), `tools/product-hook` (v3), and `.prawduct/sync-manifest.json` (v4).
   3. **Unknown** (new repo): Run `python3 tools/prawduct-init.py <target> --name "<name>"`.
-  4. **V1**: Run `python3 tools/prawduct-migrate.py <target>`.
-  5. **V3**: Already set up — no action needed.
+  4. **V1 or V3**: Run `python3 tools/prawduct-migrate.py <target>` to upgrade to v4 (adds sync manifest, Python hook, banner).
+  5. **V4**: Already set up. Framework sync happens automatically on session start via the product-hook.
   6. Tell the user to open the target directory in a new Claude Code session for full governance:
      `claude <target-path>`
+
+**Ad-hoc work outside this repo** ("build me X in ../foo", "create a CLI that does Y")
+→ The user wants Claude to do work that isn't part of this framework and isn't being onboarded as a Prawduct product. Proceed with the work, applying principles as engineering judgment — not as a formal process. At session end, reflect on what was built and note any methodology observations (did the process help, hinder, or feel irrelevant?).
+
+**Reviewing product feedback** ("what have my products learned?", "check product learnings")
+→ Scan known product directories for `.prawduct/learnings.md`. Look for methodology friction or process feedback. Summarize and propose framework updates.
 
 **First contact** ("hello", "what is this?", "what can you do?")
 → Briefly explain: Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. Product repos are generated with `tools/prawduct-init.py` and are fully self-contained.
@@ -79,7 +85,7 @@ Do not wait until the hook blocks you. Invoke the Critic immediately after compl
 
 > Spawn a new agent with the Task tool. Tell it: "You are the Critic. Read `agents/critic/SKILL.md` for your review instructions. Review the changes made in this session. The project is at `[project dir]`."
 
-The Critic runs in a separate context — it hasn't seen your reasoning or decision-making, providing genuinely independent review. After review, it records findings to `.prawduct/.critic-findings.json`. Fix any blocking findings before proceeding to the next chunk.
+The Critic runs in a separate context — it hasn't seen your reasoning or decision-making, providing genuinely independent review. After review, it records findings to `.prawduct/.critic-findings.json`. Fix any blocking findings before proceeding to the next chunk. After resolving findings, reflect: what did the Critic surface that you missed? Capture learnings immediately — Critic reviews are the richest source of methodology insights.
 
 For product repos, the Critic reads `.prawduct/critic-review.md` instead of `agents/critic/SKILL.md`.
 
@@ -114,12 +120,13 @@ my-product/
 │   ├── project-state.yaml      # Source of truth for project state
 │   ├── learnings.md            # Accumulated wisdom
 │   ├── critic-review.md        # Condensed Critic instructions for this product
+│   ├── sync-manifest.json      # Tracks framework sync state (enables auto-updates)
 │   ├── artifacts/              # Generated specifications
 │   └── .critic-findings.json   # Critic review evidence (checked by stop hook)
 ├── tools/
-│   └── product-hook            # Session governance (reflection + Critic gate)
+│   └── product-hook            # Session governance (Python: reflection + Critic gate + sync)
 ├── .claude/
-│   └── settings.json           # Hook config pointing to tools/product-hook
+│   └── settings.json           # Hook config + banner pointing to tools/product-hook
 └── src/                        # Product source code
 ```
 

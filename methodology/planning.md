@@ -4,7 +4,7 @@ Planning bridges discovery and building. You've understood the problem; now desi
 
 ## Artifact Generation
 
-Artifacts are the specifications that guide building. They ensure you think through the design before writing code — catching issues at the spec level is cheaper than catching them in implementation.
+Artifacts are specification files that guide building. They ensure you think through the design before writing code — catching issues at the spec level is cheaper than catching them in implementation. Each artifact is a file written to `.prawduct/artifacts/` (see "Where Artifacts Live" below).
 
 **Universal artifacts** (every product, scaled to risk):
 - **Product Brief** — Vision, personas, flows, scope, success criteria. The foundation everything else references.
@@ -32,6 +32,12 @@ Artifacts depend on each other. The Product Brief is the foundation — everythi
 **Phase D**: Build Plan (depends on all artifacts)
 
 Between phases, review what you've produced. Apply the review perspectives (Product, Design, Architecture, Skeptic, Testing) to catch issues before they propagate downstream. The cost of fixing a spec error scales with how many downstream artifacts have already incorporated it.
+
+### Where Artifacts Live
+
+Write all generated artifacts to `.prawduct/artifacts/`. This is the canonical location — the Critic reads from it, the build cycle references it, and the stop hook uses the presence of `build-plan.md` there to trigger the Critic review gate.
+
+Name files by artifact type: `product-brief.md`, `data-model.md`, `build-plan.md`, etc. For onboarded projects that already have specifications elsewhere, those can stay — but Prawduct-generated artifacts go in `.prawduct/artifacts/`.
 
 ### Proportionality
 

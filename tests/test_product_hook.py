@@ -1,4 +1,4 @@
-"""Tests for product-hook — session governance bash script.
+"""Tests for product-hook — session governance Python script.
 
 Invokes the hook via subprocess.run with a controlled environment.
 Uses a mock git script to simulate git status output.
@@ -10,7 +10,7 @@ import json
 import os
 import subprocess
 import textwrap
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -39,7 +39,7 @@ def run_hook(
     env = {
         "HOME": str(project_dir),
         "CLAUDE_PROJECT_DIR": str(project_dir),
-        "PATH": "",  # Start with empty PATH
+        "PATH": "",
     }
 
     if has_git and git_output is not None:
@@ -47,7 +47,6 @@ def run_hook(
         mock_bin = project_dir / "_mock_bin"
         mock_bin.mkdir(exist_ok=True)
         mock_git = mock_bin / "git"
-        # The mock handles: rev-parse --git-dir, status --porcelain
         mock_git.write_text(textwrap.dedent(f"""\
             #!/bin/bash
             if [[ "$1" == "rev-parse" ]]; then
@@ -63,10 +62,9 @@ def run_hook(
         mock_git.chmod(0o755)
         env["PATH"] = str(mock_bin)
     elif not has_git:
-        # No git on PATH at all — but we need basic tools
         pass
 
-    # Always need basic system tools (date, rm, cat, head, awk, grep, etc.)
+    # Need system tools (python3 itself, etc.)
     system_paths = "/usr/bin:/bin:/usr/sbin:/sbin"
     if env["PATH"]:
         env["PATH"] = env["PATH"] + ":" + system_paths
@@ -77,7 +75,7 @@ def run_hook(
         env.update(env_extra)
 
     return subprocess.run(
-        ["bash", str(HOOK_PATH), command],
+        ["python3", str(HOOK_PATH), command],
         capture_output=True,
         text=True,
         env=env,
@@ -87,11 +85,7 @@ def run_hook(
 
 def make_session_start(prawduct_dir: Path, offset_seconds: int = -60) -> str:
     """Create a .session-start file. Returns the timestamp written."""
-    ts = datetime.now(timezone.utc)
-    # offset_seconds < 0 means session started in the past
-    from datetime import timedelta
-
-    ts = ts + timedelta(seconds=offset_seconds)
+    ts = datetime.now(timezone.utc) + timedelta(seconds=offset_seconds)
     stamp = ts.strftime("%Y-%m-%dT%H:%M:%SZ")
     (prawduct_dir / ".session-start").write_text(stamp)
     return stamp
@@ -113,7 +107,6 @@ class TestClear:
 
         assert result.returncode == 0
         assert not (prawduct / ".session-reflected").exists()
-        # New session-start should be created
         assert (prawduct / ".session-start").exists()
 
     def test_creates_session_start_timestamp(self, tmp_path: Path):
@@ -123,9 +116,7 @@ class TestClear:
         run_hook("clear", tmp_path)
 
         content = (prawduct / ".session-start").read_text().strip()
-        # Should be ISO 8601 UTC format
         assert content.endswith("Z")
-        # Should parse as a valid timestamp
         datetime.strptime(content, "%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -153,6 +144,8 @@ class TestStopReflectionGate:
     def test_changes_no_reflection_blocks(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # Clean baseline so " M src/app.py" is a session change
+        (prawduct / ".session-git-baseline").write_text("")
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
@@ -162,21 +155,94 @@ class TestStopReflectionGate:
     def test_changes_with_reflection_passes(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("")
         (prawduct / ".session-reflected").write_text("I reflected on changes.")
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
         assert result.returncode == 0
 
+    def test_reflection_message_includes_methodology_check(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("")
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "methodology" in result.stderr.lower()
+
+
+class TestSessionScopedChanges:
+    """Tests for session-scoped change detection (git baseline comparison)."""
+
+    def test_clear_creates_git_baseline(self, tmp_path: Path):
+        """Baseline file should exist after clear."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        run_hook("clear", tmp_path, git_output=" M existing.py")
+
+        assert (prawduct / ".session-git-baseline").exists()
+        assert " M existing.py" in (prawduct / ".session-git-baseline").read_text()
+
+    def test_preexisting_changes_no_reflection_needed(self, tmp_path: Path):
+        """Same git status as baseline -> no reflection gate."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Baseline captured with pre-existing changes
+        (prawduct / ".session-git-baseline").write_text(" M existing.py")
+
+        # Current status is identical — no new changes
+        result = run_hook("stop", tmp_path, git_output=" M existing.py")
+
+        assert result.returncode == 0
+
+    def test_new_session_changes_require_reflection(self, tmp_path: Path):
+        """Git status differs from baseline -> reflection gate fires."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Baseline had one file dirty
+        (prawduct / ".session-git-baseline").write_text(" M existing.py")
+
+        # Now a different file is changed — not in baseline
+        result = run_hook("stop", tmp_path, git_output=" M src/new.py")
+
+        assert result.returncode == 2
+        assert "REFLECTION" in result.stderr
+
+    def test_no_baseline_falls_back_to_current(self, tmp_path: Path):
+        """Missing baseline file -> uses git_has_changes (backward compat)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # No baseline file exists
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "REFLECTION" in result.stderr
+
+    def test_baseline_cleaned_on_clear(self, tmp_path: Path):
+        """Clear removes old baseline before creating new one."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("old baseline content")
+
+        run_hook("clear", tmp_path, git_output="")
+
+        # Baseline should now be empty (clean status)
+        assert (prawduct / ".session-git-baseline").read_text() == ""
+
 
 class TestStopCriticGate:
     def test_critic_gate_triggers(self, tmp_path: Path):
-        """Build plan + code changes + no findings → blocked."""
+        """Build plan + code changes + no findings -> blocked."""
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
         (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
@@ -185,15 +251,15 @@ class TestStopCriticGate:
         assert "CRITIC" in result.stderr
 
     def test_critic_gate_passes_with_recent_findings(self, tmp_path: Path):
-        """Valid findings with recent mtime → passes."""
+        """Valid findings with recent mtime -> passes."""
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
         (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct, offset_seconds=-60)
 
-        # Create findings file (after session start)
         findings = {
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "findings": [],
@@ -212,19 +278,18 @@ class TestStopCriticGate:
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
         (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
 
-        # Only .prawduct files changed — no code changes
         result = run_hook("stop", tmp_path, git_output=" M .prawduct/learnings.md")
 
         assert result.returncode == 0
 
     def test_no_git_exits_clean(self, tmp_path: Path):
-        """No git available → gates skip gracefully."""
+        """No git available -> gates skip gracefully."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
 
-        # Create a mock git that always fails (simulating no git repo)
         mock_bin = tmp_path / "_mock_bin"
         mock_bin.mkdir()
         mock_git = mock_bin / "git"
@@ -239,19 +304,20 @@ class TestStopCriticGate:
         assert result.returncode == 0
 
     def test_stale_findings_blocked(self, tmp_path: Path):
-        """Findings with mtime before session start → blocked."""
+        """Findings with mtime before session start -> blocked."""
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
         (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-git-baseline").write_text("")
 
         # Create findings file first
         findings = {"findings": [], "summary": "Old findings."}
         (prawduct / ".critic-findings.json").write_text(json.dumps(findings))
 
         import time
-        time.sleep(1.1)  # Ensure mtime is strictly before session start
+        time.sleep(1.1)
 
         # Now create session start (after findings)
         make_session_start(prawduct, offset_seconds=0)
@@ -263,20 +329,18 @@ class TestStopCriticGate:
 
 
 # =============================================================================
-# Content validation (Chunk 3 — strengthened Critic gate)
+# Content validation
 # =============================================================================
 
 
 class TestCriticContentValidation:
-    """Tests for the content validation added to the Critic gate."""
-
     def _setup_critic_scenario(self, tmp_path: Path, findings_content: str) -> Path:
-        """Set up a scenario where mtime check passes and content is validated."""
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
         (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct, offset_seconds=-60)
         (prawduct / ".critic-findings.json").write_text(findings_content)
         return prawduct
@@ -326,42 +390,6 @@ class TestCriticContentValidation:
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
         assert result.returncode == 0
 
-    def test_no_python3_falls_back_to_mtime_only(self, tmp_path: Path):
-        """Without python3, falls back to mtime-only check (passes)."""
-        prawduct = tmp_path / ".prawduct"
-        artifacts = prawduct / "artifacts"
-        artifacts.mkdir(parents=True)
-        (artifacts / "build-plan.md").write_text("# Build Plan\n")
-        (prawduct / ".session-reflected").write_text("reflected")
-        make_session_start(prawduct, offset_seconds=-60)
-        # Rubber-stamp content that would fail validation
-        (prawduct / ".critic-findings.json").write_text(
-            json.dumps({"findings": [], "summary": ""})
-        )
-
-        # Build a mock_bin with git + essential tools but NO python3
-        mock_bin = tmp_path / "_mock_bin_nopy"
-        mock_bin.mkdir()
-        mock_git = mock_bin / "git"
-        mock_git.write_text(
-            '#!/bin/bash\nif [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi\n'
-            'if [[ "$1" == "status" ]]; then printf " M src/app.py"; exit 0; fi\nexit 0\n'
-        )
-        mock_git.chmod(0o755)
-        # Symlink tools the hook needs from /usr/bin (head, awk, grep) but NOT python3
-        import shutil
-        for tool in ["head", "awk", "grep"]:
-            tool_path = shutil.which(tool)
-            if tool_path:
-                os.symlink(tool_path, mock_bin / tool)
-
-        result = run_hook(
-            "stop", tmp_path, git_output=" M src/app.py",
-            env_extra={"PATH": str(mock_bin) + ":/bin"},
-        )
-
-        assert result.returncode == 0
-
 
 # =============================================================================
 # Invalid command
@@ -371,6 +399,40 @@ class TestCriticContentValidation:
 class TestInvalidCommand:
     def test_unknown_command(self, tmp_path: Path):
         result = run_hook("bogus", tmp_path)
-
         assert result.returncode == 1
         assert "Usage" in result.stderr
+
+    def test_no_command(self, tmp_path: Path):
+        """No arguments at all."""
+        env = {
+            "HOME": str(tmp_path),
+            "CLAUDE_PROJECT_DIR": str(tmp_path),
+            "PATH": "/usr/bin:/bin",
+        }
+        result = subprocess.run(
+            ["python3", str(HOOK_PATH)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=10,
+        )
+        assert result.returncode == 1
+        assert "Usage" in result.stderr
+
+
+# =============================================================================
+# Sync trigger (unit test via import)
+# =============================================================================
+
+
+class TestSyncTrigger:
+    """Test that clear triggers sync (best-effort)."""
+
+    def test_clear_with_no_manifest_succeeds(self, tmp_path: Path):
+        """Clear should succeed even without a manifest (sync is best-effort)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("clear", tmp_path)
+        assert result.returncode == 0
+        assert (prawduct / ".session-start").exists()

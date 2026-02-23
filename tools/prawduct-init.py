@@ -3,8 +3,8 @@
 prawduct-init.py — Generate self-contained product repos.
 
 Creates the .prawduct/ structure, copies templates with variable substitution,
-sets up hooks, and configures .gitignore. Product repos have no runtime
-dependency on the framework — everything needed to build is generated here.
+sets up hooks, generates a sync manifest, and configures .gitignore. Product
+repos work standalone; the sync manifest enables automatic framework updates.
 
 Idempotent: running twice produces no changes on the second run.
 """
@@ -12,6 +12,7 @@ Idempotent: running twice produces no changes on the second run.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -22,12 +23,27 @@ from pathlib import Path
 FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = FRAMEWORK_DIR / "templates"
 
+# Import shared helpers from prawduct-sync.py
+_sync_path = FRAMEWORK_DIR / "tools" / "prawduct-sync.py"
+_sync_spec = importlib.util.spec_from_file_location("prawduct_sync", _sync_path)
+_sync_mod = importlib.util.module_from_spec(_sync_spec)
+_sync_spec.loader.exec_module(_sync_mod)
+
+compute_hash = _sync_mod.compute_hash
+compute_block_hash = _sync_mod.compute_block_hash
+render_template = _sync_mod.render_template
+merge_settings = _sync_mod.merge_settings
+create_manifest = _sync_mod.create_manifest
+BLOCK_BEGIN = _sync_mod.BLOCK_BEGIN
+
 # Session files that should be gitignored in product repos
 GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.session-git-baseline",
     ".prawduct/.session-reflected",
     ".prawduct/.session-start",
+    ".prawduct/sync-manifest.json",
     "__pycache__/",
 ]
 
@@ -53,9 +69,7 @@ def ensure_dir(path: Path) -> bool:
 def write_template(src: Path, dst: Path, subs: dict[str, str]) -> bool:
     """Copy a template with variable substitution. Skips if dst exists.
     Returns True if file was written."""
-    content = src.read_text()
-    for key, value in subs.items():
-        content = content.replace(key, value)
+    content = render_template(src, subs)
 
     if dst.is_file():
         if dst.read_text() == content:
@@ -83,66 +97,6 @@ def copy_hook(src: Path, dst: Path) -> bool:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
     dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return True
-
-
-def merge_settings(dst: Path, template_path: Path) -> bool:
-    """Create or merge .claude/settings.json. Preserves user hooks.
-    Returns True if file was written."""
-    template = json.loads(template_path.read_text())
-
-    if not dst.is_file():
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text(json.dumps(template, indent=2) + "\n")
-        return True
-
-    try:
-        existing = json.loads(dst.read_text())
-    except json.JSONDecodeError:
-        log(f"  ! Could not parse {dst.name} — skipping merge")
-        return False
-
-    # Already matches?
-    if json.dumps(existing, sort_keys=True) == json.dumps(template, sort_keys=True):
-        return False
-
-    # Collect prawduct hook commands from template
-    our_commands: set[str] = set()
-    template_hooks = template.get("hooks", {})
-    for entries in template_hooks.values():
-        for entry in entries:
-            for hook in entry.get("hooks", []):
-                if hook.get("type") == "command":
-                    our_commands.add(hook["command"])
-
-    # Merge: start with template hooks, add non-prawduct user hooks
-    merged_hooks: dict = dict(template_hooks)
-    for event, entries in existing.get("hooks", {}).items():
-        if event not in merged_hooks:
-            merged_hooks[event] = entries
-            continue
-
-        user_entries = []
-        for entry in entries:
-            is_ours = any(
-                hook.get("command") in our_commands
-                for hook in entry.get("hooks", [])
-                if hook.get("type") == "command"
-            )
-            if not is_ours:
-                user_entries.append(entry)
-
-        if user_entries:
-            merged_hooks[event] = merged_hooks[event] + user_entries
-
-    # Preserve other settings keys (companyAnnouncements, etc.)
-    merged = dict(existing)
-    merged["hooks"] = merged_hooks
-
-    if json.dumps(merged, sort_keys=True) == json.dumps(existing, sort_keys=True):
-        return False
-
-    dst.write_text(json.dumps(merged, indent=2) + "\n")
     return True
 
 
@@ -189,9 +143,20 @@ def run_init(target_dir: str, product_name: str) -> dict:
         if ensure_dir(path):
             actions.append(f"Created {subdir}/")
 
-    # 2. CLAUDE.md
-    if write_template(TEMPLATES_DIR / "product-claude.md", target / "CLAUDE.md", subs):
-        actions.append("Created CLAUDE.md")
+    # 2. CLAUDE.md — three-way handling for existing repos
+    claude_dst = target / "CLAUDE.md"
+    if not claude_dst.is_file():
+        # New file — write full template
+        if write_template(TEMPLATES_DIR / "product-claude.md", claude_dst, subs):
+            actions.append("Created CLAUDE.md")
+    elif BLOCK_BEGIN not in claude_dst.read_text():
+        # Existing file without markers — merge: template + user content below
+        existing_content = claude_dst.read_text()
+        template_content = render_template(TEMPLATES_DIR / "product-claude.md", subs)
+        merged = template_content.rstrip("\n") + "\n\n" + existing_content
+        claude_dst.write_text(merged)
+        actions.append("Merged framework content into existing CLAUDE.md")
+    # else: already has markers — skip (sync handles updates)
 
     # 3. Critic review instructions
     if write_template(
@@ -224,16 +189,33 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created tools/product-hook")
 
-    # 7. Settings.json
+    # 7. Settings.json (with subs for banner)
     if merge_settings(
         target / ".claude" / "settings.json",
         TEMPLATES_DIR / "product-settings.json",
+        subs,
     ):
         actions.append("Created/updated .claude/settings.json")
 
     # 8. .gitignore
     if update_gitignore(target):
         actions.append("Updated .gitignore")
+
+    # 9. Sync manifest
+    manifest_path = target / ".prawduct" / "sync-manifest.json"
+    if not manifest_path.is_file():
+        claude_content = (target / "CLAUDE.md").read_text()
+        file_hashes = {
+            "CLAUDE.md": compute_block_hash(claude_content),
+            ".prawduct/critic-review.md": compute_hash(
+                target / ".prawduct" / "critic-review.md"
+            ),
+            "tools/product-hook": compute_hash(target / "tools" / "product-hook"),
+            ".claude/settings.json": None,  # merge_settings doesn't use hash
+        }
+        manifest = create_manifest(target, FRAMEWORK_DIR, product_name, file_hashes)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+        actions.append("Created .prawduct/sync-manifest.json")
 
     return {
         "target": str(target),
@@ -270,7 +252,7 @@ def main() -> int:
 
     if is_v1_repo(target):
         log("This looks like a v1 Prawduct repo.")
-        log("Run prawduct-migrate.py to upgrade to v3:")
+        log("Run prawduct-migrate.py to upgrade:")
         log(f"  python3 {FRAMEWORK_DIR / 'tools' / 'prawduct-migrate.py'} {target}")
         return 1
 

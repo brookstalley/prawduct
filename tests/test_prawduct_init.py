@@ -26,7 +26,16 @@ update_gitignore = _mod.update_gitignore
 run_init = _mod.run_init
 is_v1_repo = _mod.is_v1_repo
 main = _mod.main
+compute_block_hash = _mod.compute_block_hash
 GITIGNORE_ENTRIES = _mod.GITIGNORE_ENTRIES
+
+# Import sync module for block constants
+_SYNC_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-sync.py"
+_sync_spec = importlib.util.spec_from_file_location("prawduct_sync", _SYNC_PATH)
+_sync_mod = importlib.util.module_from_spec(_sync_spec)
+_sync_spec.loader.exec_module(_sync_mod)
+BLOCK_BEGIN = _sync_mod.BLOCK_BEGIN
+BLOCK_END = _sync_mod.BLOCK_END
 
 
 # =============================================================================
@@ -148,10 +157,10 @@ class TestMergeSettings:
         tpl.write_text(json.dumps({
             "hooks": {
                 "SessionStart": [{"matcher": "clear", "hooks": [
-                    {"type": "command", "command": "\"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
                 ]}],
                 "Stop": [{"matcher": "", "hooks": [
-                    {"type": "command", "command": "\"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
                 ]}],
             }
         }, indent=2))
@@ -367,3 +376,179 @@ class TestV1Detection:
         )
         result = main()
         assert result == 1
+
+
+# =============================================================================
+# Sync manifest
+# =============================================================================
+
+
+class TestSyncManifest:
+    def test_manifest_created(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        manifest_path = tmp_path / ".prawduct" / "sync-manifest.json"
+        assert manifest_path.is_file()
+
+    def test_manifest_structure(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        manifest = json.loads(
+            (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        assert manifest["format_version"] == 1
+        assert manifest["product_name"] == "TestProduct"
+        assert "framework_source" in manifest
+        assert "last_sync" in manifest
+        assert "CLAUDE.md" in manifest["files"]
+        assert ".prawduct/critic-review.md" in manifest["files"]
+        assert "tools/product-hook" in manifest["files"]
+        assert ".claude/settings.json" in manifest["files"]
+
+    def test_manifest_has_hashes(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        manifest = json.loads(
+            (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        # Template files should have hashes
+        assert manifest["files"]["CLAUDE.md"]["generated_hash"] is not None
+        assert manifest["files"][".prawduct/critic-review.md"]["generated_hash"] is not None
+        assert manifest["files"]["tools/product-hook"]["generated_hash"] is not None
+        # merge_settings doesn't use hash
+        assert manifest["files"][".claude/settings.json"]["generated_hash"] is None
+
+    def test_manifest_idempotent(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        result = run_init(str(tmp_path), "TestProduct")
+        # Manifest already exists — should not be recreated
+        assert not any("sync-manifest" in a for a in result["actions"])
+
+
+# =============================================================================
+# Banner
+# =============================================================================
+
+
+class TestBanner:
+    def test_settings_has_banner(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        assert "companyAnnouncements" in settings
+        banner = settings["companyAnnouncements"]
+        assert isinstance(banner, list)
+        banner_text = banner[0]
+        assert "TestProduct" in banner_text
+        assert "Prawduct" in banner_text
+        assert "{{PRODUCT_NAME}}" not in banner_text
+
+    def test_settings_has_python_hook_commands(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        for event_entries in settings["hooks"].values():
+            for entry in event_entries:
+                for hook in entry.get("hooks", []):
+                    cmd = hook.get("command", "")
+                    if "product-hook" in cmd:
+                        assert cmd.startswith("python3 ")
+
+
+# =============================================================================
+# Block markers in CLAUDE.md
+# =============================================================================
+
+
+class TestBlockMarkers:
+    def test_claude_md_has_markers(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        content = (tmp_path / "CLAUDE.md").read_text()
+        assert BLOCK_BEGIN in content
+        assert BLOCK_END in content
+
+    def test_title_is_before_markers(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        content = (tmp_path / "CLAUDE.md").read_text()
+        title_pos = content.find("# CLAUDE.md")
+        begin_pos = content.find(BLOCK_BEGIN)
+        assert title_pos < begin_pos
+
+    def test_manifest_uses_block_template_strategy(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        manifest = json.loads(
+            (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        assert manifest["files"]["CLAUDE.md"]["strategy"] == "block_template"
+
+    def test_manifest_hash_equals_block_hash(self, tmp_path: Path):
+        run_init(str(tmp_path), "TestProduct")
+        manifest = json.loads(
+            (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        content = (tmp_path / "CLAUDE.md").read_text()
+        expected_hash = compute_block_hash(content)
+        assert manifest["files"]["CLAUDE.md"]["generated_hash"] == expected_hash
+
+
+# =============================================================================
+# Existing CLAUDE.md merge behavior
+# =============================================================================
+
+
+class TestExistingClaudeMd:
+    """Init on a repo that already has a CLAUDE.md without Prawduct markers."""
+
+    def test_existing_claude_md_gets_markers(self, tmp_path: Path):
+        """An existing CLAUDE.md without markers gets framework content merged in."""
+        (tmp_path / "CLAUDE.md").write_text("# My Project\n\nExisting instructions.\n")
+
+        run_init(str(tmp_path), "TestProduct")
+
+        content = (tmp_path / "CLAUDE.md").read_text()
+        assert BLOCK_BEGIN in content
+        assert BLOCK_END in content
+
+    def test_existing_content_preserved_below_markers(self, tmp_path: Path):
+        """User's original content appears after PRAWDUCT:END marker."""
+        user_content = "# My Project\n\nExisting instructions.\n"
+        (tmp_path / "CLAUDE.md").write_text(user_content)
+
+        run_init(str(tmp_path), "TestProduct")
+
+        content = (tmp_path / "CLAUDE.md").read_text()
+        end_pos = content.find(BLOCK_END)
+        after_markers = content[end_pos + len(BLOCK_END):]
+        assert "# My Project" in after_markers
+        assert "Existing instructions." in after_markers
+
+    def test_existing_claude_md_with_markers_not_modified(self, tmp_path: Path):
+        """If CLAUDE.md already has markers, init leaves it alone."""
+        marked_content = (
+            "# CLAUDE.md — TestProduct\n\n"
+            f"{BLOCK_BEGIN}\nFramework content\n{BLOCK_END}\n\n"
+            "User notes here.\n"
+        )
+        (tmp_path / "CLAUDE.md").write_text(marked_content)
+
+        result = run_init(str(tmp_path), "TestProduct")
+
+        assert (tmp_path / "CLAUDE.md").read_text() == marked_content
+        assert not any("CLAUDE.md" in a for a in result["actions"])
+
+    def test_manifest_hash_correct_after_merge(self, tmp_path: Path):
+        """Manifest block hash is non-null after merging into existing CLAUDE.md."""
+        (tmp_path / "CLAUDE.md").write_text("# Existing\n\nStuff here.\n")
+
+        run_init(str(tmp_path), "TestProduct")
+
+        manifest = json.loads(
+            (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        content = (tmp_path / "CLAUDE.md").read_text()
+        expected_hash = compute_block_hash(content)
+        assert expected_hash is not None
+        assert manifest["files"]["CLAUDE.md"]["generated_hash"] == expected_hash
+
+    def test_merge_action_reported(self, tmp_path: Path):
+        """The merge action appears in the result."""
+        (tmp_path / "CLAUDE.md").write_text("# Existing\n")
+
+        result = run_init(str(tmp_path), "TestProduct")
+
+        assert any("Merged" in a and "CLAUDE.md" in a for a in result["actions"])

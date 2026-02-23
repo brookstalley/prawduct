@@ -1,117 +1,289 @@
-#!/usr/bin/env bash
-#
-# product-hook — Session governance for Prawduct products.
-#
-# Enforces two structural gates:
-# 1. Reflection: files modified → reflection must be captured before session end
-# 2. Critic review: code built against a plan → independent review must happen
-#
-# Usage (in .claude/settings.json):
-#   "$CLAUDE_PROJECT_DIR/tools/product-hook" stop
-#   "$CLAUDE_PROJECT_DIR/tools/product-hook" clear
+#!/usr/bin/env python3
+"""
+product-hook — Session governance for Prawduct products.
 
-set -euo pipefail
+Enforces two structural gates:
+1. Reflection: files modified -> reflection must be captured before session end
+2. Critic review: code built against a plan -> independent review must happen
 
-PRAWDUCT_DIR="${CLAUDE_PROJECT_DIR:-.}/.prawduct"
-REFLECTED_FILE="$PRAWDUCT_DIR/.session-reflected"
-SESSION_START_FILE="$PRAWDUCT_DIR/.session-start"
-CRITIC_FINDINGS="$PRAWDUCT_DIR/.critic-findings.json"
-BUILD_PLAN="$PRAWDUCT_DIR/artifacts/build-plan.md"
+Also triggers framework sync on session start (best-effort).
 
-case "${1:-}" in
-  clear)
-    # Reset session state
-    rm -f "$REFLECTED_FILE" "$SESSION_START_FILE"
-    if [[ -d "$PRAWDUCT_DIR" ]]; then
-      date -u +%Y-%m-%dT%H:%M:%SZ > "$SESSION_START_FILE"
-    fi
-    ;;
+Usage (in .claude/settings.json):
+  python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" clear
+  python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" stop
+"""
 
-  stop)
-    # Skip if no .prawduct directory (not initialized yet)
-    [[ -d "$PRAWDUCT_DIR" ]] || exit 0
+from __future__ import annotations
 
-    BLOCKERS=""
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
-    # Check if any files were modified or added since session start
-    HAS_CHANGES=""
-    if command -v git &>/dev/null && git rev-parse --git-dir &>/dev/null 2>&1; then
-      HAS_CHANGES=$(git status --porcelain 2>/dev/null | head -1)
-    fi
+
+def get_project_dir() -> Path:
+    """Get the project directory from CLAUDE_PROJECT_DIR or cwd."""
+    return Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
+
+
+def get_prawduct_dir(project_dir: Path) -> Path:
+    return project_dir / ".prawduct"
+
+
+# =============================================================================
+# Sync trigger (best-effort on session start)
+# =============================================================================
+
+
+def try_sync(project_dir: Path) -> None:
+    """Attempt to run framework sync. Silently does nothing on any failure."""
+    try:
+        manifest_path = project_dir / ".prawduct" / "sync-manifest.json"
+        if not manifest_path.is_file():
+            return
+
+        manifest = json.loads(manifest_path.read_text())
+        fw_source = os.environ.get("PRAWDUCT_FRAMEWORK_DIR") or manifest.get("framework_source", "")
+        if not fw_source:
+            return
+
+        sync_script = Path(fw_source) / "tools" / "prawduct-sync.py"
+        if not sync_script.is_file():
+            return
+
+        subprocess.run(
+            [sys.executable, str(sync_script), str(project_dir), "--framework-dir", fw_source],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        pass  # Best-effort — never block session start
+
+
+# =============================================================================
+# Git helpers
+# =============================================================================
+
+
+def git_status_output(project_dir: Path) -> str | None:
+    """Return raw `git status --porcelain` output, or None on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout
+    except Exception:
+        return None
+
+
+def git_has_changes(project_dir: Path) -> str:
+    """Check if there are uncommitted changes. Returns first changed file or empty string."""
+    output = git_status_output(project_dir)
+    if output is None:
+        return ""
+    lines = output.strip().splitlines()
+    return lines[0] if lines else ""
+
+
+def git_has_session_changes(project_dir: Path) -> str:
+    """Check if uncommitted changes differ from session baseline.
+
+    Compares current git status to the baseline captured at session start.
+    Returns first new changed file or empty string. Falls back to
+    git_has_changes if no baseline exists (backward compat).
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    baseline_path = prawduct_dir / ".session-git-baseline"
+
+    if not baseline_path.is_file():
+        return git_has_changes(project_dir)
+
+    current = git_status_output(project_dir)
+    if current is None:
+        return ""
+
+    baseline = baseline_path.read_text()
+    baseline_lines = set(baseline.strip().splitlines())
+    current_lines = current.strip().splitlines()
+
+    for line in current_lines:
+        if line not in baseline_lines:
+            return line
+
+    return ""
+
+
+def git_has_code_changes(project_dir: Path) -> bool:
+    """Check if non-.prawduct files were modified."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
+        for line in result.stdout.strip().splitlines():
+            # Extract the file path (last field after status indicators)
+            parts = line.split()
+            if not parts:
+                continue
+            filepath = parts[-1]
+            if not filepath.startswith(".prawduct/"):
+                return True
+        return False
+    except Exception:
+        return False
+
+
+# =============================================================================
+# clear command
+# =============================================================================
+
+
+def cmd_clear(project_dir: Path) -> int:
+    """Reset session state and trigger sync."""
+    prawduct_dir = get_prawduct_dir(project_dir)
+
+    # Remove session files
+    for name in (".session-reflected", ".session-start", ".session-git-baseline"):
+        f = prawduct_dir / name
+        if f.is_file():
+            f.unlink()
+
+    # Create session start timestamp and git baseline
+    if prawduct_dir.is_dir():
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        (prawduct_dir / ".session-start").write_text(stamp)
+
+        # Capture git status baseline for session-scoped change detection
+        baseline = git_status_output(project_dir)
+        if baseline is not None:
+            (prawduct_dir / ".session-git-baseline").write_text(baseline)
+
+    # Trigger framework sync (best-effort)
+    try_sync(project_dir)
+
+    return 0
+
+
+# =============================================================================
+# stop command
+# =============================================================================
+
+
+def validate_critic_findings(findings_path: Path) -> bool:
+    """Validate that critic findings JSON has required structure."""
+    try:
+        data = json.loads(findings_path.read_text())
+        if not isinstance(data.get("findings"), list):
+            return False
+        summary = data.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def cmd_stop(project_dir: Path) -> int:
+    """Check governance gates before session end."""
+    prawduct_dir = get_prawduct_dir(project_dir)
+
+    # Skip if no .prawduct directory
+    if not prawduct_dir.is_dir():
+        return 0
+
+    blockers: list[str] = []
+
+    # Check for changes (session-scoped: only new changes since session start)
+    has_changes = git_has_session_changes(project_dir)
 
     # Gate 1: Reflection
-    if [[ -n "$HAS_CHANGES" && ! -f "$REFLECTED_FILE" ]]; then
-      BLOCKERS="${BLOCKERS}REFLECTION: Files were modified but no session reflection was captured.
-  1. Reflect on what changed and what you learned
-  2. Update .prawduct/learnings.md if anything is worth capturing
-  3. Write your reflection to .prawduct/.session-reflected
-
-"
-    fi
+    reflected_file = prawduct_dir / ".session-reflected"
+    if has_changes and not reflected_file.is_file():
+        blockers.append(
+            "REFLECTION: Files were modified but no session reflection was captured.\n"
+            "  1. Reflect on what changed and what you learned\n"
+            "  2. Update .prawduct/learnings.md if anything is worth capturing\n"
+            "  3. Write your reflection to .prawduct/.session-reflected\n"
+            "  4. Note whether the methodology helped or hindered this session\n"
+        )
 
     # Gate 2: Critic review (only when building against a plan)
-    if [[ -n "$HAS_CHANGES" && -f "$BUILD_PLAN" ]]; then
-      # Check if any non-.prawduct files were modified (actual code, not just state)
-      HAS_CODE_CHANGES=""
-      if command -v git &>/dev/null && git rev-parse --git-dir &>/dev/null 2>&1; then
-        HAS_CODE_CHANGES=$(git status --porcelain 2>/dev/null | awk '{print $NF}' | grep -v '^\.prawduct/' | head -1 || true)
-      fi
+    build_plan = prawduct_dir / "artifacts" / "build-plan.md"
+    if has_changes and build_plan.is_file():
+        if git_has_code_changes(project_dir):
+            needs_review = True
 
-      if [[ -n "$HAS_CODE_CHANGES" ]]; then
-        NEEDS_REVIEW=true
+            # Check if critic findings exist and are from this session
+            critic_findings = prawduct_dir / ".critic-findings.json"
+            session_start_file = prawduct_dir / ".session-start"
+            if critic_findings.is_file() and session_start_file.is_file():
+                try:
+                    session_start = session_start_file.read_text().strip()
+                    findings_mtime = datetime.fromtimestamp(
+                        critic_findings.stat().st_mtime, tz=timezone.utc
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        # Check if critic findings exist and are from this session
-        if [[ -f "$CRITIC_FINDINGS" && -f "$SESSION_START_FILE" ]]; then
-          SESSION_START=$(cat "$SESSION_START_FILE")
-          FINDINGS_MTIME=$(date -r "$CRITIC_FINDINGS" -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
-          if [[ -n "$FINDINGS_MTIME" && "$FINDINGS_MTIME" > "$SESSION_START" ]]; then
-            # Mtime check passed — now validate content if python3 is available
-            if command -v python3 &>/dev/null; then
-              if python3 -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    assert isinstance(d.get('findings'), list), 'findings must be an array'
-    assert isinstance(d.get('summary'), str) and d['summary'].strip(), 'summary must be non-empty'
-except Exception as e:
-    print(str(e), file=sys.stderr)
-    sys.exit(1)
-" "$CRITIC_FINDINGS" 2>/dev/null; then
-                NEEDS_REVIEW=false
-              fi
-              # If python3 validation fails, NEEDS_REVIEW stays true (rubber stamp blocked)
-            else
-              # No python3 — fall back to mtime-only (graceful degradation)
-              NEEDS_REVIEW=false
-            fi
-          fi
-        fi
+                    if findings_mtime > session_start:
+                        # Mtime check passed — validate content
+                        if validate_critic_findings(critic_findings):
+                            needs_review = False
+                except Exception:
+                    pass  # Any error means we need review
 
-        if [[ "$NEEDS_REVIEW" == "true" ]]; then
-          BLOCKERS="${BLOCKERS}CRITIC REVIEW: Code was modified with an active build plan but no Critic review was recorded this session.
-  Invoke the Critic as a separate agent (Task tool) for independent review before ending.
-  The Critic should read .prawduct/critic-review.md for its review instructions.
-  After review, record findings to .prawduct/.critic-findings.json
-
-"
-        fi
-      fi
-    fi
+            if needs_review:
+                blockers.append(
+                    "CRITIC REVIEW: Code was modified with an active build plan but no Critic review was recorded this session.\n"
+                    "  Invoke the Critic as a separate agent (Task tool) for independent review before ending.\n"
+                    "  The Critic should read .prawduct/critic-review.md for its review instructions.\n"
+                    "  After review, record findings to .prawduct/.critic-findings.json\n"
+                )
 
     # Report blockers or exit clean
-    if [[ -n "$BLOCKERS" ]]; then
-      echo "" >&2
-      echo "BLOCKED — resolve before ending session:" >&2
-      echo "" >&2
-      echo "$BLOCKERS" >&2
-      exit 2
-    fi
+    if blockers:
+        print("", file=sys.stderr)
+        print("BLOCKED — resolve before ending session:", file=sys.stderr)
+        print("", file=sys.stderr)
+        for blocker in blockers:
+            print(blocker, file=sys.stderr)
+        return 2
 
-    exit 0
-    ;;
+    return 0
 
-  *)
-    echo "Usage: product-hook {clear|stop}" >&2
-    exit 1
-    ;;
-esac
+
+# =============================================================================
+# main
+# =============================================================================
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("Usage: product-hook {clear|stop}", file=sys.stderr)
+        return 1
+
+    command = sys.argv[1]
+    project_dir = get_project_dir()
+
+    if command == "clear":
+        return cmd_clear(project_dir)
+    elif command == "stop":
+        return cmd_stop(project_dir)
+    else:
+        print("Usage: product-hook {clear|stop}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

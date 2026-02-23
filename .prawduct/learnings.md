@@ -6,6 +6,30 @@ When this file grows past ~3,000 tokens, prune: consolidate related entries, arc
 
 ---
 
+## Init leaves CLAUDE.md unmerged when onboarding existing repos (RESOLVED)
+
+**Pattern**: `prawduct-init.py`'s `write_template` skips existing files to avoid overwriting user edits. When onboarding an existing repo that already has a CLAUDE.md, init created all other Prawduct files but left CLAUDE.md untouched — no framework block markers, no Prawduct content.
+
+**Resolution**: Added three-way CLAUDE.md handling in `run_init()`: new file → write template; existing without markers → prepend framework template, preserving user content below END marker; existing with markers → skip (sync handles). The merge action is reported in output. Manifest hash is correctly computed from the merged result.
+
+**Principle**: Relates to Complete Delivery (#2) and Honest Confidence (#5).
+
+## Mock scripts break with embedded newlines in f-strings
+
+**Pattern**: The test mock git script is built via an f-string with `textwrap.dedent`. When `git_output` contains literal newlines (e.g., `" M file.py\n"`), the newline breaks `textwrap.dedent` — the injected line has no leading whitespace, so dedent finds no common prefix and leaves the shebang indented, making the script non-functional.
+
+**Lesson**: When building mock scripts via f-string interpolation, avoid injecting values that contain newlines into the template. Test the mock's boundaries, not just the logic it simulates. Single-line mock outputs test the same comparison logic without fighting the test harness.
+
+**Principle**: Relates to Tests Are Contracts (#1) — tests should be robust to incidental complexity.
+
+## Shared modules via importlib work well for hyphenated Python scripts
+
+**Pattern**: The sync/init/migrate scripts need to share helpers (`compute_hash`, `render_template`, `merge_settings`, `create_manifest`) but have hyphenated filenames that prevent normal Python imports. Using `importlib.util.spec_from_file_location` for cross-script imports works cleanly — already used in test files, now used in production code too.
+
+**Lesson**: When multiple scripts need shared logic, extract it to one canonical module and import via importlib rather than duplicating. This prevented three copies of `merge_settings` from drifting apart. The pattern is: one module owns the function, others import it.
+
+**Principle**: Relates to Coherent Artifacts (#12) — one source of truth for shared logic.
+
 ## Judgment alone won't interrupt momentum
 
 **Pattern**: The v2 experiment replaced structural Critic gates with principles saying "invoke the Critic after each chunk." In the first real product build (Hum, chunk 1), Claude didn't read `methodology/building.md`, never invoked the Critic, and self-declared the chunk complete with 15 findings that any independent review would have caught. Discovery and planning methodology guides were read correctly — building was skipped because "start coding" doesn't naturally trigger "read the process guide first."

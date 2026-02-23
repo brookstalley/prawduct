@@ -51,6 +51,36 @@ current_phase: iteration
 # =============================================================================
 
 change_log:
+  # --- v4: block-marker sync (2026-02-23) ---
+  - what: 'Block-marker sync for CLAUDE.md'
+    why: 'CLAUDE.md sync was all-or-nothing: user edits anywhere caused the entire file
+      to be skipped. Since users need to add project-specific instructions, edits are
+      common and framework improvements never propagated. Added PRAWDUCT:BEGIN/END markers
+      to wrap framework-managed content. New block_template sync strategy updates only the
+      block between markers, preserving user content above/below. Migration adds markers
+      to existing repos and upgrades manifest strategy. 153 total tests (32 new).'
+    blast_radius: 'Modified: tools/prawduct-sync.py (block utilities + block_template strategy),
+      templates/product-claude.md (markers added), tools/prawduct-init.py (block hash),
+      tools/prawduct-migrate.py (add_block_markers + upgrade_manifest_strategy),
+      tests/test_prawduct_sync.py, tests/test_prawduct_init.py, tests/test_prawduct_migrate.py.'
+    classification: functional
+    date: 2026-02-23
+  # --- v4: sync, banner, cross-platform hook (2026-02-23) ---
+  - what: 'Product repo sync, banner, and cross-platform Python hook'
+    why: 'Product repos were fire-and-forget: framework template improvements never propagated.
+      Added sync manifest (.prawduct/sync-manifest.json) tracking framework-managed files with
+      SHA-256 hashes for user-edit detection. New prawduct-sync.py runs on session start (via
+      product-hook) to update templates, hooks, and settings while preserving user edits.
+      Rewrote product-hook from bash to Python for cross-platform compatibility. Added
+      companyAnnouncements banner to settings template. Updated prawduct-migrate.py with
+      v3→v4 path. 121 total tests (25 sync + 19 hook + 33 init + 44 migrate).'
+    blast_radius: 'New: tools/prawduct-sync.py, tests/test_prawduct_sync.py.
+      Rewritten: tools/product-hook (bash→Python), tests/test_product_hook.py.
+      Modified: templates/product-settings.json, tools/prawduct-init.py, tools/prawduct-migrate.py,
+      tests/test_prawduct_init.py, tests/test_prawduct_migrate.py, .claude/settings.json,
+      CLAUDE.md, .prawduct/project-state.yaml.'
+    classification: functional
+    date: 2026-02-23
   # --- v1→v3 migration tooling (2026-02-22) ---
   - what: 'prawduct-migrate.py + v1 detection in prawduct-init.py'
     why: 'V1 product repos depend on deleted framework scripts (governance-hook,
@@ -205,7 +235,7 @@ build_plan:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 7
+    test_count: 8
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md
@@ -214,6 +244,7 @@ build_state:
       - tests/test_prawduct_init.py
       - tests/test_product_hook.py
       - tests/test_prawduct_migrate.py
+      - tests/test_prawduct_sync.py
 
 # =============================================================================
 # DEPRECATED TERMS

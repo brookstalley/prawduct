@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"
           }
         ]
       }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"
           }
         ]
       }

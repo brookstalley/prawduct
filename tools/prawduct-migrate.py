@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """
-prawduct-migrate.py — Migrate v1 product repos to v3 (self-contained).
+prawduct-migrate.py — Migrate product repos to the latest version.
+
+Handles:
+  v1 → v4: Full migration from framework-dependent repos
+  v3 → v4: Add sync manifest, Python hook, banner
+  v4 → v4: Idempotent (no changes)
 
 V1 repos depend on an external framework directory via .prawduct/framework-path.
-V3 repos are fully self-contained. This script makes any repo v3-shaped:
-overwrites the bootstrap CLAUDE.md, replaces hooks, copies product-hook,
-archives historical v1 directories, and cleans up v1-only files.
+V3 repos are self-contained with a bash product-hook.
+V4 repos add sync manifest, Python hook, and banner.
 
-Idempotent: running on an already-v3 repo produces zero changes.
-Running twice on a v1 repo produces changes on first run, zero on second.
+Idempotent: running on an already-current repo produces zero changes.
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -25,7 +29,33 @@ from pathlib import Path
 FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = FRAMEWORK_DIR / "templates"
 
-# V3 gitignore entries (same as prawduct-init.py)
+# Import shared helpers from prawduct-sync.py
+_sync_path = FRAMEWORK_DIR / "tools" / "prawduct-sync.py"
+_sync_spec = importlib.util.spec_from_file_location("prawduct_sync", _sync_path)
+_sync_mod = importlib.util.module_from_spec(_sync_spec)
+_sync_spec.loader.exec_module(_sync_mod)
+
+compute_hash = _sync_mod.compute_hash
+compute_block_hash = _sync_mod.compute_block_hash
+extract_block = _sync_mod.extract_block
+render_template = _sync_mod.render_template
+merge_settings = _sync_mod.merge_settings
+create_manifest = _sync_mod.create_manifest
+BLOCK_BEGIN = _sync_mod.BLOCK_BEGIN
+BLOCK_END = _sync_mod.BLOCK_END
+
+# V4 gitignore entries
+V4_GITIGNORE_ENTRIES = [
+    ".claude/settings.local.json",
+    ".prawduct/.critic-findings.json",
+    ".prawduct/.session-git-baseline",
+    ".prawduct/.session-reflected",
+    ".prawduct/.session-start",
+    ".prawduct/sync-manifest.json",
+    "__pycache__/",
+]
+
+# V3 gitignore entries (subset of V4 — used to detect already-present entries)
 V3_GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
     ".prawduct/.critic-findings.json",
@@ -58,16 +88,19 @@ def log(msg: str) -> None:
 
 
 def detect_version(target: Path) -> str:
-    """Detect repo version. Returns 'v1', 'v3', 'partial', or 'unknown'."""
+    """Detect repo version. Returns 'v1', 'v3', 'v4', 'partial', or 'unknown'."""
     has_framework_path = (target / ".prawduct" / "framework-path").is_file()
     has_product_hook = (target / "tools" / "product-hook").is_file()
+    has_sync_manifest = (target / ".prawduct" / "sync-manifest.json").is_file()
 
     if has_framework_path and not has_product_hook:
         return "v1"
-    if has_product_hook and not has_framework_path:
-        return "v3"
     if has_framework_path and has_product_hook:
         return "partial"
+    if has_product_hook and has_sync_manifest:
+        return "v4"
+    if has_product_hook and not has_framework_path:
+        return "v3"
     return "unknown"
 
 
@@ -109,9 +142,7 @@ def infer_product_name(target: Path) -> str | None:
 def write_template_overwrite(src: Path, dst: Path, subs: dict[str, str]) -> bool:
     """Copy a template with variable substitution, overwriting existing content.
     Idempotent via content comparison. Returns True if file was written."""
-    content = src.read_text()
-    for key, value in subs.items():
-        content = content.replace(key, value)
+    content = render_template(src, subs)
 
     if dst.is_file():
         if dst.read_text() == content:
@@ -127,24 +158,27 @@ def write_template_if_missing(src: Path, dst: Path, subs: dict[str, str]) -> boo
     if dst.is_file():
         return False
 
-    content = src.read_text()
-    for key, value in subs.items():
-        content = content.replace(key, value)
+    content = render_template(src, subs)
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text(content)
     return True
 
 
-def replace_settings(dst: Path, template_path: Path) -> bool:
-    """Replace v1 hooks with v3 hooks in .claude/settings.json.
+def replace_settings(dst: Path, template_path: Path, subs: dict[str, str] | None = None) -> bool:
+    """Replace v1/v3 hooks with v4 hooks in .claude/settings.json.
 
     Identifies v1 hooks by checking if command contains 'framework-path',
-    'governance-hook', or 'prawduct-statusline'. Removes v1 statusLine
-    if it references prawduct. Preserves non-prawduct hooks and other
-    settings keys. Returns True if file was written.
+    'governance-hook', or 'prawduct-statusline'. Identifies v3 hooks by
+    checking for product-hook without python3 prefix. Removes v1 statusLine
+    if it references prawduct. Adds banner from template. Preserves
+    non-prawduct hooks and other settings keys. Returns True if file was written.
     """
-    template = json.loads(template_path.read_text())
+    template_text = template_path.read_text()
+    if subs:
+        for key, value in subs.items():
+            template_text = template_text.replace(key, value)
+    template = json.loads(template_text)
 
     if not dst.is_file():
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -167,36 +201,45 @@ def replace_settings(dst: Path, template_path: Path) -> bool:
                 return True
         return False
 
-    # Collect v3 hook commands from template
-    v3_commands: set[str] = set()
+    # Collect v4 hook commands from template
+    v4_commands: set[str] = set()
     template_hooks = template.get("hooks", {})
     for entries in template_hooks.values():
         for entry in entries:
             for hook in entry.get("hooks", []):
                 if hook.get("type") == "command":
-                    v3_commands.add(hook["command"])
+                    v4_commands.add(hook["command"])
 
-    # Build merged hooks: start with template hooks, add non-v1/non-v3 user hooks
+    def is_old_prawduct_hook(entry: dict) -> bool:
+        """Check if this is a v1 or v3 (pre-python3) prawduct hook."""
+        if is_v1_hook_entry(entry):
+            return True
+        # v3 bash hooks: product-hook without python3 prefix
+        for hook in entry.get("hooks", []):
+            cmd = hook.get("command", "")
+            if "product-hook" in cmd and not cmd.startswith("python3 "):
+                return True
+        return False
+
+    # Build merged hooks: start with template hooks, add non-prawduct user hooks
     merged_hooks: dict = dict(template_hooks)
     for event, entries in existing.get("hooks", {}).items():
         if event not in merged_hooks:
-            # Non-prawduct event — keep user entries, filtering out v1
-            user_entries = [e for e in entries if not is_v1_hook_entry(e)]
+            user_entries = [e for e in entries if not is_old_prawduct_hook(e)]
             if user_entries:
                 merged_hooks[event] = user_entries
             continue
 
-        # Event exists in template — add non-prawduct, non-v1 user entries
         user_entries = []
         for entry in entries:
-            if is_v1_hook_entry(entry):
-                continue  # Drop v1 hook
-            is_v3 = any(
-                hook.get("command") in v3_commands
+            if is_old_prawduct_hook(entry):
+                continue
+            is_v4 = any(
+                hook.get("command") in v4_commands
                 for hook in entry.get("hooks", [])
                 if hook.get("type") == "command"
             )
-            if not is_v3:
+            if not is_v4:
                 user_entries.append(entry)
 
         if user_entries:
@@ -215,6 +258,10 @@ def replace_settings(dst: Path, template_path: Path) -> bool:
             cmd = status_line.get("command", "")
             if "prawduct" in cmd.lower():
                 del merged["statusLine"]
+
+    # Always update banner from template (framework-managed)
+    if "companyAnnouncements" in template:
+        merged["companyAnnouncements"] = template["companyAnnouncements"]
 
     if json.dumps(merged, sort_keys=True) == json.dumps(existing, sort_keys=True):
         return False
@@ -272,7 +319,7 @@ def clean_v1_session_files(target: Path) -> list[str]:
 
 
 def clean_gitignore(target: Path) -> bool:
-    """Remove v1-specific entries, add v3 entries. Returns True if modified."""
+    """Remove v1-specific entries, add v4 entries. Returns True if modified."""
     gitignore = target / ".gitignore"
     changed = False
 
@@ -292,9 +339,9 @@ def clean_gitignore(target: Path) -> bool:
             continue
         filtered.append(line)
 
-    # Add missing v3 entries
+    # Add missing v4 entries
     existing_set = set(l.strip() for l in filtered)
-    missing = [e for e in V3_GITIGNORE_ENTRIES if e not in existing_set]
+    missing = [e for e in V4_GITIGNORE_ENTRIES if e not in existing_set]
 
     if missing:
         changed = True
@@ -329,8 +376,125 @@ def copy_hook(src: Path, dst: Path) -> bool:
     return True
 
 
+def generate_sync_manifest(target: Path, product_name: str) -> bool:
+    """Generate sync manifest for the product repo. Returns True if created."""
+    manifest_path = target / ".prawduct" / "sync-manifest.json"
+    if manifest_path.is_file():
+        return False
+
+    claude_path = target / "CLAUDE.md"
+    if claude_path.is_file():
+        claude_hash = compute_block_hash(claude_path.read_text())
+        if claude_hash is None:
+            claude_hash = compute_hash(claude_path)
+    else:
+        claude_hash = None
+
+    file_hashes = {
+        "CLAUDE.md": claude_hash,
+        ".prawduct/critic-review.md": compute_hash(
+            target / ".prawduct" / "critic-review.md"
+        ),
+        "tools/product-hook": compute_hash(target / "tools" / "product-hook"),
+        ".claude/settings.json": None,
+    }
+    manifest = create_manifest(target, FRAMEWORK_DIR, product_name, file_hashes)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return True
+
+
+def add_block_markers(target: Path, subs: dict[str, str]) -> bool:
+    """Add PRAWDUCT block markers to CLAUDE.md if missing.
+
+    - If already has markers → no-op.
+    - Otherwise → wrap the body (everything from the first ## heading onward)
+      in markers.
+
+    For V1 repos, CLAUDE.md was already overwritten by write_template_overwrite
+    with the current marked template, so this is a no-op. For V3/V4 repos
+    without markers, the existing content is preserved and wrapped.
+
+    Returns True if the file was modified.
+    """
+    claude_path = target / "CLAUDE.md"
+    if not claude_path.is_file():
+        return False
+
+    content = claude_path.read_text()
+
+    # Already has markers — no-op
+    if BLOCK_BEGIN in content and BLOCK_END in content:
+        return False
+
+    # Wrap everything from the first ## heading onward in markers
+    lines = content.split("\n")
+    body_start = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            body_start = i
+            break
+    else:
+        # No section headers found — wrap everything after first non-empty lines
+        body_start = min(2, len(lines))
+
+    before_lines = lines[:body_start]
+    body_lines = lines[body_start:]
+
+    # Build new content
+    before = "\n".join(before_lines)
+    if before and not before.endswith("\n"):
+        before += "\n"
+    before += "\n"
+
+    body = "\n".join(body_lines)
+    if body and not body.endswith("\n"):
+        body += "\n"
+
+    new_content = before + BLOCK_BEGIN + "\n\n" + body + "\n" + BLOCK_END + "\n"
+    claude_path.write_text(new_content)
+    return True
+
+
+def upgrade_manifest_strategy(target: Path) -> bool:
+    """Upgrade manifest CLAUDE.md strategy from 'template' to 'block_template'.
+
+    Recomputes the hash as a block hash. Returns True if modified.
+    """
+    manifest_path = target / ".prawduct" / "sync-manifest.json"
+    if not manifest_path.is_file():
+        return False
+
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError:
+        return False
+
+    files = manifest.get("files", {})
+    claude_config = files.get("CLAUDE.md")
+    if claude_config is None:
+        return False
+
+    if claude_config.get("strategy") == "block_template":
+        return False  # Already upgraded
+
+    # Change strategy
+    claude_config["strategy"] = "block_template"
+
+    # Recompute hash as block hash
+    claude_path = target / "CLAUDE.md"
+    if claude_path.is_file():
+        content = claude_path.read_text()
+        claude_config["generated_hash"] = compute_block_hash(content)
+
+    manifest["files"]["CLAUDE.md"] = claude_config
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return True
+
+
 def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
-    """Migrate a product repo to v3. Returns a summary of actions taken."""
+    """Migrate a product repo to v4. Returns a summary of actions taken."""
     target = Path(target_dir).resolve()
     actions: list[str] = []
 
@@ -356,27 +520,47 @@ def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
 
     subs = {"{{PRODUCT_NAME}}": product_name}
 
-    # 1. Overwrite CLAUDE.md with v3 template
-    if write_template_overwrite(
-        TEMPLATES_DIR / "product-claude.md", target / "CLAUDE.md", subs
-    ):
-        actions.append("Overwrote CLAUDE.md with v3 template")
+    # === V1-specific steps (v1 and partial) ===
+    if version in ("v1", "partial"):
+        # 1. Overwrite CLAUDE.md with current template
+        if write_template_overwrite(
+            TEMPLATES_DIR / "product-claude.md", target / "CLAUDE.md", subs
+        ):
+            actions.append("Overwrote CLAUDE.md with current template")
 
-    # 2. Replace hooks in settings.json
+        # 2. Delete v1 marker files
+        deleted = delete_v1_files(target)
+        for f in deleted:
+            actions.append(f"Deleted {f}")
+
+        # 3. Archive v1 directories
+        archived = archive_v1_dirs(target)
+        for d in archived:
+            actions.append(f"Archived {d} → .prawduct/archive/")
+
+        # 4. Clean v1 session files
+        cleaned = clean_v1_session_files(target)
+        for f in cleaned:
+            actions.append(f"Deleted session file {f}")
+
+    # === Steps for all non-v4 repos (v1, v3, partial) ===
+
+    # Replace hooks in settings.json (handles v1, v3 bash, and adds banner)
     if replace_settings(
         target / ".claude" / "settings.json",
         TEMPLATES_DIR / "product-settings.json",
+        subs,
     ):
-        actions.append("Replaced hooks in .claude/settings.json")
+        actions.append("Updated .claude/settings.json (hooks + banner)")
 
-    # 3. Copy product-hook
+    # Copy product-hook (Python version)
     if copy_hook(
         FRAMEWORK_DIR / "tools" / "product-hook",
         target / "tools" / "product-hook",
     ):
-        actions.append("Installed tools/product-hook")
+        actions.append("Installed tools/product-hook (Python)")
 
-    # 4. Create critic-review.md if missing
+    # Create critic-review.md if missing
     if write_template_if_missing(
         TEMPLATES_DIR / "critic-review.md",
         target / ".prawduct" / "critic-review.md",
@@ -384,7 +568,7 @@ def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
     ):
         actions.append("Created .prawduct/critic-review.md")
 
-    # 5. Create learnings.md if missing
+    # Create learnings.md if missing
     learnings = target / ".prawduct" / "learnings.md"
     if not learnings.is_file():
         learnings.parent.mkdir(parents=True, exist_ok=True)
@@ -393,24 +577,21 @@ def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
         )
         actions.append("Created .prawduct/learnings.md")
 
-    # 6. Delete v1 marker files
-    deleted = delete_v1_files(target)
-    for f in deleted:
-        actions.append(f"Deleted {f}")
+    # Generate sync manifest
+    if generate_sync_manifest(target, product_name):
+        actions.append("Created .prawduct/sync-manifest.json")
 
-    # 7. Archive v1 directories
-    archived = archive_v1_dirs(target)
-    for d in archived:
-        actions.append(f"Archived {d} → .prawduct/archive/")
-
-    # 8. Clean v1 session files
-    cleaned = clean_v1_session_files(target)
-    for f in cleaned:
-        actions.append(f"Deleted session file {f}")
-
-    # 9. Clean gitignore
+    # Clean gitignore
     if clean_gitignore(target):
         actions.append("Updated .gitignore")
+
+    # Add block markers to CLAUDE.md if missing
+    if add_block_markers(target, subs):
+        actions.append("Added block markers to CLAUDE.md")
+
+    # Upgrade manifest strategy from template to block_template
+    if upgrade_manifest_strategy(target):
+        actions.append("Upgraded CLAUDE.md sync strategy to block_template")
 
     return {
         "target": str(target),
@@ -424,7 +605,7 @@ def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Migrate a Prawduct product repo from v1 to v3 (self-contained).",
+        description="Migrate a Prawduct product repo to the latest version.",
     )
     parser.add_argument(
         "target_dir",
@@ -471,10 +652,10 @@ def main() -> int:
             for action in result["actions"]:
                 log(f"  + {action}")
         else:
-            log("  (no changes — already v3)")
+            log("  (no changes — already up to date)")
         log("")
-        if result["version_after"] == "v3":
-            log("Migration complete. Product repo is now self-contained.")
+        if result["version_after"] == "v4":
+            log("Migration complete. Product repo is now self-contained with sync support.")
         else:
             log(f"Note: version detected as '{result['version_after']}' — review manually.")
 

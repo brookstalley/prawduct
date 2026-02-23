@@ -11,6 +11,7 @@ This is the most important methodology guide. Without reflection, the system rep
 - Fixing a bug (especially: why did it exist?)
 - Recovering from an error or unexpected state
 - Making a decision that required judgment
+- After receiving Critic findings (the richest source of learnings — an independent perspective surfacing blind spots you can't see yourself)
 - Ending a session where work was done
 
 The depth of reflection scales with significance. A routine bug fix might warrant a single sentence. A structural failure that required significant recovery warrants deep analysis.
@@ -66,6 +67,10 @@ Ask: should this learning change anything upstream?
 
 This step is what closes the learning loop. Without it, learnings accumulate but the system doesn't evolve. With it, every failure makes the system genuinely better.
 
+### Step 6: Methodology Check
+
+Did the methodology help or hinder this session? One sentence is enough for sessions where things went smoothly. When governance felt disproportionate, a common scenario wasn't covered, or you had to work around the process — say so specifically. This is the most valuable feedback the system can receive, and it's how the methodology itself evolves.
+
 ## Framework Reflection
 
 At phase transitions (finishing discovery, completing planning, finishing a build, beginning iteration), do a broader reflection:
@@ -78,6 +83,8 @@ At phase transitions (finishing discovery, completing planning, finishing a buil
 - **Learning completeness**: Were observations captured for everything significant that happened?
 
 This broader reflection produces change log entries and may trigger methodology updates. It's how the system stays calibrated across different product types.
+
+**Product feedback review**: If product repos exist, periodically scan their `learnings.md` for methodology feedback. This is the reverse channel — products discover gaps that the framework can't detect from the inside.
 
 ## Post-Fix Reflection
 

@@ -6,7 +6,7 @@ Building is where plans meet reality. The artifacts tell you what to build; the 
 
 For each chunk in the build plan:
 
-**Read the spec.** Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently.
+**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts in that directory. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently.
 
 **Write tests.** Tests come first or alongside implementation, not after. Tests are your specification made executable. They define the behavior you're implementing. If you can't write the test, you don't understand the requirement well enough to implement it.
 
@@ -32,7 +32,9 @@ When you can't verify directly, say what you can't verify and why. Tell the user
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document any notes or disagreements with rationale.
 
-**Update state.** Record what was built, what tests were added, and any issues discovered. Update the project state so the next session has accurate context.
+**Reflect.** The Critic just gave you independent feedback. This is the highest-signal moment for learning. Before moving on: What did the Critic catch that you missed? Does it match a pattern in `learnings.md`? If the finding reveals a blind spot, capture it now — don't wait for session end. If there's nothing to capture, that's fine. The point is to check, not to force a lesson.
+
+**Update state.** Record what was built, what tests were added, and any issues discovered. Update `project-state.yaml` so the next session has accurate context.
 
 ## Working With Specs
 

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"
           }
         ]
       }
@@ -17,10 +17,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"
           }
         ]
       }
     ]
-  }
+  },
+  "companyAnnouncements": [
+    " \u2597\u259f\u2588\u2588\u2588\u2599\u2596    {{PRODUCT_NAME}}\n \u2590\u2518 \u2588 \u259d\u258c    Built with Prawduct\n \u259d\u259c\u2588\u2588\u2588\u259b\u2598    Type hello for status"
+  ]
 }
