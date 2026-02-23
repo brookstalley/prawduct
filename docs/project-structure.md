@@ -19,7 +19,8 @@ prawduct/
 ├── tools/
 │   ├── reflection-hook                # Hook script: session clear + stop (framework)
 │   ├── product-hook                   # Hook script: session clear + stop (products, self-contained)
-│   └── prawduct-init.py               # Generates self-contained product repos
+│   ├── prawduct-init.py               # Generates self-contained product repos
+│   └── prawduct-migrate.py            # Migrates v1 product repos to v3 (self-contained)
 ├── templates/                         # Templates for product repos
 │   ├── product-claude.md              # Self-contained CLAUDE.md for products (v3 core)
 │   ├── critic-review.md              # Condensed Critic instructions for products (v3 core)
@@ -28,7 +29,11 @@ prawduct/
 │   ├── build-plan.md, product-brief.md, ...  # Artifact templates
 │   ├── human-interface/               # has_human_interface templates
 │   └── unattended-operation/          # runs_unattended templates
+├── pyproject.toml                        # Minimal pytest configuration
 ├── tests/
+│   ├── test_prawduct_init.py             # 27 automated tests for prawduct-init.py
+│   ├── test_prawduct_migrate.py          # 31+ automated tests for prawduct-migrate.py
+│   ├── test_product_hook.py              # 18 automated tests for product-hook
 │   └── scenarios/                     # 4 test scenarios for framework validation
 ├── docs/
 │   ├── principles.md                  # Full 22 principles with rationale
@@ -37,6 +42,7 @@ prawduct/
 ├── .prawduct/                         # Framework's own prawduct state
 │   ├── project-state.yaml             # Source of truth for framework iteration
 │   ├── learnings.md                   # Accumulated wisdom (read at session start)
+│   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   └── working-notes/                 # Development history and design notes
 └── .claude/
     └── settings.json                  # 2 hooks: SessionStart (clear) + Stop (reflection + Critic gate)

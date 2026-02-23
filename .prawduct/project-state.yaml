@@ -51,7 +51,88 @@ current_phase: iteration
 # =============================================================================
 
 change_log:
+  # --- v1→v3 migration tooling (2026-02-22) ---
+  - what: 'prawduct-migrate.py + v1 detection in prawduct-init.py'
+    why: 'V1 product repos depend on deleted framework scripts (governance-hook,
+      prawduct-statusline). New migration script makes any repo v3-shaped: overwrites
+      bootstrap CLAUDE.md, replaces hooks, copies product-hook, archives v1 directories,
+      cleans up v1 files. prawduct-init.py now detects v1 repos and redirects to migrate.
+      31 new tests for migrate, 3 new tests for v1 detection (76 total).'
+    blast_radius: 'New: tools/prawduct-migrate.py, tests/test_prawduct_migrate.py.
+      Modified: tools/prawduct-init.py, tests/test_prawduct_init.py, .prawduct/project-state.yaml.'
+    classification: functional
+    date: 2026-02-22
+  # --- post-audit follow-ups (2026-02-22) ---
+  - what: 'Pacing sensitivity and error handling strategy'
+    why: 'Pacing: framework said "ask fewest questions" but gave no guidance on detecting
+      fatigue or adapting dynamically. Added pacing section to discovery.md, Common Trap
+      to building.md, and condensed guidance to product-claude.md. Error handling: flagged
+      in cross-cutting concerns registry as lacking discovery coverage. Added Surface Error
+      Handling Approach section to discovery.md (infer-confirm-proceed, scaled to risk),
+      error_handling_approach field to project-state.yaml template, and updated cross-cutting
+      concerns registry.'
+    blast_radius: 'methodology/discovery.md, methodology/building.md, templates/product-claude.md,
+      templates/project-state.yaml, .prawduct/cross-cutting-concerns.md'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Trivial fixes: CLAUDE.md reference, modality-neutral accessibility examples'
+    why: 'Critic findings from meta-reflection audit: CLAUDE.md Reference section missing
+      cross-cutting-concerns.md, three locations used web-specific "semantic HTML" as
+      default accessibility example. Added reference, replaced with platform-neutral language.'
+    blast_radius: 'CLAUDE.md, methodology/discovery.md, templates/product-claude.md'
+    classification: cosmetic
+    date: 2026-02-22
+  # --- meta-reflection implementation (2026-02-22) ---
+  - what: 'Automated tests for framework executable code'
+    why: 'Framework prescribed test discipline (Principle 1) but had zero automated tests
+      for its own code. Added 42 pytest tests covering prawduct-init.py (24 tests for all
+      6 functions + template propagation) and product-hook (18 tests for both commands,
+      both gates, and content validation).'
+    blast_radius: 'New: pyproject.toml, tests/test_prawduct_init.py, tests/test_product_hook.py'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Strengthened Critic gate with content validation'
+    why: 'Critic findings file could be rubber-stamped (empty/missing summary). Added
+      python3-based JSON validation: findings must be an array, summary must be non-empty
+      string. Falls back to mtime-only if python3 unavailable (graceful degradation).'
+    blast_radius: 'tools/product-hook'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Cost awareness and accessibility in discovery'
+    why: 'Framework prescribed cost awareness (Principle 8) and accessibility (Principle 7)
+      but neither was systematically triggered during discovery. Added structurally-triggered
+      sections using infer-confirm-proceed, scaled to risk, capturing to existing
+      project-state.yaml fields.'
+    blast_radius: 'methodology/discovery.md, templates/product-claude.md'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Cross-cutting concerns registry and coverage audit'
+    why: 'Framework could validate what exists but not detect omissions. Added a concern-to-pipeline
+      registry (.prawduct/cross-cutting-concerns.md), completeness check in framework
+      reflection, and registry cross-check in Critic Check 10.'
+    blast_radius: 'New: .prawduct/cross-cutting-concerns.md. Modified: methodology/reflection.md,
+      agents/critic/framework-checks.md'
+    classification: functional
+    date: 2026-02-22
   # --- v3 (current, 2026-02-22+) ---
+  - what: 'Product verification during building'
+    why: 'Tests verify code behavior but not the product experience. Added two-layer
+      verification (code + product) to the build cycle, verification strategy to build
+      planning, verification evidence check to Critic. Describes the need and connects
+      to structural awareness — does not enumerate product-type-specific strategies.'
+    blast_radius: 'methodology/building.md, methodology/planning.md, templates/build-plan.md,
+      templates/product-claude.md, agents/critic/SKILL.md, templates/critic-review.md'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Prior art awareness during discovery'
+    why: 'Added lightweight, risk-scaled prior art search to discovery methodology. Claude
+      searches for existing solutions after initial problem understanding, weaves findings
+      into conversation as expertise (Principle #6), captures in project-state.yaml
+      under classification.prior_art. No hooks, no gates — informational input only.'
+    blast_radius: 'methodology/discovery.md, templates/project-state.yaml, templates/product-brief.md,
+      templates/product-claude.md, tests/scenarios/quick-todo-app.md'
+    classification: functional
+    date: 2026-02-22
   - what: 'V3 implementation complete: self-contained product repos with structural gates'
     why: 'Chunks 2-6 implemented: critic-review.md template, product CLAUDE.md template,
       product-hook with reflection + Critic gates, prawduct-init.py rewrite for self-contained
@@ -102,21 +183,18 @@ build_plan:
   strategy: "6-chunk implementation of v3 structural gates architecture"
   remaining_work:
     # --- future (post-v3) ---
-    - item: "Prior art awareness during discovery"
-      description: "Surface existing solutions via web search during discovery"
-      phase: future
     - item: "Pacing sensitivity"
-      description: "Detect and adapt to user impatience signals"
-      phase: future
+      description: "Detect and adapt to user impatience signals. Added to discovery.md (pacing subsection), building.md (Common Trap), and product-claude.md (condensed guidance)."
+      phase: completed
     - item: "Agent verification loops"
-      description: "MCP-based verification for web UI, Bash-based for terminal/API products"
-      phase: future
+      description: "Now addressed as product verification in build methodology — general principle, not tool-specific"
+      phase: completed
     - item: "Accessibility enforcement in Critic"
-      description: "Critic checks accessibility requirements in human_interface products"
-      phase: future
+      description: "Accessibility surfaced in discovery via infer-confirm-proceed, captured in project-state.yaml. Critic validates via Spec Compliance check."
+      phase: completed
     - item: "Cost awareness in artifacts"
-      description: "Artifacts include cost estimates and tradeoff analysis"
-      phase: future
+      description: "Costs surfaced in discovery via infer-confirm-proceed, captured in project-state.yaml cost_estimates and cost_constraints fields."
+      phase: completed
   chunks: []
   current_chunk: null
 
@@ -127,12 +205,15 @@ build_plan:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 4
+    test_count: 7
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md
       - tests/scenarios/terminal-arcade-game.md
       - tests/scenarios/quick-todo-app.md
+      - tests/test_prawduct_init.py
+      - tests/test_product_hook.py
+      - tests/test_prawduct_migrate.py
 
 # =============================================================================
 # DEPRECATED TERMS

@@ -78,6 +78,16 @@ When this file grows past ~3,000 tokens, prune: consolidate related entries, arc
 
 **Principle**: Relates to Coherent Artifacts (#12).
 
+## Coherence cascades require checking summaries, not just primary locations
+
+**Pattern**: When adding `prior_art` to discovery, the primary section and template were updated correctly. But two summary lines elsewhere ("What Discovery Produces" in discovery.md and the condensed discovery paragraph in product-claude.md) listed what classification contains without mentioning prior art. Similarly, only one of four test scenarios received the new rubric criterion. The Critic caught all three gaps.
+
+**Lesson**: When adding a concept to a system, search for every place that *summarizes* or *enumerates* what the system contains. Summaries are a form of denormalized state — they drift when the source of truth changes. After making a primary change, grep for summary phrases ("produces", "contains", "includes") that might need updating. Also check *scope declarations* — section comments that say "only for X" may contradict a universally-applicable new field. And check test scenarios — if sibling concepts have rubric criteria, the new concept needs one too.
+
+**Reinforcement (2026-02-22)**: Fell into this exact pattern again when adding `error_handling_approach` under a "UI only" section comment and omitting test scenario rubric coverage. The learning was already captured; reading it wasn't enough to prevent the miss. The scope-declaration variant (section comments) and the test-scenario variant are now explicitly called out above.
+
+**Principle**: Relates to Coherent Artifacts (#12) and Living Documentation (#3).
+
 ## Escape hatches in classification create silent failures
 
 **Pattern**: Gate classified files as framework/product/ungoverned with ungoverned defaulting to auto-allow. An entire product was built without governance because unregistered repos fell into the "ungoverned" escape hatch.
