@@ -49,6 +49,16 @@ When someone opens this directory, route based on context:
 **Framework development** (this repo itself)
 → This repo is a Prawduct product in iteration phase. Read `.prawduct/project-state.yaml` for framework state and `.prawduct/learnings.md` for accumulated wisdom. Apply the methodology to framework changes — principles, proportional review, reflection.
 
+**Onboarding another product** ("let's work on ../my-app", "set up prawduct for ../foo")
+→ Determine the target directory path. Then:
+  1. If the directory doesn't exist, create it and ask for a product name.
+  2. Run `detect_version` logic: check for `.prawduct/framework-path` (v1) and `tools/product-hook` (v3).
+  3. **Unknown** (new repo): Run `python3 tools/prawduct-init.py <target> --name "<name>"`.
+  4. **V1**: Run `python3 tools/prawduct-migrate.py <target>`.
+  5. **V3**: Already set up — no action needed.
+  6. Tell the user to open the target directory in a new Claude Code session for full governance:
+     `claude <target-path>`
+
 **First contact** ("hello", "what is this?", "what can you do?")
 → Briefly explain: Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. Product repos are generated with `tools/prawduct-init.py` and are fully self-contained.
 
@@ -91,6 +101,7 @@ Read `methodology/reflection.md` for the complete reflection protocol.
 - `.prawduct/learnings.md` — Accumulated project wisdom (read at session start)
 - `agents/critic/SKILL.md` — Independent quality review agent (invoke via Task tool as a separate agent)
 - `templates/` — Artifact templates for structured output
+- `.prawduct/cross-cutting-concerns.md` — Cross-cutting concerns registry (pipeline coverage matrix)
 - `.prawduct/project-state.yaml` — Source of truth for project state
 
 ## Project Layout
