@@ -65,7 +65,25 @@ case "${1:-}" in
           SESSION_START=$(cat "$SESSION_START_FILE")
           FINDINGS_MTIME=$(date -r "$CRITIC_FINDINGS" -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
           if [[ -n "$FINDINGS_MTIME" && "$FINDINGS_MTIME" > "$SESSION_START" ]]; then
-            NEEDS_REVIEW=false
+            # Mtime check passed — now validate content if python3 is available
+            if command -v python3 &>/dev/null; then
+              if python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    assert isinstance(d.get('findings'), list), 'findings must be an array'
+    assert isinstance(d.get('summary'), str) and d['summary'].strip(), 'summary must be non-empty'
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+" "$CRITIC_FINDINGS" 2>/dev/null; then
+                NEEDS_REVIEW=false
+              fi
+              # If python3 validation fails, NEEDS_REVIEW stays true (rubber stamp blocked)
+            else
+              # No python3 — fall back to mtime-only (graceful degradation)
+              NEEDS_REVIEW=false
+            fi
           fi
         fi
 
