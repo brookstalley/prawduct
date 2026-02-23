@@ -29,6 +29,12 @@ last_validated: null
      This anchors every downstream artifact — errors here propagate everywhere.
      Source: project-state.yaml → product_definition.vision -->
 
+## Landscape
+
+<!-- What existing solutions address this problem? Why build this despite
+     (or because of) what exists? 1-3 sentences for low-risk, short comparison
+     for higher-risk. Source: project-state.yaml → classification.prior_art -->
+
 ## Identity
 
 <!-- What is this product called? What is its character?

@@ -164,6 +164,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[interactive]` Must not ask about real-time interactivity or multi-user collaboration.
 - `[interactive]` Must not ask about API contracts or external consumers (the pipeline consumes APIs but doesn't expose one).
 - `[interactive]` Must not recommend not building (this is a clear, solvable problem).
+- `[interactive]` Must not spend more than 2 turns researching existing RSS aggregation tools.
 - `[interactive]` Must not generate more than 15 discovery questions total.
 
 **Quality criteria:**
@@ -172,6 +173,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[interactive]` Questions recognize user's technical competence (use appropriate terminology, don't over-explain basics).
 - `[interactive]` Questions surface considerations user hasn't raised (alerting, silent failure, rate limits from sources, cost of LLM-based filtering if applicable).
 - `[hybrid]` Inferences are made about technical choices the user hasn't specified (deployment target, data storage) and confirmed.
+- `[hybrid]` Prior art awareness surfaces relevant tools (RSS aggregators, existing feed-to-Slack solutions) and key libraries as expertise. Acknowledges alternatives exist but respects Alex's choice to build a custom solution. For low-medium risk, 2-3 searches covering solutions and relevant libraries is proportionate.
 - `[interactive]` **Guidance Evaluation active:** If the technical user names a specific technology as the solution (e.g., "just use Kafka for this"), the system should challenge proportionately — explaining why the simpler approach may suffice for a side project and offering the general principle, while deferring if the user insists.
 
 ### Orchestrator (C1)

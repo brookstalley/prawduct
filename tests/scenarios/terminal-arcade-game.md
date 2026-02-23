@@ -239,6 +239,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[interactive]` Must not ask about API contracts, webhooks, or integrations.
 - `[interactive]` Must not ask about scalability or load handling.
 - `[interactive]` Must not recommend not building this.
+- `[interactive]` Must not spend more than 2 turns researching existing terminal games or game libraries.
 - `[simulation]` Must not generate more than 15 discovery questions total.
 - `[interactive]` Must not ask the user to self-assess their technical expertise.
 
@@ -247,6 +248,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[interactive]` Questions recognize and engage with the user's technical expertise — use appropriate terminology, don't explain what a terminal is.
 - `[interactive]` Questions bring game design expertise the user lacks — difficulty curves, visual feedback, game state management, "juice" (the small details that make games feel good).
 - `[interactive]` Inferences are made about obvious decisions (single-player, no network, no persistent storage in v1) and confirmed rather than asked as open questions.
+- `[interactive]` Prior art awareness surfaces relevant terminal game libraries and existing terminal arcade games as expertise. Acknowledges the space exists (terminal games are a known genre) but respects Jordan's choice to build from scratch as a creative exercise. For low-medium risk, 2-3 searches is proportionate.
 - `[interactive]` The discovery conversation surfaces the real technical challenge (cross-platform terminal I/O, real-time input handling, resize events) without making it sound scary.
 
 ### Orchestrator (C1)

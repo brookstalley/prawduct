@@ -65,7 +65,9 @@ Understand the problem before designing the solution. Detect the product's **str
 
 **Infer, confirm, proceed.** Don't interrogate. Form hypotheses from context and let the user correct them. Bring expertise — surface considerations the user hasn't thought of. Ask about developer preferences early (testing approach, code style, tooling).
 
-Discovery produces `project-state.yaml` with classification, product definition, user expertise profile, and technology preferences.
+After understanding the concept, search for existing solutions and relevant patterns — surface what exists as expertise, not as a gate. Scale search depth to risk.
+
+Discovery produces `project-state.yaml` with classification (including prior art), product definition, user expertise profile, and technology preferences.
 
 ### Planning
 

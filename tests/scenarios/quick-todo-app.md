@@ -40,6 +40,7 @@ Validates that Prawduct produces reasonable artifacts for a trivial product in o
 | Question count | 3-6 focused questions | 10+ questions for a to-do app |
 | Pacing sensitivity | Moves quickly for low-risk | Holds user hostage to thorough discovery |
 | Domain-appropriate | Questions fit a personal utility | Questions assume enterprise or multi-user context |
+| Prior art awareness | Briefly acknowledges to-do apps are abundant; respects user's choice to build | Recommends using Todoist instead, or spends multiple turns researching existing apps |
 
 ### Stage 2: Definition
 
@@ -72,6 +73,6 @@ Validates that Prawduct produces reasonable artifacts for a trivial product in o
 
 ## Scoring
 
-- **Total criteria:** 20
-- **Pass threshold:** 16/20 (80%)
+- **Total criteria:** 23
+- **Pass threshold:** 19/23 (83%)
 - **Critical failures (auto-fail):** Asks about enterprise features for a personal to-do app; generates disproportionately complex artifacts; takes more than 20 exchanges through Stage 3

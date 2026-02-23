@@ -42,10 +42,22 @@ The right amount of discovery is the minimum that prevents building the wrong th
 
 **Detect domain-specific concerns dynamically.** Don't rely on hardcoded lists of domain questions. Use your knowledge of the domain to surface what matters. A marketplace has different critical questions than a data pipeline. A healthcare app has different concerns than a game. Your domain knowledge is the source; the structural characteristics tell you where to focus it.
 
+## Surface Prior Art
+
+After you understand the concept and structural characteristics — typically after the first exchange — search for what already exists in this space. This isn't a gate or a report; it's expertise you bring to the conversation (Principle #6).
+
+**What to search for.** Always look for existing solutions that solve the same core problem. For medium-risk and above, also search for key libraries, established patterns, and relevant standards. If web search is available, use it — it surfaces current, specific results that training data may miss. If it's not available, draw on your domain knowledge and say so.
+
+**Scale search depth to risk.** Low-risk: 1-2 quick searches. Medium-risk: 2-3 searches covering solutions and relevant libraries. High-risk: 3-5 searches including solutions, libraries, standards, and cautionary tales.
+
+**Present findings as expertise, not a report.** Weave what you find into the conversation naturally: "I checked what exists in this space — [X] and [Y] are the main options. Given your needs, I'd suggest we focus on [Z] because..." Use infer-confirm-proceed. Don't dump a list of links; synthesize what matters for *this* user's decision.
+
+**Capture what you found.** Record relevant prior art in `project-state.yaml` under `classification.prior_art`. Each entry includes: name, url (if available), relevance to this project, and relationship (alternative, complement, or reference). This informs scope decisions downstream — it's not a gate.
+
 ## What Discovery Produces
 
 Discovery produces a `project-state.yaml` with:
-- **Classification**: structural characteristics, domain, risk level
+- **Classification**: structural characteristics, domain, risk level, prior art
 - **Product definition**: vision, personas, core flows, scope (v1 / accommodate / later / out of scope)
 - **User expertise profile**: what the user knows and doesn't, inferred from conversation
 - **Product identity**: name, personality, technology preferences
@@ -63,3 +75,7 @@ Discovery is done when you have enough understanding to design artifacts that wo
 **Ignoring developer preferences**: Asking what to build but not how to build it. Technical users have strong opinions about testing, tooling, code style, and architecture patterns. Ask early.
 
 **Domain blindness**: Not leveraging your own knowledge of the domain. If someone's building a marketplace, you know marketplaces need trust systems, dispute resolution, and payment escrow. Surface that knowledge; don't wait for the user to think of it.
+
+**Overweighting prior art**: Spending too much time researching existing solutions instead of understanding the user's specific needs. Prior art informs the conversation; it doesn't drive it. A few focused searches are enough.
+
+**Using prior art to gatekeep**: "This already exists, so why build it?" is never the right response. People build things for many valid reasons — learning, customization, ownership, fun. Respect the user's choice to build. Surface what exists, then help them build something great.

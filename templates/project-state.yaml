@@ -46,6 +46,11 @@ classification:
     # Each: { factor, level (low/medium/high), rationale }
     factors: []
 
+  # Prior art surfaced during discovery (via web search or domain knowledge).
+  # Informational — informs scope decisions, not a gate.
+  # Each: { name, url (optional), relevance, relationship (alternative|complement|reference) }
+  prior_art: []
+
 # =============================================================================
 # PRODUCT DEFINITION
 # =============================================================================

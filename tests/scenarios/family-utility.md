@@ -130,6 +130,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[interactive]` Must not ask about API contracts, webhooks, or integrations.
 - `[interactive]` Must not ask about monitoring infrastructure or alerting.
 - `[interactive]` Must not recommend not building this.
+- `[interactive]` Must not spend more than one turn researching existing score-tracking apps.
 - `[simulation]` Must not generate more than 10 discovery questions total.
 - `[interactive]` Must not ask the user to self-assess their technical expertise.
 
@@ -138,6 +139,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[interactive]` Questions are ordered by impact (most important first).
 - `[interactive]` Questions use plain language — "Where will you use this?" not "What's your target platform?"
 - `[interactive]` Inferences are made and confirmed rather than asked open-endedly: "Since this is for family game nights, I'm assuming you don't need enterprise security — just a simple way to identify who's playing. Sound right?"
+- `[interactive]` Prior art awareness is proportionate: briefly acknowledges board-game-scoring apps exist; respects the user's choice to build their own. Does not recommend specific alternatives or spend multiple turns researching the space.
 - `[interactive]` **Guidance Evaluation proportionate:** The system must NOT challenge the non-technical user's cosmetic preferences (app name "Score Night", wanting it to feel "fun and colorful"). Guidance Evaluation should only fire if the user's direction conflicts with a quality principle (e.g., requesting inaccessible color choices would trigger principle conflict with HR7).
 
 ### Orchestrator (C1)
