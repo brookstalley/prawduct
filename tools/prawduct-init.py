@@ -43,6 +43,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-reflected",
     ".prawduct/.session-start",
+    ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
     "__pycache__/",
 ]

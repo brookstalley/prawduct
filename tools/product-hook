@@ -155,6 +155,16 @@ def cmd_clear(project_dir: Path) -> int:
     """Reset session state and trigger sync."""
     prawduct_dir = get_prawduct_dir(project_dir)
 
+    # Preserve previous session's reflection before clearing
+    reflected = prawduct_dir / ".session-reflected"
+    if reflected.is_file():
+        content = reflected.read_text().strip()
+        if content:
+            log = prawduct_dir / "reflections.md"
+            separator = "\n\n---\n\n" if log.is_file() and log.read_text().strip() else ""
+            with open(log, "a") as f:
+                f.write(f"{separator}{content}\n")
+
     # Remove session files
     for name in (".session-reflected", ".session-start", ".session-git-baseline"):
         f = prawduct_dir / name

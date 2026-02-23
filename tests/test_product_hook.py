@@ -109,6 +109,45 @@ class TestClear:
         assert not (prawduct / ".session-reflected").exists()
         assert (prawduct / ".session-start").exists()
 
+    def test_preserves_reflection_to_log(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-reflected").write_text("## Session 1\nI learned things.")
+
+        run_hook("clear", tmp_path)
+
+        log = prawduct / "reflections.md"
+        assert log.is_file()
+        assert "## Session 1" in log.read_text()
+        assert "I learned things." in log.read_text()
+        assert not (prawduct / ".session-reflected").exists()
+
+    def test_appends_multiple_reflections(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        # First session
+        (prawduct / ".session-reflected").write_text("## Session 1\nFirst.")
+        run_hook("clear", tmp_path)
+
+        # Second session
+        (prawduct / ".session-reflected").write_text("## Session 2\nSecond.")
+        run_hook("clear", tmp_path)
+
+        log = (prawduct / "reflections.md").read_text()
+        assert "## Session 1" in log
+        assert "## Session 2" in log
+        assert "---" in log  # separator between sessions
+
+    def test_skips_empty_reflection(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-reflected").write_text("")
+
+        run_hook("clear", tmp_path)
+
+        assert not (prawduct / "reflections.md").exists()
+
     def test_creates_session_start_timestamp(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
