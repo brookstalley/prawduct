@@ -4,9 +4,6 @@ version: 1
 depends_on:
   - artifact: nonfunctional-requirements
   - artifact: product-brief
-depended_on_by:
-  - artifact: operational-spec
-  - artifact: test-specifications
 last_validated: null
 ---
 

@@ -21,7 +21,6 @@ depends_on:
   - artifact: test-specifications
   - artifact: dependency-manifest
   - artifact: operational-spec
-depended_on_by: []
 last_validated: null
 ---
 

@@ -14,9 +14,6 @@ version: 1
 depends_on:
   - artifact: product-brief
   - artifact: data-model
-depended_on_by:
-  - artifact: test-specifications
-  - artifact: operational-spec
 last_validated: null
 ---
 

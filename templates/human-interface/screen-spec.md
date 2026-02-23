@@ -4,10 +4,6 @@ version: 1
 depends_on:
   - artifact: information-architecture
   - artifact: data-model
-depended_on_by:
-  - artifact: onboarding-spec
-  - artifact: accessibility-spec
-  - artifact: test-specifications
 last_validated: null
 ---
 

@@ -5,8 +5,6 @@ depends_on:
   - artifact: information-architecture
   - artifact: screen-spec
   - artifact: design-direction
-depended_on_by:
-  - artifact: test-specifications
 last_validated: null
 ---
 

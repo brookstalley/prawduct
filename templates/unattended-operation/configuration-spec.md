@@ -4,9 +4,6 @@ version: 1
 depends_on:
   - artifact: pipeline-architecture
   - artifact: failure-recovery-spec
-depended_on_by:
-  - artifact: test-specifications
-  - artifact: dependency-manifest
 last_validated: null
 ---
 

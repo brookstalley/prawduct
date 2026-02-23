@@ -3,11 +3,6 @@ artifact: pipeline-architecture
 version: 1
 depends_on:
   - artifact: product-brief
-depended_on_by:
-  - artifact: scheduling-spec
-  - artifact: monitoring-alerting-spec
-  - artifact: failure-recovery-spec
-  - artifact: test-specifications
 last_validated: null
 ---
 

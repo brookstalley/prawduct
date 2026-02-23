@@ -13,9 +13,6 @@ artifact: nonfunctional-requirements
 version: 1
 depends_on:
   - artifact: product-brief
-depended_on_by:
-  - artifact: operational-spec
-  - artifact: dependency-manifest
 last_validated: null
 ---
 

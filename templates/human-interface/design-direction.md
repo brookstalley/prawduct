@@ -3,9 +3,6 @@ artifact: design-direction
 version: 1
 depends_on:
   - artifact: product-brief
-depended_on_by:
-  - artifact: onboarding-spec
-  - artifact: accessibility-spec
 last_validated: null
 ---
 

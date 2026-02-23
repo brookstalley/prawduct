@@ -4,8 +4,6 @@ version: 1
 depends_on:
   - artifact: information-architecture
   - artifact: product-brief
-depended_on_by:
-  - artifact: test-specifications
 last_validated: null
 ---
 

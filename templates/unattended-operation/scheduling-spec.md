@@ -4,9 +4,6 @@ version: 1
 depends_on:
   - artifact: pipeline-architecture
   - artifact: nonfunctional-requirements
-depended_on_by:
-  - artifact: monitoring-alerting-spec
-  - artifact: configuration-spec
 last_validated: null
 ---
 

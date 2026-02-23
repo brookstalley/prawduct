@@ -18,7 +18,6 @@ depends_on:
   - artifact: product-brief
   - artifact: data-model
   - artifact: operational-spec
-depended_on_by: []
 last_validated: null
 ---
 

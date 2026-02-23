@@ -6,9 +6,6 @@ depends_on:
   - artifact: pipeline-architecture
   - artifact: scheduling-spec
   - artifact: nonfunctional-requirements
-depended_on_by:
-  - artifact: test-specifications
-  - artifact: operational-spec
 last_validated: null
 ---
 

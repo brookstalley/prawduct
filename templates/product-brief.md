@@ -14,10 +14,6 @@ version: 1
 depends_on:
   - artifact: project-state
     section: product-definition
-depended_on_by:
-  - artifact: data-model
-  - artifact: security-model
-  - artifact: test-specifications
 last_validated: null
 ---
 

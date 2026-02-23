@@ -3,11 +3,6 @@ artifact: information-architecture
 version: 1
 depends_on:
   - artifact: product-brief
-depended_on_by:
-  - artifact: screen-spec
-  - artifact: localization-requirements
-  - artifact: onboarding-spec
-  - artifact: accessibility-spec
 last_validated: null
 ---
 
