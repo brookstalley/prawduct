@@ -53,6 +53,7 @@ Check against whichever artifacts exist: product-brief, data-model, security-mod
 
 For products with `has_human_interface`: accessibility requirements alongside features, not deferred → **WARNING** if missing.
 For products with `runs_unattended`/`exposes_programmatic_interface`: operational costs identified, monitoring implemented → **WARNING** if missing.
+For chunks delivering user-visible or consumer-facing functionality: was the product exercised directly beyond tests? → **WARNING** if no verification evidence exists. (The Critic checks for evidence of verification, not a specific method.)
 
 ### Check 2: Test Integrity
 

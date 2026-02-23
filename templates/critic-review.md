@@ -24,6 +24,8 @@ Diff implementation against artifacts. For each requirement this chunk addresses
 
 Check against whichever artifacts exist: product-brief, data-model, security-model, test-specifications, nonfunctional-requirements, build-plan, dependency-manifest.
 
+For chunks delivering user-visible or consumer-facing functionality: was the product verified directly beyond tests? → **WARNING** if no evidence.
+
 ### Test Integrity
 
 - Test count must not decrease → **BLOCKING** if it did

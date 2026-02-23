@@ -19,7 +19,14 @@ Depth is proportionate to risk. A personal utility needs basic happy-path and cr
 
 **Implement.** Write the code that makes the tests pass. Follow the project's coding conventions and preferences (if captured during discovery). Prefer simplicity — the right amount of abstraction is the minimum needed for the current chunk. Don't build for hypothetical future requirements.
 
-**Verify.** Run all tests — not just the ones you wrote, but the full suite. A new chunk shouldn't break existing chunks. Check that acceptance criteria are met. Check that the implementation matches the spec.
+**Verify.** Two layers:
+
+- *Code verification:* Run all tests — not just the ones you wrote, but the full suite. A new chunk shouldn't break existing chunks. Check that acceptance criteria are met. Check that the implementation matches the spec.
+- *Product verification:* Confirm the product works as its users or consumers would experience it. Tests verify code behavior; product verification confirms the actual experience. What this means depends on what you're building — use your knowledge of the product's structural characteristics (Principle 20). Launch it, call it, run it, inspect its output. Use the tools available to you.
+
+Scale verification to chunk significance. Scaffold → "it starts." Data layer → "queries return expected results." Feature delivering user-visible behavior → "I exercised it directly and it works." Not every chunk needs exhaustive verification.
+
+When you can't verify directly, say what you can't verify and why. Tell the user what to check. Don't claim verification you didn't perform (Principle 5).
 
 **Request Critic review.** This step is mandatory — do not skip it, defer it, or self-review instead. After completing a chunk, invoke the Critic agent as a separate agent (via the Task tool). The Critic runs in its own context, providing genuine independence — it hasn't seen your reasoning. Tell it to read `agents/critic/SKILL.md` (or `.prawduct/critic-review.md` in product repos) and review the changes. The stop hook will block session end if you skip this step.
 
@@ -79,3 +86,5 @@ If the Critic finds something you disagree with, think carefully before dismissi
 **Test-last**: Writing all the code, then writing tests that pass against the existing implementation. This tests what the code does, not what it should do. Tests written after implementation rarely catch bugs — they just document existing behavior, including bugs.
 
 **Ignoring the Critic**: Dismissing findings without genuine reflection. The Critic exists because self-review doesn't work. If you find yourself routinely disagreeing with the Critic, something is wrong — either the Critic's checks need updating (propose amendments) or your building practices need adjusting.
+
+**Verification theater**: Claiming verification without actually exercising the product. "I verified it works" without evidence is worse than "I couldn't verify this — here's what to check." Honest confidence (Principle 5).

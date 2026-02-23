@@ -51,6 +51,8 @@ The build plan decomposes artifacts into buildable chunks — coherent units of 
 
 **The first chunk is special.** It should be a thin vertical slice through the entire architecture — proving that the layers connect, the data flows, and the build approach works. Don't build one layer completely before touching the next. Validate the path before widening it.
 
+**Verification strategy.** The build plan should include how the builder will confirm each chunk's output works beyond tests — exercising the product as its users or consumers would experience it. What this looks like depends on structural characteristics and available tools. Don't over-specify — describe the approach, not a checklist. For many products, the simplest effective method is best. Complex products (e.g., those with human interfaces or multi-party interactions) may need dedicated tooling planned into the scaffold.
+
 **Governance checkpoints** are points during the build where you pause to review the whole — not just the current chunk but the trajectory. Place them at natural boundaries: after the first chunk (architecture validation), at the midpoint, and before completion. The number scales with risk (1-2 for low-risk, 3-5 for high-risk).
 
 ## Common Traps

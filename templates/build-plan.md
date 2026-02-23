@@ -73,27 +73,25 @@ last_validated: null
 
 [Commands to run that prove the scaffold is working: build succeeds, dev server starts, test runner executes]
 
-### Verification Infrastructure
+### Verification Strategy
 
 <!--
-  Include this section when the user opted into agent verification during discovery.
-  Omit for products without verification infrastructure.
+  Every product needs a verification approach — how the builder confirms the
+  product works beyond tests, by exercising it as users or consumers would.
 
-  Specify what verification tools to set up, how to configure them, and how the
-  Builder uses them during development. The verification strategy depends on the
-  product's structural characteristics — see docs/high-level-design.md §
-  Agent Verification Architecture.
+  The approach depends on structural characteristics and what tools are available.
+  Describe the strategy. For simple products, this may be one line ("run the
+  binary and check output"). For products with human interfaces, it may involve
+  screenshots, browser automation, or MCP tools. For APIs, contract tests or
+  direct calls. For pipelines, output inspection.
 
-  For web UI products: MCP server setup, browser automation configuration.
-  For terminal products: process I/O capture, screen inspection approach.
-  For APIs: curl/httpie test scripts, contract test setup.
-  For pipelines: output inspection commands, log verification.
+  Keep it proportionate. Don't build elaborate verification infrastructure for
+  a personal utility.
 
-  IMPORTANT: All verification infrastructure is development-only (HR10).
-  Include removal/disabling instructions for production deployment.
+  All verification infrastructure is development-only (Principle #9).
 -->
 
-[Verification tool setup, configuration, and usage instructions. Include how to remove for deployment.]
+[How the builder verifies the product works beyond tests. Describe the approach, scaled to product complexity.]
 
 ## Project Structure
 

@@ -87,7 +87,7 @@ For each chunk:
 1. **Read the spec.** Understand deliverables, acceptance criteria, dependencies.
 2. **Write tests** first or alongside implementation. Tests are your specification made executable.
 3. **Implement.** Follow project conventions. Prefer simplicity.
-4. **Verify.** Run the full test suite — new chunks must not break existing ones.
+4. **Verify.** Run the full test suite — new chunks must not break existing ones. Then verify the product directly — launch it, call it, run it, inspect its output. Tests verify code; product verification confirms the experience. Use your structural awareness to determine what verification means for this product.
 5. **Request Critic review.** Mandatory. Invoke as a separate agent (see Critic section below). The stop hook will block session end if you skip this.
 6. **Resolve findings.** Fix blocking findings before proceeding. Address warnings.
 7. **Update state.** Record what was built in project-state.yaml.
