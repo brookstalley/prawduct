@@ -74,6 +74,7 @@ At phase transitions (finishing discovery, completing planning, finishing a buil
 - **Coverage**: Did discovery surface everything important? Did planning cover the right artifacts? Did building address the right risks?
 - **Applicability**: Were the artifacts and processes relevant to this product type, or did some feel forced?
 - **Missing guidance**: Did you have to improvise anywhere? That's a signal the methodology might need extension.
+- **Concern completeness**: Are there cross-cutting concerns this product should address that aren't surfaced anywhere in the pipeline? Check `.prawduct/cross-cutting-concerns.md` as a starting point, but think about what's missing from the registry, not just what's listed.
 - **Learning completeness**: Were observations captured for everything significant that happened?
 
 This broader reflection produces change log entries and may trigger methodology updates. It's how the system stays calibrated across different product types.

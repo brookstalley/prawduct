@@ -76,6 +76,12 @@ These checks apply only when reviewing skill files, template files, or framework
 
 If any dimension is missing, flag it as a warning.
 
+**Registry cross-check:** When a change modifies a cross-cutting concern (adds, removes, or changes coverage), verify that the concern's row in `.prawduct/cross-cutting-concerns.md` is accurate. If the registry doesn't reflect the change, flag it as a warning.
+
+**Completeness prompt:** At the end of framework reviews, ask: "Is there a cross-cutting concern missing from the registry that this change reveals?" New concerns discovered during review should be flagged as notes for registry addition.
+
 **Severity guide:**
 - New artifact/dimension with no corresponding Critic check → **warning**
+- Registry row inaccurate after a coverage change → **warning**
+- Missing concern discovered during review → **note**
 - Minor coverage gap in a non-critical dimension → **note**
