@@ -32,6 +32,11 @@ GITIGNORE_ENTRIES = [
 ]
 
 
+def is_v1_repo(target_dir: str) -> bool:
+    """Check if target is a v1 Prawduct repo (has .prawduct/framework-path)."""
+    return Path(target_dir, ".prawduct", "framework-path").is_file()
+
+
 def log(msg: str) -> None:
     """Print status to stderr."""
     print(msg, file=sys.stderr)
@@ -262,6 +267,12 @@ def main() -> int:
     target = os.path.abspath(args.target_dir)
     if not os.path.isdir(target):
         os.makedirs(target, exist_ok=True)
+
+    if is_v1_repo(target):
+        log("This looks like a v1 Prawduct repo.")
+        log("Run prawduct-migrate.py to upgrade to v3:")
+        log(f"  python3 {FRAMEWORK_DIR / 'tools' / 'prawduct-migrate.py'} {target}")
+        return 1
 
     result = run_init(target, args.name)
 
