@@ -20,7 +20,8 @@ prawduct/
 │   ├── reflection-hook                # Hook script: session clear + stop (framework)
 │   ├── product-hook                   # Hook script: session clear + stop (products, self-contained)
 │   ├── prawduct-init.py               # Generates self-contained product repos
-│   └── prawduct-migrate.py            # Migrates v1 product repos to v3 (self-contained)
+│   ├── prawduct-migrate.py            # Migrates v1/v3 product repos to v4
+│   └── prawduct-sync.py              # Syncs framework updates to product repos
 ├── templates/                         # Templates for product repos
 │   ├── product-claude.md              # Self-contained CLAUDE.md for products (v3 core)
 │   ├── critic-review.md              # Condensed Critic instructions for products (v3 core)
@@ -31,9 +32,10 @@ prawduct/
 │   └── unattended-operation/          # runs_unattended templates
 ├── pyproject.toml                        # Minimal pytest configuration
 ├── tests/
-│   ├── test_prawduct_init.py             # 27 automated tests for prawduct-init.py
-│   ├── test_prawduct_migrate.py          # 31+ automated tests for prawduct-migrate.py
-│   ├── test_product_hook.py              # 18 automated tests for product-hook
+│   ├── test_prawduct_init.py             # Automated tests for prawduct-init.py
+│   ├── test_prawduct_migrate.py          # Automated tests for prawduct-migrate.py
+│   ├── test_product_hook.py              # Automated tests for product-hook
+│   ├── test_prawduct_sync.py             # Automated tests for prawduct-sync.py
 │   └── scenarios/                     # 4 test scenarios for framework validation
 ├── docs/
 │   ├── principles.md                  # Full 22 principles with rationale
@@ -57,11 +59,13 @@ my-product/
 │   ├── project-state.yaml             # Product state
 │   ├── learnings.md                   # Product-specific learnings
 │   ├── critic-review.md               # Condensed Critic instructions for this product
+│   ├── sync-manifest.json             # Tracks framework sync state (enables auto-updates)
 │   ├── artifacts/                     # Generated specifications
+│   ├── reflections.md                 # Accumulated session reflections
 │   └── .critic-findings.json          # Critic review evidence (checked by stop hook)
 ├── tools/
-│   └── product-hook                   # Session governance (reflection + Critic gate)
+│   └── product-hook                   # Session governance (Python: reflection + Critic gate + sync)
 ├── .claude/
-│   └── settings.json                  # Hook config pointing to tools/product-hook
+│   └── settings.json                  # Hook config + banner pointing to tools/product-hook
 └── src/                               # Product source code
 ```

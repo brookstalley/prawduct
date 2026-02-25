@@ -2,4 +2,6 @@
 .prawduct/.critic-findings.json
 .prawduct/.session-reflected
 .prawduct/.session-start
+.prawduct/.session-git-baseline
+.prawduct/reflections.md
 __pycache__/

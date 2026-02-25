@@ -36,9 +36,9 @@ Between phases, review what you've produced. Apply the review perspectives (Prod
 
 ### Where Artifacts Live
 
-Write all generated artifacts to `.prawduct/artifacts/`. This is the canonical location — the Critic reads from it, the build cycle references it, and the stop hook uses the presence of `build-plan.md` there to trigger the Critic review gate.
+Write all generated artifacts to `.prawduct/artifacts/`. This is the canonical location — the Critic reads from it and the build cycle references it. The stop hook triggers the Critic review gate when it detects a build plan (either `artifacts/build-plan.md` or a `build_plan` section with chunks in `project-state.yaml`).
 
-Name files by artifact type: `product-brief.md`, `data-model.md`, `build-plan.md`, etc. For onboarded projects that already have specifications elsewhere, those can stay — but Prawduct-generated artifacts go in `.prawduct/artifacts/`.
+Name files by artifact type: `product-brief.md`, `data-model.md`, `build-plan.md`, etc. For onboarded projects that already have specifications elsewhere, those can stay — but Prawduct-generated artifacts go in `.prawduct/artifacts/`. The build plan can live in `project-state.yaml` alongside status tracking if that's more natural, but keeping chunk specifications in a separate `build-plan.md` artifact makes the Critic's spec-compliance check cleaner.
 
 ### Proportionality
 

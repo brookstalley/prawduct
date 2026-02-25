@@ -289,6 +289,35 @@ class TestStopCriticGate:
         assert result.returncode == 2
         assert "CRITIC" in result.stderr
 
+    def test_critic_gate_triggers_from_project_state(self, tmp_path: Path):
+        """Build plan in project-state.yaml (no build-plan.md) -> Critic gate fires."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        state_yaml = "current_phase: building\n\nbuild_plan:\n  strategy: feature-first\n  chunks:\n    - id: chunk-01\n      status: complete\n"
+        (prawduct / "project-state.yaml").write_text(state_yaml)
+        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+    def test_no_build_plan_anywhere_skips_critic(self, tmp_path: Path):
+        """No build-plan.md and no build plan in project-state -> Critic gate skipped."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        state_yaml = "current_phase: discovery\n\nopen_questions: []\n"
+        (prawduct / "project-state.yaml").write_text(state_yaml)
+        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 0
+
     def test_critic_gate_passes_with_recent_findings(self, tmp_path: Path):
         """Valid findings with recent mtime -> passes."""
         prawduct = tmp_path / ".prawduct"
@@ -462,6 +491,41 @@ class TestInvalidCommand:
 # =============================================================================
 # Sync trigger (unit test via import)
 # =============================================================================
+
+
+class TestLearningsSizeWarning:
+    """Tests for oversized learnings.md warning on clear."""
+
+    def test_warns_when_learnings_exceeds_threshold(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Write a learnings file larger than 8KB
+        (prawduct / "learnings.md").write_text("# Learnings\n" + "x" * 9000)
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "learnings.md" in result.stderr
+        assert "pruning" in result.stderr.lower()
+
+    def test_no_warning_for_small_learnings(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "learnings.md").write_text("# Learnings\nSmall file.")
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "learnings" not in result.stderr.lower()
+
+    def test_no_warning_when_learnings_missing(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "learnings" not in result.stderr.lower()
 
 
 class TestSyncTrigger:

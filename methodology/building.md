@@ -34,7 +34,7 @@ When you can't verify directly, say what you can't verify and why. Tell the user
 
 **Reflect.** The Critic just gave you independent feedback. This is the highest-signal moment for learning. Before moving on: What did the Critic catch that you missed? Does it match a pattern in `learnings.md`? If the finding reveals a blind spot, capture it now — don't wait for session end. If there's nothing to capture, that's fine. The point is to check, not to force a lesson.
 
-**Update state.** Record what was built, what tests were added, and any issues discovered. Update `project-state.yaml` so the next session has accurate context.
+**Update state and artifacts.** Record what was built, what tests were added, and any issues discovered. Update `project-state.yaml` so the next session has accurate context. If the chunk changed behavior that artifacts describe — test counts, model fields, architecture components, API surfaces — update those artifacts now. Specifications that drift from reality become fiction (Principle 3). The Critic will flag stale artifacts, but updating them immediately is cheaper than fixing them later.
 
 ## Working With Specs
 

@@ -181,6 +181,20 @@ def cmd_clear(project_dir: Path) -> int:
         if baseline is not None:
             (prawduct_dir / ".session-git-baseline").write_text(baseline)
 
+    # Warn if learnings.md is oversized
+    learnings_path = prawduct_dir / "learnings.md"
+    if learnings_path.is_file():
+        try:
+            size = learnings_path.stat().st_size
+            if size > 8000:  # ~3000 tokens ≈ ~8KB
+                print(
+                    f"NOTE: .prawduct/learnings.md is {size // 1024}KB — recommend pruning to ~3,000 tokens.\n"
+                    f"  Keep concise rules in learnings.md; move detailed root cause analysis to learnings-detail.md.",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass
+
     # Trigger framework sync (best-effort)
     try_sync(project_dir)
 
@@ -202,6 +216,26 @@ def validate_critic_findings(findings_path: Path) -> bool:
         if not isinstance(summary, str) or not summary.strip():
             return False
         return True
+    except Exception:
+        return False
+
+
+def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
+    """Check if project-state.yaml contains a build plan with chunks.
+
+    Uses string matching rather than YAML parsing for speed and zero dependencies.
+    Intentionally returns True for completed build plans (chunks: []) — any repo
+    that has gone through build planning should get Critic review on code changes.
+    """
+    state_path = prawduct_dir / "project-state.yaml"
+    if not state_path.is_file():
+        return False
+    try:
+        # Light check: look for build_plan with chunks rather than parsing full YAML
+        content = state_path.read_text()
+        return (content.startswith("build_plan:") or "\nbuild_plan:" in content) and (
+            content.startswith("  chunks:") or "\n  chunks:" in content
+        )
     except Exception:
         return False
 
@@ -231,8 +265,8 @@ def cmd_stop(project_dir: Path) -> int:
         )
 
     # Gate 2: Critic review (only when building against a plan)
-    build_plan = prawduct_dir / "artifacts" / "build-plan.md"
-    if has_changes and build_plan.is_file():
+    has_build_plan = (prawduct_dir / "artifacts" / "build-plan.md").is_file() or _has_build_plan_in_state(prawduct_dir)
+    if has_changes and has_build_plan:
         if git_has_code_changes(project_dir):
             needs_review = True
 

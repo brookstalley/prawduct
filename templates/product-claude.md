@@ -84,7 +84,7 @@ Write **specification files** — one per artifact type — in dependency order:
 - **Phase C**: Security, testing, operations, and structural artifacts (based on characteristics)
 - **Phase D**: `build-plan.md` (chunks with deliverables and acceptance criteria)
 
-Write all artifacts to `.prawduct/artifacts/`. The Critic reads from this location, the build cycle's "Read the spec" references it, and the stop hook checks for `build-plan.md` there. `project-state.yaml` tracks *status*; artifacts are the *specifications*.
+Write all artifacts to `.prawduct/artifacts/`. The Critic reads from this location and the build cycle's "Read the spec" references it. The stop hook triggers the Critic gate when it detects a build plan (either `artifacts/build-plan.md` or chunks in `project-state.yaml`). `project-state.yaml` tracks *status*; artifacts are the *specifications*.
 
 Artifact depth scales to risk — same artifacts, different depths. Between phases, review what you've produced from multiple perspectives (product, architecture, testing, skeptic).
 
@@ -102,7 +102,7 @@ For each chunk:
 5. **Request Critic review.** Mandatory. Invoke as a separate agent (see Critic section below). The stop hook will block session end if you skip this.
 6. **Resolve findings.** Fix blocking findings before proceeding. Address warnings.
 7. **Reflect.** What did the Critic catch? Capture any learning to `learnings.md`. This is the best moment for it — don't defer to session end.
-8. **Update state.** Record what was built in project-state.yaml.
+8. **Update state and artifacts.** Record what was built in project-state.yaml. If the chunk changed behavior that artifacts describe (test counts, model fields, architecture, API surfaces), update those artifacts now.
 
 **Never weaken a test to make it pass.** Fix the code. Never silently drop a requirement. Never add features the spec didn't ask for.
 
@@ -116,7 +116,7 @@ After every significant action (feature, bug fix, session end):
 5. **Evolve**: Should this change anything upstream?
 6. **Methodology check**: Did Prawduct's process help or hinder? Note any friction or gaps.
 
-The stop hook enforces session-end reflection. Keep `learnings.md` under ~3,000 tokens — prune and consolidate regularly.
+The stop hook enforces session-end reflection. Keep `learnings.md` under ~3,000 tokens — prune and consolidate regularly. When learnings outgrow one file, keep concise rules in `learnings.md` and move detailed root cause analysis to `learnings-detail.md` (consulted on demand when debugging).
 
 ## The Critic — Independent Review
 

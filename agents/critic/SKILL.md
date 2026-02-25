@@ -94,6 +94,8 @@ Does this change add weight proportionate to its value?
 
 **For product builds:** Are artifacts internally consistent? Do changes cascade correctly? Does implementation match architecture specs? When `project-preferences.md` exists, does implementation follow stated conventions?
 
+**Artifact freshness (bidirectional):** Coherence is bidirectional — not just "does code match artifacts?" but also "do artifacts still describe the code?" After significant building, artifacts can become stale descriptions of an earlier version. Check key indicators: test counts, coverage matrices, model fields, architecture components, API surfaces. If artifacts describe a significantly earlier state of the code → **WARNING** ("artifact X appears stale — test count says N but actual is M"). This is Principle 3 (Living Documentation) applied to specifications.
+
 **For framework changes:**
 
 | If changed... | Then verify... |

@@ -49,6 +49,8 @@ Is the change weight-appropriate? Over-engineering a simple feature is a warning
 
 Are artifacts consistent with each other and with the code? Do changes to one artifact cascade correctly? Does the implementation match the architecture described in the specs? If `project-preferences.md` exists, does the implementation follow stated conventions?
 
+**Artifact freshness (bidirectional):** Coherence is bidirectional — not just "does code match artifacts?" but also "do artifacts still describe the code?" After significant building, specifications can become stale. Check key indicators: test counts, coverage matrices, model fields, architecture components. If an artifact describes a significantly earlier state of the code → **WARNING**.
+
 ### Learning/Observability
 
 Does the change preserve the ability to detect problems? Is error handling present where failure is possible? Is logging appropriate for debugging? If an observability strategy exists, does the implementation follow it?

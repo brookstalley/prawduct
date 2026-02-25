@@ -6,6 +6,36 @@ When this file grows past ~3,000 tokens, prune: consolidate related entries, arc
 
 ---
 
+## Artifacts drift silently during sustained building
+
+**Pattern**: Discodon built 40+ chunks over multiple sessions. Artifacts written during planning (test-specifications, architecture, data-model) were never updated. Test-specifications says "1056 tests" when the actual count is 1318+. Coverage matrix is missing 15+ test files. Architecture may not reflect scheduling, tool framework, or prompt architecture features.
+
+**Root cause**: Build cycle step 8 said "Update state" (meaning project-state.yaml) but didn't mention updating artifacts. The Critic's Coherence check verified code→artifact direction (does code implement the spec?) but not artifact→code direction (does the spec still describe the code?). No structural prompt to update artifacts as the code evolved.
+
+**Resolution**: (1) Updated build cycle step 8 to explicitly include artifact updates. (2) Added bidirectional artifact freshness check to Critic's Coherence check. (3) This is Principle 3 (Living Documentation) applied to specifications — the same principle that prevents documentation fiction also applies to specs that become planning fiction.
+
+**Principle**: Relates to Living Documentation (#3), Coherent Artifacts (#12).
+
+## Structural gates must match natural workflow, not prescribed workflow
+
+**Pattern**: The stop hook checked for `artifacts/build-plan.md` to trigger the Critic gate. The methodology said to put the build plan there. But the natural workflow for discodon put the build plan in `project-state.yaml` (alongside status tracking). Result: the Critic structural gate never fired for 40+ build sessions. The Critic was invoked purely through behavioral compliance (Claude following CLAUDE.md instructions).
+
+**Root cause**: When there are two reasonable places for something and the gate only checks one, the gate becomes optional. This is especially ironic given the v2 learning that "judgment alone won't interrupt momentum" — the gate existed to catch judgment failures but was watching the wrong door.
+
+**Resolution**: Updated the hook to check both `artifacts/build-plan.md` and `project-state.yaml` for build plan content. Updated methodology to acknowledge both locations.
+
+**Principle**: Relates to Governance Is Structural (#21) — structural gates must match how people actually work.
+
+## Growing files need structural nudges to prune
+
+**Pattern**: Discodon's learnings.md grew to 42KB (430 lines, ~12,000 tokens) despite guidance saying "keep under ~3,000 tokens." Each session added detailed technical learnings. No session pruned. The guidance to prune was present but never triggered behavior change — exactly the pattern from "filed-away observations don't change behavior."
+
+**Resolution**: Added learnings size warning to the clear hook. On session start, if learnings.md exceeds ~8KB, a NOTE is printed to stderr recommending pruning. Not blocking (that would be annoying), just a visible nudge.
+
+**Principle**: Relates to Close the Learning Loop (#17) and the existing learning about filed observations.
+
+---
+
 ## Init leaves CLAUDE.md unmerged when onboarding existing repos (RESOLVED)
 
 **Pattern**: `prawduct-init.py`'s `write_template` skips existing files to avoid overwriting user edits. When onboarding an existing repo that already has a CLAUDE.md, init created all other Prawduct files but left CLAUDE.md untouched — no framework block markers, no Prawduct content.

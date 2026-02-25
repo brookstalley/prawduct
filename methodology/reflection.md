@@ -108,6 +108,28 @@ When fixing a bug or recovering from an error, apply root cause discipline befor
 
 **Learnings have freshness.** A learning from yesterday is highly relevant. A learning from three months ago that hasn't been reinforced might be an artifact of a specific situation rather than a general pattern. Review old learnings with fresh eyes.
 
+### When learnings outgrow one file
+
+Projects with sustained building accumulate detailed technical learnings — root cause analyses, debugging stories, framework-specific gotchas. These are valuable as debugging reference but too large for ambient session context. When learnings.md grows past the ~3,000-token threshold and pruning alone isn't enough, split into two files:
+
+**`learnings.md`** (~3,000 tokens, always loaded at session start)
+- Organized by **topic area**, not chronologically
+- Each entry: the rule + brief "why" (1-3 lines)
+- Enough keywords in each rule to trigger pattern recognition when a related problem occurs
+- Footer pointing to the detail file
+
+**`learnings-detail.md`** (no size limit, consulted when stuck)
+- Full observation / root cause / fix / rule format
+- Organized by topic area with clear `## Topic` headers for searchability
+- Consulted when: hitting an error in a known area, debugging something unexpected, or working in a domain with known pitfalls
+
+The key design: `learnings.md` is the **index** (cheap to load, triggers recognition), `learnings-detail.md` is the **reference** (rich context for when you need to reason about *why* something works the way it does). The concise rules help you know *when* to consult the detail.
+
+Example of a concise rule in `learnings.md`:
+> **Pydantic v2**: Never use `@computed_field` in models with `extra="forbid"` — it serializes but fails deserialization. Use `@property` for derived values. Model validators that set fields must use `self.__dict__[]` to avoid recursion with `validate_assignment=True`.
+
+The corresponding detail in `learnings-detail.md` would have the full observation, the actual error message, the root cause chain, and the fix — invaluable when debugging a variant of the same problem, but unnecessary as ambient context.
+
 ## The Mechanical Enforcement
 
 The stop hook is the one piece of mechanical enforcement in the learning loop. It checks:
