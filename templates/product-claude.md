@@ -94,6 +94,8 @@ Artifact depth scales to risk — same artifacts, different depths. Between phas
 
 **BEFORE writing any code**, read these steps. This is where governance failures happen — skipping review, dropping requirements, weakening tests.
 
+Before the first chunk of a session, run the full test suite. Every test must pass. If any test fails — for any reason — fix it before proceeding. There is no "pre-existing failure" exception. A failing test means something is wrong; diagnose and fix it. This is your clean baseline.
+
 For each chunk:
 1. **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand deliverables, acceptance criteria, dependencies.
 2. **Write tests** first or alongside implementation. Tests are your specification made executable.
@@ -104,7 +106,7 @@ For each chunk:
 7. **Reflect.** What did the Critic catch? Capture any learning to `learnings.md`. This is the best moment for it — don't defer to session end.
 8. **Update state and artifacts.** Record what was built in project-state.yaml. If the chunk changed behavior that artifacts describe (test counts, model fields, architecture, API surfaces), update those artifacts now.
 
-**Never weaken a test to make it pass.** Fix the code. Never silently drop a requirement. Never add features the spec didn't ask for.
+**Never weaken a test to make it pass.** Fix the code. Never silently drop a requirement. Never add features the spec didn't ask for. **Never dismiss a failing test as "pre-existing."** If it fails, fix it — the cause doesn't matter.
 
 ### Reflection
 

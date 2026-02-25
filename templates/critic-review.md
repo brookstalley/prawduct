@@ -31,7 +31,7 @@ For chunks delivering user-visible or consumer-facing functionality: was the pro
 - Test count must not decrease → **BLOCKING** if it did
 - Tests verify **behavior**, not implementation details → **WARNING** if not
 - Happy path + at least one error case per flow → **WARNING** if missing
-- Full test suite passes (no regressions from earlier chunks) → **BLOCKING** if failing
+- Full test suite passes → **BLOCKING** if failing. There is no "pre-existing failure" exception — every test must pass regardless of when or why it broke
 - Tests are independent (no shared state, no ordering dependency) → **WARNING** if not
 
 ### Scope Discipline

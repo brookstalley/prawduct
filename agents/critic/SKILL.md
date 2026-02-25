@@ -61,7 +61,7 @@ For chunks delivering user-visible or consumer-facing functionality: was the pro
 - **Test count >= previous** → **BLOCKING** if violated. Tests must never decrease.
 - **No test files deleted** → **BLOCKING** if violated.
 - **New tests added** → **WARNING** if no new tests for a chunk delivering new functionality.
-- **Full suite passes** → **BLOCKING** if violated. No regressions from earlier chunks.
+- **Full suite passes** → **BLOCKING** if violated. There is no "pre-existing failure" exception — every test must pass regardless of when or why it broke. If the builder claims a failure is pre-existing, that is not a mitigation; it is still a blocking finding.
 
 **Judgment checks:**
 - Tests verify **behavior**, not implementation details → **WARNING** if testing internals.

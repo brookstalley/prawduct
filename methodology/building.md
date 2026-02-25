@@ -6,6 +6,8 @@ Building is where plans meet reality. The artifacts tell you what to build; the 
 
 For each chunk in the build plan:
 
+**Establish a green baseline.** Before starting the first chunk of a session, run the full test suite. Every test must pass. If any test fails — for any reason — fix it before proceeding. There is no "pre-existing failure" exception. A failing test means something is wrong: the code, the environment, a dependency, or the test itself. Diagnose and fix it. This is your clean baseline; without it, you can't distinguish new breakage from old.
+
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts in that directory. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently.
 
 **Write tests.** Tests come first or alongside implementation, not after. Tests are your specification made executable. They define the behavior you're implementing. If you can't write the test, you don't understand the requirement well enough to implement it.
@@ -58,6 +60,8 @@ Tests are the most important artifact you produce during building. They're contr
 
 **Tests never weaken.** Test count doesn't decrease. Assertion depth doesn't decrease. If a test needs to change because behavior changed, update it explicitly — don't delete it and call it cleanup. This is Principle 1 (Tests Are Contracts), and it's a bright line.
 
+**All tests pass, always.** There is no such thing as an acceptable failing test. Not "pre-existing," not "not my fault," not "we'll get to it later." If a test fails, either the code is wrong (fix the code) or — after thorough investigation confirms the test itself is the problem — the test is wrong (fix the test). Never skip a failing test. Never delete it. Never move on with a broken suite.
+
 **Test coverage is proportionate.** A family utility doesn't need 95% code coverage. A payment system does. Match coverage to risk. But every product needs at least: happy path through core flows, error handling for likely failures, and edge cases for anything involving money, data, or safety.
 
 ## The Critic
@@ -90,5 +94,7 @@ If the Critic finds something you disagree with, think carefully before dismissi
 **Ignoring the Critic**: Dismissing findings without genuine reflection. The Critic exists because self-review doesn't work. If you find yourself routinely disagreeing with the Critic, something is wrong — either the Critic's checks need updating (propose amendments) or your building practices need adjusting.
 
 **Verification theater**: Claiming verification without actually exercising the product. "I verified it works" without evidence is worse than "I couldn't verify this — here's what to check." Honest confidence (Principle 5).
+
+**"Pre-existing" dismissal**: Encountering a failing test and labeling it "pre-existing" to justify moving on. The cause of a failure is irrelevant to the obligation to fix it. A broken test suite is a broken test suite. Diagnose the failure, fix the code (preferred) or fix the test (only after confirming the test is wrong), and re-establish a green baseline before proceeding.
 
 **Pacing blindness during builds**: Asking implementation questions when the user is waiting for progress. During building, the user's primary signal is usually "show me something working." Decide autonomously on minor implementation details — naming, internal structure, error message wording — unless you're genuinely blocked or the choice has user-visible consequences. Save questions for decisions that would be expensive to reverse.
