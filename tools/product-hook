@@ -46,6 +46,13 @@ def try_sync(project_dir: Path) -> None:
 
         manifest = json.loads(manifest_path.read_text())
         fw_source = os.environ.get("PRAWDUCT_FRAMEWORK_DIR") or manifest.get("framework_source", "")
+
+        # Fall back to sibling ../prawduct if configured source not found
+        if not fw_source or not Path(fw_source).is_dir():
+            sibling = (project_dir.parent / "prawduct").resolve()
+            if sibling.is_dir():
+                fw_source = str(sibling)
+
         if not fw_source:
             return
 

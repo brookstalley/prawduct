@@ -198,8 +198,17 @@ def create_manifest(
     }
 
 
-def _resolve_framework_dir(manifest: dict, cli_framework_dir: str | None) -> Path | None:
-    """Resolve the framework directory from CLI arg, env var, or manifest."""
+def _resolve_framework_dir(
+    manifest: dict, cli_framework_dir: str | None, product_dir: Path | None = None
+) -> Path | None:
+    """Resolve the framework directory from CLI arg, env var, manifest, or sibling.
+
+    Resolution order:
+      1. --framework-dir CLI argument (explicit override; fail if invalid)
+      2. PRAWDUCT_FRAMEWORK_DIR env var (explicit override; fail if invalid)
+      3. framework_source from manifest (recorded at init; fall through if stale)
+      4. Sibling ../prawduct relative to product dir (convention-based discovery)
+    """
     # 1. CLI argument
     if cli_framework_dir:
         p = Path(cli_framework_dir).resolve()
@@ -221,6 +230,12 @@ def _resolve_framework_dir(manifest: dict, cli_framework_dir: str | None) -> Pat
         p = Path(source).resolve()
         if p.is_dir():
             return p
+
+    # 4. Sibling ../prawduct relative to product dir
+    if product_dir:
+        sibling = (product_dir.parent / "prawduct").resolve()
+        if sibling.is_dir():
+            return sibling
 
     return None
 
@@ -253,7 +268,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None) -> dict:
             "notes": [],
         }
 
-    fw_dir = _resolve_framework_dir(manifest, framework_dir)
+    fw_dir = _resolve_framework_dir(manifest, framework_dir, product)
     if fw_dir is None:
         return {
             "product_dir": str(product),

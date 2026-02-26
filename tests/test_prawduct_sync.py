@@ -306,6 +306,76 @@ class TestRunSync:
         assert result["synced"] is False
         assert result["reason"] == "framework not found"
 
+    def test_sibling_prawduct_fallback(self, tmp_path: Path):
+        """When manifest points to nonexistent path, fall back to ../prawduct."""
+        # Create framework at sibling "prawduct" directory
+        parent = tmp_path / "source"
+        parent.mkdir()
+        fw = parent / "prawduct"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v1")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {"SessionStart": [], "Stop": []}
+        }))
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v2")
+
+        # Create product as sibling with manifest pointing to nonexistent path
+        product = parent / "myapp"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        (product / "CLAUDE.md").write_text(
+            f"# MyApp CLAUDE.md\n\n{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (product / ".prawduct" / "critic-review.md").write_text("# MyApp Critic v1")
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(json.dumps({"hooks": {}}))
+
+        block_hash = compute_block_hash(f"# MyApp CLAUDE.md\n\n{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n")
+        manifest = {
+            "format_version": 1,
+            "framework_source": "/nonexistent/old/path",
+            "product_name": "MyApp",
+            "last_sync": "2026-01-01T00:00:00Z",
+            "files": {
+                "CLAUDE.md": {
+                    "template": "templates/product-claude.md",
+                    "strategy": "block_template",
+                    "generated_hash": block_hash,
+                },
+                ".prawduct/critic-review.md": {
+                    "template": "templates/critic-review.md",
+                    "strategy": "template",
+                    "generated_hash": compute_hash(product / ".prawduct" / "critic-review.md"),
+                },
+                "tools/product-hook": {
+                    "source": "tools/product-hook",
+                    "strategy": "always_update",
+                    "generated_hash": compute_hash(product / "tools" / "product-hook"),
+                },
+                ".claude/settings.json": {
+                    "template": "templates/product-settings.json",
+                    "strategy": "merge_settings",
+                    "generated_hash": None,
+                },
+            },
+        }
+        (product / ".prawduct" / "sync-manifest.json").write_text(json.dumps(manifest))
+
+        result = run_sync(str(product))
+        assert result["synced"] is True
+        assert any("CLAUDE.md" in a for a in result["actions"])
+        assert "Content v2" in (product / "CLAUDE.md").read_text()
+
     def test_no_changes_needed(self, tmp_path: Path):
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
