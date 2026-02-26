@@ -195,6 +195,22 @@ def cmd_clear(project_dir: Path) -> int:
         except Exception:
             pass
 
+    # Warn if project-state.yaml is oversized
+    state_path = prawduct_dir / "project-state.yaml"
+    if state_path.is_file():
+        try:
+            size = state_path.stat().st_size
+            if size > 40000:  # ~10K tokens ≈ ~40KB
+                print(
+                    f"NOTE: .prawduct/project-state.yaml is {size // 1024}KB — recommend compacting.\n"
+                    f"  Completed build plan chunks: keep only id, name, status (remove deliverables/acceptance_criteria).\n"
+                    f"  Test history: keep only the current count, remove per-chunk history.\n"
+                    f"  Change log: keep the last ~10 entries, remove older ones (git has the history).",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass
+
     # Trigger framework sync (best-effort)
     try_sync(project_dir)
 

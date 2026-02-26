@@ -38,6 +38,8 @@ When you can't verify directly, say what you can't verify and why. Tell the user
 
 **Update state and artifacts.** Record what was built, what tests were added, and any issues discovered. Update `project-state.yaml` so the next session has accurate context. If the chunk changed behavior that artifacts describe — test counts, model fields, architecture components, API surfaces — update those artifacts now. Specifications that drift from reality become fiction (Principle 3). The Critic will flag stale artifacts, but updating them immediately is cheaper than fixing them later.
 
+**Compact completed state.** `project-state.yaml` is read at session start — everything in it consumes context. When the file grows large (the hook warns at ~40KB), compact completed sections: reduce finished build plan chunks to `{id, name, status: complete}` (remove deliverables, acceptance_criteria, depends_on), trim test history to the current count, and keep only the last ~10 change log entries. Git preserves the full history — the active file should contain what the next session needs, not what previous sessions produced.
+
 ## Working With Specs
 
 Specs are guides, not scripture. Implementation always reveals things the spec didn't anticipate. When this happens:

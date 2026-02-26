@@ -528,6 +528,41 @@ class TestLearningsSizeWarning:
         assert "learnings" not in result.stderr.lower()
 
 
+class TestProjectStateSizeWarning:
+    """Tests for oversized project-state.yaml warning on clear."""
+
+    def test_warns_when_project_state_exceeds_threshold(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Write a project-state file larger than 40KB
+        (prawduct / "project-state.yaml").write_text("# State\n" + "x" * 41000)
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "project-state.yaml" in result.stderr
+        assert "compacting" in result.stderr.lower()
+
+    def test_no_warning_for_small_project_state(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("# State\ncurrent_phase: building")
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "project-state" not in result.stderr.lower()
+
+    def test_no_warning_when_project_state_missing(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "project-state" not in result.stderr.lower()
+
+
 class TestSyncTrigger:
     """Test that clear triggers sync (best-effort)."""
 

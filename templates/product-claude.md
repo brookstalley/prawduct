@@ -104,7 +104,7 @@ For each chunk:
 5. **Request Critic review.** Mandatory. Invoke as a separate agent (see Critic section below). The stop hook will block session end if you skip this.
 6. **Resolve findings.** Fix blocking findings before proceeding. Address warnings.
 7. **Reflect.** What did the Critic catch? Capture any learning to `learnings.md`. This is the best moment for it — don't defer to session end.
-8. **Update state and artifacts.** Record what was built in project-state.yaml. If the chunk changed behavior that artifacts describe (test counts, model fields, architecture, API surfaces), update those artifacts now.
+8. **Update state and artifacts.** Record what was built in project-state.yaml. If the chunk changed behavior that artifacts describe (test counts, model fields, architecture, API surfaces), update those artifacts now. If project-state.yaml is getting large, compact completed sections: reduce finished chunks to `{id, name, status: complete}`, trim test history to the current count, and keep only the last ~10 change log entries (git preserves the full history).
 
 **Never weaken a test to make it pass.** Fix the code. Never silently drop a requirement. Never add features the spec didn't ask for. **Never dismiss a failing test as "pre-existing."** If it fails, fix it — the cause doesn't matter.
 
