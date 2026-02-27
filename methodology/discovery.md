@@ -109,7 +109,7 @@ Discovery is done when you have enough understanding to design artifacts that wo
 
 **Interrogation mode**: Asking questions one at a time in a rigid sequence. Batch related questions. Make inferences. Have a conversation, not an interview.
 
-**Ignoring developer preferences**: Asking what to build but not how to build it. Technical users have strong opinions about testing, tooling, code style, and architecture patterns. Ask early.
+**Ignoring developer preferences**: Asking what to build but not how to build it. Technical users have strong opinions about testing, tooling, code style, and architecture patterns. Ask early and capture them in `project-preferences.md` (see `templates/project-preferences.md`). This file is read before writing any code — it ensures every session follows the same conventions.
 
 **Domain blindness**: Not leveraging your own knowledge of the domain. If someone's building a marketplace, you know marketplaces need trust systems, dispute resolution, and payment escrow. Surface that knowledge; don't wait for the user to think of it.
 

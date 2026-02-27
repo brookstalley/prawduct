@@ -8,6 +8,7 @@ Artifacts are specification files that guide building. They ensure you think thr
 
 **Universal artifacts** (every product, scaled to risk):
 - **Product Brief** — Vision, personas, flows, scope, success criteria. The foundation everything else references.
+- **Project Preferences** — Developer conventions: language, code style, testing approach, tooling, architecture patterns. Captured during discovery, read before writing any code. Tells every session *how* code should be written (see `templates/project-preferences.md`).
 - **Data Model** — Entities, relationships, constraints, state machines. The structural backbone.
 - **Security Model** — Authentication, authorization, data privacy, abuse prevention.
 - **Test Specifications** — Concrete test scenarios at unit, integration, and e2e levels, with risk-proportionate depth.

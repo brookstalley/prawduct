@@ -74,7 +74,7 @@ After understanding the concept, search for existing solutions and relevant patt
 
 **Watch for fatigue signals.** If the user's answers get terse, they agree without elaborating, or they say "just build it" — compress remaining questions, infer more aggressively, and move on. Preserving engagement matters more than exhaustive discovery.
 
-Discovery produces `project-state.yaml` with classification (including prior art), product definition, cost awareness, accessibility approach, error handling approach, user expertise profile, and technology preferences.
+Discovery produces `project-state.yaml` with classification (including prior art), product definition, cost awareness, accessibility approach, error handling approach, user expertise profile, and technology preferences. When the user expresses developer preferences (testing, code style, tooling, architecture patterns), capture them in `.prawduct/artifacts/project-preferences.md`. This file is read before writing any code — it tells every session how this project's code should be written.
 
 ### Planning
 
@@ -97,9 +97,9 @@ Artifact depth scales to risk — same artifacts, different depths. Between phas
 Before the first chunk of a session, run the full test suite. Every test must pass. If any test fails — for any reason — fix it before proceeding. There is no "pre-existing failure" exception. A failing test means something is wrong; diagnose and fix it. This is your clean baseline.
 
 For each chunk:
-1. **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand deliverables, acceptance criteria, dependencies.
+1. **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand deliverables, acceptance criteria, dependencies. If `.prawduct/artifacts/project-preferences.md` exists, read it too — it defines how code should be written in this project.
 2. **Write tests** first or alongside implementation. Tests are your specification made executable.
-3. **Implement.** Follow project conventions. Prefer simplicity.
+3. **Implement.** Follow project conventions and preferences. Prefer simplicity.
 4. **Verify.** Run the full test suite — new chunks must not break existing ones. Then verify the product directly — launch it, call it, run it, inspect its output. Tests verify code; product verification confirms the experience. Use your structural awareness to determine what verification means for this product.
 5. **Request Critic review.** Mandatory. Invoke as a separate agent (see Critic section below). The stop hook will block session end if you skip this.
 6. **Resolve findings.** Fix blocking findings before proceeding. Address warnings.
