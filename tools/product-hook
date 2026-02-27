@@ -77,15 +77,11 @@ def try_sync(project_dir: Path) -> None:
                 sync_result = json.loads(result.stdout)
                 actions = sync_result.get("actions", [])
                 if actions:
-                    print(
-                        f"Framework sync: {', '.join(actions)}",
-                        file=sys.stderr,
-                    )
+                    print(f"Framework sync: {', '.join(actions)}")
                 if any("CLAUDE.md" in a for a in actions):
                     print(
                         "IMPORTANT: CLAUDE.md was updated by framework sync. "
-                        "Re-read CLAUDE.md now to pick up the latest instructions.",
-                        file=sys.stderr,
+                        "Re-read CLAUDE.md now to pick up the latest instructions."
                     )
             except json.JSONDecodeError:
                 pass
@@ -212,6 +208,9 @@ def cmd_clear(project_dir: Path) -> int:
         if baseline is not None:
             (prawduct_dir / ".session-git-baseline").write_text(baseline)
 
+    # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
+    # stderr is only visible to the user in the terminal, not to the agent.
+
     # Warn if learnings.md is oversized
     learnings_path = prawduct_dir / "learnings.md"
     if learnings_path.is_file():
@@ -220,8 +219,7 @@ def cmd_clear(project_dir: Path) -> int:
             if size > 8000:  # ~3000 tokens ≈ ~8KB
                 print(
                     f"NOTE: .prawduct/learnings.md is {size // 1024}KB — recommend pruning to ~3,000 tokens.\n"
-                    f"  Keep concise rules in learnings.md; move detailed root cause analysis to learnings-detail.md.",
-                    file=sys.stderr,
+                    f"  Keep concise rules in learnings.md; move detailed root cause analysis to learnings-detail.md."
                 )
         except Exception:
             pass
@@ -236,8 +234,7 @@ def cmd_clear(project_dir: Path) -> int:
                     f"NOTE: .prawduct/project-state.yaml is {size // 1024}KB — recommend compacting.\n"
                     f"  Completed build plan chunks: keep only id, name, status (remove deliverables/acceptance_criteria).\n"
                     f"  Test history: keep only the current count, remove per-chunk history.\n"
-                    f"  Change log: keep the last ~10 entries, remove older ones (git has the history).",
-                    file=sys.stderr,
+                    f"  Change log: keep the last ~10 entries, remove older ones (git has the history)."
                 )
         except Exception:
             pass
@@ -257,8 +254,7 @@ def cmd_clear(project_dir: Path) -> int:
                 "  Infer preferences from the codebase (config files, test patterns, code style, existing conventions)\n"
                 "  and create it with sections: Language & Runtime, Code Style, Testing, Architecture Patterns, Tooling.\n"
                 "  This file is read before writing any code — it tells every session how this project's code should be written.\n"
-                "  Do this NOW, before responding to the user.",
-                file=sys.stderr,
+                "  Do this NOW, before responding to the user."
             )
 
     # Trigger framework sync (best-effort)

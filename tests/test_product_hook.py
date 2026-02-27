@@ -505,8 +505,8 @@ class TestLearningsSizeWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "learnings.md" in result.stderr
-        assert "pruning" in result.stderr.lower()
+        assert "learnings.md" in result.stdout
+        assert "pruning" in result.stdout.lower()
 
     def test_no_warning_for_small_learnings(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -516,7 +516,7 @@ class TestLearningsSizeWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "learnings" not in result.stderr.lower()
+        assert "learnings" not in result.stdout.lower()
 
     def test_no_warning_when_learnings_missing(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -525,7 +525,7 @@ class TestLearningsSizeWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "learnings" not in result.stderr.lower()
+        assert "learnings" not in result.stdout.lower()
 
 
 class TestProjectStateSizeWarning:
@@ -540,8 +540,8 @@ class TestProjectStateSizeWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "project-state.yaml" in result.stderr
-        assert "compacting" in result.stderr.lower()
+        assert "project-state.yaml" in result.stdout
+        assert "compacting" in result.stdout.lower()
 
     def test_no_warning_for_small_project_state(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -551,7 +551,7 @@ class TestProjectStateSizeWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "project-state" not in result.stderr.lower()
+        assert "project-state" not in result.stdout.lower()
 
     def test_no_warning_when_project_state_missing(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -560,7 +560,7 @@ class TestProjectStateSizeWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "project-state" not in result.stderr.lower()
+        assert "project-state" not in result.stdout.lower()
 
 
 class TestProjectPreferencesWarning:
@@ -576,8 +576,8 @@ class TestProjectPreferencesWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "project-preferences.md" in result.stderr
-        assert "CRITICAL" in result.stderr
+        assert "project-preferences.md" in result.stdout
+        assert "CRITICAL" in result.stdout
 
     def test_no_warning_when_preferences_exist(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -590,7 +590,7 @@ class TestProjectPreferencesWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "project-preferences" not in result.stderr.lower()
+        assert "project-preferences" not in result.stdout.lower()
 
     def test_no_warning_for_new_project_without_code(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -600,7 +600,7 @@ class TestProjectPreferencesWarning:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "project-preferences" not in result.stderr.lower()
+        assert "project-preferences" not in result.stdout.lower()
 
 
 class TestSyncTrigger:
