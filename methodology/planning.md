@@ -72,4 +72,6 @@ The build plan decomposes artifacts into buildable chunks — coherent units of 
 
 **Dependency ignorance**: Planning chunks that can't be built in order because they depend on things that don't exist yet. Map dependencies explicitly.
 
+**Line-number scoping**: Identifying change sites by line number rather than by structural pattern. "Change lines 42, 87, and 134" is brittle — those lines shift as the file evolves. "All methods that swallow exceptions and return failure replies" is robust — it identifies the pattern, so you find all instances even if new ones were added since the plan was written. Scope changes by the pattern they share, not by their current addresses.
+
 **Template worship**: Generating every section of every template regardless of relevance. If a section doesn't apply, say so briefly. Don't fill space with "not applicable" paragraphs.
