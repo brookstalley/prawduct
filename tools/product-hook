@@ -242,6 +242,24 @@ def cmd_clear(project_dir: Path) -> int:
         except Exception:
             pass
 
+    # Check for missing project-preferences.md
+    prefs_path = prawduct_dir / "artifacts" / "project-preferences.md"
+    if not prefs_path.is_file():
+        # Only warn if there's source code (not a brand-new project)
+        has_code = any(
+            f.suffix in (".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt", ".c", ".cpp", ".h")
+            for f in project_dir.rglob("*")
+            if f.is_file() and ".prawduct" not in f.parts and "node_modules" not in f.parts
+        )
+        if has_code:
+            print(
+                "ACTION REQUIRED: .prawduct/artifacts/project-preferences.md does not exist.\n"
+                "  Infer preferences from the codebase (config files, test patterns, code style, existing conventions)\n"
+                "  and create it with sections: Language & Runtime, Code Style, Testing, Architecture Patterns, Tooling.\n"
+                "  This file is read before writing any code — it tells every session how this project's code should be written.",
+                file=sys.stderr,
+            )
+
     # Trigger framework sync (best-effort)
     try_sync(project_dir)
 

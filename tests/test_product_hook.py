@@ -563,6 +563,46 @@ class TestProjectStateSizeWarning:
         assert "project-state" not in result.stderr.lower()
 
 
+class TestProjectPreferencesWarning:
+    """Tests for missing project-preferences.md warning on clear."""
+
+    def test_warns_when_code_exists_but_no_preferences(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "artifacts").mkdir()
+        # Create a source file so it looks like a real project
+        (tmp_path / "main.py").write_text("print('hello')")
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "project-preferences.md" in result.stderr
+        assert "ACTION REQUIRED" in result.stderr
+
+    def test_no_warning_when_preferences_exist(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "project-preferences.md").write_text("# Preferences")
+        (tmp_path / "main.py").write_text("print('hello')")
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "project-preferences" not in result.stderr.lower()
+
+    def test_no_warning_for_new_project_without_code(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "artifacts").mkdir()
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "project-preferences" not in result.stderr.lower()
+
+
 class TestSyncTrigger:
     """Test that clear triggers sync (best-effort)."""
 
