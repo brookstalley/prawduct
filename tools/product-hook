@@ -38,7 +38,12 @@ def get_prawduct_dir(project_dir: Path) -> Path:
 
 
 def try_sync(project_dir: Path) -> None:
-    """Attempt to run framework sync. Silently does nothing on any failure."""
+    """Attempt to run framework sync. Silently does nothing on any failure.
+
+    If CLAUDE.md is updated, prints a note to stderr instructing the model
+    to re-read it — the file was updated on disk but the system prompt has
+    the old content.
+    """
     try:
         manifest_path = project_dir / ".prawduct" / "sync-manifest.json"
         if not manifest_path.is_file():
@@ -60,11 +65,30 @@ def try_sync(project_dir: Path) -> None:
         if not sync_script.is_file():
             return
 
-        subprocess.run(
-            [sys.executable, str(sync_script), str(project_dir), "--framework-dir", fw_source],
+        result = subprocess.run(
+            [sys.executable, str(sync_script), str(project_dir), "--framework-dir", fw_source, "--json"],
             capture_output=True,
+            text=True,
             timeout=30,
         )
+
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                sync_result = json.loads(result.stdout)
+                actions = sync_result.get("actions", [])
+                if actions:
+                    print(
+                        f"Framework sync: {', '.join(actions)}",
+                        file=sys.stderr,
+                    )
+                if any("CLAUDE.md" in a for a in actions):
+                    print(
+                        "IMPORTANT: CLAUDE.md was updated by framework sync. "
+                        "Re-read CLAUDE.md now to pick up the latest instructions.",
+                        file=sys.stderr,
+                    )
+            except json.JSONDecodeError:
+                pass
     except Exception:
         pass  # Best-effort — never block session start
 
