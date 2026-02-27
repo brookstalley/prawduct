@@ -50,7 +50,7 @@ These guide every decision. Apply them with judgment, not mechanically.
 When someone opens this directory, route based on context:
 
 **Returning user** (`.prawduct/project-state.yaml` exists and has content)
-→ Read `.prawduct/project-state.yaml` and `.prawduct/learnings.md` to understand where things stand. If `project-state.yaml` is over ~40KB, compact it before doing anything else: reduce completed build plan chunks to `{id, name, status: complete}` (remove deliverables, acceptance_criteria, depends_on), trim test history to the current count, and keep only the last ~10 change log entries. Git preserves the full history. Resume from current phase. If the user says what they want to work on, proceed. If not, orient them on current state and ask.
+→ Read `.prawduct/project-state.yaml` and `.prawduct/learnings.md` to understand where things stand. If `project-state.yaml` is over ~40KB, compact it before doing anything else: reduce completed build plan chunks to `{id, name, status: complete}` (remove deliverables, acceptance_criteria, depends_on), trim test history to the current count, and keep only the last ~10 change log entries. Git preserves the full history. If `.prawduct/artifacts/project-preferences.md` doesn't exist and the project has source code, infer preferences from the codebase (config files, test patterns, code style, existing conventions) and create it — see the template in the framework for the format. Resume from current phase. If the user says what they want to work on, proceed. If not, orient them on current state and ask.
 
 **First session** (`.prawduct/project-state.yaml` exists but no build plan yet)
 → Read `.prawduct/project-state.yaml`. If discovery is incomplete, continue it. If discovery is done, move to planning.
