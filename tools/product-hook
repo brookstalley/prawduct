@@ -253,10 +253,11 @@ def cmd_clear(project_dir: Path) -> int:
         )
         if has_code:
             print(
-                "ACTION REQUIRED: .prawduct/artifacts/project-preferences.md does not exist.\n"
+                "CRITICAL: You MUST create .prawduct/artifacts/project-preferences.md before doing anything else.\n"
                 "  Infer preferences from the codebase (config files, test patterns, code style, existing conventions)\n"
                 "  and create it with sections: Language & Runtime, Code Style, Testing, Architecture Patterns, Tooling.\n"
-                "  This file is read before writing any code — it tells every session how this project's code should be written.",
+                "  This file is read before writing any code — it tells every session how this project's code should be written.\n"
+                "  Do this NOW, before responding to the user.",
                 file=sys.stderr,
             )
 

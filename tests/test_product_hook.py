@@ -577,7 +577,7 @@ class TestProjectPreferencesWarning:
 
         assert result.returncode == 0
         assert "project-preferences.md" in result.stderr
-        assert "ACTION REQUIRED" in result.stderr
+        assert "CRITICAL" in result.stderr
 
     def test_no_warning_when_preferences_exist(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
