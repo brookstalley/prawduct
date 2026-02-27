@@ -778,6 +778,40 @@ class TestRunSyncBlockTemplate:
         assert result["synced"] is False
         assert result["reason"] == "no updates needed"
 
+    def test_restores_drifted_block(self, tmp_path: Path):
+        """When template hasn't changed but product block drifted, restore it."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Agent modifies the block content (drift) without a template change
+        claude = (product / "CLAUDE.md").read_text()
+        claude = claude.replace("Content v1", "Content v1\n\nAgent added this line")
+        (product / "CLAUDE.md").write_text(claude)
+
+        # Template is unchanged — stored hash matches rendered block hash
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("Restored CLAUDE.md" in a for a in result["actions"])
+        assert any("drifted" in n for n in result["notes"])
+
+        # Block should be restored to original template content
+        content = (product / "CLAUDE.md").read_text()
+        assert "Agent added this line" not in content
+        assert "Content v1" in content
+
+        # User content outside markers should be preserved
+        assert "# CLAUDE.md — TestApp" in content
+
+    def test_no_restore_when_block_matches(self, tmp_path: Path):
+        """When template and product block both match stored hash, no action."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # No changes to template or product — everything in sync
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert not any("Restored" in a for a in result["actions"])
+
     def test_template_without_markers_skips(self, tmp_path: Path):
         """Template without markers (bug) — skip with note."""
         fw = self._setup_framework(tmp_path)

@@ -344,7 +344,23 @@ def run_sync(product_dir: str, framework_dir: str | None = None) -> dict:
             # Check if template block has changed since last sync
             stored_hash = config.get("generated_hash")
             if stored_hash == rendered_block_hash:
-                continue  # Template block hasn't changed
+                # Template hasn't changed — but check if product drifted
+                if dst.is_file():
+                    product_content = dst.read_text()
+                    product_block, _, _ = extract_block(product_content)
+                    if product_block is not None:
+                        product_block_hash = hashlib.sha256(product_block.encode()).hexdigest()
+                        if product_block_hash != stored_hash:
+                            # Product drifted from last sync — re-apply
+                            before_idx = product_content.find(BLOCK_BEGIN)
+                            end_idx = product_content.find(BLOCK_END)
+                            before = product_content[:before_idx]
+                            after = product_content[end_idx + len(BLOCK_END):]
+                            new_content = before + rendered_block + after
+                            dst.write_text(new_content)
+                            actions.append(f"Restored {rel_path}")
+                            notes.append(f"Restored {rel_path} — block had drifted from synced version")
+                continue
 
             # Template changed — check product file
             if not dst.is_file():
