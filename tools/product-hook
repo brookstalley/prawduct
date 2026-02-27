@@ -323,10 +323,13 @@ def cmd_stop(project_dir: Path) -> int:
     if has_changes and not reflected_file.is_file():
         blockers.append(
             "REFLECTION: Files were modified but no session reflection was captured.\n"
-            "  1. Reflect on what changed and what you learned\n"
-            "  2. Update .prawduct/learnings.md if anything is worth capturing\n"
-            "  3. Write your reflection to .prawduct/.session-reflected\n"
-            "  4. Note whether the methodology helped or hindered this session\n"
+            "  Write your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
+            "  happened this session: what changed, what surprised you, what the methodology helped\n"
+            "  or hindered. It gets archived to reflections.md automatically on next session start.\n"
+            "\n"
+            "  If this session produced a durable lesson (a rule future sessions should follow),\n"
+            "  also add it to .prawduct/learnings.md. Learnings are concise standing rules;\n"
+            "  the session reflection is the story behind them.\n"
         )
 
     # Gate 2: Critic review (only when building against a plan)
