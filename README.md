@@ -61,10 +61,15 @@ Learnings aren't just filed — they're read at session start and directly influ
 - Python 3
 - git
 
-### Create a new product
+Clone the framework repo first:
 
 ```bash
 git clone https://github.com/brookstalley/prawduct
+```
+
+### Start a new product from scratch
+
+```bash
 python3 prawduct/tools/prawduct-init.py ~/my-product --name "My Product"
 cd ~/my-product
 claude
@@ -72,10 +77,19 @@ claude
 
 Then describe what you want to build.
 
+### Add Prawduct to an existing repo
+
+```bash
+python3 prawduct/tools/prawduct-init.py ~/existing-repo --name "My Existing Project"
+cd ~/existing-repo
+claude
+```
+
+Prawduct detects existing code and infers project conventions (language, test framework, code style) before making any changes.
+
 ### Develop the framework itself
 
 ```bash
-git clone https://github.com/brookstalley/prawduct
 cd prawduct
 claude
 ```
