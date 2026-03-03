@@ -552,3 +552,38 @@ class TestExistingClaudeMd:
         result = run_init(str(tmp_path), "TestProduct")
 
         assert any("Merged" in a and "CLAUDE.md" in a for a in result["actions"])
+
+
+# =============================================================================
+# Project preferences template
+# =============================================================================
+
+
+class TestProjectPreferences:
+    def test_init_creates_preferences_template(self, tmp_path: Path):
+        """Init should place project-preferences.md in artifacts dir."""
+        run_init(str(tmp_path), "TestProduct")
+
+        prefs = tmp_path / ".prawduct" / "artifacts" / "project-preferences.md"
+        assert prefs.is_file()
+        content = prefs.read_text()
+        assert "# Project Preferences" in content
+        assert "Language & Runtime" in content
+
+    def test_init_does_not_overwrite_filled_preferences(self, tmp_path: Path):
+        """Re-running init doesn't overwrite user-edited preferences."""
+        run_init(str(tmp_path), "TestProduct")
+
+        prefs = tmp_path / ".prawduct" / "artifacts" / "project-preferences.md"
+        prefs.write_text("# Project Preferences\n\n- **Language**: Python 3.12\n")
+
+        result = run_init(str(tmp_path), "TestProduct")
+
+        assert "Python 3.12" in prefs.read_text()
+        assert not any("project-preferences" in a for a in result["actions"])
+
+    def test_preferences_action_reported(self, tmp_path: Path):
+        """The creation action appears in the result."""
+        result = run_init(str(tmp_path), "TestProduct")
+
+        assert any("project-preferences.md" in a for a in result["actions"])

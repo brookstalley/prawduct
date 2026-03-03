@@ -431,6 +431,22 @@ def run_sync(product_dir: str, framework_dir: str | None = None) -> dict:
                 actions.append(f"Merged {rel_path}")
                 notes.append(f"Updated {rel_path} — restart session for full effect")
 
+    # Place-once files: create if missing, never tracked for ongoing sync
+    place_once = {
+        ".prawduct/artifacts/project-preferences.md": "templates/project-preferences.md",
+    }
+    for rel_path, template_rel in place_once.items():
+        dst = product / rel_path
+        if dst.is_file():
+            continue
+        template_path = fw_dir / template_rel
+        if not template_path.is_file():
+            continue
+        rendered = render_template(template_path, subs)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(rendered)
+        actions.append(f"Created {rel_path}")
+
     # Update manifest
     if actions:
         manifest["files"] = updated_files

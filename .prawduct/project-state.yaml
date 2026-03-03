@@ -51,6 +51,23 @@ current_phase: iteration
 # =============================================================================
 
 change_log:
+  # --- Project preferences template placement and unfilled detection (2026-03-03) ---
+  - what: 'Project preferences template in init, sync, and unfilled detection in hook'
+    why: 'project-preferences.md was never placed by init — hook printed a CRITICAL warning
+      but Claude had to invent the file structure from scratch. Three changes: (1) init now
+      places the template in .prawduct/artifacts/ (step 5, using write_template so idempotent).
+      (2) sync now places it for existing repos via place-once mechanism (not manifest-tracked,
+      just created if missing). (3) hook detects unfilled templates (empty Language field),
+      not just missing files, so the CRITICAL warning fires even after template placement.
+      Also added subagent delegation guidance to building.md and product-claude.md.
+      132 total tests (10 new: 3 init, 3 hook, 2 sync, 2 hook unfilled detection).'
+    blast_radius: 'Modified: tools/prawduct-init.py (step 5 + renumber), tools/product-hook
+      (unfilled detection), tools/prawduct-sync.py (place-once mechanism), tests/test_prawduct_init.py
+      (3 new tests), tests/test_product_hook.py (2 new tests + rename), tests/test_prawduct_sync.py
+      (2 new tests), methodology/building.md (subagent delegation), templates/product-claude.md
+      (subagent delegation).'
+    classification: functional
+    date: 2026-03-03
   # --- Artifact freshness and build plan detection (2026-02-24) ---
   - what: 'Artifact freshness checks, build plan detection, learnings size warning'
     why: 'Review of discodon (40+ build chunks) revealed: (1) Critic gate never fired because

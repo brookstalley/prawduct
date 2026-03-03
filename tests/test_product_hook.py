@@ -579,18 +579,38 @@ class TestProjectPreferencesWarning:
         assert "project-preferences.md" in result.stdout
         assert "CRITICAL" in result.stdout
 
-    def test_no_warning_when_preferences_exist(self, tmp_path: Path):
+    def test_no_warning_when_preferences_filled(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         artifacts = prawduct / "artifacts"
         artifacts.mkdir()
-        (artifacts / "project-preferences.md").write_text("# Preferences")
+        (artifacts / "project-preferences.md").write_text(
+            "# Project Preferences\n\n## Language & Runtime\n\n- **Language**: Python\n"
+        )
         (tmp_path / "main.py").write_text("print('hello')")
 
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
         assert "project-preferences" not in result.stdout.lower()
+
+    def test_warns_when_template_unfilled(self, tmp_path: Path):
+        """Unfilled template (empty Language field) + source code → CRITICAL warning."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir()
+        # Write the unfilled template (fields have nothing after the colon)
+        (artifacts / "project-preferences.md").write_text(
+            "# Project Preferences\n\n## Language & Runtime\n\n- **Language**:\n- **Version**:\n"
+        )
+        (tmp_path / "main.py").write_text("print('hello')")
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "project-preferences.md" in result.stdout
+        assert "CRITICAL" in result.stdout
 
     def test_no_warning_for_new_project_without_code(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"

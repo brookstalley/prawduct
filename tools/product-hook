@@ -239,9 +239,19 @@ def cmd_clear(project_dir: Path) -> int:
         except Exception:
             pass
 
-    # Check for missing project-preferences.md
+    # Check for missing or unfilled project-preferences.md
     prefs_path = prawduct_dir / "artifacts" / "project-preferences.md"
-    if not prefs_path.is_file():
+    prefs_missing = not prefs_path.is_file()
+    prefs_unfilled = False
+    if not prefs_missing:
+        try:
+            content = prefs_path.read_text()
+            # Template has empty fields like "- **Language**:\n" — filled has content after colon
+            prefs_unfilled = "- **Language**:\n" in content
+        except Exception:
+            pass
+
+    if prefs_missing or prefs_unfilled:
         # Only warn if there's source code (not a brand-new project)
         has_code = any(
             f.suffix in (".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt", ".c", ".cpp", ".h")

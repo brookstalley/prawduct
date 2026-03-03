@@ -175,7 +175,15 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created .prawduct/project-state.yaml")
 
-    # 5. Learnings starter
+    # 5. Project preferences template
+    if write_template(
+        TEMPLATES_DIR / "project-preferences.md",
+        target / ".prawduct" / "artifacts" / "project-preferences.md",
+        subs,
+    ):
+        actions.append("Created .prawduct/artifacts/project-preferences.md")
+
+    # 6. Learnings starter
     learnings = target / ".prawduct" / "learnings.md"
     if not learnings.is_file():
         learnings.write_text(
@@ -183,14 +191,14 @@ def run_init(target_dir: str, product_name: str) -> dict:
         )
         actions.append("Created .prawduct/learnings.md")
 
-    # 6. Product hook
+    # 7. Product hook
     if copy_hook(
         FRAMEWORK_DIR / "tools" / "product-hook",
         target / "tools" / "product-hook",
     ):
         actions.append("Created tools/product-hook")
 
-    # 7. Settings.json (with subs for banner)
+    # 8. Settings.json (with subs for banner)
     if merge_settings(
         target / ".claude" / "settings.json",
         TEMPLATES_DIR / "product-settings.json",
@@ -198,11 +206,11 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created/updated .claude/settings.json")
 
-    # 8. .gitignore
+    # 9. .gitignore
     if update_gitignore(target):
         actions.append("Updated .gitignore")
 
-    # 9. Sync manifest
+    # 10. Sync manifest
     manifest_path = target / ".prawduct" / "sync-manifest.json"
     if not manifest_path.is_file():
         claude_content = (target / "CLAUDE.md").read_text()

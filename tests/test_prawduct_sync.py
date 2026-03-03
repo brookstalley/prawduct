@@ -825,3 +825,96 @@ class TestRunSyncBlockTemplate:
         result = run_sync(str(product), framework_dir=str(fw))
         assert not any("CLAUDE.md" in a for a in result["actions"])
         assert any("no markers" in n for n in result["notes"])
+
+
+# =============================================================================
+# run_sync — place-once files
+# =============================================================================
+
+
+class TestRunSyncPlaceOnce:
+    """Tests for place-once file creation during sync."""
+
+    def _setup_framework(self, tmp_path: Path) -> Path:
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v1")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            }
+        }, indent=2))
+        (templates / "project-preferences.md").write_text(
+            "# Project Preferences\n\n## Language & Runtime\n\n- **Language**:\n"
+        )
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        return fw
+
+    def _setup_product(self, tmp_path: Path, fw: Path) -> Path:
+        product = tmp_path / "product"
+        product.mkdir()
+        prawduct = product / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "artifacts").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": "TestApp"}
+        claude_content = render_template(fw / "templates" / "product-claude.md", subs)
+        (product / "CLAUDE.md").write_text(claude_content)
+        critic_content = render_template(fw / "templates" / "critic-review.md", subs)
+        (prawduct / "critic-review.md").write_text(critic_content)
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_bytes(
+            (fw / "tools" / "product-hook").read_bytes()
+        )
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(
+            (fw / "templates" / "product-settings.json").read_text()
+        )
+
+        hashes = {
+            "CLAUDE.md": compute_block_hash(claude_content),
+            ".prawduct/critic-review.md": compute_hash(prawduct / "critic-review.md"),
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,
+        }
+        manifest = create_manifest(product, fw, "TestApp", hashes)
+        (prawduct / "sync-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return product
+
+    def test_creates_missing_preferences(self, tmp_path: Path):
+        """Sync places project-preferences.md if missing from existing repo."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        prefs = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        assert prefs.is_file()
+        assert "Project Preferences" in prefs.read_text()
+        assert any("project-preferences" in a for a in result["actions"])
+
+    def test_does_not_overwrite_existing_preferences(self, tmp_path: Path):
+        """Sync skips project-preferences.md if it already exists."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        prefs = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        prefs.write_text("# Project Preferences\n\n- **Language**: Python\n")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        assert "Python" in prefs.read_text()
+        assert not any("project-preferences" in a for a in result["actions"])
