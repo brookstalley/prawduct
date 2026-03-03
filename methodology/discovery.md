@@ -88,6 +88,23 @@ Every product needs error handling; the question is how much design it needs upf
 
 **Capture to `project-state.yaml`** under `design_decisions.error_handling_approach`. This connects discovery decisions to the build phase, where test discipline (building.md) and the Critic (Check 6) validate that error cases are actually covered.
 
+## Surface Observability Needs
+
+Every product has observability needs — even when the answer is "console.error is enough." The depth depends on structural characteristics: products with `runs_unattended`, `exposes_programmatic_interface`, or `multi_process_distributed` need deeper observability design. Single-user local tools need minimal (error logging is sufficient).
+
+**Use infer-confirm-proceed.** "I'll plan for error logging with enough context to debug problems. For [this type of product], that means [structured logging / console output / three-signal observability]. Any specific monitoring needs?" This establishes the baseline without interrogating.
+
+**Scale to risk.** Low-risk (personal tool, single user): error logging to console — no structured logging, no metrics, no tracing. Medium-risk (team tool, service with dependencies): structured logging with correlation context, key operational metrics, health endpoint. High-risk (production service, multi-party, regulatory): three-signal observability (logs, metrics, traces), correlation context, sensitive data filtering, alerting.
+
+**Key decisions to surface:**
+- What signals does this product need? (logs only → logs + metrics → full three-signal)
+- What ties related events together? (request ID, session ID, domain-specific IDs)
+- Does sensitive data need filtering from observability output?
+- What's the operational model? (developer debugging vs. SRE monitoring vs. automated response)
+- Will the development agent need to query observability signals during debugging? (If yes, plan agent-accessible interfaces early.)
+
+**Capture to `project-state.yaml`** under `design_decisions.observability_approach`.
+
 ## What Discovery Produces
 
 Discovery produces a `project-state.yaml` with:
@@ -96,6 +113,7 @@ Discovery produces a `project-state.yaml` with:
 - **Cost awareness**: operational cost estimates and constraints (when applicable)
 - **Accessibility approach**: accessibility baseline scaled to risk (for human interfaces)
 - **Error handling approach**: error handling strategy scaled to risk
+- **Observability approach**: signal types, correlation context, operational model — scaled to risk
 - **User expertise profile**: what the user knows and doesn't, inferred from conversation
 - **Product identity**: name, personality, technology preferences
 
@@ -120,3 +138,5 @@ Discovery is done when you have enough understanding to design artifacts that wo
 **Cost blindness**: Not surfacing operational costs for products with external dependencies, cloud deployments, or API usage. The user finds out about costs after deployment instead of during design. If the product runs unattended or calls external services, mention costs during discovery.
 
 **Accessibility afterthought**: Detecting `has_human_interface` but not establishing an accessibility baseline. Accessibility bolted on later is expensive and incomplete. When you detect a human interface, state your accessibility assumptions and let the user adjust.
+
+**Observability afterthought**: Detecting structural characteristics that imply monitoring needs (unattended operation, programmatic interfaces, distributed systems) but not establishing an observability baseline. Like accessibility, observability is cheaper to design in than to retrofit. When structural characteristics suggest non-trivial observability needs, state your default approach and let the user adjust.

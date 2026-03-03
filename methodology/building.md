@@ -21,12 +21,16 @@ Depth is proportionate to risk. A personal utility needs basic happy-path and cr
 
 **Implement.** Write the code that makes the tests pass. Follow the project's coding conventions and preferences (if captured during discovery). Prefer simplicity — the right amount of abstraction is the minimum needed for the current chunk. Don't build for hypothetical future requirements.
 
+Add observability alongside features, not after. If the observability strategy calls for structured logging, log from chunk 1. Use instrumentation in layers: start with what the framework gives for free, add declarative markers, add contextual attributes, and reserve manual instrumentation for critical paths. When the strategy calls for agent-accessible interfaces, build them early — having tool access to logs and metrics during chunk 1 verification makes every subsequent chunk easier to debug.
+
 **Verify.** Two layers:
 
 - *Code verification:* Run all tests — not just the ones you wrote, but the full suite. A new chunk shouldn't break existing chunks. Check that acceptance criteria are met. Check that the implementation matches the spec.
 - *Product verification:* Confirm the product works as its users or consumers would experience it. Tests verify code behavior; product verification confirms the actual experience. What this means depends on what you're building — use your knowledge of the product's structural characteristics (Principle 20). Launch it, call it, run it, inspect its output. Use the tools available to you.
 
 Scale verification to chunk significance. Scaffold → "it starts." Data layer → "queries return expected results." Feature delivering user-visible behavior → "I exercised it directly and it works." Not every chunk needs exhaustive verification.
+
+During product verification, confirm observability signals specified in the strategy are present. When the strategy includes agent-accessible interfaces, use them to verify signals are flowing — query logs for expected entries, check that specified metrics exist, inspect traces. This is part of "does the product work" — including "can I debug it when it doesn't."
 
 When you can't verify directly, say what you can't verify and why. Tell the user what to check. Don't claim verification you didn't perform (Principle 5).
 

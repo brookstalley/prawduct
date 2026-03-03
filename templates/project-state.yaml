@@ -127,6 +127,7 @@ design_decisions:
   interaction_patterns: []
   accessibility_approach: null
   error_handling_approach: null
+  observability_approach: null    # Signal types, correlation context, sensitive data filtering, operational model
   visual_direction: null
 
 # =============================================================================

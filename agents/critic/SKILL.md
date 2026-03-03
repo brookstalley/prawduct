@@ -115,6 +115,7 @@ Does this change preserve the ability to learn and improve?
 - **Growing collections without lifecycle management** (accumulates entries with no archiving/compaction) → **WARNING**
 - **Error handling missing where failure is possible** → **WARNING**
 - **Logging/observability absent for new functionality** → **WARNING**
+- **Observability strategy exists but implementation doesn't follow it** (e.g., strategy specifies correlation context but logs lack request IDs; strategy requires sensitive data filtering but parameters are logged unfiltered) → **WARNING**
 
 ### Checks 7-10: Framework-Only
 
