@@ -40,6 +40,26 @@ When you can't verify directly, say what you can't verify and why. Tell the user
 
 **Compact completed state.** `project-state.yaml` is read at session start — everything in it consumes context. When the file grows large (the hook warns at ~40KB), compact completed sections: reduce finished build plan chunks to `{id, name, status: complete}` (remove deliverables, acceptance_criteria, depends_on), trim test history to the current count, and keep only the last ~10 change log entries. Git preserves the full history — the active file should contain what the next session needs, not what previous sessions produced.
 
+## Delegating Work to Subagents
+
+The build cycle described above works whether you execute it yourself or delegate it to a subagent. **When the user asks you to do work in a subagent, do it.** This is not optional and not a suggestion — it's a direct instruction from the user (Principle 22: the user owns the product).
+
+Subagent delegation is especially valuable when:
+- The user explicitly requests it
+- Multiple chunks are independent and can be built in parallel
+- A chunk involves focused, well-scoped work that benefits from a clean context
+- The main context is getting large and a fresh context would work more effectively
+
+**How to delegate a build chunk:** Spawn a subagent and give it everything it needs to execute the build cycle independently:
+- The chunk spec (from `build-plan.md` and referenced artifacts)
+- The project directory path
+- Instructions to read `.prawduct/artifacts/project-preferences.md` for coding conventions
+- Instructions to run the full test suite before and after implementation
+
+**What stays in the main agent:** Critic review, reflection, and state updates. The subagent does the implementation work; the main agent maintains governance. This mirrors the existing pattern where the Critic runs as a separate agent — implementation can too.
+
+**Don't second-guess the delegation.** When a user says "do this in a subagent," don't silently do it in the main context instead. Scope Discipline (Principle 11) means doing what was asked — including *how* it was asked to be done.
+
 ## Working With Specs
 
 Specs are guides, not scripture. Implementation always reveals things the spec didn't anticipate. When this happens:
