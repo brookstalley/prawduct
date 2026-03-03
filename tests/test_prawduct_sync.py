@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,6 +27,7 @@ render_template = _mod.render_template
 merge_settings = _mod.merge_settings
 create_manifest = _mod.create_manifest
 run_sync = _mod.run_sync
+_try_pull_framework = _mod._try_pull_framework
 BLOCK_BEGIN = _mod.BLOCK_BEGIN
 BLOCK_END = _mod.BLOCK_END
 
@@ -918,3 +920,305 @@ class TestRunSyncPlaceOnce:
 
         assert "Python" in prefs.read_text()
         assert not any("project-preferences" in a for a in result["actions"])
+
+
+# =============================================================================
+# _try_pull_framework
+# =============================================================================
+
+
+class _FakeCompletedProcess:
+    """Minimal stand-in for subprocess.CompletedProcess."""
+
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = ""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _make_mock_subprocess(responses: dict):
+    """Build a namespace that replaces ``_mod.subprocess`` for testing.
+
+    ``responses`` maps a git subcommand (e.g. ``"rev-parse"``) to either:
+      - a ``_FakeCompletedProcess`` to return, or
+      - an exception to raise.
+    Unrecognised subcommands return success with empty output.
+    """
+    import types
+
+    ns = types.SimpleNamespace()
+    ns.TimeoutExpired = subprocess.TimeoutExpired
+
+    def fake_run(cmd, *, capture_output=True, text=True, cwd=None, timeout=None):
+        # Identify the git subcommand (cmd[1])
+        subcmd = cmd[1] if len(cmd) > 1 else ""
+        val = responses.get(subcmd)
+        if val is None:
+            return _FakeCompletedProcess()
+        if isinstance(val, Exception):
+            raise val
+        return val
+
+    ns.run = fake_run
+    return ns
+
+
+class TestTryPullFramework:
+    """Unit tests for _try_pull_framework."""
+
+    def test_not_a_git_repo(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(returncode=128, stderr="fatal: not a git repo"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=True) == []
+
+    def test_auto_pull_clean_up_to_date(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=""),
+            "pull": _FakeCompletedProcess(stdout="Already up to date.\n"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=True) == []
+
+    def test_auto_pull_clean_updated(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=""),
+            "pull": _FakeCompletedProcess(stdout="Updating abc123..def456\n"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "updated" in notes[0].lower()
+
+    def test_auto_pull_dirty_tree(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=" M dirty-file.py\n"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "uncommitted" in notes[0].lower()
+
+    def test_auto_pull_not_fast_forwardable(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=""),
+            "pull": _FakeCompletedProcess(
+                returncode=1,
+                stderr="fatal: Not possible to fast-forward, aborting.",
+            ),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "not fast-forwardable" in notes[0].lower()
+
+    def test_auto_pull_general_failure(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=""),
+            "pull": _FakeCompletedProcess(returncode=1, stderr="error: something"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "pull failed" in notes[0].lower()
+
+    def test_advisory_behind(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "fetch": _FakeCompletedProcess(),
+            "rev-list": _FakeCompletedProcess(stdout="3\n"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=False)
+        assert len(notes) == 1
+        assert "3" in notes[0]
+        assert "behind" in notes[0].lower()
+
+    def test_advisory_up_to_date(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "fetch": _FakeCompletedProcess(),
+            "rev-list": _FakeCompletedProcess(stdout="0\n"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=False) == []
+
+    def test_advisory_fetch_fails(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "fetch": _FakeCompletedProcess(returncode=1, stderr="error"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=False) == []
+
+    def test_git_not_on_path(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": FileNotFoundError("git not found"),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=True) == []
+
+    def test_timeout(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": subprocess.TimeoutExpired(cmd="git", timeout=30),
+        })
+        monkeypatch.setattr(_mod, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "timed out" in notes[0].lower()
+
+
+# =============================================================================
+# run_sync — pull integration
+# =============================================================================
+
+
+class TestRunSyncPull:
+    """Integration tests for pull behavior within run_sync."""
+
+    def _setup_framework(self, tmp_path: Path) -> Path:
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v1")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            }
+        }, indent=2))
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        return fw
+
+    def _setup_product(self, tmp_path: Path, fw: Path, manifest_overrides: dict | None = None) -> Path:
+        product = tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": "TestApp"}
+        claude_content = render_template(fw / "templates" / "product-claude.md", subs)
+        (product / "CLAUDE.md").write_text(claude_content)
+        critic_content = render_template(fw / "templates" / "critic-review.md", subs)
+        (product / ".prawduct" / "critic-review.md").write_text(critic_content)
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_bytes(
+            (fw / "tools" / "product-hook").read_bytes()
+        )
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(
+            (fw / "templates" / "product-settings.json").read_text()
+        )
+
+        hashes = {
+            "CLAUDE.md": compute_block_hash(claude_content),
+            ".prawduct/critic-review.md": compute_hash(product / ".prawduct" / "critic-review.md"),
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,
+        }
+        manifest = create_manifest(product, fw, "TestApp", hashes)
+        if manifest_overrides:
+            manifest.update(manifest_overrides)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+        return product
+
+    def test_no_pull_skips_entirely(self, tmp_path: Path, monkeypatch):
+        """no_pull=True means _try_pull_framework is never called."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        called = []
+
+        original = _mod._try_pull_framework
+
+        def spy(fw_dir, auto_pull):
+            called.append(True)
+            return original(fw_dir, auto_pull)
+
+        monkeypatch.setattr(_mod, "_try_pull_framework", spy)
+        run_sync(str(product), framework_dir=str(fw), no_pull=True)
+        assert called == []
+
+    def test_default_manifest_uses_auto_pull_true(self, tmp_path: Path, monkeypatch):
+        """Manifest without auto_pull field defaults to auto_pull=True."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Remove auto_pull from manifest to simulate old manifests
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest.pop("auto_pull", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+        captured_auto_pull = []
+
+        def fake_pull(fw_dir, auto_pull):
+            captured_auto_pull.append(auto_pull)
+            return []
+
+        monkeypatch.setattr(_mod, "_try_pull_framework", fake_pull)
+        run_sync(str(product), framework_dir=str(fw))
+        assert captured_auto_pull == [True]
+
+    def test_manifest_auto_pull_false_uses_advisory(self, tmp_path: Path, monkeypatch):
+        """Manifest with auto_pull=false passes False to _try_pull_framework."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw, manifest_overrides={"auto_pull": False})
+
+        captured_auto_pull = []
+
+        def fake_pull(fw_dir, auto_pull):
+            captured_auto_pull.append(auto_pull)
+            return []
+
+        monkeypatch.setattr(_mod, "_try_pull_framework", fake_pull)
+        run_sync(str(product), framework_dir=str(fw))
+        assert captured_auto_pull == [False]
+
+    def test_pull_notes_appear_in_result(self, tmp_path: Path, monkeypatch):
+        """Notes from _try_pull_framework appear in the sync result."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        monkeypatch.setattr(_mod, "_try_pull_framework", lambda fw_dir, auto_pull: ["Framework updated via git pull"])
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert "Framework updated via git pull" in result["notes"]
+
+    def test_pull_failure_does_not_block_sync(self, tmp_path: Path, monkeypatch):
+        """Even when pull reports a problem, sync proceeds normally."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        monkeypatch.setattr(
+            _mod, "_try_pull_framework",
+            lambda fw_dir, auto_pull: ["Framework pull failed — run git pull manually"],
+        )
+
+        # Update template to trigger a real sync action
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("CLAUDE.md" in a for a in result["actions"])
+        assert "Framework pull failed — run git pull manually" in result["notes"]

@@ -51,6 +51,29 @@ current_phase: iteration
 # =============================================================================
 
 change_log:
+  # --- Auto-pull framework git repo during sync (2026-03-03) ---
+  - what: 'Auto-pull framework git repo before syncing templates'
+    why: 'Product repos syncing against a stale framework checkout never benefited from
+      upstream improvements. Added _try_pull_framework() to prawduct-sync.py: auto_pull=true
+      (default) runs git pull --ff-only, auto_pull=false runs git fetch + advisory.
+      Best-effort throughout — failures never block sync. Added --no-pull CLI flag,
+      auto_pull manifest field, and notes printing in product-hook try_sync().
+      245 total tests (16 new: 11 unit + 5 integration, 0 regressions).'
+    blast_radius: 'Modified: tools/prawduct-sync.py (subprocess import, _try_pull_framework,
+      auto_pull in manifest, no_pull param, --no-pull flag), tools/product-hook (print notes),
+      tests/test_prawduct_sync.py (TestTryPullFramework + TestRunSyncPull).'
+    classification: functional
+    date: 2026-03-03
+  # --- Comprehensive lifecycle tests for project-preferences.md (2026-03-03) ---
+  - what: 'End-to-end lifecycle tests for project-preferences.md across init, sync, and hook'
+    why: 'The init/sync/hook preferences feature was shipped but sync failures were invisible
+      (try_sync catches all). Added 42 tests in 4 classes covering 3 real-world scenarios:
+      new project (8), existing project (18 incl. parametrized extension detection), and
+      legacy product updating (13 incl. subprocess chain and ordering verification).
+      Plus 3 cross-cutting consistency tests. 229 total tests (42 new, 0 regressions).'
+    blast_radius: 'New: tests/test_preferences_lifecycle.py. Updated: .prawduct/project-state.yaml.'
+    classification: functional
+    date: 2026-03-03
   # --- Project preferences template placement and unfilled detection (2026-03-03) ---
   - what: 'Project preferences template in init, sync, and unfilled detection in hook'
     why: 'project-preferences.md was never placed by init — hook printed a CRITICAL warning
@@ -267,7 +290,7 @@ build_plan:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 8
+    test_count: 9
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md
@@ -277,6 +300,7 @@ build_state:
       - tests/test_product_hook.py
       - tests/test_prawduct_migrate.py
       - tests/test_prawduct_sync.py
+      - tests/test_preferences_lifecycle.py
 
 # =============================================================================
 # DEPRECATED TERMS

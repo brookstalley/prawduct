@@ -76,8 +76,11 @@ def try_sync(project_dir: Path) -> None:
             try:
                 sync_result = json.loads(result.stdout)
                 actions = sync_result.get("actions", [])
+                notes = sync_result.get("notes", [])
                 if actions:
                     print(f"Framework sync: {', '.join(actions)}")
+                for note in notes:
+                    print(f"  * {note}")
                 if any("CLAUDE.md" in a for a in actions):
                     print(
                         "IMPORTANT: CLAUDE.md was updated by framework sync. "

@@ -25,6 +25,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -193,6 +194,7 @@ def create_manifest(
         "format_version": 1,
         "framework_source": str(framework_dir),
         "product_name": product_name,
+        "auto_pull": True,
         "last_sync": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "files": files,
     }
@@ -240,7 +242,92 @@ def _resolve_framework_dir(
     return None
 
 
-def run_sync(product_dir: str, framework_dir: str | None = None) -> dict:
+def _try_pull_framework(fw_dir: Path, auto_pull: bool) -> list[str]:
+    """Best-effort git pull/fetch of the framework repo before syncing.
+
+    When auto_pull is True: runs ``git pull --ff-only`` (safe fast-forward).
+    When auto_pull is False: runs ``git fetch`` and reports if behind upstream.
+
+    Returns a list of human-readable notes (may be empty). Never raises.
+    """
+    notes: list[str] = []
+    try:
+        # Verify fw_dir is inside a git repo
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            cwd=str(fw_dir),
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return notes  # Not a git repo — silently skip
+
+        if auto_pull:
+            # Check for dirty working tree
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                cwd=str(fw_dir),
+                timeout=30,
+            )
+            if status.returncode == 0 and status.stdout.strip():
+                notes.append("Framework has uncommitted changes — skipping pull")
+                return notes
+
+            # Fast-forward pull
+            pull = subprocess.run(
+                ["git", "pull", "--ff-only"],
+                capture_output=True,
+                text=True,
+                cwd=str(fw_dir),
+                timeout=30,
+            )
+            if pull.returncode == 0:
+                if "Already up to date" not in pull.stdout:
+                    notes.append("Framework updated via git pull")
+            else:
+                stderr = pull.stderr.strip()
+                if "Not possible to fast-forward" in stderr or "fatal" in stderr:
+                    notes.append("Framework pull failed (not fast-forwardable) — run git pull manually")
+                else:
+                    notes.append("Framework pull failed — run git pull manually")
+        else:
+            # Advisory mode: fetch + check if behind
+            fetch = subprocess.run(
+                ["git", "fetch", "--quiet"],
+                capture_output=True,
+                text=True,
+                cwd=str(fw_dir),
+                timeout=30,
+            )
+            if fetch.returncode != 0:
+                return notes  # Fetch failed — silently skip
+
+            behind = subprocess.run(
+                ["git", "rev-list", "--count", "HEAD..@{upstream}"],
+                capture_output=True,
+                text=True,
+                cwd=str(fw_dir),
+                timeout=30,
+            )
+            if behind.returncode == 0:
+                count = behind.stdout.strip()
+                if count and int(count) > 0:
+                    notes.append(f"Framework is {count} commit(s) behind upstream — consider running git pull")
+
+    except FileNotFoundError:
+        pass  # git not on PATH
+    except subprocess.TimeoutExpired:
+        notes.append("Framework git operation timed out")
+    except Exception:
+        pass  # Safety net — never block sync
+
+    return notes
+
+
+def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: bool = False) -> dict:
     """Run the sync algorithm on a product directory.
 
     Returns a summary dict with actions taken, notes, and any warnings.
@@ -278,10 +365,17 @@ def run_sync(product_dir: str, framework_dir: str | None = None) -> dict:
             "notes": [],
         }
 
+    # Best-effort framework pull before syncing templates
+    if not no_pull:
+        auto_pull = manifest.get("auto_pull", True)
+        pull_notes = _try_pull_framework(fw_dir, auto_pull)
+    else:
+        pull_notes = []
+
     product_name = manifest.get("product_name", product.name)
     subs = {"{{PRODUCT_NAME}}": product_name}
     actions: list[str] = []
-    notes: list[str] = []
+    notes: list[str] = list(pull_notes)
 
     files = manifest.get("files", {})
     updated_files = dict(files)
@@ -481,9 +575,15 @@ def main() -> int:
         dest="json_mode",
         help="JSON output only",
     )
+    parser.add_argument(
+        "--no-pull",
+        action="store_true",
+        dest="no_pull",
+        help="Skip git pull/fetch of the framework repo",
+    )
     args = parser.parse_args()
 
-    result = run_sync(args.product_dir, args.framework_dir)
+    result = run_sync(args.product_dir, args.framework_dir, no_pull=args.no_pull)
 
     if args.json_mode:
         print(json.dumps(result, indent=2))
