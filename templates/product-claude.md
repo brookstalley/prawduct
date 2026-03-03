@@ -108,6 +108,8 @@ For each chunk:
 
 **Never weaken a test to make it pass.** Fix the code. Never silently drop a requirement. Never add features the spec didn't ask for. **Never dismiss a failing test as "pre-existing."** If it fails, fix it — the cause doesn't matter.
 
+**Subagent delegation.** When the user asks you to do work in a subagent, do it — don't silently do it in the main context instead. Give the subagent the chunk spec, project path, and instructions to read `project-preferences.md`. Keep Critic review, reflection, and state updates in the main agent. The build cycle works the same whether you run it or a subagent does.
+
 ### Reflection
 
 After every significant action (feature, bug fix, session end):
