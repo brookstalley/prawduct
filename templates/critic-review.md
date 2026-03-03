@@ -53,7 +53,7 @@ Are artifacts consistent with each other and with the code? Do changes to one ar
 
 ### Learning/Observability
 
-Does the change preserve the ability to detect problems? Is error handling present where failure is possible? Is logging appropriate for debugging? If an observability strategy exists, does the implementation follow it?
+Does the change preserve the ability to detect problems? Is error handling present where failure is possible? Is logging appropriate for debugging? If an observability strategy exists, does the implementation follow it? Check that correlation context and sensitive data filtering are implemented as specified in the observability strategy.
 
 ## Severity Levels
 

@@ -16,7 +16,7 @@ Maps concerns to pipeline coverage. Use this as a starting point for completenes
 | Accessibility | discovery.md: Surface Accessibility Needs | project-state.yaml: `accessibility_approach` | building.md (Principle 7 ref) | Check 1 (Spec Compliance) | Added in meta-reflection |
 | Testing | Inferred from risk level | Test specifications artifact | building.md: Test Discipline | Check 2 (Test Integrity) | Full coverage |
 | Cost awareness | discovery.md: Surface Operational Costs | project-state.yaml: `cost_estimates`, `cost_constraints` | — | — | Discovery + artifact only; no build/critic enforcement. Proportionate for now. |
-| Observability | Domain-specific detection | NFR artifact (when applicable) | building.md: mentions logging | Check 6 (Learning/Observability) | Coverage adequate |
+| Observability | discovery.md: Surface Observability Needs | Observability strategy artifact; project-state.yaml: `observability_approach` | building.md: observability implementation guidance | Check 6 (Learning/Observability) | Full coverage |
 | Performance | Structural: `runs_unattended`, scale signals | NFR artifact | building.md (implicit) | Check 4 (Proportionality) | Indirect coverage via NFR |
 | Error handling | discovery.md: Surface Error Handling Approach | project-state.yaml: `error_handling_approach` | building.md: Test Discipline (error cases) | Check 6 (Learning/Observability) | Discovery surfaces approach scaled to risk; test discipline validates coverage |
 | Data privacy | Structural: `handles_sensitive_data` | Security model artifact | building.md | Check 1 (Spec Compliance) | Covered via security pipeline |

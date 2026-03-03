@@ -14,6 +14,7 @@ Artifacts are specification files that guide building. They ensure you think thr
 - **Test Specifications** — Concrete test scenarios at unit, integration, and e2e levels, with risk-proportionate depth.
 - **Non-Functional Requirements** — Performance targets, scalability, uptime expectations, cost constraints.
 - **Operational Specification** — Deployment, monitoring, alerting, failure recovery.
+- **Observability Strategy** — Signal types, correlation context, sensitive data filtering, instrumentation approach. Scales from "error logging" to full three-signal architecture.
 - **Dependency Manifest** — Every external library with justification and alternatives considered.
 
 **Structurally-triggered artifacts** (based on characteristics detected in discovery):

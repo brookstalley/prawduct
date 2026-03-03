@@ -51,6 +51,22 @@ current_phase: iteration
 # =============================================================================
 
 change_log:
+  # --- Observability as first-class concern (2026-03-03) ---
+  - what: 'Elevate observability to first-class cross-cutting concern across entire pipeline'
+    why: 'Observability had "adequate" coverage — a template existed and Check 6 mentioned it,
+      but discovery did not surface it, building did not guide it, and project-state did not
+      capture the approach. Applied the same pattern used for accessibility and error handling:
+      discovery section (Surface Observability Needs with infer-confirm-proceed, scaled to risk),
+      project-state.yaml field (observability_approach), planning universal artifact,
+      observability-strategy.md full rewrite (organized around debugging scenarios and
+      instrumentation layers, with agent-accessible observability as a design concern),
+      building.md implementation and verification guidance, Critic Check 6 strengthening,
+      product-claude.md condensed guidance, cross-cutting registry updated to Full coverage.'
+    blast_radius: 'methodology/discovery.md, methodology/planning.md, methodology/building.md,
+      templates/project-state.yaml, templates/observability-strategy.md, templates/product-claude.md,
+      templates/critic-review.md, agents/critic/SKILL.md, .prawduct/cross-cutting-concerns.md'
+    classification: functional
+    date: 2026-03-03
   # --- Auto-pull framework git repo during sync (2026-03-03) ---
   - what: 'Auto-pull framework git repo before syncing templates'
     why: 'Product repos syncing against a stale framework checkout never benefited from
