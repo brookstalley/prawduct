@@ -22,6 +22,7 @@ Maps concerns to pipeline coverage. Use this as a starting point for completenes
 | Data privacy | Structural: `handles_sensitive_data` | Security model artifact | building.md | Goal 2 (Nothing Is Missing) | Covered via security pipeline |
 | Deployment | Structural awareness | Build plan artifact | building.md (Principle 9) | Goal 3 (Nothing Is Unintended) | Indirect coverage |
 | Dependency management | — | Build plan: dependency manifest | building.md | Goal 3 (Nothing Is Unintended: unlisted deps) | No discovery trigger; starts at planning |
+| Infrastructure dependencies | discovery.md: Surface Infrastructure Dependencies | project-state.yaml: `infrastructure_dependencies` | building.md: Verify step + Common Traps | Goal 2 (Nothing Is Missing) + Goal 4 (Coherence) | Full coverage |
 | Boundary coherence | Structural: detected at build time | boundary-patterns.md | building.md: Investigated Changes | Goal 5 (Decisions Were Deliberate) | v5: boundary investigation + compliance canary |
 | Subagent governance | — | .subagent-briefing.md (generated) | building.md: Delegating Work | Goal 4 (Everything Is Coherent) | v5: briefing file + Critic reviews all output |
 

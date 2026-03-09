@@ -59,7 +59,7 @@ There are no phases. Every unit of work follows: **understand → plan → build
 2. **Read the spec.** Chunk entry in `build-plan.md` + referenced artifacts + `project-preferences.md`.
 3. **Write tests** alongside implementation.
 4. **Implement.** Follow conventions. Prefer simplicity.
-5. **Verify.** Full test suite + product verification (launch it, call it, inspect it).
+5. **Verify.** Full test suite + product verification (launch it, call it, inspect it). If infrastructure dependencies are declared, verify against real instances — not just mocks.
 6. **Critic review.** Mandatory for medium+ work. Invoke as separate agent via Task tool.
 7. **Resolve findings.** Fix blocking; address warnings.
 8. **Reflect.** What did the Critic catch? Capture learnings now.

@@ -35,6 +35,7 @@ Your goals, in priority order:
 - For user-visible changes: was the product verified beyond tests? → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow.
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
+- If `infrastructure_dependencies` is declared in project-state.yaml: are there integration tests that exercise real dependencies (not just mocks)? → **WARNING** if all tests for a declared dependency use mocks.
 
 ### 3. Nothing Is Unintended
 - No unlisted dependencies → **BLOCKING**.
@@ -46,6 +47,7 @@ Your goals, in priority order:
 - Artifacts are consistent with each other and with code.
 - **Bidirectional freshness**: Does code match artifacts? Do artifacts still describe the code? Check test counts, model fields, architecture components. Stale artifact → **WARNING**.
 - If `project-preferences.md` exists, does code follow stated conventions?
+- **Infrastructure coherence**: If project-state.yaml declares infrastructure dependencies, do code's infrastructure assumptions match? A declared Postgres dependency with only in-memory storage in code → **WARNING**. Mocked dependencies should be explicitly documented as mocked, not silently substituted.
 - For framework changes: concept ripple check — renamed/removed terms still referenced → **WARNING**.
 
 ### 5. Decisions Were Deliberate

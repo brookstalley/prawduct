@@ -128,6 +128,7 @@ design_decisions:
   accessibility_approach: null
   error_handling_approach: null
   observability_approach: null    # Signal types, correlation context, sensitive data filtering, operational model
+  infrastructure_dependencies: null  # External services (DB, queue, auth, APIs), mock boundaries, integration test strategy
   visual_direction: null
 
 # =============================================================================

@@ -44,7 +44,7 @@ Add observability alongside features, not after. If the observability strategy c
 **Verify.** Two layers:
 
 - *Code verification:* Run all tests — the full suite, not just what you wrote.
-- *Product verification:* Confirm the product works as its users or consumers would experience it. Launch it, call it, run it, inspect its output.
+- *Product verification:* Confirm the product works as its users or consumers would experience it. Launch it, call it, run it, inspect its output. If infrastructure dependencies are declared in project-state.yaml, verify against real instances — not just mocks. A system that passes all tests against a mocked database but never touches real persistence is not verified.
 
 Scale verification to chunk significance. When you can't verify directly, say what you can't verify and why (Principle 5).
 
@@ -138,7 +138,7 @@ After medium+ work, invoke the Critic as a separate agent. The Critic receives s
 1. **Nothing Is Broken** — Tests pass, count hasn't decreased.
 2. **Nothing Is Missing** — Every requirement implemented or explicitly descoped.
 3. **Nothing Is Unintended** — No unlisted dependencies, no undocumented decisions.
-4. **Everything Is Coherent** — Artifacts consistent with each other and with code.
+4. **Everything Is Coherent** — Artifacts consistent with each other and with code. Infrastructure assumptions match declared dependencies.
 5. **Decisions Were Deliberate** — Major decisions have rationale, boundary changes triggered investigation.
 6. **The System Can Be Understood** — Error handling present, logging appropriate.
 
@@ -158,7 +158,9 @@ See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (produc
 
 **Ignoring the Critic**: Dismissing findings without reflection.
 
-**Verification theater**: Claiming verification without exercising the product. Honest confidence (Principle 5).
+**Verification theater**: Claiming verification without exercising the product. Honest confidence (Principle 5). A common variant: all tests pass against mocked infrastructure, but the product has never been tested against real dependencies. If project-state.yaml declares infrastructure dependencies, verify against them.
+
+**Mock-as-implementation**: Using mocks during development and never replacing them with real integrations. Mocks are for test isolation, not for avoiding infrastructure work. If the data model says "persisted to Postgres" and the code uses an in-memory dictionary, that's an unfinished implementation — not a passing test suite.
 
 **"Pre-existing" dismissal**: Labeling a failing test as pre-existing to justify moving on.
 
