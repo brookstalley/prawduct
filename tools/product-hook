@@ -89,8 +89,9 @@ def try_sync(project_dir: Path) -> None:
                     )
             except json.JSONDecodeError:
                 pass
-    except Exception:
-        pass  # Best-effort — never block session start
+    except Exception as e:
+        print(f"NOTE: Framework sync failed: {e}", file=sys.stderr)
+        # Best-effort — never block session start
 
 
 # =============================================================================
@@ -413,15 +414,46 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
         except Exception:
             pass
 
-    # Key reminders
-    lines.append("Reminders: tests alongside code · never weaken tests · Critic after medium+ work")
-
     return "\n".join(lines)
 
 
 # =============================================================================
 # Subagent Briefing (v5: governance context for delegated agents)
 # =============================================================================
+
+
+def _extract_critical_rules(project_dir: Path) -> list[str]:
+    """Extract Critical Rules bullet points from the project's CLAUDE.md.
+
+    Falls back to a minimal hardcoded set if extraction fails.
+    """
+    fallback = [
+        "- Write tests alongside code, never after.",
+        "- Never weaken a test to make it pass. Fix the code, not the test.",
+        "- Never silently drop a requirement. If you can't implement it, say so.",
+        "- Never catch broad exceptions without logging and re-raising.",
+        "- Run the full test suite before finishing work.",
+        "- When changes cross boundaries (API, database, IPC), verify consumers.",
+    ]
+    claude_md = project_dir / "CLAUDE.md"
+    if not claude_md.is_file():
+        return fallback
+    try:
+        content = claude_md.read_text()
+        # Find Critical Rules section
+        in_section = False
+        rules: list[str] = []
+        for line in content.splitlines():
+            if line.strip().startswith("## Critical Rules"):
+                in_section = True
+                continue
+            if in_section and line.strip().startswith("## "):
+                break
+            if in_section and line.strip().startswith("- **"):
+                rules.append(line.strip())
+        return rules if rules else fallback
+    except Exception:
+        return fallback
 
 
 def generate_subagent_briefing(project_dir: Path) -> None:
@@ -431,17 +463,14 @@ def generate_subagent_briefing(project_dir: Path) -> None:
         return
 
     project_name = _get_product_name(prawduct_dir)
+    rules = _extract_critical_rules(project_dir)
 
     sections = [
         f"# Subagent Briefing — {project_name}\n",
         "Read this file before starting work. It contains project-specific governance rules.\n",
         "## Governance Rules\n",
-        "- Write tests alongside code, never after.",
-        "- Never weaken a test to make it pass. Fix the code, not the test.",
-        "- Never silently drop a requirement. If you can't implement it, say so.",
-        "- Never catch broad exceptions without logging and re-raising.",
-        "- Run the full test suite before finishing work.",
-        "- When changes cross boundaries (API, database, IPC), verify consumers.\n",
+        *[r for r in rules],
+        "",
     ]
 
     # Project preferences
@@ -543,16 +572,27 @@ def _is_dependency_file(filepath: str) -> bool:
 
 def _check_broad_exceptions(project_dir: Path, source_files: list[str]) -> list[str]:
     """Check if changed source files contain broad exception patterns."""
+    # Language-specific patterns for overly broad exception handling
+    patterns = {
+        ".py": r"except\s+(?:Exception|BaseException)\s*(?::|,|as\b)",
+        ".js": r"catch\s*\([^)]*\)\s*\{\s*\}",
+        ".jsx": r"catch\s*\([^)]*\)\s*\{\s*\}",
+        ".ts": r"catch\s*\([^)]*\)\s*\{\s*\}",
+        ".tsx": r"catch\s*\([^)]*\)\s*\{\s*\}",
+        ".go": r"_\s*=\s*\w+\.(?:\w+)\(",  # _ = foo.Bar() — ignored errors
+    }
     flagged = []
     for filepath in source_files:
-        if not filepath.endswith(".py"):
-            continue
         full_path = project_dir / filepath
         if not full_path.is_file():
             continue
+        suffix = Path(filepath).suffix
+        pattern = patterns.get(suffix)
+        if not pattern:
+            continue
         try:
             content = full_path.read_text()
-            if re.search(r"except\s+(?:Exception|BaseException)\s*(?::|,|as\b)", content):
+            if re.search(pattern, content):
                 flagged.append(filepath)
         except Exception:
             pass
@@ -703,13 +743,13 @@ def cmd_clear(project_dir: Path) -> int:
             staleness = staleness_scan(project_dir)
             briefing = assemble_session_briefing(project_dir, staleness)
             print(briefing)
-        except Exception:
-            pass  # Never block session start
+        except Exception as e:
+            print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)
 
         try:
             generate_subagent_briefing(project_dir)
-        except Exception:
-            pass  # Never block session start
+        except Exception as e:
+            print(f"NOTE: Subagent briefing generation failed: {e}", file=sys.stderr)
 
     return 0
 
@@ -720,11 +760,30 @@ def cmd_clear(project_dir: Path) -> int:
 
 
 def validate_critic_findings(findings_path: Path) -> bool:
-    """Validate that critic findings JSON has required structure."""
+    """Validate that critic findings JSON has required structure.
+
+    Requires: non-empty files_reviewed list, findings list where each entry
+    has goal/severity/summary, and a non-empty summary string.
+    """
     try:
         data = json.loads(findings_path.read_text())
-        if not isinstance(data.get("findings"), list):
+        # Must have a findings list
+        findings = data.get("findings")
+        if not isinstance(findings, list):
             return False
+        # Must have non-empty files_reviewed
+        files_reviewed = data.get("files_reviewed")
+        if not isinstance(files_reviewed, list) or not files_reviewed:
+            return False
+        # Each finding must have goal, severity, and summary
+        for finding in findings:
+            if not isinstance(finding, dict):
+                return False
+            for field in ("goal", "severity", "summary"):
+                val = finding.get(field)
+                if not isinstance(val, str) or not val.strip():
+                    return False
+        # Must have a non-empty summary
         summary = data.get("summary")
         if not isinstance(summary, str) or not summary.strip():
             return False
@@ -762,12 +821,11 @@ def cmd_stop(project_dir: Path) -> int:
         return 0
 
     blockers: list[str] = []
+    canary_findings: list[str] = []
 
-    # v5: Compliance canary (informational, printed to stdout for model to see)
+    # v5: Compliance canary (informational)
     try:
         canary_findings = compliance_canary(project_dir)
-        if canary_findings:
-            print("\n".join(canary_findings))
     except Exception:
         pass  # Never block session end due to canary failure
 
@@ -776,7 +834,17 @@ def cmd_stop(project_dir: Path) -> int:
 
     # Gate 1: Reflection
     reflected_file = prawduct_dir / ".session-reflected"
-    if has_changes and not reflected_file.is_file():
+    reflection_exists = reflected_file.is_file()
+    reflection_sufficient = False
+    if reflection_exists:
+        try:
+            content = reflected_file.read_text().strip()
+            # Require at least ~50 chars to avoid empty/token reflections
+            reflection_sufficient = len(content) >= 50
+        except Exception:
+            pass
+
+    if has_changes and not reflection_sufficient:
         blockers.append(
             "REFLECTION: Files were modified but no session reflection was captured.\n"
             "  Write your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
@@ -826,7 +894,20 @@ def cmd_stop(project_dir: Path) -> int:
         print("", file=sys.stderr)
         for blocker in blockers:
             print(blocker, file=sys.stderr)
+        # Include canary findings in stderr so model sees them alongside blockers
+        if canary_findings:
+            print("COMPLIANCE CANARY (address if possible):", file=sys.stderr)
+            for f in canary_findings:
+                print(f"  {f}", file=sys.stderr)
+            print("", file=sys.stderr)
         return 2
+
+    # No blockers — print canary to stderr (visible in verbose mode only)
+    if canary_findings:
+        print("", file=sys.stderr)
+        print("COMPLIANCE CANARY (informational):", file=sys.stderr)
+        for f in canary_findings:
+            print(f"  {f}", file=sys.stderr)
 
     return 0
 

@@ -121,6 +121,12 @@ Every product has observability needs — even when the answer is "console.error
 
 **Capture to `project-state.yaml`** under `design_decisions.observability_approach`.
 
+## Identify Boundary Patterns
+
+As structural characteristics emerge, note where components will interact — API endpoints, database schemas, IPC channels, frontend/backend type contracts. These become the project's contract surfaces, documented in `.prawduct/artifacts/boundary-patterns.md` during planning. Identifying them during discovery helps scope the build: boundary-heavy designs need more integration testing and consumer-impact investigation during building.
+
+For products with `exposes_programmatic_interface`, `has_multiple_party_types`, or `multi_process_distributed`, boundary patterns are a significant architectural concern. Surface them: "This has an API consumed by a frontend and by third parties — those are two contract surfaces we'll need to maintain carefully."
+
 ## What Discovery Produces
 
 Discovery produces a `project-state.yaml` with:

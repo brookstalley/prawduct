@@ -103,6 +103,8 @@ Subagent delegation is especially valuable when:
 - **"Read `.prawduct/.subagent-briefing.md` for project conventions and governance rules."** This file is generated at session start with governance rules, project preferences, and active learnings.
 - Instructions to run the full test suite before and after implementation
 
+**Parallel chunks:** When multiple chunks have no dependency between them, build them in parallel using separate subagents. Each subagent gets its own chunk spec. The main agent coordinates: launch all independent chunks, wait for results, run the combined test suite, then proceed with Critic review. Merge conflicts between parallel chunks are the main agent's responsibility.
+
 **What stays in the main agent:** Critic review, reflection, and state updates. The subagent does implementation; the main agent maintains governance.
 
 ## Working With Specs

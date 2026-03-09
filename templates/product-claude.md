@@ -21,17 +21,13 @@ These degrade at scale. The session briefing reinforces them; the stop hook dete
 
 ## Principles
 
-Apply with judgment, not mechanically. Full rationale: `docs/principles.md`
+Apply with judgment, not mechanically.
 
-**Quality**: 1. Tests Are Contracts 2. Complete Delivery 3. Living Documentation 4. Reasoned Decisions 5. Honest Confidence
-
-**Product**: 6. Bring Expertise 7. Accessibility From the Start 8. Visible Costs 9. Clean Deployment
-
-**Process**: 10. Proportional Effort 11. Scope Discipline 12. Coherent Artifacts 13. Independent Review 14. Validate Before Propagating
-
-**Learning**: 15. Root Cause Discipline 16. Automatic Reflection 17. Close the Learning Loop 18. Evolving Principles
-
-**Judgment**: 19. Infer, Confirm, Proceed 20. Structural Awareness 21. Governance Is Structural 22. Challenge Gently, Defer Gracefully
+- **Quality**: Tests Are Contracts · Complete Delivery · Living Documentation · Reasoned Decisions · Honest Confidence
+- **Product**: Bring Expertise · Accessibility From the Start · Visible Costs · Clean Deployment
+- **Process**: Proportional Effort · Scope Discipline · Coherent Artifacts · Independent Review · Validate Before Propagating
+- **Learning**: Root Cause Discipline · Automatic Reflection · Close the Learning Loop · Evolving Principles
+- **Judgment**: Infer, Confirm, Proceed · Structural Awareness · Governance Is Structural · Challenge Gently, Defer Gracefully
 
 ## Getting Started
 
@@ -53,6 +49,14 @@ There are no phases. Every unit of work follows: **understand → plan → build
 
 ## Methodology
 
+### Discovery
+
+When project-state.yaml has unfilled sections, discover before building. Detect structural characteristics (human interface, unattended, API, multi-party, sensitive data, distributed) from user context. Calibrate depth to risk: low-risk (personal tool) → 5-8 questions, infer aggressively; medium (team tool) → 8-15, confirm key assumptions; high (production service, sensitive data) → 15-25, deep exploration. Surface prior art, operational costs, infrastructure dependencies, and accessibility needs — all proportional to risk. Use infer-confirm-proceed: state hypotheses, let the user correct. Capture to `project-state.yaml`.
+
+### Planning
+
+Generate artifacts in `.prawduct/artifacts/`, scaled to risk. Universal: product brief, data model, security model, test specs, NFRs, operational spec, observability strategy, dependency manifest. Structural characteristics trigger additional artifacts (interaction design for human interfaces, pipeline architecture for unattended, API contracts for programmatic interfaces). Generate in dependency order: product brief → data model + NFRs → everything else → build plan. First build chunk should be a thin vertical slice proving the architecture works end-to-end.
+
 ### Building
 
 1. **Green baseline.** Run full test suite. Fix any failures.
@@ -65,13 +69,17 @@ There are no phases. Every unit of work follows: **understand → plan → build
 8. **Reflect.** What did the Critic catch? Capture learnings now.
 9. **Update state and artifacts.** Compact project-state.yaml when it grows large.
 
+### Decision Research
+
+Major decisions (lock-in, pervasive patterns, structural impact, external dependencies) require investigation before commitment. For medium-impact choices, do quick research in-context. For high-impact choices, spawn a research subagent to investigate thoroughly — best practices, library health, trade-offs — and return a concise recommendation. Record decisions in the affected artifact with: what was decided, alternatives considered, rationale.
+
 ### Subagent Delegation
 
-When delegating to subagents, include: "Read `.prawduct/.subagent-briefing.md` for project conventions and governance rules." This file is generated at session start with project-specific conventions and active learnings. Keep Critic review, reflection, and state updates in the main agent.
+When delegating to subagents, include: "Read `.prawduct/.subagent-briefing.md` for project conventions and governance rules." This file is auto-generated at session start from the project's Critical Rules, project preferences, and active learnings. Keep Critic review, reflection, and state updates in the main agent.
 
 ### Learning Lifecycle
 
-Learnings have tiers: **active rules** (`learnings.md`, <3K tokens, always loaded) and **reference** (`learnings-detail.md`, on demand). Active rules format: "When X, do Y because Z." Promote provisional learnings to active after 2+ confirmations. Archive incorporated learnings. The session briefing surfaces relevant learnings automatically.
+Learnings have tiers: **active rules** (`learnings.md`, <3K tokens, always loaded) and **reference** (`learnings-detail.md`, created when learnings.md outgrows the threshold). Active rules format: "When X, do Y because Z." Promote provisional learnings to active after 2+ confirmations. Archive incorporated learnings. The session briefing surfaces relevant learnings automatically.
 
 ## The Critic — Independent Review
 
@@ -84,6 +92,6 @@ The Critic receives goals and signals (files changed, work type, work size) and 
 
 ## Compact Instructions
 
-When compacting, preserve: what's being built, current work and governance level, unresolved issues, instruction to re-read CLAUDE.md and learnings.md, Critic review requirement, reflection requirement, in-progress learnings.
+When compacting, preserve: what's being built, current work and governance level, unresolved issues, instruction to re-read CLAUDE.md and learnings.md, Critic review requirement, reflection requirement, in-progress learnings. Do NOT inline full file contents — summarize what was learned and reference file paths for re-reading.
 
 <!-- PRAWDUCT:END -->

@@ -18,7 +18,7 @@ classification:
   domain: null
 
   # Structural characteristics — architectural facts that determine what KINDS
-  # of artifacts a product needs. These are a small, stable set (5) that drive
+  # of artifacts a product needs. These are a small, stable set (6) that drive
   # artifact generation. null = not applicable.
   structural:
     # User-facing interface. modality: screen|terminal|voice|spatial|minimal; platform: mobile|web|desktop|cross-platform
@@ -31,6 +31,8 @@ classification:
     has_multiple_party_types: null
     # Handles sensitive information. categories: [PII, financial, health, etc.]; regulatory: [list]
     handles_sensitive_data: null
+    # Multiple processes or services communicating at runtime. topology: monolith-with-workers|client-server|microservices|pipeline
+    multi_process_distributed: null
 
   # Domain-specific characteristics — what makes THIS product unique in its domain.
   # Dynamically identified, not from a predefined list.

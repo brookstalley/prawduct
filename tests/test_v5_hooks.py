@@ -503,7 +503,8 @@ class TestSessionBriefing:
         # Should NOT show first 2
         assert "When doing A" not in result.stdout
 
-    def test_briefing_includes_reminders(self, tmp_path: Path):
+    def test_briefing_excludes_redundant_reminders(self, tmp_path: Path):
+        """Briefing should not include reminders that are already in CLAUDE.md Critical Rules."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(
@@ -513,10 +514,7 @@ class TestSessionBriefing:
 
         result = run_hook("clear", tmp_path)
 
-        assert "Reminders:" in result.stdout
-        assert "tests alongside code" in result.stdout
-        assert "never weaken tests" in result.stdout
-        assert "Critic after medium+ work" in result.stdout
+        assert "Reminders:" not in result.stdout
 
     def test_briefing_under_400_tokens(self, tmp_path: Path):
         """Session briefing should be under 400 tokens even with all sections populated."""
@@ -571,13 +569,13 @@ class TestSessionBriefingPreservesExisting:
     def test_still_preserves_reflections(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
-        (prawduct / ".session-reflected").write_text("## Session reflection")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         run_hook("clear", tmp_path)
 
         log = prawduct / "reflections.md"
         assert log.is_file()
-        assert "## Session reflection" in log.read_text()
+        assert "Session reflection:" in log.read_text()
 
     def test_still_warns_oversized_learnings(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -732,76 +730,76 @@ class TestCanaryCodeNoTests:
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "CANARY" in result.stdout
-        assert "source file" in result.stdout
-        assert "no test files" in result.stdout.lower()
+        assert "CANARY" in result.stderr
+        assert "source file" in result.stderr
+        assert "no test files" in result.stderr.lower()
 
     def test_source_and_test_changed_no_flag(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py\n M tests/test_app.py")
 
-        assert "source file" not in result.stdout.lower()
+        assert "source file" not in result.stderr.lower()
 
     def test_only_test_files_no_flag(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M tests/test_app.py")
 
-        assert "CANARY" not in result.stdout
+        assert "CANARY" not in result.stderr
 
     def test_only_prawduct_files_no_flag(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M .prawduct/learnings.md")
 
-        assert "CANARY" not in result.stdout
+        assert "CANARY" not in result.stderr
 
     def test_no_changes_no_flag(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output="")
 
-        assert "CANARY" not in result.stdout
+        assert "CANARY" not in result.stderr
 
     def test_non_code_file_no_flag(self, tmp_path: Path):
         """Config/doc files changed without tests should not flag."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M README.md\n M config.yaml")
 
-        assert "CANARY" not in result.stdout
+        assert "CANARY" not in result.stderr
 
     def test_preexisting_changes_not_flagged(self, tmp_path: Path):
         """Files in baseline should not trigger canary."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text(" M src/app.py")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         # Same file as baseline — no new changes
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "CANARY" not in result.stdout
+        assert "CANARY" not in result.stderr
 
 
 # =============================================================================
@@ -818,13 +816,13 @@ class TestCanaryDepNoRationale:
         artifacts.mkdir(parents=True)
         (artifacts / "dependency-manifest.md").write_text("# Dependencies\n")
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M requirements.txt")
 
-        assert "CANARY" in result.stdout
-        assert "Dependency" in result.stdout or "dependency" in result.stdout
-        assert "requirements.txt" in result.stdout
+        assert "CANARY" in result.stderr
+        assert "Dependency" in result.stderr or "dependency" in result.stderr
+        assert "requirements.txt" in result.stderr
 
     def test_package_json_changed_no_manifest_flags(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -832,12 +830,12 @@ class TestCanaryDepNoRationale:
         artifacts.mkdir(parents=True)
         (artifacts / "dependency-manifest.md").write_text("# Dependencies\n")
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M package.json")
 
-        assert "CANARY" in result.stdout
-        assert "package.json" in result.stdout
+        assert "CANARY" in result.stderr
+        assert "package.json" in result.stderr
 
     def test_dep_changed_with_manifest_update_no_flag(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -845,14 +843,14 @@ class TestCanaryDepNoRationale:
         artifacts.mkdir(parents=True)
         (artifacts / "dependency-manifest.md").write_text("# Dependencies\n")
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook(
             "stop", tmp_path,
             git_output=" M requirements.txt\n M .prawduct/artifacts/dependency-manifest.md"
         )
 
-        assert "Dependency" not in result.stdout and "dependency" not in result.stdout
+        assert "Dependency" not in result.stderr and "dependency" not in result.stderr
 
     def test_no_dep_changes_no_flag(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -860,23 +858,23 @@ class TestCanaryDepNoRationale:
         artifacts.mkdir(parents=True)
         (artifacts / "dependency-manifest.md").write_text("# Dependencies\n")
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
         # Might have code-no-tests canary, but not dep canary
-        assert "dependency-manifest" not in result.stdout.lower()
+        assert "dependency-manifest" not in result.stderr.lower()
 
     def test_no_manifest_file_no_flag(self, tmp_path: Path):
         """If there's no dependency manifest, don't flag dep changes."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M requirements.txt")
 
-        assert "dependency-manifest" not in result.stdout.lower()
+        assert "dependency-manifest" not in result.stderr.lower()
 
 
 # =============================================================================
@@ -891,7 +889,7 @@ class TestCanaryBroadException:
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         # Create actual source file with broad exception
         src = tmp_path / "src"
@@ -902,15 +900,15 @@ class TestCanaryBroadException:
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "CANARY" in result.stdout
-        assert "Broad exception" in result.stdout or "exception" in result.stdout.lower()
-        assert "src/app.py" in result.stdout
+        assert "CANARY" in result.stderr
+        assert "Broad exception" in result.stderr or "exception" in result.stderr.lower()
+        assert "src/app.py" in result.stderr
 
     def test_except_exception_as_e_flags(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         src = tmp_path / "src"
         src.mkdir()
@@ -920,13 +918,13 @@ class TestCanaryBroadException:
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "exception" in result.stdout.lower()
+        assert "exception" in result.stderr.lower()
 
     def test_except_base_exception_flags(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         src = tmp_path / "src"
         src.mkdir()
@@ -936,13 +934,13 @@ class TestCanaryBroadException:
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "exception" in result.stdout.lower()
+        assert "exception" in result.stderr.lower()
 
     def test_specific_exception_no_flag(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         src = tmp_path / "src"
         src.mkdir()
@@ -952,14 +950,14 @@ class TestCanaryBroadException:
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "Broad exception" not in result.stdout
+        assert "Broad exception" not in result.stderr
 
-    def test_no_python_source_no_flag(self, tmp_path: Path):
-        """Non-Python source files don't get exception check."""
+    def test_js_empty_catch_flagged(self, tmp_path: Path):
+        """JS empty catch blocks are now flagged."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         src = tmp_path / "src"
         src.mkdir()
@@ -967,14 +965,29 @@ class TestCanaryBroadException:
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.js")
 
-        assert "Broad exception" not in result.stdout
+        assert "Broad exception" in result.stderr
+
+    def test_unsupported_language_no_flag(self, tmp_path: Path):
+        """Languages without broad exception patterns don't get flagged."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "app.rb").write_text("begin; rescue => e; end\n")
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.rb")
+
+        assert "Broad exception" not in result.stderr
 
     def test_file_not_on_disk_no_crash(self, tmp_path: Path):
         """Changed file listed in git but not on disk (deleted) should not crash."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" D src/app.py")
 
@@ -989,29 +1002,30 @@ class TestCanaryBroadException:
 class TestCanaryIntegration:
     """Canary works alongside existing gates without interference."""
 
-    def test_canary_on_stdout_not_stderr(self, tmp_path: Path):
-        """Canary findings go to stdout (model sees), not stderr."""
+    def test_canary_on_stderr_not_stdout(self, tmp_path: Path):
+        """Canary findings go to stderr (visible to model when blocked, verbose otherwise)."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "CANARY" in result.stdout
-        assert "CANARY" not in result.stderr
+        assert "CANARY" in result.stderr
+        assert "CANARY" not in result.stdout
 
     def test_canary_does_not_affect_exit_code(self, tmp_path: Path):
         """Canary findings are informational — don't block session end."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         # Source changed, no tests — canary fires but shouldn't block
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "CANARY" in result.stdout
+        assert "CANARY" in result.stderr
+        assert "CANARY" not in result.stdout
         assert result.returncode == 0  # Not blocked
 
     def test_canary_with_reflection_gate(self, tmp_path: Path):
@@ -1024,7 +1038,7 @@ class TestCanaryIntegration:
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
         # Both canary and reflection gate should appear
-        assert "CANARY" in result.stdout
+        assert "CANARY" in result.stderr
         assert "REFLECTION" in result.stderr
         assert result.returncode == 2
 
@@ -1034,13 +1048,13 @@ class TestCanaryIntegration:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
-        assert "CANARY" in result.stdout
+        assert "CANARY" in result.stderr
         assert "CRITIC" in result.stderr
         assert result.returncode == 2
 
@@ -1051,7 +1065,7 @@ class TestCanaryIntegration:
         artifacts.mkdir(parents=True)
         (artifacts / "dependency-manifest.md").write_text("# Dependencies\n")
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         # Create source file with broad exception
         src = tmp_path / "src"
@@ -1066,7 +1080,7 @@ class TestCanaryIntegration:
             git_output=" M src/app.py\n M requirements.txt"
         )
 
-        canary_lines = [line for line in result.stdout.splitlines() if "CANARY" in line]
+        canary_lines = [line for line in result.stderr.splitlines() if "CANARY" in line]
         # Should have: code-no-tests + dep-no-rationale + broad-exception
         assert len(canary_lines) >= 2  # At least code-no-tests and one more
 

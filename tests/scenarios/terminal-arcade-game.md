@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-**This scenario requires Phase 2 framework capabilities:**
+**This scenario requires tier-2 framework capabilities:**
 - Domain Analyzer has UI Application discovery questions (Tier 1-3) with dynamic domain depth for Entertainment
 - Artifact Generator supports universal artifacts with game/real-time architecture awareness
 - Review Lenses can evaluate non-web UI concerns (terminal rendering, game loop architecture, text-based visual design)
@@ -13,7 +13,7 @@
 - This scenario tests the framework's ability to handle an unusual UI substrate (terminal/TUI rather than web or mobile). The Domain Analyzer's UI Application questions assume web/mobile in several places. This scenario reveals where those assumptions are baked in vs. where general principles adapt naturally.
 - The Entertainment dynamic domain depth in the Domain Analyzer relies on LLM knowledge rather than hardcoded question banks. This scenario exercises it more deeply than the family-utility scenario (which is Entertainment/Utility, not pure Entertainment).
 
-**Current status**: Ready for Phase 2 evaluation. All required Phase 2 capabilities are implemented. Terminal-specific adaptations may surface framework gaps — this is a feature, not a bug. Observations from this scenario should feed back into skill improvements.
+**Current status**: Ready for tier-2 evaluation. All required capabilities are implemented. Terminal-specific adaptations may surface framework gaps — this is a feature, not a bug. Observations from this scenario should feed back into skill improvements.
 
 ---
 
@@ -22,7 +22,7 @@
 - **Primary structural:** `has_human_interface` (modality: terminal)
 - **Domain:** Entertainment
 - **Risk Level:** Low-Medium
-- **Phase:** 2 (structural characteristic + domain diversity)
+- **Evaluation tier:** 2 (structural characteristic + domain diversity)
 - **Purpose:** Tests framework behavior with an unusual UI substrate (terminal, not web/mobile), real-time game loop architecture, cross-platform terminal compatibility, and entertainment domain handling. Exercises whether the system can bring game design expertise to a technical user who defers on design. Validates that the framework recognizes degenerate artifacts (security, ops) while taking genuine technical complexity seriously (real-time input, rendering, terminal abstraction).
 
 ## Why This Scenario Is Challenging

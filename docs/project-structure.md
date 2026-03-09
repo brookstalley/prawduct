@@ -29,6 +29,7 @@ prawduct/
 │   ├── project-state.yaml             # Product state template (v5: work_in_progress, health_check)
 │   ├── boundary-patterns.md           # Contract surfaces between components
 │   ├── build-plan.md, product-brief.md, ...  # Artifact templates
+│   ├── examples/                      # Observability strategy examples (API service, event-driven)
 │   ├── human-interface/               # has_human_interface templates
 │   └── unattended-operation/          # runs_unattended templates
 ├── pyproject.toml                        # Minimal pytest configuration
@@ -43,7 +44,6 @@ prawduct/
 │   └── scenarios/                     # 4 test scenarios for framework validation
 ├── docs/
 │   ├── principles.md                  # Full 22 principles with rationale
-│   ├── high-level-design.md           # Framework architecture and design decisions
 │   └── project-structure.md           # This file
 ├── .prawduct/                         # Framework's own prawduct state
 │   ├── project-state.yaml             # Source of truth for framework iteration
