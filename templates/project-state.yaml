@@ -169,11 +169,28 @@ build_preferences:
   source: null                # discovery | inferred | iteration
 
 # =============================================================================
-# PROCESS STATE
+# WORK IN PROGRESS
 # =============================================================================
-# Current phase. Values: discovery, planning, building, iteration
+# Tracks what's being done now and at what governance level.
+# Replaces the v4 current_phase field (there are no phases in v5).
 
-current_phase: discovery
+work_in_progress:
+  # Current work description. null when nothing active.
+  description: null
+  # Governance level: trivial | small | medium | large
+  size: null
+  # Work type: feature | bugfix | refactor | optimization | debt | hotfix
+  type: null
+
+# =============================================================================
+# HEALTH CHECK
+# =============================================================================
+# Tracks periodic health check state. Health checks are triggered by
+# accumulating staleness signals, not by a fixed cadence.
+
+health_check:
+  last_full_check: null
+  last_check_findings: null
 
 # =============================================================================
 # ARTIFACT MANIFEST

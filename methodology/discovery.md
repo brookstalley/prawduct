@@ -86,7 +86,7 @@ Every product needs error handling; the question is how much design it needs upf
 
 **Scale to risk.** Low-risk (personal tool, single user): standard patterns are sufficient — no dedicated design needed. The build methodology's test discipline already requires error case coverage, and that's enough. Medium-risk (team tool, external consumers): surface the error taxonomy — what's recoverable vs. fatal, what the user or caller sees on error. Capture the approach. High-risk (financial, health, multi-party): design the full error handling strategy — taxonomy, recovery patterns, error UX or error response contracts, reporting and alerting. This becomes a first-class section in the product brief.
 
-**Capture to `project-state.yaml`** under `design_decisions.error_handling_approach`. This connects discovery decisions to the build phase, where test discipline (building.md) and the Critic (Check 6) validate that error cases are actually covered.
+**Capture to `project-state.yaml`** under `design_decisions.error_handling_approach`. This connects discovery decisions to the build phase, where test discipline (building.md) and the Critic validate that error cases are actually covered.
 
 ## Surface Observability Needs
 
@@ -117,7 +117,7 @@ Discovery produces a `project-state.yaml` with:
 - **User expertise profile**: what the user knows and doesn't, inferred from conversation
 - **Product identity**: name, personality, technology preferences
 
-Discovery is done when you have enough understanding to design artifacts that won't need fundamental rework. For a low-risk product, that might be 10 minutes. For a high-risk product, it might be several sessions.
+Discovery isn't a phase — it's continuous. Initial discovery produces enough understanding to start planning and building. But discovery continues throughout the project: new features need their own discovery, bug reports reveal missing understanding, and user feedback surfaces unasked questions. The depth of discovery scales with the work's size and risk, not with where you are in a timeline.
 
 ## Common Traps
 

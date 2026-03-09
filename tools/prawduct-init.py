@@ -43,6 +43,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-reflected",
     ".prawduct/.session-start",
+    ".prawduct/.subagent-briefing.md",
     ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
     "__pycache__/",
@@ -183,7 +184,15 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created .prawduct/artifacts/project-preferences.md")
 
-    # 6. Learnings starter
+    # 6. Boundary patterns template
+    if write_template(
+        TEMPLATES_DIR / "boundary-patterns.md",
+        target / ".prawduct" / "artifacts" / "boundary-patterns.md",
+        subs,
+    ):
+        actions.append("Created .prawduct/artifacts/boundary-patterns.md")
+
+    # 7. Learnings starter
     learnings = target / ".prawduct" / "learnings.md"
     if not learnings.is_file():
         learnings.write_text(
@@ -191,14 +200,14 @@ def run_init(target_dir: str, product_name: str) -> dict:
         )
         actions.append("Created .prawduct/learnings.md")
 
-    # 7. Product hook
+    # 8. Product hook
     if copy_hook(
         FRAMEWORK_DIR / "tools" / "product-hook",
         target / "tools" / "product-hook",
     ):
         actions.append("Created tools/product-hook")
 
-    # 8. Settings.json (with subs for banner)
+    # 9. Settings.json (with subs for banner)
     if merge_settings(
         target / ".claude" / "settings.json",
         TEMPLATES_DIR / "product-settings.json",
@@ -206,11 +215,11 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created/updated .claude/settings.json")
 
-    # 9. .gitignore
+    # 10. .gitignore
     if update_gitignore(target):
         actions.append("Updated .gitignore")
 
-    # 10. Sync manifest
+    # 11. Sync manifest
     manifest_path = target / ".prawduct" / "sync-manifest.json"
     if not manifest_path.is_file():
         claude_content = (target / "CLAUDE.md").read_text()

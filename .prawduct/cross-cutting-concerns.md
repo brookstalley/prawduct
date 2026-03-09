@@ -12,28 +12,31 @@ Maps concerns to pipeline coverage. Use this as a starting point for completenes
 
 | Concern | Discovery | Artifact | Builder | Critic | Notes |
 |---------|-----------|----------|---------|--------|-------|
-| Security | Structural: `handles_sensitive_data` | Security model artifact | building.md | Check 1 (Spec Compliance) | Full coverage |
-| Accessibility | discovery.md: Surface Accessibility Needs | project-state.yaml: `accessibility_approach` | building.md (Principle 7 ref) | Check 1 (Spec Compliance) | Added in meta-reflection |
-| Testing | Inferred from risk level | Test specifications artifact | building.md: Test Discipline | Check 2 (Test Integrity) | Full coverage |
+| Security | Structural: `handles_sensitive_data` | Security model artifact | building.md | Goal 2 (Nothing Is Missing) | Full coverage |
+| Accessibility | discovery.md: Surface Accessibility Needs | project-state.yaml: `accessibility_approach` | building.md (Principle 7 ref) | Goal 2 (Nothing Is Missing) | Added in meta-reflection |
+| Testing | Inferred from risk level | Test specifications artifact | building.md: Test Discipline | Goal 1 (Nothing Is Broken) | Full coverage |
 | Cost awareness | discovery.md: Surface Operational Costs | project-state.yaml: `cost_estimates`, `cost_constraints` | — | — | Discovery + artifact only; no build/critic enforcement. Proportionate for now. |
-| Observability | discovery.md: Surface Observability Needs | Observability strategy artifact; project-state.yaml: `observability_approach` | building.md: observability implementation guidance | Check 6 (Learning/Observability) | Full coverage |
-| Performance | Structural: `runs_unattended`, scale signals | NFR artifact | building.md (implicit) | Check 4 (Proportionality) | Indirect coverage via NFR |
-| Error handling | discovery.md: Surface Error Handling Approach | project-state.yaml: `error_handling_approach` | building.md: Test Discipline (error cases) | Check 6 (Learning/Observability) | Discovery surfaces approach scaled to risk; test discipline validates coverage |
-| Data privacy | Structural: `handles_sensitive_data` | Security model artifact | building.md | Check 1 (Spec Compliance) | Covered via security pipeline |
-| Deployment | Structural awareness | Build plan artifact | building.md (Principle 9) | Check 3 (Scope Discipline) | Indirect coverage |
-| Dependency management | — | Build plan: dependency manifest | building.md | Check 3 (Scope: unlisted deps) | No discovery trigger; starts at planning |
+| Observability | discovery.md: Surface Observability Needs | Observability strategy artifact; project-state.yaml: `observability_approach` | building.md: observability guidance | Goal 6 (System Can Be Understood) | Full coverage |
+| Performance | Structural: `runs_unattended`, scale signals | NFR artifact | building.md (implicit) | Goal 5 (Decisions Were Deliberate) | Indirect coverage via NFR |
+| Error handling | discovery.md: Surface Error Handling Approach | project-state.yaml: `error_handling_approach` | building.md: Test Discipline (error cases) | Goal 6 (System Can Be Understood) | Discovery surfaces approach; test discipline validates coverage |
+| Data privacy | Structural: `handles_sensitive_data` | Security model artifact | building.md | Goal 2 (Nothing Is Missing) | Covered via security pipeline |
+| Deployment | Structural awareness | Build plan artifact | building.md (Principle 9) | Goal 3 (Nothing Is Unintended) | Indirect coverage |
+| Dependency management | — | Build plan: dependency manifest | building.md | Goal 3 (Nothing Is Unintended: unlisted deps) | No discovery trigger; starts at planning |
+| Boundary coherence | Structural: detected at build time | boundary-patterns.md | building.md: Investigated Changes | Goal 5 (Decisions Were Deliberate) | v5: boundary investigation + compliance canary |
+| Subagent governance | — | .subagent-briefing.md (generated) | building.md: Delegating Work | Goal 4 (Everything Is Coherent) | v5: briefing file + Critic reviews all output |
 
 ## Known Gaps
 
 - **Cost awareness** lacks builder guidance and Critic enforcement. Currently proportionate — most products don't need cost gates during build. Revisit if cost overruns become a pattern.
-- **Error handling** now has discovery coverage and a `project-state.yaml` field (`error_handling_approach`). Design depth scales to risk — standard patterns for low-risk, full error architecture for high-risk. Build enforcement comes from test discipline (error case coverage) and Critic Check 6.
-- **Dependency management** has no discovery trigger. Dependencies are a planning concern, not a discovery concern. This is by design.
+- **Error handling** has discovery coverage and a `project-state.yaml` field (`error_handling_approach`). Design depth scales to risk. Build enforcement comes from test discipline and Critic Goal 6.
+- **Dependency management** has no discovery trigger. Dependencies are a planning concern. This is by design.
+- **Learnings relevance filtering** is not yet implemented in the session briefing. Currently shows the last 3 rule-formatted learnings. Future: filter by recent git changes and file types.
 
 ## Maintenance
 
 Update this registry when:
 - A new concern is added to any pipeline stage
 - An existing concern's coverage changes
-- The Critic reviews framework changes that touch cross-cutting concerns (Check 10)
+- The Critic reviews framework changes that touch cross-cutting concerns (Pipeline Coverage check)
 
 This registry is human-maintained. Don't automate validation — the value is in the thinking, not the checking.

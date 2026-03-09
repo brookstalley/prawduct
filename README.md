@@ -10,24 +10,26 @@ LLM code generation is powerful, but without discipline it produces code that dr
 
 ## How It Works
 
-You describe what you want to build. Prawduct guides the process through four phases:
+You describe what you want to build. Prawduct scales governance to match the work:
 
-**Discovery** — Asks about your users, workflows, edge cases, security, and scope. Scales question depth to risk: a family utility gets 5-8 questions; a financial platform gets 15-25.
+**Discovery** — Asks about your users, workflows, edge cases, security, and scope. Scales question depth to risk: a family utility gets 5-8 questions; a financial platform gets 15-25. Discovery is continuous — new features need their own discovery.
 
-**Planning** — Produces structured specifications in dependency order: product brief, data model, security model, test specifications, non-functional requirements, and a chunked build plan. Artifacts are reviewed at phase boundaries before building starts.
+**Planning** — Produces structured specifications in dependency order: product brief, data model, security model, test specifications, non-functional requirements, and a chunked build plan.
 
-**Building** — Implements the product in governed chunks. Each chunk follows a cycle: read spec, write tests first, implement, verify, then submit for independent Critic review. The Critic runs as a separate agent with no access to the builder's reasoning — it sees only the code and specs, catching things the builder's own context blinds it to.
+**Building** — Implements the product in governed chunks. Governance depth scales with work size (trivial → large) and type (bugfix → feature → refactor). Each chunk follows a cycle: read spec, write tests first, implement, verify, then submit for independent Critic review. The Critic runs as a separate agent with no access to the builder's reasoning — it sees only the code and specs, catching things the builder's own context blinds it to.
 
-**Reflection** — After each significant action, captures what happened, whether it was expected, and what it teaches. Learnings accumulate across sessions and directly influence future decisions.
+**Reflection** — After each significant action, captures what happened, whether it was expected, and what it teaches. Learnings follow a lifecycle (provisional → confirmed → incorporated) and accumulate across sessions.
 
 ## What Makes It Work
 
 ### Structural enforcement, not just instructions
 
-The core insight: telling an LLM to "always do X" works until complexity or momentum takes over. Prawduct enforces the two behaviors Claude can't reliably self-regulate:
+The core insight: telling an LLM to "always do X" works until complexity or momentum takes over. Prawduct enforces governance at three levels:
 
+- **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and active learnings
 - **Critic review** — A session hook blocks completion if code was modified against a build plan but no independent review happened
 - **Session reflection** — A session hook blocks completion if no reflection was captured
+- **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
 
 Everything else is governed by 22 principles and four methodology guides that stay in context via CLAUDE.md.
 
@@ -51,7 +53,9 @@ The framework detects structural characteristics (human interface, API, backgrou
 
 ### Closed learning loop
 
-Learnings aren't just filed — they're read at session start and directly influence decisions. The framework's own development demonstrates this: the pattern "judgment alone won't interrupt momentum" (observed when Claude skipped Critic review despite being told not to) drove the architectural shift from principles-only governance to structural enforcement via hooks.
+Learnings aren't just filed — they're read at session start and directly influence decisions. A two-tier system keeps active rules concise (<3K tokens in `learnings.md`) with full context in `learnings-detail.md`. Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
+
+The framework's own development demonstrates this: the pattern "judgment alone won't interrupt momentum" (observed when Claude skipped Critic review despite being told not to) drove the architectural shift from principles-only governance to structural enforcement via hooks.
 
 ## Getting Started
 
@@ -100,11 +104,15 @@ claude
 my-product/
 ├── CLAUDE.md                    # 22 principles + methodology (synced from framework)
 ├── .prawduct/
-│   ├── project-state.yaml      # Phase, product definition, build plan, test tracking
-│   ├── learnings.md            # Accumulated wisdom, read at session start
-│   ├── critic-review.md        # Critic instructions for this product
+│   ├── project-state.yaml      # Product definition, work tracking, build plan
+│   ├── learnings.md            # Active rules, read at session start (<3K tokens)
+│   ├── learnings-detail.md     # Full learning context and history
+│   ├── critic-review.md        # Goal-based Critic instructions for this product
 │   ├── sync-manifest.json      # Tracks framework sync state
 │   ├── artifacts/              # Specifications generated during planning
+│   │   ├── boundary-patterns.md  # Contract surfaces between components
+│   │   └── project-preferences.md # Developer preferences (language, testing, style)
+│   ├── .subagent-briefing.md   # Generated briefing for delegated agents
 │   └── .critic-findings.json   # Review evidence (checked by stop hook)
 ├── tools/
 │   └── product-hook            # Session governance (Python, zero dependencies)
@@ -133,8 +141,8 @@ Three layers:
 
 1. **22 Principles** — Always in context via CLAUDE.md. Grouped into Quality, Product, Process, Learning, and Judgment. They govern how work gets done but don't enforce process interruptions.
 
-2. **Methodology guides** — Narrative essays read at phase entry points (discovery, planning, building, reflection). They teach the approach rather than prescribing rigid steps.
+2. **Methodology guides** — Narrative essays read when entering each activity (discovery, planning, building, reflection). They teach the approach rather than prescribing rigid steps. Governance depth scales with work size and type.
 
-3. **Structural gates** — Python hooks that enforce the behaviors principles alone can't guarantee: independent review and session reflection. Zero external dependencies, validated via JSON structure checks and timestamp comparison.
+3. **Structural enforcement** — Python hooks that enforce what principles alone can't guarantee: session briefing with staleness detection on start, independent Critic review and reflection gates on stop, compliance canary checks for common governance failures. Zero external dependencies.
 
 See [`docs/principles.md`](docs/principles.md) for the full principles with rationale and review perspectives.

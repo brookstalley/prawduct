@@ -52,11 +52,12 @@ When someone opens this directory, route based on context:
 **Onboarding another product** ("let's work on ../my-app", "set up prawduct for ../foo")
 → Determine the target directory path. Then:
   1. If the directory doesn't exist, create it and ask for a product name.
-  2. Run `detect_version` logic: check for `.prawduct/framework-path` (v1), `tools/product-hook` (v3), and `.prawduct/sync-manifest.json` (v4).
+  2. Run `detect_version` logic: check for `.prawduct/framework-path` (v1), `tools/product-hook` (v3), `.prawduct/sync-manifest.json` (v4), and manifest `format_version >= 2` (v5).
   3. **Unknown** (new repo): Run `python3 tools/prawduct-init.py <target> --name "<name>"`.
-  4. **V1 or V3**: Run `python3 tools/prawduct-migrate.py <target>` to upgrade to v4 (adds sync manifest, Python hook, banner).
-  5. **V4**: Already set up. Framework sync happens automatically on session start via the product-hook.
-  6. Tell the user to open the target directory in a new Claude Code session for full governance:
+  4. **V1 or V3**: Run `python3 tools/prawduct-migrate.py <target>` to upgrade to v5 (adds sync manifest, Python hook, banner, learnings split, work-scaled governance).
+  5. **V4**: Run `python3 tools/prawduct-migrate.py <target>` to upgrade to v5, or let auto-migration handle it on next session start via the product-hook.
+  6. **V5**: Already set up. Framework sync happens automatically on session start via the product-hook.
+  7. Tell the user to open the target directory in a new Claude Code session for full governance:
      `claude <target-path>`
 
 **Ad-hoc work outside this repo** ("build me X in ../foo", "create a CLI that does Y")

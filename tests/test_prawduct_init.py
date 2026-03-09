@@ -334,13 +334,13 @@ class TestTemplatePropagation:
 
     def test_critic_review_has_all_checks(self):
         content = (self.target / ".prawduct" / "critic-review.md").read_text()
-        # Should have the 6 standard checks
-        assert "Spec Compliance" in content
-        assert "Test Integrity" in content
-        assert "Scope Discipline" in content
-        assert "Proportionality" in content
-        assert "Coherence" in content
-        assert "Learning" in content or "Observability" in content
+        # v5: Should have the 6 goal-based review sections
+        assert "Nothing Is Broken" in content
+        assert "Nothing Is Missing" in content
+        assert "Nothing Is Unintended" in content
+        assert "Everything Is Coherent" in content
+        assert "Decisions Were Deliberate" in content
+        assert "System Can Be Understood" in content
 
     def test_project_state_has_expected_structure(self):
         content = (self.target / ".prawduct" / "project-state.yaml").read_text()
@@ -348,7 +348,8 @@ class TestTemplatePropagation:
         assert "product_definition:" in content
         assert "build_plan:" in content
         assert "build_state:" in content
-        assert "current_phase:" in content
+        # v5: current_phase replaced by work_in_progress
+        assert "work_in_progress:" in content
 
 
 # =============================================================================
@@ -394,7 +395,7 @@ class TestSyncManifest:
         manifest = json.loads(
             (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
         )
-        assert manifest["format_version"] == 1
+        assert manifest["format_version"] == 2
         assert manifest["product_name"] == "TestProduct"
         assert "framework_source" in manifest
         assert "last_sync" in manifest

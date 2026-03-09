@@ -187,7 +187,7 @@ class TestCreateManifest:
         }
         manifest = create_manifest(tmp_path / "product", fw, "TestApp", hashes)
 
-        assert manifest["format_version"] == 1
+        assert manifest["format_version"] == 2
         assert manifest["framework_source"] == str(fw)
         assert manifest["product_name"] == "TestApp"
         assert "last_sync" in manifest
