@@ -661,10 +661,10 @@ class TestCrossTemplateConsistency:
         template = read_template("critic-review.md")
         assert ".critic-findings.json" in template
 
-    def test_claude_methodology_files_referenced(self):
-        """CLAUDE.md must reference all four methodology files."""
+    def test_claude_methodology_self_contained(self):
+        """Product CLAUDE.md must NOT reference framework methodology files (products are self-contained)."""
         template = read_template("product-claude.md")
-        assert "methodology/discovery.md" in template
-        assert "methodology/planning.md" in template
-        assert "methodology/building.md" in template
-        assert "methodology/reflection.md" in template
+        assert "methodology/discovery.md" not in template
+        assert "methodology/planning.md" not in template
+        assert "methodology/building.md" not in template
+        assert "methodology/reflection.md" not in template

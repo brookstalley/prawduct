@@ -14,7 +14,7 @@ These degrade at scale. The session briefing reinforces them; the stop hook dete
 - **Never silently drop a requirement.** If you can't implement it, say so explicitly.
 - **Never swallow exceptions.** No `except Exception: pass`. Catch specific exceptions; always log with context.
 - **Run the full test suite before committing.** New work must not break existing work.
-- **Investigate before committing to major decisions.** Decisions with lock-in, pervasive impact, structural consequences, or external dependencies require research first. Spawn a research subagent for high-impact choices. Record rationale in the affected artifact. See `methodology/building.md` for the investigated changes pattern.
+- **Investigate before committing to major decisions.** Decisions with lock-in, pervasive impact, structural consequences, or external dependencies require research first. Spawn a research subagent for high-impact choices. Record rationale in the affected artifact.
 - **When changes cross boundaries** (API, database, IPC, frontend/backend), verify consumers are not broken. See `.prawduct/artifacts/boundary-patterns.md` for this project's contract surfaces.
 - **Update artifacts when code changes what they describe.** Stale specs are worse than no specs.
 - **Invoke the Critic after medium+ work.** Not optional. The stop hook enforces this.
@@ -53,13 +53,7 @@ There are no phases. Every unit of work follows: **understand → plan → build
 
 ## Methodology
 
-Read the relevant guide when entering each type of work — not from memory, read the file:
-- `methodology/discovery.md` — Before investigating what to build
-- `methodology/planning.md` — Before designing artifacts or build plans
-- `methodology/building.md` — **STOP. Read before writing ANY code.** Defines the build cycle, investigated changes pattern, and subagent delegation.
-- `methodology/reflection.md` — Before session-end reflection
-
-### Building (summary — read the full guide)
+### Building
 
 1. **Green baseline.** Run full test suite. Fix any failures.
 2. **Read the spec.** Chunk entry in `build-plan.md` + referenced artifacts + `project-preferences.md`.
