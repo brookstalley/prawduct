@@ -191,7 +191,7 @@ def create_manifest(
         files[rel_path] = entry
 
     return {
-        "format_version": 1,
+        "format_version": 2,
         "framework_source": str(framework_dir),
         "product_name": product_name,
         "auto_pull": True,
@@ -327,6 +327,131 @@ def _try_pull_framework(fw_dir: Path, auto_pull: bool) -> list[str]:
     return notes
 
 
+def split_learnings_v5(product_dir: Path) -> list[str]:
+    """Create learnings-detail.md as reference backup of learnings.md.
+
+    Part of v4→v5 migration. If learnings.md exists with meaningful content
+    and learnings-detail.md doesn't exist yet, copies the content.
+    Idempotent: skips if detail file already exists.
+
+    Returns list of actions taken.
+    """
+    actions: list[str] = []
+    learnings = product_dir / ".prawduct" / "learnings.md"
+    detail = product_dir / ".prawduct" / "learnings-detail.md"
+
+    if not learnings.is_file():
+        return actions
+    if detail.is_file():
+        return actions  # Already split
+
+    content = learnings.read_text()
+    # Only split if there's meaningful content beyond the header
+    lines = [l for l in content.strip().splitlines()
+             if l.strip() and not l.startswith("#")]
+    if not lines:
+        return actions
+
+    detail.write_text(content)
+    actions.append("Created .prawduct/learnings-detail.md (reference backup)")
+    return actions
+
+
+def migrate_project_state_v5(product_dir: Path) -> list[str]:
+    """Add v5 sections to project-state.yaml, remove v4-only fields.
+
+    Adds work_in_progress and health_check sections if missing.
+    Removes current_phase if present. Idempotent.
+
+    Returns list of actions taken.
+    """
+    actions: list[str] = []
+    state_path = product_dir / ".prawduct" / "project-state.yaml"
+
+    if not state_path.is_file():
+        return actions
+
+    content = state_path.read_text()
+    original = content
+
+    # Remove current_phase field (v4 artifact) — top-level key, single line
+    if "\ncurrent_phase:" in content or content.startswith("current_phase:"):
+        lines = content.split("\n")
+        new_lines = [l for l in lines if not l.startswith("current_phase:")]
+        content = "\n".join(new_lines)
+
+    # Add work_in_progress section if missing
+    if "work_in_progress:" not in content:
+        content = content.rstrip("\n") + "\n\n" + (
+            "# =============================================================================\n"
+            "# WORK IN PROGRESS\n"
+            "# =============================================================================\n"
+            "# Tracks what's being done now and at what governance level.\n"
+            "\n"
+            "work_in_progress:\n"
+            "  description: null\n"
+            "  size: null\n"
+            "  type: null\n"
+        )
+
+    # Add health_check section if missing
+    if "health_check:" not in content:
+        content = content.rstrip("\n") + "\n\n" + (
+            "# =============================================================================\n"
+            "# HEALTH CHECK\n"
+            "# =============================================================================\n"
+            "# Tracks periodic health check state.\n"
+            "\n"
+            "health_check:\n"
+            "  last_full_check: null\n"
+            "  last_check_findings: null\n"
+        )
+
+    if content != original:
+        state_path.write_text(content)
+        actions.append("Updated .prawduct/project-state.yaml for v5")
+
+    return actions
+
+
+def migrate_v4_to_v5(product_dir: Path) -> list[str]:
+    """Migrate a v4 product to v5 structure. Called from run_sync().
+
+    Checks manifest format_version; skips if already v5.
+    Runs learnings split, project-state update, and version bump.
+    Idempotent.
+
+    Returns list of actions taken.
+    """
+    actions: list[str] = []
+    manifest_path = product_dir / ".prawduct" / "sync-manifest.json"
+
+    if not manifest_path.is_file():
+        return actions
+
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError:
+        return actions
+
+    if manifest.get("format_version", 1) >= 2:
+        return actions  # Already v5
+
+    # 1. Split learnings
+    actions.extend(split_learnings_v5(product_dir))
+
+    # 2. Update project-state.yaml
+    actions.extend(migrate_project_state_v5(product_dir))
+
+    # 3. Bump manifest version
+    manifest["format_version"] = 2
+    manifest["last_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    actions.append("Bumped manifest to format_version 2 (v5)")
+
+    return actions
+
+
 def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: bool = False) -> dict:
     """Run the sync algorithm on a product directory.
 
@@ -376,6 +501,13 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     subs = {"{{PRODUCT_NAME}}": product_name}
     actions: list[str] = []
     notes: list[str] = list(pull_notes)
+
+    # V4→V5 migration (if needed)
+    v5_actions = migrate_v4_to_v5(product)
+    actions.extend(v5_actions)
+    if v5_actions:
+        # Re-read manifest since migration updated it
+        manifest = json.loads(manifest_path.read_text())
 
     files = manifest.get("files", {})
     updated_files = dict(files)
@@ -528,6 +660,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     # Place-once files: create if missing, never tracked for ongoing sync
     place_once = {
         ".prawduct/artifacts/project-preferences.md": "templates/project-preferences.md",
+        ".prawduct/artifacts/boundary-patterns.md": "templates/boundary-patterns.md",
     }
     for rel_path, template_rel in place_once.items():
         dst = product / rel_path

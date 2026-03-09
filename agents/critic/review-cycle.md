@@ -1,13 +1,22 @@
-# Critic: Review Cycle (Product Builds)
+# Critic: Review Cycle
 
-Per-chunk review lifecycle during the build phase.
+Work-scaled review lifecycle. Review depth matches the size of the work.
 
 ---
+
+## When Review Is Required
+
+- **Trivial** (typo, config): No Critic review needed.
+- **Small** (bug fix, minor feature): Optional Critic review.
+- **Medium** (new feature, refactor): Critic review mandatory after completion.
+- **Large** (subsystem, architecture): Critic review per chunk.
+
+The stop hook enforces review for code changes when a build plan exists.
 
 ## Per-Chunk Cycle
 
 1. Builder completes a chunk's implementation and tests.
-2. Critic runs all applicable checks: Spec Compliance → Test Integrity → Scope Discipline → (others as applicable).
+2. Critic reviews using the goal-based approach (see SKILL.md).
 3. **If BLOCKING findings exist:**
    - Builder fixes the issues.
    - Critic re-reviews — specifically watching for **fix-by-fudging**:
@@ -31,25 +40,16 @@ When a significant architectural or design change spans multiple chunks, review 
 ```
 ## Critic Review — Chunk [ID]: [Name]
 
-### Spec Compliance
-[Checklist table]
+### Signals
+[Work size, work type, files changed, boundaries crossed]
 
-### Test Integrity
-- Test count: [before] → [after] [PASS/FAIL]
-- Test files deleted: [none / list] [PASS/FAIL]
-- New tests added: [count] [PASS/WARNING]
-- Behavior vs. implementation testing: [assessment]
-- Error case coverage: [assessment]
-
-### Scope Discipline
-- Unlisted dependencies: [none / list]
-- Unspecified patterns: [none / list]
-- Extra functionality: [none / list]
+### Changes Reviewed
+[List of files and what changed]
 
 ### Findings
 
 #### [Finding Name]
-**Check:** [Check Name]
+**Goal:** [Goal Name]
 **Severity:** blocking | warning | note
 **Recommendation:** [What the Builder should do]
 

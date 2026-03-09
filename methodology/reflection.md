@@ -73,7 +73,7 @@ Did the methodology help or hinder this session? One sentence is enough for sess
 
 ## Framework Reflection
 
-At phase transitions (finishing discovery, completing planning, finishing a build, beginning iteration), do a broader reflection:
+At natural milestones (finishing discovery, completing planning, finishing a build or subsystem), do a broader reflection:
 
 - **Proportionality**: Was the effort level-appropriate for this product's risk? Too much? Too little?
 - **Coverage**: Did discovery surface everything important? Did planning cover the right artifacts? Did building address the right risks?
@@ -96,17 +96,29 @@ When fixing a bug or recovering from an error, apply root cause discipline befor
 4. **Meta-check**: Are there other places where the same root cause might manifest? Fix those too.
 5. **Capture**: Add to learnings. This is the most important time to capture — failures are the richest source of learning.
 
+## Learning Lifecycle
+
+Learnings evolve through stages:
+
+**Provisional**: Single incident. May be wrong or over-specific. Captured after a Critic finding or unexpected outcome. Format: "When X, do Y because Z."
+
+**Confirmed**: Validated across 2+ incidents or explicitly confirmed by user. Promoted to active rules in `learnings.md`. These are the learnings that change behavior.
+
+**Incorporated**: Encoded into methodology, templates, or hooks. Archived from active rules — the wisdom now lives in the system's instructions, so the learning entry is redundant.
+
+**Recurrence escalation**: When a confirmed learning is violated again despite being captured, it's promoted to structural enforcement — a hook check, Critic rule, or CLAUDE.md repetition. This is how learnings become governance.
+
 ## Managing Learnings Over Time
 
 `learnings.md` should be a living document, not an ever-growing log:
 
-**Prune regularly.** When a learning has been incorporated into a principle or methodology update, it can be condensed or removed from learnings.md — its wisdom now lives in the system's instructions.
+**Prune regularly.** When a learning has been incorporated into a principle or methodology update, it can be condensed or removed from learnings.md.
 
 **Consolidate related entries.** Multiple learnings about the same pattern should merge into a single, stronger entry.
 
 **Keep it readable.** If learnings.md grows past ~3,000 tokens, it's time to prune. The most common learnings should be first. Stale or fully-incorporated learnings should be archived or removed.
 
-**Learnings have freshness.** A learning from yesterday is highly relevant. A learning from three months ago that hasn't been reinforced might be an artifact of a specific situation rather than a general pattern. Review old learnings with fresh eyes.
+**Learnings have freshness.** A learning from yesterday is highly relevant. A learning from three months ago that hasn't been reinforced might be an artifact of a specific situation rather than a general pattern.
 
 ### When learnings outgrow one file
 

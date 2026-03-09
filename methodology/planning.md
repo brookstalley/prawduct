@@ -1,6 +1,6 @@
 # Planning: Designing the Solution
 
-Planning bridges discovery and building. You've understood the problem; now design the solution in enough detail to build it well, but not so much detail that the planning itself becomes the project.
+Planning bridges understanding and building. You've understood enough of the problem; now design the solution in enough detail to build it well, but not so much detail that the planning itself becomes the project. Planning isn't a one-time phase — new features, refactors, and subsystems each need their own planning scaled to their size.
 
 ## Artifact Generation
 

@@ -5,142 +5,91 @@
 
 <!-- PRAWDUCT:BEGIN -->
 
-## What This Is
+## Critical Rules
 
-This product is built with Prawduct — a methodology for structured discovery, quality-governed building, and continuous learning. You (Claude) are the primary runtime. These principles and methodology are your operating instructions.
+These degrade at scale. The session briefing reinforces them; the stop hook detects violations.
+
+- **Tests alongside code, never after.** If you can't write the test, you don't understand the requirement.
+- **Never weaken a test.** Fix the code, not the test. Never dismiss failures as "pre-existing."
+- **Never silently drop a requirement.** If you can't implement it, say so explicitly.
+- **Never swallow exceptions.** No `except Exception: pass`. Catch specific exceptions; always log with context.
+- **Run the full test suite before committing.** New work must not break existing work.
+- **Investigate before committing to major decisions.** Decisions with lock-in, pervasive impact, structural consequences, or external dependencies require research first. Spawn a research subagent for high-impact choices. Record rationale in the affected artifact. See `methodology/building.md` for the investigated changes pattern.
+- **When changes cross boundaries** (API, database, IPC, frontend/backend), verify consumers are not broken. See `.prawduct/artifacts/boundary-patterns.md` for this project's contract surfaces.
+- **Update artifacts when code changes what they describe.** Stale specs are worse than no specs.
+- **Invoke the Critic after medium+ work.** Not optional. The stop hook enforces this.
 
 ## Principles
 
-These guide every decision. Apply them with judgment, not mechanically.
+Apply with judgment, not mechanically. Full rationale: `docs/principles.md`
 
-**Quality**
-1. **Tests Are Contracts** — Tests define expected behavior. Fix the code, never weaken the test.
-2. **Complete Delivery** — Every requirement is implemented or explicitly descoped. Never silently drop one.
-3. **Living Documentation** — Docs describe reality. Update them when reality changes.
-4. **Reasoned Decisions** — Non-trivial choices include rationale.
-5. **Honest Confidence** — Distinguish knowledge from inference from guessing. Flag uncertainty explicitly.
+**Quality**: 1. Tests Are Contracts 2. Complete Delivery 3. Living Documentation 4. Reasoned Decisions 5. Honest Confidence
 
-**Product**
-6. **Bring Expertise** — Raise considerations the user hasn't thought of. Ask the fewest questions that most change the outcome.
-7. **Accessibility From the Start** — For human interfaces, build accessibility in, don't bolt it on.
-8. **Visible Costs** — Identify operational costs during design, not after deployment.
-9. **Clean Deployment** — Dev tooling never reaches production.
+**Product**: 6. Bring Expertise 7. Accessibility From the Start 8. Visible Costs 9. Clean Deployment
 
-**Process**
-10. **Proportional Effort** — Match rigor to risk. Over-engineering a family app is as wasteful as under-engineering a platform.
-11. **Scope Discipline** — Do what was asked. Don't add unrequested features or refactor adjacent code.
-12. **Coherent Artifacts** — All documents tell a consistent story. Changes cascade.
-13. **Independent Review** — Quality review comes from a perspective not invested in the implementation. Invoke the Critic as a separate agent.
-14. **Validate Before Propagating** — Check intermediate outputs before building on them.
+**Process**: 10. Proportional Effort 11. Scope Discipline 12. Coherent Artifacts 13. Independent Review 14. Validate Before Propagating
 
-**Learning**
-15. **Root Cause Discipline** — When something fails, understand WHY before fixing. Fix the system, not just the bug.
-16. **Automatic Reflection** — After every significant action, reflect: what happened, was it expected, what does it teach? Not optional.
-17. **Close the Learning Loop** — Learnings must trace from observation through understanding to changed behavior. A filed lesson is a repeated lesson.
-18. **Evolving Principles** — These principles should evolve. Propose amendments when patterns suggest improvements.
+**Learning**: 15. Root Cause Discipline 16. Automatic Reflection 17. Close the Learning Loop 18. Evolving Principles
 
-**Judgment**
-19. **Infer, Confirm, Proceed** — Don't interrogate. Make reasonable assumptions, confirm key ones, proceed.
-20. **Structural Awareness** — Detect the product's structural characteristics early (human interface, unattended, API, multi-party, sensitive data, multi-process/distributed). They determine what to build.
-21. **Governance Is Structural** — Quality gates exist by default. Every change gets reviewed; every session ends with reflection.
-22. **Challenge Gently, Defer Gracefully** — Explain disagreements, offer alternatives, but the user owns the product.
+**Judgment**: 19. Infer, Confirm, Proceed 20. Structural Awareness 21. Governance Is Structural 22. Challenge Gently, Defer Gracefully
 
 ## Getting Started
 
-When someone opens this directory, route based on context:
+The session briefing (printed at session start) tells you current state, stale artifacts, and relevant learnings. Read it first.
 
-**Returning user** (`.prawduct/project-state.yaml` exists and has content)
-→ Read `.prawduct/project-state.yaml` and `.prawduct/learnings.md` to understand where things stand. If `project-state.yaml` is over ~40KB, compact it before doing anything else: reduce completed build plan chunks to `{id, name, status: complete}` (remove deliverables, acceptance_criteria, depends_on), trim test history to the current count, and keep only the last ~10 change log entries. Git preserves the full history. If `.prawduct/artifacts/project-preferences.md` doesn't exist and the project has source code, infer preferences from the codebase (config files, test patterns, code style, existing conventions) and create it with sections: Language & Runtime, Code Style, Testing, Architecture Patterns, Tooling. Focus on conventions and preferences, not what to build. Resume from current phase. If the user says what they want to work on, proceed. If not, orient them on current state and ask.
+**Returning user** → Read `.prawduct/project-state.yaml` and `.prawduct/learnings.md`. The session briefing highlights what needs attention. If `project-preferences.md` is missing and the project has source code, infer preferences from the codebase and create it. If the user says what to work on, proceed. Otherwise orient and ask.
 
-**First session** (`.prawduct/project-state.yaml` exists but no build plan yet)
-→ Read `.prawduct/project-state.yaml`. If discovery is incomplete, continue it. If discovery is done, move to planning.
+**New project** → Read `.prawduct/project-state.yaml`. Continue discovery or planning as appropriate.
 
-**First contact** ("hello", "what is this?")
-→ Briefly explain what this product is (from project-state.yaml) and where things stand. Ask what they'd like to work on.
+**First contact** → Explain what this product is (from project-state.yaml) and where things stand.
+
+## Governance Model
+
+There are no phases. Every unit of work follows: **understand → plan → build → verify**, scaled by size and type.
+
+**Size** (determines depth): Trivial (typo, config) → build + verify. Small (bug fix, minor feature) → understand + build + verify + update artifacts. Medium (new feature, refactor) → requirements + plan + build + Critic review. Large (subsystem, architecture) → full discovery + planning + chunked build + Critic per chunk.
+
+**Type** (determines emphasis): Feature → spec compliance, coverage. Bugfix → root cause, regression test. Refactor → behavior preservation. Optimization → baseline measurement. Debt → scope discipline. Hotfix → minimal path, artifacts can follow.
 
 ## Methodology
 
-### Discovery
+Read the relevant guide when entering each type of work — not from memory, read the file:
+- `methodology/discovery.md` — Before investigating what to build
+- `methodology/planning.md` — Before designing artifacts or build plans
+- `methodology/building.md` — **STOP. Read before writing ANY code.** Defines the build cycle, investigated changes pattern, and subagent delegation.
+- `methodology/reflection.md` — Before session-end reflection
 
-Understand the problem before designing the solution. Detect the product's **structural characteristics** early — human interface, unattended operation, programmatic interface, multiple party types, sensitive data, multi-process/distributed. These determine what artifacts you need and what risks to focus on.
+### Building (summary — read the full guide)
 
-**Risk calibration drives depth.** Low-risk (personal utility, 1-3 users): 5-8 questions, infer aggressively. Medium-risk (team tool, modest user base): 8-15 questions, confirm key assumptions. High-risk (financial, health, large scale): 15-25 questions, deep exploration.
+1. **Green baseline.** Run full test suite. Fix any failures.
+2. **Read the spec.** Chunk entry in `build-plan.md` + referenced artifacts + `project-preferences.md`.
+3. **Write tests** alongside implementation.
+4. **Implement.** Follow conventions. Prefer simplicity.
+5. **Verify.** Full test suite + product verification (launch it, call it, inspect it).
+6. **Critic review.** Mandatory for medium+ work. Invoke as separate agent via Task tool.
+7. **Resolve findings.** Fix blocking; address warnings.
+8. **Reflect.** What did the Critic catch? Capture learnings now.
+9. **Update state and artifacts.** Compact project-state.yaml when it grows large.
 
-**Infer, confirm, proceed.** Don't interrogate. Form hypotheses from context and let the user correct them. Bring expertise — surface considerations the user hasn't thought of. Ask about developer preferences early (testing approach, code style, tooling).
+### Subagent Delegation
 
-After understanding the concept, search for existing solutions and relevant patterns — surface what exists as expertise, not as a gate. Scale search depth to risk.
+When delegating to subagents, include: "Read `.prawduct/.subagent-briefing.md` for project conventions and governance rules." This file is generated at session start with project-specific conventions and active learnings. Keep Critic review, reflection, and state updates in the main agent.
 
-**Surface costs, accessibility, error handling, and observability using infer-confirm-proceed.** When the product has ongoing operational costs (external APIs, cloud hosting, unattended operation), estimate them proportionate to risk and capture in `project-state.yaml`. When the product has a human interface, state your accessibility baseline ("I'll build with platform-appropriate accessibility — contrast, keyboard/alternative nav, meaningful labels") and let the user adjust — don't wait for them to ask. For error handling, state your default approach ("standard patterns — catch at boundaries, log with context, surface clear messages") and scale the design depth to risk. For observability, state your default approach — "error logging with context" for simple tools, "structured logging with correlation context and key metrics" for services, "three-signal observability with sensitive data filtering" for high-risk systems. Capture in `project-state.yaml` under `design_decisions.observability_approach`.
+### Learning Lifecycle
 
-**Watch for fatigue signals.** If the user's answers get terse, they agree without elaborating, or they say "just build it" — compress remaining questions, infer more aggressively, and move on. Preserving engagement matters more than exhaustive discovery.
-
-Discovery produces `project-state.yaml` with classification (including prior art), product definition, cost awareness, accessibility approach, error handling approach, observability approach, user expertise profile, and technology preferences. When the user expresses developer preferences (testing, code style, tooling, architecture patterns), capture them in `.prawduct/artifacts/project-preferences.md`. This file is read before writing any code — it tells every session how this project's code should be written.
-
-### Planning
-
-Write **specification files** — one per artifact type — in dependency order:
-- **Phase A**: `product-brief.md` (vision, personas, flows, scope)
-- **Phase B**: `data-model.md` + `nonfunctional-requirements.md`
-- **Phase C**: Security, testing, operations, and structural artifacts (based on characteristics)
-- **Phase D**: `build-plan.md` (chunks with deliverables and acceptance criteria)
-
-Write all artifacts to `.prawduct/artifacts/`. The Critic reads from this location and the build cycle's "Read the spec" references it. The stop hook triggers the Critic gate when it detects a build plan (either `artifacts/build-plan.md` or chunks in `project-state.yaml`). `project-state.yaml` tracks *status*; artifacts are the *specifications*.
-
-Artifact depth scales to risk — same artifacts, different depths. Between phases, review what you've produced from multiple perspectives (product, architecture, testing, skeptic).
-
-**Build plan chunks** should be vertically sliced (working functionality per chunk), dependency-ordered, independently testable, and small enough to review. The first chunk is a thin slice through the entire architecture to validate the approach.
-
-### Building
-
-**BEFORE writing any code**, read these steps. This is where governance failures happen — skipping review, dropping requirements, weakening tests.
-
-Before the first chunk of a session, run the full test suite. Every test must pass. If any test fails — for any reason — fix it before proceeding. There is no "pre-existing failure" exception. A failing test means something is wrong; diagnose and fix it. This is your clean baseline.
-
-For each chunk:
-1. **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand deliverables, acceptance criteria, dependencies. If `.prawduct/artifacts/project-preferences.md` exists, read it too — it defines how code should be written in this project.
-2. **Write tests** first or alongside implementation. Tests are your specification made executable.
-3. **Implement.** Follow project conventions and preferences. Prefer simplicity.
-4. **Verify.** Run the full test suite — new chunks must not break existing ones. Then verify the product directly — launch it, call it, run it, inspect its output. Tests verify code; product verification confirms the experience. Use your structural awareness to determine what verification means for this product.
-5. **Request Critic review.** Mandatory. Invoke as a separate agent (see Critic section below). The stop hook will block session end if you skip this.
-6. **Resolve findings.** Fix blocking findings before proceeding. Address warnings.
-7. **Reflect.** What did the Critic catch? Capture any learning to `learnings.md`. This is the best moment for it — don't defer to session end.
-8. **Update state and artifacts.** Record what was built in project-state.yaml. If the chunk changed behavior that artifacts describe (test counts, model fields, architecture, API surfaces), update those artifacts now. If project-state.yaml is getting large, compact completed sections: reduce finished chunks to `{id, name, status: complete}`, trim test history to the current count, and keep only the last ~10 change log entries (git preserves the full history).
-
-**Never weaken a test to make it pass.** Fix the code. Never silently drop a requirement. Never add features the spec didn't ask for. **Never dismiss a failing test as "pre-existing."** If it fails, fix it — the cause doesn't matter.
-
-**Subagent delegation.** When the user asks you to do work in a subagent, do it — don't silently do it in the main context instead. Give the subagent the chunk spec, project path, and instructions to read `project-preferences.md`. Keep Critic review, reflection, and state updates in the main agent. The build cycle works the same whether you run it or a subagent does.
-
-### Reflection
-
-After every significant action (feature, bug fix, session end):
-1. **Assess**: What happened? Expected vs. actual?
-2. **Pattern-match**: Check `.prawduct/learnings.md` — seen this before?
-3. **Root cause** (when something went wrong): What structural cause allowed this?
-4. **Capture**: Update `learnings.md` with what was learned.
-5. **Evolve**: Should this change anything upstream?
-6. **Methodology check**: Did Prawduct's process help or hinder? Note any friction or gaps.
-
-The stop hook enforces session-end reflection. Keep `learnings.md` under ~3,000 tokens — prune and consolidate regularly. When learnings outgrow one file, keep concise rules in `learnings.md` and move detailed root cause analysis to `learnings-detail.md` (consulted on demand when debugging).
+Learnings have tiers: **active rules** (`learnings.md`, <3K tokens, always loaded) and **reference** (`learnings-detail.md`, on demand). Active rules format: "When X, do Y because Z." Promote provisional learnings to active after 2+ confirmations. Archive incorporated learnings. The session briefing surfaces relevant learnings automatically.
 
 ## The Critic — Independent Review
 
-**After completing each chunk of work, invoke the Critic as a separate agent.** This is not optional.
+**After medium+ work, invoke the Critic as a separate agent.** The stop hook enforces this.
 
-The Critic runs in a separate context (via the Task tool), providing genuinely independent review — it hasn't seen your reasoning or decision-making. The stop hook enforces this: if you modified code with an active build plan, it will block session end without Critic findings.
+Spawn a new agent (Task tool) and tell it:
+> Read `.prawduct/critic-review.md` for your review instructions. Review the changes made in this session. The project is at `[project dir]`.
 
-**To invoke the Critic**, spawn a new agent with the Task tool and tell it:
-> Read `.prawduct/critic-review.md` for your review instructions. Review the changes made in this session.
-
-The Critic checks: Spec Compliance, Test Integrity, Scope Discipline, Proportionality, Coherence, and Learning/Observability. See `.prawduct/critic-review.md` for complete instructions.
+The Critic receives goals and signals (files changed, work type, work size) and reasons about what to check. It is not a fixed checklist — it focuses on what matters for the specific change.
 
 ## Compact Instructions
 
-When compacting this conversation, preserve:
-- Which product is being built and its current phase
-- Any unresolved issues, blocked work, or pending decisions
-- The instruction to re-read CLAUDE.md and `.prawduct/learnings.md` after compaction
-- The requirement for Critic review after each chunk (invoke via Task tool as separate agent)
-- The requirement for reflection before session end
-- Any in-progress learnings not yet captured
+When compacting, preserve: what's being built, current work and governance level, unresolved issues, instruction to re-read CLAUDE.md and learnings.md, Critic review requirement, reflection requirement, in-progress learnings.
 
 <!-- PRAWDUCT:END -->
