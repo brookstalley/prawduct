@@ -1,6 +1,6 @@
 # Framework Repository Structure
 
-The framework repo layout after v3 cleanup:
+The framework repo layout (v5):
 
 ```
 prawduct/
@@ -20,13 +20,14 @@ prawduct/
 │   ├── reflection-hook                # Hook script: session clear + stop (framework)
 │   ├── product-hook                   # Hook script: session clear + stop (products, self-contained)
 │   ├── prawduct-init.py               # Generates self-contained product repos
-│   ├── prawduct-migrate.py            # Migrates v1/v3 product repos to v4
-│   └── prawduct-sync.py              # Syncs framework updates to product repos
+│   ├── prawduct-migrate.py            # Migrates v1/v3/v4 product repos to v5
+│   └── prawduct-sync.py              # Syncs framework updates to product repos (includes v4→v5 auto-migration)
 ├── templates/                         # Templates for product repos
 │   ├── product-claude.md              # Self-contained CLAUDE.md for products (v3 core)
 │   ├── critic-review.md              # Condensed Critic instructions for products (v3 core)
 │   ├── product-settings.json          # .claude/settings.json template for products
-│   ├── project-state.yaml             # Product state template
+│   ├── project-state.yaml             # Product state template (v5: work_in_progress, health_check)
+│   ├── boundary-patterns.md           # Contract surfaces between components
 │   ├── build-plan.md, product-brief.md, ...  # Artifact templates
 │   ├── human-interface/               # has_human_interface templates
 │   └── unattended-operation/          # runs_unattended templates
@@ -36,6 +37,9 @@ prawduct/
 │   ├── test_prawduct_migrate.py          # Automated tests for prawduct-migrate.py
 │   ├── test_product_hook.py              # Automated tests for product-hook
 │   ├── test_prawduct_sync.py             # Automated tests for prawduct-sync.py
+│   ├── test_v5_migration.py              # v4→v5 migration tests (45 tests)
+│   ├── test_integration_lifecycle.py     # End-to-end lifecycle tests (29 tests)
+│   ├── test_preferences_lifecycle.py     # Project preferences lifecycle tests
 │   └── scenarios/                     # 4 test scenarios for framework validation
 ├── docs/
 │   ├── principles.md                  # Full 22 principles with rationale
@@ -44,6 +48,7 @@ prawduct/
 ├── .prawduct/                         # Framework's own prawduct state
 │   ├── project-state.yaml             # Source of truth for framework iteration
 │   ├── learnings.md                   # Accumulated wisdom (read at session start)
+│   ├── learnings-detail.md            # Full learning context and history
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   └── working-notes/                 # Development history and design notes
 └── .claude/
@@ -56,15 +61,18 @@ prawduct/
 my-product/
 ├── CLAUDE.md                          # Self-contained: principles, methodology, Critic instructions
 ├── .prawduct/
-│   ├── project-state.yaml             # Product state
-│   ├── learnings.md                   # Product-specific learnings
-│   ├── critic-review.md               # Condensed Critic instructions for this product
-│   ├── sync-manifest.json             # Tracks framework sync state (enables auto-updates)
+│   ├── project-state.yaml             # Product state (v5: work_in_progress, health_check sections)
+│   ├── learnings.md                   # Active rules, read at session start (<3K tokens)
+│   ├── learnings-detail.md            # Full learning context and history
+│   ├── critic-review.md               # Goal-based Critic instructions for this product
+│   ├── sync-manifest.json             # Tracks framework sync state (format_version 2)
 │   ├── artifacts/                     # Generated specifications
-│   ├── reflections.md                 # Accumulated session reflections
+│   │   ├── boundary-patterns.md       # Contract surfaces between components
+│   │   └── project-preferences.md     # Developer preferences (language, testing, style)
+│   ├── .subagent-briefing.md          # Generated briefing for delegated agents
 │   └── .critic-findings.json          # Critic review evidence (checked by stop hook)
 ├── tools/
-│   └── product-hook                   # Session governance (Python: reflection + Critic gate + sync)
+│   └── product-hook                   # Session governance (Python: reflection + Critic gate + sync + v4→v5 auto-migration)
 ├── .claude/
 │   └── settings.json                  # Hook config + banner pointing to tools/product-hook
 └── src/                               # Product source code
