@@ -44,13 +44,46 @@ user_expertise:
 # PROCESS STATE
 # =============================================================================
 
-current_phase: iteration
+# =============================================================================
+# WORK IN PROGRESS
+# =============================================================================
+
+work_in_progress:
+  current_work: null
+  governance_level: null
+
+# =============================================================================
+# HEALTH CHECK
+# =============================================================================
+
+health_check:
+  last_session: null
+  stale_artifacts: []
+  known_issues: []
 
 # =============================================================================
 # CHANGE LOG
 # =============================================================================
 
 change_log:
+  # --- v5: work-scaled governance (2026-03-09) ---
+  - what: 'v5: Work-scaled governance replaces phase-based model'
+    why: 'Phase-based governance (discovery→planning→building→reflection) was too rigid —
+      hotfixes got full discovery, trivial changes got enterprise review. v5 scales governance
+      by work size (trivial/small/medium/large) × type (feature/bugfix/refactor/optimization/debt/hotfix).
+      6-chunk implementation: (1) goal-based Critic with 6 prioritized goals, (2) session briefing
+      with staleness scan, (3) compliance canary checks, (4) governance scaling matrix in building.md,
+      (5) migration + sync (v4→v5 auto-migration, learnings split, project-state migration),
+      (6) framework docs + integration validation. 584 total tests (76 new unit + 29 integration).'
+    blast_radius: 'Modified: agents/critic/SKILL.md, agents/critic/review-cycle.md,
+      templates/critic-review.md, tools/product-hook (session briefing + compliance canary),
+      methodology/building.md (governance scaling matrix), tools/prawduct-sync.py (v4→v5 migration),
+      tools/prawduct-init.py (boundary-patterns, .subagent-briefing gitignore),
+      tools/prawduct-migrate.py (v5 detection + migration path), templates/product-claude.md.
+      New: tests/test_v5_migration.py (45), tests/test_integration_lifecycle.py (29),
+      templates/boundary-patterns.md.'
+    classification: structural
+    date: 2026-03-09
   # --- Observability as first-class concern (2026-03-03) ---
   - what: 'Elevate observability to first-class cross-cutting concern across entire pipeline'
     why: 'Observability had "adequate" coverage — a template existed and Check 6 mentioned it,
@@ -278,10 +311,10 @@ change_log:
 # =============================================================================
 # BUILD PLAN
 # =============================================================================
-# V3 implementation plan — see .prawduct/working-notes/v3-structural-gates.md for full details
+# V5 work-scaled governance — see .prawduct/working-notes/ for design history
 
 build_plan:
-  strategy: "6-chunk implementation of v3 structural gates architecture"
+  strategy: "v5 work-scaled governance: 6 chunks completed (Critic goals, session briefing, compliance canary, governance scaling, migration+sync, docs+integration)"
   remaining_work:
     # --- future (post-v3) ---
     - item: "Pacing sensitivity"
@@ -306,7 +339,7 @@ build_plan:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 9
+    test_count: 584
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md
@@ -317,6 +350,8 @@ build_state:
       - tests/test_prawduct_migrate.py
       - tests/test_prawduct_sync.py
       - tests/test_preferences_lifecycle.py
+      - tests/test_v5_migration.py
+      - tests/test_integration_lifecycle.py
 
 # =============================================================================
 # DEPRECATED TERMS

@@ -18,7 +18,7 @@ classification:
   domain: null
 
   # Structural characteristics — architectural facts that determine what KINDS
-  # of artifacts a product needs. These are a small, stable set (5) that drive
+  # of artifacts a product needs. These are a small, stable set (6) that drive
   # artifact generation. null = not applicable.
   structural:
     # User-facing interface. modality: screen|terminal|voice|spatial|minimal; platform: mobile|web|desktop|cross-platform
@@ -31,6 +31,8 @@ classification:
     has_multiple_party_types: null
     # Handles sensitive information. categories: [PII, financial, health, etc.]; regulatory: [list]
     handles_sensitive_data: null
+    # Multiple processes or services communicating at runtime. topology: monolith-with-workers|client-server|microservices|pipeline
+    multi_process_distributed: null
 
   # Domain-specific characteristics — what makes THIS product unique in its domain.
   # Dynamically identified, not from a predefined list.
@@ -128,6 +130,7 @@ design_decisions:
   accessibility_approach: null
   error_handling_approach: null
   observability_approach: null    # Signal types, correlation context, sensitive data filtering, operational model
+  infrastructure_dependencies: null  # External services (DB, queue, auth, APIs), mock boundaries, integration test strategy
   visual_direction: null
 
 # =============================================================================
@@ -169,11 +172,28 @@ build_preferences:
   source: null                # discovery | inferred | iteration
 
 # =============================================================================
-# PROCESS STATE
+# WORK IN PROGRESS
 # =============================================================================
-# Current phase. Values: discovery, planning, building, iteration
+# Tracks what's being done now and at what governance level.
+# Replaces the v4 current_phase field (there are no phases in v5).
 
-current_phase: discovery
+work_in_progress:
+  # Current work description. null when nothing active.
+  description: null
+  # Governance level: trivial | small | medium | large
+  size: null
+  # Work type: feature | bugfix | refactor | optimization | debt | hotfix
+  type: null
+
+# =============================================================================
+# HEALTH CHECK
+# =============================================================================
+# Tracks periodic health check state. Health checks are triggered by
+# accumulating staleness signals, not by a fixed cadence.
+
+health_check:
+  last_full_check: null
+  last_check_findings: null
 
 # =============================================================================
 # ARTIFACT MANIFEST

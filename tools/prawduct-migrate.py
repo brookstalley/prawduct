@@ -3,13 +3,16 @@
 prawduct-migrate.py — Migrate product repos to the latest version.
 
 Handles:
-  v1 → v4: Full migration from framework-dependent repos
-  v3 → v4: Add sync manifest, Python hook, banner
-  v4 → v4: Idempotent (no changes)
+  v1 → v5: Full migration from framework-dependent repos
+  v3 → v5: Add sync manifest, Python hook, banner, v5 structure
+  v4 → v5: Learnings split, project-state update, boundary-patterns, manifest bump
+  v5 → v5: Idempotent (no changes)
 
 V1 repos depend on an external framework directory via .prawduct/framework-path.
 V3 repos are self-contained with a bash product-hook.
 V4 repos add sync manifest, Python hook, and banner.
+V5 repos add learnings split, work_in_progress/health_check in project-state,
+boundary-patterns template, and format_version 2 manifest.
 
 Idempotent: running on an already-current repo produces zero changes.
 """
@@ -41,16 +44,20 @@ extract_block = _sync_mod.extract_block
 render_template = _sync_mod.render_template
 merge_settings = _sync_mod.merge_settings
 create_manifest = _sync_mod.create_manifest
+split_learnings_v5 = _sync_mod.split_learnings_v5
+migrate_project_state_v5 = _sync_mod.migrate_project_state_v5
 BLOCK_BEGIN = _sync_mod.BLOCK_BEGIN
 BLOCK_END = _sync_mod.BLOCK_END
 
-# V4 gitignore entries
+# V4+ gitignore entries (includes v5 additions)
 V4_GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
     ".prawduct/.critic-findings.json",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-reflected",
     ".prawduct/.session-start",
+    ".prawduct/.subagent-briefing.md",
+    ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
     "__pycache__/",
 ]
@@ -88,7 +95,7 @@ def log(msg: str) -> None:
 
 
 def detect_version(target: Path) -> str:
-    """Detect repo version. Returns 'v1', 'v3', 'v4', 'partial', or 'unknown'."""
+    """Detect repo version. Returns 'v1', 'v3', 'v4', 'v5', 'partial', or 'unknown'."""
     has_framework_path = (target / ".prawduct" / "framework-path").is_file()
     has_product_hook = (target / "tools" / "product-hook").is_file()
     has_sync_manifest = (target / ".prawduct" / "sync-manifest.json").is_file()
@@ -98,6 +105,15 @@ def detect_version(target: Path) -> str:
     if has_framework_path and has_product_hook:
         return "partial"
     if has_product_hook and has_sync_manifest:
+        # Distinguish v4 from v5 by manifest format_version
+        try:
+            manifest = json.loads(
+                (target / ".prawduct" / "sync-manifest.json").read_text()
+            )
+            if manifest.get("format_version", 1) >= 2:
+                return "v5"
+        except (json.JSONDecodeError, OSError):
+            pass
         return "v4"
     if has_product_hook and not has_framework_path:
         return "v3"
@@ -494,7 +510,7 @@ def upgrade_manifest_strategy(target: Path) -> bool:
 
 
 def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
-    """Migrate a product repo to v4. Returns a summary of actions taken."""
+    """Migrate a product repo to v5. Returns a summary of actions taken."""
     target = Path(target_dir).resolve()
     actions: list[str] = []
 
@@ -593,6 +609,35 @@ def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
     if upgrade_manifest_strategy(target):
         actions.append("Upgraded CLAUDE.md sync strategy to block_template")
 
+    # === V5 migration steps (idempotent, applies to all repos) ===
+
+    # Split learnings into active rules + reference detail
+    actions.extend(split_learnings_v5(target))
+
+    # Update project-state.yaml (add v5 sections, remove v4 fields)
+    actions.extend(migrate_project_state_v5(target))
+
+    # Place boundary-patterns.md if missing
+    bp_src = TEMPLATES_DIR / "boundary-patterns.md"
+    bp_dst = target / ".prawduct" / "artifacts" / "boundary-patterns.md"
+    if bp_src.is_file() and not bp_dst.is_file():
+        rendered = render_template(bp_src, subs)
+        bp_dst.parent.mkdir(parents=True, exist_ok=True)
+        bp_dst.write_text(rendered)
+        actions.append("Created .prawduct/artifacts/boundary-patterns.md")
+
+    # Bump manifest version to 2 if needed
+    manifest_path = target / ".prawduct" / "sync-manifest.json"
+    if manifest_path.is_file():
+        try:
+            mf = json.loads(manifest_path.read_text())
+            if mf.get("format_version", 1) < 2:
+                mf["format_version"] = 2
+                manifest_path.write_text(json.dumps(mf, indent=2) + "\n")
+                actions.append("Bumped manifest to format_version 2 (v5)")
+        except json.JSONDecodeError:
+            pass
+
     return {
         "target": str(target),
         "product_name": product_name,
@@ -654,7 +699,7 @@ def main() -> int:
         else:
             log("  (no changes — already up to date)")
         log("")
-        if result["version_after"] == "v4":
+        if result["version_after"] in ("v4", "v5"):
             log("Migration complete. Product repo is now self-contained with sync support.")
         else:
             log(f"Note: version detected as '{result['version_after']}' — review manually.")

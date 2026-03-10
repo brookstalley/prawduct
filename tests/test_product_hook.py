@@ -195,11 +195,22 @@ class TestStopReflectionGate:
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
-        (prawduct / ".session-reflected").write_text("I reflected on changes.")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
 
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
 
         assert result.returncode == 0
+
+    def test_short_reflection_rejected(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".session-reflected").write_text("too short")
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "REFLECTION" in result.stderr
 
     def test_reflection_message_includes_methodology_check(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -280,7 +291,7 @@ class TestStopCriticGate:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
 
@@ -295,7 +306,7 @@ class TestStopCriticGate:
         prawduct.mkdir()
         state_yaml = "current_phase: building\n\nbuild_plan:\n  strategy: feature-first\n  chunks:\n    - id: chunk-01\n      status: complete\n"
         (prawduct / "project-state.yaml").write_text(state_yaml)
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
 
@@ -310,7 +321,7 @@ class TestStopCriticGate:
         prawduct.mkdir()
         state_yaml = "current_phase: discovery\n\nopen_questions: []\n"
         (prawduct / "project-state.yaml").write_text(state_yaml)
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
 
@@ -324,12 +335,13 @@ class TestStopCriticGate:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct, offset_seconds=-60)
 
         findings = {
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "files_reviewed": ["src/app.py"],
             "findings": [],
             "summary": "No issues found.",
         }
@@ -345,7 +357,7 @@ class TestStopCriticGate:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
 
@@ -377,7 +389,7 @@ class TestStopCriticGate:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
 
         # Create findings file first
@@ -407,7 +419,7 @@ class TestCriticContentValidation:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n")
-        (prawduct / ".session-reflected").write_text("reflected")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct, offset_seconds=-60)
         (prawduct / ".critic-findings.json").write_text(findings_content)
@@ -438,8 +450,9 @@ class TestCriticContentValidation:
         self._setup_critic_scenario(
             tmp_path,
             json.dumps({
+                "files_reviewed": ["src/app.py"],
                 "findings": [
-                    {"check": "Test Integrity", "severity": "warning", "summary": "Missing edge case test"}
+                    {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Missing edge case test"}
                 ],
                 "summary": "1 warning. Changes ready to proceed after addressing.",
             }),
@@ -451,12 +464,50 @@ class TestCriticContentValidation:
         self._setup_critic_scenario(
             tmp_path,
             json.dumps({
+                "files_reviewed": ["src/app.py"],
                 "findings": [],
                 "summary": "No issues found. Changes are ready to proceed.",
             }),
         )
         result = run_hook("stop", tmp_path, git_output=" M src/app.py")
         assert result.returncode == 0
+
+    def test_rejects_missing_files_reviewed(self, tmp_path: Path):
+        self._setup_critic_scenario(
+            tmp_path,
+            json.dumps({
+                "findings": [],
+                "summary": "No issues found.",
+            }),
+        )
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+        assert result.returncode == 2
+
+    def test_rejects_empty_files_reviewed(self, tmp_path: Path):
+        self._setup_critic_scenario(
+            tmp_path,
+            json.dumps({
+                "files_reviewed": [],
+                "findings": [],
+                "summary": "No issues found.",
+            }),
+        )
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+        assert result.returncode == 2
+
+    def test_rejects_finding_without_goal(self, tmp_path: Path):
+        self._setup_critic_scenario(
+            tmp_path,
+            json.dumps({
+                "files_reviewed": ["src/app.py"],
+                "findings": [
+                    {"severity": "warning", "summary": "Missing test"}
+                ],
+                "summary": "1 warning.",
+            }),
+        )
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+        assert result.returncode == 2
 
 
 # =============================================================================

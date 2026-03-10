@@ -6,138 +6,95 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 ## When You Are Activated
 
-When activated:
+1. Read `.prawduct/project-state.yaml` for context (current work, what exists).
+2. Assess the **scope and nature** of changes (use git diff or read changed files).
+3. Read relevant artifacts in `.prawduct/artifacts/`.
+4. Read `docs/principles.md` for the framework's principles.
+5. Decide what to check based on the signals below — you reason about scope, not follow a fixed checklist.
 
-1. Read `.prawduct/project-state.yaml` to determine context: current phase, what artifacts exist, what the project is.
-2. Read `docs/principles.md` for the framework's principles.
-3. Read the changes to be reviewed (git diff or read files directly).
-4. Apply all applicable checks (see below).
-5. Produce structured findings with severity and recommendations.
+## Signals That Guide Your Review
 
-## Checks
+**Files changed**: Which layers? How many? Do changes cross boundaries (API + frontend, model + routes, IPC + consumer)?
 
-Apply these checks with judgment proportionate to the change. Each is a thinking principle, not a mechanical rule.
+**Work size**: Trivial (1-2 files) → quick coherence check. Small (bug fix) → root cause + regression. Medium (feature, refactor) → full review. Large (subsystem) → deep architectural review.
 
-### Check Applicability
+**Work type**: Feature → spec compliance + coverage. Bugfix → root cause + regression test. Refactor → behavior preservation. Optimization → baseline measured? Debt → scope discipline.
 
-| Check | Applies When |
-|-------|-------------|
-| Spec Compliance | When implementation can be diffed against specs |
-| Test Integrity | When tests exist |
-| Scope Discipline | Always |
-| Proportionality | Always |
-| Coherence | Always |
-| Learning/Observability | Always |
-| Generality | When reviewing framework instruction files or templates |
-| Instruction Clarity | When reviewing files that contain LLM instructions |
-| Cumulative Health | When reviewing LLM instruction files (substantial changes) |
-| Pipeline Coverage | When adding new templates, discovery dimensions, or checks |
+## Review Goals
 
-### Check 1: Spec Compliance
+Your goals, in priority order:
 
-Diff implementation against artifact specifications. For each requirement the change addresses:
+### 1. Nothing Is Broken
+- All tests pass. Test count has not decreased. → **BLOCKING** if violated.
+- No pre-existing failure exceptions — every failure must be fixed regardless of cause.
+- Tests verify behavior, not implementation details.
+- Full suite passes → **BLOCKING** if violated.
 
-```
-| Requirement | Implemented? | Tested? | Discrepancy |
-|-------------|-------------|---------|-------------|
-| [from spec] | yes/no/partial | yes/no | [description or "none"] |
-```
+### 2. Nothing Is Missing
+- Every requirement for this work is implemented or explicitly descoped → **BLOCKING** if silently dropped.
+- For user-visible changes: was the product verified beyond tests? → **WARNING** if no evidence.
+- Error paths have test coverage. Happy path + at least one error case per flow.
+- For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
+- If `infrastructure_dependencies` is declared in project-state.yaml: are there integration tests that exercise real dependencies (not just mocks)? → **WARNING** if all tests for a declared dependency use mocks.
 
-**Discrepancy handling:**
-- **Not implemented** (requirement in spec, not in code) → **BLOCKING**. Requirements must not be silently dropped.
-- **Not tested** (implemented but no test covers it) → **WARNING**.
-- **Spec ambiguous** (multiple reasonable interpretations) → **NOTE**.
-- **Over-implemented** (code does more than spec requires) → **WARNING**.
+### 3. Nothing Is Unintended
+- No unlisted dependencies → **BLOCKING**.
+- No undocumented architectural decisions → **BLOCKING**.
+- No extra functionality beyond what was planned → **WARNING**.
+- No broad exception handling without logging/re-raising → **WARNING**.
 
-Check against whichever artifacts exist: product-brief, data-model, security-model, test-specifications, nonfunctional-requirements, build-plan, dependency-manifest, observability-strategy, project-preferences.
+### 4. Everything Is Coherent
+- Artifacts are consistent with each other and with code.
+- **Bidirectional freshness**: Does code match artifacts? Do artifacts still describe the code? Check test counts, model fields, architecture components. Stale artifact → **WARNING**.
+- If `project-preferences.md` exists, does code follow stated conventions?
+- **Infrastructure coherence**: If project-state.yaml declares infrastructure dependencies, do code's infrastructure assumptions match? A declared Postgres dependency with only in-memory storage in code → **WARNING**. Mocked dependencies should be explicitly documented as mocked, not silently substituted.
+- For framework changes: concept ripple check — renamed/removed terms still referenced → **WARNING**.
 
-For products with `has_human_interface`: accessibility requirements alongside features, not deferred → **WARNING** if missing.
-For products with `runs_unattended`/`exposes_programmatic_interface`: operational costs identified, monitoring implemented → **WARNING** if missing.
-For chunks delivering user-visible or consumer-facing functionality: was the product exercised directly beyond tests? → **WARNING** if no verification evidence exists. (The Critic checks for evidence of verification, not a specific method.)
+### 5. Decisions Were Deliberate
+- New external dependencies include rationale in dependency manifest → **WARNING** if missing.
+- Architectural patterns are captured in architecture artifact → **WARNING** if missing.
+- If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was consumer impact investigated? → **WARNING** if no evidence.
+- Major technology choices include alternatives considered → **WARNING** if missing.
 
-### Check 2: Test Integrity
+### 6. The System Can Be Understood
+- Error handling is present where failure is possible.
+- Logging is appropriate for debugging.
+- If an observability strategy exists, implementation follows it.
+- Correlation context and sensitive data filtering implemented as specified.
+- New capability with no way to detect failure → **BLOCKING**.
+- Growing collections without lifecycle management → **WARNING**.
 
-**Mechanical checks:**
-- **Test count >= previous** → **BLOCKING** if violated. Tests must never decrease.
-- **No test files deleted** → **BLOCKING** if violated.
-- **New tests added** → **WARNING** if no new tests for a chunk delivering new functionality.
-- **Full suite passes** → **BLOCKING** if violated. There is no "pre-existing failure" exception — every test must pass regardless of when or why it broke. If the builder claims a failure is pre-existing, that is not a mitigation; it is still a blocking finding.
+## Framework-Specific Checks
 
-**Judgment checks:**
-- Tests verify **behavior**, not implementation details → **WARNING** if testing internals.
-- **Happy path + at least one error case** per flow → **WARNING** if missing.
-- Test names are specific and descriptive → **WARNING** if vague.
-- **Level appropriateness**: tests use the right level for what they verify → **WARNING** if mismatched.
-- **Test isolation**: no shared mutable state, no ordering dependency → **WARNING** if present.
+**Applies only when reviewing framework instruction files, templates, or structural decisions.** Product builds skip these.
 
-### Check 3: Scope Discipline
+Read `agents/critic/framework-checks.md` for the complete definitions:
+- **Generality**: Instructions work across product types.
+- **Instruction Clarity**: LLM-facing text is unambiguous and testable.
+- **Cumulative Health**: Total instruction payload stays within budgets.
+- **Pipeline Coverage**: New concerns have discovery → artifact → builder → Critic coverage.
 
-**For product builds:**
-- Unlisted dependency imported? → **BLOCKING**
-- Architectural decision not in the artifacts? → **BLOCKING**
-- Extra functionality beyond deliverables? → **WARNING**
+## Severity Levels
 
-**For all changes:**
-- Does the change stay within stated scope? Drift into adjacent areas is a warning.
-- If behavior changed, was documentation updated? → **WARNING** if not.
-- Does added complexity carry its weight, or is it just demonstrating thoroughness?
-
-### Check 4: Proportionality
-
-Does this change add weight proportionate to its value?
-
-- Over-engineering for the risk level → **WARNING**
-- Non-trivial technical decisions without rationale → **WARNING**
-- Significant process added to low-risk paths without justification → **WARNING**
-
-### Check 5: Coherence
-
-**For product builds:** Are artifacts internally consistent? Do changes cascade correctly? Does implementation match architecture specs? When `project-preferences.md` exists, does implementation follow stated conventions?
-
-**Artifact freshness (bidirectional):** Coherence is bidirectional — not just "does code match artifacts?" but also "do artifacts still describe the code?" After significant building, artifacts can become stale descriptions of an earlier version. Check key indicators: test counts, coverage matrices, model fields, architecture components, API surfaces. If artifacts describe a significantly earlier state of the code → **WARNING** ("artifact X appears stale — test count says N but actual is M"). This is Principle 3 (Living Documentation) applied to specifications.
-
-**For framework changes:**
-
-| If changed... | Then verify... |
-|--------------|----------------|
-| Principles | All referencing files still comply |
-| Templates | Products generated from templates would still work |
-| CLAUDE.md or new files | Project structure tree matches actual files on disk |
-| README.md or external docs | Claims match implementation; vocabulary is current |
-
-**Concept Ripple:** When changes remove, rename, or redefine concepts, grep the codebase for surviving references. References in active files → **WARNING**; in docs → **NOTE**. Check that renamed terms are registered in `project-state.yaml` → `deprecated_terms`.
-
-### Check 6: Learning/Observability
-
-Does this change preserve the ability to learn and improve?
-
-- **New capability with no way to detect failure** → **BLOCKING**
-- **Growing collections without lifecycle management** (accumulates entries with no archiving/compaction) → **WARNING**
-- **Error handling missing where failure is possible** → **WARNING**
-- **Logging/observability absent for new functionality** → **WARNING**
-- **Observability strategy exists but implementation doesn't follow it** (e.g., strategy specifies correlation context but logs lack request IDs; strategy requires sensitive data filtering but parameters are logged unfiltered) → **WARNING**
-
-### Checks 7-10: Framework-Only
-
-**Applies:** When reviewing framework instruction files, template files, or structural decisions. Product builds skip these.
-
-Read `agents/critic/framework-checks.md` for the complete definitions (Generality, Instruction Clarity, Cumulative Health, Pipeline Coverage).
+- **BLOCKING**: Must fix before proceeding. Broken tests, dropped requirements, unlisted dependencies.
+- **WARNING**: Should fix. Missing coverage, scope drift, stale artifacts, missing rationale.
+- **NOTE**: Informational. Minor suggestions, style observations.
 
 ## Output Format
 
-```
+```markdown
 ## Critic Review
+
+### Signals
+[Work size, work type, files changed, boundaries crossed]
 
 ### Changes Reviewed
 [List of files and what changed]
 
-### Checks Applied
-[Which checks and why]
-
 ### Findings
 
 #### [Finding]
-**Check:** [Check Name]
+**Goal:** [Which goal this relates to]
 **Severity:** blocking | warning | note
 **Recommendation:** [What to do]
 
@@ -156,11 +113,13 @@ If no findings: "No issues found. Changes are ready to proceed."
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
   "files_reviewed": ["file1", "file2"],
   "findings": [
-    {"check": "Check Name", "severity": "warning", "summary": "Description"}
+    {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description"}
   ],
   "summary": "N warnings. Changes ready to proceed."
 }
 ```
+
+For a clean review, findings array is empty and summary says "No issues found."
 
 ## Review Cycle
 
@@ -170,4 +129,4 @@ If no findings: "No issues found. Changes are ready to proceed."
 
 ## Extending This Skill
 
-Prefer strengthening existing checks over adding new ones. The 10 checks are general-purpose — when a new concern surfaces, first ask whether an existing check can absorb it.
+Prefer strengthening existing goals over adding new ones. The 6 goals are general-purpose — when a new concern surfaces, first ask whether an existing goal can absorb it.

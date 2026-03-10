@@ -86,7 +86,23 @@ Every product needs error handling; the question is how much design it needs upf
 
 **Scale to risk.** Low-risk (personal tool, single user): standard patterns are sufficient — no dedicated design needed. The build methodology's test discipline already requires error case coverage, and that's enough. Medium-risk (team tool, external consumers): surface the error taxonomy — what's recoverable vs. fatal, what the user or caller sees on error. Capture the approach. High-risk (financial, health, multi-party): design the full error handling strategy — taxonomy, recovery patterns, error UX or error response contracts, reporting and alerting. This becomes a first-class section in the product brief.
 
-**Capture to `project-state.yaml`** under `design_decisions.error_handling_approach`. This connects discovery decisions to the build phase, where test discipline (building.md) and the Critic (Check 6) validate that error cases are actually covered.
+**Capture to `project-state.yaml`** under `design_decisions.error_handling_approach`. This connects discovery decisions to the build phase, where test discipline (building.md) and the Critic validate that error cases are actually covered.
+
+## Surface Infrastructure Dependencies
+
+When the product needs external services to function — databases, message queues, auth providers, cloud storage, third-party APIs — surface these during discovery so they become testable requirements. The critical question: what must be real vs. what can be mocked during development?
+
+**Use infer-confirm-proceed.** "Since this stores user data, I'm assuming Postgres for persistence. I'll write integration tests that verify data actually persists — not just mocked database calls. Sound right?" This establishes that real infrastructure testing is expected, not optional.
+
+**Scale to risk.** Low-risk (personal tool, SQLite, local-only): lightweight — note the dependency, ensure at least one integration test touches real storage. Medium-risk (team tool, managed database, external APIs): explicit infrastructure list with integration test requirements for each. Declare what's mocked in tests vs. what's real. High-risk (production service, multiple external dependencies): full infrastructure dependency map with integration testing strategy, environment requirements, and mock boundary documentation.
+
+**Key decisions to surface:**
+- What external services does this product depend on? (database, cache, queue, auth, APIs)
+- Which dependencies must be tested against real instances vs. mocked?
+- What's the development environment strategy? (local Docker, test instance, embedded alternative)
+- What happens if a dependency is unavailable? (graceful degradation vs. hard failure)
+
+**Capture to `project-state.yaml`** under `design_decisions.infrastructure_dependencies`. This connects to the build phase where test specifications require integration tests against declared dependencies, and the Critic verifies that infrastructure assumptions in code match what's specified.
 
 ## Surface Observability Needs
 
@@ -105,6 +121,12 @@ Every product has observability needs — even when the answer is "console.error
 
 **Capture to `project-state.yaml`** under `design_decisions.observability_approach`.
 
+## Identify Boundary Patterns
+
+As structural characteristics emerge, note where components will interact — API endpoints, database schemas, IPC channels, frontend/backend type contracts. These become the project's contract surfaces, documented in `.prawduct/artifacts/boundary-patterns.md` during planning. Identifying them during discovery helps scope the build: boundary-heavy designs need more integration testing and consumer-impact investigation during building.
+
+For products with `exposes_programmatic_interface`, `has_multiple_party_types`, or `multi_process_distributed`, boundary patterns are a significant architectural concern. Surface them: "This has an API consumed by a frontend and by third parties — those are two contract surfaces we'll need to maintain carefully."
+
 ## What Discovery Produces
 
 Discovery produces a `project-state.yaml` with:
@@ -113,11 +135,12 @@ Discovery produces a `project-state.yaml` with:
 - **Cost awareness**: operational cost estimates and constraints (when applicable)
 - **Accessibility approach**: accessibility baseline scaled to risk (for human interfaces)
 - **Error handling approach**: error handling strategy scaled to risk
+- **Infrastructure dependencies**: external services, mock boundaries, integration test requirements — scaled to risk
 - **Observability approach**: signal types, correlation context, operational model — scaled to risk
 - **User expertise profile**: what the user knows and doesn't, inferred from conversation
 - **Product identity**: name, personality, technology preferences
 
-Discovery is done when you have enough understanding to design artifacts that won't need fundamental rework. For a low-risk product, that might be 10 minutes. For a high-risk product, it might be several sessions.
+Discovery isn't a phase — it's continuous. Initial discovery produces enough understanding to start planning and building. But discovery continues throughout the project: new features need their own discovery, bug reports reveal missing understanding, and user feedback surfaces unasked questions. The depth of discovery scales with the work's size and risk, not with where you are in a timeline.
 
 ## Common Traps
 
@@ -138,5 +161,7 @@ Discovery is done when you have enough understanding to design artifacts that wo
 **Cost blindness**: Not surfacing operational costs for products with external dependencies, cloud deployments, or API usage. The user finds out about costs after deployment instead of during design. If the product runs unattended or calls external services, mention costs during discovery.
 
 **Accessibility afterthought**: Detecting `has_human_interface` but not establishing an accessibility baseline. Accessibility bolted on later is expensive and incomplete. When you detect a human interface, state your accessibility assumptions and let the user adjust.
+
+**Infrastructure blindness**: Not surfacing external infrastructure dependencies (databases, queues, APIs) as testable requirements. The builder mocks everything during development, tests pass, and the product is declared complete — but nothing actually persists, queues are never tested, API calls are simulated. When structural characteristics suggest external dependencies, establish what must be tested against real infrastructure vs. mocked.
 
 **Observability afterthought**: Detecting structural characteristics that imply monitoring needs (unattended operation, programmatic interfaces, distributed systems) but not establishing an observability baseline. Like accessibility, observability is cheaper to design in than to retrofit. When structural characteristics suggest non-trivial observability needs, state your default approach and let the user adjust.

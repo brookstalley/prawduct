@@ -5,7 +5,7 @@
 - **Primary structural:** `has_human_interface` (modality: screen, platform: mobile)
 - **Domain:** Utility
 - **Risk Level:** Low
-- **Phase:** 1 (vertical slice scenario)
+- **Evaluation tier:** 1 (vertical slice scenario)
 - **Purpose:** Tests pacing sensitivity, scope restraint, and non-technical user handling. The system should NOT interrogate this the same way it interrogates a B2B platform.
 
 ## Evaluation Procedure
@@ -84,9 +84,9 @@ To ensure repeatable evaluation, the following scripted responses define what th
 
 **General persona:** Enthusiastic but non-technical. Uses plain language. Doesn't volunteer technical requirements. Wants to get to building quickly. Does not push back on system recommendations.
 
-## Test Conversation (Build Phase — Stages 4-6)
+## Test Conversation (Build — Stages 4-6)
 
-These scripted responses extend the test conversation for the build and iteration phases.
+These scripted responses extend the test conversation for the build stages.
 
 **When asked to confirm the build plan:**
 > "Sounds good, let's build it."

@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-**This scenario requires Phase 2 framework capabilities:**
+**This scenario requires tier-2 framework capabilities:**
 - ✓ Domain Analyzer has automation/pipeline discovery questions (Tier 1-3)
 - ✓ Artifact Generator supports automation-specific artifacts (pipeline architecture, scheduling, monitoring, failure recovery, configuration specs)
 - ✓ Review Lenses can evaluate operational concerns for headless systems (automation-specific lens guidance + Testing Lens)
@@ -16,7 +16,7 @@
 - **Primary structural:** `runs_unattended` (trigger: scheduled); **Domain characteristics:** external service integration (RSS feeds, Slack API)
 - **Domain:** Productivity / Content Curation
 - **Risk Level:** Low-Medium
-- **Phase:** 2 (structural characteristic diversity)
+- **Evaluation tier:** 2 (structural characteristic diversity)
 - **Purpose:** Tests `runs_unattended` structural characteristic detection, operational-first discovery, and verification that the system does NOT ask about UIs, screens, or navigation for headless systems. Tests technical user calibration and dynamic domain depth for external integrations.
 
 ## Test Persona

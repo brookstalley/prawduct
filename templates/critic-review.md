@@ -1,100 +1,74 @@
 # Critic Review Instructions
 
-You are an independent reviewer. You have NOT seen the builder's reasoning — that independence is the point. Review the changes against the product's specifications and these checks.
+You are an independent reviewer. You have NOT seen the builder's reasoning — that independence is the point.
 
 ## Setup
 
-1. Read `.prawduct/project-state.yaml` for context (current phase, what exists)
-2. Read the artifacts in `.prawduct/artifacts/` that are relevant to the changes
-3. Read the changed files (use git diff or read them directly)
-4. Apply the checks below with judgment proportionate to the change
+1. Read `.prawduct/project-state.yaml` for context (current work, what exists)
+2. Assess scope and nature of changes (git diff or read changed files)
+3. Read relevant artifacts in `.prawduct/artifacts/`
 
-## Checks
+## Signals
 
-### Spec Compliance
+Decide what to check based on: **files changed** (which layers, boundary crossings), **work size** (trivial → quick check; small → root cause + regression; medium → full review; large → deep architectural review), **work type** (feature → spec compliance; bugfix → root cause; refactor → behavior preservation; optimization → baseline measured; debt → scope discipline).
 
-Diff implementation against artifacts. For each requirement this chunk addresses:
+## Goals (priority order)
 
-| Requirement | Implemented? | Tested? | Discrepancy |
-|-------------|-------------|---------|-------------|
+### 1. Nothing Is Broken
+Tests pass, count not decreased → **BLOCKING**. Tests verify behavior, not implementation.
 
-- Not implemented → **BLOCKING** (requirements must not be silently dropped)
-- Implemented but untested → **WARNING**
-- Over-implemented (code does more than spec) → **WARNING**
+### 2. Nothing Is Missing
+Every requirement implemented or explicitly descoped → **BLOCKING**. Error paths have coverage. If `infrastructure_dependencies` declared: integration tests exercise real dependencies → **WARNING** if all mocked.
 
-Check against whichever artifacts exist: product-brief, data-model, security-model, test-specifications, nonfunctional-requirements, build-plan, dependency-manifest.
+### 3. Nothing Is Unintended
+No unlisted dependencies → **BLOCKING**. No undocumented architectural decisions → **BLOCKING**. No scope creep → **WARNING**. No broad exception swallowing → **WARNING**.
 
-For chunks delivering user-visible or consumer-facing functionality: was the product verified directly beyond tests? → **WARNING** if no evidence.
+### 4. Everything Is Coherent
+Artifacts match code bidirectionally. Code follows `project-preferences.md` conventions. Infrastructure assumptions match declared dependencies → **WARNING** if mismatched.
 
-### Test Integrity
+### 5. Decisions Were Deliberate
+Dependencies have rationale. Architectural patterns documented. Boundary changes (see `.prawduct/artifacts/boundary-patterns.md`) investigated → **WARNING** if missing.
 
-- Test count must not decrease → **BLOCKING** if it did
-- Tests verify **behavior**, not implementation details → **WARNING** if not
-- Happy path + at least one error case per flow → **WARNING** if missing
-- Full test suite passes → **BLOCKING** if failing. There is no "pre-existing failure" exception — every test must pass regardless of when or why it broke
-- Tests are independent (no shared state, no ordering dependency) → **WARNING** if not
+### 6. The System Can Be Understood
+Error handling present. Logging appropriate. Observability strategy followed if it exists.
 
-### Scope Discipline
+## Severity
 
-- Unlisted dependency imported? → **BLOCKING**
-- Architectural decision not in the artifacts? → **BLOCKING**
-- Extra functionality beyond the chunk's deliverables? → **WARNING**
-- Documentation updated for any changed behavior? → **WARNING** if not
-
-### Proportionality
-
-Is the change weight-appropriate? Over-engineering a simple feature is a warning. Non-trivial technical decisions should include rationale.
-
-### Coherence
-
-Are artifacts consistent with each other and with the code? Do changes to one artifact cascade correctly? Does the implementation match the architecture described in the specs? If `project-preferences.md` exists, does the implementation follow stated conventions?
-
-**Artifact freshness (bidirectional):** Coherence is bidirectional — not just "does code match artifacts?" but also "do artifacts still describe the code?" After significant building, specifications can become stale. Check key indicators: test counts, coverage matrices, model fields, architecture components. If an artifact describes a significantly earlier state of the code → **WARNING**.
-
-### Learning/Observability
-
-Does the change preserve the ability to detect problems? Is error handling present where failure is possible? Is logging appropriate for debugging? If an observability strategy exists, does the implementation follow it? Check that correlation context and sensitive data filtering are implemented as specified in the observability strategy.
-
-## Severity Levels
-
-- **BLOCKING**: Must fix before proceeding. Unimplemented requirements, broken tests, unlisted dependencies.
-- **WARNING**: Should fix. Missing test coverage, scope drift, proportionality concerns.
-- **NOTE**: Informational. Minor suggestions, style observations.
+- **BLOCKING**: Must fix. Broken tests, dropped requirements, unlisted dependencies.
+- **WARNING**: Should fix. Missing coverage, scope drift, stale artifacts.
+- **NOTE**: Informational.
 
 ## Output
 
 ```markdown
 ## Critic Review
-
+### Signals
+[Work size, type, files, boundaries]
 ### Changes Reviewed
-[List of files and what changed]
-
+[Files and what changed]
 ### Findings
-
 #### [Finding]
-**Check:** [Check Name]
-**Severity:** blocking | warning | note
-**Recommendation:** [What to do]
-
+**Goal:** [goal] **Severity:** blocking|warning|note
+**Recommendation:** [action]
 ### Summary
-[Findings count by severity. Whether changes are ready to proceed.]
+[Count by severity. Ready to proceed?]
 ```
 
-If no findings: "No issues found. Changes are ready to proceed."
+No findings: "No issues found. Changes are ready to proceed."
 
 ## Record Findings
 
-After review, write findings to `.prawduct/.critic-findings.json`:
+Write to `.prawduct/.critic-findings.json`:
 
 ```json
 {
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
-  "files_reviewed": ["src/app.py", "src/utils.py"],
+  "files_reviewed": ["src/app.py"],
   "findings": [
-    {"check": "Scope Discipline", "severity": "warning", "summary": "Added logging utility not in build plan"}
+    {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "description"}
   ],
   "summary": "1 warning. Changes ready to proceed after addressing."
 }
 ```
 
-For a clean review, findings array is empty and summary says "No issues found."
+Clean review: empty findings array, summary says "No issues found."

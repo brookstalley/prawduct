@@ -55,7 +55,26 @@ class TestDetectVersion:
         (tmp_path / "tools" / "product-hook").write_text("#!/bin/bash")
         assert detect_version(tmp_path) == "v3"
 
-    def test_v4_has_product_hook_and_manifest(self, tmp_path: Path):
+    def test_v4_has_product_hook_and_manifest_v1(self, tmp_path: Path):
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "product-hook").write_text("#!/usr/bin/env python3")
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / "sync-manifest.json").write_text(
+            '{"format_version": 1}'
+        )
+        assert detect_version(tmp_path) == "v4"
+
+    def test_v5_has_product_hook_and_manifest_v2(self, tmp_path: Path):
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "product-hook").write_text("#!/usr/bin/env python3")
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / "sync-manifest.json").write_text(
+            '{"format_version": 2}'
+        )
+        assert detect_version(tmp_path) == "v5"
+
+    def test_v4_fallback_for_empty_manifest(self, tmp_path: Path):
+        """Empty or invalid manifest JSON falls back to v4."""
         (tmp_path / "tools").mkdir()
         (tmp_path / "tools" / "product-hook").write_text("#!/usr/bin/env python3")
         (tmp_path / ".prawduct").mkdir()
@@ -553,7 +572,7 @@ class TestRunMigrate:
         result = run_migrate(str(repo))
 
         assert result["version_before"] == "v1"
-        assert result["version_after"] == "v4"
+        assert result["version_after"] == "v5"
         assert result["product_name"] == "TestProduct"
         assert len(result["actions"]) > 0
 
@@ -581,14 +600,14 @@ class TestRunMigrate:
         # Banner should be set
         assert "companyAnnouncements" in settings
 
-    def test_v3_to_v4_migration(self, tmp_path: Path):
-        """V3 repos get Python hook, manifest, and banner."""
+    def test_v3_to_v5_migration(self, tmp_path: Path):
+        """V3 repos get Python hook, manifest, banner, and v5 structure."""
         repo = self._make_v3_repo(tmp_path)
 
         result = run_migrate(str(repo))
 
         assert result["version_before"] == "v3"
-        assert result["version_after"] == "v4"
+        assert result["version_after"] == "v5"
         assert len(result["actions"]) > 0
 
         # Hook should be updated (Python version)
@@ -598,7 +617,7 @@ class TestRunMigrate:
         # Manifest should exist
         assert (repo / ".prawduct" / "sync-manifest.json").is_file()
         manifest = json.loads((repo / ".prawduct" / "sync-manifest.json").read_text())
-        assert manifest["format_version"] == 1
+        assert manifest["format_version"] == 2
         assert manifest["product_name"] == "TestProduct"
 
         # Settings should have python3 hooks and banner
@@ -611,15 +630,15 @@ class TestRunMigrate:
                     if "product-hook" in cmd:
                         assert cmd.startswith("python3 ")
 
-    def test_idempotent_on_v4(self, tmp_path: Path):
+    def test_idempotent_on_v5(self, tmp_path: Path):
         repo = self._make_v1_repo(tmp_path)
 
         run_migrate(str(repo))
         result = run_migrate(str(repo))
 
         assert result["actions"] == []
-        assert result["version_before"] == "v4"
-        assert result["version_after"] == "v4"
+        assert result["version_before"] == "v5"
+        assert result["version_after"] == "v5"
 
     def test_name_override(self, tmp_path: Path):
         repo = self._make_v1_repo(tmp_path, name="OldName")
@@ -650,7 +669,7 @@ class TestRunMigrate:
         result = run_migrate(str(repo))
 
         assert result["version_before"] == "partial"
-        assert result["version_after"] == "v4"
+        assert result["version_after"] == "v5"
         assert not (repo / ".prawduct" / "framework-path").exists()
 
     def test_refuses_unknown_directory(self, tmp_path: Path):
@@ -923,21 +942,21 @@ class TestMigrateBlockMarkers:
         return repo
 
     def test_v1_gets_markers(self, tmp_path: Path):
-        """V1→V4 migration produces CLAUDE.md with markers."""
+        """V1→V5 migration produces CLAUDE.md with markers."""
         repo = self._make_v1_repo(tmp_path)
         result = run_migrate(str(repo))
 
-        assert result["version_after"] == "v4"
+        assert result["version_after"] == "v5"
         content = (repo / "CLAUDE.md").read_text()
         assert BLOCK_BEGIN in content
         assert BLOCK_END in content
 
     def test_v3_gets_markers(self, tmp_path: Path):
-        """V3→V4 migration includes block markers."""
+        """V3→V5 migration includes block markers."""
         repo = self._make_v3_repo(tmp_path)
         result = run_migrate(str(repo))
 
-        assert result["version_after"] == "v4"
+        assert result["version_after"] == "v5"
         content = (repo / "CLAUDE.md").read_text()
         assert BLOCK_BEGIN in content
         assert BLOCK_END in content
