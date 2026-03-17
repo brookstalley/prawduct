@@ -350,6 +350,72 @@ class TestStopPrReviewGate:
         # No PR review blocker expected
         assert "PR REVIEW" not in result.stderr
 
+    def test_stop_with_pr_and_malformed_json_blocks(self, tmp_path: Path):
+        """When evidence file has malformed JSON, stop should block."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        reviews_dir = prawduct / ".pr-reviews"
+        reviews_dir.mkdir()
+        evidence = reviews_dir / "feature--test-pr.json"
+        evidence.write_text("not valid json {{{")
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+        ])
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+
+    def test_stop_with_pr_and_evidence_missing_findings_blocks(self, tmp_path: Path):
+        """When evidence file is missing 'findings' key, stop should block."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        reviews_dir = prawduct / ".pr-reviews"
+        reviews_dir.mkdir()
+        evidence = reviews_dir / "feature--test-pr.json"
+        evidence.write_text(json.dumps({"summary": "No issues.", "branch": "feature/test-pr"}))
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+        ])
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+
+    def test_stop_with_pr_and_evidence_missing_summary_blocks(self, tmp_path: Path):
+        """When evidence file is missing 'summary' key, stop should block."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        reviews_dir = prawduct / ".pr-reviews"
+        reviews_dir.mkdir()
+        evidence = reviews_dir / "feature--test-pr.json"
+        evidence.write_text(json.dumps({"findings": [], "branch": "feature/test-pr"}))
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+        ])
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+
     def test_stop_on_main_branch_skips_pr_check(self, tmp_path: Path):
         """PR review check should skip main/master/develop branches."""
         prawduct = tmp_path / ".prawduct"

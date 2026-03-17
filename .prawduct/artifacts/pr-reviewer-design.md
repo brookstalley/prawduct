@@ -231,7 +231,7 @@ The `/pr` skill is defined as a Claude Code command file in the product repo, pl
 
 ### Stop hook enhancement
 
-The stop hook gains a third check: if a PR was created this session (detectable via `gh pr list --author @me --state open` or git reflog), warn if no PR review evidence exists for that branch. This is advisory (WARNING), not blocking — the Critic gate remains the hard block.
+The stop hook gains a third gate: if a PR exists for the current branch, block session end if no valid PR review evidence exists. This matches the Critic's enforcement model — both are BLOCKING gates with evidence file validation.
 
 ### Build methodology reference
 
@@ -253,7 +253,7 @@ Add "PR Review" row to `.prawduct/cross-cutting-concerns.md`:
 | **Scope** | One chunk's changes | Full PR diff (all chunks) |
 | **Perspective** | Is the work good? | Is this ready to merge? |
 | **Key concerns** | Spec compliance, tests, coherence | Bugs, scope, narrative, simplification |
-| **Enforcement** | BLOCKING (stop hook) | WARNING (stop hook advisory) |
+| **Enforcement** | BLOCKING (stop hook) | BLOCKING (stop hook gate) |
 | **Independence** | Separate agent (Task tool) | Separate agent (Task tool) |
 
 ## Configuration
