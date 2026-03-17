@@ -6,6 +6,16 @@ When this file grows past ~3,000 tokens, prune: consolidate related entries, arc
 
 ---
 
+## "Recommend /clear" guidance must be imperative, not suggestive
+
+**Pattern**: "Consider recommending `/clear`" doesn't trigger behavior — confirmed across multiple sessions and products. The v2 learning already established that judgment alone won't interrupt momentum; "consider" language is behavioral guidance dressed up as a directive.
+
+**Resolution**: Strengthened building.md, reflection.md, and product-claude.md to use imperative language: "**recommend `/clear`**" not "consider recommending." Added explicit trigger: when the user switches to an independent task, recommend `/clear` immediately.
+
+**Principle**: Relates to Governance Is Structural (#21) — behavioral guidance alone doesn't interrupt momentum.
+
+---
+
 ## Artifacts drift silently during sustained building
 
 **Pattern**: Discodon built 40+ chunks over multiple sessions. Artifacts written during planning (test-specifications, architecture, data-model) were never updated. Test-specifications says "1056 tests" when the actual count is 1318+. Coverage matrix is missing 15+ test files. Architecture may not reflect scheduling, tool framework, or prompt architecture features.

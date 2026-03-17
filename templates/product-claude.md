@@ -10,9 +10,10 @@
 These degrade at scale. The session briefing reinforces them; the stop hook detects violations.
 
 - **Tests alongside code, never after.** If you can't write the test, you don't understand the requirement.
-- **Never weaken a test.** Fix the code, not the test. Never dismiss failures as "pre-existing."
+- **Never weaken a test.** Fix the code, not the test.
+- **There is no "pre-existing" exception.** If you find a problem — failing test, broad exception, stale artifact — fix it or explicitly flag why it can't be fixed now. Never dismiss issues as pre-existing.
 - **Never silently drop a requirement.** If you can't implement it, say so explicitly.
-- **Never swallow exceptions.** No `except Exception: pass`. Catch specific exceptions; always log with context.
+- **Never swallow exceptions.** No `except Exception: pass`. Catch specific exceptions; always log with context. When a broad catch is genuinely necessary (system boundary, event loop), mark it with `# prawduct:ok-broad-except` and explain why. The compliance canary skips marked lines.
 - **Run the full test suite before committing.** New work must not break existing work.
 - **Investigate before committing to major decisions.** Decisions with lock-in, pervasive impact, structural consequences, or external dependencies require research first. Spawn a research subagent for high-impact choices. Record rationale in the affected artifact.
 - **When changes cross boundaries** (API, database, IPC, frontend/backend), verify consumers are not broken. See `.prawduct/artifacts/boundary-patterns.md` for this project's contract surfaces.
@@ -33,13 +34,15 @@ Apply with judgment, not mechanically.
 
 The session briefing (printed at session start) tells you current state, stale artifacts, and relevant learnings. Read it first.
 
-**Returning user** → Read `.prawduct/project-state.yaml` and `.prawduct/learnings.md`. The session briefing highlights what needs attention. If `project-preferences.md` is missing and the project has source code, infer preferences from the codebase and create it. If the user says what to work on, proceed. Otherwise orient and ask.
+**Returning user** → The session briefing highlights what needs attention. If it references `.prawduct/.session-handoff.md`, read that file for previous session context. Read `.prawduct/project-state.yaml` and `.prawduct/learnings.md`. If `project-preferences.md` is missing and the project has source code, infer preferences from the codebase and create it. If the user says what to work on, proceed. Otherwise orient and ask.
 
 **New project** → Read `.prawduct/project-state.yaml`. Continue discovery or planning as appropriate.
 
 **First contact** → Explain what this product is (from project-state.yaml) and where things stand.
 
 ## Governance Model
+
+A **session** is one Claude Code invocation (clear hook → stop hook). A **work cycle** is one unit of work within a session: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen per session. Context compaction is NOT a session boundary — anything that must survive compaction must be written to a file. `/clear` between work cycles is recommended for cleaner governance but not required.
 
 There are no phases. Every unit of work follows: **understand → plan → build → verify**, scaled by size and type.
 
@@ -59,15 +62,20 @@ Generate artifacts in `.prawduct/artifacts/`, scaled to risk. Universal: product
 
 ### Building
 
-1. **Green baseline.** Run full test suite. Fix any failures.
-2. **Read the spec.** Chunk entry in `build-plan.md` + referenced artifacts + `project-preferences.md`.
-3. **Write tests** alongside implementation.
-4. **Implement.** Follow conventions. Prefer simplicity.
-5. **Verify.** Full test suite + product verification (launch it, call it, inspect it). If infrastructure dependencies are declared, verify against real instances — not just mocks.
-6. **Critic review.** Mandatory for medium+ work. Invoke as separate agent via Task tool.
-7. **Resolve findings.** Fix blocking; address warnings.
-8. **Reflect.** What did the Critic catch? Capture learnings now.
-9. **Update state and artifacts.** Compact project-state.yaml when it grows large.
+1. **Clean baseline.** Run full test suite — fix any failures. Check git state — commit or stash unrelated work. No "pre-existing" exceptions.
+2. **Read the spec.** Chunk entry in `build-plan.md` + referenced artifacts + `.prawduct/artifacts/project-preferences.md`. Validate plan targets still exist.
+3. **Persist plans immediately.** When scope evolves, write updated plans to `build-plan.md` now — not at session end. Conversation context is ephemeral.
+4. **Write tests** alongside implementation. When the suite exceeds ~30s, add pytest-xdist (`-n auto --dist loadgroup`) — the shipped `tests/conftest.py` auto-groups by directory. Organize tests into subdirectories by concern as the suite grows.
+5. **Implement.** Follow conventions. Prefer simplicity. Update artifacts as you go — when code changes what an artifact describes, update the artifact immediately.
+6. **Verify.** Full test suite + product verification (launch it, call it, inspect it). If infrastructure dependencies are declared, verify against real instances — not just mocks.
+7. **Critic review.** Mandatory for medium+ work. Invoke as separate agent via Task tool.
+8. **Resolve findings.** Fix blocking; address warnings.
+9. **Reflect.** What did the Critic catch? Capture learnings now. Check: any plans or decisions created but not yet written to artifacts?
+10. **Verify artifacts current.** Confirm all affected artifacts reflect the code. Compact project-state.yaml when it grows large.
+
+### Session Scope
+
+Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades when reviewing many chunks at once. Context compaction can lose governance context. After 2-3 chunks with Critic review, or when the user switches to an independent task, recommend `/clear`. But `/clear` is a **handoff**: before recommending it, persist any pending requirements/plans to artifacts and update `work_in_progress` in project-state.yaml (both `description` and `context` fields) so the next session knows what to do. Then say what was persisted. The `/clear` hook auto-generates `.prawduct/.session-handoff.md` from WIP context, reflection, Critic findings, and changed files — the next session's briefing will surface this.
 
 ### Decision Research
 

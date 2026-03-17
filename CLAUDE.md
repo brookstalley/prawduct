@@ -69,6 +69,10 @@ When someone opens this directory, route based on context:
 **First contact** ("hello", "what is this?", "what can you do?")
 → Briefly explain: Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. Product repos are generated with `tools/prawduct-init.py` and are fully self-contained.
 
+## Sessions and Work Cycles
+
+A **session** is one Claude Code invocation (clear hook → stop hook). A **work cycle** is one unit of work within a session with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen per session. Context compaction is NOT a session boundary — persist plans and decisions to files before compaction. See `methodology/building.md` for the full model.
+
 ## Methodology
 
 These narrative guides teach the approach. **Read the relevant guide when entering each type of work** — not from memory, actually read the file:
@@ -123,6 +127,7 @@ my-product/
 │   ├── critic-review.md        # Condensed Critic instructions for this product
 │   ├── sync-manifest.json      # Tracks framework sync state (enables auto-updates)
 │   ├── artifacts/              # Generated specifications
+│   ├── .session-handoff.md     # Auto-generated context from previous session
 │   └── .critic-findings.json   # Critic review evidence (checked by stop hook)
 ├── tools/
 │   └── product-hook            # Session governance (Python: reflection + Critic gate + sync)

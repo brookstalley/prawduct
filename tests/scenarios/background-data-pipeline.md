@@ -3,11 +3,11 @@
 ## Prerequisites
 
 **This scenario requires tier-2 framework capabilities:**
-- ✓ Domain Analyzer has automation/pipeline discovery questions (Tier 1-3)
-- ✓ Artifact Generator supports automation-specific artifacts (pipeline architecture, scheduling, monitoring, failure recovery, configuration specs)
-- ✓ Review Lenses can evaluate operational concerns for headless systems (automation-specific lens guidance + Testing Lens)
+- ✓ Discovery surfaces automation/pipeline concerns (scheduling, monitoring, failure recovery)
+- ✓ Planning supports automation-specific artifacts (pipeline architecture, scheduling, monitoring, failure recovery, configuration specs)
+- ✓ Review Perspectives evaluate operational concerns for headless systems
 
-**Current status**: Ready for Phase 2 baseline evaluation.
+**Current status**: Ready for tier-2 baseline evaluation.
 
 ---
 
@@ -139,7 +139,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 ## Evaluation Rubric
 
-### Domain Analyzer (C2)
+### Discovery (C2)
 
 **Must-do:**
 
@@ -175,9 +175,9 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[interactive]` Questions surface considerations user hasn't raised (alerting, silent failure, rate limits from sources, cost of LLM-based filtering if applicable).
 - `[hybrid]` Inferences are made about technical choices the user hasn't specified (deployment target, data storage) and confirmed.
 - `[hybrid]` Prior art awareness surfaces relevant tools (RSS aggregators, existing feed-to-Slack solutions) and key libraries as expertise. Acknowledges alternatives exist but respects Alex's choice to build a custom solution. For low-medium risk, 2-3 searches covering solutions and relevant libraries is proportionate.
-- `[interactive]` **Guidance Evaluation active:** If the technical user names a specific technology as the solution (e.g., "just use Kafka for this"), the system should challenge proportionately — explaining why the simpler approach may suffice for a side project and offering the general principle, while deferring if the user insists.
+- `[interactive]` **Challenge Gently, Defer Gracefully (Principle 22):** If the technical user names a specific technology as the solution (e.g., "just use Kafka for this"), the system should challenge proportionately — explaining why the simpler approach may suffice for a side project and offering the general principle, while deferring if the user insists.
 
-### Orchestrator (C1)
+### Session Management (C1)
 
 **Must-do:**
 
@@ -202,7 +202,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[hybrid]` Operational concerns (monitoring, failure recovery, cost) are raised proactively, not only when user asks (partially evaluable: artifact content covers operational topics).
 - `[interactive]` Stage transitions are natural and clearly communicated.
 
-### Artifact Generator (C3)
+### Planning (C3)
 
 **Must-do:**
 
@@ -236,14 +236,14 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[simulation]` A coding agent reading these artifacts could build the pipeline without ambiguity about what happens in each failure mode.
 - `[simulation]` Total artifact pages 8-15 for low-medium risk; automation-specific artifacts (pipeline architecture, scheduling, monitoring, failure recovery, configuration) each 1-3 pages.
 
-### Review Lenses (C4)
+### Review Perspectives (C4)
 
 **Must-do:**
 
-- `[simulation]` Product Lens: confirms this solves a real problem (manual curation is tedious), scope is appropriate (single-user automation is right-sized).
-- `[simulation]` Design Lens: acknowledges this is a headless pipeline and evaluates configuration UX (how does Alex tune filters?) and output format (Slack message clarity). Does NOT evaluate screens/navigation/visual design.
-- `[simulation]` Architecture Lens: evaluates pipeline stages (fetch, filter, post), failure isolation (one feed failure shouldn't kill whole run), and deployment choice (serverless vs. cron job trade-offs).
-- `[simulation]` Skeptic Lens: raises at least one realistic concern. Examples: "What happens if a feed changes format and parsing breaks?" "How do you know if the filter criteria are too restrictive and you're missing good content?" "What if Slack's API rate limits you?"
+- `[simulation]` Product perspective: confirms this solves a real problem (manual curation is tedious), scope is appropriate (single-user automation is right-sized).
+- `[simulation]` Design perspective: acknowledges this is a headless pipeline and evaluates configuration UX (how does Alex tune filters?) and output format (Slack message clarity). Does NOT evaluate screens/navigation/visual design.
+- `[simulation]` Architecture perspective: evaluates pipeline stages (fetch, filter, post), failure isolation (one feed failure shouldn't kill whole run), and deployment choice (serverless vs. cron job trade-offs).
+- `[simulation]` Skeptic perspective: raises at least one realistic concern. Examples: "What happens if a feed changes format and parsing breaks?" "How do you know if the filter criteria are too restrictive and you're missing good content?" "What if Slack's API rate limits you?"
 - `[simulation]` Each finding has a specific recommendation, not just an observation.
 - `[simulation]` Each finding has a severity level (blocking / warning / note).
 
@@ -314,7 +314,7 @@ The scenario succeeds when:
 2. `[interactive]` Discovery focuses on operational concerns (failure modes, monitoring, cost, scheduling) rather than UI/UX concerns.
 3. `[simulation]` Automation-specific artifacts (pipeline architecture, scheduling spec, monitoring/alerting spec, failure recovery spec, configuration spec) are generated.
 4. `[simulation]` UI-specific artifacts (IA, screen specs, design direction, accessibility, onboarding) are NOT generated.
-5. `[hybrid]` The Orchestrator calibrates to a technical user (appropriate vocabulary, doesn't over-explain basics, but still surfaces operational expertise Alex lacks).
-6. `[simulation]` Review Lenses evaluate operational concerns (failure isolation, monitoring effectiveness, configuration management) rather than UI/UX concerns.
+5. `[hybrid]` The system calibrates to a technical user (appropriate vocabulary, doesn't over-explain basics, but still surfaces operational expertise Alex lacks).
+6. `[simulation]` Review Perspectives evaluate operational concerns (failure isolation, monitoring effectiveness, configuration management) rather than UI/UX concerns.
 7. `[hybrid]` Total artifact count is 12-17 (7 universal + 5 automation-specific) with total pages 8-15 — more thorough than the low-risk family utility, but not as heavyweight as a business-critical system.
 8. `[simulation]` A coding agent reading the output would have a clear, unambiguous plan for building a reliable background pipeline with proper monitoring and failure handling.

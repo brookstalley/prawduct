@@ -15,13 +15,13 @@ Decide what to check based on: **files changed** (which layers, boundary crossin
 ## Goals (priority order)
 
 ### 1. Nothing Is Broken
-Tests pass, count not decreased → **BLOCKING**. Tests verify behavior, not implementation.
+Tests pass, count not decreased → **BLOCKING**. Tests verify behavior, not implementation. There is no "pre-existing" exception — if the Critic finds a problem, it's a finding regardless of when it was introduced.
 
 ### 2. Nothing Is Missing
 Every requirement implemented or explicitly descoped → **BLOCKING**. Error paths have coverage. If `infrastructure_dependencies` declared: integration tests exercise real dependencies → **WARNING** if all mocked.
 
 ### 3. Nothing Is Unintended
-No unlisted dependencies → **BLOCKING**. No undocumented architectural decisions → **BLOCKING**. No scope creep → **WARNING**. No broad exception swallowing → **WARNING**.
+No unlisted dependencies → **BLOCKING**. No undocumented architectural decisions → **BLOCKING**. No scope creep → **WARNING**. No broad exception swallowing → **WARNING**. Catches marked with `prawduct:ok-broad-except` are intentional but still verifiable — confirm they log and are at system boundaries.
 
 ### 4. Everything Is Coherent
 Artifacts match code bidirectionally. Code follows `project-preferences.md` conventions. Infrastructure assumptions match declared dependencies → **WARNING** if mismatched.

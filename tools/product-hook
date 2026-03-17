@@ -89,9 +89,8 @@ def try_sync(project_dir: Path) -> None:
                     )
             except json.JSONDecodeError:
                 pass
-    except Exception as e:
+    except Exception as e:  # prawduct:ok-broad-except — sync must never block session start
         print(f"NOTE: Framework sync failed: {e}", file=sys.stderr)
-        # Best-effort — never block session start
 
 
 # =============================================================================
@@ -112,7 +111,7 @@ def git_status_output(project_dir: Path) -> str | None:
         if result.returncode != 0:
             return None
         return result.stdout
-    except Exception:
+    except Exception:  # prawduct:ok-broad-except — git failure must not crash hook
         return None
 
 
@@ -174,7 +173,7 @@ def git_has_code_changes(project_dir: Path) -> bool:
             if not filepath.startswith(".prawduct/"):
                 return True
         return False
-    except Exception:
+    except Exception:  # prawduct:ok-broad-except — git failure must not crash hook
         return False
 
 
@@ -183,8 +182,44 @@ def git_has_code_changes(project_dir: Path) -> bool:
 # =============================================================================
 
 
+def _count_tests_via_runner(project_dir: Path) -> int:
+    """Try to get exact test count from test runner (pytest or jest). Returns 0 on failure."""
+    # Only run pytest --co if the project has a pytest config file.
+    # Without one, pytest discovers upward and may collect the wrong project's tests.
+    has_pytest_config = (
+        (project_dir / "pyproject.toml").is_file()
+        or (project_dir / "pytest.ini").is_file()
+        or (project_dir / "setup.cfg").is_file()
+    )
+    if has_pytest_config:
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "--co", "-q", "--no-header", "--rootdir", str(project_dir)],
+                capture_output=True,
+                text=True,
+                cwd=str(project_dir),
+                timeout=15,
+            )
+            if result.returncode == 0:
+                # Last non-empty line is like "601 tests collected" or "601 test collected"
+                for line in reversed(result.stdout.strip().splitlines()):
+                    match = re.match(r"(\d+)\s+tests?\s+collected", line.strip())
+                    if match:
+                        return int(match.group(1))
+        except Exception:  # prawduct:ok-broad-except — test counting is best-effort
+            pass
+    return 0
+
+
 def _count_test_functions(project_dir: Path) -> int:
-    """Count test functions across the project (heuristic). Returns 0 if none found."""
+    """Count tests across the project. Tries test runner first for exact count,
+    falls back to regex heuristic. Returns 0 if none found."""
+    # Try exact count from test runner (handles parametrized tests correctly)
+    exact = _count_tests_via_runner(project_dir)
+    if exact > 0:
+        return exact
+
+    # Fall back to regex heuristic (undercounts parametrized tests)
     count = 0
     skip_dirs = {".prawduct", "node_modules", ".git", "__pycache__", "venv", ".venv", ".tox"}
 
@@ -197,14 +232,14 @@ def _count_test_functions(project_dir: Path) -> int:
                 try:
                     content = fpath.read_text()
                     count += len(re.findall(r"^\s*def test_", content, re.MULTILINE))
-                except Exception:
+                except Exception:  # prawduct:ok-broad-except — test counting is best-effort
                     pass
             # JS/TS test files
             elif fname.endswith((".test.js", ".test.ts", ".test.jsx", ".test.tsx", ".spec.js", ".spec.ts")):
                 try:
                     content = fpath.read_text()
                     count += len(re.findall(r"\b(?:it|test)\s*\(", content))
-                except Exception:
+                except Exception:  # prawduct:ok-broad-except — test counting is best-effort
                     pass
     return count
 
@@ -213,7 +248,7 @@ def _extract_dependency_names(dep_file: Path) -> list[str]:
     """Extract package names from dependency files."""
     try:
         content = dep_file.read_text()
-    except Exception:
+    except Exception:  # prawduct:ok-broad-except — dependency scanning is best-effort
         return []
 
     name = dep_file.name
@@ -252,7 +287,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
 
     try:
         state_content = state_path.read_text()
-    except Exception:
+    except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
         return findings
 
     # 1. Test count divergence
@@ -288,7 +323,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
                     findings.append(
                         f"architecture: {', '.join(unmentioned[:3])} in {source_root}/ not in architecture.md"
                     )
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
             pass
 
     # 3. Dependency coverage
@@ -307,7 +342,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
                         findings.append(
                             f"dependencies: {len(missing)} in {dep_file_name} not in manifest ({preview}{more})"
                         )
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
             pass
 
     return findings
@@ -336,16 +371,19 @@ def _get_product_name(prawduct_dir: Path) -> str:
                 break
             elif in_identity and not line.startswith(" ") and line.strip():
                 break
-    except Exception:
+    except Exception:  # prawduct:ok-broad-except — product name extraction is best-effort
         pass
     return "Unknown"
 
 
-def _get_work_in_progress(prawduct_dir: Path) -> str:
-    """Extract work in progress description from project-state.yaml."""
+def _parse_wip(prawduct_dir: Path) -> dict[str, str]:
+    """Parse work_in_progress fields from project-state.yaml.
+
+    Returns a dict of non-null field values, or empty dict on any failure.
+    """
     state_path = prawduct_dir / "project-state.yaml"
     if not state_path.is_file():
-        return "none active"
+        return {}
     try:
         content = state_path.read_text()
         in_wip = False
@@ -361,24 +399,29 @@ def _get_work_in_progress(prawduct_dir: Path) -> str:
                     wip[key.strip()] = val
             elif in_wip and not line.startswith(" ") and line.strip():
                 break
+        return wip
+    except Exception:  # prawduct:ok-broad-except — WIP extraction is best-effort
+        return {}
 
-        if wip.get("description"):
-            parts = [wip["description"]]
-            qualifiers = []
-            if wip.get("size"):
-                qualifiers.append(wip["size"])
-            if wip.get("type"):
-                qualifiers.append(wip["type"])
-            if qualifiers:
-                parts.append(f"({', '.join(qualifiers)})")
-            return " ".join(parts)
-    except Exception:
-        pass
+
+def _get_work_in_progress(prawduct_dir: Path) -> str:
+    """Format work in progress as a one-line summary for the session briefing."""
+    wip = _parse_wip(prawduct_dir)
+    if wip.get("description"):
+        parts = [wip["description"]]
+        qualifiers = []
+        if wip.get("size"):
+            qualifiers.append(wip["size"])
+        if wip.get("type"):
+            qualifiers.append(wip["type"])
+        if qualifiers:
+            parts.append(f"({', '.join(qualifiers)})")
+        return " ".join(parts)
     return "none active"
 
 
 def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
-    """Assemble session briefing text. Target: <400 tokens."""
+    """Assemble session briefing text. Target: <400 tokens (excluding handoff pointer)."""
     prawduct_dir = get_prawduct_dir(project_dir)
     lines = ["== SESSION BRIEFING =="]
 
@@ -386,6 +429,19 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     project_name = _get_product_name(prawduct_dir)
     work_desc = _get_work_in_progress(prawduct_dir)
     lines.append(f"Project: {project_name} | Work: {work_desc}")
+
+    # WIP context (the detail behind the description)
+    wip = _parse_wip(prawduct_dir)
+    if wip.get("context"):
+        ctx = wip["context"]
+        if len(ctx) > 200:
+            ctx = ctx[:197] + "..."
+        lines.append(f"Context: {ctx}")
+
+    # Handoff from previous session
+    handoff_path = prawduct_dir / ".session-handoff.md"
+    if handoff_path.is_file():
+        lines.append("Previous session context available: read .prawduct/.session-handoff.md")
 
     # Staleness warnings
     if staleness:
@@ -398,12 +454,26 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
         try:
             learnings_content = learnings_path.read_text()
             rules = []
+            current_topic = ""
             for line in learnings_content.splitlines():
                 stripped = line.strip()
+                # Track section headers as topic context
+                if stripped.startswith("## ") and not stripped.startswith("## Learnings"):
+                    current_topic = stripped[3:].strip()
+                    continue
+                # Original format: "- When/Always/Never/If ..."
                 if stripped.startswith("- ") and any(
                     stripped[2:].startswith(w) for w in ["When ", "Always ", "Never ", "If "]
                 ):
                     rules.append(stripped[2:])
+                # Bold-prefix format: "- **Topic**: rule text"
+                elif stripped.startswith("- **") and "**" in stripped[4:]:
+                    # Extract: "- **Bold text**: rest" -> "Bold text: rest"
+                    bold_end = stripped.index("**", 4)
+                    bold_text = stripped[4:bold_end]
+                    rest = stripped[bold_end + 2:].lstrip(":").lstrip()
+                    if rest:
+                        rules.append(f"{bold_text}: {rest}")
             if rules:
                 shown = rules[-3:]
                 lines.append(f"Learnings ({len(rules)} active, showing {len(shown)}):")
@@ -411,7 +481,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                     if len(r) > 100:
                         r = r[:97] + "..."
                     lines.append(f"  - {r}")
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — briefing must never block session start
             pass
 
     return "\n".join(lines)
@@ -452,7 +522,7 @@ def _extract_critical_rules(project_dir: Path) -> list[str]:
             if in_section and line.strip().startswith("- **"):
                 rules.append(line.strip())
         return rules if rules else fallback
-    except Exception:
+    except Exception:  # prawduct:ok-broad-except — rule extraction is best-effort
         return fallback
 
 
@@ -493,7 +563,7 @@ def generate_subagent_briefing(project_dir: Path) -> None:
                         summary_lines.append("(see full file for details)")
                         break
                 sections.append("\n".join(summary_lines).strip() + "\n")
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — briefing generation is best-effort
             pass
 
     # Active learnings
@@ -504,10 +574,153 @@ def generate_subagent_briefing(project_dir: Path) -> None:
             if learnings:
                 sections.append("## Active Learnings\n")
                 sections.append(learnings + "\n")
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — briefing generation is best-effort
             pass
 
     (prawduct_dir / ".subagent-briefing.md").write_text("\n".join(sections))
+
+
+# =============================================================================
+# Session Handoff (context transfer across /clear boundaries)
+# =============================================================================
+
+
+def _git_session_commits(project_dir: Path) -> list[str]:
+    """Get commit subjects made during this session. Returns list of one-line summaries."""
+    prawduct_dir = get_prawduct_dir(project_dir)
+    session_start_path = prawduct_dir / ".session-start"
+    if not session_start_path.is_file():
+        return []
+    try:
+        since = session_start_path.read_text().strip()
+        result = subprocess.run(
+            ["git", "log", f"--since={since}", "--oneline", "--no-decorate"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip().splitlines()
+    except Exception:  # prawduct:ok-broad-except — commit listing is best-effort
+        pass
+    return []
+
+
+def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
+    """Extract a brief summary from .critic-findings.json. Returns None if unavailable."""
+    findings_path = prawduct_dir / ".critic-findings.json"
+    if not findings_path.is_file():
+        return None
+    try:
+        data = json.loads(findings_path.read_text())
+        summary = data.get("summary", "")
+        findings = data.get("findings", [])
+        if not summary and not findings:
+            return None
+        parts = []
+        if summary:
+            parts.append(summary)
+        if findings:
+            blocking = [f for f in findings if f.get("severity") == "blocking"]
+            warnings = [f for f in findings if f.get("severity") == "warning"]
+            notes = [f for f in findings if f.get("severity") == "note"]
+            counts = []
+            if blocking:
+                counts.append(f"{len(blocking)} blocking")
+            if warnings:
+                counts.append(f"{len(warnings)} warning")
+            if notes:
+                counts.append(f"{len(notes)} note")
+            if counts:
+                parts.append(f"Findings: {', '.join(counts)}")
+            for f in blocking:
+                parts.append(f"  BLOCKING: {f.get('summary', 'no summary')}")
+            for f in warnings[:3]:
+                parts.append(f"  WARNING: {f.get('summary', 'no summary')}")
+        return "\n".join(parts)
+    except Exception:  # prawduct:ok-broad-except — findings summarization is best-effort
+        return None
+
+
+def generate_session_handoff(project_dir: Path) -> None:
+    """Generate .prawduct/.session-handoff.md with context for the next session.
+
+    Called during /clear BEFORE session files are deleted. Assembles handoff
+    from: WIP context, session reflection, critic findings, files changed,
+    and commits made during the session.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        return
+
+    sections: list[str] = ["# Session Handoff", ""]
+
+    # 1. WIP description + context from project-state.yaml
+    wip = _parse_wip(prawduct_dir)
+    if wip.get("description"):
+        sections.append("## Work In Progress")
+        sections.append(f"**Task**: {wip['description']}")
+        qualifiers = []
+        if wip.get("size"):
+            qualifiers.append(f"size={wip['size']}")
+        if wip.get("type"):
+            qualifiers.append(f"type={wip['type']}")
+        if wip.get("governance_level"):
+            qualifiers.append(f"governance={wip['governance_level']}")
+        if qualifiers:
+            sections.append(f"**Classification**: {', '.join(qualifiers)}")
+        if wip.get("context"):
+            sections.append(f"**Context**: {wip['context']}")
+        if wip.get("current_chunk"):
+            sections.append(f"**Current chunk**: {wip['current_chunk']}")
+        sections.append("")
+
+    # 2. Session reflection (from .session-reflected, before it gets archived)
+    reflected_path = prawduct_dir / ".session-reflected"
+    if reflected_path.is_file():
+        try:
+            reflection = reflected_path.read_text().strip()
+            if reflection:
+                sections.append("## Previous Session Reflection")
+                sections.append(reflection)
+                sections.append("")
+        except Exception:  # prawduct:ok-broad-except — handoff generation is best-effort
+            pass
+
+    # 3. Critic findings summary
+    critic_summary = _summarize_critic_findings(prawduct_dir)
+    if critic_summary:
+        sections.append("## Critic Findings")
+        sections.append(critic_summary)
+        sections.append("")
+
+    # 4. Files changed during session
+    changed = _get_session_changed_files(project_dir)
+    if changed:
+        sections.append("## Files Changed This Session")
+        for f in changed[:20]:  # Cap at 20 to keep handoff manageable
+            sections.append(f"- {f}")
+        if len(changed) > 20:
+            sections.append(f"- ... and {len(changed) - 20} more")
+        sections.append("")
+
+    # 5. Commits made during session
+    commits = _git_session_commits(project_dir)
+    if commits:
+        sections.append("## Commits This Session")
+        for c in commits[:10]:
+            sections.append(f"- {c}")
+        if len(commits) > 10:
+            sections.append(f"- ... and {len(commits) - 10} more")
+        sections.append("")
+
+    # Only write if there's actual content beyond the header
+    if len(sections) > 2:
+        try:
+            (prawduct_dir / ".session-handoff.md").write_text("\n".join(sections) + "\n")
+        except Exception:  # prawduct:ok-broad-except — handoff write must never block clear
+            pass
 
 
 # =============================================================================
@@ -571,7 +784,11 @@ def _is_dependency_file(filepath: str) -> bool:
 
 
 def _check_broad_exceptions(project_dir: Path, source_files: list[str]) -> list[str]:
-    """Check if changed source files contain broad exception patterns."""
+    """Check if changed source files contain broad exception patterns.
+
+    Skips lines marked with 'prawduct:ok-broad-except' (intentional, reviewed).
+    For Python, also skips broad catches that re-raise or log within 3 lines.
+    """
     # Language-specific patterns for overly broad exception handling
     patterns = {
         ".py": r"except\s+(?:Exception|BaseException)\s*(?::|,|as\b)",
@@ -581,6 +798,7 @@ def _check_broad_exceptions(project_dir: Path, source_files: list[str]) -> list[
         ".tsx": r"catch\s*\([^)]*\)\s*\{\s*\}",
         ".go": r"_\s*=\s*\w+\.(?:\w+)\(",  # _ = foo.Bar() — ignored errors
     }
+    pragma = "prawduct:ok-broad-except"
     flagged = []
     for filepath in source_files:
         full_path = project_dir / filepath
@@ -592,9 +810,27 @@ def _check_broad_exceptions(project_dir: Path, source_files: list[str]) -> list[
             continue
         try:
             content = full_path.read_text()
-            if re.search(pattern, content):
+            lines = content.splitlines()
+            has_unflagged = False
+            for i, line in enumerate(lines):
+                if not re.search(pattern, line):
+                    continue
+                # Skip if line (or line above) has the pragma marker
+                if pragma in line:
+                    continue
+                if i > 0 and pragma in lines[i - 1]:
+                    continue
+                # For Python: skip if the except block re-raises or logs
+                if suffix == ".py":
+                    # Check next 3 lines for raise or log/logger calls
+                    following = "\n".join(lines[i + 1 : i + 4])
+                    if re.search(r"\braise\b", following) or re.search(r"\blog(?:ger|ging)?\b", following, re.IGNORECASE):
+                        continue
+                has_unflagged = True
+                break
+            if has_unflagged:
                 flagged.append(filepath)
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — canary must never crash
             pass
     return flagged
 
@@ -645,9 +881,67 @@ def compliance_canary(project_dir: Path) -> list[str]:
 # =============================================================================
 
 
+def _check_previous_session_gates(project_dir: Path) -> list[str]:
+    """Check if the previous session had unmet governance gates.
+
+    Returns list of warning messages. Used by cmd_clear to warn (not block)
+    when starting a new session without completing the previous one's governance.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    warnings: list[str] = []
+
+    # Was there a previous session with changes?
+    had_changes = git_has_session_changes(project_dir)
+    if not had_changes:
+        return warnings
+
+    # Gate 1: Reflection
+    reflected_file = prawduct_dir / ".session-reflected"
+    if not reflected_file.is_file() or len(reflected_file.read_text().strip()) < 50:
+        warnings.append("reflection not captured")
+
+    # Gate 2: Critic review (only when building against a plan)
+    has_build_plan = (prawduct_dir / "artifacts" / "build-plan.md").is_file() or _has_build_plan_in_state(prawduct_dir)
+    if has_build_plan and git_has_code_changes(project_dir):
+        critic_findings = prawduct_dir / ".critic-findings.json"
+        session_start_file = prawduct_dir / ".session-start"
+        needs_review = True
+        if critic_findings.is_file() and session_start_file.is_file():
+            try:
+                session_start = session_start_file.read_text().strip()
+                findings_mtime = datetime.fromtimestamp(
+                    critic_findings.stat().st_mtime, tz=timezone.utc
+                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if findings_mtime > session_start and validate_critic_findings(critic_findings):
+                    needs_review = False
+            except Exception:  # prawduct:ok-broad-except — gate check must not crash clear
+                pass
+        if needs_review:
+            warnings.append("Critic review not recorded")
+
+    return warnings
+
+
 def cmd_clear(project_dir: Path) -> int:
     """Reset session state and trigger sync."""
     prawduct_dir = get_prawduct_dir(project_dir)
+
+    # Check previous session's governance gates (warn, never block)
+    try:
+        gate_warnings = _check_previous_session_gates(project_dir)
+        if gate_warnings:
+            print(
+                f"WARNING: Previous session had unmet governance: {', '.join(gate_warnings)}. "
+                f"Consider addressing before continuing."
+            )
+    except Exception:  # prawduct:ok-broad-except — gate check must never block clear
+        pass
+
+    # Generate handoff BEFORE archiving/deleting session files
+    try:
+        generate_session_handoff(project_dir)
+    except Exception:  # prawduct:ok-broad-except — handoff must never block clear
+        pass
 
     # Preserve previous session's reflection before clearing
     reflected = prawduct_dir / ".session-reflected"
@@ -688,7 +982,7 @@ def cmd_clear(project_dir: Path) -> int:
                     f"NOTE: .prawduct/learnings.md is {size // 1024}KB — recommend pruning to ~3,000 tokens.\n"
                     f"  Keep concise rules in learnings.md; move detailed root cause analysis to learnings-detail.md."
                 )
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — size check must not block session start
             pass
 
     # Warn if project-state.yaml is oversized
@@ -703,7 +997,7 @@ def cmd_clear(project_dir: Path) -> int:
                     f"  Test history: keep only the current count, remove per-chunk history.\n"
                     f"  Change log: keep the last ~10 entries, remove older ones (git has the history)."
                 )
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — size check must not block session start
             pass
 
     # Check for missing or unfilled project-preferences.md
@@ -715,7 +1009,7 @@ def cmd_clear(project_dir: Path) -> int:
             content = prefs_path.read_text()
             # Template has empty fields like "- **Language**:\n" — filled has content after colon
             prefs_unfilled = "- **Language**:\n" in content
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — prefs check must not block session start
             pass
 
     if prefs_missing or prefs_unfilled:
@@ -723,7 +1017,10 @@ def cmd_clear(project_dir: Path) -> int:
         has_code = any(
             f.suffix in (".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt", ".c", ".cpp", ".h")
             for f in project_dir.rglob("*")
-            if f.is_file() and ".prawduct" not in f.parts and "node_modules" not in f.parts
+            if f.is_file()
+            and ".prawduct" not in f.parts
+            and "node_modules" not in f.parts
+            and f.name != "conftest.py"
         )
         if has_code:
             print(
@@ -743,12 +1040,12 @@ def cmd_clear(project_dir: Path) -> int:
             staleness = staleness_scan(project_dir)
             briefing = assemble_session_briefing(project_dir, staleness)
             print(briefing)
-        except Exception as e:
+        except Exception as e:  # prawduct:ok-broad-except — briefing must never block session start
             print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)
 
         try:
             generate_subagent_briefing(project_dir)
-        except Exception as e:
+        except Exception as e:  # prawduct:ok-broad-except — briefing must never block session start
             print(f"NOTE: Subagent briefing generation failed: {e}", file=sys.stderr)
 
     return 0
@@ -788,7 +1085,7 @@ def validate_critic_findings(findings_path: Path) -> bool:
         if not isinstance(summary, str) or not summary.strip():
             return False
         return True
-    except Exception:
+    except Exception:  # prawduct:ok-broad-except — validation must not crash gate check
         return False
 
 
@@ -808,7 +1105,7 @@ def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
         return (content.startswith("build_plan:") or "\nbuild_plan:" in content) and (
             content.startswith("  chunks:") or "\n  chunks:" in content
         )
-    except Exception:
+    except Exception:  # prawduct:ok-broad-except — build plan check must not crash gate check
         return False
 
 
@@ -826,8 +1123,8 @@ def cmd_stop(project_dir: Path) -> int:
     # v5: Compliance canary (informational)
     try:
         canary_findings = compliance_canary(project_dir)
-    except Exception:
-        pass  # Never block session end due to canary failure
+    except Exception:  # prawduct:ok-broad-except — canary must never block session end
+        pass
 
     # Check for changes (session-scoped: only new changes since session start)
     has_changes = git_has_session_changes(project_dir)
@@ -841,7 +1138,7 @@ def cmd_stop(project_dir: Path) -> int:
             content = reflected_file.read_text().strip()
             # Require at least ~50 chars to avoid empty/token reflections
             reflection_sufficient = len(content) >= 50
-        except Exception:
+        except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
             pass
 
     if has_changes and not reflection_sufficient:
@@ -876,8 +1173,8 @@ def cmd_stop(project_dir: Path) -> int:
                         # Mtime check passed — validate content
                         if validate_critic_findings(critic_findings):
                             needs_review = False
-                except Exception:
-                    pass  # Any error means we need review
+                except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
+                    pass
 
             if needs_review:
                 blockers.append(

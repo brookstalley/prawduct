@@ -17,8 +17,7 @@ prawduct/
 │       ├── framework-checks.md        # Framework-specific checks (7-10)
 │       └── review-cycle.md            # Review lifecycle and output format
 ├── tools/
-│   ├── reflection-hook                # Hook script: session clear + stop (framework)
-│   ├── product-hook                   # Hook script: session clear + stop (products, self-contained)
+│   ├── product-hook                   # Hook script: session clear + stop (framework and products)
 │   ├── prawduct-init.py               # Generates self-contained product repos
 │   ├── prawduct-migrate.py            # Migrates v1/v3/v4 product repos to v5
 │   └── prawduct-sync.py              # Syncs framework updates to product repos (includes v4→v5 auto-migration)
@@ -41,6 +40,9 @@ prawduct/
 │   ├── test_v5_migration.py              # v4→v5 migration tests (45 tests)
 │   ├── test_integration_lifecycle.py     # End-to-end lifecycle tests (29 tests)
 │   ├── test_preferences_lifecycle.py     # Project preferences lifecycle tests
+│   ├── test_v5_hooks.py                 # v5 hook behavior tests
+│   ├── test_v5_methodology.py           # v5 methodology content tests
+│   ├── test_v5_templates.py             # v5 template consistency tests
 │   └── scenarios/                     # 4 test scenarios for framework validation
 ├── docs/
 │   ├── principles.md                  # Full 22 principles with rationale
@@ -70,9 +72,12 @@ my-product/
 │   │   ├── boundary-patterns.md       # Contract surfaces between components
 │   │   └── project-preferences.md     # Developer preferences (language, testing, style)
 │   ├── .subagent-briefing.md          # Generated briefing for delegated agents
+│   ├── .session-handoff.md            # Auto-generated context from previous session (read at session start)
 │   └── .critic-findings.json          # Critic review evidence (checked by stop hook)
 ├── tools/
 │   └── product-hook                   # Session governance (Python: reflection + Critic gate + sync + v4→v5 auto-migration)
+├── tests/
+│   └── conftest.py                    # Auto-grouping for parallel test execution (pytest-xdist)
 ├── .claude/
 │   └── settings.json                  # Hook config + banner pointing to tools/product-hook
 └── src/                               # Product source code

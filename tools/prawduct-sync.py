@@ -25,6 +25,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -672,6 +673,21 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         rendered = render_template(template_path, subs)
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text(rendered)
+        actions.append(f"Created {rel_path}")
+
+    # Place-once binary files: copy if missing (no template rendering)
+    place_once_copy = {
+        "tests/conftest.py": "templates/conftest.py",
+    }
+    for rel_path, template_rel in place_once_copy.items():
+        dst = product / rel_path
+        if dst.is_file():
+            continue
+        template_path = fw_dir / template_rel
+        if not template_path.is_file():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(template_path, dst)
         actions.append(f"Created {rel_path}")
 
     # Update manifest

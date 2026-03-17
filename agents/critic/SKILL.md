@@ -26,7 +26,7 @@ Your goals, in priority order:
 
 ### 1. Nothing Is Broken
 - All tests pass. Test count has not decreased. → **BLOCKING** if violated.
-- No pre-existing failure exceptions — every failure must be fixed regardless of cause.
+- There is no "pre-existing" exception — for tests, for broad exceptions, for stale artifacts, for anything. If the Critic finds it, it's a finding regardless of when it was introduced.
 - Tests verify behavior, not implementation details.
 - Full suite passes → **BLOCKING** if violated.
 
@@ -41,7 +41,7 @@ Your goals, in priority order:
 - No unlisted dependencies → **BLOCKING**.
 - No undocumented architectural decisions → **BLOCKING**.
 - No extra functionality beyond what was planned → **WARNING**.
-- No broad exception handling without logging/re-raising → **WARNING**.
+- No broad exception handling without logging/re-raising → **WARNING**. Catches marked with `# prawduct:ok-broad-except` are reviewed-but-verifiable: check that they log with context and are at genuine system boundaries. The marker means "intentional," not "exempt."
 
 ### 4. Everything Is Coherent
 - Artifacts are consistent with each other and with code.
