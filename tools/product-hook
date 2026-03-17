@@ -1184,6 +1184,41 @@ def cmd_stop(project_dir: Path) -> int:
                     "  After review, record findings to .prawduct/.critic-findings.json\n"
                 )
 
+    # Advisory: PR review evidence check
+    # If a PR was created this session but no review evidence exists, warn
+    pr_reviews_dir = prawduct_dir / ".pr-reviews"
+    try:
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+        )
+        current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else ""
+        if current_branch and current_branch not in ("main", "master", "develop"):
+            # Check if there's a PR for this branch
+            pr_check = subprocess.run(
+                ["gh", "pr", "list", "--head", current_branch, "--json", "number", "--limit", "1"],
+                capture_output=True, text=True, cwd=str(project_dir), timeout=15,
+            )
+            has_pr = False
+            if pr_check.returncode == 0 and pr_check.stdout.strip():
+                try:
+                    prs = json.loads(pr_check.stdout)
+                    has_pr = len(prs) > 0
+                except json.JSONDecodeError:
+                    pass
+
+            if has_pr:
+                # Check for review evidence
+                branch_file = current_branch.replace("/", "--") + ".json"
+                evidence_path = pr_reviews_dir / branch_file
+                if not evidence_path.is_file():
+                    canary_findings.append(
+                        f"PR exists for branch '{current_branch}' but no PR review evidence found. "
+                        f"Use /pr to run the PR reviewer before merging."
+                    )
+    except Exception:  # prawduct:ok-broad-except — advisory check must never block session end
+        pass
+
     # Report blockers or exit clean
     if blockers:
         print("", file=sys.stderr)

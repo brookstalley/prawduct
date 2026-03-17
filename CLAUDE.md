@@ -94,6 +94,14 @@ The Critic runs in a separate context — it hasn't seen your reasoning or decis
 
 For product repos, the Critic reads `.prawduct/critic-review.md` instead of `agents/critic/SKILL.md`.
 
+## PR Review — Release Readiness
+
+**Before creating a PR, use `/pr`.** It handles the full lifecycle: branch hygiene, independent review, PR creation, updates, and merging. The PR reviewer runs as a separate agent (like the Critic) providing fresh-eyes release-readiness assessment.
+
+If the user asks to "PR this", "create a PR", "push this up", or anything PR-related — use `/pr`.
+
+For product repos, the reviewer reads `.prawduct/pr-review.md`. For framework changes, it reads `agents/pr-reviewer/SKILL.md`.
+
 ## The Learning Loop
 
 After every significant action (feature completion, bug fix, error recovery, session end):
@@ -125,13 +133,17 @@ my-product/
 │   ├── project-state.yaml      # Source of truth for project state
 │   ├── learnings.md            # Accumulated wisdom
 │   ├── critic-review.md        # Condensed Critic instructions for this product
+│   ├── pr-review.md            # Condensed PR reviewer instructions
 │   ├── sync-manifest.json      # Tracks framework sync state (enables auto-updates)
 │   ├── artifacts/              # Generated specifications
+│   ├── .pr-reviews/            # PR review evidence (gitignored)
 │   ├── .session-handoff.md     # Auto-generated context from previous session
 │   └── .critic-findings.json   # Critic review evidence (checked by stop hook)
 ├── tools/
 │   └── product-hook            # Session governance (Python: reflection + Critic gate + sync)
 ├── .claude/
+│   ├── commands/
+│   │   └── pr.md               # /pr slash command for PR lifecycle
 │   └── settings.json           # Hook config + banner pointing to tools/product-hook
 └── src/                        # Product source code
 ```

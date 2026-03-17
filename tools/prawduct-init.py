@@ -40,6 +40,7 @@ BLOCK_BEGIN = _sync_mod.BLOCK_BEGIN
 GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.pr-reviews/",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
     ".prawduct/.session-reflected",
@@ -193,6 +194,23 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created .prawduct/artifacts/boundary-patterns.md")
 
+    # 6.5. PR review instructions
+    if write_template(
+        TEMPLATES_DIR / "pr-review.md",
+        target / ".prawduct" / "pr-review.md",
+        subs,
+    ):
+        actions.append("Created .prawduct/pr-review.md")
+
+    # 6.6. PR slash command
+    commands_dir = target / ".claude" / "commands"
+    if ensure_dir(commands_dir):
+        actions.append("Created .claude/commands/")
+    pr_cmd_src = TEMPLATES_DIR / "commands-pr.md"
+    pr_cmd_dst = commands_dir / "pr.md"
+    if pr_cmd_src.is_file() and write_template(pr_cmd_src, pr_cmd_dst, subs):
+        actions.append("Created .claude/commands/pr.md")
+
     # 7. Test infrastructure (conftest.py with parallel test support)
     tests_dir = target / "tests"
     if ensure_dir(tests_dir):
@@ -237,6 +255,12 @@ def run_init(target_dir: str, product_name: str) -> dict:
             "CLAUDE.md": compute_block_hash(claude_content),
             ".prawduct/critic-review.md": compute_hash(
                 target / ".prawduct" / "critic-review.md"
+            ),
+            ".prawduct/pr-review.md": compute_hash(
+                target / ".prawduct" / "pr-review.md"
+            ),
+            ".claude/commands/pr.md": compute_hash(
+                target / ".claude" / "commands" / "pr.md"
             ),
             "tools/product-hook": compute_hash(target / "tools" / "product-hook"),
             ".claude/settings.json": None,  # merge_settings doesn't use hash

@@ -176,6 +176,14 @@ def create_manifest(
             "template": "templates/critic-review.md",
             "strategy": "template",
         },
+        ".prawduct/pr-review.md": {
+            "template": "templates/pr-review.md",
+            "strategy": "template",
+        },
+        ".claude/commands/pr.md": {
+            "template": "templates/commands-pr.md",
+            "strategy": "template",
+        },
         "tools/product-hook": {
             "source": "tools/product-hook",
             "strategy": "always_update",
@@ -322,8 +330,8 @@ def _try_pull_framework(fw_dir: Path, auto_pull: bool) -> list[str]:
         pass  # git not on PATH
     except subprocess.TimeoutExpired:
         notes.append("Framework git operation timed out")
-    except Exception:
-        pass  # Safety net — never block sync
+    except Exception:  # prawduct:ok-broad-except — sync helper must never block session start
+        pass
 
     return notes
 

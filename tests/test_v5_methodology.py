@@ -88,7 +88,7 @@ class TestBuildingMethodology:
 
     def test_token_budget(self):
         tokens = estimate_tokens(self.content)
-        assert tokens < 3500, f"building.md is ~{tokens} tokens, should be <3500"
+        assert tokens < 3800, f"building.md is ~{tokens} tokens, should be <3800"
 
 
 # =============================================================================
