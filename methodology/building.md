@@ -188,6 +188,14 @@ See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (produc
 
 **Blocking findings** must be resolved before proceeding. **Warnings** should be addressed. **Notes** are informational. If you disagree with a finding, think carefully before dismissing — the Critic catches blind spots the builder can't see.
 
+## Creating Pull Requests
+
+Before creating a PR, use `/pr` to review and create. This invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
+
+If the user asks to "PR this", "create a PR", "push this up", "open a PR", or any similar request — use `/pr`. The command handles branch hygiene, review, and PR creation in one flow.
+
+See `agents/pr-reviewer/SKILL.md` (framework) or `.prawduct/pr-review.md` (products) for review criteria.
+
 ## Exception Handling
 
 Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs and make debugging difficult.

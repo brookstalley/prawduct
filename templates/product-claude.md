@@ -19,6 +19,7 @@ These degrade at scale. The session briefing reinforces them; the stop hook dete
 - **When changes cross boundaries** (API, database, IPC, frontend/backend), verify consumers are not broken. See `.prawduct/artifacts/boundary-patterns.md` for this project's contract surfaces.
 - **Update artifacts when code changes what they describe.** Stale specs are worse than no specs.
 - **Invoke the Critic after medium+ work.** Not optional. The stop hook enforces this.
+- **Use `/pr` for all PR operations.** When the user asks to create a PR, push changes up, merge, or check PR status — use `/pr`. It handles branch hygiene, independent review, and PR creation in one flow.
 
 ## Principles
 
@@ -72,6 +73,10 @@ Generate artifacts in `.prawduct/artifacts/`, scaled to risk. Universal: product
 8. **Resolve findings.** Fix blocking; address warnings.
 9. **Reflect.** What did the Critic catch? Capture learnings now. Check: any plans or decisions created but not yet written to artifacts?
 10. **Verify artifacts current.** Confirm all affected artifacts reflect the code. Compact project-state.yaml when it grows large.
+
+### Creating Pull Requests
+
+Use `/pr` for the full PR lifecycle. It detects context (create/update/merge/status) and handles review automatically. The PR reviewer runs as a separate agent — independent release-readiness assessment complementing the Critic's per-chunk reviews.
 
 ### Session Scope
 

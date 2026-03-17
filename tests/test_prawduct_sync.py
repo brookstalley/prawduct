@@ -202,6 +202,8 @@ class TestCreateManifest:
         assert set(manifest["files"].keys()) == {
             "CLAUDE.md",
             ".prawduct/critic-review.md",
+            ".prawduct/pr-review.md",
+            ".claude/commands/pr.md",
             "tools/product-hook",
             ".claude/settings.json",
         }
