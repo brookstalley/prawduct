@@ -1184,8 +1184,7 @@ def cmd_stop(project_dir: Path) -> int:
                     "  After review, record findings to .prawduct/.critic-findings.json\n"
                 )
 
-    # Advisory: PR review evidence check
-    # If a PR was created this session but no review evidence exists, warn
+    # Gate 3: PR review evidence (when a PR exists for the current branch)
     pr_reviews_dir = prawduct_dir / ".pr-reviews"
     try:
         branch_result = subprocess.run(
@@ -1208,15 +1207,24 @@ def cmd_stop(project_dir: Path) -> int:
                     pass
 
             if has_pr:
-                # Check for review evidence
+                # Check for review evidence with content validation
                 branch_file = current_branch.replace("/", "--") + ".json"
                 evidence_path = pr_reviews_dir / branch_file
-                if not evidence_path.is_file():
-                    canary_findings.append(
-                        f"PR exists for branch '{current_branch}' but no PR review evidence found. "
-                        f"Use /pr to run the PR reviewer before merging."
+                pr_review_valid = False
+                if evidence_path.is_file():
+                    try:
+                        data = json.loads(evidence_path.read_text())
+                        if isinstance(data.get("findings"), list) and data.get("summary"):
+                            pr_review_valid = True
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                if not pr_review_valid:
+                    blockers.append(
+                        f"PR REVIEW: PR exists for branch '{current_branch}' but no valid review evidence found.\n"
+                        "  Run /pr to invoke the PR reviewer before merging.\n"
+                        "  The reviewer writes evidence to .prawduct/.pr-reviews/<branch>.json\n"
                     )
-    except Exception:  # prawduct:ok-broad-except — advisory check must never block session end
+    except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
         pass
 
     # Report blockers or exit clean
