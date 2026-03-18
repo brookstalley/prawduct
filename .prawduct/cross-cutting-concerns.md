@@ -25,7 +25,7 @@ Maps concerns to pipeline coverage. Use this as a starting point for completenes
 | Infrastructure dependencies | discovery.md: Surface Infrastructure Dependencies | project-state.yaml: `infrastructure_dependencies` | building.md: Verify step + Common Traps | Goal 2 (Nothing Is Missing) + Goal 4 (Coherence) | Full coverage |
 | Boundary coherence | Structural: detected at build time | boundary-patterns.md | building.md: Investigated Changes | Goal 5 (Decisions Were Deliberate) | v5: boundary investigation + compliance canary |
 | Subagent governance | — | .subagent-briefing.md (generated) | building.md: Delegating Work | Goal 4 (Everything Is Coherent) | v5: briefing file + Critic reviews all output |
-| PR review | N/A (framework capability) | agents/pr-reviewer/SKILL.md, templates/pr-review.md | building.md: Creating Pull Requests | N/A (PR reviewer is peer of Critic) | `/pr` skill invokes reviewer agent; stop hook advisory |
+| PR review | N/A (framework capability) | agents/pr-reviewer/SKILL.md, templates/pr-review.md | building.md: Creating Pull Requests | N/A (PR reviewer is peer of Critic) | `/pr` skill invokes reviewer agent; stop hook blocks without evidence |
 
 ## Known Gaps
 

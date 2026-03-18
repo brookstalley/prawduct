@@ -147,7 +147,7 @@ After PR creation, update `pr_number` in the evidence file. After merge, delete 
 | **Scope** | One chunk's changes | Full PR diff (all chunks) |
 | **Perspective** | Is the work good? | Is this ready to merge? |
 | **Key concerns** | Spec compliance, tests, coherence | Bugs, scope, narrative, simplification |
-| **Enforcement** | BLOCKING (stop hook) | WARNING (stop hook advisory) |
+| **Enforcement** | BLOCKING (stop hook) | BLOCKING (stop hook gate) |
 | **Independence** | Separate agent (Task tool) | Separate agent (Task tool) |
 
 ## Extending This Skill

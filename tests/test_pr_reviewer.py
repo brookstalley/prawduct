@@ -277,11 +277,11 @@ class TestCreateManifestPrEntries:
 
 
 # =============================================================================
-# Hook: Stop advisory for PR review evidence
+# Hook: Stop gate for PR review evidence
 # =============================================================================
 
 
-class TestStopPrReviewAdvisory:
+class TestStopPrReviewGate:
     def test_stop_clean_without_pr(self, tmp_path: Path):
         """Stop hook exits clean when there's no PR."""
         prawduct = tmp_path / ".prawduct"
@@ -290,8 +290,8 @@ class TestStopPrReviewAdvisory:
         result = run_hook("stop", tmp_path, git_output="")
         assert result.returncode == 0
 
-    def test_stop_with_pr_no_evidence_warns(self, tmp_path: Path):
-        """When a PR exists but no review evidence, stop should include advisory."""
+    def test_stop_with_pr_no_evidence_blocks(self, tmp_path: Path):
+        """When a PR exists but no review evidence, stop should BLOCK."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
 
@@ -310,10 +310,10 @@ class TestStopPrReviewAdvisory:
             git_script=git_script,
             gh_script_body=gh_script,
         )
-        # Advisory is in canary findings (stderr), not a blocker
-        assert result.returncode == 0
-        # The warning about PR without evidence should be in stderr
-        assert "PR exists for branch" in result.stderr or "PR review evidence" in result.stderr
+        # PR without evidence is now a blocker, not advisory
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+        assert "PR exists for branch" in result.stderr or "no review evidence" in result.stderr
 
     def test_stop_with_pr_and_evidence_no_warning(self, tmp_path: Path):
         """When PR exists AND review evidence exists, no warning."""
@@ -347,8 +347,74 @@ class TestStopPrReviewAdvisory:
             gh_script_body=gh_script,
         )
         assert result.returncode == 0
-        # No PR review warning expected
-        assert "PR review evidence" not in result.stderr
+        # No PR review blocker expected
+        assert "PR REVIEW" not in result.stderr
+
+    def test_stop_with_pr_and_malformed_json_blocks(self, tmp_path: Path):
+        """When evidence file has malformed JSON, stop should block."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        reviews_dir = prawduct / ".pr-reviews"
+        reviews_dir.mkdir()
+        evidence = reviews_dir / "feature--test-pr.json"
+        evidence.write_text("not valid json {{{")
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+        ])
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+
+    def test_stop_with_pr_and_evidence_missing_findings_blocks(self, tmp_path: Path):
+        """When evidence file is missing 'findings' key, stop should block."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        reviews_dir = prawduct / ".pr-reviews"
+        reviews_dir.mkdir()
+        evidence = reviews_dir / "feature--test-pr.json"
+        evidence.write_text(json.dumps({"summary": "No issues.", "branch": "feature/test-pr"}))
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+        ])
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+
+    def test_stop_with_pr_and_evidence_missing_summary_blocks(self, tmp_path: Path):
+        """When evidence file is missing 'summary' key, stop should block."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        reviews_dir = prawduct / ".pr-reviews"
+        reviews_dir.mkdir()
+        evidence = reviews_dir / "feature--test-pr.json"
+        evidence.write_text(json.dumps({"findings": [], "branch": "feature/test-pr"}))
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+        ])
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
 
     def test_stop_on_main_branch_skips_pr_check(self, tmp_path: Path):
         """PR review check should skip main/master/develop branches."""
@@ -392,6 +458,21 @@ class TestPrReviewTemplateContent:
         assert "Update Flow" in content
         assert "Merge Flow" in content
         assert "Status Flow" in content
+
+    def test_pr_command_template_has_review_gate(self):
+        """The /pr command template must enforce review before PR creation."""
+        content = (FRAMEWORK_DIR / "templates" / "commands-pr.md").read_text()
+        # Must contain hard gate language, not just numbered steps
+        assert "MANDATORY" in content
+        assert "Do NOT proceed" in content or "DO NOT proceed" in content
+        assert "evidence file" in content
+
+    def test_framework_pr_command_has_review_gate(self):
+        """The framework /pr command must enforce review before PR creation."""
+        content = (FRAMEWORK_DIR / ".claude" / "commands" / "pr.md").read_text()
+        assert "MANDATORY" in content
+        assert "Do NOT proceed" in content or "DO NOT proceed" in content
+        assert "evidence file" in content
 
     def test_agent_skill_matches_template_goals(self):
         """The full SKILL.md and condensed template should have the same goals."""

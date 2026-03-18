@@ -30,12 +30,12 @@
 **Files:**
 - `tools/prawduct-init.py` — deploy pr-review.md, commands/pr.md, .pr-reviews/ gitignore
 - `tools/prawduct-sync.py` — add manifest entries for new files
-- `tools/product-hook` — stop hook advisory for PR review evidence
+- `tools/product-hook` — stop hook gate (blocker) for PR review evidence
 - `tests/test_pr_reviewer.py` — tests for init/sync/hook integration
 - `.prawduct/cross-cutting-concerns.md` — add PR Review row
 - `.prawduct/project-state.yaml` — update WIP, test count, change log
 
-**Acceptance:** `prawduct-init.py` creates all PR reviewer files in new products. Sync updates them. Stop hook warns if PR created without review evidence. All tests pass.
+**Acceptance:** `prawduct-init.py` creates all PR reviewer files in new products. Sync updates them. Stop hook blocks if PR exists without review evidence. All tests pass.
 
 ## Post-Build
 - Critic review after chunk 3
