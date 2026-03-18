@@ -49,12 +49,12 @@ user_expertise:
 # =============================================================================
 
 work_in_progress:
-  description: "PR reviewer subagent: build"
-  size: medium
-  type: feature
-  current_chunk: "Chunk 3 complete, pending Critic review"
-  governance_level: "full (Critic per chunk)"
-  context: "Design in .prawduct/artifacts/pr-reviewer-design.md. Build plan in .prawduct/artifacts/build-plan.md. All 3 chunks implemented: (1) PR reviewer agent + condensed template, (2) /pr slash command + discoverability, (3) init/sync/hook integration + 24 tests. 645 total tests pass."
+  description: null
+  size: null
+  type: null
+  current_chunk: null
+  governance_level: null
+  context: null
 
 # =============================================================================
 # HEALTH CHECK
@@ -365,7 +365,7 @@ build_plan:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 645
+    test_count: 650
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md
