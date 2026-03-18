@@ -108,15 +108,19 @@ my-product/
 │   ├── learnings.md            # Active rules, read at session start (<3K tokens)
 │   ├── learnings-detail.md     # Full learning context and history
 │   ├── critic-review.md        # Goal-based Critic instructions for this product
+│   ├── pr-review.md            # PR reviewer instructions for this product
 │   ├── sync-manifest.json      # Tracks framework sync state
 │   ├── artifacts/              # Specifications generated during planning
 │   │   ├── boundary-patterns.md  # Contract surfaces between components
 │   │   └── project-preferences.md # Developer preferences (language, testing, style)
 │   ├── .subagent-briefing.md   # Generated briefing for delegated agents
-│   └── .critic-findings.json   # Review evidence (checked by stop hook)
+│   ├── .pr-reviews/            # PR review evidence (checked by stop hook)
+│   └── .critic-findings.json   # Critic review evidence (checked by stop hook)
 ├── tools/
 │   └── product-hook            # Session governance (Python, zero dependencies)
 ├── .claude/
+│   ├── commands/
+│   │   └── pr.md               # /pr slash command for PR lifecycle
 │   └── settings.json           # Hook configuration
 └── src/                        # Your product code
 ```
@@ -127,7 +131,8 @@ my-product/
 prawduct/
 ├── CLAUDE.md                   # 22 principles + methodology pointers
 ├── methodology/                # Narrative guides: discovery, planning, building, reflection
-├── agents/critic/              # Independent review agent instructions
+├── agents/critic/              # Independent per-chunk review agent
+├── agents/pr-reviewer/         # Independent PR release-readiness reviewer
 ├── tools/                      # prawduct-init.py, prawduct-migrate.py, prawduct-sync.py, product-hook
 ├── templates/                  # Artifact templates for generated products
 ├── tests/                      # Framework tests (pytest) and evaluation scenarios
@@ -146,3 +151,16 @@ Three layers:
 3. **Structural enforcement** — Python hooks that enforce what principles alone can't guarantee: session briefing with staleness detection on start, independent Critic review and reflection gates on stop, compliance canary checks for common governance failures. Zero external dependencies.
 
 See [`docs/principles.md`](docs/principles.md) for the full principles with rationale and review perspectives.
+
+## Recent Changes
+
+### 2026-03-17
+- feature: PR reviewer agent and `/pr` skill — independent release-readiness review before PR creation, complementing per-chunk Critic reviews
+- feature: work-scaled governance (v5) — governance depth scales with work size and type instead of rigid phases
+- feature: session handoff via `/clear` — structured context persistence across sessions
+- feature: test parallelization support via pytest-xdist in generated products
+- feature: infrastructure dependency surfacing in discovery and Critic review
+- feature: compliance canary system for common governance failures (code without tests, broad exceptions, stale artifacts)
+- fix: PR review enforcement upgraded from advisory to blocker, matching Critic's three-layer model
+- fix: integration lifecycle tests for init/sync/migrate pipeline
+- fix: dangling methodology file references in product CLAUDE.md template
