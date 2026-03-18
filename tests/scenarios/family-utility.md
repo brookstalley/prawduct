@@ -94,7 +94,7 @@ These scripted responses extend the test conversation for the build stages.
 **When shown progress during building (chunk completion messages):**
 > [No response needed. Accept silently unless the system explicitly asks a question.]
 
-**When asked about a Builder flag (artifact insufficiency or spec ambiguity):**
+**When the system surfaces an implementation issue (artifact insufficiency or spec ambiguity):**
 > "Whatever you think is best."
 >
 > Accept the system's recommendation. The test persona trusts the system's technical judgment.
@@ -109,7 +109,7 @@ These scripted responses extend the test conversation for the build stages.
 
 ## Evaluation Rubric
 
-### Domain Analyzer (C2)
+### Discovery (C2)
 
 **Must-do:**
 
@@ -140,9 +140,9 @@ These scripted responses extend the test conversation for the build stages.
 - `[interactive]` Questions use plain language — "Where will you use this?" not "What's your target platform?"
 - `[interactive]` Inferences are made and confirmed rather than asked open-endedly: "Since this is for family game nights, I'm assuming you don't need enterprise security — just a simple way to identify who's playing. Sound right?"
 - `[interactive]` Prior art awareness is proportionate: briefly acknowledges board-game-scoring apps exist; respects the user's choice to build their own. Does not recommend specific alternatives or spend multiple turns researching the space.
-- `[interactive]` **Guidance Evaluation proportionate:** The system must NOT challenge the non-technical user's cosmetic preferences (app name "Score Night", wanting it to feel "fun and colorful"). Guidance Evaluation should only fire if the user's direction conflicts with a quality principle (e.g., requesting inaccessible color choices would trigger principle conflict with HR7).
+- `[interactive]` **Challenge Gently, Defer Gracefully (Principle 22):** The system must NOT challenge the non-technical user's cosmetic preferences (app name "Score Night", wanting it to feel "fun and colorful"). The system should only push back if the user's direction conflicts with a quality principle (e.g., requesting inaccessible color choices would conflict with Principle 7).
 
-### Orchestrator (C1)
+### Session Management (C1)
 
 **Must-do:**
 
@@ -167,7 +167,7 @@ These scripted responses extend the test conversation for the build stages.
 - `[interactive]` Assumptions are stated clearly enough that the user can correct them.
 - `[interactive]` Stage transitions happen naturally, not abruptly.
 
-### Artifact Generator (C3)
+### Planning (C3)
 
 **Must-do:**
 
@@ -202,14 +202,14 @@ These scripted responses extend the test conversation for the build stages.
 - `[simulation]` A coding agent reading these artifacts could begin building without ambiguity.
 - `[simulation]` Universal artifacts total 3-8 pages; human-interface artifacts total 2-5 pages; no single artifact exceeds 3 pages.
 
-### Review Lenses (C4)
+### Review Perspectives (C4)
 
 **Must-do:**
 
-- `[simulation]` Product Lens: confirms this solves a real (if small) problem; scope is appropriate.
-- `[simulation]` Design Lens: raises first-run/empty state experience and basic accessibility.
-- `[simulation]` Architecture Lens: raises data persistence choice and deployment simplicity.
-- `[simulation]` Skeptic Lens: raises at least one realistic concern (e.g., data loss risk, offline use at game night, what happens when someone disputes a score).
+- `[simulation]` Product perspective: confirms this solves a real (if small) problem; scope is appropriate.
+- `[simulation]` Design perspective: raises first-run/empty state experience and basic accessibility.
+- `[simulation]` Architecture perspective: raises data persistence choice and deployment simplicity.
+- `[simulation]` Skeptic perspective: raises at least one realistic concern (e.g., data loss risk, offline use at game night, what happens when someone disputes a score).
 - `[simulation]` Each finding has a specific recommendation, not just an observation.
 - `[simulation]` Each finding has a severity level (blocking / warning / note).
 
@@ -224,7 +224,7 @@ These scripted responses extend the test conversation for the build stages.
 - `[simulation]` Findings are specific and actionable.
 - `[simulation]` Severity ratings are proportionate to the product's risk level.
 - `[simulation]` Addressing the findings would measurably improve the artifacts.
-- `[simulation]` No lens produces more than 3-5 findings for a low-risk utility.
+- `[simulation]` No single perspective produces more than 3-5 findings for a low-risk utility.
 
 ### Project State (C5)
 
@@ -320,9 +320,9 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-do:**
 
-- `[simulation]` Spec compliance check runs after each feature chunk (scaffold exempt from full compliance check).
+- `[simulation]` Critic review runs after each feature chunk (scaffold exempt from full review).
 - `[simulation]` Test count never decreases between chunks.
-- `[simulation]` All core flows from the Product Brief have implementation evidence in `spec_compliance`.
+- `[simulation]` All core flows from the Product Brief have implementation evidence in the Critic's review.
 - `[simulation]` Critic actively reviews each feature chunk with at least 2 specific findings per feature chunk (any severity), each with file/line references. For medium/high-risk products, at least one blocking or warning finding expected. For low-risk products, note-only findings are acceptable if the build is clean.
 - `[simulation]` Critic review was invoked automatically as part of the process, not prompted by user request. The system must not ask "Want me to run the Critic?" — it runs it proactively.
 - `[simulation]` Fix-by-fudging detection is active: if a test is weakened to pass, the Critic catches it.
@@ -371,7 +371,7 @@ The scenario succeeds when:
 
 1. Starting from the input above, the system produces a populated `project-state.yaml` with classification, product definition, and scope decisions.
 2. All 7 universal artifacts are generated with correct frontmatter, internal consistency, and cross-references.
-3. Review Lenses produce specific, actionable findings with appropriate severity.
+3. Review Perspectives produce specific, actionable findings with appropriate severity.
 4. The total output is proportionate to the product's simplicity — a reader should not think "this is way too much process for a family score tracker."
 5. A coding agent (or human developer) reading the output would have a clear, unambiguous starting point for building this app.
 
@@ -383,6 +383,6 @@ The scenario succeeds when:
 9. All tests pass (`npm test` or equivalent exits 0).
 10. The Critic actively reviewed each feature chunk with substantive findings (any severity acceptable for low-risk).
 11. User feedback (game timer feature) handled in one iteration cycle without regressions.
-12. At least one framework observation captured during the build phase (artifact insufficiency, spec ambiguity, or other build-phase observation type).
-13. Process is proportionate to the product's simplicity — the build phase should not feel like building enterprise software.
-14. The Builder never made a technology decision outside its scope — every choice traces back to artifacts or build plan.
+12. At least one learning captured during building (artifact insufficiency, spec ambiguity, or methodology feedback).
+13. Process is proportionate to the product's simplicity — building should not feel like building enterprise software.
+14. No technology decisions were made outside the build plan's scope — every choice traces back to artifacts or build plan.

@@ -180,10 +180,18 @@ build_preferences:
 work_in_progress:
   # Current work description. null when nothing active.
   description: null
-  # Governance level: trivial | small | medium | large
+  # Work size: trivial | small | medium | large
   size: null
   # Work type: feature | bugfix | refactor | optimization | debt | hotfix
   type: null
+  # Current chunk ID for session handoff (which chunk to resume next session)
+  current_chunk: null
+  # Current governance level for this work
+  governance_level: null
+  # Freeform context for session handoff. Updated before /clear so the next
+  # session understands where things stand. Include: key decisions made,
+  # what's done, what's next, pointers to relevant artifacts.
+  context: null
 
 # =============================================================================
 # HEALTH CHECK
@@ -227,6 +235,7 @@ build_plan:
   #     acceptance_criteria: ["npm install succeeds", "npm run dev starts", "npm test runs"]
   #     status: pending  # pending | in_progress | review | complete | blocked
 
+  # Build progress tracker: which chunk is actively being built
   current_chunk: null
 
 # =============================================================================

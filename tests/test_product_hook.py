@@ -79,7 +79,7 @@ def run_hook(
         capture_output=True,
         text=True,
         env=env,
-        timeout=10,
+        timeout=15,
     )
 
 

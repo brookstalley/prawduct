@@ -3,15 +3,15 @@
 ## Prerequisites
 
 **This scenario requires tier-2 framework capabilities:**
-- Domain Analyzer has UI Application discovery questions (Tier 1-3) with dynamic domain depth for Entertainment
-- Artifact Generator supports universal artifacts with game/real-time architecture awareness
-- Review Lenses can evaluate non-web UI concerns (terminal rendering, game loop architecture, text-based visual design)
-- Builder can execute build plans for real-time terminal applications
+- Discovery surfaces UI concerns with dynamic domain depth for Entertainment
+- Planning supports universal artifacts with game/real-time architecture awareness
+- Review Perspectives evaluate non-web UI concerns (terminal rendering, game loop architecture, text-based visual design)
+- Building can execute build plans for real-time terminal applications
 - Critic can evaluate game-specific build quality (game loop performance, input responsiveness)
 
 **Additional framework stretch:**
-- This scenario tests the framework's ability to handle an unusual UI substrate (terminal/TUI rather than web or mobile). The Domain Analyzer's UI Application questions assume web/mobile in several places. This scenario reveals where those assumptions are baked in vs. where general principles adapt naturally.
-- The Entertainment dynamic domain depth in the Domain Analyzer relies on LLM knowledge rather than hardcoded question banks. This scenario exercises it more deeply than the family-utility scenario (which is Entertainment/Utility, not pure Entertainment).
+- This scenario tests the framework's ability to handle an unusual UI substrate (terminal/TUI rather than web or mobile). The discovery methodology's UI guidance assumes web/mobile in several places. This scenario reveals where those assumptions are baked in vs. where general principles adapt naturally.
+- The Entertainment dynamic domain depth relies on LLM knowledge rather than hardcoded question banks. This scenario exercises it more deeply than the family-utility scenario (which is Entertainment/Utility, not pure Entertainment).
 
 **Current status**: Ready for tier-2 evaluation. All required capabilities are implemented. Terminal-specific adaptations may surface framework gaps — this is a feature, not a bug. Observations from this scenario should feed back into skill improvements.
 
@@ -191,9 +191,9 @@ To ensure repeatable evaluation, the following scripted responses define what Jo
 - Slightly impatient: doesn't want to answer 15 questions about a weekend game project
 - Cooperative and enthusiastic about the project itself
 
-## Test Conversation (Build Phase — Stages 4-6)
+## Test Conversation (Build — Stages 4-6)
 
-These scripted responses extend the test conversation for the build and iteration phases.
+These scripted responses extend the test conversation for the build stages.
 
 **When asked to confirm the build plan:**
 > "Looks good. Let's build it."
@@ -201,7 +201,7 @@ These scripted responses extend the test conversation for the build and iteratio
 **When shown progress during building (chunk completion messages):**
 > [No response needed. Accept silently unless the system explicitly asks a question.]
 
-**When asked about a Builder flag (artifact insufficiency or spec ambiguity):**
+**When the system surfaces an implementation issue (artifact insufficiency or spec ambiguity):**
 > "What do you recommend?"
 >
 > Accept the system's recommendation. Jordan trusts technical judgment on implementation details.
@@ -216,7 +216,7 @@ These scripted responses extend the test conversation for the build and iteratio
 
 ## Evaluation Rubric
 
-### Domain Analyzer (C2)
+### Discovery (C2)
 
 **Must-do:**
 
@@ -251,7 +251,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[interactive]` Prior art awareness surfaces relevant terminal game libraries and existing terminal arcade games as expertise. Acknowledges the space exists (terminal games are a known genre) but respects Jordan's choice to build from scratch as a creative exercise. For low-medium risk, 2-3 searches is proportionate.
 - `[interactive]` The discovery conversation surfaces the real technical challenge (cross-platform terminal I/O, real-time input handling, resize events) without making it sound scary.
 
-### Orchestrator (C1)
+### Session Management (C1)
 
 **Must-do:**
 
@@ -279,7 +279,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[interactive]` Stage transitions happen naturally. The user shouldn't feel interrogated.
 - `[interactive]` The conversation acknowledges this is a fun creative project, not enterprise software.
 
-### Artifact Generator (C3)
+### Planning (C3)
 
 **Must-do:**
 
@@ -287,7 +287,7 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[simulation]` All artifacts have correct YAML frontmatter with dependency declarations.
 - `[simulation]` **Product Brief** captures the game's core loop (move, shoot, dodge, survive waves), the "one more round" engagement model, and the creative constraints (text-only, terminal, cross-platform).
 - `[simulation]` **Data Model** includes game entities appropriate to an arcade shooter: at minimum Player/Ship (position, lives, score), Enemy (position, type, behavior pattern, health), Bullet/Projectile (position, direction, owner), Wave/Level (enemies, formation, difficulty parameters), and GameState (current state, score, lives, wave number). Entities must model real-time properties (position as coordinates, movement vectors or speeds).
-- `[simulation]` **Security Model** is minimal/degenerate — a local single-player terminal game has no authentication, no data privacy concerns, no network attack surface. The artifact should be generated but acknowledge this is a degenerate case (per Artifact Generator applicability assessment). Any residual concerns (e.g., file write for future high scores) should be noted.
+- `[simulation]` **Security Model** is minimal/degenerate — a local single-player terminal game has no authentication, no data privacy concerns, no network attack surface. The artifact should be generated but acknowledge this is a degenerate case (proportionality assessment — Principle 10). Any residual concerns (e.g., file write for future high scores) should be noted.
 - `[simulation]` **Test Specifications** include concrete scenarios for game systems: collision detection (bullet hits enemy, enemy hits player, boundary collisions), input handling (arrow key movement, firing, pause), rendering (screen update, resize handling), game state transitions (title → playing → paused → game over), wave progression, and scoring. Tests must address how to test real-time game systems — likely through abstraction/mocking of the game loop.
 - `[simulation]` **NFRs** address frame rate/rendering performance (smooth gameplay feel), input responsiveness (no perceptible input lag), startup time (fast launch), terminal compatibility (minimum terminal size, color support tiers), and memory usage (shouldn't grow unbounded during play).
 - `[simulation]` **Operational Spec** is minimal — this is a local app with no server, no deployment infrastructure, no monitoring. Should address: how to install and run (one command), minimum system requirements, graceful handling of unsupported terminals.
@@ -295,7 +295,7 @@ These scripted responses extend the test conversation for the build and iteratio
 
 **Must-not-do:**
 
-- `[simulation]` Must not generate UI Application shape-specific artifacts (information architecture, screen specs, design direction for web/mobile, accessibility spec written for web).
+- `[simulation]` Must not generate human-interface-specific artifacts (information architecture, screen specs, design direction for web/mobile, accessibility spec written for web).
 - `[simulation]` Must not generate Automation/Pipeline or API/Service artifacts.
 - `[simulation]` Must not over-engineer the security model (no OAuth, no RBAC, no session management for a single-player local game).
 - `[simulation]` Must not specify web-centric NFRs (page load times, API response times, CDN caching).
@@ -312,14 +312,14 @@ These scripted responses extend the test conversation for the build and iteratio
 - `[simulation]` A coding agent reading these artifacts would understand they're building a real-time game loop, not a request-response application.
 - `[simulation]` Total artifact pages 6-12 for low-medium risk; security and operational specs each under 1 page.
 
-### Review Lenses (C4)
+### Review Perspectives (C4)
 
 **Must-do:**
 
-- `[simulation]` **Product Lens:** Confirms this is a real (if niche) desire — terminal games are fun to build and play. Scope is appropriate for a weekend project. Validates that the "Galaga feel" is captured in the product brief.
-- `[simulation]` **Design Lens:** Evaluates the text-based visual design: Are game states clear to the player? Is the game area layout readable? Are different entity types visually distinguishable? Is color used effectively? Addresses terminal color accessibility (colorblind users, monochrome terminals, limited-color terminals). Evaluates first-run/title screen experience and game over state. Does NOT evaluate web/mobile design concerns.
-- `[simulation]` **Architecture Lens:** Evaluates game loop architecture (fixed timestep vs variable, update-render separation). Evaluates terminal abstraction strategy (how to handle cross-platform differences). Evaluates resize handling (how game boundaries and entity positions adapt). Raises the input model (non-blocking keyboard input in a terminal is platform-specific and architecturally significant).
-- `[simulation]` **Skeptic Lens:** Raises at least two realistic concerns from this set: What happens when the terminal is too small to play? What happens on terminals with no color support? How does the game handle key repeat rates (holding arrow keys)? What happens if resize occurs mid-collision-check? What about terminals with slow rendering (SSH over slow connection)?
+- `[simulation]` **Product perspective:** Confirms this is a real (if niche) desire — terminal games are fun to build and play. Scope is appropriate for a weekend project. Validates that the "Galaga feel" is captured in the product brief.
+- `[simulation]` **Design perspective:** Evaluates the text-based visual design: Are game states clear to the player? Is the game area layout readable? Are different entity types visually distinguishable? Is color used effectively? Addresses terminal color accessibility (colorblind users, monochrome terminals, limited-color terminals). Evaluates first-run/title screen experience and game over state. Does NOT evaluate web/mobile design concerns.
+- `[simulation]` **Architecture perspective:** Evaluates game loop architecture (fixed timestep vs variable, update-render separation). Evaluates terminal abstraction strategy (how to handle cross-platform differences). Evaluates resize handling (how game boundaries and entity positions adapt). Raises the input model (non-blocking keyboard input in a terminal is platform-specific and architecturally significant).
+- `[simulation]` **Skeptic perspective:** Raises at least two realistic concerns from this set: What happens when the terminal is too small to play? What happens on terminals with no color support? How does the game handle key repeat rates (holding arrow keys)? What happens if resize occurs mid-collision-check? What about terminals with slow rendering (SSH over slow connection)?
 - `[simulation]` Each finding has a specific recommendation, not just an observation.
 - `[simulation]` Each finding has a severity level (blocking / warning / note).
 
@@ -450,9 +450,9 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-do:**
 
-- `[simulation]` Spec compliance check runs after each feature chunk (scaffold exempt from full compliance check).
+- `[simulation]` Critic review runs after each feature chunk (scaffold exempt from full review).
 - `[simulation]` Test count never decreases between chunks.
-- `[simulation]` All core flows from the Product Brief have implementation evidence in `spec_compliance`.
+- `[simulation]` All core flows from the Product Brief have implementation evidence in the Critic's review.
 - `[simulation]` Critic actively reviews each feature chunk with at least 2 specific findings per chunk (any severity), each referencing specific code or artifact locations.
 - `[simulation]` Critic review was invoked automatically as part of the process, not prompted by user request. The system must not ask "Want me to run the Critic?" — it runs it proactively.
 - `[simulation]` Fix-by-fudging detection is active: if a test is weakened to pass, the Critic catches it.
@@ -506,7 +506,7 @@ The scenario succeeds when:
 2. Discovery surfaces the real challenges (cross-platform terminal I/O, real-time game loop, game design) without wasting time on inapplicable concerns (web design, authentication, API contracts, monitoring infrastructure).
 3. The system proactively contributes game design expertise: difficulty curves, enemy behavior design, visual feedback, game states. The user should feel like the system added creative value, not just extracted requirements.
 4. All 7 universal artifacts are generated with correct frontmatter and internal consistency. Security model and operational spec are appropriately minimal. Data model and test specs reflect real-time game architecture, not CRUD patterns.
-5. Review Lenses produce terminal-game-specific findings: terminal compatibility, game loop architecture, text-based visual design, input handling. NOT web/mobile findings.
+5. Review Perspectives produce terminal-game-specific findings: terminal compatibility, game loop architecture, text-based visual design, input handling. NOT web/mobile findings.
 6. The total output is proportionate — thorough on the genuinely complex aspects (game loop, terminal I/O, game design), minimal on the degenerate aspects (security, ops, auth).
 7. A coding agent reading the output would understand they're building a real-time terminal game and have clear, unambiguous specifications for game entities, game states, input handling, rendering, and cross-platform compatibility.
 
@@ -518,6 +518,6 @@ The scenario succeeds when:
 11. Terminal resize during gameplay works without crashing or corrupting the display.
 12. The Critic reviewed each chunk with game-relevant findings.
 13. High score persistence handled in one iteration cycle without regressions.
-14. At least one framework observation captured during the process.
+14. At least one learning captured during the process.
 15. The framework recognized and adapted to the unusual platform (terminal) — it didn't try to build a web app in a terminal or apply web-centric patterns to a game.
 16. Process was proportionate to a fun side project with genuine technical depth.

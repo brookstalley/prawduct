@@ -437,13 +437,14 @@ class TestProjectStateV5Fields:
         assert "change_log" in state
 
     def test_structural_characteristics_preserved(self, state: dict):
-        """All 5 structural characteristics must still be present."""
+        """All 6 structural characteristics must still be present."""
         structural = state["classification"]["structural"]
         assert "has_human_interface" in structural
         assert "runs_unattended" in structural
         assert "exposes_programmatic_interface" in structural
         assert "has_multiple_party_types" in structural
         assert "handles_sensitive_data" in structural
+        assert "multi_process_distributed" in structural
 
     def test_observability_approach_preserved(self, state: dict):
         """observability_approach must still be in design_decisions."""

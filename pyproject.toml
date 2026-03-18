@@ -5,3 +5,9 @@ requires-python = ">=3.10"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = [
+    "-n", "auto",
+    "--dist", "loadfile",
+    "--timeout", "30",
+    "--timeout-method", "thread",
+]

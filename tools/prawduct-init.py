@@ -40,7 +40,9 @@ BLOCK_BEGIN = _sync_mod.BLOCK_BEGIN
 GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.pr-reviews/",
     ".prawduct/.session-git-baseline",
+    ".prawduct/.session-handoff.md",
     ".prawduct/.session-reflected",
     ".prawduct/.session-start",
     ".prawduct/.subagent-briefing.md",
@@ -192,7 +194,33 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created .prawduct/artifacts/boundary-patterns.md")
 
-    # 7. Learnings starter
+    # 6.5. PR review instructions
+    if write_template(
+        TEMPLATES_DIR / "pr-review.md",
+        target / ".prawduct" / "pr-review.md",
+        subs,
+    ):
+        actions.append("Created .prawduct/pr-review.md")
+
+    # 6.6. PR slash command
+    commands_dir = target / ".claude" / "commands"
+    if ensure_dir(commands_dir):
+        actions.append("Created .claude/commands/")
+    pr_cmd_src = TEMPLATES_DIR / "commands-pr.md"
+    pr_cmd_dst = commands_dir / "pr.md"
+    if pr_cmd_src.is_file() and write_template(pr_cmd_src, pr_cmd_dst, subs):
+        actions.append("Created .claude/commands/pr.md")
+
+    # 7. Test infrastructure (conftest.py with parallel test support)
+    tests_dir = target / "tests"
+    if ensure_dir(tests_dir):
+        actions.append("Created tests/")
+    conftest_dst = tests_dir / "conftest.py"
+    if not conftest_dst.is_file():
+        shutil.copy2(TEMPLATES_DIR / "conftest.py", conftest_dst)
+        actions.append("Created tests/conftest.py (parallel test support)")
+
+    # 8. Learnings starter
     learnings = target / ".prawduct" / "learnings.md"
     if not learnings.is_file():
         learnings.write_text(
@@ -200,14 +228,14 @@ def run_init(target_dir: str, product_name: str) -> dict:
         )
         actions.append("Created .prawduct/learnings.md")
 
-    # 8. Product hook
+    # 9. Product hook
     if copy_hook(
         FRAMEWORK_DIR / "tools" / "product-hook",
         target / "tools" / "product-hook",
     ):
         actions.append("Created tools/product-hook")
 
-    # 9. Settings.json (with subs for banner)
+    # 10. Settings.json (with subs for banner)
     if merge_settings(
         target / ".claude" / "settings.json",
         TEMPLATES_DIR / "product-settings.json",
@@ -215,11 +243,11 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created/updated .claude/settings.json")
 
-    # 10. .gitignore
+    # 11. .gitignore
     if update_gitignore(target):
         actions.append("Updated .gitignore")
 
-    # 11. Sync manifest
+    # 12. Sync manifest
     manifest_path = target / ".prawduct" / "sync-manifest.json"
     if not manifest_path.is_file():
         claude_content = (target / "CLAUDE.md").read_text()
@@ -227,6 +255,12 @@ def run_init(target_dir: str, product_name: str) -> dict:
             "CLAUDE.md": compute_block_hash(claude_content),
             ".prawduct/critic-review.md": compute_hash(
                 target / ".prawduct" / "critic-review.md"
+            ),
+            ".prawduct/pr-review.md": compute_hash(
+                target / ".prawduct" / "pr-review.md"
+            ),
+            ".claude/commands/pr.md": compute_hash(
+                target / ".claude" / "commands" / "pr.md"
             ),
             "tools/product-hook": compute_hash(target / "tools" / "product-hook"),
             ".claude/settings.json": None,  # merge_settings doesn't use hash

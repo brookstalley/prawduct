@@ -22,6 +22,7 @@ Developer preferences for how code is written in this project. Captured during d
 - **Style**: (e.g., descriptive names, AAA pattern, table-driven)
 - **Coverage expectations**: (e.g., happy path + error cases, comprehensive edge cases)
 - **Test location**: (e.g., tests/ mirror of src/, colocated, __tests__/)
+- **Parallelization**: (e.g., pytest-xdist with --dist loadgroup, vitest threads)
 
 ## Architecture Patterns
 

@@ -2,6 +2,18 @@
 
 Building is where plans meet reality. Every unit of work — whether it's the first feature of a new project or chunk 80 of a mature one — follows the same cycle: **understand → plan → build → verify.** What changes is the depth, determined by the work's size and type.
 
+## Sessions and Work Cycles
+
+A **session** is one Claude Code invocation — the period between the `clear` hook firing (at startup or `/clear`) and the `stop` hook firing (at exit). The git baseline, reflection gate, and Critic gate all scope to the session.
+
+A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
+
+**Context compaction** is a context-management event within a session — it is NOT a session boundary. Compaction does not trigger hooks, does not reset the git baseline, and does not create a governance checkpoint. Anything that must survive compaction — plans, decisions, rationale, chunk definitions — must be written to a file before compaction occurs. Conversation context is ephemeral; artifacts persist.
+
+**`/clear` between work cycles is recommended** for cleaner governance. It resets the git baseline (so the next work cycle's canary only sees its own changes), archives the previous reflection, and starts fresh context. But it is not required — multiple work cycles within a single session work correctly.
+
+The stop hook is a **final safety net**, enforcing minimum governance for the session: at least one reflection was captured, and the Critic was invoked if code was built against a plan. Per-work-cycle governance (Critic after each chunk, reflection after each significant action) is the methodology's responsibility, not the hook's.
+
 ## Work-Scaled Governance
 
 There are no phases. The depth of governance scales with two dimensions:
@@ -24,9 +36,17 @@ Classification heuristic: 1-2 files = trivial/small; 5+ files or new dependency 
 
 ## The Build Cycle
 
-**Establish a green baseline.** Before starting the first chunk of a session, run the full test suite. Every test must pass. If any test fails — for any reason — fix it before proceeding. There is no "pre-existing failure" exception. A failing test means something is wrong: the code, the environment, a dependency, or the test itself. Diagnose and fix it. This is your clean baseline; without it, you can't distinguish new breakage from old.
+**Establish a clean baseline.** Before starting the first work cycle of a session, establish a clean state:
 
-**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently.
+- *Tests*: Run the full test suite. Every test must pass. Fix any failures — there is no "pre-existing" exception.
+- *Git state*: Check for uncommitted changes. Commit or stash unrelated work. A dirty working tree blurs the boundary between what you built and what was already there.
+- *Canary findings*: Review any compliance findings from the session briefing. Address or explicitly acknowledge each one.
+
+There is no "pre-existing" exception — for tests, for broad exceptions, for stale artifacts, for anything. If you encounter a problem during your session, it is your responsibility to fix it or explicitly flag it with a reason it can't be fixed now. The concept of "pre-existing" is an escape hatch that allows quality to degrade permanently. Every session starts clean.
+
+**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently. Validate that files, modules, and components referenced in the chunk plan still exist — plans go stale when the codebase evolves (module renames, component deletions, API changes). A quick check before starting saves significant rework.
+
+**Persist plans immediately.** When scope evolves during a work cycle — new chunks emerge, the plan changes, gaps are discovered — write the updated plan to `build-plan.md` immediately. Conversation context is ephemeral; artifacts persist. A plan that exists only in conversation will be lost on compaction or session end. This is the most common way knowledge is lost across sessions.
 
 **Write tests.** Tests come first or alongside implementation, not after. Tests are your specification made executable. If you can't write the test, you don't understand the requirement well enough to implement it.
 
@@ -37,9 +57,11 @@ Test at the right level:
 
 Depth is proportionate to risk.
 
-**Implement.** Write the code that makes the tests pass. Follow the project's coding conventions (see `project-preferences.md`). Prefer simplicity — the right amount of abstraction is the minimum needed for the current chunk.
+**Implement.** Write the code that makes the tests pass. Follow the project's coding conventions (see `.prawduct/artifacts/project-preferences.md`). Prefer simplicity — the right amount of abstraction is the minimum needed for the current chunk.
 
 Add observability alongside features, not after. If the observability strategy calls for structured logging, log from chunk 1. Use instrumentation in layers: start with what the framework gives for free, add declarative markers, add contextual attributes, and reserve manual instrumentation for critical paths.
+
+**Update artifacts as you go.** When your implementation changes something an artifact describes — API surface, data model fields, test counts, architecture components — update that artifact now, as part of implementation. Don't defer artifact updates to a separate step at the end. Artifact drift is the #1 recurring quality issue at scale; updating inline prevents it.
 
 **Verify.** Two layers:
 
@@ -54,9 +76,21 @@ Scale verification to chunk significance. When you can't verify directly, say wh
 
 **Reflect.** The Critic just gave you independent feedback — the highest-signal moment for learning. What did the Critic catch that you missed? Does it match a pattern in `learnings.md`? Capture learnings immediately if the finding reveals a blind spot.
 
-**Update state and artifacts.** Record what was built. If the chunk changed behavior that artifacts describe — test counts, model fields, architecture components, API surfaces — update those artifacts now. The Critic checks bidirectional freshness: code matches artifacts AND artifacts describe code.
+**Verify artifacts are current.** If you updated artifacts during implementation (as instructed above), this is a quick confirmation. If not, do it now — check whether code changes affected anything artifacts describe (test counts, model fields, architecture components, API surfaces). The Critic checks bidirectional freshness: code matches artifacts AND artifacts describe code.
 
 **Compact completed state.** When `project-state.yaml` grows large (the hook warns at ~40KB), compact completed sections: reduce finished chunks to `{id, name, status: complete}`, trim test history, keep the last ~10 change log entries.
+
+## Session Scope Discipline
+
+Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades when reviewing many chunks at once — the reviewer loses focus across a large diff. Context compaction within a long session can lose governance context (plans, rationale, decisions that existed only in conversation).
+
+When you've completed 2-3 chunks and the Critic has reviewed them, or when the user switches to an independent task, recommend `/clear`. But **`/clear` is a handoff, not just a recommendation** — the next session starts cold with only what's in files. Before recommending `/clear`:
+
+1. **Persist pending context.** Any requirements, decisions, or plans discussed in conversation but not yet in a file — write them to `.prawduct/artifacts/` now. The next session won't have this conversation.
+2. **Update `work_in_progress`** in `project-state.yaml`. Set `description` and `context` (key decisions, what's done, what's next, artifact pointers). If work is done, clear both.
+3. **Then recommend `/clear`** with a brief note of what was persisted.
+
+The `/clear` hook auto-generates `.prawduct/.session-handoff.md` from WIP context, reflection, Critic findings, and changed files. The next session's briefing surfaces the context inline and points to the handoff file for detail.
 
 ## Investigated Changes
 
@@ -105,6 +139,8 @@ Subagent delegation is especially valuable when:
 
 **Parallel chunks:** When multiple chunks have no dependency between them, build them in parallel using separate subagents. Each subagent gets its own chunk spec. The main agent coordinates: launch all independent chunks, wait for results, run the combined test suite, then proceed with Critic review. Merge conflicts between parallel chunks are the main agent's responsibility.
 
+When running 2+ parallel subagents in a shared worktree, they can see each other's partial changes — this can confuse agents that check git status. Use worktree isolation (`isolation: "worktree"`) for truly independent chunks. The compliance canary may fire O(agents x edits) during parallel work — this noise is expected and can be acknowledged in the session reflection.
+
 **What stays in the main agent:** Critic review, reflection, and state updates. The subagent does implementation; the main agent maintains governance.
 
 ## Working With Specs
@@ -129,9 +165,13 @@ Tests are the most important artifact you produce during building. They're contr
 
 **Tests never weaken.** Test count doesn't decrease. Assertion depth doesn't decrease. Fix the code, never the test. This is Principle 1, and it's a bright line.
 
-**All tests pass, always.** There is no "pre-existing failure" exception. Diagnose and fix every failure.
+**All tests pass, always.** There is no "pre-existing" exception. Diagnose and fix every failure.
 
 **Test coverage is proportionate.** Match coverage to risk. Every product needs at least: happy path, error handling for likely failures, and edge cases for anything involving money, data, or safety.
+
+## Test Infrastructure Scaling
+
+Products ship with `tests/conftest.py` — a pytest-xdist hook that auto-groups tests by directory for parallel execution. Under 30s, sequential is fine. Over 30s, add `pytest-xdist` and `-n auto --dist loadgroup` to pyproject.toml. Over 120s, organize into subdirectories by concern — the grouping scales automatically.
 
 ## The Critic
 
@@ -147,6 +187,27 @@ After medium+ work, invoke the Critic as a separate agent. The Critic receives s
 See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (products) for full instructions.
 
 **Blocking findings** must be resolved before proceeding. **Warnings** should be addressed. **Notes** are informational. If you disagree with a finding, think carefully before dismissing — the Critic catches blind spots the builder can't see.
+
+## Creating Pull Requests
+
+Before creating a PR, use `/pr` to review and create. This invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
+
+If the user asks to "PR this", "create a PR", "push this up", "open a PR", or any similar request — use `/pr`. The command handles branch hygiene, review, and PR creation in one flow.
+
+See `agents/pr-reviewer/SKILL.md` (framework) or `.prawduct/pr-review.md` (products) for review criteria.
+
+## Exception Handling
+
+Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs and make debugging difficult.
+
+When a broad catch is genuinely necessary — system boundary error handlers, event loop recovery, top-level process supervisors — mark it explicitly:
+
+- Python: `except Exception as e:  # prawduct:ok-broad-except — reason`
+- JS/TS: `catch (e) { // prawduct:ok-broad-except — reason`
+
+The compliance canary skips marked lines. The Critic verifies that marked catches log with context and are at genuine system boundaries. The marker means "reviewed and intentional," not "exempt from review."
+
+Broad catches that swallow errors without logging (`except Exception: pass`, empty `catch {}`) are always findings — no marker can justify silencing errors.
 
 ## Common Traps
 
@@ -164,7 +225,7 @@ See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (produc
 
 **Mock-as-implementation**: Using mocks during development and never replacing them with real integrations. Mocks are for test isolation, not for avoiding infrastructure work. If the data model says "persisted to Postgres" and the code uses an in-memory dictionary, that's an unfinished implementation — not a passing test suite.
 
-**"Pre-existing" dismissal**: Labeling a failing test as pre-existing to justify moving on.
+**"Pre-existing" dismissal**: Labeling any quality issue — failing test, broad exception, stale artifact, missing coverage — as "pre-existing" to justify ignoring it. There is no pre-existing exception. If you found it, it's yours to fix or flag.
 
 **Uninvestigated decisions**: Making a major technology or architectural choice without research. Lock-in, pervasiveness, structural impact, and external dependencies all warrant investigation before commitment.
 

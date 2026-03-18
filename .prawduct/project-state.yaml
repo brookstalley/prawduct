@@ -10,7 +10,7 @@
 dependency_graph:
   - decision_id: principles-plus-structural-gates
     description: "Principles govern how-to-work behaviors; structural gates (hooks) enforce process-interruption behaviors Claude can't self-regulate"
-    affects_artifacts: [CLAUDE.md, methodology/, agents/critic/, tools/reflection-hook]
+    affects_artifacts: [CLAUDE.md, methodology/, agents/critic/, tools/product-hook]
   - decision_id: product-self-containment
     description: "Product repos carry everything needed to build — own CLAUDE.md, hooks, Critic instructions. No runtime dependency on framework."
     affects_artifacts: [templates/, tools/prawduct-init.py]
@@ -49,8 +49,12 @@ user_expertise:
 # =============================================================================
 
 work_in_progress:
-  current_work: null
+  description: null
+  size: null
+  type: null
+  current_chunk: null
   governance_level: null
+  context: null
 
 # =============================================================================
 # HEALTH CHECK
@@ -66,6 +70,28 @@ health_check:
 # =============================================================================
 
 change_log:
+  # --- v6: session discipline & quality hardening (2026-03-17) ---
+  - what: 'v6: Session discipline & quality hardening'
+    why: 'Analysis of 50+ discodon build sessions + TangleClaw feedback revealed: no session
+      definition, "pre-existing" escape hatch, plans lost on compaction, noisy broad-except
+      canary, artifact drift from late updates, no session scope guidance, learnings briefing
+      missed most formats, /clear escaped governance gates. 7-chunk implementation:
+      (1) session/work-cycle definition, (2) eliminate pre-existing + extended baseline,
+      (3) plan persistence + artifact updates during build, (4) broad-except pragma marking,
+      (5) session scope + pre-chunk validation + parallel agents, (6) /clear governance
+      warning + learnings briefing format, (7) tests + integration. 601 total tests (12 new).'
+    blast_radius: 'Modified: methodology/building.md (session definition, extended baseline,
+      plan persistence, artifact update timing, exception handling section, scope discipline,
+      pre-chunk validation, parallel agents), methodology/reflection.md (work cycles, persistence
+      check, reflections archive note), templates/product-claude.md (session/work-cycle,
+      no-pre-existing, plan persistence, artifact updates, session scope), templates/critic-review.md
+      (no-pre-existing, broad-except pragma), agents/critic/SKILL.md (no-pre-existing,
+      broad-except pragma), docs/principles.md (Principle 21 no-pre-existing rationale),
+      tools/product-hook (broad-except pragma detection, /clear governance warning, learnings
+      briefing format), CLAUDE.md (session/work-cycle reference),
+      tests/test_v5_hooks.py (12 new tests).'
+    classification: structural
+    date: 2026-03-17
   # --- v5: work-scaled governance (2026-03-09) ---
   - what: 'v5: Work-scaled governance replaces phase-based model'
     why: 'Phase-based governance (discovery→planning→building→reflection) was too rigid —
@@ -339,7 +365,7 @@ build_plan:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 584
+    test_count: 650
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md
@@ -351,6 +377,10 @@ build_state:
       - tests/test_prawduct_sync.py
       - tests/test_preferences_lifecycle.py
       - tests/test_v5_migration.py
+      - tests/test_v5_hooks.py
+      - tests/test_v5_methodology.py
+      - tests/test_v5_templates.py
+      - tests/test_pr_reviewer.py
       - tests/test_integration_lifecycle.py
 
 # =============================================================================
