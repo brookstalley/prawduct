@@ -39,6 +39,7 @@ Developer preferences for how code is written in this project. Captured during d
 ## Workflow
 
 - **PR creation**: wait_for_user (default: wait_for_user — only create PRs when explicitly asked; set to "automatic" to create PRs after Critic review passes)
+- **PR merge**: wait_for_user (default: wait_for_user — present the PR for user review before merging; set to "automatic" to merge after CI passes and review is clean)
 
 ---
 

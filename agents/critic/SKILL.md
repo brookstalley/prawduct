@@ -39,6 +39,7 @@ Your goals, in priority order:
 
 ### 2. Nothing Is Missing
 - Every requirement for this work is implemented or explicitly descoped → **BLOCKING** if silently dropped.
+- **Behavioral choices**: Does this change introduce a new feature that affects user workflow? If so, is the behavior configurable via `project-preferences.md` with a safe default? A feature that could reasonably work two ways (automatic vs. manual, verbose vs. quiet) but ships with only one hardcoded behavior → **WARNING**.
 - For user-visible changes: was the product verified beyond tests? → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
@@ -77,7 +78,7 @@ Your goals, in priority order:
 ### 7. The Design Is Sound
 - **Encapsulation**: Modules expose only what consumers need. Internal implementation details don't leak through public interfaces. State that should be private isn't accessible externally. → **WARNING** if boundaries are unclear or internals exposed.
 - **Coupling**: Changes in one module shouldn't force changes in unrelated modules. Watch for god objects/functions that concentrate too many responsibilities, and for modules that know too much about each other's internals. → **WARNING** if coupling is inappropriate.
-- **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists.
+- **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** is a common variant: migration paths, fallbacks, or compatibility shims when there is no existing deployment to migrate. If nobody asked for backwards compatibility, it's unnecessary complexity → **WARNING**.
 - **Deduplication**: Duplicated logic that should be extracted. Copy-paste patterns across files. Near-identical implementations that vary only in superficial ways. → **WARNING** for meaningful duplication.
 
 This goal applies proportionally — a 2-line helper doesn't need design review. Focus on patterns that will compound: a leaked abstraction others will depend on, coupling that will spread, complexity that will accumulate.
