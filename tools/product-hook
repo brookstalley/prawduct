@@ -472,7 +472,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                     dur_str = f"{minutes}m{seconds:02d}s"
                 else:
                     dur_str = f"{seconds}s"
-                lines.append(f"Last Critic review took {dur_str} — do not interrupt or check on the Critic while it runs")
+                lines.append(f"Last Critic review took {dur_str} — pestering the Critic will only make it grumpier")
         except Exception:  # prawduct:ok-broad-except — briefing must never block session start
             pass
 
