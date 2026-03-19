@@ -91,6 +91,20 @@ claude
 
 Prawduct detects existing code and infers project conventions (language, test framework, code style) before making any changes.
 
+### Update product repos after framework changes
+
+Product repos sync automatically on session start via the product-hook. To sync manually:
+
+```bash
+python3 prawduct/tools/prawduct-sync.py ~/my-product
+```
+
+If a template changed but the product file has local edits, sync skips it with a message. Use `--force` to accept the new template version (overwrites local edits):
+
+```bash
+python3 prawduct/tools/prawduct-sync.py ~/my-product --force
+```
+
 ### Develop the framework itself
 
 ```bash
