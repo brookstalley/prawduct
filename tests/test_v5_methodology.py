@@ -70,6 +70,7 @@ class TestBuildingMethodology:
 
     def test_has_goal_based_critic(self):
         assert "Nothing Is Broken" in self.content
+        assert "Design Is Sound" in self.content
 
     def test_has_build_cycle(self):
         assert "Build Cycle" in self.content
@@ -186,6 +187,7 @@ class TestCriticSkill:
             "Everything Is Coherent",
             "Decisions Were Deliberate",
             "System Can Be Understood",
+            "Design Is Sound",
         ]:
             assert goal in self.content
 
@@ -218,6 +220,55 @@ class TestCriticSkill:
 
     def test_independent_reviewer_statement(self):
         assert "independent" in self.content.lower()
+
+    def test_has_security_checks(self):
+        assert "injection" in self.content.lower()
+        assert "hardcoded secrets" in self.content.lower() or "credentials" in self.content.lower()
+        assert "auth" in self.content.lower()
+
+    def test_has_documentation_drift(self):
+        assert "documentation drift" in self.content.lower() or "doc" in self.content.lower()
+        assert "comments" in self.content.lower()
+
+    def test_has_design_goal_details(self):
+        assert "encapsulation" in self.content.lower()
+        assert "coupling" in self.content.lower()
+        assert "simplification" in self.content.lower() or "simpler" in self.content.lower()
+        assert "deduplication" in self.content.lower() or "duplicated" in self.content.lower()
+
+    def test_has_coordinator_pattern(self):
+        assert "coordinator" in self.content.lower()
+        assert "correctness reviewer" in self.content.lower()
+        assert "design reviewer" in self.content.lower()
+        assert "sustainability reviewer" in self.content.lower()
+
+    def test_note_severity_is_ambiguous(self):
+        """NOTE severity should indicate genuine ambiguity, not minor suggestions."""
+        for line in self.content.split("\n"):
+            if line.startswith("- **NOTE**"):
+                assert "ambiguous" in line.lower() or "unsure" in line.lower() or "genuinely" in line.lower()
+                break
+
+    def test_project_preferences_blocking(self):
+        """Project preferences violations should be BLOCKING."""
+        assert "project-preferences.md" in self.content
+        # Find the preferences line and verify BLOCKING severity
+        for line in self.content.split("\n"):
+            if "project-preferences" in line.lower() and "blocking" in line.lower():
+                break
+        else:
+            pytest.fail("project-preferences compliance should be BLOCKING")
+
+    def test_readme_active_check(self):
+        """Critic should actively check README, not just detect passive drift."""
+        assert "readme" in self.content.lower()
+        # Should mention actively reading the README
+        assert "actively read" in self.content.lower() or "read the" in self.content.lower()
+
+    def test_historical_records_immutable(self):
+        """Changelog and historical entries should not be flagged for stale terminology."""
+        assert "historical" in self.content.lower()
+        assert "immutable" in self.content.lower() or "changelog" in self.content.lower()
 
     def test_token_budget(self):
         tokens = estimate_tokens(self.content)

@@ -34,10 +34,16 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 
 Spawn a **separate agent** (via the Task tool) for independent review. The reviewer must run in its own context — it has NOT seen your reasoning, and that independence is the point.
 
-Tell it: "You are the PR reviewer. Read `agents/pr-reviewer/SKILL.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to `.prawduct/.pr-reviews/<branch-name>.json` (replace `/` with `--` in the branch name)."
+First, compute the evidence file path: take the current branch name, replace every `/` with `--`, append `.json`. For example, `feature/add-auth` becomes `feature--add-auth.json`. The full path is `.prawduct/.pr-reviews/<computed-filename>`.
+
+Create the `.prawduct/.pr-reviews/` directory if it doesn't exist.
+
+Tell the reviewer agent: "You are the PR reviewer. Read `agents/pr-reviewer/SKILL.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to `.prawduct/.pr-reviews/[computed-filename]`."
+
+**Pass the exact filename — do not ask the reviewer to compute it.**
 
 **Wait for the agent to complete.** Then:
-- Read the evidence file at `.prawduct/.pr-reviews/<branch-name>.json`
+- Read the evidence file at `.prawduct/.pr-reviews/[computed-filename]`
 - If the file does not exist, the review did not complete — do NOT proceed
 - Present findings to the user: BLOCKING → stop and fix. WARNING → present, proceed unless user objects. NOTE → include in output.
 
