@@ -35,6 +35,35 @@ from pathlib import Path
 BLOCK_BEGIN = "<!-- PRAWDUCT:BEGIN -->"
 BLOCK_END = "<!-- PRAWDUCT:END -->"
 
+# Canonical list of framework-managed files. Used by create_manifest (at init)
+# and run_sync (to backfill files added after a product was initialized).
+MANAGED_FILES = {
+    "CLAUDE.md": {
+        "template": "templates/product-claude.md",
+        "strategy": "block_template",
+    },
+    ".prawduct/critic-review.md": {
+        "template": "templates/critic-review.md",
+        "strategy": "template",
+    },
+    ".prawduct/pr-review.md": {
+        "template": "templates/pr-review.md",
+        "strategy": "template",
+    },
+    ".claude/commands/pr.md": {
+        "template": "templates/commands-pr.md",
+        "strategy": "template",
+    },
+    "tools/product-hook": {
+        "source": "tools/product-hook",
+        "strategy": "always_update",
+    },
+    ".claude/settings.json": {
+        "template": "templates/product-settings.json",
+        "strategy": "merge_settings",
+    },
+}
+
 
 def log(msg: str) -> None:
     """Print status to stderr."""
@@ -166,35 +195,7 @@ def create_manifest(
     """
     files: dict[str, dict] = {}
 
-    # Define the managed file configs
-    file_configs = {
-        "CLAUDE.md": {
-            "template": "templates/product-claude.md",
-            "strategy": "block_template",
-        },
-        ".prawduct/critic-review.md": {
-            "template": "templates/critic-review.md",
-            "strategy": "template",
-        },
-        ".prawduct/pr-review.md": {
-            "template": "templates/pr-review.md",
-            "strategy": "template",
-        },
-        ".claude/commands/pr.md": {
-            "template": "templates/commands-pr.md",
-            "strategy": "template",
-        },
-        "tools/product-hook": {
-            "source": "tools/product-hook",
-            "strategy": "always_update",
-        },
-        ".claude/settings.json": {
-            "template": "templates/product-settings.json",
-            "strategy": "merge_settings",
-        },
-    }
-
-    for rel_path, config in file_configs.items():
+    for rel_path, config in MANAGED_FILES.items():
         entry = dict(config)
         entry["generated_hash"] = file_hashes.get(rel_path)
         files[rel_path] = entry
@@ -519,6 +520,14 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         manifest = json.loads(manifest_path.read_text())
 
     files = manifest.get("files", {})
+
+    # Backfill: add any managed files missing from the manifest (added after init)
+    for rel_path, config in MANAGED_FILES.items():
+        if rel_path not in files:
+            files[rel_path] = dict(config)
+            files[rel_path]["generated_hash"] = None  # Forces creation on first sync
+            actions.append(f"Registered {rel_path} (new managed file)")
+
     updated_files = dict(files)
 
     for rel_path, config in files.items():
