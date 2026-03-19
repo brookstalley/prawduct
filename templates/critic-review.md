@@ -80,6 +80,7 @@ Write to `.prawduct/.critic-findings.json`:
 ```json
 {
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
+  "duration_seconds": 180,
   "files_reviewed": ["src/app.py"],
   "findings": [
     {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "description"}
@@ -87,5 +88,7 @@ Write to `.prawduct/.critic-findings.json`:
   "summary": "1 warning. Changes ready to proceed after addressing."
 }
 ```
+
+`duration_seconds`: your best estimate of wall-clock review time. Surfaced in session briefing to set expectations.
 
 Clean review: empty findings array, summary says "No issues found."

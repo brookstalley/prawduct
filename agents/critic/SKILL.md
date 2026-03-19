@@ -156,6 +156,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 ```json
 {
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
+  "duration_seconds": 180,
   "files_reviewed": ["file1", "file2"],
   "findings": [
     {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description"}
@@ -163,6 +164,8 @@ If no findings: "No issues found. Changes are ready to proceed."
   "summary": "N warnings. Changes ready to proceed."
 }
 ```
+
+`duration_seconds` is your best estimate of how long the review took (wall-clock, from activation to writing findings). This is surfaced in the session briefing to set expectations for future reviews.
 
 For a clean review, findings array is empty and summary says "No issues found."
 
