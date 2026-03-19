@@ -564,6 +564,51 @@ class TestCriticReviewGoalBased:
         """Output format should include signals section."""
         assert "### Signals" in template
 
+    def test_goal_design_is_sound(self, template: str):
+        """Must have a 'design is sound' goal."""
+        assert "design is sound" in template.lower()
+
+    def test_has_security_checks(self, template: str):
+        """Must include security review items."""
+        assert "injection" in template.lower()
+        assert "secret" in template.lower() or "credential" in template.lower()
+
+    def test_has_documentation_drift(self, template: str):
+        """Must check for documentation drift beyond artifacts."""
+        assert "documentation drift" in template.lower()
+
+    def test_has_design_details(self, template: str):
+        """Must include encapsulation, coupling, simplification, deduplication."""
+        assert "encapsulation" in template.lower()
+        assert "coupling" in template.lower()
+
+    def test_has_coordinator_pattern(self, template: str):
+        """Must include coordinator pattern for parallel review."""
+        assert "coordinator" in template.lower()
+
+    def test_note_severity_is_ambiguous(self, template: str):
+        """NOTE severity should indicate genuine ambiguity."""
+        for line in template.split("\n"):
+            if line.startswith("- **NOTE**"):
+                assert "ambiguous" in line.lower() or "unsure" in line.lower() or "genuinely" in line.lower()
+                break
+
+    def test_project_preferences_blocking(self, template: str):
+        """Project preferences violations should be BLOCKING."""
+        for line in template.split("\n"):
+            if "project-preferences" in line.lower() and "blocking" in line.lower():
+                break
+        else:
+            pytest.fail("project-preferences compliance should be BLOCKING in product template")
+
+    def test_readme_active_check(self, template: str):
+        """Critic should actively check README."""
+        assert "readme" in template.lower()
+
+    def test_historical_records_immutable(self, template: str):
+        """Historical records should not be flagged."""
+        assert "historical" in template.lower() or "immutable" in template.lower()
+
 
 # =============================================================================
 # boundary-patterns.md — Template Structure

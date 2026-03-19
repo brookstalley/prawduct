@@ -12,7 +12,7 @@ Maps concerns to pipeline coverage. Use this as a starting point for completenes
 
 | Concern | Discovery | Artifact | Builder | Critic | Notes |
 |---------|-----------|----------|---------|--------|-------|
-| Security | Structural: `handles_sensitive_data` | Security model artifact | building.md | Goal 2 (Nothing Is Missing) | Full coverage |
+| Security | Structural: `handles_sensitive_data` | Security model artifact | building.md | Goal 1 (Nothing Is Broken: injection, secrets, input validation) + Goal 2 (auth completeness) | Full coverage |
 | Accessibility | discovery.md: Surface Accessibility Needs | project-state.yaml: `accessibility_approach` | building.md (Principle 7 ref) | Goal 2 (Nothing Is Missing) | Added in meta-reflection |
 | Testing | Inferred from risk level | Test specifications artifact | building.md: Test Discipline | Goal 1 (Nothing Is Broken) | Full coverage |
 | Cost awareness | discovery.md: Surface Operational Costs | project-state.yaml: `cost_estimates`, `cost_constraints` | — | — | Discovery + artifact only; no build/critic enforcement. Proportionate for now. |

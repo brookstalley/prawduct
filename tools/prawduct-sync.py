@@ -461,7 +461,7 @@ def migrate_v4_to_v5(product_dir: Path) -> list[str]:
     return actions
 
 
-def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: bool = False) -> dict:
+def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: bool = False, force: bool = False) -> dict:
     """Run the sync algorithm on a product directory.
 
     Returns a summary dict with actions taken, notes, and any warnings.
@@ -544,9 +544,18 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
             # Template changed — check if user edited the file
             current_hash = compute_hash(dst)
             if current_hash is not None and current_hash != stored_hash:
-                notes.append(
-                    f"Skipped {rel_path} — user edited (template updated, restart to see changes)"
-                )
+                if force:
+                    dst.write_text(rendered)
+                    new_hash = compute_hash(dst)
+                    updated_files[rel_path] = dict(config)
+                    updated_files[rel_path]["generated_hash"] = new_hash
+                    actions.append(f"Force-updated {rel_path} (local edits overwritten)")
+                    if rel_path in ("CLAUDE.md",):
+                        notes.append(f"Updated {rel_path} — restart session for full effect")
+                else:
+                    notes.append(
+                        f"Skipped {rel_path} — new template available but file has local edits (re-run with --force to overwrite)"
+                    )
                 continue
 
             # Safe to update
@@ -620,9 +629,17 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
             # Check if user edited the block
             product_block_hash = hashlib.sha256(product_block.encode()).hexdigest()
             if product_block_hash != stored_hash:
-                notes.append(
-                    f"Skipped {rel_path} — user edited block content"
-                )
+                if force:
+                    new_content = before + rendered_block + after
+                    dst.write_text(new_content)
+                    updated_files[rel_path] = dict(config)
+                    updated_files[rel_path]["generated_hash"] = rendered_block_hash
+                    actions.append(f"Force-updated {rel_path} block (local edits overwritten)")
+                    notes.append(f"Updated {rel_path} — restart session for full effect")
+                else:
+                    notes.append(
+                        f"Skipped {rel_path} — new template available but block has local edits (re-run with --force to overwrite)"
+                    )
                 continue
 
             # Safe to replace block in-place, preserving before/after
@@ -738,9 +755,14 @@ def main() -> int:
         dest="no_pull",
         help="Skip git pull/fetch of the framework repo",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite locally-edited files with new template versions",
+    )
     args = parser.parse_args()
 
-    result = run_sync(args.product_dir, args.framework_dir, no_pull=args.no_pull)
+    result = run_sync(args.product_dir, args.framework_dir, no_pull=args.no_pull, force=args.force)
 
     if args.json_mode:
         print(json.dumps(result, indent=2))

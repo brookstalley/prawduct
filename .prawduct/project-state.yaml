@@ -365,7 +365,7 @@ build_plan:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 650
+    test_count: 670
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md

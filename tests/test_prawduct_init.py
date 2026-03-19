@@ -334,13 +334,14 @@ class TestTemplatePropagation:
 
     def test_critic_review_has_all_checks(self):
         content = (self.target / ".prawduct" / "critic-review.md").read_text()
-        # v5: Should have the 6 goal-based review sections
+        # Should have the 7 goal-based review sections
         assert "Nothing Is Broken" in content
         assert "Nothing Is Missing" in content
         assert "Nothing Is Unintended" in content
         assert "Everything Is Coherent" in content
         assert "Decisions Were Deliberate" in content
         assert "System Can Be Understood" in content
+        assert "Design Is Sound" in content
 
     def test_project_state_has_expected_structure(self):
         content = (self.target / ".prawduct" / "project-state.yaml").read_text()
