@@ -19,7 +19,7 @@ These degrade at scale. The session briefing reinforces them; the stop hook dete
 - **When changes cross boundaries** (API, database, IPC, frontend/backend), verify consumers are not broken. See `.prawduct/artifacts/boundary-patterns.md` for this project's contract surfaces.
 - **Update artifacts when code changes what they describe.** Stale specs are worse than no specs.
 - **Invoke the Critic after medium+ work.** Not optional. The stop hook enforces this.
-- **Use `/pr` for all PR operations.** When the user asks to create a PR, push changes up, merge, or check PR status — use `/pr`. It handles branch hygiene, independent review, and PR creation in one flow.
+- **Do not create PRs unless asked.** Only use `/pr` when the user explicitly asks to create a PR, push changes, merge, or check PR status. Check `project-preferences.md` — if `PR creation` is set to `automatic`, you may create PRs after Critic review passes without being asked.
 
 ## Principles
 
@@ -76,6 +76,8 @@ Generate artifacts in `.prawduct/artifacts/`, scaled to risk. Universal: product
 
 ### Creating Pull Requests
 
+**Default: wait for the user to ask.** Only create PRs when the user explicitly requests it (says "PR this", "create a PR", "push this up", etc.). If `project-preferences.md` sets `PR creation: automatic`, you may create PRs after Critic review passes without being asked.
+
 Use `/pr` for the full PR lifecycle. It detects context (create/update/merge/status) and handles review automatically. The PR reviewer runs as a separate agent — independent release-readiness assessment complementing the Critic's per-chunk reviews.
 
 ### Session Scope
@@ -103,7 +105,7 @@ Spawn a new agent (Task tool) and tell it:
 
 The Critic receives goals and signals (files changed, work type, work size) and reasons about what to check. It is not a fixed checklist — it focuses on what matters for the specific change.
 
-**The Critic takes time.** Reviews typically take 1-5 minutes depending on codebase size and change scope. Do not check on it, interrupt it, or send messages to hurry it along — the Agent tool notifies you when it completes. Pestering the Critic only makes it grumpier. Do other work while waiting, or simply wait.
+**The Critic takes time.** Reviews typically take 1-5 minutes depending on codebase size and change scope. Do not check on it, interrupt it, or send messages to hurry it along — the Agent tool notifies you when it completes. Pestering the Critic only makes it grumpier. Do other work while waiting, or simply wait. Read a book. Go sit on the grass. 
 
 ## Compact Instructions
 

@@ -195,9 +195,9 @@ See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (produc
 
 ## Creating Pull Requests
 
-Before creating a PR, use `/pr` to review and create. This invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
+**Default: wait for the user to ask.** Do not create PRs proactively. Only use `/pr` when the user explicitly requests it ("PR this", "create a PR", "push this up", "open a PR"). If `project-preferences.md` sets `PR creation: automatic`, you may create PRs after Critic review passes without being asked.
 
-If the user asks to "PR this", "create a PR", "push this up", "open a PR", or any similar request — use `/pr`. The command handles branch hygiene, review, and PR creation in one flow.
+Use `/pr` for the full PR lifecycle. It invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
 
 See `agents/pr-reviewer/SKILL.md` (framework) or `.prawduct/pr-review.md` (products) for review criteria.
 

@@ -36,8 +36,12 @@ Developer preferences for how code is written in this project. Captured during d
 - **Key libraries**: (list anything non-obvious that new sessions should know about)
 - **Dev commands**: (e.g., `pytest tests/`, `npm run dev`, `cargo test`)
 
+## Workflow
+
+- **PR creation**: wait_for_user (default: wait_for_user — only create PRs when explicitly asked; set to "automatic" to create PRs after Critic review passes)
+
 ---
 
-**What belongs here**: How you want code written. Conventions, tools, style preferences.
+**What belongs here**: How you want code written. Conventions, tools, style preferences, workflow preferences.
 
 **What doesn't belong here**: What to build (product-brief), system design (data-model, architecture), performance targets (nonfunctional-requirements), or deployment (operational-spec).
