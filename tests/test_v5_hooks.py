@@ -535,6 +535,46 @@ class TestSessionBriefing:
         # The line should not appear since there's nothing to track
         assert "if you add or remove tests" not in briefing
 
+    def test_briefing_shows_critic_duration(self, tmp_path: Path):
+        """Briefing should show last Critic review duration."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "build_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+        (prawduct / ".critic-findings.json").write_text(json.dumps({
+            "timestamp": "2026-03-19T10:00:00Z",
+            "duration_seconds": 195,
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues found."
+        }))
+
+        result = run_hook("clear", tmp_path)
+
+        assert "3m15s" in result.stdout
+        assert "do not interrupt" in result.stdout.lower()
+
+    def test_briefing_no_critic_duration_when_missing(self, tmp_path: Path):
+        """Briefing should not show duration if findings have no duration_seconds."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "build_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+        (prawduct / ".critic-findings.json").write_text(json.dumps({
+            "timestamp": "2026-03-19T10:00:00Z",
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues found."
+        }))
+
+        result = run_hook("clear", tmp_path)
+
+        assert "Last Critic review" not in result.stdout
+
     def test_briefing_excludes_redundant_reminders(self, tmp_path: Path):
         """Briefing should not include reminders that are already in CLAUDE.md Critical Rules."""
         prawduct = tmp_path / ".prawduct"

@@ -103,6 +103,8 @@ Spawn a new agent (Task tool) and tell it:
 
 The Critic receives goals and signals (files changed, work type, work size) and reasons about what to check. It is not a fixed checklist — it focuses on what matters for the specific change.
 
+**The Critic takes time.** Reviews typically take 1-5 minutes depending on codebase size and change scope. Do not check on it, interrupt it, or send messages to hurry it along — the Agent tool notifies you when it completes. Do other work while waiting, or simply wait.
+
 ## Compact Instructions
 
 When compacting, preserve: what's being built, current work and governance level, unresolved issues, instruction to re-read CLAUDE.md and learnings.md, Critic review requirement, reflection requirement, in-progress learnings. Do NOT inline full file contents — summarize what was learned and reference file paths for re-reading.

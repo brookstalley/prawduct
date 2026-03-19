@@ -189,6 +189,8 @@ For medium/large reviews, the Critic uses a coordinator pattern — spawning par
 
 See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (products) for full instructions.
 
+**The Critic takes time.** Reviews typically take 1-5 minutes depending on codebase size and change scope. Do not check on it, interrupt it, or send messages to hurry it along — the Agent tool notifies you when it completes. Do other work while waiting, or simply wait.
+
 **Blocking findings** must be resolved before proceeding. **Warnings** should be addressed — the Critic only uses WARNING when confident something is a real issue. **Notes** are genuinely ambiguous — the Critic isn't sure and the builder should decide. If you disagree with a finding, think carefully before dismissing — the Critic catches blind spots the builder can't see.
 
 ## Creating Pull Requests

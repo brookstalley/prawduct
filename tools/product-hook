@@ -459,6 +459,23 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
         except Exception:  # prawduct:ok-broad-except — briefing must never block session start
             pass
 
+    # Last Critic review duration (set expectations for wait time)
+    critic_path = prawduct_dir / ".critic-findings.json"
+    if critic_path.is_file():
+        try:
+            critic_data = json.loads(critic_path.read_text())
+            duration = critic_data.get("duration_seconds")
+            if duration and isinstance(duration, (int, float)) and duration > 0:
+                minutes = int(duration) // 60
+                seconds = int(duration) % 60
+                if minutes > 0:
+                    dur_str = f"{minutes}m{seconds:02d}s"
+                else:
+                    dur_str = f"{seconds}s"
+                lines.append(f"Last Critic review took {dur_str} — do not interrupt or check on the Critic while it runs")
+        except Exception:  # prawduct:ok-broad-except — briefing must never block session start
+            pass
+
     # Relevant learnings
     learnings_path = prawduct_dir / "learnings.md"
     if learnings_path.is_file():
