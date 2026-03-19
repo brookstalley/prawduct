@@ -554,7 +554,7 @@ class TestSessionBriefing:
         result = run_hook("clear", tmp_path)
 
         assert "3m15s" in result.stdout
-        assert "do not interrupt" in result.stdout.lower()
+        assert "grumpier" in result.stdout.lower()
 
     def test_briefing_no_critic_duration_when_missing(self, tmp_path: Path):
         """Briefing should not show duration if findings have no duration_seconds."""
