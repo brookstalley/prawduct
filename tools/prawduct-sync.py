@@ -37,30 +37,37 @@ BLOCK_END = "<!-- PRAWDUCT:END -->"
 
 # Canonical list of framework-managed files. Used by create_manifest (at init)
 # and run_sync (to backfill files added after a product was initialized).
+# "description" is shown to the user when a file is backfilled (new capability onboarding).
 MANAGED_FILES = {
     "CLAUDE.md": {
         "template": "templates/product-claude.md",
         "strategy": "block_template",
+        "description": "Core principles and methodology instructions",
     },
     ".prawduct/critic-review.md": {
         "template": "templates/critic-review.md",
         "strategy": "template",
+        "description": "Independent Critic review instructions (7 quality goals + coordinator pattern)",
     },
     ".prawduct/pr-review.md": {
         "template": "templates/pr-review.md",
         "strategy": "template",
+        "description": "PR reviewer instructions for release-readiness assessment",
     },
     ".claude/commands/pr.md": {
         "template": "templates/commands-pr.md",
         "strategy": "template",
+        "description": "/pr skill — PR lifecycle management (create, update, merge, status). Configure PR behavior in project-preferences.md",
     },
     "tools/product-hook": {
         "source": "tools/product-hook",
         "strategy": "always_update",
+        "description": "Session governance hooks (reflection gate, Critic gate, session briefing)",
     },
     ".claude/settings.json": {
         "template": "templates/product-settings.json",
         "strategy": "merge_settings",
+        "description": "Claude Code settings with hook configuration",
     },
 }
 
@@ -526,7 +533,11 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         if rel_path not in files:
             files[rel_path] = dict(config)
             files[rel_path]["generated_hash"] = None  # Forces creation on first sync
-            actions.append(f"Registered {rel_path} (new managed file)")
+            desc = config.get("description", "")
+            if desc:
+                actions.append(f"New: {rel_path} — {desc}")
+            else:
+                actions.append(f"New: {rel_path}")
 
     updated_files = dict(files)
 

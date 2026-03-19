@@ -19,7 +19,7 @@ Decide what to check based on: **files changed** (which layers, boundary crossin
 Tests pass, count not decreased → **BLOCKING**. Tests verify behavior, not implementation. There is no "pre-existing" exception — if the Critic finds a problem, it's a finding regardless of when it was introduced. **Security in changed code:** input validation at trust boundaries → **BLOCKING** if exploitable; no injection vectors (SQL, command, XSS, path traversal) → **BLOCKING**; no hardcoded secrets → **BLOCKING**; auth/authz on new endpoints → **WARNING** if missing.
 
 ### 2. Nothing Is Missing
-Every requirement implemented or explicitly descoped → **BLOCKING**. Error paths have coverage → **WARNING** if missing. If `infrastructure_dependencies` declared: integration tests exercise real dependencies → **WARNING** if all mocked.
+Every requirement implemented or explicitly descoped → **BLOCKING**. **Behavioral choices:** new feature that affects user workflow should be configurable via `project-preferences.md` with a safe default → **WARNING** if hardcoded. Error paths have coverage → **WARNING** if missing. If `infrastructure_dependencies` declared: integration tests exercise real dependencies → **WARNING** if all mocked.
 
 ### 3. Nothing Is Unintended
 No unlisted dependencies → **BLOCKING**. No undocumented architectural decisions → **BLOCKING**. No scope creep → **WARNING**. No broad exception swallowing → **WARNING**. Catches marked with `prawduct:ok-broad-except` are intentional but still verifiable — confirm they log and are at system boundaries.
@@ -34,7 +34,7 @@ Dependencies have rationale. Architectural patterns documented. Boundary changes
 Error handling present → **WARNING** if missing. Logging appropriate → **WARNING** if absent in new paths. Observability strategy followed if it exists → **WARNING** if diverged. New capability with no failure detection → **BLOCKING**.
 
 ### 7. The Design Is Sound
-**Encapsulation:** modules expose only what consumers need; internals don't leak through public interfaces → **WARNING**. **Coupling:** changes in one module shouldn't force changes in unrelated modules; watch for god objects concentrating too many responsibilities → **WARNING**. **Simplification:** unnecessary abstractions, premature generalization, dead code, over-engineering → **WARNING** if simpler approach exists. **Deduplication:** duplicated logic across files, copy-paste patterns → **WARNING** for meaningful duplication. Apply proportionally — focus on patterns that will compound.
+**Encapsulation:** modules expose only what consumers need; internals don't leak through public interfaces → **WARNING**. **Coupling:** changes in one module shouldn't force changes in unrelated modules; watch for god objects concentrating too many responsibilities → **WARNING**. **Simplification:** unnecessary abstractions, premature generalization, dead code, over-engineering → **WARNING** if simpler approach exists; unnecessary backwards compatibility (migration paths, fallbacks when no existing deployment needs them) → **WARNING**. **Deduplication:** duplicated logic across files, copy-paste patterns → **WARNING** for meaningful duplication. Apply proportionally — focus on patterns that will compound.
 
 ## Severity
 

@@ -20,6 +20,7 @@ These degrade at scale. The session briefing reinforces them; the stop hook dete
 - **Update artifacts when code changes what they describe.** Stale specs are worse than no specs.
 - **Invoke the Critic after medium+ work.** Not optional. The stop hook enforces this.
 - **Do not create PRs unless asked.** Only use `/pr` when the user explicitly asks to create a PR, push changes, merge, or check PR status. Check `project-preferences.md` — if `PR creation` is set to `automatic`, you may create PRs after Critic review passes without being asked.
+- **No unnecessary backwards compatibility.** Do not add migration paths, fallbacks, or compatibility shims unless the user has an existing deployment that needs them. Backwards compatibility is a requirement to be elicited, not an assumption. Just make the change directly.
 
 ## Principles
 

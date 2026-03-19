@@ -67,6 +67,8 @@ Push branch with `-u`. Draft title and description from work context + review fi
 
 ## Merge Flow
 
+**Check `project-preferences.md` for `PR merge` setting.** If set to `wait_for_user` (default), present the PR URL and findings summary to the user and wait for them to say "merge" before proceeding. If set to `automatic`, merge after CI passes and review is clean.
+
 1. Verify CI checks pass (`gh pr checks`)
 2. Verify no merge conflicts
 3. Verify PR review evidence exists for this branch — if missing, run the reviewer first

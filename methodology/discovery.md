@@ -121,6 +121,22 @@ Every product has observability needs — even when the answer is "console.error
 
 **Capture to `project-state.yaml`** under `design_decisions.observability_approach`.
 
+## Surface Behavioral Choices
+
+When a new feature affects user workflow, ask: what behavioral variations exist? Users have different preferences about automation, notification, and control. Ship a safe default but make the choice configurable.
+
+**Use infer-confirm-proceed.** "This feature can [run automatically / wait for your go-ahead]. I'll default to [safe default] — you can change this in `project-preferences.md` anytime. Sound right?"
+
+**Common behavioral choices to surface:**
+- Automatic vs. manual triggers (e.g., create PRs automatically vs. wait to be asked)
+- Notification level (verbose progress vs. quiet until done)
+- Merge/deploy strategy (auto-merge vs. wait for review)
+- Backwards compatibility (do we need migration paths, or can we just change it?)
+
+**The backwards-compatibility question is especially important.** Claude's instinct is to add migration paths, fallbacks, and compatibility shims even when nobody asked for them. Before adding any backwards-compatibility code, ask: is there actually an existing deployment that needs migration? If not, just make the change directly. Backwards compatibility is a requirement to be elicited, not an assumption to be baked in.
+
+**Capture to `project-preferences.md`** under the Workflow section. Preferences are the team's declared standards — the Critic validates code against them.
+
 ## Identify Boundary Patterns
 
 As structural characteristics emerge, note where components will interact — API endpoints, database schemas, IPC channels, frontend/backend type contracts. These become the project's contract surfaces, documented in `.prawduct/artifacts/boundary-patterns.md` during planning. Identifying them during discovery helps scope the build: boundary-heavy designs need more integration testing and consumer-impact investigation during building.
@@ -139,6 +155,7 @@ Discovery produces a `project-state.yaml` with:
 - **Observability approach**: signal types, correlation context, operational model — scaled to risk
 - **User expertise profile**: what the user knows and doesn't, inferred from conversation
 - **Product identity**: name, personality, technology preferences
+- **Workflow preferences**: behavioral choices for automation, PRs, merging — captured in `project-preferences.md`
 
 Discovery isn't a phase — it's continuous. Initial discovery produces enough understanding to start planning and building. But discovery continues throughout the project: new features need their own discovery, bug reports reveal missing understanding, and user feedback surfaces unasked questions. The depth of discovery scales with the work's size and risk, not with where you are in a timeline.
 

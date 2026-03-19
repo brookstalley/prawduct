@@ -586,8 +586,8 @@ class TestRunSync:
 
         result = run_sync(str(product), framework_dir=str(fw))
         assert result["synced"] is True
-        assert any("Registered" in a and "pr-review" in a for a in result["actions"])
-        assert any("Registered" in a and "pr.md" in a for a in result["actions"])
+        assert any("New:" in a and "pr-review" in a for a in result["actions"])
+        assert any("New:" in a and "pr.md" in a for a in result["actions"])
         assert (product / ".prawduct" / "pr-review.md").is_file()
         assert (product / ".claude" / "commands" / "pr.md").is_file()
 

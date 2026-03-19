@@ -226,14 +226,18 @@ Broad catches that swallow errors without logging (`except Exception: pass`, emp
 
 **Ignoring the Critic**: Dismissing findings without reflection.
 
-**Verification theater**: Claiming verification without exercising the product. Honest confidence (Principle 5). A common variant: all tests pass against mocked infrastructure, but the product has never been tested against real dependencies. If project-state.yaml declares infrastructure dependencies, verify against them.
+**Verification theater**: Claiming verification without exercising the product. All tests pass against mocks but the product has never touched real dependencies. If project-state.yaml declares infrastructure dependencies, verify against them.
 
-**Mock-as-implementation**: Using mocks during development and never replacing them with real integrations. Mocks are for test isolation, not for avoiding infrastructure work. If the data model says "persisted to Postgres" and the code uses an in-memory dictionary, that's an unfinished implementation — not a passing test suite.
+**Mock-as-implementation**: Using mocks during development and never replacing them with real integrations. If the data model says "Postgres" and the code uses an in-memory dict, that's unfinished — not passing.
 
-**"Pre-existing" dismissal**: Labeling any quality issue — failing test, broad exception, stale artifact, missing coverage — as "pre-existing" to justify ignoring it. There is no pre-existing exception. If you found it, it's yours to fix or flag.
+**"Pre-existing" dismissal**: Labeling a quality issue as "pre-existing" to justify ignoring it. There is no pre-existing exception. If you found it, it's yours to fix or flag.
 
-**Uninvestigated decisions**: Making a major technology or architectural choice without research. Lock-in, pervasiveness, structural impact, and external dependencies all warrant investigation before commitment.
+**Uninvestigated decisions**: Major technology or architectural choices without research. Lock-in, pervasiveness, structural impact, and external dependencies warrant investigation.
 
 **Boundary blindness**: Modifying a contract surface without checking consumers. The compliance canary catches this at session end, but checking proactively is cheaper.
 
 **Pacing blindness**: Asking implementation questions when the user is waiting for progress. Decide autonomously on minor details unless genuinely blocked.
+
+**Unnecessary backwards compatibility**: Adding migration paths or fallbacks when there's no existing deployment to migrate. Backwards compatibility is a requirement to be elicited, not an assumption.
+
+**Opinionated defaults without configuration**: Shipping a workflow-affecting feature with one hardcoded behavior. If a feature could reasonably work two ways, make it a preference in `project-preferences.md` with a safe default.
