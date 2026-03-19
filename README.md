@@ -168,6 +168,18 @@ See [`docs/principles.md`](docs/principles.md) for the full principles with rati
 
 ## Recent Changes
 
+### 2026-03-19
+- feature: Critic Goal 7 "The Design Is Sound" — reviews encapsulation, coupling, simplification, and deduplication
+- feature: Security checks in Critic Goal 1 — injection vectors, hardcoded secrets, input validation (BLOCKING); auth/authz, dependency CVEs (WARNING)
+- feature: Critic coordinator pattern — medium/large reviews spawn 3 parallel subagents (correctness, design, sustainability) for ~2x throughput
+- feature: README and documentation drift active checking in Critic Goal 4 — Critic reads the README when features change
+- feature: Project preferences compliance promoted to BLOCKING in Critic Goal 4
+- feature: Severity recalibration — NOTE now means "genuinely ambiguous, builder decides" instead of "minor suggestion"
+- feature: Historical record immunity — Critic won't flag changelogs or archives for stale terminology
+- feature: `prawduct-sync.py --force` flag to overwrite locally-edited files with new template versions
+- fix: Sync skip messages now clearly state the conflict instead of misleading "template updated, restart to see changes"
+- fix: PR reviewer evidence filename — caller computes path, not reviewer
+
 ### 2026-03-17
 - feature: PR reviewer agent and `/pr` skill — independent release-readiness review before PR creation, complementing per-chunk Critic reviews
 - feature: work-scaled governance (v5) — governance depth scales with work size and type instead of rigid phases
