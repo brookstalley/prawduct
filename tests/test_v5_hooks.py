@@ -503,6 +503,38 @@ class TestSessionBriefing:
         # Should NOT show first 2
         assert "When doing A" not in result.stdout
 
+    def test_briefing_shows_test_count_reminder(self, tmp_path: Path):
+        """Briefing should show test_count and remind to keep it updated."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "build_state:\n  source_root: null\n  test_tracking:\n    test_count: 42\n"
+        )
+
+        result = run_hook("clear", tmp_path)
+
+        assert "test_count" in result.stdout
+        assert "42" in result.stdout
+        assert "update" in result.stdout.lower()
+
+    def test_briefing_no_test_count_when_zero(self, tmp_path: Path):
+        """Briefing should not show test_count reminder when count is 0."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "build_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+
+        result = run_hook("clear", tmp_path)
+
+        # 0 is valid but the regex matches \d+ which includes 0 — check that
+        # it doesn't show a reminder for count 0 (no tests to track)
+        briefing = result.stdout
+        # The line should not appear since there's nothing to track
+        assert "if you add or remove tests" not in briefing
+
     def test_briefing_excludes_redundant_reminders(self, tmp_path: Path):
         """Briefing should not include reminders that are already in CLAUDE.md Critical Rules."""
         prawduct = tmp_path / ".prawduct"

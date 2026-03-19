@@ -448,6 +448,17 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
         for s in staleness:
             lines.append(f"Stale: {s}")
 
+    # Test count reminder (skip if 0 — nothing to track yet)
+    state_path = prawduct_dir / "project-state.yaml"
+    if state_path.is_file():
+        try:
+            state_content = state_path.read_text()
+            tc_match = re.search(r"test_count:\s*(\d+)", state_content)
+            if tc_match and int(tc_match.group(1)) > 0:
+                lines.append(f"test_count in project-state.yaml: {tc_match.group(1)} — if you add or remove tests, update this before session end")
+        except Exception:  # prawduct:ok-broad-except — briefing must never block session start
+            pass
+
     # Relevant learnings
     learnings_path = prawduct_dir / "learnings.md"
     if learnings_path.is_file():
