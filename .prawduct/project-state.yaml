@@ -70,6 +70,45 @@ health_check:
 # =============================================================================
 
 change_log:
+  # --- Critic Goal 7, security, coordinator pattern (2026-03-19) ---
+  - what: 'Critic restructure: Goal 7 (Design Quality), security checks, coordinator pattern'
+    why: 'Gap analysis revealed that after clearing all Critic findings, manual review still found
+      issues in encapsulation, coupling, simplification, security, and doc drift. The 6 goals
+      covered correctness/completeness/scope/coherence/rationale/observability but not design
+      quality or security. Added Goal 7 "The Design Is Sound" (encapsulation, coupling,
+      simplification, deduplication). Added security checks to Goal 1 (injection, secrets, input
+      validation as BLOCKING; auth, CVEs as WARNING). Strengthened Goal 4: project-preferences
+      compliance promoted to BLOCKING, README active checking added, documentation drift expanded,
+      historical records (changelogs) marked immutable. Severity recalibration: NOTE now means
+      "genuinely ambiguous — builder decides" instead of "minor suggestion." Coordinator pattern
+      for medium/large reviews: spawn 3 parallel subagents (correctness, design, sustainability).
+      670 total tests (20 new).'
+    blast_radius: 'Modified: agents/critic/SKILL.md (Goal 7, security, doc drift, coordinator,
+      severity), templates/critic-review.md (same, condensed), agents/critic/framework-checks.md
+      (voice inconsistency NOTE→WARNING), methodology/building.md (7-goal summary, coordinator,
+      severity), .prawduct/cross-cutting-concerns.md (Security→Goal 1), README.md (manual sync
+      instructions). Tests: test_v5_methodology.py (6 new), test_v5_templates.py (6 new),
+      test_prawduct_init.py (1 updated).'
+    classification: functional
+    date: 2026-03-19
+  # --- Sync --force flag and message improvements (2026-03-19) ---
+  - what: 'Sync skip messages clarified, --force flag added'
+    why: 'Running prawduct-sync.py produced misleading messages when local edits conflicted with
+      updated templates. The critic-review.md message said "template updated, restart to see
+      changes" when the file was actually skipped. Improved both template and block_template
+      strategy messages to clearly state the conflict and suggest --force. Added --force CLI flag
+      to overwrite locally-edited files with new template versions. 66 sync tests (6 new).'
+    blast_radius: 'Modified: tools/prawduct-sync.py (messages, --force flag), tests/test_prawduct_sync.py
+      (6 new tests for force and message wording).'
+    classification: functional
+    date: 2026-03-19
+  # --- PR reviewer fixes (2026-03-18) ---
+  - what: 'Fix PR reviewer evidence filename and invocation'
+    why: 'PR reviewer was computing the evidence filename internally, but the caller also needed
+      the path to check for evidence. Fixed so caller computes path and passes it to reviewer.'
+    blast_radius: 'Modified: agents/pr-reviewer/SKILL.md, .claude/commands/pr.md'
+    classification: bugfix
+    date: 2026-03-18
   # --- v6: session discipline & quality hardening (2026-03-17) ---
   - what: 'v6: Session discipline & quality hardening'
     why: 'Analysis of 50+ discodon build sessions + TangleClaw feedback revealed: no session
