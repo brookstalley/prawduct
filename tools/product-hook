@@ -293,12 +293,15 @@ def staleness_scan(project_dir: Path) -> list[str]:
     # 1. Test count divergence
     test_count_match = re.search(r"test_count:\s*(\d+)", state_content)
     documented_count = int(test_count_match.group(1)) if test_count_match else 0
+    actual_count = _count_test_functions(project_dir)
     if documented_count > 0:
-        actual_count = _count_test_functions(project_dir)
         if actual_count > 0:
             threshold = max(5, int(documented_count * 0.1))
             if abs(actual_count - documented_count) > threshold:
                 findings.append(f"test count: documented {documented_count}, found ~{actual_count}")
+    elif actual_count > 10:
+        # test_count is 0 but tests exist — nudge to set the count
+        findings.append(f"test_count is 0 but found ~{actual_count} test functions — update project-state.yaml")
 
     # 2. Architecture coverage
     source_root_match = re.search(r"source_root:\s*[\"']?([^\"'\n#]+)", state_content)
@@ -430,8 +433,10 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     work_desc = _get_work_in_progress(prawduct_dir)
     lines.append(f"Project: {project_name} | Work: {work_desc}")
 
-    # WIP context (the detail behind the description)
+    # WIP context and current chunk
     wip = _parse_wip(prawduct_dir)
+    if wip.get("current_chunk"):
+        lines.append(f"Resume: {wip['current_chunk']}")
     if wip.get("context"):
         ctx = wip["context"]
         if len(ctx) > 200:
