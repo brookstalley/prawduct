@@ -30,6 +30,7 @@ run_sync = _mod.run_sync
 _try_pull_framework = _mod._try_pull_framework
 BLOCK_BEGIN = _mod.BLOCK_BEGIN
 BLOCK_END = _mod.BLOCK_END
+MANAGED_FILES = _mod.MANAGED_FILES
 
 
 # =============================================================================
@@ -566,6 +567,57 @@ class TestRunSync:
         assert result["synced"] is True
         data = json.loads((product / ".claude" / "settings.json").read_text())
         assert "TestApp" in data["companyAnnouncements"]
+
+    def test_backfills_missing_managed_files(self, tmp_path: Path):
+        """Sync adds managed files missing from manifest (added after product init)."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Add a new template to the framework (simulating a new managed file)
+        (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review v1")
+        (fw / "templates" / "commands-pr.md").write_text("# PR command for {{PRODUCT_NAME}}")
+
+        # Remove pr-review and commands/pr from the manifest (simulating old product)
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["files"].pop(".prawduct/pr-review.md", None)
+        manifest["files"].pop(".claude/commands/pr.md", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("Registered" in a and "pr-review" in a for a in result["actions"])
+        assert any("Registered" in a and "pr.md" in a for a in result["actions"])
+        assert (product / ".prawduct" / "pr-review.md").is_file()
+        assert (product / ".claude" / "commands" / "pr.md").is_file()
+
+        # Verify manifest now includes the new files
+        manifest = json.loads(manifest_path.read_text())
+        assert ".prawduct/pr-review.md" in manifest["files"]
+        assert ".claude/commands/pr.md" in manifest["files"]
+
+    def test_backfill_idempotent(self, tmp_path: Path):
+        """Running sync twice after backfill produces no updates."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review v1")
+        (fw / "templates" / "commands-pr.md").write_text("# PR command for {{PRODUCT_NAME}}")
+
+        # Remove from manifest
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["files"].pop(".prawduct/pr-review.md", None)
+        manifest["files"].pop(".claude/commands/pr.md", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+        # First sync creates files
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Second sync — nothing to do
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert result["reason"] == "no updates needed"
 
 
 # =============================================================================
