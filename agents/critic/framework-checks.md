@@ -58,7 +58,7 @@ These checks apply only when reviewing skill files, template files, or framework
 **Severity guide:**
 - Sections contradict each other → **warning**
 - Key instructions buried in paragraphs → **warning**
-- Voice inconsistency within the same section → **note**
+- Voice inconsistency within the same section → **warning**
 - Overall length growing without clear justification → **note**
 
 ### Check 10: Pipeline Coverage

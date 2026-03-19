@@ -425,6 +425,28 @@ class TestRunSync:
         # User's content preserved
         assert "My custom content" in (product / "CLAUDE.md").read_text()
 
+    def test_force_overwrites_user_edited_block(self, tmp_path: Path):
+        """--force overwrites user block edits with new template."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User edits inside the block
+        claude = (product / "CLAUDE.md").read_text()
+        claude = claude.replace("Content v1", "My custom content")
+        (product / "CLAUDE.md").write_text(claude)
+
+        # Update template
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw), force=True)
+        assert any("Force-updated CLAUDE.md" in a for a in result["actions"])
+        content = (product / "CLAUDE.md").read_text()
+        assert "Content v2" in content
+        assert "My custom content" not in content
+
     def test_always_update_overwrites(self, tmp_path: Path):
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
@@ -491,6 +513,37 @@ class TestRunSync:
 
         result = run_sync(str(product))
         assert result["synced"] is True
+
+    def test_user_edited_template_file_skipped(self, tmp_path: Path):
+        """Template strategy skips when user edited file and template changed."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User edits critic-review.md
+        (product / ".prawduct" / "critic-review.md").write_text("# My custom critic review")
+
+        # Update template
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert not any("critic-review" in a for a in result["actions"])
+        assert any("local edits" in n and "critic-review" in n for n in result["notes"])
+        assert "My custom critic review" in (product / ".prawduct" / "critic-review.md").read_text()
+
+    def test_force_overwrites_user_edited_template_file(self, tmp_path: Path):
+        """--force overwrites user-edited template-strategy files."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User edits critic-review.md
+        (product / ".prawduct" / "critic-review.md").write_text("# My custom critic review")
+
+        # Update template
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+
+        result = run_sync(str(product), framework_dir=str(fw), force=True)
+        assert any("Force-updated" in a and "critic-review" in a for a in result["actions"])
+        assert "Critic v2" in (product / ".prawduct" / "critic-review.md").read_text()
 
     def test_merge_settings_during_sync(self, tmp_path: Path):
         fw = self._setup_framework(tmp_path)
@@ -721,7 +774,7 @@ class TestRunSyncBlockTemplate:
 
         result = run_sync(str(product), framework_dir=str(fw))
         assert not any("CLAUDE.md" in a for a in result["actions"])
-        assert any("user edited block" in n for n in result["notes"])
+        assert any("block has local edits" in n for n in result["notes"])
         assert "My custom content" in (product / "CLAUDE.md").read_text()
 
     def test_handles_missing_markers_in_product(self, tmp_path: Path):

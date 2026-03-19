@@ -175,18 +175,21 @@ Products ship with `tests/conftest.py` — a pytest-xdist hook that auto-groups 
 
 ## The Critic
 
-After medium+ work, invoke the Critic as a separate agent. The Critic receives signals (files changed, work type, work size) and reasons about what to check. It has six prioritized goals:
+After medium+ work, invoke the Critic as a separate agent. The Critic receives signals (files changed, work type, work size) and reasons about what to check. It has seven prioritized goals:
 
-1. **Nothing Is Broken** — Tests pass, count hasn't decreased.
+1. **Nothing Is Broken** — Tests pass, count hasn't decreased, no security vulnerabilities.
 2. **Nothing Is Missing** — Every requirement implemented or explicitly descoped.
 3. **Nothing Is Unintended** — No unlisted dependencies, no undocumented decisions.
-4. **Everything Is Coherent** — Artifacts consistent with each other and with code. Infrastructure assumptions match declared dependencies.
-5. **Decisions Were Deliberate** — Major decisions have rationale, boundary changes triggered investigation.
+4. **Everything Is Coherent** — Artifacts consistent with code, documentation doesn't drift.
+5. **Decisions Were Deliberate** — Major decisions have rationale, boundary changes investigated.
 6. **The System Can Be Understood** — Error handling present, logging appropriate.
+7. **The Design Is Sound** — Good encapsulation, appropriate coupling, no unnecessary complexity or duplication.
+
+For medium/large reviews, the Critic uses a coordinator pattern — spawning parallel subagents for correctness (1-3), design (4, 7), and sustainability (5-6) to improve throughput.
 
 See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (products) for full instructions.
 
-**Blocking findings** must be resolved before proceeding. **Warnings** should be addressed. **Notes** are informational. If you disagree with a finding, think carefully before dismissing — the Critic catches blind spots the builder can't see.
+**Blocking findings** must be resolved before proceeding. **Warnings** should be addressed — the Critic only uses WARNING when confident something is a real issue. **Notes** are genuinely ambiguous — the Critic isn't sure and the builder should decide. If you disagree with a finding, think carefully before dismissing — the Critic catches blind spots the builder can't see.
 
 ## Creating Pull Requests
 
