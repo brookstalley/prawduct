@@ -194,7 +194,12 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created .prawduct/artifacts/boundary-patterns.md")
 
-    # 6.5. PR review instructions
+    # 6.5. PR review evidence directory
+    pr_reviews_dir = target / ".prawduct" / ".pr-reviews"
+    if ensure_dir(pr_reviews_dir):
+        actions.append("Created .prawduct/.pr-reviews/")
+
+    # 6.7. PR review instructions
     if write_template(
         TEMPLATES_DIR / "pr-review.md",
         target / ".prawduct" / "pr-review.md",
@@ -202,7 +207,7 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created .prawduct/pr-review.md")
 
-    # 6.6. PR slash command
+    # 6.8. PR slash command
     commands_dir = target / ".claude" / "commands"
     if ensure_dir(commands_dir):
         actions.append("Created .claude/commands/")
@@ -211,14 +216,19 @@ def run_init(target_dir: str, product_name: str) -> dict:
     if pr_cmd_src.is_file() and write_template(pr_cmd_src, pr_cmd_dst, subs):
         actions.append("Created .claude/commands/pr.md")
 
-    # 7. Test infrastructure (conftest.py with parallel test support)
+    # 7. Test infrastructure (conftest.py — only for Python projects)
+    is_python = any(
+        (target / f).is_file()
+        for f in ("pyproject.toml", "setup.py", "setup.cfg", "Pipfile", "requirements.txt")
+    )
     tests_dir = target / "tests"
     if ensure_dir(tests_dir):
         actions.append("Created tests/")
-    conftest_dst = tests_dir / "conftest.py"
-    if not conftest_dst.is_file():
-        shutil.copy2(TEMPLATES_DIR / "conftest.py", conftest_dst)
-        actions.append("Created tests/conftest.py (parallel test support)")
+    if is_python:
+        conftest_dst = tests_dir / "conftest.py"
+        if not conftest_dst.is_file():
+            shutil.copy2(TEMPLATES_DIR / "conftest.py", conftest_dst)
+            actions.append("Created tests/conftest.py (parallel test support)")
 
     # 8. Learnings starter
     learnings = target / ".prawduct" / "learnings.md"

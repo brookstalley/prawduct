@@ -458,6 +458,40 @@ class TestSessionBriefing:
         assert "Stale:" in result.stdout
         assert "test count" in result.stdout
 
+    def test_briefing_flags_zero_count_with_tests(self, tmp_path: Path):
+        """Staleness scan flags test_count: 0 when test functions exist."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "build_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_app.py").write_text(
+            "\n".join(f"def test_case_{i}():\n    pass\n" for i in range(20))
+        )
+
+        result = run_hook("clear", tmp_path)
+
+        assert "test_count is 0" in result.stdout
+        assert "update project-state" in result.stdout.lower()
+
+    def test_briefing_shows_current_chunk(self, tmp_path: Path):
+        """Session briefing shows current_chunk from WIP."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            'work_in_progress:\n  description: "Building auth"\n  size: "large"\n'
+            '  type: "feature"\n  current_chunk: "chunk 5 of 12: OAuth integration"\n'
+        )
+
+        result = run_hook("clear", tmp_path)
+
+        assert "Resume:" in result.stdout
+        assert "chunk 5 of 12" in result.stdout
+
     def test_briefing_includes_learnings(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()

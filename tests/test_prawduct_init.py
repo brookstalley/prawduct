@@ -296,6 +296,9 @@ class TestRunInit:
         assert (tmp_path / "tools" / "product-hook").is_file()
         assert (tmp_path / ".claude" / "settings.json").is_file()
         assert (tmp_path / ".gitignore").is_file()
+        assert (tmp_path / ".prawduct" / ".pr-reviews").is_dir()
+        assert (tmp_path / ".prawduct" / "pr-review.md").is_file()
+        assert (tmp_path / ".claude" / "commands" / "pr.md").is_file()
         assert len(result["actions"]) > 0
 
     def test_idempotent_second_run(self, tmp_path: Path):
@@ -351,6 +354,17 @@ class TestTemplatePropagation:
         assert "build_state:" in content
         # v5: current_phase replaced by work_in_progress
         assert "work_in_progress:" in content
+
+    def test_conftest_created_for_python(self, tmp_path: Path):
+        """conftest.py is created when Python markers exist."""
+        (tmp_path / "pyproject.toml").write_text("[tool.pytest]\n")
+        run_init(str(tmp_path), "PyApp")
+        assert (tmp_path / "tests" / "conftest.py").is_file()
+
+    def test_conftest_not_created_for_non_python(self, tmp_path: Path):
+        """conftest.py is NOT created when no Python markers exist."""
+        run_init(str(tmp_path), "JSApp")
+        assert not (tmp_path / "tests" / "conftest.py").is_file()
 
 
 # =============================================================================
