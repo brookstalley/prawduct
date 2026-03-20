@@ -83,14 +83,34 @@ def try_sync(project_dir: Path) -> None:
                 actions = sync_result.get("actions", [])
                 notes = sync_result.get("notes", [])
                 if actions:
-                    print(f"Framework sync: {', '.join(actions)}")
-                for note in notes:
-                    print(f"  * {note}")
-                if any("CLAUDE.md" in a for a in actions):
-                    print(
-                        "IMPORTANT: CLAUDE.md was updated by framework sync. "
-                        "Re-read CLAUDE.md now to pick up the latest instructions."
-                    )
+                    is_bootstrap = any("Bootstrapped" in a for a in actions)
+                    needs_restart = any("settings.json" in a for a in actions)
+                    claude_updated = any("CLAUDE.md" in a for a in actions)
+
+                    # Header
+                    if is_bootstrap:
+                        print("PRAWDUCT SYNC: First framework sync for this repo")
+                    else:
+                        print("PRAWDUCT SYNC: Framework updated")
+
+                    # List changes
+                    for action in actions:
+                        if "Bootstrapped" not in action:  # Already shown in header
+                            print(f"  + {action}")
+                    for note in notes:
+                        print(f"  * {note}")
+
+                    # Actionable guidance
+                    if claude_updated:
+                        print(
+                            "  ACTION: CLAUDE.md was updated — re-read CLAUDE.md now "
+                            "to pick up the latest instructions."
+                        )
+                    if needs_restart:
+                        print(
+                            "  ACTION: Settings updated — exit and restart this session "
+                            "for greeting and hook changes to take effect."
+                        )
             except json.JSONDecodeError:
                 pass
     except Exception as e:  # prawduct:ok-broad-except — sync must never block session start
