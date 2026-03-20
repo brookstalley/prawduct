@@ -205,6 +205,7 @@ class TestCreateManifest:
             ".prawduct/critic-review.md",
             ".prawduct/pr-review.md",
             ".claude/commands/pr.md",
+            ".claude/commands/janitor.md",
             "tools/product-hook",
             ".claude/settings.json",
         }

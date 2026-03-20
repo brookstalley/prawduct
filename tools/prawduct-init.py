@@ -216,6 +216,12 @@ def run_init(target_dir: str, product_name: str) -> dict:
     if pr_cmd_src.is_file() and write_template(pr_cmd_src, pr_cmd_dst, subs):
         actions.append("Created .claude/commands/pr.md")
 
+    # 6.9. Janitor slash command
+    janitor_cmd_src = TEMPLATES_DIR / "commands-janitor.md"
+    janitor_cmd_dst = commands_dir / "janitor.md"
+    if janitor_cmd_src.is_file() and write_template(janitor_cmd_src, janitor_cmd_dst, subs):
+        actions.append("Created .claude/commands/janitor.md")
+
     # 7. Test infrastructure (conftest.py — only for Python projects)
     is_python = any(
         (target / f).is_file()
@@ -271,6 +277,9 @@ def run_init(target_dir: str, product_name: str) -> dict:
             ),
             ".claude/commands/pr.md": compute_hash(
                 target / ".claude" / "commands" / "pr.md"
+            ),
+            ".claude/commands/janitor.md": compute_hash(
+                target / ".claude" / "commands" / "janitor.md"
             ),
             "tools/product-hook": compute_hash(target / "tools" / "product-hook"),
             ".claude/settings.json": None,  # merge_settings doesn't use hash

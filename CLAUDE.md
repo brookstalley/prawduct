@@ -143,7 +143,8 @@ my-product/
 │   └── product-hook            # Session governance (Python: reflection + Critic gate + sync)
 ├── .claude/
 │   ├── commands/
-│   │   └── pr.md               # /pr slash command for PR lifecycle
+│   │   ├── pr.md               # /pr slash command for PR lifecycle
+│   │   └── janitor.md          # /janitor slash command for periodic codebase maintenance
 │   └── settings.json           # Hook config + banner pointing to tools/product-hook
 └── src/                        # Product source code
 ```
