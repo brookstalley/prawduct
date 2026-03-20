@@ -59,6 +59,11 @@ MANAGED_FILES = {
         "strategy": "template",
         "description": "/pr skill — PR lifecycle management (create, update, merge, status). Configure PR behavior in project-preferences.md",
     },
+    ".claude/commands/janitor.md": {
+        "template": "templates/commands-janitor.md",
+        "strategy": "template",
+        "description": "/janitor skill — Periodic codebase maintenance (encapsulation, deduplication, cleanup)",
+    },
     "tools/product-hook": {
         "source": "tools/product-hook",
         "strategy": "always_update",
