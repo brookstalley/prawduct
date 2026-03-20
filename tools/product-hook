@@ -1016,15 +1016,10 @@ def cmd_clear(project_dir: Path) -> int:
         if f.is_file():
             f.unlink()
 
-    # Create session start timestamp and git baseline
+    # Create session start timestamp
     if prawduct_dir.is_dir():
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         (prawduct_dir / ".session-start").write_text(stamp)
-
-        # Capture git status baseline for session-scoped change detection
-        baseline = git_status_output(project_dir)
-        if baseline is not None:
-            (prawduct_dir / ".session-git-baseline").write_text(baseline)
 
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
@@ -1090,6 +1085,13 @@ def cmd_clear(project_dir: Path) -> int:
 
     # Trigger framework sync (best-effort)
     try_sync(project_dir)
+
+    # Capture git status baseline AFTER sync so sync-modified files
+    # (settings.json, product-hook, etc.) don't trigger spurious stop-hook gates
+    if prawduct_dir.is_dir():
+        baseline = git_status_output(project_dir)
+        if baseline is not None:
+            (prawduct_dir / ".session-git-baseline").write_text(baseline)
 
     # v5: Staleness scan + session briefing + subagent briefing
     if prawduct_dir.is_dir():
