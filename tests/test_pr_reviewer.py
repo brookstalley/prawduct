@@ -112,9 +112,9 @@ class TestInitPrReviewFiles:
 
     def test_creates_pr_command(self, tmp_path: Path):
         run_init(str(tmp_path), "TestProduct")
-        pr_cmd = tmp_path / ".claude" / "commands" / "pr.md"
-        assert pr_cmd.is_file()
-        content = pr_cmd.read_text()
+        pr_skill = tmp_path / ".claude" / "skills" / "pr" / "SKILL.md"
+        assert pr_skill.is_file()
+        content = pr_skill.read_text()
         assert "PR lifecycle" in content
         assert "Create Flow" in content
 
@@ -122,7 +122,7 @@ class TestInitPrReviewFiles:
         result = run_init(str(tmp_path), "TestProduct")
         actions = result["actions"]
         assert any("pr-review.md" in a for a in actions)
-        assert any("commands/pr.md" in a for a in actions)
+        assert any("skills/pr/SKILL.md" in a for a in actions)
 
     def test_pr_reviews_gitignored(self, tmp_path: Path):
         run_init(str(tmp_path), "TestProduct")
@@ -134,7 +134,7 @@ class TestInitPrReviewFiles:
         result = run_init(str(tmp_path), "TestProduct")
         # Second run should not recreate PR files
         assert not any("pr-review.md" in a for a in result["actions"])
-        assert not any("commands/pr.md" in a for a in result["actions"])
+        assert not any("skills/pr/SKILL.md" in a for a in result["actions"])
 
 
 # =============================================================================
@@ -159,10 +159,10 @@ class TestInitManifestPrEntries:
         manifest = json.loads(
             (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
         )
-        assert ".claude/commands/pr.md" in manifest["files"]
-        entry = manifest["files"][".claude/commands/pr.md"]
+        assert ".claude/skills/pr/SKILL.md" in manifest["files"]
+        entry = manifest["files"][".claude/skills/pr/SKILL.md"]
         assert entry["strategy"] == "template"
-        assert entry["template"] == "templates/commands-pr.md"
+        assert entry["template"] == "templates/skill-pr.md"
         assert entry["generated_hash"] is not None
 
 
@@ -184,7 +184,7 @@ class TestSyncPrReviewFiles:
             str(product_dir), str(FRAMEWORK_DIR), no_pull=True
         )
         assert not any("pr-review" in a for a in result["actions"])
-        assert not any("commands/pr" in a for a in result["actions"])
+        assert not any("skills/pr" in a for a in result["actions"])
 
     def test_sync_updates_pr_review_when_template_changes(self, product_dir: Path):
         # Write "old" content to simulate a previous template version.
@@ -225,19 +225,19 @@ class TestSyncPrReviewFiles:
 
     def test_sync_updates_pr_command_when_template_changes(self, product_dir: Path):
         # Write "old" content to simulate previous version
-        pr_cmd = product_dir / ".claude" / "commands" / "pr.md"
-        pr_cmd.write_text("# Old PR command\nPrevious version.")
-        old_hash = compute_hash(pr_cmd)
+        pr_skill = product_dir / ".claude" / "skills" / "pr" / "SKILL.md"
+        pr_skill.write_text("# Old PR command\nPrevious version.")
+        old_hash = compute_hash(pr_skill)
 
         manifest_path = product_dir / ".prawduct" / "sync-manifest.json"
         manifest = json.loads(manifest_path.read_text())
-        manifest["files"][".claude/commands/pr.md"]["generated_hash"] = old_hash
+        manifest["files"][".claude/skills/pr/SKILL.md"]["generated_hash"] = old_hash
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
         result = run_sync(
             str(product_dir), str(FRAMEWORK_DIR), no_pull=True
         )
-        assert any("commands/pr" in a for a in result["actions"])
+        assert any("skills/pr" in a for a in result["actions"])
 
 
 # =============================================================================
@@ -251,7 +251,7 @@ class TestCreateManifestPrEntries:
             "CLAUDE.md": "abc123",
             ".prawduct/critic-review.md": "def456",
             ".prawduct/pr-review.md": "ghi789",
-            ".claude/commands/pr.md": "jkl012",
+            ".claude/skills/pr/SKILL.md": "jkl012",
             "tools/product-hook": "mno345",
             ".claude/settings.json": None,
         }
@@ -266,14 +266,14 @@ class TestCreateManifestPrEntries:
             "CLAUDE.md": "abc123",
             ".prawduct/critic-review.md": "def456",
             ".prawduct/pr-review.md": "ghi789",
-            ".claude/commands/pr.md": "jkl012",
+            ".claude/skills/pr/SKILL.md": "jkl012",
             "tools/product-hook": "mno345",
             ".claude/settings.json": None,
         }
         manifest = create_manifest(tmp_path, FRAMEWORK_DIR, "Test", file_hashes)
 
-        assert ".claude/commands/pr.md" in manifest["files"]
-        assert manifest["files"][".claude/commands/pr.md"]["template"] == "templates/commands-pr.md"
+        assert ".claude/skills/pr/SKILL.md" in manifest["files"]
+        assert manifest["files"][".claude/skills/pr/SKILL.md"]["template"] == "templates/skill-pr.md"
 
 
 # =============================================================================
@@ -453,7 +453,7 @@ class TestPrReviewTemplateContent:
 
     def test_pr_command_template_has_all_flows(self):
         """The /pr command template should cover all 4 flows."""
-        content = (FRAMEWORK_DIR / "templates" / "commands-pr.md").read_text()
+        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
         assert "Create Flow" in content
         assert "Update Flow" in content
         assert "Merge Flow" in content
@@ -461,7 +461,7 @@ class TestPrReviewTemplateContent:
 
     def test_pr_command_template_has_review_gate(self):
         """The /pr command template must enforce review before PR creation."""
-        content = (FRAMEWORK_DIR / "templates" / "commands-pr.md").read_text()
+        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
         # Must contain hard gate language, not just numbered steps
         assert "MANDATORY" in content
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
@@ -469,7 +469,7 @@ class TestPrReviewTemplateContent:
 
     def test_framework_pr_command_has_review_gate(self):
         """The framework /pr command must enforce review before PR creation."""
-        content = (FRAMEWORK_DIR / ".claude" / "commands" / "pr.md").read_text()
+        content = (FRAMEWORK_DIR / ".claude" / "skills" / "pr" / "SKILL.md").read_text()
         assert "MANDATORY" in content
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
         assert "evidence file" in content

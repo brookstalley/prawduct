@@ -298,8 +298,8 @@ class TestRunInit:
         assert (tmp_path / ".gitignore").is_file()
         assert (tmp_path / ".prawduct" / ".pr-reviews").is_dir()
         assert (tmp_path / ".prawduct" / "pr-review.md").is_file()
-        assert (tmp_path / ".claude" / "commands" / "pr.md").is_file()
-        assert (tmp_path / ".claude" / "commands" / "janitor.md").is_file()
+        assert (tmp_path / ".claude" / "skills" / "pr" / "SKILL.md").is_file()
+        assert (tmp_path / ".claude" / "skills" / "janitor" / "SKILL.md").is_file()
         assert len(result["actions"]) > 0
 
     def test_idempotent_second_run(self, tmp_path: Path):

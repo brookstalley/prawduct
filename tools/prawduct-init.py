@@ -207,20 +207,23 @@ def run_init(target_dir: str, product_name: str) -> dict:
     ):
         actions.append("Created .prawduct/pr-review.md")
 
-    # 6.8. PR slash command
-    commands_dir = target / ".claude" / "commands"
-    if ensure_dir(commands_dir):
-        actions.append("Created .claude/commands/")
-    pr_cmd_src = TEMPLATES_DIR / "commands-pr.md"
-    pr_cmd_dst = commands_dir / "pr.md"
-    if pr_cmd_src.is_file() and write_template(pr_cmd_src, pr_cmd_dst, subs):
-        actions.append("Created .claude/commands/pr.md")
+    # 6.8. PR skill
+    pr_skill_dir = target / ".claude" / "skills" / "pr"
+    if ensure_dir(pr_skill_dir):
+        actions.append("Created .claude/skills/pr/")
+    pr_skill_src = TEMPLATES_DIR / "skill-pr.md"
+    pr_skill_dst = pr_skill_dir / "SKILL.md"
+    if pr_skill_src.is_file() and write_template(pr_skill_src, pr_skill_dst, subs):
+        actions.append("Created .claude/skills/pr/SKILL.md")
 
-    # 6.9. Janitor slash command
-    janitor_cmd_src = TEMPLATES_DIR / "commands-janitor.md"
-    janitor_cmd_dst = commands_dir / "janitor.md"
-    if janitor_cmd_src.is_file() and write_template(janitor_cmd_src, janitor_cmd_dst, subs):
-        actions.append("Created .claude/commands/janitor.md")
+    # 6.9. Janitor skill
+    janitor_skill_dir = target / ".claude" / "skills" / "janitor"
+    if ensure_dir(janitor_skill_dir):
+        actions.append("Created .claude/skills/janitor/")
+    janitor_skill_src = TEMPLATES_DIR / "skill-janitor.md"
+    janitor_skill_dst = janitor_skill_dir / "SKILL.md"
+    if janitor_skill_src.is_file() and write_template(janitor_skill_src, janitor_skill_dst, subs):
+        actions.append("Created .claude/skills/janitor/SKILL.md")
 
     # 7. Test infrastructure (conftest.py — only for Python projects)
     is_python = any(
@@ -275,11 +278,11 @@ def run_init(target_dir: str, product_name: str) -> dict:
             ".prawduct/pr-review.md": compute_hash(
                 target / ".prawduct" / "pr-review.md"
             ),
-            ".claude/commands/pr.md": compute_hash(
-                target / ".claude" / "commands" / "pr.md"
+            ".claude/skills/pr/SKILL.md": compute_hash(
+                target / ".claude" / "skills" / "pr" / "SKILL.md"
             ),
-            ".claude/commands/janitor.md": compute_hash(
-                target / ".claude" / "commands" / "janitor.md"
+            ".claude/skills/janitor/SKILL.md": compute_hash(
+                target / ".claude" / "skills" / "janitor" / "SKILL.md"
             ),
             "tools/product-hook": compute_hash(target / "tools" / "product-hook"),
             ".claude/settings.json": None,  # merge_settings doesn't use hash
