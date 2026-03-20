@@ -47,11 +47,15 @@ def try_sync(project_dir: Path) -> None:
     """
     try:
         manifest_path = project_dir / ".prawduct" / "sync-manifest.json"
-        if not manifest_path.is_file():
-            return
 
-        manifest = json.loads(manifest_path.read_text())
-        fw_source = os.environ.get("PRAWDUCT_FRAMEWORK_DIR") or manifest.get("framework_source", "")
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text())
+            fw_source = os.environ.get("PRAWDUCT_FRAMEWORK_DIR") or manifest.get("framework_source", "")
+        elif (project_dir / ".prawduct").is_dir():
+            # Prawduct repo without manifest — sync will bootstrap one
+            fw_source = os.environ.get("PRAWDUCT_FRAMEWORK_DIR") or ""
+        else:
+            return  # Not a prawduct repo
 
         # Fall back to sibling ../prawduct if configured source not found
         if not fw_source or not Path(fw_source).is_dir():

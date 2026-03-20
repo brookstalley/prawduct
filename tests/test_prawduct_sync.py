@@ -27,7 +27,9 @@ render_template = _mod.render_template
 merge_settings = _mod.merge_settings
 create_manifest = _mod.create_manifest
 apply_renames = _mod.apply_renames
+_bootstrap_manifest = _mod._bootstrap_manifest
 FILE_RENAMES = _mod.FILE_RENAMES
+MANAGED_FILES = _mod.MANAGED_FILES
 run_sync = _mod.run_sync
 _try_pull_framework = _mod._try_pull_framework
 BLOCK_BEGIN = _mod.BLOCK_BEGIN
@@ -211,6 +213,123 @@ class TestCreateManifest:
             "tools/product-hook",
             ".claude/settings.json",
         }
+
+
+# =============================================================================
+# _bootstrap_manifest
+# =============================================================================
+
+
+class TestBootstrapManifest:
+    """Tests for automatic manifest creation on repos missing one."""
+
+    def test_bootstrap_creates_manifest_on_sync(self, tmp_path: Path):
+        """run_sync bootstraps a manifest when .prawduct/ exists but no manifest."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\nContent\n{BLOCK_END}\n"
+        )
+
+        product = tmp_path / "myapp"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("Bootstrapped" in a for a in result["actions"])
+        assert (product / ".prawduct" / "sync-manifest.json").is_file()
+
+    def test_bootstrap_infers_product_name_from_state(self, tmp_path: Path):
+        """Bootstrap reads product_name from project-state.yaml."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+
+        product = tmp_path / "mydir"
+        product.mkdir()
+        prawduct_dir = product / ".prawduct"
+        prawduct_dir.mkdir()
+        (prawduct_dir / "project-state.yaml").write_text(
+            'product_name: "WorldGround"\nschema_version: 2\n'
+        )
+
+        manifest = _bootstrap_manifest(product, fw)
+        assert manifest["product_name"] == "WorldGround"
+
+    def test_bootstrap_falls_back_to_dir_name(self, tmp_path: Path):
+        """Without project-state.yaml, bootstrap uses directory name."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+
+        product = tmp_path / "cool-app"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        manifest = _bootstrap_manifest(product, fw)
+        assert manifest["product_name"] == "cool-app"
+
+    def test_bootstrap_hashes_existing_files(self, tmp_path: Path):
+        """Existing files get real hashes; missing files get None."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+
+        product = tmp_path / "app"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        # Create one managed file
+        critic = product / ".prawduct" / "critic-review.md"
+        critic.write_text("# Critic review\n")
+
+        manifest = _bootstrap_manifest(product, fw)
+        # Existing file gets a real hash
+        assert manifest["files"][".prawduct/critic-review.md"]["generated_hash"] is not None
+        # Missing file gets None
+        assert manifest["files"][".prawduct/pr-review.md"]["generated_hash"] is None
+
+    def test_bootstrap_checks_old_rename_paths(self, tmp_path: Path, monkeypatch):
+        """Bootstrap finds files at old rename paths for hash computation."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "old/cmd.md": "new/skill/SKILL.md",
+        })
+        monkeypatch.setattr(_mod, "MANAGED_FILES", {
+            "new/skill/SKILL.md": {
+                "template": "templates/skill.md",
+                "strategy": "template",
+                "description": "test",
+            },
+        })
+
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+
+        product = tmp_path / "app"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        (product / "old").mkdir()
+        (product / "old" / "cmd.md").write_text("skill content")
+
+        manifest = _bootstrap_manifest(product, fw)
+        # Hash computed from old path, stored under new key
+        assert manifest["files"]["new/skill/SKILL.md"]["generated_hash"] is not None
+
+    def test_no_bootstrap_without_prawduct_dir(self, tmp_path: Path):
+        """No .prawduct/ directory: returns 'not a prawduct repo'."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+
+        product = tmp_path / "random-dir"
+        product.mkdir()
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert result["reason"] == "not a prawduct repo"
 
 
 # =============================================================================
@@ -435,12 +554,12 @@ class TestRunSync:
 
         return product
 
-    def test_no_manifest_skips(self, tmp_path: Path):
+    def test_no_prawduct_dir_skips(self, tmp_path: Path):
         product = tmp_path / "product"
         product.mkdir()
         result = run_sync(str(product))
         assert result["synced"] is False
-        assert result["reason"] == "no manifest"
+        assert result["reason"] == "not a prawduct repo"
 
     def test_invalid_manifest_skips(self, tmp_path: Path):
         product = tmp_path / "product"

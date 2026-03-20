@@ -136,6 +136,51 @@ def apply_renames(
                 pass  # Not empty — that's fine
 
 
+def _bootstrap_manifest(product: Path, fw_dir: Path) -> dict:
+    """Create initial sync manifest for a prawduct repo that doesn't have one.
+
+    Computes hashes of existing managed files so sync can track future changes.
+    Files that don't exist get None (triggers creation on first sync).
+    For files at old rename paths, uses the old path's content for hash computation
+    so the rename + sync flow works correctly.
+    """
+    # Infer product name from project-state.yaml or directory name
+    product_name = product.name
+    state_path = product / ".prawduct" / "project-state.yaml"
+    if state_path.is_file():
+        for line in state_path.read_text().splitlines():
+            stripped = line.strip()
+            if stripped.startswith("product_name:"):
+                val = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+                if val:
+                    product_name = val
+                break
+
+    file_hashes: dict[str, str | None] = {}
+    for rel_path, config in MANAGED_FILES.items():
+        strategy = config.get("strategy", "template")
+        file_path = product / rel_path
+
+        # If file doesn't exist at new path, check old rename paths
+        if not file_path.is_file():
+            for old_rel, new_rel in FILE_RENAMES.items():
+                if new_rel == rel_path and (product / old_rel).is_file():
+                    file_path = product / old_rel
+                    break
+
+        if strategy == "block_template":
+            if file_path.is_file():
+                file_hashes[rel_path] = compute_block_hash(file_path.read_text())
+            else:
+                file_hashes[rel_path] = None
+        elif strategy == "merge_settings":
+            file_hashes[rel_path] = None  # merge_settings doesn't use hash
+        else:
+            file_hashes[rel_path] = compute_hash(file_path)
+
+    return create_manifest(product, fw_dir, product_name, file_hashes)
+
+
 def log(msg: str) -> None:
     """Print status to stderr."""
     print(msg, file=sys.stderr)
@@ -541,25 +586,41 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     product = Path(product_dir).resolve()
     manifest_path = product / ".prawduct" / "sync-manifest.json"
 
-    if not manifest_path.is_file():
-        return {
-            "product_dir": str(product),
-            "synced": False,
-            "reason": "no manifest",
-            "actions": [],
-            "notes": [],
-        }
+    bootstrapped = False
 
-    try:
-        manifest = json.loads(manifest_path.read_text())
-    except json.JSONDecodeError:
-        return {
-            "product_dir": str(product),
-            "synced": False,
-            "reason": "invalid manifest JSON",
-            "actions": [],
-            "notes": [],
-        }
+    if not manifest_path.is_file():
+        if not (product / ".prawduct").is_dir():
+            return {
+                "product_dir": str(product),
+                "synced": False,
+                "reason": "not a prawduct repo",
+                "actions": [],
+                "notes": [],
+            }
+        # Bootstrap: create manifest for prawduct repo that doesn't have one
+        fw_dir = _resolve_framework_dir({}, framework_dir, product)
+        if fw_dir is None:
+            return {
+                "product_dir": str(product),
+                "synced": False,
+                "reason": "framework not found",
+                "actions": [],
+                "notes": [],
+            }
+        manifest = _bootstrap_manifest(product, fw_dir)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+        bootstrapped = True
+    else:
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except json.JSONDecodeError:
+            return {
+                "product_dir": str(product),
+                "synced": False,
+                "reason": "invalid manifest JSON",
+                "actions": [],
+                "notes": [],
+            }
 
     fw_dir = _resolve_framework_dir(manifest, framework_dir, product)
     if fw_dir is None:
@@ -582,6 +643,9 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     subs = {"{{PRODUCT_NAME}}": product_name}
     actions: list[str] = []
     notes: list[str] = list(pull_notes)
+
+    if bootstrapped:
+        actions.append("Bootstrapped sync manifest (first framework sync for this repo)")
 
     # V4→V5 migration (if needed)
     v5_actions = migrate_v4_to_v5(product)
