@@ -26,6 +26,8 @@ extract_block = _mod.extract_block
 render_template = _mod.render_template
 merge_settings = _mod.merge_settings
 create_manifest = _mod.create_manifest
+apply_renames = _mod.apply_renames
+FILE_RENAMES = _mod.FILE_RENAMES
 run_sync = _mod.run_sync
 _try_pull_framework = _mod._try_pull_framework
 BLOCK_BEGIN = _mod.BLOCK_BEGIN
@@ -204,11 +206,161 @@ class TestCreateManifest:
             "CLAUDE.md",
             ".prawduct/critic-review.md",
             ".prawduct/pr-review.md",
-            ".claude/commands/pr.md",
-            ".claude/commands/janitor.md",
+            ".claude/skills/pr/SKILL.md",
+            ".claude/skills/janitor/SKILL.md",
             "tools/product-hook",
             ".claude/settings.json",
         }
+
+
+# =============================================================================
+# apply_renames
+# =============================================================================
+
+
+class TestApplyRenames:
+    """Tests for the file rename/move mechanism."""
+
+    def _make_manifest(self, files: dict) -> dict:
+        return {"format_version": 2, "files": files}
+
+    def test_move_file_and_transfer_manifest_entry(self, tmp_path: Path, monkeypatch):
+        """Old file present, new absent: move file and transfer manifest entry."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "old/file.md": "new/dir/SKILL.md",
+        })
+        (tmp_path / "old").mkdir()
+        (tmp_path / "old" / "file.md").write_text("my content")
+        manifest = self._make_manifest({
+            "old/file.md": {"strategy": "template", "generated_hash": "abc123"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "new" / "dir" / "SKILL.md").read_text() == "my content"
+        assert not (tmp_path / "old" / "file.md").exists()
+        assert "new/dir/SKILL.md" in manifest["files"]
+        assert "old/file.md" not in manifest["files"]
+        assert manifest["files"]["new/dir/SKILL.md"]["generated_hash"] == "abc123"
+        assert any("Moved:" in a for a in actions)
+
+    def test_preserves_user_edits(self, tmp_path: Path, monkeypatch):
+        """File content is byte-identical after move (user edits survive)."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "commands/pr.md": "skills/pr/SKILL.md",
+        })
+        (tmp_path / "commands").mkdir()
+        edited_content = "# PR skill\nUser added this line\n"
+        (tmp_path / "commands" / "pr.md").write_text(edited_content)
+        manifest = self._make_manifest({
+            "commands/pr.md": {"strategy": "template", "generated_hash": "oldhash"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "skills" / "pr" / "SKILL.md").read_text() == edited_content
+
+    def test_both_exist_deletes_old(self, tmp_path: Path, monkeypatch):
+        """Both old and new exist: delete old (leftover), keep new."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "old/file.md": "new/file.md",
+        })
+        (tmp_path / "old").mkdir()
+        (tmp_path / "old" / "file.md").write_text("old content")
+        (tmp_path / "new").mkdir()
+        (tmp_path / "new" / "file.md").write_text("new content")
+        manifest = self._make_manifest({
+            "old/file.md": {"strategy": "template", "generated_hash": "abc"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "new" / "file.md").read_text() == "new content"
+        assert not (tmp_path / "old" / "file.md").exists()
+        assert "old/file.md" not in manifest["files"]
+        assert any("leftover" in a for a in actions)
+
+    def test_stale_manifest_entry_cleaned(self, tmp_path: Path, monkeypatch):
+        """Old path in manifest but file doesn't exist: clean manifest entry."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "old/file.md": "new/file.md",
+        })
+        manifest = self._make_manifest({
+            "old/file.md": {"strategy": "template", "generated_hash": "abc"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert "old/file.md" not in manifest["files"]
+        assert any("stale" in a.lower() for a in actions)
+
+    def test_neither_exists_noop(self, tmp_path: Path, monkeypatch):
+        """Neither old file nor manifest entry: no-op."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "old/file.md": "new/file.md",
+        })
+        manifest = self._make_manifest({})
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert actions == []
+        assert manifest["files"] == {}
+
+    def test_empty_directory_cleanup(self, tmp_path: Path, monkeypatch):
+        """Empty parent directory of old path is removed after move."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "commands/pr.md": "skills/pr/SKILL.md",
+        })
+        (tmp_path / "commands").mkdir()
+        (tmp_path / "commands" / "pr.md").write_text("content")
+        manifest = self._make_manifest({
+            "commands/pr.md": {"strategy": "template", "generated_hash": "x"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert not (tmp_path / "commands").exists()
+        assert any("empty directory" in a.lower() for a in actions)
+
+    def test_nonempty_directory_preserved(self, tmp_path: Path, monkeypatch):
+        """Parent directory with other files is NOT removed."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "commands/pr.md": "skills/pr/SKILL.md",
+        })
+        (tmp_path / "commands").mkdir()
+        (tmp_path / "commands" / "pr.md").write_text("content")
+        (tmp_path / "commands" / "custom.md").write_text("user file")
+        manifest = self._make_manifest({
+            "commands/pr.md": {"strategy": "template", "generated_hash": "x"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "commands").exists()
+        assert (tmp_path / "commands" / "custom.md").exists()
+
+    def test_old_file_no_manifest_entry(self, tmp_path: Path, monkeypatch):
+        """Old file exists but no manifest entry: still move it."""
+        monkeypatch.setattr(_mod, "FILE_RENAMES", {
+            "commands/pr.md": "skills/pr/SKILL.md",
+        })
+        (tmp_path / "commands").mkdir()
+        (tmp_path / "commands" / "pr.md").write_text("content")
+        manifest = self._make_manifest({})
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "skills" / "pr" / "SKILL.md").read_text() == "content"
+        assert not (tmp_path / "commands" / "pr.md").exists()
+        assert any("Moved:" in a for a in actions)
 
 
 # =============================================================================
@@ -576,26 +728,26 @@ class TestRunSync:
 
         # Add a new template to the framework (simulating a new managed file)
         (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review v1")
-        (fw / "templates" / "commands-pr.md").write_text("# PR command for {{PRODUCT_NAME}}")
+        (fw / "templates" / "skill-pr.md").write_text("# PR skill for {{PRODUCT_NAME}}")
 
-        # Remove pr-review and commands/pr from the manifest (simulating old product)
+        # Remove pr-review and skills/pr from the manifest (simulating old product)
         manifest_path = product / ".prawduct" / "sync-manifest.json"
         manifest = json.loads(manifest_path.read_text())
         manifest["files"].pop(".prawduct/pr-review.md", None)
-        manifest["files"].pop(".claude/commands/pr.md", None)
+        manifest["files"].pop(".claude/skills/pr/SKILL.md", None)
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
         result = run_sync(str(product), framework_dir=str(fw))
         assert result["synced"] is True
         assert any("New:" in a and "pr-review" in a for a in result["actions"])
-        assert any("New:" in a and "pr.md" in a for a in result["actions"])
+        assert any("New:" in a and "SKILL.md" in a for a in result["actions"])
         assert (product / ".prawduct" / "pr-review.md").is_file()
-        assert (product / ".claude" / "commands" / "pr.md").is_file()
+        assert (product / ".claude" / "skills" / "pr" / "SKILL.md").is_file()
 
         # Verify manifest now includes the new files
         manifest = json.loads(manifest_path.read_text())
         assert ".prawduct/pr-review.md" in manifest["files"]
-        assert ".claude/commands/pr.md" in manifest["files"]
+        assert ".claude/skills/pr/SKILL.md" in manifest["files"]
 
     def test_backfill_idempotent(self, tmp_path: Path):
         """Running sync twice after backfill produces no updates."""
@@ -603,13 +755,13 @@ class TestRunSync:
         product = self._setup_product(tmp_path, fw)
 
         (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review v1")
-        (fw / "templates" / "commands-pr.md").write_text("# PR command for {{PRODUCT_NAME}}")
+        (fw / "templates" / "skill-pr.md").write_text("# PR skill for {{PRODUCT_NAME}}")
 
         # Remove from manifest
         manifest_path = product / ".prawduct" / "sync-manifest.json"
         manifest = json.loads(manifest_path.read_text())
         manifest["files"].pop(".prawduct/pr-review.md", None)
-        manifest["files"].pop(".claude/commands/pr.md", None)
+        manifest["files"].pop(".claude/skills/pr/SKILL.md", None)
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
         # First sync creates files

@@ -1,3 +1,9 @@
+---
+description: PR lifecycle management — create, update, merge, or check status with independent reviewer
+argument-hint: "[create|update|merge|status]"
+disable-model-invocation: true
+---
+
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
 
 **CRITICAL: The independent PR review is the core value of this skill. Do NOT skip, defer, or abbreviate the reviewer agent step. If you create a PR without running the reviewer first, the review gate has failed.**

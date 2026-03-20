@@ -142,9 +142,9 @@ my-product/
 ├── tools/
 │   └── product-hook            # Session governance (Python: reflection + Critic gate + sync)
 ├── .claude/
-│   ├── commands/
-│   │   ├── pr.md               # /pr slash command for PR lifecycle
-│   │   └── janitor.md          # /janitor slash command for periodic codebase maintenance
+│   ├── skills/
+│   │   ├── pr/SKILL.md         # /pr skill for PR lifecycle
+│   │   └── janitor/SKILL.md    # /janitor skill for periodic codebase maintenance
 │   └── settings.json           # Hook config + banner pointing to tools/product-hook
 └── src/                        # Product source code
 ```

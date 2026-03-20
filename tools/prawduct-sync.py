@@ -54,13 +54,13 @@ MANAGED_FILES = {
         "strategy": "template",
         "description": "PR reviewer instructions for release-readiness assessment",
     },
-    ".claude/commands/pr.md": {
-        "template": "templates/commands-pr.md",
+    ".claude/skills/pr/SKILL.md": {
+        "template": "templates/skill-pr.md",
         "strategy": "template",
         "description": "/pr skill — PR lifecycle management (create, update, merge, status). Configure PR behavior in project-preferences.md",
     },
-    ".claude/commands/janitor.md": {
-        "template": "templates/commands-janitor.md",
+    ".claude/skills/janitor/SKILL.md": {
+        "template": "templates/skill-janitor.md",
         "strategy": "template",
         "description": "/janitor skill — Periodic codebase maintenance (encapsulation, deduplication, cleanup)",
     },
@@ -75,6 +75,65 @@ MANAGED_FILES = {
         "description": "Claude Code settings with hook configuration",
     },
 }
+
+# Maps old file paths to new file paths. Applied during sync before the
+# MANAGED_FILES loop, so product repos get file moves automatically.
+# When a rename entry exists:
+#   - Old file present, new absent: move file, transfer manifest entry
+#   - Both present: delete old (leftover), keep new
+#   - Old in manifest but file gone: clean stale manifest entry
+#   - Neither exists: no-op
+# After processing, empty parent directories of old paths are removed.
+FILE_RENAMES: dict[str, str] = {
+    ".claude/commands/pr.md": ".claude/skills/pr/SKILL.md",
+    ".claude/commands/janitor.md": ".claude/skills/janitor/SKILL.md",
+}
+
+
+def apply_renames(
+    product: Path,
+    manifest: dict,
+    actions: list[str],
+) -> None:
+    """Apply file renames from FILE_RENAMES. Mutates manifest['files'] in place."""
+    files = manifest.get("files", {})
+
+    for old_rel, new_rel in FILE_RENAMES.items():
+        old_path = product / old_rel
+        new_path = product / new_rel
+
+        old_in_manifest = old_rel in files
+
+        if old_path.is_file() and new_path.is_file():
+            # Both exist — delete old (it's a leftover)
+            old_path.unlink()
+            if old_in_manifest:
+                del files[old_rel]
+            actions.append(f"Removed leftover: {old_rel}")
+        elif old_path.is_file():
+            # Normal rename: move file, transfer manifest entry
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            old_path.rename(new_path)
+            if old_in_manifest:
+                files[new_rel] = files.pop(old_rel)
+            actions.append(f"Moved: {old_rel} → {new_rel}")
+        elif old_in_manifest and not old_path.is_file():
+            # Stale manifest entry (file already deleted/moved)
+            del files[old_rel]
+            actions.append(f"Cleaned stale manifest entry: {old_rel}")
+        # else: neither exists — nothing to do
+
+    # Clean up empty parent directories of old paths
+    seen_parents: set[Path] = set()
+    for old_rel in FILE_RENAMES:
+        parent = product / Path(old_rel).parent
+        if parent not in seen_parents and parent.is_dir() and parent != product:
+            seen_parents.add(parent)
+            try:
+                parent.rmdir()  # Only succeeds if empty
+                actions.append(f"Removed empty directory: {Path(old_rel).parent}")
+            except OSError:
+                pass  # Not empty — that's fine
 
 
 def log(msg: str) -> None:
@@ -532,6 +591,10 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         manifest = json.loads(manifest_path.read_text())
 
     files = manifest.get("files", {})
+
+    # Renames: move files from old paths to new paths (e.g., commands → skills)
+    if FILE_RENAMES:
+        apply_renames(product, manifest, actions)
 
     # Backfill: add any managed files missing from the manifest (added after init)
     for rel_path, config in MANAGED_FILES.items():
