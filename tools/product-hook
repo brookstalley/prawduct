@@ -148,10 +148,26 @@ def git_has_changes(project_dir: Path) -> str:
     return lines[0] if lines else ""
 
 
+# Paths that are framework/session metadata — changes to these should
+# never trigger reflection or Critic gates.
+_METADATA_PREFIXES = (
+    ".prawduct/",
+    ".claude/settings.json",
+    ".claude/skills/",
+    "tools/product-hook",
+)
+
+
+def _is_metadata_path(filepath: str) -> bool:
+    """Check if a file path is framework/session metadata (not user code)."""
+    return any(filepath.startswith(p) for p in _METADATA_PREFIXES)
+
+
 def git_has_session_changes(project_dir: Path) -> str:
-    """Check if uncommitted changes differ from session baseline.
+    """Check if non-metadata uncommitted changes differ from session baseline.
 
     Compares current git status to the baseline captured at session start.
+    Ignores .prawduct/ metadata and framework-managed files.
     Returns first new changed file or empty string. Falls back to
     git_has_changes if no baseline exists (backward compat).
     """
@@ -171,7 +187,12 @@ def git_has_session_changes(project_dir: Path) -> str:
 
     for line in current_lines:
         if line not in baseline_lines:
-            return line
+            # Extract file path from porcelain format (e.g., " M src/app.py")
+            parts = line.split()
+            if parts:
+                filepath = parts[-1]
+                if not _is_metadata_path(filepath):
+                    return line
 
     return ""
 
