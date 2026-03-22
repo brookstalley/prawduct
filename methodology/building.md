@@ -169,15 +169,11 @@ Tests are the most important artifact you produce during building. They're contr
 
 **Test coverage is proportionate.** Match coverage to risk. Every product needs at least: happy path, error handling for likely failures, and edge cases for anything involving money, data, or safety.
 
-## Test Infrastructure Scaling
-
-Products ship with `tests/conftest.py` — a pytest-xdist hook that auto-groups tests by directory for parallel execution. Under 30s, sequential is fine. Over 30s, add `pytest-xdist` and `-n auto --dist loadgroup` to pyproject.toml. Over 120s, organize into subdirectories by concern — the grouping scales automatically.
-
 ## The Critic
 
 After medium+ work, invoke the Critic as a separate agent. The Critic receives signals (files changed, work type, work size) and reasons about what to check. It has seven prioritized goals:
 
-1. **Nothing Is Broken** — Test coverage adequate, count hasn't decreased, no security vulnerabilities.
+1. **Nothing Is Broken** — Test coverage adequate, no security vulnerabilities.
 2. **Nothing Is Missing** — Every requirement implemented or explicitly descoped.
 3. **Nothing Is Unintended** — No unlisted dependencies, no undocumented decisions.
 4. **Everything Is Coherent** — Artifacts consistent with code, documentation doesn't drift.

@@ -1,7 +1,7 @@
 ---
 description: PR lifecycle management — create, update, merge, or check status with independent reviewer
 argument-hint: "[create|update|merge|status]"
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -44,9 +44,9 @@ First, compute the evidence file path: take the current branch name, replace eve
 
 Create the `.prawduct/.pr-reviews/` directory if it doesn't exist.
 
-Tell the reviewer agent: "You are the PR reviewer. Read `.prawduct/pr-review.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to `.prawduct/.pr-reviews/[computed-filename]`."
+Tell the reviewer agent: "You are the PR reviewer. Read `.prawduct/pr-review.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to the exact path: `.prawduct/.pr-reviews/[computed-filename]` — use this path exactly as given, do not compute your own filename."
 
-**Pass the exact filename — do not ask the reviewer to compute it.**
+**Pass the exact full path — do not ask the reviewer to compute the filename.** The reviewer's own instructions reinforce this: "Write to the exact file path provided by the caller."
 
 **Wait for the agent to complete.** Then:
 - Read the evidence file at `.prawduct/.pr-reviews/[computed-filename]`
