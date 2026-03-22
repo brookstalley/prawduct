@@ -93,7 +93,7 @@ Prawduct detects existing code and infers project conventions (language, test fr
 
 ### Update product repos after framework changes
 
-Product repos sync automatically on session start via the product-hook. To sync manually:
+Product repos sync automatically at session end and session start via the product-hook. To sync manually:
 
 ```bash
 python3 prawduct/tools/prawduct-sync.py ~/my-product

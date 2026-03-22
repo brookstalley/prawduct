@@ -685,3 +685,38 @@ class TestSyncTrigger:
         result = run_hook("clear", tmp_path)
         assert result.returncode == 0
         assert (prawduct / ".session-start").exists()
+
+
+class TestSessionEndCommand:
+    """Test session-end command triggers sync."""
+
+    def test_session_end_succeeds(self, tmp_path: Path):
+        """session-end should succeed with a prawduct dir (sync is best-effort)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("session-end", tmp_path)
+        assert result.returncode == 0
+
+    def test_session_end_without_prawduct_dir(self, tmp_path: Path):
+        """session-end should succeed even without a .prawduct dir."""
+        result = run_hook("session-end", tmp_path)
+        assert result.returncode == 0
+
+    def test_session_end_is_quiet(self, tmp_path: Path):
+        """session-end should produce no stdout (output is invisible at session end)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("session-end", tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+
+    def test_session_end_in_dispatch(self, tmp_path: Path):
+        """Verify session-end is recognized as a valid command (not rejected as unknown)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("session-end", tmp_path)
+        assert result.returncode == 0
+        assert "Usage" not in result.stderr

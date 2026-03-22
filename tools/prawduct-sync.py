@@ -703,7 +703,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                     updated_files[rel_path]["generated_hash"] = new_hash
                     actions.append(f"Force-updated {rel_path} (local edits overwritten)")
                     if rel_path in ("CLAUDE.md",):
-                        notes.append(f"Updated {rel_path} — restart session for full effect")
+                        notes.append(f"Updated {rel_path} — re-read to pick up changes")
                 else:
                     notes.append(
                         f"Skipped {rel_path} — new template available but file has local edits (re-run with --force to overwrite)"
@@ -719,7 +719,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
             actions.append(f"Updated {rel_path}")
             # CLAUDE.md and settings.json are pre-loaded — flag for restart
             if rel_path in ("CLAUDE.md",):
-                notes.append(f"Updated {rel_path} — restart session for full effect")
+                notes.append(f"Updated {rel_path} — re-read to pick up changes")
 
         elif strategy == "block_template":
             template_rel = config.get("template", "")
@@ -766,7 +766,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 updated_files[rel_path] = dict(config)
                 updated_files[rel_path]["generated_hash"] = rendered_block_hash
                 actions.append(f"Created {rel_path}")
-                notes.append(f"Created {rel_path} — restart session for full effect")
+                notes.append(f"Created {rel_path} — re-read to pick up changes")
                 continue
 
             product_content = dst.read_text()
@@ -787,7 +787,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                     updated_files[rel_path] = dict(config)
                     updated_files[rel_path]["generated_hash"] = rendered_block_hash
                     actions.append(f"Force-updated {rel_path} block (local edits overwritten)")
-                    notes.append(f"Updated {rel_path} — restart session for full effect")
+                    notes.append(f"Updated {rel_path} — re-read to pick up changes")
                 else:
                     notes.append(
                         f"Skipped {rel_path} — new template available but block has local edits (re-run with --force to overwrite)"
@@ -800,7 +800,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
             updated_files[rel_path] = dict(config)
             updated_files[rel_path]["generated_hash"] = rendered_block_hash
             actions.append(f"Updated {rel_path}")
-            notes.append(f"Updated {rel_path} — restart session for full effect")
+            notes.append(f"Updated {rel_path} — re-read to pick up changes")
 
         elif strategy == "always_update":
             source_rel = config.get("source", "")
@@ -833,7 +833,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
 
             if merge_settings(dst, template_path, subs):
                 actions.append(f"Merged {rel_path}")
-                notes.append(f"Updated {rel_path} — restart session for full effect")
+                notes.append(f"Updated {rel_path} — re-read to pick up changes")
 
     # Place-once files: create if missing, never tracked for ongoing sync
     place_once = {

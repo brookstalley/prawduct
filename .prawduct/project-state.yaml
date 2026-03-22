@@ -70,6 +70,18 @@ health_check:
 # =============================================================================
 
 change_log:
+  # --- SessionEnd sync + Critic no-test-execution (2026-03-22) ---
+  - what: "Add SessionEnd hook for framework sync; sharpen Critic to not run tests"
+    why: "Users needed two restarts to pick up framework updates (sync ran after Claude Code
+      loaded settings). SessionEnd sync writes hot files before next session loads them.
+      Critic was running the test suite (up to 4x with coordinator subagents), duplicating
+      work the builder already does. Reframed Goal 1 as code-analysis review of test quality."
+    blast_radius: "Modified: tools/product-hook (cmd_session_end, quiet sync, removed restart
+      messages), tools/prawduct-sync.py (removed restart notes), templates/product-settings.json
+      and .claude/settings.json (SessionEnd hook), agents/critic/SKILL.md and review-cycle.md
+      and templates/critic-review.md (Goal 1 rewrite, coordinator dispatch), methodology/building.md
+      (Goal 1 summary, token budget trim), README.md (sync description). Tests: 4 new session-end,
+      698 total."
   # --- Critic Goal 7, security, coordinator pattern (2026-03-19) ---
   - what: 'Critic restructure: Goal 7 (Design Quality), security checks, coordinator pattern'
     why: 'Gap analysis revealed that after clearing all Critic findings, manual review still found
@@ -404,7 +416,7 @@ build_plan:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 694
+    test_count: 698
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md

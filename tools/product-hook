@@ -6,11 +6,14 @@ Enforces two structural gates:
 1. Reflection: files modified -> reflection must be captured before session end
 2. Critic review: code built against a plan -> independent review must happen
 
-Also triggers framework sync on session start (best-effort).
+Also triggers framework sync on session start (fallback) and session end (primary).
+Sync at session end ensures hot files (settings.json, skills) are fresh for the
+next session without requiring a restart.
 
 Usage (in .claude/settings.json):
   python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" clear
   python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" stop
+  python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" session-end
 """
 
 from __future__ import annotations
@@ -34,16 +37,15 @@ def get_prawduct_dir(project_dir: Path) -> Path:
 
 
 # =============================================================================
-# Sync trigger (best-effort on session start)
+# Sync trigger (best-effort on session start and session end)
 # =============================================================================
 
 
-def try_sync(project_dir: Path) -> None:
+def try_sync(project_dir: Path, *, quiet: bool = False) -> None:
     """Attempt to run framework sync. Silently does nothing on any failure.
 
-    If CLAUDE.md is updated, prints a note to stderr instructing the model
-    to re-read it — the file was updated on disk but the system prompt has
-    the old content.
+    When quiet=False (SessionStart), prints sync actions for Claude's context.
+    When quiet=True (SessionEnd), runs silently — output is invisible anyway.
     """
     try:
         manifest_path = project_dir / ".prawduct" / "sync-manifest.json"
@@ -82,10 +84,8 @@ def try_sync(project_dir: Path) -> None:
                 sync_result = json.loads(result.stdout)
                 actions = sync_result.get("actions", [])
                 notes = sync_result.get("notes", [])
-                if actions:
+                if actions and not quiet:
                     is_bootstrap = any("Bootstrapped" in a for a in actions)
-                    needs_restart = any("settings.json" in a for a in actions)
-                    claude_updated = any("CLAUDE.md" in a for a in actions)
 
                     # Header
                     if is_bootstrap:
@@ -99,18 +99,6 @@ def try_sync(project_dir: Path) -> None:
                             print(f"  + {action}")
                     for note in notes:
                         print(f"  * {note}")
-
-                    # Actionable guidance
-                    if claude_updated:
-                        print(
-                            "  ACTION: CLAUDE.md was updated — re-read CLAUDE.md now "
-                            "to pick up the latest instructions."
-                        )
-                    if needs_restart:
-                        print(
-                            "  ACTION: Settings updated — exit and restart this session "
-                            "for greeting and hook changes to take effect."
-                        )
             except json.JSONDecodeError:
                 pass
     except Exception as e:  # prawduct:ok-broad-except — sync must never block session start
@@ -1333,13 +1321,29 @@ def cmd_stop(project_dir: Path) -> int:
 
 
 # =============================================================================
+# session-end — sync framework updates for next session
+# =============================================================================
+
+
+def cmd_session_end(project_dir: Path) -> int:
+    """Run framework sync at session end.
+
+    This is the primary sync point — hot files (settings.json, skills,
+    product-hook) updated here are fresh when the next session loads them,
+    eliminating the need for a restart.
+    """
+    try_sync(project_dir, quiet=True)
+    return 0
+
+
+# =============================================================================
 # main
 # =============================================================================
 
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print("Usage: product-hook {clear|stop}", file=sys.stderr)
+        print("Usage: product-hook {clear|stop|session-end}", file=sys.stderr)
         return 1
 
     command = sys.argv[1]
@@ -1349,8 +1353,10 @@ def main() -> int:
         return cmd_clear(project_dir)
     elif command == "stop":
         return cmd_stop(project_dir)
+    elif command == "session-end":
+        return cmd_session_end(project_dir)
     else:
-        print("Usage: product-hook {clear|stop}", file=sys.stderr)
+        print("Usage: product-hook {clear|stop|session-end}", file=sys.stderr)
         return 1
 
 
