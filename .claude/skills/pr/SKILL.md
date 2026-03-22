@@ -1,7 +1,7 @@
 ---
 description: PR lifecycle management — create, update, merge, or check status with independent reviewer
 argument-hint: "[create|update|merge|status]"
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -44,9 +44,9 @@ First, compute the evidence file path: take the current branch name, replace eve
 
 Create the `.prawduct/.pr-reviews/` directory if it doesn't exist.
 
-Tell the reviewer agent: "You are the PR reviewer. Read `agents/pr-reviewer/SKILL.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to `.prawduct/.pr-reviews/[computed-filename]`."
+Tell the reviewer agent: "You are the PR reviewer. Read `.prawduct/pr-review.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to the exact path: `.prawduct/.pr-reviews/[computed-filename]` — use this path exactly as given, do not compute your own filename."
 
-**Pass the exact filename — do not ask the reviewer to compute it.**
+**Pass the exact full path — do not ask the reviewer to compute the filename.** The reviewer's own instructions reinforce this: "Write to the exact file path provided by the caller."
 
 **Wait for the agent to complete.** Then:
 - Read the evidence file at `.prawduct/.pr-reviews/[computed-filename]`
@@ -73,6 +73,8 @@ Push branch with `-u`. Draft title and description from work context + review fi
 
 ## Merge Flow
 
+**Check `project-preferences.md` for `PR merge` setting.** If set to `wait_for_user` (default), present the PR URL and findings summary to the user and wait for them to say "merge" before proceeding. If set to `automatic`, merge after CI passes and review is clean.
+
 1. Verify CI checks pass (`gh pr checks`)
 2. Verify no merge conflicts
 3. Verify PR review evidence exists for this branch — if missing, run the reviewer first
@@ -91,8 +93,7 @@ PR review evidence is stored in `.prawduct/.pr-reviews/<branch-name>.json` (with
 ## Important
 
 - The PR reviewer runs as a **separate agent** — it must have independent context
-- For the framework repo itself, the reviewer reads `agents/pr-reviewer/SKILL.md`
-- For product repos, the reviewer reads `.prawduct/pr-review.md`
+- The reviewer reads `.prawduct/pr-review.md` for its instructions
 - Always run the full test suite before creating a PR
 - Include review findings summary in the PR description
 - **Never run `gh pr create` without a valid evidence file on disk**

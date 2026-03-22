@@ -177,7 +177,7 @@ Products ship with `tests/conftest.py` — a pytest-xdist hook that auto-groups 
 
 After medium+ work, invoke the Critic as a separate agent. The Critic receives signals (files changed, work type, work size) and reasons about what to check. It has seven prioritized goals:
 
-1. **Nothing Is Broken** — Tests pass, count hasn't decreased, no security vulnerabilities.
+1. **Nothing Is Broken** — Test coverage adequate, count hasn't decreased, no security vulnerabilities.
 2. **Nothing Is Missing** — Every requirement implemented or explicitly descoped.
 3. **Nothing Is Unintended** — No unlisted dependencies, no undocumented decisions.
 4. **Everything Is Coherent** — Artifacts consistent with code, documentation doesn't drift.

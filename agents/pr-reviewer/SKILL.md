@@ -112,7 +112,7 @@ If no findings: "No issues found. PR is ready to create."
 
 ## Record Findings
 
-Write to `.prawduct/.pr-reviews/<branch-name>.json`:
+**Write to the exact file path provided by the caller.** Do not compute your own filename — the caller has already determined the correct path. If no path was provided, compute it: take the branch name, replace every `/` with `--` (double dash), append `.json`. Example: `bugfix/graceful-shutdown-cleanup` → `bugfix--graceful-shutdown-cleanup.json`.
 
 ```json
 {
@@ -134,8 +134,6 @@ Write to `.prawduct/.pr-reviews/<branch-name>.json`:
   "summary": "1 blocking, 0 warnings, 0 notes. Fix timing-safe comparison before creating PR."
 }
 ```
-
-Use the branch name as the filename, replacing `/` with `--` (e.g., `feature--add-auth.json`).
 
 After PR creation, update `pr_number` in the evidence file. After merge, delete the evidence file with the branch.
 

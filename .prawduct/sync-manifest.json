@@ -1,0 +1,51 @@
+{
+  "format_version": 2,
+  "framework_source": "/Users/brookstalley/source/prawduct",
+  "product_name": "prawduct",
+  "auto_pull": true,
+  "last_sync": "2026-03-21T19:41:15Z",
+  "files": {
+    "CLAUDE.md": {
+      "template": "templates/product-claude.md",
+      "strategy": "block_template",
+      "description": "Core principles and methodology instructions",
+      "generated_hash": null
+    },
+    ".prawduct/critic-review.md": {
+      "template": "templates/critic-review.md",
+      "strategy": "template",
+      "description": "Independent Critic review instructions (7 quality goals + coordinator pattern)",
+      "generated_hash": "4f5298035b190b20d8dacb9950ebc8ff9159d91b38eb508c09cadfa9e5454139"
+    },
+    ".prawduct/pr-review.md": {
+      "template": "templates/pr-review.md",
+      "strategy": "template",
+      "description": "PR reviewer instructions for release-readiness assessment",
+      "generated_hash": "348c49e33770f1ed59c6438b62cb4bb4d7eb59c858d49b38faa0b2fdcc7d2193"
+    },
+    ".claude/skills/pr/SKILL.md": {
+      "template": "templates/skill-pr.md",
+      "strategy": "template",
+      "description": "/pr skill \u2014 PR lifecycle management (create, update, merge, status). Configure PR behavior in project-preferences.md",
+      "generated_hash": "e3946ddd46241842fa8323f360de797247f3d62ee1722ac40f6f530c6a5db684"
+    },
+    ".claude/skills/janitor/SKILL.md": {
+      "template": "templates/skill-janitor.md",
+      "strategy": "template",
+      "description": "/janitor skill \u2014 Periodic codebase maintenance (encapsulation, deduplication, cleanup)",
+      "generated_hash": "860a88515632d1450e23ef5c891a09fc42bbc8744bd40807885d4fb7e3e625d6"
+    },
+    "tools/product-hook": {
+      "source": "tools/product-hook",
+      "strategy": "always_update",
+      "description": "Session governance hooks (reflection gate, Critic gate, session briefing)",
+      "generated_hash": "5acef3bf81837962feb5f0ecf8b73e669c561ad96a8040212805e22a39182221"
+    },
+    ".claude/settings.json": {
+      "template": "templates/product-settings.json",
+      "strategy": "merge_settings",
+      "description": "Claude Code settings with hook configuration",
+      "generated_hash": null
+    }
+  }
+}

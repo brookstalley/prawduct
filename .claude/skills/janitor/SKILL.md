@@ -169,7 +169,7 @@ Present the complete findings to the user, organized by theme, with severity and
 
 ### Step 5: Plan
 
-After the user approves the scope, write a build plan to `.prawduct/artifacts/build-plan.md` (or update the existing one) following Prawduct methodology. Read `methodology/planning.md` for chunking guidance.
+After the user approves the scope, write a build plan to `.prawduct/artifacts/build-plan.md` (or update the existing one) following Prawduct methodology. Review the chunking and planning guidance in this project's CLAUDE.md.
 
 **Chunking strategy for maintenance work:**
 - Bundle quick fixes into a single "quick wins" chunk
@@ -181,7 +181,7 @@ After the user approves the scope, write a build plan to `.prawduct/artifacts/bu
 
 ### Step 6: Execute
 
-Read `methodology/building.md` before writing any code. Follow the standard build cycle for each chunk:
+Review the build cycle in this project's CLAUDE.md before writing any code. Follow the standard build cycle for each chunk:
 
 - Run the full test suite before starting
 - Build: understand the chunk spec → implement → verify

@@ -32,7 +32,7 @@ The stop hook enforces review for code changes when a build plan exists.
 When a significant architectural or design change spans multiple chunks, review the change holistically after all chunks are complete:
 
 - **Artifact consistency:** Were all affected artifacts updated? Implementation referencing stale artifact content → **BLOCKING**.
-- **Regression check:** Do pre-existing tests still pass? → **BLOCKING** if violated.
+- **Regression check:** Were pre-existing tests modified or removed? Review the diff for weakened or deleted tests → **BLOCKING** if tests were weakened to pass.
 - **Retrospective:** Was the change reflected on? If missing → **WARNING**.
 
 ## Per-Chunk Output Format
