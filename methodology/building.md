@@ -12,7 +12,7 @@ A **work cycle** is one unit of work with its own governance: understand → pla
 
 **`/clear` between work cycles is recommended** for cleaner governance. It resets the git baseline (so the next work cycle's canary only sees its own changes), archives the previous reflection, and starts fresh context. But it is not required — multiple work cycles within a single session work correctly.
 
-The stop hook is a **final safety net**, enforcing minimum governance for the session: at least one reflection was captured, and the Critic was invoked if code was built against a plan. It also runs the **compliance canary** — a set of informational checks that flag common governance failures (code added without tests, dependencies without rationale, broad exception handling without markers, boundary changes without consumer verification). Canary findings are advisory, not blocking. Per-work-cycle governance (Critic after each chunk, reflection after each significant action) is the methodology's responsibility, not the hook's.
+The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, and advisory **compliance canary** checks run. Per-work-cycle governance (Critic after each chunk, reflection after each significant action) is the methodology's responsibility, not the hook's.
 
 ## Work-Scaled Governance
 
