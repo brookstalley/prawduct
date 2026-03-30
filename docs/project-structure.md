@@ -55,7 +55,7 @@ prawduct/
 │   ├── test_product_compat.py           # Product repo compatibility tests
 │   ├── test_coverage_gaps.py            # User journey and edge case coverage tests
 │   ├── test_pr_reviewer.py              # PR reviewer agent tests
-│   └── scenarios/                     # 4 test scenarios for framework validation
+│   └── scenarios/                     # 8 test scenarios for framework validation
 ├── docs/
 │   ├── principles.md                  # Full 22 principles with rationale
 │   ├── project-structure.md           # This file

@@ -5,7 +5,6 @@
 - **Primary structural:** `has_human_interface` (modality: screen, platform: mobile)
 - **Domain:** Utility
 - **Risk Level:** Low
-- **Evaluation tier:** 1 (vertical slice scenario)
 - **Purpose:** Tests pacing sensitivity, scope restraint, and non-technical user handling. The system should NOT interrogate this the same way it interrogates a B2B platform.
 
 ## Evaluation Procedure
@@ -22,13 +21,13 @@
 3. Start a new LLM conversation in `/tmp/eval-family-utility`. The generated repo is self-contained (own CLAUDE.md, hooks, Critic instructions).
 4. Send the Input prompt (below) as the user's opening message.
 5. For each system question, respond using the scripted Test Conversation responses below. If the system asks about a topic not covered, respond in character as the test persona.
-6. Let the system run through Stages 0 → 0.5 → 1 → 2 → 3.
+6. Let the system run through discovery → planning.
 
 ### Evaluating results
 
 7. After the run completes, evaluate against the Evaluation Rubric (below) by checking:
-   - `/tmp/eval-family-utility/project-state.yaml` against the C5 criteria
-   - `/tmp/eval-family-utility/artifacts/*.md` against the C3 criteria
+   - `/tmp/eval-family-utility/.prawduct/project-state.yaml` against the C5 criteria
+   - `/tmp/eval-family-utility/.prawduct/artifacts/*.md` against the C3 criteria
    - The conversation transcript against C1, C2, and C4 criteria
 8. Record pass/fail for each must-do, must-not-do, and quality criterion.
 
@@ -105,7 +104,7 @@ These scripted responses extend the test conversation for the build stages.
 **When asked about additional changes after the timer iteration:**
 > "Nope, that's perfect. Thanks!"
 
-**General persona (continued):** Same as Stages 0-3 — enthusiastic, non-technical, cooperative. Doesn't push back on technical recommendations.
+**General persona (continued):** Same as discovery — enthusiastic, non-technical, cooperative. Doesn't push back on technical recommendations.
 
 ## Evaluation Rubric
 
@@ -146,7 +145,7 @@ These scripted responses extend the test conversation for the build stages.
 
 **Must-do:**
 
-- `[interactive]` Progress through stages 0 → 0.5 → 1 → 2 without excessive back-and-forth.
+- `[interactive]` Progress through discovery → definition without excessive back-and-forth.
 - `[interactive]` Infer non-technical user from input style and vocabulary.
 - `[interactive]` Adjust vocabulary accordingly (no unexplained jargon).
 - `[interactive]` Confirm classification in plain language.
@@ -171,7 +170,7 @@ These scripted responses extend the test conversation for the build stages.
 
 **Must-do:**
 
-- `[simulation]` Produce all 7 universal artifacts: product brief, data model, security model, test specifications, non-functional requirements, operational spec, dependency manifest.
+- `[simulation]` Produce all universal artifacts: product brief, project preferences, data model, security model, test specifications, non-functional requirements, operational spec, observability strategy, dependency manifest.
 - `[simulation]` All artifacts have correct YAML frontmatter with dependency declarations.
 - `[simulation]` Data model includes at minimum: Player, Game, Score/Session entities.
 - `[simulation]` Security model is proportionate (simple player identification, not enterprise auth).
@@ -228,7 +227,7 @@ These scripted responses extend the test conversation for the build stages.
 
 ### Project State (C5)
 
-The rubric evaluates the resulting `project-state.yaml` after the full process (Stages 0-2).
+The rubric evaluates the resulting `project-state.yaml` after the full process (discovery → definition).
 
 **Must-do (structural):**
 
@@ -236,7 +235,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` No fields added that don't exist in the template schema.
 - `[simulation]` Risk factors include rationale, not just a level.
 
-**Must-do (content after Stages 0-2):**
+**Must-do (content after discovery → definition):**
 
 - `[simulation]` `classification.domain`: populated ("utility" or "entertainment/utility").
 - `[simulation]` `classification.structural.has_human_interface`: not null, with modality "screen" and platform indicating mobile.
@@ -257,7 +256,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-not-do:**
 
-- `[simulation]` Must not leave `classification.structural` with no active structural characteristics after Stage 0.
+- `[simulation]` Must not leave `classification.structural` with no active structural characteristics after initial classification.
 - `[simulation]` Must not add regulatory constraints for this scenario.
 - `[simulation]` Must not set `risk_profile.overall` above "low" for this scenario.
 
@@ -267,7 +266,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` Values are specific, not generic ("family score-tracking app for board game nights" not "a utility application").
 - `[simulation]` Scope decisions reflect the test conversation (score tracking and history in v1, fancier features deferred).
 
-### Build Plan (Stage 4)
+### Build Plan
 
 **Must-do:**
 
@@ -283,7 +282,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 **Must-not-do:**
 
 - `[simulation]` Must not produce more than 8 chunks for this simple product.
-- `[simulation]` Must not require the user to make technology decisions at this stage (those were decided in Stage 2).
+- `[simulation]` Must not require the user to make technology decisions at this stage (those were decided during definition).
 - `[simulation]` Must not include chunks for features not in v1 scope.
 
 **Quality criteria:**
@@ -292,7 +291,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` A Builder reading this plan could execute it without making decisions.
 - `[simulation]` The plan is proportionate — not enterprise-grade build infrastructure for a family app.
 
-### Builder (Stage 5)
+### Builder
 
 **Must-do:**
 
@@ -316,7 +315,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` The app actually works: you can record scores, view history, see the leaderboard.
 - `[simulation]` Test names are specific and descriptive (not "test1").
 
-### Critic Product Governance (Stage 5)
+### Critic Product Governance
 
 **Must-do:**
 
@@ -339,7 +338,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` The review cycle converges: blocking findings → fix → re-review → clear. Not infinite loops.
 - `[hybrid]` Process feels proportionate — the Critic helps, not obstructs.
 
-### Iteration (Stage 6)
+### Iteration
 
 **Must-do:**
 
@@ -367,7 +366,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 The scenario succeeds when:
 
-**Stages 0-3 (existing — no regression):**
+**Discovery → Planning:**
 
 1. Starting from the input above, the system produces a populated `project-state.yaml` with classification, product definition, and scope decisions.
 2. All 7 universal artifacts are generated with correct frontmatter, internal consistency, and cross-references.
@@ -375,7 +374,7 @@ The scenario succeeds when:
 4. The total output is proportionate to the product's simplicity — a reader should not think "this is way too much process for a family score tracker."
 5. A coding agent (or human developer) reading the output would have a clear, unambiguous starting point for building this app.
 
-**Stages 4-6 (new):**
+**Building → Iteration:**
 
 6. Build plan translates artifacts into concrete, executable instructions with appropriate chunking.
 7. App builds and runs locally — `npm run dev` (or equivalent) serves a working app.

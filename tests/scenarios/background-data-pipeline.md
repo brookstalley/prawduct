@@ -1,22 +1,10 @@
 # Test Scenario: Background Data Pipeline
 
-## Prerequisites
-
-**This scenario requires tier-2 framework capabilities:**
-- ✓ Discovery surfaces automation/pipeline concerns (scheduling, monitoring, failure recovery)
-- ✓ Planning supports automation-specific artifacts (pipeline architecture, scheduling, monitoring, failure recovery, configuration specs)
-- ✓ Review Perspectives evaluate operational concerns for headless systems
-
-**Current status**: Ready for tier-2 baseline evaluation.
-
----
-
 ## Scenario Overview
 
 - **Primary structural:** `runs_unattended` (trigger: scheduled); **Domain characteristics:** external service integration (RSS feeds, Slack API)
 - **Domain:** Productivity / Content Curation
 - **Risk Level:** Low-Medium
-- **Evaluation tier:** 2 (structural characteristic diversity)
 - **Purpose:** Tests `runs_unattended` structural characteristic detection, operational-first discovery, and verification that the system does NOT ask about UIs, screens, or navigation for headless systems. Tests technical user calibration and dynamic domain depth for external integrations.
 
 ## Test Persona
@@ -53,13 +41,13 @@
 3. Start a new LLM conversation in `/tmp/eval-background-pipeline`. The generated repo is self-contained (own CLAUDE.md, hooks, Critic instructions).
 4. Send the Input prompt (below) as the user's opening message.
 5. For each system question, respond using the scripted Test Conversation responses below. If the system asks about a topic not covered, respond in character as Alex Chen (see Test Persona).
-6. Let the system run through Stages 0 → 0.5 → 1 → 2 → 3.
+6. Let the system run through discovery → planning.
 
 ### Evaluating results
 
 7. After the run completes, evaluate against the Evaluation Rubric (below) by checking:
-   - `/tmp/eval-background-pipeline/project-state.yaml` against the C5 criteria
-   - `/tmp/eval-background-pipeline/artifacts/*.md` against the C3 criteria
+   - `/tmp/eval-background-pipeline/.prawduct/project-state.yaml` against the C5 criteria
+   - `/tmp/eval-background-pipeline/.prawduct/artifacts/*.md` against the C3 criteria
    - The conversation transcript against C1, C2, and C4 criteria
 8. Record pass/fail for each must-do, must-not-do, and quality criterion.
 
@@ -200,7 +188,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[interactive]` Vocabulary matches user's technical level (technical but pragmatic, not enterprise-ops speak).
 - `[interactive]` Discovery completes in 2-4 question rounds for low-medium risk.
 - `[hybrid]` Operational concerns (monitoring, failure recovery, cost) are raised proactively, not only when user asks (partially evaluable: artifact content covers operational topics).
-- `[interactive]` Stage transitions are natural and clearly communicated.
+- `[interactive]` Phase transitions are natural and clearly communicated.
 
 ### Planning (C3)
 
@@ -264,7 +252,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 
 ### Project State (C5)
 
-The rubric evaluates the resulting `project-state.yaml` after the full process (Stages 0-2).
+The rubric evaluates the resulting `project-state.yaml` after the full process (discovery → definition).
 
 **Must-do (structural):**
 
@@ -272,7 +260,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` No fields added that don't exist in the template schema.
 - `[simulation]` Risk factors include rationale, not just a level.
 
-**Must-do (content after Stages 0-2):**
+**Must-do (content after discovery → definition):**
 
 - `[simulation]` `classification.domain`: populated ("productivity" or "content-curation" or similar).
 - `[simulation]` `classification.structural.runs_unattended`: not null, with trigger "scheduled".
@@ -295,7 +283,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 **Must-not-do:**
 
 - `[simulation]` Must not detect `has_human_interface` structural characteristic.
-- `[simulation]` Must not leave `classification.structural` with no active structural characteristics after Stage 0.
+- `[simulation]` Must not leave `classification.structural` with no active structural characteristics after initial classification.
 - `[simulation]` Must not add UI/UX design decisions (no screens to design).
 - `[simulation]` Must not set `risk_profile.overall` above "medium" for this scenario.
 

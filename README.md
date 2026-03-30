@@ -6,7 +6,7 @@ Prawduct is a product development framework for [Claude Code](https://docs.anthr
 
 Going from "I need an app that does X" straight to code skips the hard questions: Who are the users? What are the edge cases and failure modes? What does "done" look like? What needs to be tested, and how?
 
-Claude Code is fantastic at writing code, but without discipline it makes assumptions about product intent, produces code drifts from requirements, skips edge cases, weakens tests to make them pass, and accumulates technical debt — all without telling you.
+Claude Code is fantastic at writing code, but without discipline it makes assumptions about product intent, produces code that drifts from requirements, skips edge cases, weakens tests to make them pass, and accumulates technical debt — all without telling you.
 
 ## How Prawduct Works
 
@@ -116,6 +116,23 @@ Or from within a product repo, use `/prawduct-doctor` to check health and offer 
 ```bash
 cd prawduct
 claude
+```
+
+## Testing Prawduct
+
+Unit tests cover all hooks and setup tooling (750 tests):
+
+```bash
+cd prawduct
+python3 -m pytest tests/
+```
+
+Scenario tests in `tests/scenarios/` are manual evaluations — each describes a sample product, a user persona, scripted inputs, and a rubric. Run them by opening the Prawduct repo in Claude Code and following the scenario's evaluation procedure:
+
+```bash
+cd prawduct
+claude
+> let's run through tests/scenarios/home-environmental-monitor.md
 ```
 
 ## Generated Product Repo Structure

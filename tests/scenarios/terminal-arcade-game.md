@@ -1,28 +1,10 @@
 # Test Scenario: Terminal Arcade Game
 
-## Prerequisites
-
-**This scenario requires tier-2 framework capabilities:**
-- Discovery surfaces UI concerns with dynamic domain depth for Entertainment
-- Planning supports universal artifacts with game/real-time architecture awareness
-- Review Perspectives evaluate non-web UI concerns (terminal rendering, game loop architecture, text-based visual design)
-- Building can execute build plans for real-time terminal applications
-- Critic can evaluate game-specific build quality (game loop performance, input responsiveness)
-
-**Additional framework stretch:**
-- This scenario tests the framework's ability to handle an unusual UI substrate (terminal/TUI rather than web or mobile). The discovery methodology's UI guidance assumes web/mobile in several places. This scenario reveals where those assumptions are baked in vs. where general principles adapt naturally.
-- The Entertainment dynamic domain depth relies on LLM knowledge rather than hardcoded question banks. This scenario exercises it more deeply than the family-utility scenario (which is Entertainment/Utility, not pure Entertainment).
-
-**Current status**: Ready for tier-2 evaluation. All required capabilities are implemented. Terminal-specific adaptations may surface framework gaps — this is a feature, not a bug. Observations from this scenario should feed back into skill improvements.
-
----
-
 ## Scenario Overview
 
 - **Primary structural:** `has_human_interface` (modality: terminal)
 - **Domain:** Entertainment
 - **Risk Level:** Low-Medium
-- **Evaluation tier:** 2 (structural characteristic + domain diversity)
 - **Purpose:** Tests framework behavior with an unusual UI substrate (terminal, not web/mobile), real-time game loop architecture, cross-platform terminal compatibility, and entertainment domain handling. Exercises whether the system can bring game design expertise to a technical user who defers on design. Validates that the framework recognizes degenerate artifacts (security, ops) while taking genuine technical complexity seriously (real-time input, rendering, terminal abstraction).
 
 ## Why This Scenario Is Challenging
@@ -83,13 +65,13 @@ This scenario creates productive tension across multiple framework dimensions:
 3. Start a new LLM conversation in `/tmp/eval-terminal-arcade`. The generated repo is self-contained (own CLAUDE.md, hooks, Critic instructions).
 4. Send the Input prompt (below) as the user's opening message.
 5. For each system question, respond using the scripted Test Conversation responses below. If the system asks about a topic not covered, respond in character as Jordan Reyes (see Test Persona).
-6. Let the system run through Stages 0 → 0.5 → 1 → 2 → 3.
+6. Let the system run through discovery → planning.
 
 ### Evaluating results
 
 7. After the run completes, evaluate against the Evaluation Rubric (below) by checking:
-   - `/tmp/eval-terminal-arcade/project-state.yaml` against the C5 criteria
-   - `/tmp/eval-terminal-arcade/artifacts/*.md` against the C3 criteria
+   - `/tmp/eval-terminal-arcade/.prawduct/project-state.yaml` against the C5 criteria
+   - `/tmp/eval-terminal-arcade/.prawduct/artifacts/*.md` against the C3 criteria
    - The conversation transcript against C1, C2, and C4 criteria
 8. Record pass/fail for each must-do, must-not-do, and quality criterion.
 
@@ -191,7 +173,7 @@ To ensure repeatable evaluation, the following scripted responses define what Jo
 - Slightly impatient: doesn't want to answer 15 questions about a weekend game project
 - Cooperative and enthusiastic about the project itself
 
-## Test Conversation (Build — Stages 4-6)
+## Test Conversation (Build)
 
 These scripted responses extend the test conversation for the build stages.
 
@@ -212,7 +194,7 @@ These scripted responses extend the test conversation for the build stages.
 **When asked about additional changes after the high score iteration:**
 > "Nope, this is awesome. Ship it."
 
-**General persona (continued):** Same as Stages 0-3 — technically precise, defers on game design, enthusiastic.
+**General persona (continued):** Same as discovery — technically precise, defers on game design, enthusiastic.
 
 ## Evaluation Rubric
 
@@ -276,7 +258,7 @@ These scripted responses extend the test conversation for the build stages.
 - `[interactive]` Vocabulary matches the user's technical level (developer-to-developer conversation).
 - `[interactive]` Discovery completes in 2-3 question rounds — explores the real unknowns (game design, terminal compatibility) without belaboring the obvious (it's a game, it runs in a terminal).
 - `[interactive]` The system proactively contributes game design thinking the user defers on.
-- `[interactive]` Stage transitions happen naturally. The user shouldn't feel interrogated.
+- `[interactive]` Phase transitions happen naturally. The user shouldn't feel interrogated.
 - `[interactive]` The conversation acknowledges this is a fun creative project, not enterprise software.
 
 ### Planning (C3)
@@ -342,7 +324,7 @@ These scripted responses extend the test conversation for the build stages.
 
 ### Project State (C5)
 
-The rubric evaluates the resulting `project-state.yaml` after the full process (Stages 0-2).
+The rubric evaluates the resulting `project-state.yaml` after the full process (discovery → definition).
 
 **Must-do (structural):**
 
@@ -350,7 +332,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` No fields added that don't exist in the template schema.
 - `[simulation]` Risk factors include rationale, not just a level.
 
-**Must-do (content after Stages 0-2):**
+**Must-do (content after discovery → definition):**
 
 - `[simulation]` `classification.domain`: "entertainment" (or "entertainment/gaming").
 - `[simulation]` `classification.structural.has_human_interface`: not null, with modality "terminal".
@@ -371,7 +353,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 **Must-not-do:**
 
-- `[simulation]` Must not leave `classification.structural` with no active structural characteristics after Stage 0.
+- `[simulation]` Must not leave `classification.structural` with no active structural characteristics after initial classification.
 - `[simulation]` Must not detect `runs_unattended`, `exposes_programmatic_interface`, or `has_multiple_party_types` structural characteristics.
 - `[simulation]` Must not add regulatory constraints for this scenario.
 - `[simulation]` Must not set `risk_profile.overall` above "medium" for this scenario.
@@ -386,7 +368,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` Technical decisions reflect the real challenges of this product (terminal I/O, game loop, cross-platform compatibility).
 - `[simulation]` Scope decisions reflect the conversation (core gameplay in v1, persistence and extras deferred).
 
-### Build Plan (Stage 4)
+### Build Plan
 
 **Must-do:**
 
@@ -413,7 +395,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` A Builder reading this plan understands it's building a game loop, not a web app. The plan's language is game-development-aware.
 - `[simulation]` The plan is proportionate — enough structure for quality, not so much that it feels like building a commercial game engine.
 
-### Builder (Stage 5)
+### Builder
 
 **Must-do:**
 
@@ -446,7 +428,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` Test strategy handles the real-time nature of the game: game logic is testable separately from rendering, collision detection is tested with specific coordinates, game state transitions are tested.
 - `[simulation]` Code complexity is proportionate — clean, not over-abstracted, not enterprise-patterned.
 
-### Critic Product Governance (Stage 5)
+### Critic Product Governance
 
 **Must-do:**
 
@@ -469,7 +451,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 - `[simulation]` The review cycle converges: blocking findings → fix → re-review → clear. Not infinite loops.
 - `[simulation]` Critic produces no more than 5 findings per chunk and review cycle converges within 2 iterations.
 
-### Iteration (Stage 6)
+### Iteration
 
 **Must-do:**
 
@@ -500,7 +482,7 @@ The rubric evaluates the resulting `project-state.yaml` after the full process (
 
 The scenario succeeds when:
 
-**Stages 0-3:**
+**Discovery → Planning:**
 
 1. Starting from the input above, the system correctly classifies this as a terminal-based entertainment product and calibrates to a technical user who defers on game design.
 2. Discovery surfaces the real challenges (cross-platform terminal I/O, real-time game loop, game design) without wasting time on inapplicable concerns (web design, authentication, API contracts, monitoring infrastructure).
@@ -510,7 +492,7 @@ The scenario succeeds when:
 6. The total output is proportionate — thorough on the genuinely complex aspects (game loop, terminal I/O, game design), minimal on the degenerate aspects (security, ops, auth).
 7. A coding agent reading the output would understand they're building a real-time terminal game and have clear, unambiguous specifications for game entities, game states, input handling, rendering, and cross-platform compatibility.
 
-**Stages 4-6:**
+**Building → Iteration:**
 
 8. Build plan translates game specifications into game-development-aware chunks: engine first, then entities, then features.
 9. The game builds, runs, and is playable in the terminal. Controls are responsive. Enemies move. Bullets hit things. Score works.
