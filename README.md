@@ -118,6 +118,20 @@ cd prawduct
 claude
 ```
 
+## Q&A
+
+Q: **Doesn't this use a lot of tokens?**
+
+A: Yes, yes it does. However, it uses fewer tokens than having to go back and revise applications over and over again. Developing clear scope, writing good requirements docs, and ensuring test coverage and architectural consistency takes a lot of thought and effort, for human or machine. The only thing more expensive is *not* doing that stuff.
+
+Q: **What languages can Prawduct develop in**
+
+A: Really anything Claude Code can. Prawduct has no language-specific instructions or code, and relies on Claude's smarts to plan appropriately for the target language. You'll get better results with the languages Claude is better at, of course.
+
+Q: **How much control do I have over product and tech choices?**
+
+A: As much or as little as you want. Prawduct is designed to interview you during the onboarding process and to make inferences about the areas where you're opinionated versus not. But you can always express a preference (for a language, a color scheme, a logging provider) and Prawduct will honor it. Project prefernences are stored in `.prawduct/artifacts/project-preferencs.md` and you can edit them directly if you like.
+
 ## Testing Prawduct
 
 Unit tests cover all hooks and setup tooling (750 tests):
@@ -134,6 +148,10 @@ cd prawduct
 claude
 > let's run through tests/scenarios/home-environmental-monitor.md
 ```
+
+These scenario tests *should* spawn a second Claude Code that does the work without seeing the full scenario file, ensuring fair testing.
+
+This may take a while, anywhere from 3 - 15 minutes depending on scenario.
 
 ## Generated Product Repo Structure
 

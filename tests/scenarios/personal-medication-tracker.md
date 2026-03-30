@@ -14,7 +14,7 @@ This scenario creates productive tension across multiple framework dimensions:
 
 1. **High risk + low scale.** Health data is genuinely sensitive — medication information reveals diagnoses, conditions, and treatment plans. But this is a personal tool for one family, not a regulated healthcare platform. The framework must take the data seriously without prescribing HIPAA compliance infrastructure. This is the hardest proportionality test: being appropriately serious without being disproportionately heavy.
 
-2. **Regulatory nuance.** HIPAA applies to covered entities (hospitals, insurers, providers), not personal apps. But the _principles_ behind HIPAA — minimum necessary data, encryption at rest, access controls, breach awareness — still apply. The framework should surface these principles without claiming HIPAA compliance is required. Getting this distinction right requires genuine regulatory understanding.
+2. **Regulatory nuance.** HIPAA applies to covered entities (hospitals, insurers, providers), not personal apps. But the _principles_ behind HIPAA — minimum necessary data, encryption at rest, access controls, breach awareness — still apply. The framework should surface these principles without claiming HIPAA compliance is required. 
 
 3. **Emotional context.** This user is worried about his father's health, not evaluating software architecture. He needs reassurance that the tool will be reliable and private — not a lecture on threat modeling. The framework must read the emotional room and adjust its tone. Questions about "breach scenarios" should feel like caring about his father's privacy, not conducting a security audit.
 
