@@ -1,0 +1,14 @@
+.claude/settings.local.json
+.prawduct/.critic-findings.json
+.prawduct/.pr-reviews/
+.prawduct/.session-git-baseline
+.prawduct/.session-handoff.md
+.prawduct/.session-reflected
+.prawduct/.session-start
+.prawduct/.subagent-briefing.md
+.prawduct/reflections.md
+__pycache__/
+
+# Prawduct session files
+.prawduct/sync-manifest.json
+.prawduct/.test-evidence.json

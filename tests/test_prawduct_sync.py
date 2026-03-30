@@ -1,0 +1,1902 @@
+"""Tests for prawduct-setup.py — sync functionality.
+
+Uses importlib to handle the hyphenated filename.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+# Load prawduct-setup.py via importlib
+_TOOL_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
+_spec = importlib.util.spec_from_file_location("prawduct_setup", _TOOL_PATH)
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+
+compute_hash = _mod.compute_hash
+compute_block_hash = _mod.compute_block_hash
+extract_block = _mod.extract_block
+render_template = _mod.render_template
+merge_settings = _mod.merge_settings
+create_manifest = _mod.create_manifest
+apply_renames = _mod.apply_renames
+_bootstrap_manifest = _mod._bootstrap_manifest
+FILE_RENAMES = _mod.FILE_RENAMES
+MANAGED_FILES = _mod.MANAGED_FILES
+run_sync = _mod.run_sync
+_try_pull_framework = _mod._try_pull_framework
+BLOCK_BEGIN = _mod.BLOCK_BEGIN
+BLOCK_END = _mod.BLOCK_END
+GITIGNORE_ENTRIES = _mod.GITIGNORE_ENTRIES
+migrate_backlog = _mod.migrate_backlog
+
+
+# =============================================================================
+# compute_hash
+# =============================================================================
+
+
+class TestComputeHash:
+    def test_returns_sha256(self, tmp_path: Path):
+        f = tmp_path / "hello.txt"
+        f.write_text("hello world")
+        expected = hashlib.sha256(b"hello world").hexdigest()
+        assert compute_hash(f) == expected
+
+    def test_returns_none_for_missing(self, tmp_path: Path):
+        assert compute_hash(tmp_path / "nope.txt") is None
+
+    def test_empty_file(self, tmp_path: Path):
+        f = tmp_path / "empty.txt"
+        f.write_text("")
+        expected = hashlib.sha256(b"").hexdigest()
+        assert compute_hash(f) == expected
+
+
+# =============================================================================
+# render_template
+# =============================================================================
+
+
+class TestRenderTemplate:
+    def test_substitution(self, tmp_path: Path):
+        tpl = tmp_path / "tpl.md"
+        tpl.write_text("# {{PRODUCT_NAME}} Guide\nWelcome to {{PRODUCT_NAME}}.")
+        result = render_template(tpl, {"{{PRODUCT_NAME}}": "MyApp"})
+        assert result == "# MyApp Guide\nWelcome to MyApp."
+
+    def test_no_subs(self, tmp_path: Path):
+        tpl = tmp_path / "tpl.md"
+        tpl.write_text("Hello world")
+        assert render_template(tpl, {}) == "Hello world"
+
+
+# =============================================================================
+# merge_settings
+# =============================================================================
+
+
+class TestMergeSettings:
+    def _template(self, tmp_path: Path, with_banner: bool = False) -> Path:
+        tpl = tmp_path / "template.json"
+        data: dict = {
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            }
+        }
+        if with_banner:
+            data["companyAnnouncements"] = "{{PRODUCT_NAME}} — Built with Prawduct"
+        tpl.write_text(json.dumps(data, indent=2))
+        return tpl
+
+    def test_creates_new(self, tmp_path: Path):
+        dst = tmp_path / ".claude" / "settings.json"
+        tpl = self._template(tmp_path)
+        assert merge_settings(dst, tpl) is True
+        data = json.loads(dst.read_text())
+        assert "Stop" in data["hooks"]
+
+    def test_preserves_user_hooks(self, tmp_path: Path):
+        dst = tmp_path / ".claude" / "settings.json"
+        dst.parent.mkdir(parents=True)
+        dst.write_text(json.dumps({
+            "hooks": {
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "my-custom-hook stop"}
+                ]}]
+            }
+        }, indent=2))
+        tpl = self._template(tmp_path)
+        merge_settings(dst, tpl)
+        data = json.loads(dst.read_text())
+        commands = []
+        for entry in data["hooks"]["Stop"]:
+            for hook in entry.get("hooks", []):
+                commands.append(hook.get("command", ""))
+        assert any("product-hook" in c for c in commands)
+        assert any("my-custom-hook" in c for c in commands)
+
+    def test_subs_applied_to_banner(self, tmp_path: Path):
+        dst = tmp_path / ".claude" / "settings.json"
+        tpl = self._template(tmp_path, with_banner=True)
+        merge_settings(dst, tpl, subs={"{{PRODUCT_NAME}}": "TestApp"})
+        data = json.loads(dst.read_text())
+        assert "TestApp" in data["companyAnnouncements"]
+        assert "{{PRODUCT_NAME}}" not in data["companyAnnouncements"]
+
+    def test_banner_always_updated(self, tmp_path: Path):
+        """Banner is framework-managed, always updated from template."""
+        dst = tmp_path / ".claude" / "settings.json"
+        dst.parent.mkdir(parents=True)
+        dst.write_text(json.dumps({
+            "companyAnnouncements": "Old banner",
+            "hooks": {}
+        }, indent=2))
+        tpl = self._template(tmp_path, with_banner=True)
+        result = merge_settings(dst, tpl, subs={"{{PRODUCT_NAME}}": "NewApp"})
+        assert result is True
+        data = json.loads(dst.read_text())
+        assert "NewApp" in data["companyAnnouncements"]
+
+    def test_preserves_other_keys(self, tmp_path: Path):
+        dst = tmp_path / ".claude" / "settings.json"
+        dst.parent.mkdir(parents=True)
+        dst.write_text(json.dumps({
+            "customSetting": True,
+            "hooks": {}
+        }, indent=2))
+        tpl = self._template(tmp_path)
+        merge_settings(dst, tpl)
+        data = json.loads(dst.read_text())
+        assert data["customSetting"] is True
+
+    def test_handles_bad_json(self, tmp_path: Path):
+        dst = tmp_path / ".claude" / "settings.json"
+        dst.parent.mkdir(parents=True)
+        dst.write_text("not valid json {{{")
+        tpl = self._template(tmp_path)
+        assert merge_settings(dst, tpl) is False
+
+    def test_idempotent(self, tmp_path: Path):
+        dst = tmp_path / ".claude" / "settings.json"
+        tpl = self._template(tmp_path)
+        merge_settings(dst, tpl)
+        assert merge_settings(dst, tpl) is False
+
+    def test_removes_stale_prawduct_hook_events(self, tmp_path: Path):
+        """When template drops an event (e.g. SessionEnd), merge removes our hook but keeps user hooks."""
+        dst = tmp_path / ".claude" / "settings.json"
+        dst.parent.mkdir(parents=True)
+        # Product has a stale SessionEnd with our hook + a user hook
+        dst.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+                "SessionEnd": [
+                    {"matcher": "", "hooks": [
+                        {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" session-end"}
+                    ]},
+                    {"matcher": "", "hooks": [
+                        {"type": "command", "command": "my-custom-cleanup"}
+                    ]}
+                ]
+            }
+        }, indent=2))
+        tpl = self._template(tmp_path)
+        result = merge_settings(dst, tpl)
+        assert result is True
+        data = json.loads(dst.read_text())
+        # SessionEnd should still exist but ONLY with the user's hook
+        assert "SessionEnd" in data["hooks"]
+        se_commands = [
+            hook.get("command", "")
+            for entry in data["hooks"]["SessionEnd"]
+            for hook in entry.get("hooks", [])
+        ]
+        assert "my-custom-cleanup" in se_commands
+        assert not any("product-hook" in c for c in se_commands)
+
+    def test_removes_stale_event_entirely_when_no_user_hooks(self, tmp_path: Path):
+        """When template drops an event and product has only our hook, the event is removed entirely."""
+        dst = tmp_path / ".claude" / "settings.json"
+        dst.parent.mkdir(parents=True)
+        dst.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+                "SessionEnd": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" session-end"}
+                ]}]
+            }
+        }, indent=2))
+        tpl = self._template(tmp_path)
+        result = merge_settings(dst, tpl)
+        assert result is True
+        data = json.loads(dst.read_text())
+        assert "SessionEnd" not in data["hooks"]
+
+
+# =============================================================================
+# create_manifest
+# =============================================================================
+
+
+class TestCreateManifest:
+    def test_basic_structure(self, tmp_path: Path):
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        hashes = {
+            "CLAUDE.md": "abc123",
+            ".prawduct/critic-review.md": "def456",
+            "tools/product-hook": "ghi789",
+            ".claude/settings.json": None,
+        }
+        manifest = create_manifest(tmp_path / "product", fw, "TestApp", hashes)
+
+        assert manifest["format_version"] == 2
+        assert manifest["framework_source"] == str(fw)
+        assert manifest["product_name"] == "TestApp"
+        assert "last_sync" in manifest
+        assert manifest["files"]["CLAUDE.md"]["strategy"] == "block_template"
+        assert manifest["files"]["CLAUDE.md"]["generated_hash"] == "abc123"
+        assert manifest["files"]["tools/product-hook"]["strategy"] == "always_update"
+        assert manifest["files"][".claude/settings.json"]["strategy"] == "merge_settings"
+        assert manifest["files"][".claude/settings.json"]["generated_hash"] is None
+
+    def test_has_all_managed_files(self, tmp_path: Path):
+        manifest = create_manifest(tmp_path, tmp_path, "X", {})
+        assert set(manifest["files"].keys()) == {
+            "CLAUDE.md",
+            ".prawduct/critic-review.md",
+            ".prawduct/pr-review.md",
+            ".prawduct/build-governance.md",
+            ".claude/skills/pr/SKILL.md",
+            ".claude/skills/janitor/SKILL.md",
+            ".claude/skills/prawduct-doctor/SKILL.md",
+            ".claude/skills/learnings/SKILL.md",
+            ".claude/skills/critic/SKILL.md",
+            "tools/product-hook",
+            ".claude/settings.json",
+        }
+
+
+# =============================================================================
+# _bootstrap_manifest
+# =============================================================================
+
+
+class TestBootstrapManifest:
+    """Tests for automatic manifest creation on repos missing one."""
+
+    def test_bootstrap_creates_manifest_on_sync(self, tmp_path: Path):
+        """run_sync bootstraps a manifest when .prawduct/ exists but no manifest."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\nContent\n{BLOCK_END}\n"
+        )
+
+        product = tmp_path / "myapp"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("Bootstrapped" in a for a in result["actions"])
+        assert (product / ".prawduct" / "sync-manifest.json").is_file()
+
+    def test_bootstrap_infers_product_name_from_state(self, tmp_path: Path):
+        """Bootstrap reads product_name from project-state.yaml."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+
+        product = tmp_path / "mydir"
+        product.mkdir()
+        prawduct_dir = product / ".prawduct"
+        prawduct_dir.mkdir()
+        (prawduct_dir / "project-state.yaml").write_text(
+            'product_name: "WorldGround"\nschema_version: 2\n'
+        )
+
+        manifest = _bootstrap_manifest(product, fw)
+        assert manifest["product_name"] == "WorldGround"
+
+    def test_bootstrap_falls_back_to_dir_name(self, tmp_path: Path):
+        """Without project-state.yaml, bootstrap uses directory name."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+
+        product = tmp_path / "cool-app"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        manifest = _bootstrap_manifest(product, fw)
+        assert manifest["product_name"] == "cool-app"
+
+    def test_bootstrap_hashes_existing_files(self, tmp_path: Path):
+        """Existing files get real hashes; missing files get None."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+
+        product = tmp_path / "app"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        # Create one managed file
+        critic = product / ".prawduct" / "critic-review.md"
+        critic.write_text("# Critic review\n")
+
+        manifest = _bootstrap_manifest(product, fw)
+        # Existing file gets a real hash
+        assert manifest["files"][".prawduct/critic-review.md"]["generated_hash"] is not None
+        # Missing file gets None
+        assert manifest["files"][".prawduct/pr-review.md"]["generated_hash"] is None
+
+    def test_bootstrap_checks_old_rename_paths(self, tmp_path: Path, monkeypatch):
+        """Bootstrap finds files at old rename paths for hash computation."""
+        test_renames = {
+            "old/cmd.md": "new/skill/SKILL.md",
+        }
+        test_managed = {
+            "new/skill/SKILL.md": {
+                "template": "templates/skill.md",
+                "strategy": "template",
+                "description": "test",
+            },
+        }
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", test_renames)
+        monkeypatch.setattr(_mod._lib_sync_cmd, "MANAGED_FILES", test_managed)
+        monkeypatch.setattr(_mod._lib_core, "MANAGED_FILES", test_managed)
+
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+
+        product = tmp_path / "app"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        (product / "old").mkdir()
+        (product / "old" / "cmd.md").write_text("skill content")
+
+        manifest = _bootstrap_manifest(product, fw)
+        # Hash computed from old path, stored under new key
+        assert manifest["files"]["new/skill/SKILL.md"]["generated_hash"] is not None
+
+    def test_no_bootstrap_without_prawduct_dir(self, tmp_path: Path):
+        """No .prawduct/ directory: returns 'not a prawduct repo'."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+
+        product = tmp_path / "random-dir"
+        product.mkdir()
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert result["reason"] == "not a prawduct repo"
+
+
+# =============================================================================
+# apply_renames
+# =============================================================================
+
+
+class TestApplyRenames:
+    """Tests for the file rename/move mechanism."""
+
+    def _make_manifest(self, files: dict) -> dict:
+        return {"format_version": 2, "files": files}
+
+    def test_move_file_and_transfer_manifest_entry(self, tmp_path: Path, monkeypatch):
+        """Old file present, new absent: move file and transfer manifest entry."""
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", {
+            "old/file.md": "new/dir/SKILL.md",
+        })
+        (tmp_path / "old").mkdir()
+        (tmp_path / "old" / "file.md").write_text("my content")
+        manifest = self._make_manifest({
+            "old/file.md": {"strategy": "template", "generated_hash": "abc123"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "new" / "dir" / "SKILL.md").read_text() == "my content"
+        assert not (tmp_path / "old" / "file.md").exists()
+        assert "new/dir/SKILL.md" in manifest["files"]
+        assert "old/file.md" not in manifest["files"]
+        assert manifest["files"]["new/dir/SKILL.md"]["generated_hash"] == "abc123"
+        assert any("Moved:" in a for a in actions)
+
+    def test_preserves_user_edits(self, tmp_path: Path, monkeypatch):
+        """File content is byte-identical after move (user edits survive)."""
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", {
+            "commands/pr.md": "skills/pr/SKILL.md",
+        })
+        (tmp_path / "commands").mkdir()
+        edited_content = "# PR skill\nUser added this line\n"
+        (tmp_path / "commands" / "pr.md").write_text(edited_content)
+        manifest = self._make_manifest({
+            "commands/pr.md": {"strategy": "template", "generated_hash": "oldhash"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "skills" / "pr" / "SKILL.md").read_text() == edited_content
+
+    def test_both_exist_deletes_old(self, tmp_path: Path, monkeypatch):
+        """Both old and new exist: delete old (leftover), keep new."""
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", {
+            "old/file.md": "new/file.md",
+        })
+        (tmp_path / "old").mkdir()
+        (tmp_path / "old" / "file.md").write_text("old content")
+        (tmp_path / "new").mkdir()
+        (tmp_path / "new" / "file.md").write_text("new content")
+        manifest = self._make_manifest({
+            "old/file.md": {"strategy": "template", "generated_hash": "abc"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "new" / "file.md").read_text() == "new content"
+        assert not (tmp_path / "old" / "file.md").exists()
+        assert "old/file.md" not in manifest["files"]
+        assert any("leftover" in a for a in actions)
+
+    def test_stale_manifest_entry_cleaned(self, tmp_path: Path, monkeypatch):
+        """Old path in manifest but file doesn't exist: clean manifest entry."""
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", {
+            "old/file.md": "new/file.md",
+        })
+        manifest = self._make_manifest({
+            "old/file.md": {"strategy": "template", "generated_hash": "abc"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert "old/file.md" not in manifest["files"]
+        assert any("stale" in a.lower() for a in actions)
+
+    def test_neither_exists_noop(self, tmp_path: Path, monkeypatch):
+        """Neither old file nor manifest entry: no-op."""
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", {
+            "old/file.md": "new/file.md",
+        })
+        manifest = self._make_manifest({})
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert actions == []
+        assert manifest["files"] == {}
+
+    def test_empty_directory_cleanup(self, tmp_path: Path, monkeypatch):
+        """Empty parent directory of old path is removed after move."""
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", {
+            "commands/pr.md": "skills/pr/SKILL.md",
+        })
+        (tmp_path / "commands").mkdir()
+        (tmp_path / "commands" / "pr.md").write_text("content")
+        manifest = self._make_manifest({
+            "commands/pr.md": {"strategy": "template", "generated_hash": "x"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert not (tmp_path / "commands").exists()
+        assert any("empty directory" in a.lower() for a in actions)
+
+    def test_nonempty_directory_preserved(self, tmp_path: Path, monkeypatch):
+        """Parent directory with other files is NOT removed."""
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", {
+            "commands/pr.md": "skills/pr/SKILL.md",
+        })
+        (tmp_path / "commands").mkdir()
+        (tmp_path / "commands" / "pr.md").write_text("content")
+        (tmp_path / "commands" / "custom.md").write_text("user file")
+        manifest = self._make_manifest({
+            "commands/pr.md": {"strategy": "template", "generated_hash": "x"},
+        })
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "commands").exists()
+        assert (tmp_path / "commands" / "custom.md").exists()
+
+    def test_old_file_no_manifest_entry(self, tmp_path: Path, monkeypatch):
+        """Old file exists but no manifest entry: still move it."""
+        monkeypatch.setattr(_mod._lib_sync_cmd, "FILE_RENAMES", {
+            "commands/pr.md": "skills/pr/SKILL.md",
+        })
+        (tmp_path / "commands").mkdir()
+        (tmp_path / "commands" / "pr.md").write_text("content")
+        manifest = self._make_manifest({})
+
+        actions: list[str] = []
+        apply_renames(tmp_path, manifest, actions)
+
+        assert (tmp_path / "skills" / "pr" / "SKILL.md").read_text() == "content"
+        assert not (tmp_path / "commands" / "pr.md").exists()
+        assert any("Moved:" in a for a in actions)
+
+
+# =============================================================================
+# run_sync
+# =============================================================================
+
+
+class TestRunSync:
+    def _setup_framework(self, tmp_path: Path) -> Path:
+        """Create a minimal framework dir with templates."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v1")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            }
+        }, indent=2))
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        return fw
+
+    def _setup_product(self, tmp_path: Path, fw: Path, product_name: str = "TestApp") -> Path:
+        """Create a product dir with manifest and initial files."""
+        product = tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": product_name}
+
+        # Write initial files
+        claude_content = render_template(fw / "templates" / "product-claude.md", subs)
+        (product / "CLAUDE.md").write_text(claude_content)
+
+        critic_content = render_template(fw / "templates" / "critic-review.md", subs)
+        (product / ".prawduct" / "critic-review.md").write_text(critic_content)
+
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_bytes(
+            (fw / "tools" / "product-hook").read_bytes()
+        )
+
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(
+            (fw / "templates" / "product-settings.json").read_text()
+        )
+
+        # Build file hashes (block hash for CLAUDE.md)
+        hashes = {
+            "CLAUDE.md": compute_block_hash(claude_content),
+            ".prawduct/critic-review.md": compute_hash(product / ".prawduct" / "critic-review.md"),
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,  # merge_settings doesn't use hash
+        }
+
+        # Write .gitignore so sync doesn't report it as an action
+        (product / ".gitignore").write_text(
+            "\n".join(GITIGNORE_ENTRIES) + "\n"
+        )
+
+        manifest = create_manifest(product, fw, product_name, hashes)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+
+        return product
+
+    def test_no_prawduct_dir_skips(self, tmp_path: Path):
+        product = tmp_path / "product"
+        product.mkdir()
+        result = run_sync(str(product))
+        assert result["synced"] is False
+        assert result["reason"] == "not a prawduct repo"
+
+    def test_invalid_manifest_skips(self, tmp_path: Path):
+        product = tmp_path / "product"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "sync-manifest.json").write_text("bad json{{{")
+        result = run_sync(str(product))
+        assert result["synced"] is False
+        assert result["reason"] == "invalid manifest JSON"
+
+    def test_framework_not_found_skips(self, tmp_path: Path):
+        product = tmp_path / "product"
+        (product / ".prawduct").mkdir(parents=True)
+        manifest = {
+            "format_version": 1,
+            "framework_source": "/nonexistent/path",
+            "product_name": "Test",
+            "files": {},
+        }
+        (product / ".prawduct" / "sync-manifest.json").write_text(json.dumps(manifest))
+        result = run_sync(str(product))
+        assert result["synced"] is False
+        assert result["reason"] == "framework not found"
+
+    def test_sibling_prawduct_fallback(self, tmp_path: Path):
+        """When manifest points to nonexistent path, fall back to ../prawduct."""
+        # Create framework at sibling "prawduct" directory
+        parent = tmp_path / "source"
+        parent.mkdir()
+        fw = parent / "prawduct"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v1")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {"SessionStart": [], "Stop": []}
+        }))
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v2")
+
+        # Create product as sibling with manifest pointing to nonexistent path
+        product = parent / "myapp"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        (product / "CLAUDE.md").write_text(
+            f"# MyApp CLAUDE.md\n\n{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (product / ".prawduct" / "critic-review.md").write_text("# MyApp Critic v1")
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(json.dumps({"hooks": {}}))
+
+        block_hash = compute_block_hash(f"# MyApp CLAUDE.md\n\n{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n")
+        manifest = {
+            "format_version": 1,
+            "framework_source": "/nonexistent/old/path",
+            "product_name": "MyApp",
+            "last_sync": "2026-01-01T00:00:00Z",
+            "files": {
+                "CLAUDE.md": {
+                    "template": "templates/product-claude.md",
+                    "strategy": "block_template",
+                    "generated_hash": block_hash,
+                },
+                ".prawduct/critic-review.md": {
+                    "template": "templates/critic-review.md",
+                    "strategy": "template",
+                    "generated_hash": compute_hash(product / ".prawduct" / "critic-review.md"),
+                },
+                "tools/product-hook": {
+                    "source": "tools/product-hook",
+                    "strategy": "always_update",
+                    "generated_hash": compute_hash(product / "tools" / "product-hook"),
+                },
+                ".claude/settings.json": {
+                    "template": "templates/product-settings.json",
+                    "strategy": "merge_settings",
+                    "generated_hash": None,
+                },
+            },
+        }
+        (product / ".prawduct" / "sync-manifest.json").write_text(json.dumps(manifest))
+
+        result = run_sync(str(product))
+        assert result["synced"] is True
+        assert any("CLAUDE.md" in a for a in result["actions"])
+        assert "Content v2" in (product / "CLAUDE.md").read_text()
+
+    def test_no_changes_needed(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert result["reason"] == "no updates needed"
+
+    def test_template_update_propagates(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Update the template block content
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("CLAUDE.md" in a for a in result["actions"])
+        content = (product / "CLAUDE.md").read_text()
+        assert "Content v2" in content
+
+    def test_user_edited_block_skipped(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User edits inside the block
+        claude = (product / "CLAUDE.md").read_text()
+        claude = claude.replace("Content v1", "My custom content")
+        (product / "CLAUDE.md").write_text(claude)
+
+        # Update template
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        # Should skip CLAUDE.md because user edited the block
+        assert not any("CLAUDE.md" in a for a in result["actions"])
+        assert any("Skipped CLAUDE.md" in n for n in result["notes"])
+        # User's content preserved
+        assert "My custom content" in (product / "CLAUDE.md").read_text()
+
+    def test_force_overwrites_user_edited_block(self, tmp_path: Path):
+        """--force overwrites user block edits with new template."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User edits inside the block
+        claude = (product / "CLAUDE.md").read_text()
+        claude = claude.replace("Content v1", "My custom content")
+        (product / "CLAUDE.md").write_text(claude)
+
+        # Update template
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw), force=True)
+        assert any("Force-updated CLAUDE.md" in a for a in result["actions"])
+        content = (product / "CLAUDE.md").read_text()
+        assert "Content v2" in content
+        assert "My custom content" not in content
+
+    def test_always_update_overwrites(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Update hook source
+        (fw / "tools" / "product-hook").write_text("#!/usr/bin/env python3\n# hook v2")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("product-hook" in a for a in result["actions"])
+        assert "hook v2" in (product / "tools" / "product-hook").read_text()
+
+    def test_manifest_updated_after_sync(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Update template
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Running again should find nothing to do
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert result["reason"] == "no updates needed"
+
+    def test_missing_template_noted(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Delete a template
+        (fw / "templates" / "critic-review.md").unlink()
+
+        # Also update another template to trigger sync
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} v2\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert any("Template missing" in n for n in result["notes"])
+
+    def test_framework_dir_from_env(self, tmp_path: Path, monkeypatch):
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Point manifest at nonexistent dir
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["framework_source"] = "/nonexistent"
+        manifest_path.write_text(json.dumps(manifest))
+
+        # But set env var to real framework
+        monkeypatch.setenv("PRAWDUCT_FRAMEWORK_DIR", str(fw))
+
+        # Update template to have something to sync
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} v2\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product))
+        assert result["synced"] is True
+
+    def test_user_edited_template_file_skipped(self, tmp_path: Path):
+        """Template strategy skips when user edited file and template changed."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User edits critic-review.md
+        (product / ".prawduct" / "critic-review.md").write_text("# My custom critic review")
+
+        # Update template
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert not any("critic-review" in a for a in result["actions"])
+        assert any("local edits" in n and "critic-review" in n for n in result["notes"])
+        assert "My custom critic review" in (product / ".prawduct" / "critic-review.md").read_text()
+
+    def test_force_overwrites_user_edited_template_file(self, tmp_path: Path):
+        """--force overwrites user-edited template-strategy files."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User edits critic-review.md
+        (product / ".prawduct" / "critic-review.md").write_text("# My custom critic review")
+
+        # Update template
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+
+        result = run_sync(str(product), framework_dir=str(fw), force=True)
+        assert any("Force-updated" in a and "critic-review" in a for a in result["actions"])
+        assert "Critic v2" in (product / ".prawduct" / "critic-review.md").read_text()
+
+    def test_merge_settings_during_sync(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Update settings template with banner
+        (fw / "templates" / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            },
+            "companyAnnouncements": "{{PRODUCT_NAME}} — Built with Prawduct",
+        }, indent=2))
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        data = json.loads((product / ".claude" / "settings.json").read_text())
+        assert "TestApp" in data["companyAnnouncements"]
+
+    def test_backfills_missing_managed_files(self, tmp_path: Path):
+        """Sync adds managed files missing from manifest (added after product init)."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Add a new template to the framework (simulating a new managed file)
+        (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review v1")
+        (fw / ".claude" / "skills" / "pr").mkdir(parents=True, exist_ok=True)
+        (fw / ".claude" / "skills" / "pr" / "SKILL.md").write_text("# PR skill for {{PRODUCT_NAME}}")
+
+        # Remove pr-review and skills/pr from the manifest (simulating old product)
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["files"].pop(".prawduct/pr-review.md", None)
+        manifest["files"].pop(".claude/skills/pr/SKILL.md", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("New:" in a and "pr-review" in a for a in result["actions"])
+        assert any("New:" in a and "SKILL.md" in a for a in result["actions"])
+        assert (product / ".prawduct" / "pr-review.md").is_file()
+        assert (product / ".claude" / "skills" / "pr" / "SKILL.md").is_file()
+
+        # Verify manifest now includes the new files
+        manifest = json.loads(manifest_path.read_text())
+        assert ".prawduct/pr-review.md" in manifest["files"]
+        assert ".claude/skills/pr/SKILL.md" in manifest["files"]
+
+    def test_backfill_idempotent(self, tmp_path: Path):
+        """Running sync twice after backfill produces no updates."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review v1")
+        (fw / ".claude" / "skills" / "pr").mkdir(parents=True, exist_ok=True)
+        (fw / ".claude" / "skills" / "pr" / "SKILL.md").write_text("# PR skill for {{PRODUCT_NAME}}")
+
+        # Remove from manifest
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["files"].pop(".prawduct/pr-review.md", None)
+        manifest["files"].pop(".claude/skills/pr/SKILL.md", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+        # First sync creates files
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Second sync — nothing to do
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert result["reason"] == "no updates needed"
+
+    def test_sync_notes_unignored_managed_files(self, tmp_path: Path):
+        """Sync produces notes telling user to git-add unignored managed files."""
+        fw = self._setup_framework(tmp_path)
+        product = tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "critic-review.md").write_text("# Critic")
+
+        # Create a manifest pointing at framework
+        manifest = {
+            "format_version": 2,
+            "framework_source": str(fw),
+            "product_name": "Test",
+            "files": {},
+        }
+        (product / ".prawduct" / "sync-manifest.json").write_text(json.dumps(manifest))
+
+        # Incorrectly gitignore a managed file
+        gi = product / ".gitignore"
+        gi.write_text(
+            "\n".join(GITIGNORE_ENTRIES) + "\n"
+            + ".prawduct/critic-review.md\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        matching_notes = [n for n in result["notes"] if "critic-review.md" in n and "git add" in n]
+        assert len(matching_notes) == 1
+
+
+# =============================================================================
+# extract_block
+# =============================================================================
+
+
+class TestExtractBlock:
+    def test_markers_found(self):
+        content = f"before\n{BLOCK_BEGIN}\nblock body\n{BLOCK_END}\nafter\n"
+        block, before, after = extract_block(content)
+        assert block == f"{BLOCK_BEGIN}\nblock body\n{BLOCK_END}"
+        assert before == "before\n"
+        assert after == "\nafter\n"
+
+    def test_missing_markers(self):
+        content = "no markers here"
+        block, before, after = extract_block(content)
+        assert block is None
+        assert before == content
+        assert after == ""
+
+    def test_malformed_end_before_begin(self):
+        content = f"{BLOCK_END}\nstuff\n{BLOCK_BEGIN}\n"
+        block, before, after = extract_block(content)
+        assert block is None
+
+    def test_begin_without_end(self):
+        content = f"before\n{BLOCK_BEGIN}\nblock body\n"
+        block, before, after = extract_block(content)
+        assert block is None
+
+    def test_end_without_begin(self):
+        content = f"block body\n{BLOCK_END}\nafter\n"
+        block, before, after = extract_block(content)
+        assert block is None
+
+    def test_empty_block(self):
+        content = f"before\n{BLOCK_BEGIN}{BLOCK_END}\nafter\n"
+        block, before, after = extract_block(content)
+        assert block == f"{BLOCK_BEGIN}{BLOCK_END}"
+        assert before == "before\n"
+        assert after == "\nafter\n"
+
+    def test_roundtrip_invariant(self):
+        content = f"title\n\n{BLOCK_BEGIN}\nbody\n{BLOCK_END}\nfooter\n"
+        block, before, after = extract_block(content)
+        assert before + block + after == content
+
+
+# =============================================================================
+# compute_block_hash
+# =============================================================================
+
+
+class TestComputeBlockHash:
+    def test_hash_of_block_only(self):
+        block_text = f"{BLOCK_BEGIN}\nblock body\n{BLOCK_END}"
+        content = f"header\n{block_text}\nfooter\n"
+        expected = hashlib.sha256(block_text.encode()).hexdigest()
+        assert compute_block_hash(content) == expected
+
+    def test_none_without_markers(self):
+        assert compute_block_hash("no markers here") is None
+
+    def test_same_block_different_headers(self):
+        block = f"{BLOCK_BEGIN}\nsame body\n{BLOCK_END}"
+        content_a = f"header A\n{block}\nfooter A\n"
+        content_b = f"header B\n{block}\nfooter B\n"
+        assert compute_block_hash(content_a) == compute_block_hash(content_b)
+
+
+# =============================================================================
+# run_sync — block_template strategy
+# =============================================================================
+
+
+class TestRunSyncBlockTemplate:
+    def _setup_framework(self, tmp_path: Path) -> Path:
+        """Create a framework with marked CLAUDE.md template."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# CLAUDE.md — {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v1\n\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v1")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            }
+        }, indent=2))
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        return fw
+
+    def _setup_product(self, tmp_path: Path, fw: Path, product_name: str = "TestApp") -> Path:
+        """Create a product with block_template manifest for CLAUDE.md."""
+        product = tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": product_name}
+
+        # Write CLAUDE.md from template (with markers)
+        claude_content = render_template(fw / "templates" / "product-claude.md", subs)
+        (product / "CLAUDE.md").write_text(claude_content)
+
+        critic_content = render_template(fw / "templates" / "critic-review.md", subs)
+        (product / ".prawduct" / "critic-review.md").write_text(critic_content)
+
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_bytes(
+            (fw / "tools" / "product-hook").read_bytes()
+        )
+
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(
+            (fw / "templates" / "product-settings.json").read_text()
+        )
+
+        # Compute block hash for CLAUDE.md
+        block_hash = compute_block_hash(claude_content)
+
+        hashes = {
+            "CLAUDE.md": block_hash,
+            ".prawduct/critic-review.md": compute_hash(product / ".prawduct" / "critic-review.md"),
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,
+        }
+
+        (product / ".gitignore").write_text("\n".join(GITIGNORE_ENTRIES) + "\n")
+
+        manifest = create_manifest(product, fw, product_name, hashes)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+
+        return product
+
+    def test_propagates_template_update(self, tmp_path: Path):
+        """Block update in template propagates to product file."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Update template block content
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# CLAUDE.md — {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v2\n\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("CLAUDE.md" in a for a in result["actions"])
+
+        content = (product / "CLAUDE.md").read_text()
+        assert "Content v2" in content
+        assert BLOCK_BEGIN in content
+        assert BLOCK_END in content
+
+    def test_preserves_user_content_outside_markers(self, tmp_path: Path):
+        """User content before/after markers is preserved during sync."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User adds content after END marker
+        claude = (product / "CLAUDE.md").read_text()
+        claude += "\n## My Custom Section\n\nUser notes here.\n"
+        (product / "CLAUDE.md").write_text(claude)
+
+        # Update template block content
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# CLAUDE.md — {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v2\n\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+
+        content = (product / "CLAUDE.md").read_text()
+        assert "Content v2" in content
+        assert "My Custom Section" in content
+        assert "User notes here." in content
+
+    def test_skips_user_edited_block(self, tmp_path: Path):
+        """If user edited content inside markers, skip with note."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # User edits inside the markers
+        claude = (product / "CLAUDE.md").read_text()
+        claude = claude.replace("Content v1", "My custom content")
+        (product / "CLAUDE.md").write_text(claude)
+
+        # Update template
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# CLAUDE.md — {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v2\n\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert not any("CLAUDE.md" in a for a in result["actions"])
+        assert any("block has local edits" in n for n in result["notes"])
+        assert "My custom content" in (product / "CLAUDE.md").read_text()
+
+    def test_handles_missing_markers_in_product(self, tmp_path: Path):
+        """Product file without markers — skip with note."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Remove markers from product file
+        (product / "CLAUDE.md").write_text("# My CLAUDE.md\n\nNo markers here.\n")
+
+        # Update template
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# CLAUDE.md — {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v2\n\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert not any("CLAUDE.md" in a for a in result["actions"])
+        assert any("no markers" in n for n in result["notes"])
+
+    def test_creates_missing_file(self, tmp_path: Path):
+        """If product file is missing, create from full template."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Delete the CLAUDE.md
+        (product / "CLAUDE.md").unlink()
+
+        # Update template to trigger hash mismatch
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# CLAUDE.md — {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v2\n\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("CLAUDE.md" in a for a in result["actions"])
+
+        content = (product / "CLAUDE.md").read_text()
+        assert "Content v2" in content
+        assert "TestApp" in content
+
+    def test_idempotent(self, tmp_path: Path):
+        """Running sync twice with no changes produces no updates."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # First sync with template change
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# CLAUDE.md — {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v2\n\n{BLOCK_END}\n"
+        )
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Second sync — nothing to do
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert result["reason"] == "no updates needed"
+
+    def test_restores_drifted_block(self, tmp_path: Path):
+        """When template hasn't changed but product block drifted, restore it."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Agent modifies the block content (drift) without a template change
+        claude = (product / "CLAUDE.md").read_text()
+        claude = claude.replace("Content v1", "Content v1\n\nAgent added this line")
+        (product / "CLAUDE.md").write_text(claude)
+
+        # Template is unchanged — stored hash matches rendered block hash
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("Restored CLAUDE.md" in a for a in result["actions"])
+        assert any("drifted" in n for n in result["notes"])
+
+        # Block should be restored to original template content
+        content = (product / "CLAUDE.md").read_text()
+        assert "Agent added this line" not in content
+        assert "Content v1" in content
+
+        # User content outside markers should be preserved
+        assert "# CLAUDE.md — TestApp" in content
+
+    def test_no_restore_when_block_matches(self, tmp_path: Path):
+        """When template and product block both match stored hash, no action."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # No changes to template or product — everything in sync
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False
+        assert not any("Restored" in a for a in result["actions"])
+
+    def test_template_without_markers_skips(self, tmp_path: Path):
+        """Template without markers (bug) — skip with note."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Replace template with unmarked version
+        (fw / "templates" / "product-claude.md").write_text(
+            "# CLAUDE.md — {{PRODUCT_NAME}}\n\nNo markers template.\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert not any("CLAUDE.md" in a for a in result["actions"])
+        assert any("no markers" in n for n in result["notes"])
+
+
+# =============================================================================
+# run_sync — place-once files
+# =============================================================================
+
+
+class TestRunSyncPlaceOnce:
+    """Tests for place-once file creation during sync."""
+
+    def _setup_framework(self, tmp_path: Path) -> Path:
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v1")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            }
+        }, indent=2))
+        (templates / "project-preferences.md").write_text(
+            "# Project Preferences\n\n## Language & Runtime\n\n- **Language**:\n"
+        )
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        return fw
+
+    def _setup_product(self, tmp_path: Path, fw: Path) -> Path:
+        product = tmp_path / "product"
+        product.mkdir()
+        prawduct = product / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "artifacts").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": "TestApp"}
+        claude_content = render_template(fw / "templates" / "product-claude.md", subs)
+        (product / "CLAUDE.md").write_text(claude_content)
+        critic_content = render_template(fw / "templates" / "critic-review.md", subs)
+        (prawduct / "critic-review.md").write_text(critic_content)
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_bytes(
+            (fw / "tools" / "product-hook").read_bytes()
+        )
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(
+            (fw / "templates" / "product-settings.json").read_text()
+        )
+
+        (product / ".gitignore").write_text("\n".join(GITIGNORE_ENTRIES) + "\n")
+
+        hashes = {
+            "CLAUDE.md": compute_block_hash(claude_content),
+            ".prawduct/critic-review.md": compute_hash(prawduct / "critic-review.md"),
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,
+        }
+        manifest = create_manifest(product, fw, "TestApp", hashes)
+        (prawduct / "sync-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        return product
+
+    def test_creates_missing_preferences(self, tmp_path: Path):
+        """Sync places project-preferences.md if missing from existing repo."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        prefs = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        assert prefs.is_file()
+        assert "Project Preferences" in prefs.read_text()
+        assert any("project-preferences" in a for a in result["actions"])
+
+    def test_does_not_overwrite_existing_preferences(self, tmp_path: Path):
+        """Sync skips project-preferences.md if it already exists."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        prefs = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        prefs.write_text("# Project Preferences\n\n- **Language**: Python\n")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        assert "Python" in prefs.read_text()
+        assert not any("project-preferences" in a for a in result["actions"])
+
+
+# =============================================================================
+# _try_pull_framework
+# =============================================================================
+
+
+class _FakeCompletedProcess:
+    """Minimal stand-in for subprocess.CompletedProcess."""
+
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = ""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _make_mock_subprocess(responses: dict):
+    """Build a namespace that replaces ``_mod.subprocess`` for testing.
+
+    ``responses`` maps a git subcommand (e.g. ``"rev-parse"``) to either:
+      - a ``_FakeCompletedProcess`` to return, or
+      - an exception to raise.
+    Unrecognised subcommands return success with empty output.
+    """
+    import types
+
+    ns = types.SimpleNamespace()
+    ns.TimeoutExpired = subprocess.TimeoutExpired
+
+    def fake_run(cmd, *, capture_output=True, text=True, cwd=None, timeout=None):
+        # Identify the git subcommand (cmd[1])
+        subcmd = cmd[1] if len(cmd) > 1 else ""
+        val = responses.get(subcmd)
+        if val is None:
+            return _FakeCompletedProcess()
+        if isinstance(val, Exception):
+            raise val
+        return val
+
+    ns.run = fake_run
+    return ns
+
+
+class TestTryPullFramework:
+    """Unit tests for _try_pull_framework."""
+
+    def test_not_a_git_repo(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(returncode=128, stderr="fatal: not a git repo"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=True) == []
+
+    def test_auto_pull_clean_up_to_date(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=""),
+            "pull": _FakeCompletedProcess(stdout="Already up to date.\n"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=True) == []
+
+    def test_auto_pull_clean_updated(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=""),
+            "pull": _FakeCompletedProcess(stdout="Updating abc123..def456\n"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "updated" in notes[0].lower()
+
+    def test_auto_pull_dirty_tree(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=" M dirty-file.py\n"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "uncommitted" in notes[0].lower()
+
+    def test_auto_pull_not_fast_forwardable(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=""),
+            "pull": _FakeCompletedProcess(
+                returncode=1,
+                stderr="fatal: Not possible to fast-forward, aborting.",
+            ),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "not fast-forwardable" in notes[0].lower()
+
+    def test_auto_pull_general_failure(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "status": _FakeCompletedProcess(stdout=""),
+            "pull": _FakeCompletedProcess(returncode=1, stderr="error: something"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "pull failed" in notes[0].lower()
+
+    def test_advisory_behind(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "fetch": _FakeCompletedProcess(),
+            "rev-list": _FakeCompletedProcess(stdout="3\n"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=False)
+        assert len(notes) == 1
+        assert "3" in notes[0]
+        assert "behind" in notes[0].lower()
+
+    def test_advisory_up_to_date(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "fetch": _FakeCompletedProcess(),
+            "rev-list": _FakeCompletedProcess(stdout="0\n"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=False) == []
+
+    def test_advisory_fetch_fails(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": _FakeCompletedProcess(),
+            "fetch": _FakeCompletedProcess(returncode=1, stderr="error"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=False) == []
+
+    def test_git_not_on_path(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": FileNotFoundError("git not found"),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        assert _try_pull_framework(tmp_path, auto_pull=True) == []
+
+    def test_timeout(self, tmp_path: Path, monkeypatch):
+        mock = _make_mock_subprocess({
+            "rev-parse": subprocess.TimeoutExpired(cmd="git", timeout=30),
+        })
+        monkeypatch.setattr(_mod._lib_core, "subprocess", mock)
+        notes = _try_pull_framework(tmp_path, auto_pull=True)
+        assert len(notes) == 1
+        assert "timed out" in notes[0].lower()
+
+
+# =============================================================================
+# run_sync — pull integration
+# =============================================================================
+
+
+class TestRunSyncPull:
+    """Integration tests for pull behavior within run_sync."""
+
+    def _setup_framework(self, tmp_path: Path) -> Path:
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v1")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            }
+        }, indent=2))
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        return fw
+
+    def _setup_product(self, tmp_path: Path, fw: Path, manifest_overrides: dict | None = None) -> Path:
+        product = tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": "TestApp"}
+        claude_content = render_template(fw / "templates" / "product-claude.md", subs)
+        (product / "CLAUDE.md").write_text(claude_content)
+        critic_content = render_template(fw / "templates" / "critic-review.md", subs)
+        (product / ".prawduct" / "critic-review.md").write_text(critic_content)
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_bytes(
+            (fw / "tools" / "product-hook").read_bytes()
+        )
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(
+            (fw / "templates" / "product-settings.json").read_text()
+        )
+
+        (product / ".gitignore").write_text("\n".join(GITIGNORE_ENTRIES) + "\n")
+
+        hashes = {
+            "CLAUDE.md": compute_block_hash(claude_content),
+            ".prawduct/critic-review.md": compute_hash(product / ".prawduct" / "critic-review.md"),
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,
+        }
+        manifest = create_manifest(product, fw, "TestApp", hashes)
+        if manifest_overrides:
+            manifest.update(manifest_overrides)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+        return product
+
+    def test_no_pull_skips_entirely(self, tmp_path: Path, monkeypatch):
+        """no_pull=True means _try_pull_framework is never called."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        called = []
+
+        original = _mod._try_pull_framework
+
+        def spy(fw_dir, auto_pull):
+            called.append(True)
+            return original(fw_dir, auto_pull)
+
+        monkeypatch.setattr(_mod._lib_sync_cmd, "_try_pull_framework", spy)
+        run_sync(str(product), framework_dir=str(fw), no_pull=True)
+        assert called == []
+
+    def test_default_manifest_uses_auto_pull_true(self, tmp_path: Path, monkeypatch):
+        """Manifest without auto_pull field defaults to auto_pull=True."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Remove auto_pull from manifest to simulate old manifests
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest.pop("auto_pull", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+        captured_auto_pull = []
+
+        def fake_pull(fw_dir, auto_pull):
+            captured_auto_pull.append(auto_pull)
+            return []
+
+        monkeypatch.setattr(_mod._lib_sync_cmd, "_try_pull_framework", fake_pull)
+        run_sync(str(product), framework_dir=str(fw))
+        assert captured_auto_pull == [True]
+
+    def test_manifest_auto_pull_false_uses_advisory(self, tmp_path: Path, monkeypatch):
+        """Manifest with auto_pull=false passes False to _try_pull_framework."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw, manifest_overrides={"auto_pull": False})
+
+        captured_auto_pull = []
+
+        def fake_pull(fw_dir, auto_pull):
+            captured_auto_pull.append(auto_pull)
+            return []
+
+        monkeypatch.setattr(_mod._lib_sync_cmd, "_try_pull_framework", fake_pull)
+        run_sync(str(product), framework_dir=str(fw))
+        assert captured_auto_pull == [False]
+
+    def test_pull_notes_appear_in_result(self, tmp_path: Path, monkeypatch):
+        """Notes from _try_pull_framework appear in the sync result."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        monkeypatch.setattr(_mod._lib_sync_cmd, "_try_pull_framework", lambda fw_dir, auto_pull: ["Framework updated via git pull"])
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert "Framework updated via git pull" in result["notes"]
+
+    def test_pull_failure_does_not_block_sync(self, tmp_path: Path, monkeypatch):
+        """Even when pull reports a problem, sync proceeds normally."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        monkeypatch.setattr(
+            _mod._lib_sync_cmd, "_try_pull_framework",
+            lambda fw_dir, auto_pull: ["Framework pull failed — run git pull manually"],
+        )
+
+        # Update template to trigger a real sync action
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any("CLAUDE.md" in a for a in result["actions"])
+        assert "Framework pull failed — run git pull manually" in result["notes"]
+
+
+# =============================================================================
+# migrate_backlog
+# =============================================================================
+
+
+class TestMigrateBacklog:
+
+    def test_no_project_state(self, tmp_path: Path):
+        """Returns empty when project-state.yaml is missing."""
+        (tmp_path / ".prawduct").mkdir()
+        assert migrate_backlog(tmp_path) == []
+
+    def test_no_matching_sections(self, tmp_path: Path):
+        """Returns empty when no backlog-related sections exist."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: TestApp\n\nbuild_plan:\n  chunks: []\n"
+        )
+        assert migrate_backlog(tmp_path) == []
+
+    def test_remaining_work_with_pending_items(self, tmp_path: Path):
+        """Parses remaining_work, converts non-completed items to backlog.md."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "build_plan:\n"
+            "  strategy: test\n"
+            "  remaining_work:\n"
+            '    - item: "Add caching"\n'
+            '      description: "Performance optimization for API"\n'
+            "      phase: pending\n"
+            '    - item: "Done thing"\n'
+            '      description: "Already finished"\n'
+            "      phase: completed\n"
+            '    - item: "Fix logging"\n'
+            '      description: "Structured logging needed"\n'
+            "      phase: blocked\n"
+            "  chunks: []\n"
+        )
+
+        actions = migrate_backlog(tmp_path)
+        assert len(actions) == 2
+        assert any("2 backlog" in a for a in actions)
+
+        backlog = (prawduct / "backlog.md").read_text()
+        assert "**Add caching**" in backlog
+        assert "Performance optimization" in backlog
+        assert "**Fix logging**" in backlog
+        assert "(migrated)" in backlog
+        # Completed items should not appear
+        assert "Done thing" not in backlog
+
+    def test_remaining_work_all_completed(self, tmp_path: Path):
+        """All completed items — removes section, no items in backlog.md."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "build_plan:\n"
+            "  strategy: test\n"
+            "  remaining_work:\n"
+            '    - item: "Done A"\n'
+            "      phase: completed\n"
+            '    - item: "Done B"\n'
+            "      phase: completed\n"
+            "  chunks: []\n"
+        )
+
+        actions = migrate_backlog(tmp_path)
+        # No pending items, so nothing to write
+        assert actions == []
+
+    def test_remaining_work_preserves_build_plan(self, tmp_path: Path):
+        """After migration, build_plan structure is kept (strategy, chunks)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "build_plan:\n"
+            "  strategy: test-strategy\n"
+            "  remaining_work:\n"
+            '    - item: "Pending"\n'
+            "      phase: pending\n"
+            "  chunks: []\n"
+            "  current_chunk: null\n"
+        )
+
+        migrate_backlog(tmp_path)
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "strategy: test-strategy" in state
+        assert "chunks: []" in state
+        assert "current_chunk: null" in state
+        # remaining_work replaced with pointer
+        assert "remaining_work:" not in state or "migrated to" in state
+
+    def test_future_work_raw_yaml(self, tmp_path: Path):
+        """Top-level future_work extracted as raw YAML with cleanup marker."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: TestApp\n\n"
+            "future_work:\n"
+            "  - Add dark mode\n"
+            "  - Support i18n\n\n"
+            "build_state:\n  source_root: src\n"
+        )
+
+        actions = migrate_backlog(tmp_path)
+        assert len(actions) == 2
+
+        backlog = (prawduct / "backlog.md").read_text()
+        assert "CLEANUP" in backlog
+        assert "future_work" in backlog
+        assert "```yaml" in backlog
+        assert "Add dark mode" in backlog
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "future_work:" not in state or "migrated to" in state
+        # Other sections preserved
+        assert "product_identity:" in state
+        assert "build_state:" in state
+
+    def test_multiple_sections(self, tmp_path: Path):
+        """Both remaining_work and future_work migrated together."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "build_plan:\n"
+            "  remaining_work:\n"
+            '    - item: "Pending task"\n'
+            "      phase: pending\n"
+            "  chunks: []\n\n"
+            "future_work:\n"
+            "  - Another idea\n\n"
+            "build_state:\n  source_root: src\n"
+        )
+
+        actions = migrate_backlog(tmp_path)
+        backlog = (prawduct / "backlog.md").read_text()
+        assert "**Pending task**" in backlog
+        assert "Another idea" in backlog
+
+    def test_appends_to_existing_backlog(self, tmp_path: Path):
+        """Migrated content appended to existing backlog.md."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "backlog.md").write_text(
+            "# Backlog\n\n- **Existing item** — already here (builder)\n"
+        )
+        (prawduct / "project-state.yaml").write_text(
+            "future_work:\n  - New idea\n\nbuild_state:\n  source_root: src\n"
+        )
+
+        migrate_backlog(tmp_path)
+
+        backlog = (prawduct / "backlog.md").read_text()
+        assert "Existing item" in backlog
+        assert "New idea" in backlog
+        assert "Migrated from project-state.yaml" in backlog
+
+    def test_idempotent(self, tmp_path: Path):
+        """Second run produces no changes."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "future_work:\n  - Some idea\n\nbuild_state:\n  source_root: src\n"
+        )
+
+        actions1 = migrate_backlog(tmp_path)
+        assert len(actions1) > 0
+
+        actions2 = migrate_backlog(tmp_path)
+        assert actions2 == []
+
+    def test_pointer_comment_in_yaml(self, tmp_path: Path):
+        """Pointer comment replaces migrated section in project-state.yaml."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: TestApp\n\n"
+            "future_work:\n  - Idea A\n  - Idea B\n\n"
+            "build_state:\n  source_root: src\n"
+        )
+
+        migrate_backlog(tmp_path)
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "migrated to .prawduct/backlog.md" in state

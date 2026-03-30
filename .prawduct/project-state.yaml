@@ -1,0 +1,451 @@
+# Project State — Prawduct Framework (Self-Hosted)
+#
+# The framework IS a product in iteration phase. This file tracks its own
+# state using the same structure it prescribes for user products.
+
+# =============================================================================
+# DEPENDENCY GRAPH
+# =============================================================================
+
+dependency_graph:
+  - decision_id: principles-plus-structural-gates
+    description: "Principles govern how-to-work behaviors; structural gates (hooks) enforce process-interruption behaviors Claude can't self-regulate"
+    affects_artifacts: [CLAUDE.md, methodology/, agents/critic/, tools/product-hook]
+  - decision_id: product-self-containment
+    description: "Product repos carry everything needed to build — own CLAUDE.md, hooks, Critic instructions. No runtime dependency on framework."
+    affects_artifacts: [templates/, tools/prawduct-setup.py]
+  - decision_id: critic-as-separate-agent
+    description: "Critic invoked via Task tool as independent agent, not in main context"
+    affects_artifacts: [agents/critic/SKILL.md, .prawduct/critic-review.md]
+
+# =============================================================================
+# OPEN QUESTIONS
+# =============================================================================
+
+open_questions:
+  - question: "Does the 5-structural-characteristic set adequately route artifact needs for all product types?"
+    blocking: "Full product diversity coverage"
+    waiting_on: research
+    priority: low
+    raised_at_stage: iteration
+
+# =============================================================================
+# USER EXPERTISE PROFILE
+# =============================================================================
+
+user_expertise:
+  product_thinking: advanced
+  technical_depth: advanced
+  design_sensibility: intermediate
+  domain_knowledge: advanced
+  operational_awareness: intermediate
+
+# =============================================================================
+# PROCESS STATE
+# =============================================================================
+
+# =============================================================================
+# HEALTH CHECK
+# =============================================================================
+
+health_check:
+  last_session: null
+  stale_artifacts: []
+  known_issues: []
+
+# =============================================================================
+# CHANGE LOG
+# =============================================================================
+# Change log is in .prawduct/change-log.md (separate file to reduce merge conflicts).
+
+change_log_history:
+  # --- Framework refactoring (2026-03-29) ---
+  - what: "Framework refactoring: extract lib/, deduplicate templates, consolidate tests"
+    why: "prawduct-setup.py was 2000+ lines in one file, templates had duplicated content
+      across skill files and templates/, and 813 tests across 13 files included significant
+      overlap. 7-chunk refactoring: (0) product compat test suite as safety net, (1) dead
+      code + duplicate template deletion, (2) mechanical extraction to tools/lib/ (core,
+      init, migrate, sync, validate), (3) DRY improvements within lib/ (unified helpers,
+      compat aliases), (4) content deduplication (build-governance checklist, Critic role
+      comments, agents/README, relocated speculative templates), (5) test consolidation
+      (merged overlapping test files, collapsed single-assertion tests into behavioral
+      groups), (6) cleanup, docs, deprecation warnings, V4_GITIGNORE fix, Critic changelog
+      scope fix, gitignore hygiene (sync removes incorrectly-gitignored managed
+      files and advises user to git-add; validate detects the mismatch).
+      Final: 655 tests across 11 files, all passing."
+    blast_radius: "New: tools/lib/ (5 modules), agents/README.md, docs/examples/,
+      tests/test_product_compat.py. Deleted: templates/skill-janitor.md,
+      templates/skill-learnings.md, templates/skill-pr.md, templates/skill-prawduct-doctor.md,
+      templates/examples/, tests/test_v5_hooks.py, tests/test_v5_migration.py. Archived:
+      .prawduct/working-notes/ → .prawduct/archive/working-notes/. Modified: tools/prawduct-setup.py
+      (thin CLI), all templates, all test files, README.md, docs/project-structure.md,
+      agents/critic/SKILL.md, templates/critic-review.md."
+    classification: structural
+    date: 2026-03-29
+  # --- Unified prawduct-setup.py + /prawduct-setup skill (2026-03-22) ---
+  - what: "Consolidate prawduct-init.py, prawduct-migrate.py, prawduct-sync.py into unified prawduct-setup.py"
+    why: "Three scripts with importlib cross-imports, a 6-step prose detection algorithm in CLAUDE.md,
+      no post-setup validation, and no health check tool. Unified into one script with subcommands
+      (setup, sync, validate). Added /prawduct-setup skill for onboarding and health checks.
+      Old scripts replaced with import-safe backward-compat shims."
+    blast_radius: "New: tools/prawduct-setup.py (~2000 lines), templates/skill-prawduct-setup.md,
+      .claude/skills/prawduct-setup/SKILL.md, tests/test_prawduct_validate.py (27 tests).
+      Replaced with shims: tools/prawduct-init.py, tools/prawduct-migrate.py, tools/prawduct-sync.py.
+      Modified: tools/product-hook (try_sync prefers new script), CLAUDE.md (simplified onboarding),
+      README.md (commands + product structure), docs/project-structure.md (file listing),
+      8 test files (import paths), tests/scenarios/*.md (command references). 725 total tests."
+    classification: structural
+    date: 2026-03-22
+  # --- SessionEnd sync + Critic no-test-execution (2026-03-22) ---
+  - what: "Add SessionEnd hook for framework sync; sharpen Critic to not run tests"
+    why: "Users needed two restarts to pick up framework updates (sync ran after Claude Code
+      loaded settings). SessionEnd sync writes hot files before next session loads them.
+      Critic was running the test suite (up to 4x with coordinator subagents), duplicating
+      work the builder already does. Reframed Goal 1 as code-analysis review of test quality."
+    blast_radius: "Modified: tools/product-hook (cmd_session_end, quiet sync, removed restart
+      messages), tools/prawduct-sync.py (removed restart notes), templates/product-settings.json
+      and .claude/settings.json (SessionEnd hook), agents/critic/SKILL.md and review-cycle.md
+      and templates/critic-review.md (Goal 1 rewrite, coordinator dispatch), methodology/building.md
+      (Goal 1 summary, token budget trim), README.md (sync description). Tests: 4 new session-end,
+      698 total."
+  # --- Critic Goal 7, security, coordinator pattern (2026-03-19) ---
+  - what: 'Critic restructure: Goal 7 (Design Quality), security checks, coordinator pattern'
+    why: 'Gap analysis revealed that after clearing all Critic findings, manual review still found
+      issues in encapsulation, coupling, simplification, security, and doc drift. The 6 goals
+      covered correctness/completeness/scope/coherence/rationale/observability but not design
+      quality or security. Added Goal 7 "The Design Is Sound" (encapsulation, coupling,
+      simplification, deduplication). Added security checks to Goal 1 (injection, secrets, input
+      validation as BLOCKING; auth, CVEs as WARNING). Strengthened Goal 4: project-preferences
+      compliance promoted to BLOCKING, README active checking added, documentation drift expanded,
+      historical records (changelogs) marked immutable. Severity recalibration: NOTE now means
+      "genuinely ambiguous — builder decides" instead of "minor suggestion." Coordinator pattern
+      for medium/large reviews: spawn 3 parallel subagents (correctness, design, sustainability).
+      670 total tests (20 new).'
+    blast_radius: 'Modified: agents/critic/SKILL.md (Goal 7, security, doc drift, coordinator,
+      severity), templates/critic-review.md (same, condensed), agents/critic/framework-checks.md
+      (voice inconsistency NOTE→WARNING), methodology/building.md (7-goal summary, coordinator,
+      severity), .prawduct/cross-cutting-concerns.md (Security→Goal 1), README.md (manual sync
+      instructions). Tests: test_v5_methodology.py (6 new), test_v5_templates.py (6 new),
+      test_prawduct_init.py (1 updated).'
+    classification: functional
+    date: 2026-03-19
+  # --- Sync --force flag and message improvements (2026-03-19) ---
+  - what: 'Sync skip messages clarified, --force flag added'
+    why: 'Running prawduct-sync.py produced misleading messages when local edits conflicted with
+      updated templates. The critic-review.md message said "template updated, restart to see
+      changes" when the file was actually skipped. Improved both template and block_template
+      strategy messages to clearly state the conflict and suggest --force. Added --force CLI flag
+      to overwrite locally-edited files with new template versions. 66 sync tests (6 new).'
+    blast_radius: 'Modified: tools/prawduct-sync.py (messages, --force flag), tests/test_prawduct_sync.py
+      (6 new tests for force and message wording).'
+    classification: functional
+    date: 2026-03-19
+  # --- PR reviewer fixes (2026-03-18) ---
+  - what: 'Fix PR reviewer evidence filename and invocation'
+    why: 'PR reviewer was computing the evidence filename internally, but the caller also needed
+      the path to check for evidence. Fixed so caller computes path and passes it to reviewer.'
+    blast_radius: 'Modified: agents/pr-reviewer/SKILL.md, .claude/commands/pr.md'
+    classification: bugfix
+    date: 2026-03-18
+  # --- v6: session discipline & quality hardening (2026-03-17) ---
+  - what: 'v6: Session discipline & quality hardening'
+    why: 'Analysis of 50+ discodon build sessions + TangleClaw feedback revealed: no session
+      definition, "pre-existing" escape hatch, plans lost on compaction, noisy broad-except
+      canary, artifact drift from late updates, no session scope guidance, learnings briefing
+      missed most formats, /clear escaped governance gates. 7-chunk implementation:
+      (1) session/work-cycle definition, (2) eliminate pre-existing + extended baseline,
+      (3) plan persistence + artifact updates during build, (4) broad-except pragma marking,
+      (5) session scope + pre-chunk validation + parallel agents, (6) /clear governance
+      warning + learnings briefing format, (7) tests + integration. 601 total tests (12 new).'
+    blast_radius: 'Modified: methodology/building.md (session definition, extended baseline,
+      plan persistence, artifact update timing, exception handling section, scope discipline,
+      pre-chunk validation, parallel agents), methodology/reflection.md (work cycles, persistence
+      check, reflections archive note), templates/product-claude.md (session/work-cycle,
+      no-pre-existing, plan persistence, artifact updates, session scope), templates/critic-review.md
+      (no-pre-existing, broad-except pragma), agents/critic/SKILL.md (no-pre-existing,
+      broad-except pragma), docs/principles.md (Principle 21 no-pre-existing rationale),
+      tools/product-hook (broad-except pragma detection, /clear governance warning, learnings
+      briefing format), CLAUDE.md (session/work-cycle reference),
+      tests/test_v5_hooks.py (12 new tests).'
+    classification: structural
+    date: 2026-03-17
+  # --- v5: work-scaled governance (2026-03-09) ---
+  - what: 'v5: Work-scaled governance replaces phase-based model'
+    why: 'Phase-based governance (discovery→planning→building→reflection) was too rigid —
+      hotfixes got full discovery, trivial changes got enterprise review. v5 scales governance
+      by work size (trivial/small/medium/large) × type (feature/bugfix/refactor/optimization/debt/hotfix).
+      6-chunk implementation: (1) goal-based Critic with 6 prioritized goals, (2) session briefing
+      with staleness scan, (3) compliance canary checks, (4) governance scaling matrix in building.md,
+      (5) migration + sync (v4→v5 auto-migration, learnings split, project-state migration),
+      (6) framework docs + integration validation. 584 total tests (76 new unit + 29 integration).'
+    blast_radius: 'Modified: agents/critic/SKILL.md, agents/critic/review-cycle.md,
+      templates/critic-review.md, tools/product-hook (session briefing + compliance canary),
+      methodology/building.md (governance scaling matrix), tools/prawduct-sync.py (v4→v5 migration),
+      tools/prawduct-init.py (boundary-patterns, .subagent-briefing gitignore),
+      tools/prawduct-migrate.py (v5 detection + migration path), templates/product-claude.md.
+      New: tests/test_v5_migration.py (45), tests/test_integration_lifecycle.py (29),
+      templates/boundary-patterns.md.'
+    classification: structural
+    date: 2026-03-09
+  # --- Observability as first-class concern (2026-03-03) ---
+  - what: 'Elevate observability to first-class cross-cutting concern across entire pipeline'
+    why: 'Observability had "adequate" coverage — a template existed and Check 6 mentioned it,
+      but discovery did not surface it, building did not guide it, and project-state did not
+      capture the approach. Applied the same pattern used for accessibility and error handling:
+      discovery section (Surface Observability Needs with infer-confirm-proceed, scaled to risk),
+      project-state.yaml field (observability_approach), planning universal artifact,
+      observability-strategy.md full rewrite (organized around debugging scenarios and
+      instrumentation layers, with agent-accessible observability as a design concern),
+      building.md implementation and verification guidance, Critic Check 6 strengthening,
+      product-claude.md condensed guidance, cross-cutting registry updated to Full coverage.'
+    blast_radius: 'methodology/discovery.md, methodology/planning.md, methodology/building.md,
+      templates/project-state.yaml, templates/observability-strategy.md, templates/product-claude.md,
+      templates/critic-review.md, agents/critic/SKILL.md, .prawduct/cross-cutting-concerns.md'
+    classification: functional
+    date: 2026-03-03
+  # --- Auto-pull framework git repo during sync (2026-03-03) ---
+  - what: 'Auto-pull framework git repo before syncing templates'
+    why: 'Product repos syncing against a stale framework checkout never benefited from
+      upstream improvements. Added _try_pull_framework() to prawduct-sync.py: auto_pull=true
+      (default) runs git pull --ff-only, auto_pull=false runs git fetch + advisory.
+      Best-effort throughout — failures never block sync. Added --no-pull CLI flag,
+      auto_pull manifest field, and notes printing in product-hook try_sync().
+      245 total tests (16 new: 11 unit + 5 integration, 0 regressions).'
+    blast_radius: 'Modified: tools/prawduct-sync.py (subprocess import, _try_pull_framework,
+      auto_pull in manifest, no_pull param, --no-pull flag), tools/product-hook (print notes),
+      tests/test_prawduct_sync.py (TestTryPullFramework + TestRunSyncPull).'
+    classification: functional
+    date: 2026-03-03
+  # --- Comprehensive lifecycle tests for project-preferences.md (2026-03-03) ---
+  - what: 'End-to-end lifecycle tests for project-preferences.md across init, sync, and hook'
+    why: 'The init/sync/hook preferences feature was shipped but sync failures were invisible
+      (try_sync catches all). Added 42 tests in 4 classes covering 3 real-world scenarios:
+      new project (8), existing project (18 incl. parametrized extension detection), and
+      legacy product updating (13 incl. subprocess chain and ordering verification).
+      Plus 3 cross-cutting consistency tests. 229 total tests (42 new, 0 regressions).'
+    blast_radius: 'New: tests/test_preferences_lifecycle.py. Updated: .prawduct/project-state.yaml.'
+    classification: functional
+    date: 2026-03-03
+  # --- Project preferences template placement and unfilled detection (2026-03-03) ---
+  - what: 'Project preferences template in init, sync, and unfilled detection in hook'
+    why: 'project-preferences.md was never placed by init — hook printed a CRITICAL warning
+      but Claude had to invent the file structure from scratch. Three changes: (1) init now
+      places the template in .prawduct/artifacts/ (step 5, using write_template so idempotent).
+      (2) sync now places it for existing repos via place-once mechanism (not manifest-tracked,
+      just created if missing). (3) hook detects unfilled templates (empty Language field),
+      not just missing files, so the CRITICAL warning fires even after template placement.
+      Also added subagent delegation guidance to building.md and product-claude.md.
+      132 total tests (10 new: 3 init, 3 hook, 2 sync, 2 hook unfilled detection).'
+    blast_radius: 'Modified: tools/prawduct-init.py (step 5 + renumber), tools/product-hook
+      (unfilled detection), tools/prawduct-sync.py (place-once mechanism), tests/test_prawduct_init.py
+      (3 new tests), tests/test_product_hook.py (2 new tests + rename), tests/test_prawduct_sync.py
+      (2 new tests), methodology/building.md (subagent delegation), templates/product-claude.md
+      (subagent delegation).'
+    classification: functional
+    date: 2026-03-03
+  # --- Artifact freshness and build plan detection (2026-02-24) ---
+  - what: 'Artifact freshness checks, build plan detection, learnings size warning'
+    why: 'Review of discodon (40+ build chunks) revealed: (1) Critic gate never fired because
+      build plan was in project-state.yaml not artifacts/build-plan.md — hook now checks both.
+      (2) Artifacts drifted silently from code — added bidirectional freshness check to Critic
+      Coherence check in both SKILL.md and product template. (3) Build cycle step 8 said
+      "update state" but not "update artifacts" — now explicit. (4) learnings.md grew to 42KB
+      without pruning — clear hook now warns when oversized. 172 total tests (5 new).'
+    blast_radius: 'Modified: tools/product-hook (build plan detection + learnings warning),
+      agents/critic/SKILL.md (artifact freshness), templates/critic-review.md (artifact freshness),
+      methodology/building.md (step 8 artifact updates), templates/product-claude.md (step 8 +
+      planning section), methodology/planning.md (build plan location guidance),
+      tests/test_product_hook.py (5 new tests).'
+    classification: functional
+    date: 2026-02-24
+  # --- v4: block-marker sync (2026-02-23) ---
+  - what: 'Block-marker sync for CLAUDE.md'
+    why: 'CLAUDE.md sync was all-or-nothing: user edits anywhere caused the entire file
+      to be skipped. Since users need to add project-specific instructions, edits are
+      common and framework improvements never propagated. Added PRAWDUCT:BEGIN/END markers
+      to wrap framework-managed content. New block_template sync strategy updates only the
+      block between markers, preserving user content above/below. Migration adds markers
+      to existing repos and upgrades manifest strategy. 153 total tests (32 new).'
+    blast_radius: 'Modified: tools/prawduct-sync.py (block utilities + block_template strategy),
+      templates/product-claude.md (markers added), tools/prawduct-init.py (block hash),
+      tools/prawduct-migrate.py (add_block_markers + upgrade_manifest_strategy),
+      tests/test_prawduct_sync.py, tests/test_prawduct_init.py, tests/test_prawduct_migrate.py.'
+    classification: functional
+    date: 2026-02-23
+  # --- v4: sync, banner, cross-platform hook (2026-02-23) ---
+  - what: 'Product repo sync, banner, and cross-platform Python hook'
+    why: 'Product repos were fire-and-forget: framework template improvements never propagated.
+      Added sync manifest (.prawduct/sync-manifest.json) tracking framework-managed files with
+      SHA-256 hashes for user-edit detection. New prawduct-sync.py runs on session start (via
+      product-hook) to update templates, hooks, and settings while preserving user edits.
+      Rewrote product-hook from bash to Python for cross-platform compatibility. Added
+      companyAnnouncements banner to settings template. Updated prawduct-migrate.py with
+      v3→v4 path. 121 total tests (25 sync + 19 hook + 33 init + 44 migrate).'
+    blast_radius: 'New: tools/prawduct-sync.py, tests/test_prawduct_sync.py.
+      Rewritten: tools/product-hook (bash→Python), tests/test_product_hook.py.
+      Modified: templates/product-settings.json, tools/prawduct-init.py, tools/prawduct-migrate.py,
+      tests/test_prawduct_init.py, tests/test_prawduct_migrate.py, .claude/settings.json,
+      CLAUDE.md, .prawduct/project-state.yaml.'
+    classification: functional
+    date: 2026-02-23
+  # --- v1→v3 migration tooling (2026-02-22) ---
+  - what: 'prawduct-migrate.py + v1 detection in prawduct-init.py'
+    why: 'V1 product repos depend on deleted framework scripts (governance-hook,
+      prawduct-statusline). New migration script makes any repo v3-shaped: overwrites
+      bootstrap CLAUDE.md, replaces hooks, copies product-hook, archives v1 directories,
+      cleans up v1 files. prawduct-init.py now detects v1 repos and redirects to migrate.
+      31 new tests for migrate, 3 new tests for v1 detection (76 total).'
+    blast_radius: 'New: tools/prawduct-migrate.py, tests/test_prawduct_migrate.py.
+      Modified: tools/prawduct-init.py, tests/test_prawduct_init.py, .prawduct/project-state.yaml.'
+    classification: functional
+    date: 2026-02-22
+  # --- post-audit follow-ups (2026-02-22) ---
+  - what: 'Pacing sensitivity and error handling strategy'
+    why: 'Pacing: framework said "ask fewest questions" but gave no guidance on detecting
+      fatigue or adapting dynamically. Added pacing section to discovery.md, Common Trap
+      to building.md, and condensed guidance to product-claude.md. Error handling: flagged
+      in cross-cutting concerns registry as lacking discovery coverage. Added Surface Error
+      Handling Approach section to discovery.md (infer-confirm-proceed, scaled to risk),
+      error_handling_approach field to project-state.yaml template, and updated cross-cutting
+      concerns registry.'
+    blast_radius: 'methodology/discovery.md, methodology/building.md, templates/product-claude.md,
+      templates/project-state.yaml, .prawduct/cross-cutting-concerns.md'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Trivial fixes: CLAUDE.md reference, modality-neutral accessibility examples'
+    why: 'Critic findings from meta-reflection audit: CLAUDE.md Reference section missing
+      cross-cutting-concerns.md, three locations used web-specific "semantic HTML" as
+      default accessibility example. Added reference, replaced with platform-neutral language.'
+    blast_radius: 'CLAUDE.md, methodology/discovery.md, templates/product-claude.md'
+    classification: cosmetic
+    date: 2026-02-22
+  # --- meta-reflection implementation (2026-02-22) ---
+  - what: 'Automated tests for framework executable code'
+    why: 'Framework prescribed test discipline (Principle 1) but had zero automated tests
+      for its own code. Added 42 pytest tests covering prawduct-init.py (24 tests for all
+      6 functions + template propagation) and product-hook (18 tests for both commands,
+      both gates, and content validation).'
+    blast_radius: 'New: pyproject.toml, tests/test_prawduct_init.py, tests/test_product_hook.py'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Strengthened Critic gate with content validation'
+    why: 'Critic findings file could be rubber-stamped (empty/missing summary). Added
+      python3-based JSON validation: findings must be an array, summary must be non-empty
+      string. Falls back to mtime-only if python3 unavailable (graceful degradation).'
+    blast_radius: 'tools/product-hook'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Cost awareness and accessibility in discovery'
+    why: 'Framework prescribed cost awareness (Principle 8) and accessibility (Principle 7)
+      but neither was systematically triggered during discovery. Added structurally-triggered
+      sections using infer-confirm-proceed, scaled to risk, capturing to existing
+      project-state.yaml fields.'
+    blast_radius: 'methodology/discovery.md, templates/product-claude.md'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Cross-cutting concerns registry and coverage audit'
+    why: 'Framework could validate what exists but not detect omissions. Added a concern-to-pipeline
+      registry (.prawduct/cross-cutting-concerns.md), completeness check in framework
+      reflection, and registry cross-check in Critic Check 10.'
+    blast_radius: 'New: .prawduct/cross-cutting-concerns.md. Modified: methodology/reflection.md,
+      agents/critic/framework-checks.md'
+    classification: functional
+    date: 2026-02-22
+  # --- v3 (current, 2026-02-22+) ---
+  - what: 'Product verification during building'
+    why: 'Tests verify code behavior but not the product experience. Added two-layer
+      verification (code + product) to the build cycle, verification strategy to build
+      planning, verification evidence check to Critic. Describes the need and connects
+      to structural awareness — does not enumerate product-type-specific strategies.'
+    blast_radius: 'methodology/building.md, methodology/planning.md, templates/build-plan.md,
+      templates/product-claude.md, agents/critic/SKILL.md, templates/critic-review.md'
+    classification: functional
+    date: 2026-02-22
+  - what: 'Prior art awareness during discovery'
+    why: 'Added lightweight, risk-scaled prior art search to discovery methodology. Claude
+      searches for existing solutions after initial problem understanding, weaves findings
+      into conversation as expertise (Principle #6), captures in project-state.yaml
+      under classification.prior_art. No hooks, no gates — informational input only.'
+    blast_radius: 'methodology/discovery.md, templates/project-state.yaml, templates/product-brief.md,
+      templates/product-claude.md, tests/scenarios/quick-todo-app.md'
+    classification: functional
+    date: 2026-02-22
+  - what: 'V3 implementation complete: self-contained product repos with structural gates'
+    why: 'Chunks 2-6 implemented: critic-review.md template, product CLAUDE.md template,
+      product-hook with reflection + Critic gates, prawduct-init.py rewrite for self-contained
+      repos, framework CLAUDE.md refinement. Integration tested: generated repo is standalone,
+      both gates fire correctly, idempotent init, stale findings rejected.'
+    blast_radius: 'New: templates/critic-review.md, templates/product-claude.md, templates/product-settings.json,
+      tools/product-hook. Modified: tools/prawduct-init.py, CLAUDE.md, project-state.yaml.'
+    classification: structural
+    date: 2026-02-22
+  - what: 'V3 cleanup: remove v1/v2 cruft, fix stale references'
+    why: 'Deleted skills/, 4 unused agents, tools/governance/ (3,280 lines), 18 old shell scripts,
+      framework-observations/, eval-history/, 8 stale docs, scripts/. Fixed CLAUDE.md stale references.
+      Cleaned project-state.yaml to reflect v3 architecture.'
+    blast_radius: '~120 files deleted. CLAUDE.md, project-state.yaml, docs/project-structure.md updated.'
+    classification: structural
+    date: 2026-02-22
+  - what: 'V3 discovery: structural gates on principles foundation'
+    why: 'V2 experiment tested in Hum chunk 1 build — Claude never invoked Critic, never read
+      building methodology, self-declared chunk complete with 15 undetected findings. Principles
+      govern how-to-work but not when-to-interrupt. V3: keep principles, add structural gates for
+      2-3 behaviors Claude cannot self-regulate, product repos fully self-contained.'
+    classification: discovery
+    date: 2026-02-22
+  - what: 'V2 architecture: principles-based system replaces process engine'
+    why: 'Replaced 8 hooks + 3,280 lines governance Python with 22 principles in CLAUDE.md,
+      4 methodology guides, learnings.md, and 2 hooks (clear + stop). Critic preserved as
+      independent agent.'
+    classification: structural
+    date: 2026-02-21
+  # --- v1 history (2026-02-10 to 2026-02-21, condensed) ---
+  - what: 'V1 development (condensed): process engine with skills, orchestrator, observation system'
+    why: 'Built and iterated a full governance framework: 6 skills (orchestrator, domain-analyzer,
+      artifact-generator, builder, critic, review-lenses), 8 hooks, observation YAML system,
+      evaluation methodology. Key directional changes: product shapes → concern dimensions →
+      structural characteristics, unified governance, self-hosting with 13 artifacts, Critic
+      moved to subagent, project preferences. Accumulated learnings about governance complexity,
+      principle enforcement, and independent review that informed v2/v3 architecture.'
+    blast_radius: 'All framework files (see working-notes/ for detailed history)'
+    classification: condensed
+    date: 2026-02-21
+
+# =============================================================================
+# BUILD STATE
+# =============================================================================
+
+build_state:
+  source_root: "."
+  test_tracking:
+    test_count: 655
+    test_files:
+      - tests/scenarios/family-utility.md
+      - tests/scenarios/background-data-pipeline.md
+      - tests/scenarios/terminal-arcade-game.md
+      - tests/scenarios/quick-todo-app.md
+      - tests/test_prawduct_init.py
+      - tests/test_product_hook.py
+      - tests/test_prawduct_migrate.py
+      - tests/test_prawduct_sync.py
+      - tests/test_preferences_lifecycle.py
+      - tests/test_v5_methodology.py
+      - tests/test_v5_templates.py
+      - tests/test_pr_reviewer.py
+      - tests/test_prawduct_validate.py
+      - tests/test_integration_lifecycle.py
+      - tests/test_product_compat.py
+
+# =============================================================================
+# DEPRECATED TERMS
+# =============================================================================
+# Track vocabulary changes to catch stale references.
+# Only terms that could still appear in active files.
+
+deprecated_terms:
+  - term: "product shapes"
+    replacement: "structural characteristics"
+    patterns: ["product shape"]
+  - term: "concern dimensions"
+    replacement: "structural characteristics"
+    patterns: ["concern dimension"]

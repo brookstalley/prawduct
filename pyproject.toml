@@ -1,0 +1,21 @@
+[project]
+name = "prawduct"
+version = "1.2.9"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "pytest-xdist>=3.5",
+    "pytest-timeout>=2.3",
+    "pyyaml>=6.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-n", "auto",
+    "--dist", "loadfile",
+    "--timeout", "30",
+    "--timeout-method", "thread",
+]

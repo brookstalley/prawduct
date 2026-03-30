@@ -1,0 +1,219 @@
+# Prawduct
+
+Prawduct is a framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that adds structured product thinking, independent quality review, and continuous learning to AI-assisted software development.
+
+## The Problem
+
+Going from "I need an app that does X" straight to code skips the hard questions: Who are the users? What are the edge cases and failure modes? What does "done" look like? What needs to be tested, and how?
+
+LLM code generation is powerful, but without discipline it produces code that drifts from requirements, skips edge cases, weakens tests to make them pass, and accumulates technical debt — all without telling you.
+
+## How It Works
+
+You describe what you want to build. Prawduct scales governance to match the work:
+
+**Discovery** — Asks about your users, workflows, edge cases, security, and scope. Scales question depth to risk: a family utility gets 5-8 questions; a financial platform gets 15-25. Discovery is continuous — new features need their own discovery.
+
+**Planning** — Produces structured specifications in dependency order: product brief, data model, security model, test specifications, non-functional requirements, and a chunked build plan.
+
+**Building** — Implements the product in governed chunks. Governance depth scales with work size (trivial → large) and type (bugfix → feature → refactor). Each chunk follows a cycle: read spec, write tests alongside implementation, verify, then submit for independent Critic review. The Critic runs as a separate agent with no access to the builder's reasoning — it sees only the code and specs, catching things the builder's own context blinds it to.
+
+**Reflection** — After each significant action, captures what happened, whether it was expected, and what it teaches. Learnings follow a lifecycle (provisional → confirmed → incorporated) and accumulate across sessions.
+
+## What Makes It Work
+
+### Structural enforcement, not just instructions
+
+The core insight: telling an LLM to "always do X" works until complexity or momentum takes over. Prawduct enforces governance at three levels:
+
+- **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and active learnings
+- **Critic review** — A session hook blocks completion if code was modified against a build plan but no independent review happened. The Critic skill has structural tool restrictions preventing test/build execution
+- **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
+- **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
+
+Everything else is governed by 22 principles and four methodology guides that stay in context via CLAUDE.md.
+
+### Independent Critic review
+
+The Critic runs as a Claude Code skill with `context: fork` (separate context) and `allowed-tools` that structurally prevent running tests, builds, or executables. It has no access to the builder's reasoning or justifications — only the code, tests, and specifications. This structural separation catches blind spots that in-context review misses. The builder records test evidence (`.prawduct/.test-evidence.json`) during verification; the Critic reads it instead of re-running the suite.
+
+### Self-contained product repos
+
+Generated product repos carry everything they need: own CLAUDE.md, own hooks, own Critic instructions, own learning history. No runtime dependency on the framework. Products work identically whether the framework repo exists or has been deleted.
+
+This means:
+- Products are portable and shareable
+- The framework is a generator, not a runtime dependency
+- Each product can evolve independently
+- Framework updates propagate via automatic, edit-preserving sync — never overwrites your changes
+
+### Proportional rigor
+
+The framework detects structural characteristics (human interface, API, background automation, multi-party, sensitive data, distributed) and scales everything accordingly — discovery depth, artifact detail, test coverage, review intensity. A weekend project doesn't get enterprise governance; a platform doesn't get hobby-grade review.
+
+### Closed learning loop
+
+Learnings aren't just filed — they're read at session start and directly influence decisions. A two-tier system keeps active rules concise (<3K tokens in `learnings.md`) with full context in `learnings-detail.md`. Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
+
+The framework's own development demonstrates this: the pattern "judgment alone won't interrupt momentum" (observed when Claude skipped Critic review despite being told not to) drove the architectural shift from principles-only governance to structural enforcement via hooks.
+
+## Getting Started
+
+### Prerequisites
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- Python 3
+- git
+
+Clone the framework repo first:
+
+```bash
+git clone https://github.com/brookstalley/prawduct
+```
+
+### Start a new product from scratch
+
+```bash
+python3 prawduct/tools/prawduct-setup.py setup ~/my-product --name "My Product"
+cd ~/my-product
+claude
+```
+
+Then describe what you want to build.
+
+### Add Prawduct to an existing repo
+
+```bash
+python3 prawduct/tools/prawduct-setup.py setup ~/existing-repo --name "My Existing Project"
+cd ~/existing-repo
+claude
+```
+
+Prawduct detects existing code and infers project conventions (language, test framework, code style) before making any changes. The `setup` subcommand auto-detects repo state (new, v1/v3/v4/v5) and routes to init, migration, or sync as needed.
+
+### Update product repos after framework changes
+
+Product repos sync automatically at session start via the product-hook. To sync manually:
+
+```bash
+python3 prawduct/tools/prawduct-setup.py sync ~/my-product
+```
+
+If a template changed but the product file has local edits, sync skips it with a message. Use `--force` to accept the new template version (overwrites local edits):
+
+```bash
+python3 prawduct/tools/prawduct-setup.py sync ~/my-product --force
+```
+
+### Health check a product repo
+
+```bash
+python3 prawduct/tools/prawduct-setup.py validate ~/my-product
+```
+
+Or from within a product repo, use `/prawduct-doctor` to check health and offer repair.
+
+### Develop the framework itself
+
+```bash
+cd prawduct
+claude
+```
+
+## Generated Product Repo Structure
+
+```
+my-product/
+├── CLAUDE.md                    # 22 principles + methodology (synced from framework)
+├── .prawduct/
+│   ├── project-state.yaml      # Product definition, work tracking, build plan
+│   ├── learnings.md            # Active rules, read at session start (<3K tokens)
+│   ├── learnings-detail.md     # Full learning context and history
+│   ├── backlog.md              # Deferred work items (out-of-scope captures)
+│   ├── build-governance.md     # Build governance reference (read before coding)
+│   ├── critic-review.md        # Goal-based Critic instructions for this product
+│   ├── pr-review.md            # PR reviewer instructions for this product
+│   ├── sync-manifest.json      # Tracks framework sync state
+│   ├── artifacts/              # Specifications generated during planning
+│   │   ├── boundary-patterns.md  # Contract surfaces between components
+│   │   └── project-preferences.md # Developer preferences (language, testing, style)
+│   ├── .subagent-briefing.md   # Generated briefing for delegated agents
+│   ├── .pr-reviews/            # PR review evidence (checked by stop hook)
+│   └── .critic-findings.json   # Critic review evidence (checked by stop hook)
+├── tools/
+│   └── product-hook            # Session governance (Python, zero dependencies)
+├── .claude/
+│   ├── skills/
+│   │   ├── pr/SKILL.md              # /pr — PR lifecycle management
+│   │   ├── critic/SKILL.md          # /critic — Independent Critic review (tool-restricted)
+│   │   ├── janitor/SKILL.md         # /janitor — Periodic codebase maintenance
+│   │   ├── learnings/SKILL.md       # /learnings — Context-efficient knowledge lookup
+│   │   └── prawduct-doctor/SKILL.md  # /prawduct-doctor — Health check and repair
+│   └── settings.json           # Hook configuration
+└── src/                        # Your product code
+```
+
+## Framework Layout
+
+```
+prawduct/
+├── CLAUDE.md                   # 22 principles + methodology pointers
+├── methodology/                # Narrative guides: discovery, planning, building, reflection
+├── agents/critic/              # Independent per-chunk review agent
+├── agents/pr-reviewer/         # Independent PR release-readiness reviewer
+├── tools/                      # prawduct-setup.py (unified setup/sync/validate), product-hook
+├── templates/                  # Artifact templates for generated products
+├── tests/                      # Framework tests (pytest) and evaluation scenarios
+├── docs/                       # Full principles with rationale, project structure
+└── .prawduct/                  # Framework's own state, learnings, artifacts
+```
+
+## Architecture
+
+Three layers:
+
+1. **22 Principles** — Always in context via CLAUDE.md. Grouped into Quality, Product, Process, Learning, and Judgment. They govern how work gets done but don't enforce process interruptions.
+
+2. **Methodology guides** — Narrative essays read when entering each activity (discovery, planning, building, reflection). They teach the approach rather than prescribing rigid steps. Governance depth scales with work size and type.
+
+3. **Structural enforcement** — Python hooks that enforce what principles alone can't guarantee: session briefing with staleness detection on start, independent Critic review and reflection gates on stop, compliance canary checks for common governance failures. Zero external dependencies.
+
+See [`docs/principles.md`](docs/principles.md) for the full principles with rationale and review perspectives.
+
+## Recent Changes
+
+### 2026-03-29
+- refactor: Framework refactoring — extracted `tools/lib/` modules (core, init, migrate, sync, validate), deduplicated templates, consolidated tests (813→647, 13→11 files), archived working-notes
+- fix: V4_GITIGNORE_ENTRIES now matches GITIGNORE_ENTRIES (adds `.session-handoff.md`, `.test-evidence.json`, `.pr-reviews/`)
+- fix: Critic changelog scope — only checks entries from current changeset, not historical entries
+- fix: Gitignore hygiene — sync removes managed files (critic-review.md, etc.) from .gitignore if incorrectly added, and advises user to `git add` them; validate detects the mismatch
+- feature: Deprecation warnings when migrating v1/v3/partial repos
+
+### 2026-03-28
+- feature: Critic is now a Claude Code skill with structural tool restrictions — `allowed-tools` prevents running tests/builds/executables; `context: fork` preserves review independence
+- feature: Test evidence mechanism — builder records results to `.prawduct/.test-evidence.json`; Critic reads evidence instead of re-running the test suite
+- feature: Auto-invocation language — Critic review is triggered automatically after each chunk, not offered as a user choice
+- feature: Stop hook skips reflection gate for doc-only (.md) changes
+
+### 2026-03-19
+- feature: Critic Goal 7 "The Design Is Sound" — reviews encapsulation, coupling, simplification, and deduplication
+- feature: Security checks in Critic Goal 1 — injection vectors, hardcoded secrets, input validation (BLOCKING); auth/authz, dependency CVEs (WARNING)
+- feature: Critic coordinator pattern — medium/large reviews spawn 3 parallel subagents (correctness, design, sustainability) for ~2x throughput
+- feature: README and documentation drift active checking in Critic Goal 4 — Critic reads the README when features change
+- feature: Project preferences compliance promoted to BLOCKING in Critic Goal 4
+- feature: Severity recalibration — NOTE now means "genuinely ambiguous, builder decides" instead of "minor suggestion"
+- feature: Historical record immunity — Critic won't flag changelogs or archives for stale terminology
+- feature: `prawduct-setup.py sync --force` flag to overwrite locally-edited files with new template versions
+- fix: Sync skip messages now clearly state the conflict instead of misleading "template updated, restart to see changes"
+- fix: PR reviewer evidence filename — caller computes path, not reviewer
+
+### 2026-03-17
+- feature: PR reviewer agent and `/pr` skill — independent release-readiness review before PR creation, complementing per-chunk Critic reviews
+- feature: work-scaled governance (v5) — governance depth scales with work size and type instead of rigid phases
+- feature: session handoff via `/clear` — structured context persistence across sessions
+- feature: test parallelization support via pytest-xdist in generated products
+- feature: infrastructure dependency surfacing in discovery and Critic review
+- feature: compliance canary system for common governance failures (code without tests, broad exceptions, stale artifacts)
+- fix: PR review enforcement upgraded from advisory to blocker, matching Critic's three-layer model
+- fix: integration lifecycle tests for init/sync/migrate pipeline
+- fix: dangling methodology file references in product CLAUDE.md template
