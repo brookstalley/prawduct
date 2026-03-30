@@ -1,6 +1,6 @@
 # Framework Repository Structure
 
-The framework repo layout (v5):
+The framework repo layout:
 
 ```
 prawduct/
@@ -53,6 +53,7 @@ prawduct/
 │   ├── test_v5_methodology.py           # Methodology and Critic content tests
 │   ├── test_v5_templates.py             # Template structure and consistency tests
 │   ├── test_product_compat.py           # Product repo compatibility tests
+│   ├── test_coverage_gaps.py            # User journey and edge case coverage tests
 │   ├── test_pr_reviewer.py              # PR reviewer agent tests
 │   └── scenarios/                     # 4 test scenarios for framework validation
 ├── docs/

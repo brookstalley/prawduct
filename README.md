@@ -182,38 +182,22 @@ See [`docs/principles.md`](docs/principles.md) for the full principles with rati
 
 ## Recent Changes
 
-### 2026-03-29
-- refactor: Framework refactoring — extracted `tools/lib/` modules (core, init, migrate, sync, validate), deduplicated templates, consolidated tests (813→647, 13→11 files), archived working-notes
+### 1.3.0 (2026-03-30)
+- refactor: Extracted `tools/lib/` modules (core, init, migrate, sync, validate) from monolithic setup script
+- feature: Framework version tracking — sync records `framework_version` in manifest; session start warns if `../prawduct` is stale relative to last sync
+- feature: Reflection gate is now advisory (not blocking) when no build plan is active — exploratory/Q&A sessions no longer require mandatory reflection
+- feature: Comprehensive test coverage for all user onboarding journeys (750 tests)
 - fix: V4_GITIGNORE_ENTRIES now matches GITIGNORE_ENTRIES (adds `.session-handoff.md`, `.test-evidence.json`, `.pr-reviews/`)
 - fix: Critic changelog scope — only checks entries from current changeset, not historical entries
-- fix: Gitignore hygiene — sync removes managed files (critic-review.md, etc.) from .gitignore if incorrectly added, and advises user to `git add` them; validate detects the mismatch
-- feature: Deprecation warnings when migrating v1/v3/partial repos
+- fix: Gitignore hygiene — sync removes managed files from .gitignore if incorrectly added
+- fix: Deprecation warnings when migrating v1/v3/partial repos
 
-### 2026-03-28
-- feature: Critic is now a Claude Code skill with structural tool restrictions — `allowed-tools` prevents running tests/builds/executables; `context: fork` preserves review independence
-- feature: Test evidence mechanism — builder records results to `.prawduct/.test-evidence.json`; Critic reads evidence instead of re-running the test suite
-- feature: Auto-invocation language — Critic review is triggered automatically after each chunk, not offered as a user choice
-- feature: Stop hook skips reflection gate for doc-only (.md) changes
-
-### 2026-03-19
-- feature: Critic Goal 7 "The Design Is Sound" — reviews encapsulation, coupling, simplification, and deduplication
-- feature: Security checks in Critic Goal 1 — injection vectors, hardcoded secrets, input validation (BLOCKING); auth/authz, dependency CVEs (WARNING)
-- feature: Critic coordinator pattern — medium/large reviews spawn 3 parallel subagents (correctness, design, sustainability) for ~2x throughput
-- feature: README and documentation drift active checking in Critic Goal 4 — Critic reads the README when features change
-- feature: Project preferences compliance promoted to BLOCKING in Critic Goal 4
-- feature: Severity recalibration — NOTE now means "genuinely ambiguous, builder decides" instead of "minor suggestion"
-- feature: Historical record immunity — Critic won't flag changelogs or archives for stale terminology
-- feature: `prawduct-setup.py sync --force` flag to overwrite locally-edited files with new template versions
-- fix: Sync skip messages now clearly state the conflict instead of misleading "template updated, restart to see changes"
-- fix: PR reviewer evidence filename — caller computes path, not reviewer
-
-### 2026-03-17
-- feature: PR reviewer agent and `/pr` skill — independent release-readiness review before PR creation, complementing per-chunk Critic reviews
-- feature: work-scaled governance (v5) — governance depth scales with work size and type instead of rigid phases
-- feature: session handoff via `/clear` — structured context persistence across sessions
-- feature: test parallelization support via pytest-xdist in generated products
-- feature: infrastructure dependency surfacing in discovery and Critic review
-- feature: compliance canary system for common governance failures (code without tests, broad exceptions, stale artifacts)
-- fix: PR review enforcement upgraded from advisory to blocker, matching Critic's three-layer model
-- fix: integration lifecycle tests for init/sync/migrate pipeline
-- fix: dangling methodology file references in product CLAUDE.md template
+### Pre-1.3.0
+- Critic is a Claude Code skill with structural tool restrictions (`allowed-tools` prevents test/build execution; `context: fork` preserves independence)
+- Test evidence mechanism — builder records results; Critic reads evidence instead of re-running suites
+- Critic Goal 7 "The Design Is Sound" — encapsulation, coupling, simplification, deduplication
+- Security checks in Critic Goal 1 — injection, hardcoded secrets, input validation (BLOCKING)
+- Critic coordinator pattern — medium/large reviews spawn parallel subagents
+- PR reviewer agent and `/pr` skill — independent release-readiness review
+- Work-scaled governance — depth scales with work size and type instead of rigid phases
+- Session handoff, compliance canary, `--force` flag for sync, doc-only reflection skip
