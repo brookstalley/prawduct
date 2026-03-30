@@ -20,13 +20,15 @@ You describe what you want to build, either a net-new product or enhancements to
 
 **Reflection and Learning** — After each significant action, captures what happened, whether it was expected, and what it teaches. Learnings follow a lifecycle (provisional → confirmed → incorporated) and accumulate across sessions. Learnings are checked when planning new work, closing the loop.
 
-## What Makes It Work
+## Why Prawduct Works
 
 ### Structural enforcement, not just instructions
 
-The core insight: telling an LLM to "always do X" works until complexity or momentum takes over. Prawduct enforces governance at four levels:
+Telling an LLM to "always do X" works until context gets large, and those instructions degrade with compaction.
 
-- **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and active learnings
+Prawduct enforces governance at four levels:
+
+- **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and relevant learnings
 - **Critic review** — A session hook blocks completion if code was modified against a build plan but no independent review happened. The Critic skill has structural tool restrictions preventing test/build execution
 - **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
 - **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
@@ -36,6 +38,10 @@ Everything else is governed by 22 principles and four methodology guides that st
 ### Independent Critic review
 
 The Critic runs as a Claude Code skill with `context: fork` (separate context) and `allowed-tools` that prevent running tests, builds, or executables. It has no access to the builder's reasoning or justifications — only the code, tests, and specifications. This structural separation catches blind spots that in-context review misses. The builder records test evidence (`.prawduct/.test-evidence.json`) during verification; the Critic reads it instead of re-running the suite.
+
+### The Janitor
+
+All projects suffer drift over time. Each individual review can be executed perfectly, but accumulation over time means cruft appears, old code is not updated to new architectural patterns, tests go stale, documentation goes stale, Git accumulates dead branches, etc. The janitor skill is focused on periodic repo maintenance to catch these kinds of issues that are next to impossible for humans or LLMs to be perfect at during day-to-day work.
 
 ### Self-contained product repos
 
