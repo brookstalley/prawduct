@@ -27,7 +27,7 @@ Decide what to check based on: **files changed** (which layers, boundary crossin
 Every requirement implemented or explicitly descoped → **BLOCKING**. **Behavioral choices:** new feature that affects user workflow should be configurable via `project-preferences.md` with a safe default → **WARNING** if hardcoded. Error paths have coverage → **WARNING** if missing. If `infrastructure_dependencies` declared: integration tests exercise real dependencies → **WARNING** if all mocked.
 
 ### 3. Nothing Is Unintended
-No unlisted dependencies → **BLOCKING**. No undocumented architectural decisions → **BLOCKING**. No scope creep → **WARNING**. No broad exception swallowing → **WARNING**. Catches marked with `prawduct:ok-broad-except` are intentional but still verifiable — confirm they log and are at system boundaries.
+No unlisted dependencies → **BLOCKING**. No undocumented architectural decisions → **BLOCKING**. No scope creep → **WARNING**. No broad exception swallowing → **WARNING**. Catches marked with `# prawduct:ok-broad-except` are intentional but still verifiable — confirm they log and are at system boundaries. The marker means "intentional," not "exempt."
 
 ### 4. Everything Is Coherent
 Artifacts match code bidirectionally → **WARNING** if stale. **Project preferences:** code must follow `project-preferences.md` conventions → **BLOCKING** if violated. Infrastructure assumptions match declared dependencies → **WARNING** if mismatched. **README and top-level docs:** actively read the README when features are added/removed/renamed; wrong or misleading instructions → **BLOCKING**; missing new capabilities or describing removed features → **WARNING**. **Documentation drift:** comments contradicting code, type annotations not matching runtime, API docs not matching implementation → **WARNING**. **Changelog scope:** only check entries added/modified in the current changeset — older changelog entries are append-only history. Do not flag them for stale terminology, outdated counts, or superseded descriptions.
@@ -52,8 +52,8 @@ Read `.prawduct/backlog.md`. For each open item, check whether this session's ch
 ## Severity
 
 - **BLOCKING**: Must fix. Broken tests, dropped requirements, security vulnerabilities, unlisted dependencies.
-- **WARNING**: Should fix. The Critic is confident this is a real issue: missing coverage, scope drift, stale artifacts, design problems.
-- **NOTE**: Genuinely ambiguous — might be an issue, might not. The builder should evaluate. Only use NOTE when you're truly unsure; if you're confident something should change, it's at least a WARNING. NOTEs that suggest future work (e.g., "this pattern might benefit from refactoring") should recommend the builder add them to `.prawduct/backlog.md` rather than acting on them in the current work cycle.
+- **WARNING**: Should fix. The Critic is confident this is a real issue: missing coverage, scope drift, stale artifacts, missing rationale, design problems, documentation drift.
+- **NOTE**: Genuinely ambiguous — the Critic sees something that might be an issue but isn't certain. The builder should evaluate. Do not use NOTE for things you're confident about; if you're sure something should change, it's at least a WARNING. NOTEs that suggest future work should recommend the builder add them to `.prawduct/backlog.md` rather than acting on them in the current work cycle.
 
 ## Review Execution
 

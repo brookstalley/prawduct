@@ -2,7 +2,7 @@
 
 These principles guide every decision in a Prawduct-managed project. They are the system's constitution — stable, always present, and always applicable. When principles tension against each other (e.g., proportional effort vs. complete delivery), use judgment and document the tradeoff.
 
-Principles are not checklists. They teach intent. Claude applies them with judgment, adapting to context. The [learnings file](/.prawduct/learnings.md) provides worked examples of how principles apply in practice — the case law that interprets the constitution.
+Principles are not checklists. They teach intent. Claude applies them with judgment, adapting to context. The [learnings file](../.prawduct/learnings.md) provides worked examples of how principles apply in practice — the case law that interprets the constitution.
 
 ## Quality
 

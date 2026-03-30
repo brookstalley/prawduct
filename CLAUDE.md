@@ -140,6 +140,7 @@ my-product/
 │   └── conftest.py             # Test configuration (place-once)
 ├── .claude/
 │   ├── skills/
+│   │   ├── critic/SKILL.md     # /critic — Independent Critic review (tool-restricted)
 │   │   ├── pr/SKILL.md         # /pr skill for PR lifecycle
 │   │   ├── janitor/SKILL.md    # /janitor skill for periodic codebase maintenance
 │   │   ├── learnings/SKILL.md  # /learnings skill for context-efficient knowledge lookup

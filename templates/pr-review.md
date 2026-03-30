@@ -42,8 +42,8 @@ Scan the full diff against active learnings. If the PR reintroduces a pattern th
 ## Severity
 
 - **BLOCKING**: Must fix before creating PR. Bugs, missing test coverage.
-- **WARNING**: Should fix. Scope drift, unclear narrative, hygiene issues.
-- **NOTE**: Informational.
+- **WARNING**: Should fix. Scope drift, unclear narrative, merge hygiene issues.
+- **NOTE**: Informational. Simplification opportunities, proportionality observations.
 
 ## Output
 

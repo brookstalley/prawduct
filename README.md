@@ -130,13 +130,17 @@ Q: **Doesn't this use a lot of tokens?**
 
 A: Yes, yes it does. However, it uses fewer tokens than having to go back and revise applications over and over again. Developing clear scope, writing good requirements docs, and ensuring test coverage and architectural consistency takes a lot of thought and effort, for human or machine. The only thing more expensive is *not* doing that stuff.
 
-Q: **What languages can Prawduct develop in**
+Q: **What languages can Prawduct develop in?**
 
 A: Really anything Claude Code can. Prawduct has no language-specific instructions or code, and relies on Claude's smarts to plan appropriately for the target language. You'll get better results with the languages Claude is better at, of course.
 
 Q: **How much control do I have over product and tech choices?**
 
-A: As much or as little as you want. Prawduct is designed to interview you during the onboarding process and to make inferences about the areas where you're opinionated versus not. But you can always express a preference (for a language, a color scheme, a logging provider) and Prawduct will honor it. Project prefernences are stored in `.prawduct/artifacts/project-preferencs.md` and you can edit them directly if you like.
+A: As much or as little as you want. Prawduct is designed to interview you during the onboarding process and to make inferences about the areas where you're opinionated versus not. But you can always express a preference (for a language, a color scheme, a logging provider) and Prawduct will honor it. Project preferences are stored in `.prawduct/artifacts/project-preferences.md` and you can edit them directly if you like.
+
+Q: **How do I remove Prawduct from a project?**
+
+A: Easily done: 1) Delete .prawduct/ , 2) remove Claude Code hooks that reference Prawduct from .claude/settings.json, 3) remove Prawduct language from CLAUDE.md (there are begin/end markers to make this easy)
 
 ## Testing Prawduct
 
@@ -147,7 +151,20 @@ cd prawduct
 python3 -m pytest tests/
 ```
 
-Scenario tests in `tests/scenarios/` are manual evaluations — each describes a sample product, a user persona, scripted inputs, and a rubric. Run them by opening the Prawduct repo in Claude Code and following the scenario's evaluation procedure:
+Scenario tests in `tests/scenarios/` are end-to-end evaluations — each describes a product, a user persona with scripted responses, and a detailed rubric. Together they cover every structural characteristic, a range of risk levels, diverse tech stacks, and user expertise from novice to deep expert.
+
+| Scenario | Persona | Structural characteristics | Stack | Risk | Tests |
+|----------|---------|--------------------------|-------|------|-------|
+| **Quick To-Do App** | Mobile user (implied) | `has_human_interface` (mobile) | Mobile | Low | Proportionality — light-touch process for trivial products; happy path |
+| **Score Night** | Non-technical family user | `has_human_interface` (mobile) | Mobile | Low | Pacing for non-technical users; scope restraint |
+| **DoseCheck** | Marketing manager, 38 | `handles_sensitive_data` (health), `has_human_interface` (iOS) | iOS / Swift | High | High-risk + low-scale tension; privacy without over-engineering |
+| **Digest Bot** | Indie dev, mid-level backend | `runs_unattended` (scheduled) | Python | Low-Med | Headless pipeline detection; no UI questioning; external integrations |
+| **Terminal Invaders** | Senior engineer, 8 yrs | `has_human_interface` (terminal) | Language-agnostic | Low-Med | Unusual UI substrate; real-time game loop; cross-platform terminal |
+| **Chromavert** | Senior Rust engineer, 6 yrs | `exposes_programmatic_interface` (REST) | Rust | Medium | API-only product; mathematical correctness; N×N conversion matrix |
+| **QuickCheck** | 8th-grade science teacher, 15 yrs | `has_multiple_party_types`, `has_human_interface` (web) | Web | Medium | Multi-party workflows; trust boundaries; COPPA; non-technical vocab |
+| **ThermoGraph** | Retired EE, 35 yrs experience | `multi_process_distributed`, `runs_unattended`, `has_human_interface`, `exposes_programmatic_interface` | Go | Low-Med | 4 overlapping characteristics; process topology; inverse vocabulary calibration (expert systems, novice web) |
+
+Run a scenario by opening this repo in Claude Code:
 
 ```bash
 cd prawduct
@@ -155,9 +172,7 @@ claude
 > let's run through tests/scenarios/home-environmental-monitor.md
 ```
 
-These scenario tests *should* spawn a second Claude Code that does the work without seeing the full scenario file, ensuring fair testing.
-
-This may take a while, anywhere from 3 - 15 minutes depending on scenario.
+The coordinating Claude spawns a second session that does the work without seeing the full scenario file, relays scripted answers, then scores against the rubric. Takes 3–15 minutes depending on scenario.
 
 ## Generated Product Repo Structure
 
