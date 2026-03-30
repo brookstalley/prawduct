@@ -1,30 +1,30 @@
 # Prawduct
 
-Prawduct is a framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that adds structured product thinking, independent quality review, and continuous learning to AI-assisted software development.
+Prawduct is a product development framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that adds structured planning, independent quality reviews, and continuous per-project learning to AI-assisted software development.
 
 ## The Problem
 
 Going from "I need an app that does X" straight to code skips the hard questions: Who are the users? What are the edge cases and failure modes? What does "done" look like? What needs to be tested, and how?
 
-LLM code generation is powerful, but without discipline it produces code that drifts from requirements, skips edge cases, weakens tests to make them pass, and accumulates technical debt — all without telling you.
+Claude Code is fantastic at writing code, but without discipline it makes assumptions about product intent, produces code drifts from requirements, skips edge cases, weakens tests to make them pass, and accumulates technical debt — all without telling you.
 
-## How It Works
+## How Prawduct Works
 
-You describe what you want to build. Prawduct scales governance to match the work:
+You describe what you want to build, either a net-new product or enhancements to an existing one. Prawduct scales governance to match the work:
 
-**Discovery** — Asks about your users, workflows, edge cases, security, and scope. Scales question depth to risk: a family utility gets 5-8 questions; a financial platform gets 15-25. Discovery is continuous — new features need their own discovery.
+**Discovery** — Asks about your users, workflows, edge cases, security, and scope. Scales question depth to risk: a family scratchpad gets 5-8 questions; a financial platform gets 15-25. Discovery is continuous — new features need their own discovery.
 
 **Planning** — Produces structured specifications in dependency order: product brief, data model, security model, test specifications, non-functional requirements, and a chunked build plan.
 
 **Building** — Implements the product in governed chunks. Governance depth scales with work size (trivial → large) and type (bugfix → feature → refactor). Each chunk follows a cycle: read spec, write tests alongside implementation, verify, then submit for independent Critic review. The Critic runs as a separate agent with no access to the builder's reasoning — it sees only the code and specs, catching things the builder's own context blinds it to.
 
-**Reflection** — After each significant action, captures what happened, whether it was expected, and what it teaches. Learnings follow a lifecycle (provisional → confirmed → incorporated) and accumulate across sessions.
+**Reflection and Learning** — After each significant action, captures what happened, whether it was expected, and what it teaches. Learnings follow a lifecycle (provisional → confirmed → incorporated) and accumulate across sessions. Learnings are checked when planning new work, closing the loop.
 
 ## What Makes It Work
 
 ### Structural enforcement, not just instructions
 
-The core insight: telling an LLM to "always do X" works until complexity or momentum takes over. Prawduct enforces governance at three levels:
+The core insight: telling an LLM to "always do X" works until complexity or momentum takes over. Prawduct enforces governance at four levels:
 
 - **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and active learnings
 - **Critic review** — A session hook blocks completion if code was modified against a build plan but no independent review happened. The Critic skill has structural tool restrictions preventing test/build execution
@@ -35,27 +35,25 @@ Everything else is governed by 22 principles and four methodology guides that st
 
 ### Independent Critic review
 
-The Critic runs as a Claude Code skill with `context: fork` (separate context) and `allowed-tools` that structurally prevent running tests, builds, or executables. It has no access to the builder's reasoning or justifications — only the code, tests, and specifications. This structural separation catches blind spots that in-context review misses. The builder records test evidence (`.prawduct/.test-evidence.json`) during verification; the Critic reads it instead of re-running the suite.
+The Critic runs as a Claude Code skill with `context: fork` (separate context) and `allowed-tools` that prevent running tests, builds, or executables. It has no access to the builder's reasoning or justifications — only the code, tests, and specifications. This structural separation catches blind spots that in-context review misses. The builder records test evidence (`.prawduct/.test-evidence.json`) during verification; the Critic reads it instead of re-running the suite.
 
 ### Self-contained product repos
 
-Generated product repos carry everything they need: own CLAUDE.md, own hooks, own Critic instructions, own learning history. No runtime dependency on the framework. Products work identically whether the framework repo exists or has been deleted.
+Generated product repos carry everything they need: own CLAUDE.md, own hooks, own Critic instructions, own learning history. There is no runtime dependency on the Prawduct framework. Products work identically whether the framework repo exists or not.
 
 This means:
 - Products are portable and shareable
 - The framework is a generator, not a runtime dependency
 - Each product can evolve independently
-- Framework updates propagate via automatic, edit-preserving sync — never overwrites your changes
+- Framework updates propagate via automatic, edit-preserving sync (requires having the framework cloned to a sibling dir)
 
 ### Proportional rigor
 
-The framework detects structural characteristics (human interface, API, background automation, multi-party, sensitive data, distributed) and scales everything accordingly — discovery depth, artifact detail, test coverage, review intensity. A weekend project doesn't get enterprise governance; a platform doesn't get hobby-grade review.
+The framework detects structural characteristics (human interface, API, background automation, multi-party, sensitive data, distributed) and scales everything accordingly — discovery depth, artifact detail, test coverage, review intensity. A quick utility doesn't get exhaustive governance; a platform doesn't get hobby-grade review.
 
 ### Closed learning loop
 
-Learnings aren't just filed — they're read at session start and directly influence decisions. A two-tier system keeps active rules concise (<3K tokens in `learnings.md`) with full context in `learnings-detail.md`. Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
-
-The framework's own development demonstrates this: the pattern "judgment alone won't interrupt momentum" (observed when Claude skipped Critic review despite being told not to) drove the architectural shift from principles-only governance to structural enforcement via hooks.
+Learnings are captured during development, and read at session start to inform decisions. A two-tier system keeps active rules concise (<3K tokens in `learnings.md`) with full context in `learnings-detail.md`. Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology). A dedicated /learnings skill lets Claude Code request relevant learnings for planned work rather than loading lots of tokens that aren't relevant to the task at hand.
 
 ## Getting Started
 
@@ -89,7 +87,7 @@ cd ~/existing-repo
 claude
 ```
 
-Prawduct detects existing code and infers project conventions (language, test framework, code style) before making any changes. The `setup` subcommand auto-detects repo state (new, v1/v3/v4/v5) and routes to init, migration, or sync as needed.
+Prawduct detects existing code and infers project conventions (language, test framework, code style) before making any changes. The `setup` subcommand auto-detects repo state and routes to init, migration, or sync as needed.
 
 ### Update product repos after framework changes
 
@@ -127,7 +125,7 @@ my-product/
 ├── CLAUDE.md                    # 22 principles + methodology (synced from framework)
 ├── .prawduct/
 │   ├── project-state.yaml      # Product definition, work tracking, build plan
-│   ├── learnings.md            # Active rules, read at session start (<3K tokens)
+│   ├── learnings.md            # Active rules, read by /learnings skill (<3K tokens)
 │   ├── learnings-detail.md     # Full learning context and history
 │   ├── backlog.md              # Deferred work items (out-of-scope captures)
 │   ├── build-governance.md     # Build governance reference (read before coding)
@@ -201,3 +199,7 @@ See [`docs/principles.md`](docs/principles.md) for the full principles with rati
 - PR reviewer agent and `/pr` skill — independent release-readiness review
 - Work-scaled governance — depth scales with work size and type instead of rigid phases
 - Session handoff, compliance canary, `--force` flag for sync, doc-only reflection skip
+
+## License
+
+MIT — see [LICENSE](LICENSE).
