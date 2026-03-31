@@ -18,18 +18,18 @@ You describe what you want to build, either a net-new product or enhancements to
 
 **Building** — Implements the product in governed chunks. Governance depth scales with work size (trivial → large) and type (bugfix → feature → refactor). Each chunk follows a cycle: read spec, write tests alongside implementation, verify, then submit for independent Critic review. The Critic runs as a separate agent with no access to the builder's reasoning — it sees only the code and specs, catching things the builder's own context blinds it to.
 
-**Reflection and Learning** — After each significant action, captures what happened, whether it was expected, and what it teaches. Learnings follow a lifecycle (provisional → confirmed → incorporated) and accumulate across sessions. Learnings are checked when planning new work, closing the loop.
+**Reflection and Learning** — After each significant action, captures what happened, whether it was expected, and what it teaches. Learnings follow a lifecycle (provisional → confirmed → incorporated) and accumulate across sessions. Learnings inform future plans, reducing repetition of the same mistakes.
 
 ## Why Prawduct Works
 
 ### Structural enforcement, not just instructions
 
-Telling an LLM to "always do X" works until context gets large, and those instructions degrade with compaction.
+Telling an LLM to "always do X" works until context gets large, the LLM decides that work is too minor to merit discipline, or context gets compacted.
 
 Prawduct enforces governance at four levels:
 
-- **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and relevant learnings
-- **Critic review** — A session hook blocks completion if code was modified against a build plan but no independent review happened. The Critic skill has structural tool restrictions preventing test/build execution
+- **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and relevant learnings. The session briefing surfaces things like current stage in multi-step work, PR's waiting to be merged, and recently completed work.
+- **Critic review** — A session hook blocks completion if code was modified against a build plan but no independent review happened. The Critic skill has structural tool restrictions preventing test/build execution.
 - **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
 - **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
 
