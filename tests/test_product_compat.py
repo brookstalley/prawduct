@@ -562,6 +562,36 @@ class TestCLIOutputStability:
         assert "notes" in result
         assert isinstance(result["actions"], list)
         assert isinstance(result["notes"], list)
+        # Version info always present
+        assert "version" in result
+        assert "new_version" in result["version"]
+
+    def test_sync_returns_version_upgrade_info(self, tmp_path: Path):
+        """When framework version differs from manifest, sync returns both versions."""
+        product = _init_product(tmp_path)
+        # Set manifest to an older version so sync detects an upgrade
+        manifest = _read_manifest(product)
+        manifest["framework_version"] = "0.0.1"
+        _write_manifest(product, manifest)
+
+        # Tamper with hook to force an action (sync only writes version on actions)
+        hook = product / "tools" / "product-hook"
+        hook.write_text("#!/usr/bin/env python3\n# old\n")
+
+        result = run_sync(str(product), str(ROOT), no_pull=True)
+        assert result["synced"]
+        assert "version" in result
+        assert result["version"]["previous_version"] == "0.0.1"
+        assert result["version"]["new_version"]  # Current framework version
+        assert result["version"]["previous_version"] != result["version"]["new_version"]
+
+    def test_sync_no_previous_version_when_unchanged(self, tmp_path: Path):
+        """When framework version matches manifest, no previous_version in result."""
+        product = _init_product(tmp_path)
+        result = run_sync(str(product), str(ROOT), no_pull=True)
+        assert "version" in result
+        # No upgrade occurred — previous_version should be absent
+        assert "previous_version" not in result["version"]
 
     def test_validate_json_output_structure(self, tmp_path: Path):
         product = _init_product(tmp_path)

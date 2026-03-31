@@ -393,6 +393,54 @@ class TestTrySyncInvocation:
         )
         assert result.returncode == 0
 
+    def test_version_upgrade_prints_banner(self, tmp_path: Path):
+        """When framework version changes, a prominent upgrade banner is printed."""
+        product = _init_product(tmp_path)
+        # Set manifest to an older version so sync detects an upgrade
+        manifest = _read_manifest(product)
+        manifest["framework_version"] = "0.0.1"
+        _write_manifest(product, manifest)
+        # Tamper with hook to force an action
+        hook_path = product / "tools" / "product-hook"
+        hook_path.write_text("#!/usr/bin/env python3\n# old version\n")
+        result = _run_hook(
+            "clear",
+            product,
+            env_extra={"PRAWDUCT_FRAMEWORK_DIR": str(FRAMEWORK_DIR)},
+        )
+        assert result.returncode == 0
+        assert "Prawduct upgraded: v0.0.1" in result.stdout
+        assert "banner will show new version next session" in result.stdout
+
+    def test_version_upgrade_in_session_briefing(self, tmp_path: Path):
+        """Session briefing includes version upgrade line when version changed."""
+        product = _init_product(tmp_path)
+        manifest = _read_manifest(product)
+        manifest["framework_version"] = "0.0.1"
+        _write_manifest(product, manifest)
+        # Tamper with hook to force an action
+        hook_path = product / "tools" / "product-hook"
+        hook_path.write_text("#!/usr/bin/env python3\n# old version\n")
+        result = _run_hook(
+            "clear",
+            product,
+            env_extra={"PRAWDUCT_FRAMEWORK_DIR": str(FRAMEWORK_DIR)},
+        )
+        assert result.returncode == 0
+        assert "Framework: upgraded v0.0.1" in result.stdout
+
+    def test_no_upgrade_banner_when_version_unchanged(self, tmp_path: Path):
+        """No upgrade banner or briefing line when framework version hasn't changed."""
+        product = _init_product(tmp_path)
+        result = _run_hook(
+            "clear",
+            product,
+            env_extra={"PRAWDUCT_FRAMEWORK_DIR": str(FRAMEWORK_DIR)},
+        )
+        assert result.returncode == 0
+        assert "Prawduct upgraded" not in result.stdout
+        assert "Framework: upgraded" not in result.stdout
+
 
 # =============================================================================
 # 3. Init with pre-existing project files

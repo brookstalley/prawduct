@@ -1205,6 +1205,53 @@ class TestSessionBriefing:
 
         assert "Project: Discodon" in result.stdout
 
+    def test_briefing_shows_upgrade_info(self, tmp_path: Path):
+        """When upgrade_info is passed, briefing shows framework upgrade line near top."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+
+        # Import product-hook (no .py extension) via importlib with explicit loader
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        upgrade = {"previous_version": "1.0.0", "new_version": "1.1.0"}
+        briefing = mod.assemble_session_briefing(tmp_path, [], upgrade_info=upgrade)
+        assert "Framework: upgraded v1.0.0 \u2192 v1.1.0 this session" in briefing
+        # Should appear before project line
+        lines = briefing.splitlines()
+        fw_idx = next(i for i, l in enumerate(lines) if "Framework:" in l)
+        proj_idx = next(i for i, l in enumerate(lines) if "Project:" in l)
+        assert fw_idx < proj_idx
+
+    def test_briefing_no_upgrade_without_info(self, tmp_path: Path):
+        """When no upgrade_info, briefing has no framework upgrade line."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        briefing = mod.assemble_session_briefing(tmp_path, [])
+        assert "Framework:" not in briefing
+
     def test_briefing_shows_work_in_progress(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
