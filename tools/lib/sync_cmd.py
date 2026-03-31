@@ -243,6 +243,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         pull_notes = []
 
     product_name = manifest.get("product_name", product.name)
+    previous_version = manifest.get("framework_version", "")
     subs = {"{{PRODUCT_NAME}}": product_name, "{{PRAWDUCT_VERSION}}": PRAWDUCT_VERSION}
     actions: list[str] = []
     notes: list[str] = list(pull_notes)
@@ -510,10 +511,16 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         manifest["last_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
+    # Include version change info so callers can surface upgrade notices
+    version_info: dict[str, str] = {"new_version": PRAWDUCT_VERSION}
+    if previous_version and previous_version != PRAWDUCT_VERSION:
+        version_info["previous_version"] = previous_version
+
     return {
         "product_dir": str(product),
         "synced": bool(actions),
         "reason": "ok" if actions else "no updates needed",
         "actions": actions,
         "notes": notes,
+        "version": version_info,
     }
