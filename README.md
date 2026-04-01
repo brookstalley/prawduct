@@ -8,6 +8,7 @@ Prawduct is a product development framework for [Claude Code](https://docs.anthr
 - [The Problem](#the-problem)
 - [How Prawduct Works](#how-prawduct-works)
 - [Why Prawduct Works](#why-prawduct-works)
+- [Working with Prawduct](#working-with-prawduct)
 - [Q&A](#qa)
 - [Testing Prawduct](#testing-prawduct)
 - [Generated Product Repo Structure](#generated-product-repo-structure)
@@ -35,15 +36,14 @@ Clone the framework repo first:
 git clone https://github.com/brookstalley/prawduct
 ```
 
-### Start a new product from scratch
+### Start a new product
 
 ```bash
 python3 prawduct/tools/prawduct-setup.py setup ~/my-product --name "My Product"
 cd ~/my-product
 claude
+> I want to build a meal planning app for families with dietary restrictions
 ```
-
-Then describe what you want to build.
 
 ### Add Prawduct to an existing repo
 
@@ -51,38 +51,10 @@ Then describe what you want to build.
 python3 prawduct/tools/prawduct-setup.py setup ~/existing-repo --name "My Existing Project"
 cd ~/existing-repo
 claude
+> I want to add a REST API for third-party integrations
 ```
 
-Prawduct detects existing code and infers project conventions (language, test framework, code style) before making any changes. The `setup` subcommand auto-detects repo state and routes to init, migration, or sync as needed.
-
-### Update product repos after framework changes
-
-Product repos sync automatically at session start via the product-hook. To sync manually:
-
-```bash
-python3 prawduct/tools/prawduct-setup.py sync ~/my-product
-```
-
-If a template changed but the product file has local edits, sync skips it with a message. Use `--force` to accept the new template version (overwrites local edits):
-
-```bash
-python3 prawduct/tools/prawduct-setup.py sync ~/my-product --force
-```
-
-### Health check a product repo
-
-```bash
-python3 prawduct/tools/prawduct-setup.py validate ~/my-product
-```
-
-Or from within a product repo, use `/prawduct-doctor` to check health and offer repair.
-
-### Develop the framework itself
-
-```bash
-cd prawduct
-claude
-```
+Prawduct detects existing code and infers project conventions (language, test framework, code style) before making any changes.
 
 ## How Prawduct Works
 
@@ -136,6 +108,37 @@ The framework detects structural characteristics (human interface, API, backgrou
 ### Closed learning loop
 
 Learnings are captured during development, and read at session start to inform decisions. A two-tier system keeps active rules concise (<3K tokens in `learnings.md`) with full context in `learnings-detail.md`. Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology). A dedicated /learnings skill lets Claude Code request relevant learnings for planned work rather than loading lots of tokens that aren't relevant to the task at hand.
+
+## Working with Prawduct
+
+### Update product repos after framework changes
+
+Product repos sync automatically at session start via the product-hook. To sync manually:
+
+```bash
+python3 prawduct/tools/prawduct-setup.py sync ~/my-product
+```
+
+If a template changed but the product file has local edits, sync skips it with a message. Use `--force` to accept the new template version (overwrites local edits):
+
+```bash
+python3 prawduct/tools/prawduct-setup.py sync ~/my-product --force
+```
+
+### Health check a product repo
+
+```bash
+python3 prawduct/tools/prawduct-setup.py validate ~/my-product
+```
+
+Or from within a product repo, use `/prawduct-doctor` to check health and offer repair.
+
+### Develop the framework itself
+
+```bash
+cd prawduct
+claude
+```
 
 ## Q&A
 
