@@ -59,9 +59,11 @@ Depth is proportionate to risk.
 
 **Implement.** Write the code that makes the tests pass. Follow the project's coding conventions (see `.prawduct/artifacts/project-preferences.md`). Prefer simplicity — the right amount of abstraction is the minimum needed for the current chunk.
 
-Add observability alongside features, not after. If the observability strategy calls for structured logging, log from chunk 1. Use instrumentation in layers: start with what the framework gives for free, add declarative markers, add contextual attributes, and reserve manual instrumentation for critical paths.
+Add observability alongside features, not after. If the observability strategy calls for structured logging, log from chunk 1.
 
 **Update artifacts as you go.** When your implementation changes something an artifact describes — API surface, data model fields, test counts, architecture components — update that artifact now, as part of implementation. Don't defer artifact updates to a separate step at the end. Artifact drift is the #1 recurring quality issue at scale; updating inline prevents it.
+
+**CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions, config tables, and component inventories belong in `docs/` or `.prawduct/artifacts/`. When a build plan says "update CLAUDE.md," add only what a new session needs to work effectively. Target: project-specific content under ~150 lines.
 
 **Verify.** Two layers:
 
@@ -76,7 +78,7 @@ Scale verification to chunk significance. When you can't verify directly, say wh
 
 **Reflect.** The Critic just gave you independent feedback — the highest-signal moment for learning. What did the Critic catch that you missed? Does it match a pattern in `learnings.md`? Capture learnings immediately if the finding reveals a blind spot.
 
-**Verify artifacts are current.** If you updated artifacts during implementation (as instructed above), this is a quick confirmation. If not, do it now — check whether code changes affected anything artifacts describe (test counts, model fields, architecture components, API surfaces). The Critic checks bidirectional freshness: code matches artifacts AND artifacts describe code.
+**Verify artifacts are current.** Confirm artifacts reflect the code. The Critic checks bidirectional freshness. CLAUDE.md is an instruction file, not an artifact — the Critic warns when its project content exceeds ~150 lines.
 
 **Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section. Update the Context line with what's done and what's next — this is the cross-session handoff.
 

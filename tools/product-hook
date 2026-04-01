@@ -855,6 +855,33 @@ def assemble_session_briefing(
         for s in staleness:
             lines.append(f"Stale: {s}")
 
+    # CLAUDE.md size check
+    claude_md_path = project_dir / "CLAUDE.md"
+    if claude_md_path.is_file():
+        try:
+            claude_content = claude_md_path.read_text()
+            claude_lines = claude_content.splitlines()
+            total_lines = len(claude_lines)
+            # Count project-specific lines (outside PRAWDUCT markers)
+            in_prawduct = False
+            prawduct_lines = 0
+            for cl in claude_lines:
+                if "PRAWDUCT:BEGIN" in cl:
+                    in_prawduct = True
+                elif "PRAWDUCT:END" in cl:
+                    in_prawduct = False
+                    prawduct_lines += 1  # count the END line itself
+                elif in_prawduct:
+                    prawduct_lines += 1
+            project_lines = total_lines - prawduct_lines
+            if project_lines > 150:
+                lines.append(
+                    f"CLAUDE.md is large ({project_lines} project lines, {total_lines} total) "
+                    f"— move architecture docs, config tables, and component inventories to docs/ or .prawduct/artifacts/"
+                )
+        except Exception:  # prawduct:ok-broad-except — briefing must never block session start
+            pass
+
     # Test count (computed, not tracked)
     try:
         test_count = _count_test_functions(project_dir)

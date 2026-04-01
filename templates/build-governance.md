@@ -42,6 +42,7 @@ The Critic reads this file to confirm tests passed on the current code. If `git_
 - **Scope discipline.** Build what the plan says. No unrequested features.
 - **No "pre-existing" exception.** If you find a problem, fix or flag it.
 - **Persist to files.** Context doesn't survive compaction. Plans and decisions go in artifacts.
+- **CLAUDE.md is instructions, not docs.** Keep project-specific content under ~150 lines. Dev commands, test workflows, key conventions belong here. Architecture descriptions, config tables, component inventories, and API catalogs do not — put those in `docs/` or `.prawduct/artifacts/`.
 
 ## Session End
 

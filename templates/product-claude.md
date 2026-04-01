@@ -93,9 +93,7 @@ Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades
 3. **Write reflection** to `.prawduct/.session-reflected`.
 4. **Then recommend `/clear`** and say what was persisted.
 
-Do not say "I'd recommend `/clear`, but first let me..." — that's backwards. Do the work, then recommend. This includes softer variants like "Ready for next session" or "Session is complete" — any signal that work is done implies the handoff is already finished. If you haven't completed steps 1-3 above, you are not ready to signal completion.
-
-The `/clear` hook auto-generates `.prawduct/.session-handoff.md` from the build plan Status, reflection, Critic findings, and changed files — the next session's briefing surfaces this.
+Do not signal completion ("Ready for next session", etc.) until steps 1-3 are done. The `/clear` hook auto-generates `.prawduct/.session-handoff.md` for the next session.
 
 ### Completing Work
 
@@ -132,6 +130,10 @@ The Critic skill runs with `context: fork` (separate context) and restricted `al
 The Critic receives goals and signals (files changed, work type, work size) and reasons about what to check. It is not a fixed checklist — it focuses on what matters for the specific change.
 
 **The Critic takes time.** Reviews typically take 1-5 minutes. Do not check on it or send messages to hurry it along. **While the Critic reviews, do your own deep scrub**: re-read your changes for completeness, correctness, DRY violations, encapsulation gaps, test coverage holes, UX rough edges, and documentation accuracy. This self-review often pre-resolves Critic findings before they arrive.
+
+## CLAUDE.md Scope
+
+CLAUDE.md is *working instructions* (dev commands, test workflows, key conventions), not documentation. Architecture descriptions, config tables, API catalogs, and component inventories belong in `docs/` or `.prawduct/artifacts/`. Keep project-specific content under ~150 lines. The session briefing warns when it grows too large.
 
 ## Compact Instructions
 
