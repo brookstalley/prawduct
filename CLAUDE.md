@@ -76,7 +76,7 @@ These narrative guides teach the approach. **Read the relevant guide when enteri
 
 ## The Critic — Independent Review
 
-**After completing each chunk of work, immediately run `/critic`.** Do not ask the user. Do not offer it as a choice. Do not present "proceed to next chunk or run Critic" — the Critic IS the next step. This is mandatory, not deferrable, and structurally enforced — the stop hook will block session end if you modified code with an active build plan and no Critic findings exist for this session.
+Each build plan chunk includes `/critic` in its "Done when" steps. Follow the plan — run the Critic after acceptance criteria pass, before marking the chunk complete. The stop hook is a safety net — it blocks session end if code was modified against an active build plan and no Critic findings exist.
 
 The Critic skill runs with `context: fork` (separate context) and restricted `allowed-tools` — it can read files, search code, and inspect git state, but **cannot run test suites, builds, or executables**. This is a structural constraint, not a behavioral one. The Critic reviews through code analysis only.
 

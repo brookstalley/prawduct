@@ -18,7 +18,7 @@ These degrade at scale. The session briefing reinforces them; the stop hook dete
 - **Investigate before committing to major decisions.** Decisions with lock-in, pervasive impact, structural consequences, or external dependencies require research first. Spawn a research subagent for high-impact choices. Record rationale in the affected artifact.
 - **When changes cross boundaries** (API, database, IPC, frontend/backend), verify consumers are not broken. See `.prawduct/artifacts/boundary-patterns.md` for this project's contract surfaces.
 - **Update artifacts when code changes what they describe.** Stale specs are worse than no specs.
-- **Invoke the Critic after medium+ work.** Not optional. The stop hook enforces this. **Never write Critic findings yourself.** The Critic must run via `/critic` (which uses `context: fork` for independence). If the Critic is slow, wait — do not write findings "based on" the Critic's expected output. Self-authored review evidence is governance fraud; the independence IS the value.
+- **Invoke the Critic after medium+ work.** Each build plan chunk includes Critic review in its "Done when" steps — follow the plan. The stop hook is a safety net. **Never write Critic findings yourself.** The Critic must run via `/critic` (which uses `context: fork` for independence). If the Critic is slow, wait — do not write findings "based on" the Critic's expected output. Self-authored review evidence is governance fraud; the independence IS the value.
 - **Use feature branches for medium+ work.** Do not commit directly to protected branches (main, develop) unless `project-preferences.md` sets `Branching` to `direct`. Create a descriptive branch (`feature/...`, `fix/...`, `refactor/...`) before starting. Trivial fixes (typo, config) can go direct if the project allows it.
 - **Do not create PRs unless asked.** Only use `/pr` when the user explicitly asks to create a PR, push changes, merge, or check PR status. Check `project-preferences.md` — if `PR creation` is set to `automatic`, you may create PRs after Critic review passes without being asked.
 - **No unnecessary backwards compatibility.** Do not add migration paths, fallbacks, or compatibility shims unless the user has an existing deployment that needs them. Backwards compatibility is a requirement to be elicited, not an assumption. Just make the change directly.
@@ -73,7 +73,7 @@ Run `/learnings [planned work]` to surface relevant rules before designing. Gene
 4. **Write tests** alongside implementation. When the suite exceeds ~30s, add pytest-xdist (`-n auto --dist loadgroup`) — the shipped `tests/conftest.py` auto-groups by directory. Organize tests into subdirectories by concern as the suite grows.
 5. **Implement.** Follow conventions. Prefer simplicity. Update artifacts as you go — when code changes what an artifact describes, update the artifact immediately.
 6. **Verify.** Full test suite + product verification (launch it, call it, inspect it). If infrastructure dependencies are declared, verify against real instances — not just mocks. Record test results to `.prawduct/.test-evidence.json` (format in build-governance.md).
-7. **Critic review.** Run `/critic` now — do not ask the user, do not offer it as an option, do not proceed to the next chunk first. The Critic reads test evidence from step 6; it does not re-run tests.
+7. **Critic review.** Run `/critic` — it's in the build plan's "Done when" steps. The Critic reads test evidence from step 6; it does not re-run tests.
 8. **Resolve findings.** Fix blocking; address warnings.
 9. **Reflect.** What did the Critic catch? Capture learnings now. Check: any plans or decisions created but not yet written to artifacts?
 10. **Commit and persist state.** Commit all work. Update the **Status** section in `build-plan.md` — mark the chunk complete (`[x]`), update the Context line (what's done, what's next, key decisions). Mandatory — compaction can strike at any time.
@@ -125,7 +125,7 @@ Learnings have tiers: **active rules** (`learnings.md`, <3K tokens, always loade
 
 ## The Critic — Independent Review
 
-**After completing each chunk of medium+ work, immediately run `/critic`.** Do not ask the user. Do not offer it as a choice. Do not present "proceed to next chunk or run Critic" — the Critic IS the next step. The stop hook enforces this.
+Each build plan chunk includes `/critic` in its "Done when" steps. Follow the plan — run the Critic after acceptance criteria pass, before marking the chunk complete. The stop hook is a safety net.
 
 The Critic skill runs with `context: fork` (separate context) and restricted `allowed-tools` — it can read files, search code, and inspect git state, but **cannot run test suites, builds, or executables**. This is a structural constraint, not a behavioral one. The Critic reads `.prawduct/.test-evidence.json` to verify tests passed.
 

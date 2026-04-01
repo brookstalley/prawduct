@@ -70,7 +70,7 @@ Add observability alongside features, not after. If the observability strategy c
 
 Scale verification to chunk significance. When you can't verify directly, say what you can't verify and why (Principle 5).
 
-**Request Critic review.** Mandatory for medium+ work. Run `/critic` — it invokes the Critic as a separate agent with its own context and restricted tools. The stop hook enforces this.
+**Critic review.** Run `/critic` — it's in the build plan's "Done when" steps. The Critic runs as a separate agent with its own context and restricted tools.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 

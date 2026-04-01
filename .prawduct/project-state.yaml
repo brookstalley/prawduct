@@ -418,7 +418,7 @@ change_log_history:
 build_state:
   source_root: "."
   test_tracking:
-    test_count: 750
+    test_count: 757
     test_files:
       - tests/scenarios/family-utility.md
       - tests/scenarios/background-data-pipeline.md

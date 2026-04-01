@@ -12,9 +12,9 @@ Each chunk follows this cycle. Do not skip steps.
 - [ ] **Implement** — Make tests pass. Follow `.prawduct/artifacts/project-preferences.md`. Write idiomatic code for the project's language. Prefer simplicity.
 - [ ] **Update artifacts** — Changed API surface, data model, test counts, architecture? Update the artifact now, not later.
 - [ ] **Verify** — Full test suite + product verification (launch it, call it, inspect output). Mocks alone are not verification. Record test results to `.prawduct/.test-evidence.json` (see format below).
-- [ ] **Critic review** — Run `/critic` now — do not ask the user, do not offer it as an option, do not proceed to the next chunk first. The Critic reads test evidence from step 6; it does not re-run tests. Fix blocking findings before proceeding.
+- [ ] **Critic review** — Run `/critic`. The Critic reads test evidence from step 6; it does not re-run tests. Fix blocking findings before proceeding.
 - [ ] **Reflect** — What did the Critic catch? Capture deferred work to `.prawduct/backlog.md`.
-- [ ] **Commit and persist state** — Commit all work. Update the build plan Status section in `.prawduct/artifacts/build-plan.md` — mark completed chunks `[x]` and update the `Context:` line with key decisions, what's done, and what's next. This is mandatory — context compaction can happen at any time, and an out-of-date Status section means the next chunk (or session) starts blind.
+- [ ] **Commit and persist state** — Commit all work. Update the build plan Status section in `.prawduct/artifacts/build-plan.md` — mark completed chunks `[x]` and update the `Context:` line with key decisions, what's done, and what's next. This is mandatory — context compaction can happen at any time, and an out-of-date Status section means the next chunk (or session) starts blind. A chunk is not `[x]` until its "Done when" steps are complete.
 
 ## Test Evidence
 

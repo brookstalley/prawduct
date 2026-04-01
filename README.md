@@ -249,6 +249,10 @@ See [`docs/principles.md`](docs/principles.md) for the full principles with rati
 
 ## Recent Changes
 
+### 1.3.1 (2026-04-01)
+- fix: Embed Critic review as a "Done when" step in build plan chunks — Claude follows the plan instead of relying on behavioral instructions that degrade under context pressure
+- fix: Stop hook blocker message now references the build plan, not a standalone governance rule
+
 ### 1.3.0 (2026-03-30)
 - refactor: Extracted `tools/lib/` modules (core, init, migrate, sync, validate) from monolithic setup script
 - feature: Framework version tracking — sync records `framework_version` in manifest; session start warns if `../prawduct` is stale relative to last sync

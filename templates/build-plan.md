@@ -26,8 +26,10 @@ last_validated: null
   WIP entries in project-state.yaml — the build plan is the single source of
   truth for what's being built and where you are.
 
-  Update after each chunk completes. Include a Context line with enough detail
-  for a different agent (or you after /clear) to pick up where you left off.
+  Update after each chunk completes. A chunk is complete when its "Done when"
+  steps are all satisfied (acceptance criteria pass, /critic run, committed).
+  Include a Context line with enough detail for a different agent (or you
+  after /clear) to pick up where you left off.
 
   The session start hook reads this section to assemble the session briefing.
 -->
@@ -138,6 +140,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   - What tests to write (mapped from test-specifications)
   - Acceptance criteria (concrete, verifiable)
   - Dependencies (which chunks must complete first)
+  - Done-when steps (acceptance + Critic + commit — use the standard list)
 -->
 
 ### Chunk 01: [Name]
@@ -151,6 +154,10 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        or extends (e.g., "adds unit tests for scoring logic, integration test for
        DB persistence, extends E2E test for full score flow"). -->
 - **Acceptance criteria:** [Concrete checks — "npm test passes", "page renders scores", etc.]
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
 
 <!-- Repeat for each chunk -->
 

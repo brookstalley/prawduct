@@ -3,6 +3,17 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-04-01: Embed Critic review in build plan chunks (v1.3.1)
+
+**Why:** Critic review was being skipped or offered as optional despite explicit behavioral instructions in CLAUDE.md. Behavioral instructions degrade under context pressure; the build plan — which Claude actively follows step by step — had no Critic step at all.
+
+**Changes:**
+- Build plan template: each chunk now has "Done when" steps (acceptance + `/critic` + commit)
+- Removed "do not ask, do not offer" behavioral instructions from CLAUDE.md, product-claude.md, build-governance.md
+- Replaced with plan-following instruction: "Follow the plan — the Critic step is there"
+- Stop hook blocker message now references the build plan's "Done when" steps
+- Build governance step 9 ties chunk `[x]` marking to "Done when" completion
+
 ## 2026-03-30: Extracted lib modules, framework version tracking, reflection gate improvements (v1.3.0)
 
 **Why:** The monolithic setup script was difficult to test and maintain. Framework version tracking was needed so product repos can detect when they're out of sync. The mandatory reflection gate was blocking exploratory/Q&A sessions that had no build work to reflect on.

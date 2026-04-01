@@ -1682,10 +1682,10 @@ def cmd_stop(project_dir: Path) -> int:
 
             if needs_review:
                 blockers.append(
-                    "CRITIC REVIEW: Code was modified with an active build plan but no Critic review was recorded this session.\n"
-                    "  Invoke the Critic as a separate agent (Task tool) for independent review before ending.\n"
-                    "  The Critic should read .prawduct/critic-review.md for its review instructions.\n"
-                    "  After review, record findings to .prawduct/.critic-findings.json\n"
+                    "CRITIC REVIEW: The build plan includes Critic review in each chunk's \"Done when\" steps,\n"
+                    "  but no Critic findings were recorded this session. If you have completed a chunk,\n"
+                    "  run `/critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
+                    "  and records findings to .prawduct/.critic-findings.json\n"
                 )
 
     # Gate 3: PR review evidence (when a PR exists for the current branch)
