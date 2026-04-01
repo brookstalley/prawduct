@@ -54,7 +54,7 @@ claude
 > I want to add a REST API for third-party integrations
 ```
 
-Prawduct detects existing code and infers project conventions (language, test framework, code style) before making any changes.
+Prawduct will ask the obvious questions and also the non-obvious questions before getting started. It analyzes existing code (if any) to infer project conventions (language, test framework, code style) and records them for future reference.
 
 ## How Prawduct Works
 
