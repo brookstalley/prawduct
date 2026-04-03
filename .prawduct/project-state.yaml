@@ -417,29 +417,6 @@ change_log_history:
 
 build_state:
   source_root: "."
-  test_tracking:
-    test_count: 757
-    test_files:
-      - tests/scenarios/family-utility.md
-      - tests/scenarios/background-data-pipeline.md
-      - tests/scenarios/terminal-arcade-game.md
-      - tests/scenarios/quick-todo-app.md
-      - tests/scenarios/rust-colorspace-api.md
-      - tests/scenarios/classroom-quiz-platform.md
-      - tests/scenarios/personal-medication-tracker.md
-      - tests/scenarios/home-environmental-monitor.md
-      - tests/test_prawduct_init.py
-      - tests/test_product_hook.py
-      - tests/test_prawduct_migrate.py
-      - tests/test_prawduct_sync.py
-      - tests/test_preferences_lifecycle.py
-      - tests/test_v5_methodology.py
-      - tests/test_v5_templates.py
-      - tests/test_pr_reviewer.py
-      - tests/test_prawduct_validate.py
-      - tests/test_integration_lifecycle.py
-      - tests/test_product_compat.py
-      - tests/test_coverage_gaps.py
 
 # =============================================================================
 # DEPRECATED TERMS

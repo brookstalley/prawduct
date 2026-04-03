@@ -10,7 +10,7 @@ Each chunk follows this cycle. Do not skip steps.
 - [ ] **Read the spec** — Chunk entry in build plan + referenced artifacts. Validate targets still exist — plans go stale. Run `/learnings [topic]` for relevant rules.
 - [ ] **Write tests alongside code, never after** — Tests are specification made executable. Unit for logic, integration for interactions, e2e for critical flows.
 - [ ] **Implement** — Make tests pass. Follow `.prawduct/artifacts/project-preferences.md`. Write idiomatic code for the project's language. Prefer simplicity.
-- [ ] **Update artifacts** — Changed API surface, data model, test counts, architecture? Update the artifact now, not later.
+- [ ] **Update artifacts** — Changed API surface, data model, architecture? Update the artifact now, not later.
 - [ ] **Verify** — Full test suite + product verification (launch it, call it, inspect output). Mocks alone are not verification. Record test results to `.prawduct/.test-evidence.json` (see format below).
 - [ ] **Critic review** — Run `/critic`. The Critic reads test evidence from step 6; it does not re-run tests. Fix blocking findings before proceeding.
 - [ ] **Reflect** — What did the Critic catch? Capture deferred work to `.prawduct/backlog.md`.

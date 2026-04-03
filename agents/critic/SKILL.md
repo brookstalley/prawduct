@@ -60,7 +60,7 @@ Your goals, in priority order:
 
 ### 4. Everything Is Coherent
 - Artifacts are consistent with each other and with code.
-- **Bidirectional freshness**: Does code match artifacts? Do artifacts still describe the code? Check test counts, model fields, architecture components. Stale artifact → **WARNING**.
+- **Bidirectional freshness**: Does code match artifacts? Do artifacts still describe the code? Check model fields, architecture components. Stale artifact → **WARNING**.
 - **Project preferences**: If `project-preferences.md` exists, code in changed files must follow the stated conventions (language idioms, naming, structure, dependencies). Preferences are the team's declared standards → **BLOCKING** if violated.
 - **Infrastructure coherence**: If project-state.yaml declares infrastructure dependencies, do code's infrastructure assumptions match? A declared Postgres dependency with only in-memory storage in code → **WARNING**. Mocked dependencies should be explicitly documented as mocked, not silently substituted.
 - **README and top-level docs**: Actively read the project's README (and any top-level docs/) when features are added, removed, or renamed. README that describes removed features, contains wrong setup instructions, or omits significant new capabilities → **WARNING**. README with actively misleading instructions (wrong commands, deleted config references) → **BLOCKING**.

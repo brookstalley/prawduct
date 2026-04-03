@@ -192,7 +192,7 @@ Review the build cycle in this project's CLAUDE.md before writing any code. Foll
 - Invoke the Critic as a separate agent after each chunk (mandatory for medium+ changes)
 - Update artifacts as you go — if your cleanup changes something an artifact describes, update the artifact
 - If `project-preferences.md` specifies PR preferences, follow them; otherwise, wait for the user to request a PR via `/pr`
-- Update `project-state.yaml` test count if tests change
+
 
 ### Step 7: Close
 

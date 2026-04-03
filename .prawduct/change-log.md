@@ -3,6 +3,17 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-04-03: Stop tracking test counts as static artifacts (v1.3.2)
+
+**Why:** Test count is derived data — it changes every time a test is added or removed. Storing it in static artifacts (project-state.yaml, CLAUDE.md, learnings.md) creates constant reconciliation work: the Critic flags discrepancies, and developers spend real time updating numbers that have no value over the hook's dynamic count.
+
+**Changes:**
+- Removed "test counts" from the artifact-update guidance in `methodology/building.md` and `build-governance.md` (template + instance)
+- Removed "test counts" from the Critic's bidirectional freshness check (`agents/critic/SKILL.md`)
+- Removed "update test count" from the janitor's task list (`.claude/skills/janitor/SKILL.md`)
+- Removed `build_state.test_tracking` from the framework's own `project-state.yaml`
+- Added `strip_test_tracking()` migration step to `tools/lib/migrate_cmd.py` — removes stale `test_tracking` from existing product repos on next migrate/sync
+
 ## 2026-04-01: Embed Critic review in build plan chunks (v1.3.1)
 
 **Why:** Critic review was being skipped or offered as optional despite explicit behavioral instructions in CLAUDE.md. Behavioral instructions degrade under context pressure; the build plan — which Claude actively follows step by step — had no Critic step at all.

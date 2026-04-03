@@ -236,6 +236,54 @@ def split_learnings_v5(product_dir: Path) -> list[str]:
     return actions
 
 
+def strip_test_tracking(product_dir: Path) -> list[str]:
+    """Remove build_state.test_tracking from project-state.yaml.
+
+    Test count is derived data — computed dynamically by the hook, never tracked
+    as a static artifact. Idempotent: no-op if test_tracking is absent.
+
+    Returns list of actions taken.
+    """
+    actions: list[str] = []
+    state_path = product_dir / ".prawduct" / "project-state.yaml"
+    if not state_path.is_file():
+        return actions
+
+    content = state_path.read_text()
+    if "test_tracking:" not in content:
+        return actions
+
+    lines = content.split("\n")
+    tt_start = None
+    tt_end = None
+
+    for i, line in enumerate(lines):
+        if tt_start is None:
+            stripped = line.strip()
+            if stripped.startswith("test_tracking:") and line.startswith("  "):
+                tt_start = i
+        elif tt_start is not None:
+            # End when we hit a non-blank/non-comment line at indent <= 2
+            if line.strip() and not line.strip().startswith("#"):
+                indent = len(line) - len(line.lstrip())
+                if indent <= 2:
+                    tt_end = i
+                    break
+
+    if tt_start is None:
+        return actions
+    if tt_end is None:
+        tt_end = len(lines)
+
+    new_lines = lines[:tt_start] + lines[tt_end:]
+    cleaned = "\n".join(new_lines)
+    while "\n\n\n" in cleaned:
+        cleaned = cleaned.replace("\n\n\n", "\n\n")
+    state_path.write_text(cleaned)
+    actions.append("Removed build_state.test_tracking from project-state.yaml")
+    return actions
+
+
 def migrate_project_state_v5(product_dir: Path) -> list[str]:
     """Add v5 sections to project-state.yaml, remove v4-only fields.
 
@@ -794,6 +842,9 @@ def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
         actions.append("Upgraded CLAUDE.md sync strategy to block_template")
 
     # === V5 migration steps (idempotent, applies to all repos) ===
+
+    # Remove stale test_tracking from project-state.yaml (test count is derived)
+    actions.extend(strip_test_tracking(target))
 
     # Split learnings into active rules + reference detail
     actions.extend(split_learnings_v5(target))

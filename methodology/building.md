@@ -61,7 +61,7 @@ Depth is proportionate to risk.
 
 Add observability alongside features, not after. If the observability strategy calls for structured logging, log from chunk 1.
 
-**Update artifacts as you go.** When your implementation changes something an artifact describes — API surface, data model fields, test counts, architecture components — update that artifact now, as part of implementation. Don't defer artifact updates to a separate step at the end. Artifact drift is the #1 recurring quality issue at scale; updating inline prevents it.
+**Update artifacts as you go.** When your implementation changes something an artifact describes — API surface, data model fields, architecture components — update that artifact now, as part of implementation. Don't defer artifact updates to a separate step at the end. Artifact drift is the #1 recurring quality issue at scale; updating inline prevents it.
 
 **CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions, config tables, and component inventories belong in `docs/` or `.prawduct/artifacts/`. When a build plan says "update CLAUDE.md," add only what a new session needs to work effectively. Target: project-specific content under ~150 lines.
 
