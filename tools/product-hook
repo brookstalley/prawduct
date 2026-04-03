@@ -772,6 +772,16 @@ def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
         return {}
 
 
+def _has_active_build_plan_file(prawduct_dir: Path) -> bool:
+    """Return True if build-plan.md has at least one incomplete chunk.
+
+    A completed plan (all [x]) or a missing file both return False — only an
+    in-progress plan with remaining work triggers governance gates.
+    """
+    status = _parse_build_plan_status(prawduct_dir)
+    return bool(status.get("current_chunk"))
+
+
 def _get_active_work(prawduct_dir: Path) -> dict[str, str]:
     """Get active work context, preferring build plan Status over project-state.yaml WIP."""
     work = _parse_build_plan_status(prawduct_dir)
@@ -1390,8 +1400,8 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
         except (UnicodeDecodeError, OSError):
             warnings.append("reflection not captured")
 
-    # Gate 2: Critic review (only when building against a plan)
-    has_build_plan = (prawduct_dir / "artifacts" / "build-plan.md").is_file() or _has_build_plan_in_state(prawduct_dir)
+    # Gate 2: Critic review (only when building against an active plan)
+    has_build_plan = _has_active_build_plan_file(prawduct_dir) or _has_build_plan_in_state(prawduct_dir)
     if has_build_plan and git_has_code_changes(project_dir):
         critic_findings = prawduct_dir / ".critic-findings.json"
         session_start_file = prawduct_dir / ".session-start"
@@ -1646,8 +1656,9 @@ def cmd_stop(project_dir: Path) -> int:
     has_changes = git_has_session_changes(project_dir)
     doc_only = _session_changes_are_doc_only(project_dir) if has_changes else False
 
-    # Determine if there's an active build plan (used by both gates)
-    has_build_plan = (prawduct_dir / "artifacts" / "build-plan.md").is_file() or _has_build_plan_in_state(prawduct_dir)
+    # Determine if there's an active build plan (used by both gates).
+    # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
+    has_build_plan = _has_active_build_plan_file(prawduct_dir) or _has_build_plan_in_state(prawduct_dir)
 
     # Gate 1: Reflection
     # - With active build plan: BLOCKING (structured work deserves reflection)

@@ -127,6 +127,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.subagent-briefing.md",
     ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
+    ".prawduct/artifacts/build-plan.md",
     "__pycache__/",
 ]
 
@@ -143,6 +144,7 @@ V4_GITIGNORE_ENTRIES = [
     ".prawduct/.subagent-briefing.md",
     ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
+    ".prawduct/artifacts/build-plan.md",
     "__pycache__/",
 ]
 

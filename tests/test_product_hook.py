@@ -367,11 +367,11 @@ class TestSessionChangesDocOnly:
 
 class TestStopCriticGate:
     def test_critic_gate_triggers(self, tmp_path: Path):
-        """Build plan + code changes + no findings -> blocked."""
+        """Active build plan + code changes + no findings -> blocked."""
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
-        (artifacts / "build-plan.md").write_text("# Build Plan\n")
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
         (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
@@ -458,12 +458,28 @@ class TestStopCriticGate:
 
         assert result.returncode == 0
 
+    def test_completed_build_plan_skips_critic(self, tmp_path: Path):
+        """Completed build plan (all [x]) + code changes -> Critic gate skipped."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [x] Chunk 1 — done\n- [x] Chunk 2 — done\n"
+        )
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 0
+
     def test_critic_gate_passes_with_recent_findings(self, tmp_path: Path):
         """Valid findings with recent mtime -> passes."""
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
-        (artifacts / "build-plan.md").write_text("# Build Plan\n")
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
         (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct, offset_seconds=-60)
@@ -485,7 +501,7 @@ class TestStopCriticGate:
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
-        (artifacts / "build-plan.md").write_text("# Build Plan\n")
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
         (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)
@@ -517,7 +533,7 @@ class TestStopCriticGate:
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
-        (artifacts / "build-plan.md").write_text("# Build Plan\n")
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
         (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
 
@@ -547,7 +563,7 @@ class TestCriticContentValidation:
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
-        (artifacts / "build-plan.md").write_text("# Build Plan\n")
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
         (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct, offset_seconds=-60)
@@ -2187,7 +2203,7 @@ class TestCanaryIntegration:
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
-        (artifacts / "build-plan.md").write_text("# Build Plan\n")
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
         (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
         (prawduct / ".session-git-baseline").write_text("")
         make_session_start(prawduct)

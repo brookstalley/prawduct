@@ -105,7 +105,7 @@ After PR merge or final commit on main: delete `.prawduct/artifacts/build-plan.m
 
 When resolving merge conflicts in append-only files (`learnings.md`, `backlog.md`, `change-log.md`): keep entries from both sides. These conflicts are simple — both branches added content, include all of it.
 
-If `build-plan.md` conflicts during rebase (delete-modify from a merged branch's cleanup): keep your branch's version — your plan is active work.
+`build-plan.md` is gitignored — it never appears in merge conflicts.
 
 Two developers on the same branch is unsupported.
 
