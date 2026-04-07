@@ -3,7 +3,7 @@ description: Independent Critic review — quality governance for framework chan
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Write, Agent
+allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Write, Agent
 ---
 
 <!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only. -->
@@ -26,7 +26,7 @@ When using the coordinator pattern (medium/large reviews), tell each subagent: "
 
 1. Read `agents/critic/SKILL.md` for the full review protocol
 2. Read `.prawduct/project-state.yaml` for project context
-3. Read `.prawduct/.test-evidence.json` for test results (confirm `git_sha` matches HEAD)
+3. Read `.prawduct/.test-evidence.json` for test results, then run `python3 tools/product-hook test-status` to validate the saved fingerprint matches the current tree (exit 1 = stale, raise as a WARNING in your review)
 4. Assess changes via `git diff` and reading changed files
 5. Execute the review following the protocol (including framework-specific checks)
 6. Write findings to `.prawduct/.critic-findings.json`

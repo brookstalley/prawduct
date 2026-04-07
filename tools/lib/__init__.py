@@ -35,6 +35,7 @@ from .core import (  # noqa: F401
     merge_settings,
     render_template,
     replace_settings,
+    untrack_gitignored_files,
     update_gitignore,
     write_template,
     write_template_overwrite,

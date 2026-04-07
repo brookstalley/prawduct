@@ -67,10 +67,12 @@ Add observability alongside features, not after. If the observability strategy c
 
 **Verify.** Two layers:
 
-- *Code verification:* Run all tests — the full suite, not just what you wrote.
-- *Product verification:* Confirm the product works as its users or consumers would experience it. Launch it, call it, run it, inspect its output. If infrastructure dependencies are declared in project-state.yaml, verify against real instances — not just mocks. A system that passes all tests against a mocked database but never touches real persistence is not verified.
+- *Code:* Run the full suite. First check `python3 tools/product-hook test-status` — exit 0 means saved evidence still covers the tree; re-running is wasteful. After, write `.prawduct/.test-evidence.json` with the `fingerprint=` line.
+- *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
-Scale verification to chunk significance. When you can't verify directly, say what you can't verify and why (Principle 5).
+Scale to chunk significance. When you can't verify, say so (Principle 5).
+
+**Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
 **Critic review.** Run `/critic` — it's in the build plan's "Done when" steps. The Critic runs as a separate agent with its own context and restricted tools.
 

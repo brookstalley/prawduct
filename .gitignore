@@ -13,4 +13,5 @@ __pycache__/
 # Prawduct session files
 .prawduct/sync-manifest.json
 .prawduct/.test-evidence.json
+.prawduct/.gates-waived
 .prawduct/artifacts/build-plan.md

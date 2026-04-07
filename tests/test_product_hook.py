@@ -26,6 +26,9 @@ def run_hook(
     git_output: str | None = "",
     env_extra: dict[str, str] | None = None,
     has_git: bool = True,
+    head_sha: str = "deadbeef" * 5,
+    git_branch: str = "main",
+    gh_pr_list_json: str = "[]",
 ) -> subprocess.CompletedProcess:
     """Run product-hook with a controlled environment.
 
@@ -39,6 +42,12 @@ def run_hook(
             None means git is not available.
         env_extra: Additional env vars to set.
         has_git: Whether to make git available on PATH.
+        head_sha: Mock SHA returned by `git rev-parse HEAD` (used by test
+            fingerprint helpers). Default is deterministic for stable hashes.
+        git_branch: What `git branch --show-current` returns. Defaults to "main"
+            so the PR gate doesn't fire by default in tests that don't care.
+        gh_pr_list_json: JSON string returned by `gh pr list`. Defaults to "[]"
+            (no PRs). Set to e.g. '[{"number": 1}]' to simulate a PR existing.
     """
     env = {
         "HOME": str(project_dir),
@@ -57,6 +66,10 @@ def run_hook(
         mock_git = mock_bin / "git"
         mock_git.write_text(
             "#!/bin/bash\n"
+            'if [[ "$1" == "rev-parse" && "$2" == "HEAD" ]]; then\n'
+            f'    echo "{head_sha}"\n'
+            '    exit 0\n'
+            "fi\n"
             'if [[ "$1" == "rev-parse" ]]; then\n'
             '    echo ".git"\n'
             '    exit 0\n'
@@ -65,9 +78,32 @@ def run_hook(
             f'    cat "{git_output_file}"\n'
             "    exit 0\n"
             "fi\n"
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then\n'
+            f'    echo "{git_branch}"\n'
+            "    exit 0\n"
+            "fi\n"
+            'if [[ "$1" == "worktree" ]]; then\n'
+            "    exit 0\n"
+            "fi\n"
+            'if [[ "$1" == "ls-files" ]]; then\n'
+            "    exit 1\n"
+            "fi\n"
             "exit 0\n"
         )
         mock_git.chmod(0o755)
+
+        # Mock gh — only handles `gh pr list ... --json number`
+        mock_gh = mock_bin / "gh"
+        mock_gh.write_text(
+            "#!/bin/bash\n"
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then\n'
+            f"    cat <<'JSONEOF'\n{gh_pr_list_json}\nJSONEOF\n"
+            "    exit 0\n"
+            "fi\n"
+            "exit 0\n"
+        )
+        mock_gh.chmod(0o755)
+
         env["PATH"] = str(mock_bin)
     elif not has_git:
         pass
@@ -551,6 +587,557 @@ class TestStopCriticGate:
 
         assert result.returncode == 2
         assert "CRITIC" in result.stderr
+
+
+# =============================================================================
+# Doc-only and waiver behavior on Critic and PR gates
+# =============================================================================
+
+
+class TestDocOnlySkipsCriticGate:
+    """Doc-only sessions should not require Critic review even with an active build plan."""
+
+    def test_md_only_skips_critic_with_active_build_plan(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M docs/README.md\n M CHANGELOG.md")
+
+        assert result.returncode == 0
+        assert "CRITIC" not in result.stderr
+
+    def test_mixed_doc_and_code_still_triggers_critic(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M docs/README.md\n M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+
+class TestGatesWaived:
+    """Agent-declared gate waivers via .gates-waived JSON."""
+
+    def test_critic_waiver_skips_critic_gate(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text(json.dumps({"critic": "trivial config bump, no logic changes"}))
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 0
+        assert "CRITIC" not in result.stderr
+        assert "GATE WAIVERS" in result.stderr
+        assert "trivial config bump" in result.stderr
+
+    def test_reflection_waiver_skips_reflection_gate(self, tmp_path: Path):
+        """Reflection waiver suppresses the BLOCKING reflection gate (active build plan)."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        # Active build plan -> reflection gate is BLOCKING. Without waiver this returns 2.
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        # Critic findings already valid so the Critic gate doesn't fire and pollute the test.
+        (prawduct / ".critic-findings.json").write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues found.",
+        }))
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text(json.dumps({"reflection": "minor cleanup, nothing to learn"}))
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 0, f"stderr={result.stderr}"
+        assert "REFLECTION" not in result.stderr
+        assert "minor cleanup" in result.stderr
+
+    def test_critic_waiver_not_noted_when_findings_present(self, tmp_path: Path):
+        """If Critic findings already exist, the gate would not have fired -
+        the waiver is a no-op and should not be noted."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".critic-findings.json").write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues found.",
+        }))
+        (prawduct / ".gates-waived").write_text(json.dumps({"critic": "shouldn't print"}))
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 0
+        # Waiver should NOT be noted because the gate would have been silent
+        assert "GATE WAIVERS" not in result.stderr
+        assert "shouldn't print" not in result.stderr
+
+    def test_unknown_waiver_keys_warn(self, tmp_path: Path):
+        """Typo in waiver key produces a stderr warning so the agent learns."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text(json.dumps({"critc": "typo"}))
+
+        result = run_hook("stop", tmp_path, git_output=" M docs/README.md")
+
+        assert "unknown keys" in result.stderr
+        assert "critc" in result.stderr
+
+    def test_pr_waiver_suppresses_pr_blocker(self, tmp_path: Path):
+        """PR waiver suppresses the BLOCKING PR REVIEW gate when a real PR exists with no evidence."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text(json.dumps({"pr": "shipping a hotfix branch, no PR review needed"}))
+        make_session_start(prawduct)
+
+        result = run_hook(
+            "stop",
+            tmp_path,
+            git_output=" M src/app.py",
+            git_branch="feature/foo",
+            gh_pr_list_json='[{"number": 42}]',
+        )
+
+        assert result.returncode == 0
+        assert "PR REVIEW" not in result.stderr
+        assert "shipping a hotfix" in result.stderr
+
+    def test_pr_waiver_not_noted_when_no_pr_exists(self, tmp_path: Path):
+        """PR waiver on a branch with no PR is a no-op — should not be noted."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text(json.dumps({"pr": "no need"}))
+        make_session_start(prawduct)
+
+        result = run_hook(
+            "stop",
+            tmp_path,
+            git_output=" M src/app.py",
+            git_branch="feature/foo",
+            gh_pr_list_json="[]",
+        )
+
+        assert result.returncode == 0
+        assert "GATE WAIVERS" not in result.stderr
+        assert "no need" not in result.stderr
+
+    def test_boolean_waiver_value_is_ignored(self, tmp_path: Path):
+        """`True` is not a valid reason — must require a real string."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text(json.dumps({"critic": True}))
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+    def test_pr_waiver_with_empty_reason_ignored(self, tmp_path: Path):
+        """Empty pr reason -> waiver ignored -> blocker fires."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text(json.dumps({"pr": ""}))
+        make_session_start(prawduct)
+
+        result = run_hook(
+            "stop",
+            tmp_path,
+            git_output=" M src/app.py",
+            git_branch="feature/foo",
+            gh_pr_list_json='[{"number": 42}]',
+        )
+
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+
+    def test_invalid_waiver_json_is_ignored(self, tmp_path: Path):
+        """Corrupt .gates-waived must not crash the gate or silently bypass it."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text("not valid json {{{")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        # Invalid waiver = treat as no waiver = critic gate fires normally
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+    def test_empty_value_in_waiver_is_ignored(self, tmp_path: Path):
+        """Empty/missing reason -> waiver is ignored. Force the agent to write a real reason."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".gates-waived").write_text(json.dumps({"critic": ""}))
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+    def test_waiver_file_removed_at_session_start(self, tmp_path: Path):
+        """clear should auto-delete .gates-waived so waivers never carry across sessions."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".gates-waived").write_text(json.dumps({"critic": "from previous session"}))
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert not (prawduct / ".gates-waived").exists()
+
+
+# =============================================================================
+# Defensive untrack of session files at session start
+# =============================================================================
+
+
+def _init_real_git_repo(repo_dir: Path) -> None:
+    """Initialize a real git repo for tests that need git ls-files / rm --cached."""
+    subprocess.run(["git", "init", "--quiet", "-b", "main"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo_dir, check=True)
+
+
+def _real_git_run_clear(project_dir: Path) -> subprocess.CompletedProcess:
+    """Run product-hook clear with real git on PATH (no mock)."""
+    env = {
+        "HOME": str(project_dir),
+        "CLAUDE_PROJECT_DIR": str(project_dir),
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_SYSTEM": "/dev/null",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    return subprocess.run(
+        ["python3", str(HOOK_PATH), "clear"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=20,
+    )
+
+
+class TestGitHasCodeChangesUsesBaseline:
+    """git_has_code_changes() must consult the session baseline (mirroring git_has_session_changes)."""
+
+    def test_pre_existing_dirty_files_in_baseline_do_not_trigger_critic(self, tmp_path: Path):
+        """A file in the baseline must NOT count as a 'code change' for the Critic gate."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+
+        # Baseline captures src/app.py as ALREADY dirty at session start
+        (prawduct / ".session-git-baseline").write_text(" M src/app.py\n")
+        make_session_start(prawduct)
+
+        # Current state: SAME dirty file, no new changes
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        # Critic gate should NOT fire because nothing changed since session start
+        assert result.returncode == 0
+        assert "CRITIC" not in result.stderr
+
+    def test_new_change_after_baseline_triggers_critic(self, tmp_path: Path):
+        """Adding a new file after session start must still trigger the Critic gate."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text("Session reflection: implemented changes and verified all tests pass correctly.")
+        (prawduct / ".session-git-baseline").write_text(" M src/app.py\n")
+        make_session_start(prawduct)
+
+        # Baseline had src/app.py; current adds src/new.py
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py\n M src/new.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+
+class TestWorktreeBriefing:
+    """The session briefing must surface worktree state when more than one is attached."""
+
+    def test_single_worktree_no_briefing_line(self, tmp_path: Path):
+        _init_real_git_repo(tmp_path)
+        # Make an initial commit so it's a real-ish repo
+        (tmp_path / "README.md").write_text("# test")
+        subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+        (tmp_path / ".prawduct").mkdir()
+
+        result = _real_git_run_clear(tmp_path)
+        assert result.returncode == 0
+        assert "Worktrees:" not in result.stdout
+
+    def test_multiple_worktrees_surfaced_in_briefing(self, tmp_path: Path):
+        main_repo = tmp_path / "main"
+        main_repo.mkdir()
+        _init_real_git_repo(main_repo)
+        (main_repo / "README.md").write_text("# test")
+        subprocess.run(["git", "add", "README.md"], cwd=main_repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=main_repo, check=True)
+
+        # Create a second worktree on a feature branch
+        feature_path = tmp_path / "feature-wt"
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "feature/foo", str(feature_path)],
+            cwd=main_repo,
+            check=True,
+            capture_output=True,
+        )
+        (main_repo / ".prawduct").mkdir()
+
+        result = _real_git_run_clear(main_repo)
+        assert result.returncode == 0
+        assert "Worktrees:" in result.stdout
+        assert "main" in result.stdout
+        assert "feature/foo" in result.stdout
+
+
+class TestDefensiveUntrackOfSessionFiles:
+    """cmd_clear must untrack any session files that were accidentally committed."""
+
+    def test_untracks_session_handoff_if_committed(self, tmp_path: Path):
+        _init_real_git_repo(tmp_path)
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        handoff = prawduct / ".session-handoff.md"
+        handoff.write_text("# stale handoff content from a previous session")
+
+        # Force commit despite gitignore (-f) to simulate the accidental-commit case.
+        subprocess.run(["git", "add", "-f", str(handoff)], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "accidental"], cwd=tmp_path, check=True)
+
+        # Verify it's tracked
+        ls = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", ".prawduct/.session-handoff.md"],
+            cwd=tmp_path,
+            capture_output=True,
+        )
+        assert ls.returncode == 0
+
+        result = _real_git_run_clear(tmp_path)
+        assert result.returncode == 0
+        # Now it should NOT be tracked
+        ls2 = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", ".prawduct/.session-handoff.md"],
+            cwd=tmp_path,
+            capture_output=True,
+        )
+        assert ls2.returncode != 0
+        # File on disk preserved (cmd_clear may overwrite with new handoff, but it must exist)
+        assert handoff.exists()
+        # The user-facing message mentions what happened
+        assert "untracked" in result.stdout.lower()
+
+    def test_untracks_multiple_session_files(self, tmp_path: Path):
+        _init_real_git_repo(tmp_path)
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        files = {
+            ".prawduct/.session-handoff.md": "old handoff",
+            ".prawduct/.test-evidence.json": "{}",
+            ".prawduct/.critic-findings.json": "{}",
+            ".prawduct/.gates-waived": "{}",
+        }
+        for rel, content in files.items():
+            p = tmp_path / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content)
+            subprocess.run(["git", "add", "-f", rel], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "all session files"], cwd=tmp_path, check=True)
+
+        result = _real_git_run_clear(tmp_path)
+        assert result.returncode == 0
+        for rel in files:
+            ls = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", rel],
+                cwd=tmp_path,
+                capture_output=True,
+            )
+            assert ls.returncode != 0, f"{rel} still tracked after clear"
+
+    def test_no_untrack_when_files_not_tracked(self, tmp_path: Path):
+        """Clean repo: clear should run silently without printing the untrack notice."""
+        _init_real_git_repo(tmp_path)
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Make a single committed source file so the repo isn't empty
+        (tmp_path / "src.py").write_text("# code")
+        subprocess.run(["git", "add", "src.py"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+
+        result = _real_git_run_clear(tmp_path)
+        assert result.returncode == 0
+        assert "untracked previously-committed" not in result.stdout
+
+
+# =============================================================================
+# test-status subcommand
+# =============================================================================
+
+
+class TestTestStatus:
+    """The test-status subcommand: single source of truth for 'are saved tests current?'"""
+
+    def test_no_evidence_is_stale(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("test-status", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "stale" in result.stdout
+        assert "no .test-evidence.json" in result.stdout
+
+    def test_evidence_with_failing_tests_is_stale(self, tmp_path: Path):
+        """Even with matching fingerprint, failing tests mean evidence is not safe to skip."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".test-evidence.json").write_text(json.dumps({
+            "git_sha": "deadbeef" * 5,
+            "fingerprint": "anyfingerprint",
+            "passed": 100,
+            "failed": 3,
+            "total": 103,
+        }))
+
+        result = run_hook("test-status", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "3 test(s) failing" in result.stdout
+
+    def test_matching_fingerprint_is_current(self, tmp_path: Path):
+        """When evidence fingerprint matches current tree, tests are current."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Step 1: ask the hook to compute the current fingerprint by running stop with
+        # a known git_output, then read it back via running the helper indirectly.
+        # Easier path: write evidence with no fingerprint but matching SHA + clean tree.
+        (prawduct / ".test-evidence.json").write_text(json.dumps({
+            "git_sha": "deadbeef" * 5,
+            "passed": 100,
+            "failed": 0,
+            "total": 100,
+        }))
+
+        # Clean working tree -> SHA-only fallback should accept
+        result = run_hook("test-status", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stdout
+        assert "current" in result.stdout
+        assert "deadbeef" in result.stdout
+
+    def test_prints_full_fingerprint(self, tmp_path: Path):
+        """test-status second line must contain the full sha256 fingerprint of the
+        current tree, so builders can pipe it into .test-evidence.json."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("test-status", tmp_path, git_output=" M src/app.py")
+
+        # Always reports stale (no evidence) but should still emit the fingerprint
+        lines = result.stdout.strip().splitlines()
+        assert len(lines) >= 2
+        assert lines[0].startswith("stale")
+        assert lines[1].startswith("fingerprint=")
+        # 64 hex chars after the prefix
+        fp = lines[1].removeprefix("fingerprint=").strip()
+        assert len(fp) == 64
+        assert all(c in "0123456789abcdef" for c in fp)
+
+    def test_sha_drift_is_stale(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".test-evidence.json").write_text(json.dumps({
+            "git_sha": "0000000000000000000000000000000000000000",
+            "passed": 100,
+            "failed": 0,
+            "total": 100,
+        }))
+
+        result = run_hook("test-status", tmp_path, git_output="", head_sha="cafef00d" * 5)
+
+        assert result.returncode == 1
+        assert "git_sha drift" in result.stdout
+
+    def test_dirty_tree_without_fingerprint_is_stale(self, tmp_path: Path):
+        """SHA matches but uncommitted changes exist and no fingerprint -> can't trust."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".test-evidence.json").write_text(json.dumps({
+            "git_sha": "deadbeef" * 5,
+            "passed": 100,
+            "failed": 0,
+            "total": 100,
+        }))
+
+        result = run_hook("test-status", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 1
+        assert "uncommitted changes" in result.stdout
+
+    def test_fingerprint_mismatch_is_stale(self, tmp_path: Path):
+        """Stored fingerprint doesn't match current -> stale."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".test-evidence.json").write_text(json.dumps({
+            "git_sha": "deadbeef" * 5,
+            "fingerprint": "stalefingerprintvalue",
+            "passed": 100,
+            "failed": 0,
+            "total": 100,
+        }))
+
+        result = run_hook("test-status", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 1
+        assert "fingerprint drift" in result.stdout
 
 
 # =============================================================================

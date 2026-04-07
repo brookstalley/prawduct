@@ -38,6 +38,8 @@ The Critic may have caught these per-chunk. You catch what slipped through or em
 - Test assertions are meaningful (not just "doesn't throw")
 - No test coverage regressions
 
+**Do not run the test suite yourself.** Read `.prawduct/.test-evidence.json` and validate freshness via `python3 tools/product-hook test-status` (exit 0 = current, 1 = stale). The fingerprint covers HEAD SHA + uncommitted file content, so it catches drift even when only dirty files changed. If `test-status` reports `stale` or evidence is missing → **WARNING** ("test evidence does not cover the changeset I'm reviewing"). Stale evidence with passing tests is not the same as a known-good build.
+
 ### 3. Right Scope and Granularity
 **Severity: WARNING**
 

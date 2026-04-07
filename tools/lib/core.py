@@ -125,6 +125,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.session-reflected",
     ".prawduct/.session-start",
     ".prawduct/.subagent-briefing.md",
+    ".prawduct/.gates-waived",
     ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
     ".prawduct/artifacts/build-plan.md",
@@ -628,6 +629,53 @@ def update_gitignore(target: Path) -> dict:
         gitignore.write_text(content)
 
     return {"modified": modified, "unignored": unignored}
+
+
+def untrack_gitignored_files(target: Path) -> list[str]:
+    """Remove gitignored session files from git tracking without deleting them.
+
+    Runs 'git rm --cached' for any GITIGNORE_ENTRIES path that is currently
+    tracked by git. Safe to call even if the repo has no such tracked files.
+    Returns a list of paths that were untracked (may be empty).
+    """
+    # Verify this is a git repo
+    check = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        capture_output=True,
+        text=True,
+        cwd=str(target),
+        timeout=10,
+    )
+    if check.returncode != 0:
+        return []
+
+    untracked: list[str] = []
+    for entry in GITIGNORE_ENTRIES:
+        # Strip trailing slash on directory patterns (e.g. "__pycache__/").
+        # ls-files needs the bare path; rm needs `-r` to recurse into the dir.
+        rel = entry.rstrip("/")
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", rel],
+            capture_output=True,
+            text=True,
+            cwd=str(target),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            continue  # Not tracked
+        # File is tracked — remove it from the index. -r is required for
+        # directory entries (e.g. .prawduct/.pr-reviews/) and harmless for files.
+        rm = subprocess.run(
+            ["git", "rm", "--cached", "--quiet", "-r", rel],
+            capture_output=True,
+            text=True,
+            cwd=str(target),
+            timeout=10,
+        )
+        if rm.returncode == 0:
+            untracked.append(rel)
+
+    return untracked
 
 
 # =============================================================================

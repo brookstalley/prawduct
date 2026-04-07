@@ -36,6 +36,7 @@ BLOCK_BEGIN = _mod.BLOCK_BEGIN
 BLOCK_END = _mod.BLOCK_END
 GITIGNORE_ENTRIES = _mod.GITIGNORE_ENTRIES
 migrate_backlog = _mod.migrate_backlog
+untrack_gitignored_files = _mod.untrack_gitignored_files
 
 
 # =============================================================================
@@ -553,6 +554,61 @@ class TestApplyRenames:
 # =============================================================================
 # run_sync
 # =============================================================================
+
+
+class TestUntrackGitignoredFiles:
+    """untrack_gitignored_files must remove both file AND directory entries from the index.
+
+    Regression: previously the helper called `git rm --cached` without `-r`, so any
+    directory entry like `.prawduct/.pr-reviews/` silently failed (git returns 128).
+    """
+
+    def _init_repo(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo, check=True)
+        return repo
+
+    def test_removes_directory_entry(self, tmp_path: Path):
+        repo = self._init_repo(tmp_path)
+        pr_dir = repo / ".prawduct" / ".pr-reviews"
+        pr_dir.mkdir(parents=True)
+        (pr_dir / "branch.json").write_text("{}")
+        subprocess.run(["git", "add", "-f", ".prawduct"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+        # Confirm tracked
+        ls = subprocess.run(
+            ["git", "ls-files", ".prawduct/.pr-reviews/branch.json"],
+            cwd=repo, capture_output=True, text=True,
+        )
+        assert ls.stdout.strip(), "expected branch.json tracked"
+
+        untracked = untrack_gitignored_files(repo)
+        assert ".prawduct/.pr-reviews" in untracked
+
+        # Confirm removed from index
+        ls2 = subprocess.run(
+            ["git", "ls-files", ".prawduct/.pr-reviews/branch.json"],
+            cwd=repo, capture_output=True, text=True,
+        )
+        assert not ls2.stdout.strip(), "branch.json should be untracked"
+        # File on disk preserved
+        assert (pr_dir / "branch.json").exists()
+
+    def test_removes_file_entry(self, tmp_path: Path):
+        repo = self._init_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-handoff.md").write_text("old handoff")
+        subprocess.run(["git", "add", "-f", ".prawduct/.session-handoff.md"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+        untracked = untrack_gitignored_files(repo)
+        assert ".prawduct/.session-handoff.md" in untracked
 
 
 class TestRunSync:

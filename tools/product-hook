@@ -16,6 +16,7 @@ Usage (in .claude/settings.json):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -295,28 +296,248 @@ def _session_changes_are_doc_only(project_dir: Path) -> bool:
 
 
 def git_has_code_changes(project_dir: Path) -> bool:
-    """Check if non-.prawduct files were modified."""
+    """Check if non-metadata files were modified since session baseline.
+
+    Mirrors git_has_session_changes() baseline-diff logic but returns a bool.
+    Skips files that match the session baseline (pre-existing dirt) and
+    framework metadata (.prawduct/, .claude/settings.json, etc.).
+    """
+    return bool(git_has_session_changes(project_dir))
+
+
+# Canonical list of session files that should be gitignored, never tracked.
+# Mirrors GITIGNORE_ENTRIES in tools/lib/core.py — kept duplicated here because
+# product-hook is intentionally standalone and ships into product repos that
+# do not have access to tools/lib. Keep these two lists in sync; the test
+# tests/test_coverage_gaps.py::TestProductHookGitignoreMirror asserts equality.
+_SESSION_GITIGNORED_PATHS = (
+    ".claude/settings.local.json",
+    ".prawduct/.critic-findings.json",
+    ".prawduct/.test-evidence.json",
+    ".prawduct/.pr-reviews",
+    ".prawduct/.session-git-baseline",
+    ".prawduct/.session-handoff.md",
+    ".prawduct/.session-reflected",
+    ".prawduct/.session-start",
+    ".prawduct/.subagent-briefing.md",
+    ".prawduct/.gates-waived",
+    ".prawduct/reflections.md",
+    ".prawduct/sync-manifest.json",
+    ".prawduct/artifacts/build-plan.md",
+)
+
+
+def _untrack_session_files(project_dir: Path) -> list[str]:
+    """Defensively `git rm --cached` any session files that are currently tracked.
+
+    Some product repos accidentally committed session files (e.g. .session-handoff.md)
+    before they were added to .gitignore. Once tracked, those files cause noisy
+    merge conflicts whenever any session writes new content. The framework sync
+    command also runs untrack_gitignored_files(), but that only fires when the
+    user runs sync. This in-process check runs on every session start so the
+    cleanup happens in any product repo regardless of sync version.
+
+    Returns a list of paths that were untracked (may be empty). Never raises.
+    """
+    untracked: list[str] = []
     try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
+        check = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
             capture_output=True,
             text=True,
             cwd=str(project_dir),
             timeout=10,
         )
-        if result.returncode != 0:
-            return False
-        for line in result.stdout.strip().splitlines():
-            # Extract the file path (last field after status indicators)
-            parts = line.split()
-            if not parts:
-                continue
-            filepath = parts[-1]
-            if not filepath.startswith(".prawduct/"):
-                return True
-        return False
+        if check.returncode != 0:
+            return untracked
     except Exception:  # prawduct:ok-broad-except — git failure must not crash hook
-        return False
+        return untracked
+
+    for path in _SESSION_GITIGNORED_PATHS:
+        try:
+            ls = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", path],
+                capture_output=True,
+                text=True,
+                cwd=str(project_dir),
+                timeout=10,
+            )
+            if ls.returncode != 0:
+                continue  # Not tracked — nothing to do
+            rm = subprocess.run(
+                ["git", "rm", "--cached", "--quiet", "-r", path],
+                capture_output=True,
+                text=True,
+                cwd=str(project_dir),
+                timeout=10,
+            )
+            if rm.returncode == 0:
+                untracked.append(path)
+        except Exception:  # prawduct:ok-broad-except — single-file failure must not abort the loop
+            continue
+
+    return untracked
+
+
+def _git_head_sha(project_dir: Path) -> str:
+    """Return current HEAD SHA, or empty string on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:  # prawduct:ok-broad-except — git failure must not crash hook
+        pass
+    return ""
+
+
+def compute_test_fingerprint(project_dir: Path) -> str:
+    """Return a fingerprint that uniquely identifies the current test-relevant tree state.
+
+    The fingerprint combines:
+      1. Current HEAD SHA (captures committed code).
+      2. The list of dirty paths from `git status --porcelain` (captures which files changed).
+      3. SHA-256 of each dirty file's content (captures the content of uncommitted edits).
+
+    Two trees with the same fingerprint will produce the same test results, so a
+    saved fingerprint in .test-evidence.json can be compared against the current
+    fingerprint to decide whether re-running tests is necessary.
+
+    Returns "" if git is unavailable. Callers should treat empty as "cannot compare —
+    err toward running tests."
+    """
+    head = _git_head_sha(project_dir)
+    if not head:
+        return ""
+
+    status = git_status_output(project_dir)
+    if status is None:
+        return ""
+
+    h = hashlib.sha256()
+    h.update(head.encode())
+    h.update(b"\0")
+
+    # Sort by path so order is deterministic across invocations.
+    entries: list[tuple[str, str]] = []  # (status_code, path)
+    for line in status.splitlines():
+        if not line:
+            continue
+        # Porcelain format: "XY path" where XY is two status chars.
+        if len(line) < 4:
+            continue
+        code = line[:2]
+        rest = line[3:]
+        # Handle renames: "R  old -> new" — fingerprint the new path's content.
+        if " -> " in rest:
+            rest = rest.split(" -> ", 1)[1]
+        # Strip surrounding quotes git adds for paths with special chars.
+        path = rest.strip().strip('"')
+        entries.append((code, path))
+    entries.sort(key=lambda e: e[1])
+
+    for code, path in entries:
+        h.update(code.encode())
+        h.update(b" ")
+        h.update(path.encode())
+        h.update(b"\0")
+        # Hash the content of the dirty file (deletions still affect fingerprint
+        # via the path entry above, but have no content to hash).
+        full = project_dir / path
+        try:
+            if full.is_file():
+                h.update(hashlib.sha256(full.read_bytes()).digest())
+        except OSError:
+            pass  # Unreadable file: path-only contribution is enough to invalidate.
+        h.update(b"\0")
+
+    return h.hexdigest()
+
+
+def tests_are_current(project_dir: Path) -> tuple[bool, str]:
+    """Decide whether saved test evidence still matches the current tree.
+
+    Returns (is_current, reason). reason is a short human-readable string suitable
+    for printing back to the agent.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    evidence_path = prawduct_dir / ".test-evidence.json"
+    if not evidence_path.is_file():
+        return False, "no .test-evidence.json on disk"
+
+    try:
+        evidence = json.loads(evidence_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return False, f"unreadable evidence ({exc})"
+
+    if not isinstance(evidence, dict):
+        return False, "evidence is not a JSON object"
+
+    # Test pass/fail check — fail counts make evidence "not current" even if
+    # the tree fingerprint matches.
+    failed = evidence.get("failed")
+    if isinstance(failed, int) and failed > 0:
+        return False, f"{failed} test(s) failing in saved evidence"
+
+    saved_fp = evidence.get("fingerprint")
+    if not isinstance(saved_fp, str) or not saved_fp:
+        # Older evidence without fingerprint — fall back to git_sha-only comparison.
+        saved_sha = evidence.get("git_sha")
+        head = _git_head_sha(project_dir)
+        if not saved_sha or not head:
+            return False, "no fingerprint and no git_sha in evidence"
+        if saved_sha != head:
+            return False, f"git_sha drift ({saved_sha[:8]} -> {head[:8]})"
+        # SHA matches but no fingerprint — only safe if working tree is clean.
+        status = git_status_output(project_dir)
+        if status and status.strip():
+            return False, "git_sha matches but working tree has uncommitted changes (no fingerprint to verify)"
+        return True, f"git_sha matches HEAD ({head[:8]}) and tree is clean"
+
+    current_fp = compute_test_fingerprint(project_dir)
+    if not current_fp:
+        return False, "could not compute current fingerprint (git unavailable?)"
+    if current_fp == saved_fp:
+        return True, f"fingerprint matches ({current_fp[:12]})"
+    return False, f"fingerprint drift ({saved_fp[:12]} -> {current_fp[:12]})"
+
+
+def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
+    """Load .gates-waived JSON. Returns {} if missing or invalid.
+
+    Format: {"critic": "reason", "pr": "reason", "reflection": "reason"}.
+    Each present key signals "this gate does not apply to the current work."
+    The agent writes this file when work is genuinely N/A for that gate
+    (e.g., docs-only refactor, no PR planned for this branch). The file
+    is auto-deleted at session start so waivers never carry across sessions.
+    """
+    waiver_path = prawduct_dir / ".gates-waived"
+    if not waiver_path.is_file():
+        return {}
+    try:
+        data = json.loads(waiver_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    # A waiver requires a non-empty *string* reason. Empty strings, missing
+    # reasons, and non-string values (booleans, numbers, nested objects) are
+    # all rejected. The reason is required so reviewers can audit *why* the
+    # gate was bypassed; an "implicit truthy" form would be a silent escape
+    # hatch and exactly the kind of pattern the project's learnings warn
+    # against.
+    out: dict[str, str] = {}
+    for key, val in data.items():
+        if not isinstance(key, str):
+            continue
+        if isinstance(val, str) and val.strip():
+            out[key] = val.strip()
+    return out
 
 
 # =============================================================================
@@ -806,6 +1027,58 @@ def _get_work_in_progress(prawduct_dir: Path) -> str:
     return "none active"
 
 
+def _detect_worktrees(project_dir: Path) -> list[dict[str, str]]:
+    """Return a list of git worktrees attached to this repo, or [] if not in a repo
+    or only one worktree exists.
+
+    Each entry: {"path": str, "branch": str, "is_active": "true"/"false"}.
+    "is_active" is "true" for the worktree at project_dir.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+    except Exception:  # prawduct:ok-broad-except — worktree detection is best-effort
+        return []
+
+    # Porcelain output: groups of "worktree <path>", "HEAD <sha>", "branch refs/heads/<name>"
+    # (or "detached"), separated by blank lines.
+    worktrees: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            if current:
+                worktrees.append(current)
+                current = {}
+            continue
+        if line.startswith("worktree "):
+            current["path"] = line.removeprefix("worktree ").strip()
+        elif line.startswith("branch "):
+            current["branch"] = line.removeprefix("branch ").removeprefix("refs/heads/").strip()
+        elif line == "detached":
+            current["branch"] = "(detached)"
+    if current:
+        worktrees.append(current)
+
+    if len(worktrees) <= 1:
+        return []  # Single worktree = no need to surface; degenerate case.
+
+    project_resolved = str(project_dir.resolve())
+    for w in worktrees:
+        wpath = w.get("path", "")
+        try:
+            w["is_active"] = "true" if Path(wpath).resolve() == Path(project_resolved) else "false"
+        except OSError:
+            w["is_active"] = "false"
+    return worktrees
+
+
 def _get_other_branch_wip(prawduct_dir: Path, current_branch: str) -> list[str]:
     """Get one-line summaries of WIP on other branches."""
     all_wip = _parse_all_wip_branches(prawduct_dir)
@@ -854,6 +1127,25 @@ def assemble_session_briefing(
         lines.append(f"Other active branches: {len(other_wip)}")
         for owip in other_wip[:3]:  # Cap at 3 to keep briefing concise
             lines.append(f"  - {owip}")
+
+    # Worktree awareness — surface only when more than one worktree exists.
+    # Hooks operate on $CLAUDE_PROJECT_DIR; if the agent thinks they are in a
+    # different worktree, gates will look at the wrong tree. Surfacing this
+    # avoids silent confusion (see issue: discodon worktree gate firing on
+    # main repo branch state).
+    worktrees = _detect_worktrees(project_dir)
+    if worktrees:
+        active = next((w for w in worktrees if w.get("is_active") == "true"), None)
+        active_branch = active.get("branch", "?") if active else "?"
+        active_path = active.get("path", str(project_dir)) if active else str(project_dir)
+        lines.append(
+            f"Worktrees: {len(worktrees)} attached — hook is operating on '{active_branch}' "
+            f"at {active_path}. Other worktrees are NOT visible to gates this session."
+        )
+        for w in worktrees:
+            if w.get("is_active") == "true":
+                continue
+            lines.append(f"  - {w.get('branch', '?')} @ {w.get('path', '?')}")
 
     # Handoff from previous session
     handoff_path = prawduct_dir / ".session-handoff.md"
@@ -1390,9 +1682,13 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     if not had_changes:
         return warnings
 
-    # Gate 1: Reflection (skipped for doc-only changes)
+    # Honor any waivers the previous session declared (file is deleted right
+    # after this check runs, so waivers never carry past the gate they covered).
+    waivers = _read_gates_waived(prawduct_dir)
+
+    # Gate 1: Reflection (skipped for doc-only changes or when waived)
     doc_only = _session_changes_are_doc_only(project_dir)
-    if not doc_only:
+    if not doc_only and "reflection" not in waivers:
         reflected_file = prawduct_dir / ".session-reflected"
         try:
             if not reflected_file.is_file() or len(reflected_file.read_text().strip()) < 50:
@@ -1402,7 +1698,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
 
     # Gate 2: Critic review (only when building against an active plan)
     has_build_plan = _has_active_build_plan_file(prawduct_dir) or _has_build_plan_in_state(prawduct_dir)
-    if has_build_plan and git_has_code_changes(project_dir):
+    if has_build_plan and not doc_only and "critic" not in waivers and git_has_code_changes(project_dir):
         critic_findings = prawduct_dir / ".critic-findings.json"
         session_start_file = prawduct_dir / ".session-start"
         needs_review = True
@@ -1437,6 +1733,19 @@ def cmd_clear(project_dir: Path) -> int:
     except Exception:  # prawduct:ok-broad-except — gate check must never block clear
         pass
 
+    # Defensively untrack any session files that were accidentally committed.
+    # Runs every session-start so even product repos that have not yet synced
+    # to a Prawduct version with `untrack_gitignored_files()` get the cleanup.
+    try:
+        untracked = _untrack_session_files(project_dir)
+        if untracked:
+            print(
+                "PRAWDUCT: untracked previously-committed session files (kept locally): "
+                + ", ".join(untracked)
+            )
+    except Exception:  # prawduct:ok-broad-except — defensive cleanup must never block clear
+        pass
+
     # Generate handoff BEFORE archiving/deleting session files
     try:
         generate_session_handoff(project_dir)
@@ -1457,7 +1766,7 @@ def cmd_clear(project_dir: Path) -> int:
             pass  # Corrupted reflection — skip archival, safe to proceed
 
     # Remove session files
-    for name in (".session-reflected", ".session-start", ".session-git-baseline"):
+    for name in (".session-reflected", ".session-start", ".session-git-baseline", ".gates-waived"):
         f = prawduct_dir / name
         if f.is_file():
             f.unlink()
@@ -1656,6 +1965,23 @@ def cmd_stop(project_dir: Path) -> int:
     has_changes = git_has_session_changes(project_dir)
     doc_only = _session_changes_are_doc_only(project_dir) if has_changes else False
 
+    # Load agent-declared gate waivers (auto-cleared at session start).
+    # The convention: a waiver is only NOTED to the user when it actually
+    # suppressed a blocker. Notes for gates that would have been silent anyway
+    # are noise — they make every session look like it bypassed governance.
+    waivers = _read_gates_waived(prawduct_dir)
+    waiver_notes: list[str] = []
+    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr"}
+    unknown_waiver_keys = sorted(k for k in waivers if k not in KNOWN_WAIVER_KEYS)
+    if unknown_waiver_keys:
+        # Stderr-only warning so the agent learns about typos. Doesn't affect gate
+        # behavior — unknown keys simply have no effect.
+        print(
+            f"\nNOTE: .gates-waived has unknown keys (no effect): {', '.join(unknown_waiver_keys)}. "
+            f"Valid keys: {', '.join(sorted(KNOWN_WAIVER_KEYS))}.",
+            file=sys.stderr,
+        )
+
     # Determine if there's an active build plan (used by both gates).
     # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
     has_build_plan = _has_active_build_plan_file(prawduct_dir) or _has_build_plan_in_state(prawduct_dir)
@@ -1665,9 +1991,8 @@ def cmd_stop(project_dir: Path) -> int:
     # - Without build plan: ADVISORY (exploratory/Q&A — reflection optional)
     # - Doc-only changes: skipped entirely
     reflected_file = prawduct_dir / ".session-reflected"
-    reflection_exists = reflected_file.is_file()
     reflection_sufficient = False
-    if reflection_exists:
+    if reflected_file.is_file():
         try:
             content = reflected_file.read_text().strip()
             # Require at least ~50 chars to avoid empty/token reflections
@@ -1675,8 +2000,16 @@ def cmd_stop(project_dir: Path) -> int:
         except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
             pass
 
-    if has_changes and not reflection_sufficient and not doc_only:
-        if has_build_plan:
+    # Reflection blocker fires when there are real changes, the reflection is
+    # missing or too short, the changes are not all docs, AND a build plan is
+    # active. (Without a build plan, the gate is advisory — see below.)
+    reflection_would_block = (
+        has_changes and not reflection_sufficient and not doc_only and has_build_plan
+    )
+    if reflection_would_block:
+        if "reflection" in waivers:
+            waiver_notes.append(f"reflection: waived ({waivers['reflection']})")
+        else:
             blockers.append(
                 "REFLECTION: Files were modified but no session reflection was captured.\n"
                 "  Write your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
@@ -1687,87 +2020,115 @@ def cmd_stop(project_dir: Path) -> int:
                 "  also add it to .prawduct/learnings.md. Learnings are concise standing rules;\n"
                 "  the session reflection is the story behind them.\n"
             )
-        else:
-            # Advisory: print to stderr but don't block
-            print(
-                "\nNOTE: No session reflection captured. Reflection is not required for exploratory work,\n"
-                "  but if this session produced useful insights, consider writing them to\n"
-                "  .prawduct/.session-reflected (archived automatically on next session start).\n",
-                file=sys.stderr,
-            )
+    elif (
+        has_changes
+        and not reflection_sufficient
+        and not doc_only
+        and not has_build_plan
+        and "reflection" not in waivers
+    ):
+        # Advisory: print to stderr but don't block
+        print(
+            "\nNOTE: No session reflection captured. Reflection is not required for exploratory work,\n"
+            "  but if this session produced useful insights, consider writing them to\n"
+            "  .prawduct/.session-reflected (archived automatically on next session start).\n",
+            file=sys.stderr,
+        )
 
     # Gate 2: Critic review (only when building against a plan)
-    if has_changes and has_build_plan:
-        if git_has_code_changes(project_dir):
-            needs_review = True
+    # Skipped for doc-only changes (no code to review). The waiver is only
+    # noted when the gate would have actually blocked (valid findings absent).
+    # `has_changes` already reflects baseline-aware diff via git_has_session_changes,
+    # so no extra "code changes" check is needed beyond `not doc_only`.
+    critic_would_block = False
+    if has_changes and has_build_plan and not doc_only:
+        critic_would_block = True
+        critic_findings = prawduct_dir / ".critic-findings.json"
+        session_start_file = prawduct_dir / ".session-start"
+        if critic_findings.is_file() and session_start_file.is_file():
+            try:
+                session_start = session_start_file.read_text().strip()
+                findings_mtime = datetime.fromtimestamp(
+                    critic_findings.stat().st_mtime, tz=timezone.utc
+                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if findings_mtime > session_start and validate_critic_findings(critic_findings):
+                    critic_would_block = False
+            except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
+                pass
 
-            # Check if critic findings exist and are from this session
-            critic_findings = prawduct_dir / ".critic-findings.json"
-            session_start_file = prawduct_dir / ".session-start"
-            if critic_findings.is_file() and session_start_file.is_file():
-                try:
-                    session_start = session_start_file.read_text().strip()
-                    findings_mtime = datetime.fromtimestamp(
-                        critic_findings.stat().st_mtime, tz=timezone.utc
-                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-                    if findings_mtime > session_start:
-                        # Mtime check passed — validate content
-                        if validate_critic_findings(critic_findings):
-                            needs_review = False
-                except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
-                    pass
-
-            if needs_review:
-                blockers.append(
-                    "CRITIC REVIEW: The build plan includes Critic review in each chunk's \"Done when\" steps,\n"
-                    "  but no Critic findings were recorded this session. If you have completed a chunk,\n"
-                    "  run `/critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
-                    "  and records findings to .prawduct/.critic-findings.json\n"
-                )
-
-    # Gate 3: PR review evidence (when a PR exists for the current branch)
-    pr_reviews_dir = prawduct_dir / ".pr-reviews"
-    try:
-        branch_result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
-        )
-        current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else ""
-        if current_branch and current_branch not in ("main", "master", "develop"):
-            # Check if there's a PR for this branch
-            pr_check = subprocess.run(
-                ["gh", "pr", "list", "--head", current_branch, "--json", "number", "--limit", "1"],
-                capture_output=True, text=True, cwd=str(project_dir), timeout=15,
+    if critic_would_block:
+        if "critic" in waivers:
+            waiver_notes.append(f"critic: waived ({waivers['critic']})")
+        else:
+            blockers.append(
+                "CRITIC REVIEW: The build plan includes Critic review in each chunk's \"Done when\" steps,\n"
+                "  but no Critic findings were recorded this session. If you have completed a chunk,\n"
+                "  run `/critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
+                "  and records findings to .prawduct/.critic-findings.json\n"
             )
-            has_pr = False
-            if pr_check.returncode == 0 and pr_check.stdout.strip():
-                try:
-                    prs = json.loads(pr_check.stdout)
-                    has_pr = len(prs) > 0
-                except json.JSONDecodeError:
-                    pass
 
-            if has_pr:
-                # Check for review evidence with content validation
-                branch_file = current_branch.replace("/", "--") + ".json"
-                evidence_path = pr_reviews_dir / branch_file
-                pr_review_valid = False
-                if evidence_path.is_file():
+    # Gate 3: PR review evidence (when a PR exists for the current branch).
+    # Skipped for doc-only changes. The waiver is only noted when the gate
+    # would have actually blocked (real PR exists with no valid evidence).
+    pr_reviews_dir = prawduct_dir / ".pr-reviews"
+    pr_would_block = False
+    pr_block_branch = ""
+    if not doc_only:
+        try:
+            branch_result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+            )
+            current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else ""
+            if current_branch and current_branch not in ("main", "master", "develop"):
+                # Check if there's a PR for this branch
+                pr_check = subprocess.run(
+                    ["gh", "pr", "list", "--head", current_branch, "--json", "number", "--limit", "1"],
+                    capture_output=True, text=True, cwd=str(project_dir), timeout=15,
+                )
+                has_pr = False
+                if pr_check.returncode == 0 and pr_check.stdout.strip():
                     try:
-                        data = json.loads(evidence_path.read_text())
-                        if isinstance(data.get("findings"), list) and data.get("summary"):
-                            pr_review_valid = True
-                    except (json.JSONDecodeError, OSError):
+                        prs = json.loads(pr_check.stdout)
+                        has_pr = len(prs) > 0
+                    except json.JSONDecodeError:
                         pass
-                if not pr_review_valid:
-                    blockers.append(
-                        f"PR REVIEW: PR exists for branch '{current_branch}' but no valid review evidence found.\n"
-                        "  Run /pr to invoke the PR reviewer before merging.\n"
-                        "  The reviewer writes evidence to .prawduct/.pr-reviews/<branch>.json\n"
-                    )
-    except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
-        pass
+
+                if has_pr:
+                    # Check for review evidence with content validation
+                    branch_file = current_branch.replace("/", "--") + ".json"
+                    evidence_path = pr_reviews_dir / branch_file
+                    pr_review_valid = False
+                    if evidence_path.is_file():
+                        try:
+                            data = json.loads(evidence_path.read_text())
+                            if isinstance(data.get("findings"), list) and data.get("summary"):
+                                pr_review_valid = True
+                        except (json.JSONDecodeError, OSError):
+                            pass
+                    if not pr_review_valid:
+                        pr_would_block = True
+                        pr_block_branch = current_branch
+        except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
+            pass
+
+    if pr_would_block:
+        if "pr" in waivers:
+            waiver_notes.append(f"pr: waived ({waivers['pr']})")
+        else:
+            blockers.append(
+                f"PR REVIEW: PR exists for branch '{pr_block_branch}' but no valid review evidence found.\n"
+                "  Run /pr to invoke the PR reviewer before merging.\n"
+                "  The reviewer writes evidence to .prawduct/.pr-reviews/<branch>.json\n"
+            )
+
+    # Surface any waivers so the agent (and reviewer) can see what was skipped.
+    # Waivers are auto-cleared at next session start so they never carry forward.
+    if waiver_notes:
+        print("", file=sys.stderr)
+        print("GATE WAIVERS (this session, .gates-waived):", file=sys.stderr)
+        for note in waiver_notes:
+            print(f"  {note}", file=sys.stderr)
 
     # Report blockers or exit clean
     if blockers:
@@ -1795,13 +2156,47 @@ def cmd_stop(project_dir: Path) -> int:
 
 
 # =============================================================================
+# test-status command
+# =============================================================================
+
+
+def cmd_test_status(project_dir: Path) -> int:
+    """Print whether saved test evidence matches the current tree.
+
+    Used by builders, the Critic, and the PR reviewer to decide whether to
+    re-run the test suite. Single source of truth so the same fingerprint logic
+    is used everywhere.
+
+    stdout has two lines:
+      line 1: status line (`current: <reason>` or `stale: <reason>`)
+      line 2: `fingerprint=<full sha256 hex>` of the CURRENT tree (always
+              printed when computable). Builders can pipe this directly into
+              the `fingerprint` field of `.prawduct/.test-evidence.json` after
+              a successful test run.
+
+    Exit codes:
+      0  - tests are current; safe to skip re-running
+      1  - tests are stale, no evidence, or couldn't compute the fingerprint
+    """
+    is_current, reason = tests_are_current(project_dir)
+    if is_current:
+        print(f"current: {reason}")
+    else:
+        print(f"stale: {reason}")
+    current_fp = compute_test_fingerprint(project_dir)
+    if current_fp:
+        print(f"fingerprint={current_fp}")
+    return 0 if is_current else 1
+
+
+# =============================================================================
 # main
 # =============================================================================
 
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print("Usage: product-hook {clear|stop}", file=sys.stderr)
+        print("Usage: product-hook {clear|stop|test-status}", file=sys.stderr)
         return 1
 
     command = sys.argv[1]
@@ -1811,8 +2206,10 @@ def main() -> int:
         return cmd_clear(project_dir)
     elif command == "stop":
         return cmd_stop(project_dir)
+    elif command == "test-status":
+        return cmd_test_status(project_dir)
     else:
-        print("Usage: product-hook {clear|stop}", file=sys.stderr)
+        print("Usage: product-hook {clear|stop|test-status}", file=sys.stderr)
         return 1
 
 

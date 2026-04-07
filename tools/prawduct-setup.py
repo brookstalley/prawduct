@@ -86,6 +86,7 @@ from lib import (  # noqa: F401
     run_sync,
     run_validate,
     split_learnings_v5,
+    untrack_gitignored_files,
     update_gitignore,
     upgrade_manifest_strategy,
     write_template,

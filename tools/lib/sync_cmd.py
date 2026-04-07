@@ -28,6 +28,7 @@ from .core import (
     load_json,
     merge_settings,
     render_template,
+    untrack_gitignored_files,
     update_gitignore,
 )
 from .migrate_cmd import (
@@ -503,6 +504,11 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
             f"Removed {path} from .gitignore — it should be committed. "
             f"Run: git add {path}"
         )
+
+    # Untrack any session files that were previously committed
+    untracked = untrack_gitignored_files(product)
+    for path in untracked:
+        actions.append(f"Untracked {path} (removed from git index, file kept locally)")
 
     # Update manifest
     if actions:

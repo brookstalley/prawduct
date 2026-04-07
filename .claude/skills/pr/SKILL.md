@@ -3,7 +3,7 @@ description: PR lifecycle management — create, update, merge, or check status 
 argument-hint: "[create|update|merge|status]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(gh *), Bash(git *), Read, Write, Agent
+allowed-tools: Bash(gh *), Bash(git *), Bash(python3 tools/product-hook test-status), Read, Write, Agent
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -35,7 +35,7 @@ $ARGUMENTS
 ## Create Flow
 
 ### Step 1: Branch hygiene
-Verify on a feature branch (not main/master/develop). Verify commits ahead of base. If uncommitted changes, offer to commit or stash. Run the test suite.
+Verify on a feature branch (not main/master/develop). Verify commits ahead of base. If uncommitted changes, offer to commit or stash. **Before running the test suite, run `python3 tools/product-hook test-status` — if it exits 0 (`current`), the saved `.prawduct/.test-evidence.json` already covers the current tree (HEAD + uncommitted edits) and re-running is wasteful. Only run the suite if `test-status` reports `stale` or evidence is missing.** When you do run, write fresh evidence so the next caller can skip it.
 
 ### Step 2: Independent review — MANDATORY
 **STOP. Do NOT proceed to step 3 until the reviewer agent has completed and written its evidence file.**
@@ -97,6 +97,6 @@ PR review evidence is stored in `.prawduct/.pr-reviews/<branch-name>.json` (with
 
 - The PR reviewer runs as a **separate agent** — it must have independent context
 - The reviewer reads `.prawduct/pr-review.md` for its instructions
-- Always run the full test suite before creating a PR
+- Run the full test suite before creating a PR — but check `python3 tools/product-hook test-status` first; skip the run if it reports `current`
 - Include review findings summary in the PR description
 - **Never run `gh pr create` without a valid evidence file on disk**

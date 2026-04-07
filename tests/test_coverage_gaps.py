@@ -521,6 +521,28 @@ class TestInitPreExistingSettings:
             assert entry in content
 
 
+class TestProductHookGitignoreMirror:
+    """The standalone product-hook duplicates GITIGNORE_ENTRIES; keep the lists in sync."""
+
+    def test_session_paths_match_core_gitignore(self):
+        import re as _re
+        hook_text = (Path(__file__).resolve().parent.parent / "tools" / "product-hook").read_text()
+        # Extract the tuple body
+        m = _re.search(r"_SESSION_GITIGNORED_PATHS\s*=\s*\((.*?)\)", hook_text, _re.DOTALL)
+        assert m is not None, "_SESSION_GITIGNORED_PATHS not found in product-hook"
+        body = m.group(1)
+        hook_paths = set(_re.findall(r'"([^"]+)"', body))
+
+        # Normalize core entries: drop trailing slashes (the tuple form has no trailing slash on dirs)
+        core_paths = {e.rstrip("/") for e in GITIGNORE_ENTRIES if e != "__pycache__/"}
+
+        assert hook_paths == core_paths, (
+            f"product-hook _SESSION_GITIGNORED_PATHS drift from core.GITIGNORE_ENTRIES.\n"
+            f"In hook only: {hook_paths - core_paths}\n"
+            f"In core only: {core_paths - hook_paths}"
+        )
+
+
 # =============================================================================
 # 4. Change-log and backlog migration
 # =============================================================================
