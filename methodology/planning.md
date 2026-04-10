@@ -62,6 +62,21 @@ The build plan decomposes artifacts into buildable chunks — coherent units of 
 - **Independently testable** — each chunk can be verified without waiting for later chunks
 - **Small enough to review** — a chunk should be reviewable in one Critic pass
 
+**Each chunk should include testable properties** — statements about what the spec says should be true, expressed in plain language. These become property-based tests during the build step. Example:
+
+```
+### Chunk 2: User registration
+...
+Testable properties:
+- Valid emails are accepted; invalid emails are rejected
+- Passwords below minimum length are rejected
+- Passwords are never stored in plaintext
+- Duplicate registrations return an error, not a crash
+- Registration is idempotent on conflict
+```
+
+Properties describe WHAT should hold, not HOW to test it. The builder selects the appropriate tool (Hypothesis, fast-check, etc.) during implementation.
+
 **The first chunk is special.** It should be a thin vertical slice through the entire architecture — proving that the layers connect, the data flows, and the build approach works. Don't build one layer completely before touching the next. Validate the path before widening it.
 
 **Verification strategy.** The build plan should include how the builder will confirm each chunk's output works beyond tests — exercising the product as its users or consumers would experience it. What this looks like depends on structural characteristics and available tools. Don't over-specify — describe the approach, not a checklist. For many products, the simplest effective method is best. Complex products (e.g., those with human interfaces or multi-party interactions) may need dedicated tooling planned into the scaffold.
