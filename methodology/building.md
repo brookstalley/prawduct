@@ -46,7 +46,7 @@ There is no "pre-existing" exception — for tests, for broad exceptions, for st
 
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently. Validate that files, modules, and components referenced in the chunk plan still exist — plans go stale when the codebase evolves (module renames, component deletions, API changes). A quick check before starting saves significant rework. Also run `/learnings [this chunk's focus]` to check for relevant project rules and preferences before coding.
 
-**Persist plans immediately.** When scope evolves during a work cycle — new chunks emerge, the plan changes, gaps are discovered — write the updated plan to `build-plan.md` immediately. Conversation context is ephemeral; artifacts persist. A plan that exists only in conversation will be lost on compaction or session end. This is the most common way knowledge is lost across sessions.
+**Persist plans immediately.** When scope evolves — new chunks, plan changes, gaps discovered — write the updated plan to `build-plan.md` now. A plan that exists only in conversation will be lost on compaction or session end.
 
 **Write tests.** Tests come first or alongside implementation, not after. Tests are your specification made executable. If you can't write the test, you don't understand the requirement well enough to implement it.
 
@@ -54,6 +54,7 @@ Test at the right level:
 - **Unit tests** for individual functions and logic
 - **Integration tests** for component interactions, data flow, state transitions
 - **End-to-end tests** for critical user flows and acceptance criteria
+- **Property-based tests** for invariants stated in the chunk. See `build-governance.md` for tool-per-language guidance.
 
 Depth is proportionate to risk.
 

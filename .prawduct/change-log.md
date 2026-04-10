@@ -3,6 +3,20 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-04-10: Property-based testing from build plan specs
+
+**Why:** LLM-generated tests tend to check what the code already does rather than what the spec says should be true. Property-based tests derived from build plan requirements catch edge cases (boundary values, empty inputs, special characters) that example-based tests miss.
+
+**Changes:**
+- **Hypothesis added as dev dependency** (`pyproject.toml`). Framework now self-hosts 19 property tests for sync and init tools in `tests/properties/`.
+- **Build governance** updated: "Write tests" step now includes property-based test generation with a tool-per-language table (Hypothesis for Python, fast-check for TypeScript, proptest for Rust, rapid for Go).
+- **CLAUDE.md template** updated: building step 4 mentions property-based tests with pointer to build-governance.md.
+- **Critic review** (template + framework): Goal 1 now checks property test coverage — if the build plan states testable properties, corresponding property tests should exist (WARNING if missing).
+- **Planning methodology** updated: each build plan chunk should include a "Testable properties" section expressing what the spec says should hold, in plain language.
+- **`.gitignore`** updated: `.hypothesis/` directory excluded.
+
+**Migration:** Existing product repos receive governance and template updates via normal sync. No special migration needed. Dependencies are added by the LLM per-project when it first generates property tests (framework doesn't know the product's language).
+
 ## 2026-04-07: Doc-only gates, gate waivers, test fingerprint, defensive untrack, worktree awareness (v1.3.4)
 
 **Why:** Four user-reported friction points: (1) docs-only sessions were tripping the Critic and PR gates even though there was no code to review; (2) tests were being re-run unnecessarily by builders, the Critic, and the PR reviewer because saved evidence used `git_sha` alone, which can't track uncommitted edits; (3) `.session-handoff.md` and other session files were causing merge conflicts in product repos when they had been accidentally committed before being gitignored — sync had a fix but only on next sync; (4) agents working in git worktrees reported that `git_has_code_changes()` ignored the session baseline and that the hook was not surfacing worktree state.

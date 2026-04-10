@@ -36,6 +36,7 @@ Your goals, in priority order:
 - Tests verify behavior, not implementation details.
 - Test count in `project-state.yaml` has not decreased → **BLOCKING** if it has.
 - Changed or added behavior has corresponding test coverage (read the test files) → **BLOCKING** if untested.
+- If the build plan chunk states testable properties (idempotency, invariants, safety guarantees), check that corresponding property-based tests exist → **WARNING** if missing for stated properties.
 - Tests are well-structured: they test behavior not implementation, edge cases are covered, assertions are meaningful → **WARNING** if test quality is poor.
 - **Security in changed code:**
   - Input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable vector.

@@ -8,7 +8,17 @@ Each chunk follows this cycle. Do not skip steps.
 
 - [ ] **Clean baseline** — All tests pass. No uncommitted changes. Medium+ work uses a feature branch.
 - [ ] **Read the spec** — Chunk entry in build plan + referenced artifacts. Validate targets still exist — plans go stale. Run `/learnings [topic]` for relevant rules.
-- [ ] **Write tests alongside code, never after** — Tests are specification made executable. Unit for logic, integration for interactions, e2e for critical flows.
+- [ ] **Write tests alongside code, never after** — Tests are specification made executable. Unit for logic, integration for interactions, e2e for critical flows. **Generate property-based tests from the chunk's requirements** — express what the spec says should be true, then implement to satisfy them. Use the appropriate tool for your language:
+
+  | Language | Property testing tool |
+  |---|---|
+  | Python | [Hypothesis](https://hypothesis.readthedocs.io/) |
+  | TypeScript/JS | [fast-check](https://fast-check.dev/) |
+  | Rust | [proptest](https://crates.io/crates/proptest) |
+  | Go | [rapid](https://pkg.go.dev/pgregory.net/rapid) |
+  | Shell | Structured example-based tests with varied inputs |
+
+  Property tests complement example-based tests — they don't replace them. When the chunk spec says "function must return sorted output," write a property test that checks sorting for generated inputs, plus example tests for specific known cases.
 - [ ] **Implement** — Make tests pass. Follow `.prawduct/artifacts/project-preferences.md`. Write idiomatic code for the project's language. Prefer simplicity.
 - [ ] **Update artifacts** — Changed API surface, data model, architecture? Update the artifact now, not later.
 - [ ] **Verify** — Full test suite + product verification (launch it, call it, inspect output). Mocks alone are not verification. Record test results to `.prawduct/.test-evidence.json` (see format below). **Before running tests, run `python3 tools/product-hook test-status` — exit 0 means saved evidence still matches the current tree and re-running is unnecessary.**
