@@ -1,4 +1,4 @@
-# Build Governance — Prawduct
+# Build Governance — prawduct
 
 This defines **how** to build. The build plan defines **what**. Read both before starting.
 
@@ -36,7 +36,7 @@ After running the full test suite in the Verify step, write `.prawduct/.test-evi
 
 The `fingerprint` field combines HEAD SHA + a hash of every uncommitted file's contents — so it identifies the *exact* tree the tests ran against, including dirty state. After a successful test run, capture the fingerprint from `python3 tools/product-hook test-status` — its second line is `fingerprint=<full sha256>`, ready to drop into the JSON. The Critic and PR reviewer both read this file before running tests; if the fingerprint matches, they skip the re-run.
 
-**Skipping redundant test runs.** Builders, the Critic, and the PR reviewer all consult `test-status` before touching the test suite. Exit 0 ("current") means the saved evidence still applies and re-running is wasteful. Exit 1 ("stale") means the tree changed, the saved evidence is older than the current state, or tests had failures — re-run before relying on the result.
+**Skipping redundant test runs.** Builders, the Critic, and the PR reviewer all consult `test-status` before touching the test suite. Exit 0 ("current") means the saved evidence still applies and re-running is wasteful. Exit 1 ("stale") covers every other case: missing evidence, fingerprint drift, git_sha drift, failing tests in evidence, or git unavailable. For backward compatibility, evidence without a `fingerprint` field is accepted only when the working tree is clean and `git_sha` matches HEAD; new evidence should always include `fingerprint`.
 
 ## Gate Waivers
 
