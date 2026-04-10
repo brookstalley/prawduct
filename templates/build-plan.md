@@ -153,6 +153,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   <!-- For medium/high-risk products, note which test levels this chunk introduces
        or extends (e.g., "adds unit tests for scoring logic, integration test for
        DB persistence, extends E2E test for full score flow"). -->
+- **Testable properties:** [What the spec says should hold, in plain language. These become property-based tests during the build step. E.g., "idempotent on retry," "rejects all invalid inputs," "never stores plaintext passwords."]
 - **Acceptance criteria:** [Concrete checks — "npm test passes", "page renders scores", etc.]
 - **Done when:**
   1. Acceptance criteria met and tests pass

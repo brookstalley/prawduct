@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from hypothesis import given, settings, assume, HealthCheck
+from hypothesis import given, settings, assume
 from hypothesis import strategies as st
 
 # Load prawduct-setup.py via importlib (same pattern as existing tests)

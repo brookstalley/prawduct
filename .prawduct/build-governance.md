@@ -1,4 +1,4 @@
-# Build Governance — prawduct
+# Build Governance — Prawduct
 
 This defines **how** to build. The build plan defines **what**. Read both before starting.
 
