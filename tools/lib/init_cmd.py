@@ -15,6 +15,8 @@ from pathlib import Path
 from .core import (
     BLOCK_BEGIN,
     FRAMEWORK_DIR,
+    PLACE_ONCE_COPY,
+    PLACE_ONCE_TEMPLATES,
     PRAWDUCT_VERSION,
     SKILL_PLACEMENTS,
     TEMPLATES_DIR,
@@ -193,18 +195,9 @@ def run_init(target_dir: str, product_name: str) -> dict:
         manifest = create_manifest(target, FRAMEWORK_DIR, product_name, file_hashes)
 
         # Record place-once template hashes so sync can detect template drift
-        place_once_mapping = {
-            ".prawduct/artifacts/project-preferences.md": "templates/project-preferences.md",
-            ".prawduct/artifacts/boundary-patterns.md": "templates/boundary-patterns.md",
-            ".prawduct/change-log.md": "templates/change-log.md",
-            ".prawduct/backlog.md": "templates/backlog.md",
-        }
-        place_once_copy_mapping = {
-            "tests/conftest.py": "templates/conftest.py",
-        }
         pot: dict[str, dict] = {}
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        for rel_path, template_rel in place_once_mapping.items():
+        for rel_path, template_rel in PLACE_ONCE_TEMPLATES.items():
             template_path = TEMPLATES_DIR / template_rel.removeprefix("templates/")
             if template_path.is_file():
                 rendered = render_template(template_path, subs)
@@ -213,7 +206,7 @@ def run_init(target_dir: str, product_name: str) -> dict:
                     "template_hash": hashlib.sha256(rendered.encode()).hexdigest(),
                     "created_at": now,
                 }
-        for rel_path, template_rel in place_once_copy_mapping.items():
+        for rel_path, template_rel in PLACE_ONCE_COPY.items():
             template_path = TEMPLATES_DIR / template_rel.removeprefix("templates/")
             if template_path.is_file():
                 content = template_path.read_bytes()

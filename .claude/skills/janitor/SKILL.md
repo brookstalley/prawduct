@@ -67,10 +67,10 @@ Have product artifacts kept pace with framework template improvements?
 
 When the session briefing shows template drift advisories, or when running a full survey, compare the product's place-once artifacts against the current framework templates. Check `.prawduct/sync-manifest.json` for `place_once_templates` entries — stored hashes indicate which template version was used when the product was created.
 
-- test-specifications.md — Are there new testing strategies (e.g., property-based testing) in the template that this product's specs don't address?
 - project-preferences.md — Are there new preference fields the product hasn't declared?
 - conftest.py — Are there new test infrastructure patterns available?
 - boundary-patterns.md — Are there new contract surface types to consider?
+- test-specifications.md — Are there new testing strategies (e.g., property-based testing) in the template that this product's specs don't address? Note: this is a planning artifact, not a place-once file — it won't have a `place_once_templates` entry. Compare by reading the framework template directly from `framework_source/templates/test-specifications.md`.
 
 For each difference between the template and the product's version:
 1. Read the current framework template (resolve via `sync-manifest.json` → `framework_source`, or try `../prawduct`)

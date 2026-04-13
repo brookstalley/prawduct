@@ -96,6 +96,21 @@ MANAGED_FILES = {
     },
 }
 
+# Place-once files: created if missing, never overwritten. Template hashes
+# are tracked in manifest["place_once_templates"] for drift detection.
+# Shared between init_cmd.py and sync_cmd.py.
+PLACE_ONCE_TEMPLATES: dict[str, str] = {
+    ".prawduct/artifacts/project-preferences.md": "templates/project-preferences.md",
+    ".prawduct/artifacts/boundary-patterns.md": "templates/boundary-patterns.md",
+    ".prawduct/change-log.md": "templates/change-log.md",
+    ".prawduct/backlog.md": "templates/backlog.md",
+}
+
+# Place-once binary files: copied without template rendering.
+PLACE_ONCE_COPY: dict[str, str] = {
+    "tests/conftest.py": "templates/conftest.py",
+}
+
 # Maps old file paths to new file paths. Applied during sync before the
 # MANAGED_FILES loop, so product repos get file moves automatically.
 FILE_RENAMES: dict[str, str] = {

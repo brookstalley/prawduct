@@ -19,6 +19,8 @@ from .core import (
     BLOCK_END,
     FILE_RENAMES,
     MANAGED_FILES,
+    PLACE_ONCE_COPY,
+    PLACE_ONCE_TEMPLATES,
     PRAWDUCT_VERSION,
     _resolve_framework_dir,
     _try_pull_framework,
@@ -465,14 +467,8 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     # Template hashes are recorded in manifest["place_once_templates"] so
     # future syncs can detect when the framework template has evolved.
     manifest_snapshot_pot = dict(manifest.get("place_once_templates", {}))
-    place_once = {
-        ".prawduct/artifacts/project-preferences.md": "templates/project-preferences.md",
-        ".prawduct/artifacts/boundary-patterns.md": "templates/boundary-patterns.md",
-        ".prawduct/change-log.md": "templates/change-log.md",
-        ".prawduct/backlog.md": "templates/backlog.md",
-    }
     pot = manifest.get("place_once_templates", {})
-    for rel_path, template_rel in place_once.items():
+    for rel_path, template_rel in PLACE_ONCE_TEMPLATES.items():
         template_path = fw_dir / template_rel
         dst = product / rel_path
         if not dst.is_file():
@@ -495,10 +491,7 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
             }
 
     # Place-once binary files: copy if missing (no template rendering)
-    place_once_copy = {
-        "tests/conftest.py": "templates/conftest.py",
-    }
-    for rel_path, template_rel in place_once_copy.items():
+    for rel_path, template_rel in PLACE_ONCE_COPY.items():
         template_path = fw_dir / template_rel
         dst = product / rel_path
         if not dst.is_file():
