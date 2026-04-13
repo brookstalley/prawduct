@@ -14,7 +14,7 @@ Maps concerns to pipeline coverage. Use this as a starting point for completenes
 |---------|-----------|----------|---------|--------|-------|
 | Security | Structural: `handles_sensitive_data` | Security model artifact | building.md | Goal 1 (Nothing Is Broken: injection, secrets, input validation) + Goal 2 (auth completeness) | Full coverage |
 | Accessibility | discovery.md: Surface Accessibility Needs | project-state.yaml: `accessibility_approach` | building.md (Principle 7 ref) | Goal 2 (Nothing Is Missing) | Added in meta-reflection |
-| Testing | Inferred from risk level | Test specifications artifact | building.md: Test Discipline | Goal 1 (Nothing Is Broken) | Full coverage |
+| Testing | Inferred from risk level; domain-driven strategies (PBT, contract, state-machine) surfaced in discovery | Test specifications artifact (incl. Property-Based Tests section); project-preferences: Testing strategies | building.md: Test Discipline + "Test strategies match the domain" | Goal 1 (Nothing Is Broken: PBT NOTE check) | Full coverage incl. strategy guidance |
 | Cost awareness | discovery.md: Surface Operational Costs | project-state.yaml: `cost_estimates`, `cost_constraints` | — | — | Discovery + artifact only; no build/critic enforcement. Proportionate for now. |
 | Observability | discovery.md: Surface Observability Needs | Observability strategy artifact; project-state.yaml: `observability_approach` | building.md: observability guidance | Goal 6 (System Can Be Understood) | Full coverage |
 | Performance | Structural: `runs_unattended`, scale signals | NFR artifact | building.md (implicit) | Goal 5 (Decisions Were Deliberate) | Indirect coverage via NFR |
