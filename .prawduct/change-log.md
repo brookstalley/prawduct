@@ -3,7 +3,7 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-04-13: Property-based testing guidance + template drift advisory system (v1.4.0)
+## 2026-04-13: Property-based testing guidance + template drift advisory system (v1.3.5)
 
 **Why:** Property-based testing guidance was orphaned in a single test scenario file — no PBT knowledge flowed to product repos through templates, sync, or governance. Separately, the framework had no mechanism to notify existing products when place-once templates improved (test-specifications, project-preferences, conftest.py were fire-and-forget).
 
