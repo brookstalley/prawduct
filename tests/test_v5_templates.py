@@ -499,3 +499,113 @@ class TestLearningsSkillTemplate:
         assert "no topic" in template.lower() or "no topic was provided" in template.lower()
         assert "read-only" in template.lower()
         assert "500 tokens" in template
+
+
+# =============================================================================
+# Place-Once Templates — PBT Content
+# =============================================================================
+
+
+class TestTestSpecificationsPBT:
+    """Verify test-specifications.md template includes property-based testing."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("test-specifications.md")
+
+    def test_pbt_section_exists(self, template: str):
+        """Property-Based Tests section present between Edge Cases and State Transitions."""
+        assert "## Property-Based Tests" in template
+        edge_pos = template.index("Edge Cases")
+        pbt_pos = template.index("## Property-Based Tests")
+        state_pos = template.index("## State Transition Tests")
+        assert edge_pos < pbt_pos < state_pos
+
+    def test_pbt_section_has_guidance(self, template: str):
+        """PBT section explains when to include and common property types."""
+        pbt_start = template.index("## Property-Based Tests")
+        state_start = template.index("## State Transition Tests")
+        pbt_section = template[pbt_start:state_start].lower()
+        assert "round-trip" in pbt_section
+        assert "invariant" in pbt_section
+        assert "equivalence" in pbt_section
+
+    def test_pbt_section_has_format(self, template: str):
+        """PBT section includes the property definition format."""
+        pbt_start = template.index("## Property-Based Tests")
+        state_start = template.index("## State Transition Tests")
+        pbt_section = template[pbt_start:state_start]
+        assert "**Property:" in pbt_section
+        assert "Strategy:" in pbt_section
+
+    def test_pbt_is_conditional(self, template: str):
+        """PBT section explains when to skip (CRUD, UI-only)."""
+        pbt_start = template.index("## Property-Based Tests")
+        state_start = template.index("## State Transition Tests")
+        pbt_section = template[pbt_start:state_start].lower()
+        assert "skip" in pbt_section or "not applicable" in pbt_section
+
+
+class TestProjectPreferencesPBT:
+    """Verify project-preferences.md template includes testing strategies field."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("project-preferences.md")
+
+    def test_testing_strategies_field(self, template: str):
+        """Testing strategies field present in the Testing section."""
+        assert "Testing strategies" in template
+
+    def test_testing_strategies_between_coverage_and_location(self, template: str):
+        """Testing strategies field positioned between coverage and test location."""
+        coverage_pos = template.index("Coverage expectations")
+        strategies_pos = template.index("Testing strategies")
+        location_pos = template.index("Test location")
+        assert coverage_pos < strategies_pos < location_pos
+
+    def test_testing_strategies_has_examples(self, template: str):
+        """Testing strategies field includes PBT library examples."""
+        for line in template.split("\n"):
+            if "Testing strategies" in line:
+                lower = line.lower()
+                assert "hypothesis" in lower or "proptest" in lower
+                break
+
+
+class TestConftestPBT:
+    """Verify conftest.py template includes hypothesis configuration block."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("conftest.py")
+
+    def test_hypothesis_block_present(self, template: str):
+        """Hypothesis configuration block exists in conftest template."""
+        assert "hypothesis" in template.lower()
+
+    def test_hypothesis_block_is_commented(self, template: str):
+        """Hypothesis configuration is commented out (not active by default)."""
+        # Find the hypothesis section and verify lines are commented
+        lines = template.split("\n")
+        in_hypothesis = False
+        hypothesis_lines = []
+        for line in lines:
+            if "property-based testing" in line.lower() and line.strip().startswith("#"):
+                in_hypothesis = True
+            elif in_hypothesis and line.strip() == "":
+                # Allow blank lines in the block
+                continue
+            elif in_hypothesis:
+                if not line.strip().startswith("#") and line.strip():
+                    in_hypothesis = False
+                else:
+                    hypothesis_lines.append(line)
+        assert len(hypothesis_lines) > 0, "No commented hypothesis config found"
+
+    def test_hypothesis_profiles(self, template: str):
+        """Hypothesis block includes ci and dev profiles."""
+        lower = template.lower()
+        assert "ci" in lower
+        assert "dev" in lower
+        assert "register_profile" in template

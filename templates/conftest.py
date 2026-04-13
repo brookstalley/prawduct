@@ -45,3 +45,33 @@ def pytest_report_header(config):
             "NOTE: Running with pytest-xdist (parallel). Use '-n0' for sequential execution.",
         ]
     return []
+
+
+# =============================================================================
+# Property-based testing with Hypothesis (uncomment when needed)
+# =============================================================================
+#
+# Uncomment this section if your project uses property-based testing.
+# Applicable when: mathematical operations, data transformations,
+# serialization round-trips, parsing, or complex input validation.
+#
+# Install: pip install hypothesis
+# Docs: https://hypothesis.readthedocs.io/
+#
+# from hypothesis import settings, HealthCheck
+#
+# # CI profile: more examples, stricter deadlines
+# settings.register_profile(
+#     "ci",
+#     max_examples=200,
+#     suppress_health_check=[HealthCheck.too_slow],
+# )
+#
+# # Dev profile: fast feedback during development
+# settings.register_profile(
+#     "dev",
+#     max_examples=20,
+# )
+#
+# # Default to dev; CI sets HYPOTHESIS_PROFILE=ci
+# settings.load_profile("dev")
