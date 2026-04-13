@@ -461,39 +461,63 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 actions.append(f"Merged {rel_path}")
                 notes.append(f"Updated {rel_path} — re-read to pick up changes")
 
-    # Place-once files: create if missing, never tracked for ongoing sync
+    # Place-once files: create if missing, never tracked for ongoing sync.
+    # Template hashes are recorded in manifest["place_once_templates"] so
+    # future syncs can detect when the framework template has evolved.
+    manifest_snapshot_pot = dict(manifest.get("place_once_templates", {}))
     place_once = {
         ".prawduct/artifacts/project-preferences.md": "templates/project-preferences.md",
         ".prawduct/artifacts/boundary-patterns.md": "templates/boundary-patterns.md",
         ".prawduct/change-log.md": "templates/change-log.md",
         ".prawduct/backlog.md": "templates/backlog.md",
     }
+    pot = manifest.get("place_once_templates", {})
     for rel_path, template_rel in place_once.items():
-        dst = product / rel_path
-        if dst.is_file():
-            continue
         template_path = fw_dir / template_rel
-        if not template_path.is_file():
-            continue
-        rendered = render_template(template_path, subs)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text(rendered)
-        actions.append(f"Created {rel_path}")
+        dst = product / rel_path
+        if not dst.is_file():
+            if not template_path.is_file():
+                continue
+            rendered = render_template(template_path, subs)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(rendered)
+            actions.append(f"Created {rel_path}")
+        # Record template hash (on creation or bootstrap for pre-existing products).
+        # For pre-existing products without tracking, we bootstrap using the
+        # *current* template hash — we can't know what version was originally
+        # deployed, but we can detect drift from this sync forward.
+        if template_path.is_file() and rel_path not in pot:
+            rendered_for_hash = render_template(template_path, subs)
+            pot[rel_path] = {
+                "template": template_rel,
+                "template_hash": hashlib.sha256(rendered_for_hash.encode()).hexdigest(),
+                "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
 
     # Place-once binary files: copy if missing (no template rendering)
     place_once_copy = {
         "tests/conftest.py": "templates/conftest.py",
     }
     for rel_path, template_rel in place_once_copy.items():
-        dst = product / rel_path
-        if dst.is_file():
-            continue
         template_path = fw_dir / template_rel
-        if not template_path.is_file():
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(template_path, dst)
-        actions.append(f"Created {rel_path}")
+        dst = product / rel_path
+        if not dst.is_file():
+            if not template_path.is_file():
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, dst)
+            actions.append(f"Created {rel_path}")
+        # Record template hash for binary place-once files
+        if template_path.is_file() and rel_path not in pot:
+            content = template_path.read_bytes()
+            pot[rel_path] = {
+                "template": template_rel,
+                "template_hash": hashlib.sha256(content).hexdigest(),
+                "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+
+    if pot:
+        manifest["place_once_templates"] = pot
 
     # Ensure gitignore stays current
     gi_result = update_gitignore(product)
@@ -510,8 +534,11 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     for path in untracked:
         actions.append(f"Untracked {path} (removed from git index, file kept locally)")
 
-    # Update manifest
-    if actions:
+    # Update manifest when files changed or place-once tracking was bootstrapped
+    pot_bootstrapped = "place_once_templates" in manifest and manifest[
+        "place_once_templates"
+    ] != manifest_snapshot_pot
+    if actions or pot_bootstrapped:
         manifest["files"] = updated_files
         manifest["framework_version"] = PRAWDUCT_VERSION
         manifest["last_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

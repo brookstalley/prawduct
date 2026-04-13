@@ -1463,6 +1463,90 @@ class TestRunSyncPlaceOnce:
         assert "Python" in prefs.read_text()
         assert not any("project-preferences" in a for a in result["actions"])
 
+    def test_records_template_hash_on_creation(self, tmp_path: Path):
+        """Sync records template hash in manifest when creating a place-once file."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        pot = manifest.get("place_once_templates", {})
+        prefs_entry = pot.get(".prawduct/artifacts/project-preferences.md")
+        assert prefs_entry is not None
+        assert "template_hash" in prefs_entry
+        assert "template" in prefs_entry
+        assert "created_at" in prefs_entry
+        assert len(prefs_entry["template_hash"]) == 64  # SHA-256 hex
+
+    def test_bootstraps_hash_for_preexisting_file(self, tmp_path: Path):
+        """For products that already have the file, sync bootstraps hash tracking."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Pre-create the preferences file (simulating a pre-existing product)
+        prefs = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        prefs.write_text("# My custom preferences\n")
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        pot = manifest.get("place_once_templates", {})
+        assert ".prawduct/artifacts/project-preferences.md" in pot
+
+    def test_preserves_existing_hash_tracking(self, tmp_path: Path):
+        """Sync does not overwrite existing place_once_templates entries."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Run sync once to populate tracking
+        run_sync(str(product), framework_dir=str(fw))
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        original_hash = manifest["place_once_templates"][
+            ".prawduct/artifacts/project-preferences.md"
+        ]["template_hash"]
+
+        # Update the template in the framework
+        (fw / "templates" / "project-preferences.md").write_text(
+            "# Updated Preferences\n\n## New Section\n"
+        )
+
+        # Run sync again — hash should NOT be updated (preserves original)
+        run_sync(str(product), framework_dir=str(fw))
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        preserved_hash = manifest["place_once_templates"][
+            ".prawduct/artifacts/project-preferences.md"
+        ]["template_hash"]
+        assert preserved_hash == original_hash
+
+    def test_template_hash_is_deterministic(self, tmp_path: Path):
+        """Same template content produces the same hash."""
+        fw = self._setup_framework(tmp_path)
+
+        # Create two independent products
+        (tmp_path / "a").mkdir()
+        p1 = self._setup_product(tmp_path / "a", fw)
+        (tmp_path / "b").mkdir()
+        p2 = self._setup_product(tmp_path / "b", fw)
+
+        run_sync(str(p1), framework_dir=str(fw))
+        run_sync(str(p2), framework_dir=str(fw))
+
+        m1 = json.loads((p1 / ".prawduct" / "sync-manifest.json").read_text())
+        m2 = json.loads((p2 / ".prawduct" / "sync-manifest.json").read_text())
+
+        h1 = m1["place_once_templates"][".prawduct/artifacts/project-preferences.md"]["template_hash"]
+        h2 = m2["place_once_templates"][".prawduct/artifacts/project-preferences.md"]["template_hash"]
+        assert h1 == h2
+
 
 # =============================================================================
 # _try_pull_framework

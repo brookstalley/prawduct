@@ -6,8 +6,10 @@ Initializes a new product repo with all prawduct files, hooks, and settings.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .core import (
@@ -189,6 +191,40 @@ def run_init(target_dir: str, product_name: str) -> dict:
             rel = f".claude/skills/{skill_name}/SKILL.md"
             file_hashes[rel] = compute_hash(target / rel)
         manifest = create_manifest(target, FRAMEWORK_DIR, product_name, file_hashes)
+
+        # Record place-once template hashes so sync can detect template drift
+        place_once_mapping = {
+            ".prawduct/artifacts/project-preferences.md": "templates/project-preferences.md",
+            ".prawduct/artifacts/boundary-patterns.md": "templates/boundary-patterns.md",
+            ".prawduct/change-log.md": "templates/change-log.md",
+            ".prawduct/backlog.md": "templates/backlog.md",
+        }
+        place_once_copy_mapping = {
+            "tests/conftest.py": "templates/conftest.py",
+        }
+        pot: dict[str, dict] = {}
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for rel_path, template_rel in place_once_mapping.items():
+            template_path = TEMPLATES_DIR / template_rel.removeprefix("templates/")
+            if template_path.is_file():
+                rendered = render_template(template_path, subs)
+                pot[rel_path] = {
+                    "template": template_rel,
+                    "template_hash": hashlib.sha256(rendered.encode()).hexdigest(),
+                    "created_at": now,
+                }
+        for rel_path, template_rel in place_once_copy_mapping.items():
+            template_path = TEMPLATES_DIR / template_rel.removeprefix("templates/")
+            if template_path.is_file():
+                content = template_path.read_bytes()
+                pot[rel_path] = {
+                    "template": template_rel,
+                    "template_hash": hashlib.sha256(content).hexdigest(),
+                    "created_at": now,
+                }
+        if pot:
+            manifest["place_once_templates"] = pot
+
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
         actions.append("Created .prawduct/sync-manifest.json")
 

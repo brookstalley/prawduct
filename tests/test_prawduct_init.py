@@ -476,6 +476,23 @@ class TestSyncManifest:
         # Manifest already exists — should not be recreated
         assert not any("sync-manifest" in a for a in result["actions"])
 
+    def test_manifest_has_place_once_templates(self, tmp_path: Path):
+        """Init records place-once template hashes in manifest."""
+        run_init(str(tmp_path), "TestProduct")
+        manifest = json.loads(
+            (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        pot = manifest.get("place_once_templates", {})
+        assert ".prawduct/artifacts/project-preferences.md" in pot
+        assert ".prawduct/artifacts/boundary-patterns.md" in pot
+        assert ".prawduct/change-log.md" in pot or ".prawduct/backlog.md" in pot
+        # Verify structure
+        prefs = pot[".prawduct/artifacts/project-preferences.md"]
+        assert "template_hash" in prefs
+        assert "template" in prefs
+        assert "created_at" in prefs
+        assert len(prefs["template_hash"]) == 64
+
 
 # =============================================================================
 # Banner
