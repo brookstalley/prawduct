@@ -72,7 +72,7 @@ class TestBuildingMethodology:
 
     def test_token_budget(self):
         tokens = estimate_tokens(self.content)
-        assert tokens < 3800, f"building.md is ~{tokens} tokens, should be <3800"
+        assert tokens < 3900, f"building.md is ~{tokens} tokens, should be <3900"
 
 
 # =============================================================================
@@ -251,3 +251,38 @@ class TestMethodologyConsistency:
             assert "### Check 1:" not in content
             assert "### Check 2:" not in content
             assert "### Check 3:" not in content
+
+
+# =============================================================================
+# Property-based testing across methodology
+# =============================================================================
+
+
+class TestMethodologyPBT:
+    """Verify PBT guidance flows through discovery, building, and cross-cutting concerns."""
+
+    def test_discovery_mentions_domain_driven_testing_strategies(self):
+        """Discovery methodology mentions testing strategies tied to domains."""
+        discovery = read_file("methodology/discovery.md")
+        assert "property-based" in discovery.lower()
+        assert "test-specifications" in discovery.lower()
+
+    def test_building_has_test_strategies_principle(self):
+        """Building methodology has 'test strategies match the domain' principle."""
+        building = read_file("methodology/building.md")
+        assert "Test strategies match the domain" in building
+
+    def test_building_pbt_in_test_discipline(self):
+        """PBT is mentioned in Test Discipline section."""
+        building = read_file("methodology/building.md")
+        td_start = building.index("## Test Discipline")
+        critic_start = building.index("## The Critic")
+        td_section = building[td_start:critic_start]
+        assert "property-based" in td_section.lower()
+
+    def test_cross_cutting_concerns_updated(self):
+        """Cross-cutting concerns registry reflects PBT pipeline coverage."""
+        ccc = read_file(".prawduct/cross-cutting-concerns.md")
+        lower = ccc.lower()
+        assert "pbt" in lower or "property-based" in lower
+        assert "testing strategies" in lower

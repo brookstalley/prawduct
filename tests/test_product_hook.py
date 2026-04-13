@@ -1855,6 +1855,56 @@ class TestSessionBriefing:
         briefing = mod.assemble_session_briefing(tmp_path, [])
         assert "Framework:" not in briefing
 
+    def test_briefing_shows_advisories(self, tmp_path: Path):
+        """Advisories appear in session briefing when template drift detected."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        advisories = [
+            {
+                "type": "template_drift",
+                "file": ".prawduct/artifacts/project-preferences.md",
+                "template": "templates/project-preferences.md",
+                "message": "project-preferences.md template has new content — run /janitor scope=templates to review",
+            }
+        ]
+        briefing = mod.assemble_session_briefing(tmp_path, [], advisories=advisories)
+        assert "Advisories:" in briefing
+        assert "project-preferences.md" in briefing
+        assert "/janitor" in briefing
+
+    def test_briefing_no_advisories_when_empty(self, tmp_path: Path):
+        """No advisory section when list is empty."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        briefing = mod.assemble_session_briefing(tmp_path, [], advisories=[])
+        assert "Advisories:" not in briefing
+
     def test_briefing_shows_work_in_progress(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()

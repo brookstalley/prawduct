@@ -324,6 +324,21 @@ class TestCriticReviewGoalBased:
     def test_changelog_scope(self, template: str):
         assert "changelog" in template.lower()
 
+    def test_property_based_testing_note(self, template: str):
+        """Goal 1 includes a NOTE-level check for property-based testing."""
+        lower = template.lower()
+        assert "property-based" in lower
+        # It should be NOTE severity (advisory, not requirement)
+        # Find the PBT sentence and verify it's in Goal 1 context
+        goal1_start = template.index("### 1.")
+        goal2_start = template.index("### 2.")
+        goal1_section = template[goal1_start:goal2_start].lower()
+        assert "property-based" in goal1_section
+        # NOTE should appear after the last PBT mention (severity comes at end of sentence)
+        last_pbt = goal1_section.rfind("property-based")
+        after_last_pbt = goal1_section[last_pbt:]
+        assert "note" in after_last_pbt[:200]
+
 
 # =============================================================================
 # boundary-patterns.md — Template Structure
@@ -364,6 +379,57 @@ class TestBoundaryPatternsTemplate:
 # =============================================================================
 
 
+class TestBuildGovernancePBT:
+    """Verify build-governance.md includes property-based testing guidance."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("build-governance.md")
+
+    def test_pbt_in_test_discipline(self, template: str):
+        """Build governance mentions PBT in the test-writing step."""
+        lower = template.lower()
+        assert "property-based" in lower
+        # Should be in the "Write tests" step context, not in rules or session end
+        test_step_line = [
+            line for line in template.split("\n")
+            if "Write tests alongside code" in line
+        ]
+        assert len(test_step_line) == 1
+        assert "property-based" in test_step_line[0].lower()
+
+    def test_pbt_references_test_specifications(self, template: str):
+        """PBT guidance points to test-specifications for details."""
+        for line in template.split("\n"):
+            if "property-based" in line.lower():
+                assert "test-specifications" in line.lower()
+                break
+        else:
+            pytest.fail("PBT guidance line not found")
+
+
+class TestCriticSkillPBT:
+    """Verify framework Critic SKILL.md includes PBT check."""
+
+    @pytest.fixture
+    def skill(self) -> str:
+        return (FRAMEWORK_DIR / "agents" / "critic" / "SKILL.md").read_text()
+
+    def test_pbt_in_goal1(self, skill: str):
+        """Framework Critic Goal 1 includes property-based testing check."""
+        goal1_start = skill.index("### 1.")
+        goal2_start = skill.index("### 2.")
+        goal1_section = skill[goal1_start:goal2_start].lower()
+        assert "property-based" in goal1_section
+
+    def test_pbt_is_note_severity(self, skill: str):
+        """PBT check is NOTE severity (advisory, not blocking)."""
+        for line in skill.split("\n"):
+            if "property-based" in line.lower():
+                assert "note" in line.lower()
+                break
+
+
 class TestCrossTemplateConsistency:
     """Verify templates reference each other correctly."""
 
@@ -390,6 +456,18 @@ class TestCrossTemplateConsistency:
         assert "boundary-patterns" in template
         assert "project-preferences" in template
         assert ".critic-findings.json" in template
+
+    def test_pbt_consistency_across_synced_templates(self):
+        """All synced governance files mention property-based testing."""
+        build_gov = read_template("build-governance.md").lower()
+        critic = read_template("critic-review.md").lower()
+        critic_skill = (FRAMEWORK_DIR / "agents" / "critic" / "SKILL.md").read_text().lower()
+        for name, content in [
+            ("build-governance.md", build_gov),
+            ("critic-review.md", critic),
+            ("agents/critic/SKILL.md", critic_skill),
+        ]:
+            assert "property-based" in content, f"{name} missing PBT guidance"
 
 
 # =============================================================================
@@ -421,3 +499,165 @@ class TestLearningsSkillTemplate:
         assert "no topic" in template.lower() or "no topic was provided" in template.lower()
         assert "read-only" in template.lower()
         assert "500 tokens" in template
+
+
+# =============================================================================
+# Place-Once Templates — PBT Content
+# =============================================================================
+
+
+class TestTestSpecificationsPBT:
+    """Verify test-specifications.md template includes property-based testing."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("test-specifications.md")
+
+    def test_pbt_section_exists(self, template: str):
+        """Property-Based Tests section present between Edge Cases and State Transitions."""
+        assert "## Property-Based Tests" in template
+        edge_pos = template.index("Edge Cases")
+        pbt_pos = template.index("## Property-Based Tests")
+        state_pos = template.index("## State Transition Tests")
+        assert edge_pos < pbt_pos < state_pos
+
+    def test_pbt_section_has_guidance(self, template: str):
+        """PBT section explains when to include and common property types."""
+        pbt_start = template.index("## Property-Based Tests")
+        state_start = template.index("## State Transition Tests")
+        pbt_section = template[pbt_start:state_start].lower()
+        assert "round-trip" in pbt_section
+        assert "invariant" in pbt_section
+        assert "equivalence" in pbt_section
+
+    def test_pbt_section_has_format(self, template: str):
+        """PBT section includes the property definition format."""
+        pbt_start = template.index("## Property-Based Tests")
+        state_start = template.index("## State Transition Tests")
+        pbt_section = template[pbt_start:state_start]
+        assert "**Property:" in pbt_section
+        assert "Strategy:" in pbt_section
+
+    def test_pbt_is_conditional(self, template: str):
+        """PBT section explains when to skip (CRUD, UI-only)."""
+        pbt_start = template.index("## Property-Based Tests")
+        state_start = template.index("## State Transition Tests")
+        pbt_section = template[pbt_start:state_start].lower()
+        assert "skip" in pbt_section or "not applicable" in pbt_section
+
+
+class TestProjectPreferencesPBT:
+    """Verify project-preferences.md template includes testing strategies field."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("project-preferences.md")
+
+    def test_testing_strategies_field(self, template: str):
+        """Testing strategies field present in the Testing section."""
+        assert "Testing strategies" in template
+
+    def test_testing_strategies_between_coverage_and_location(self, template: str):
+        """Testing strategies field positioned between coverage and test location."""
+        coverage_pos = template.index("Coverage expectations")
+        strategies_pos = template.index("Testing strategies")
+        location_pos = template.index("Test location")
+        assert coverage_pos < strategies_pos < location_pos
+
+    def test_testing_strategies_has_examples(self, template: str):
+        """Testing strategies field includes PBT library examples."""
+        for line in template.split("\n"):
+            if "Testing strategies" in line:
+                lower = line.lower()
+                assert "hypothesis" in lower or "proptest" in lower
+                break
+
+
+class TestConftestPBT:
+    """Verify conftest.py template includes hypothesis configuration block."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("conftest.py")
+
+    def test_hypothesis_block_present(self, template: str):
+        """Hypothesis configuration block exists in conftest template."""
+        assert "hypothesis" in template.lower()
+
+    def test_hypothesis_block_is_commented(self, template: str):
+        """Hypothesis configuration is commented out (not active by default)."""
+        # Find the hypothesis section and verify lines are commented
+        lines = template.split("\n")
+        in_hypothesis = False
+        hypothesis_lines = []
+        for line in lines:
+            if "property-based testing" in line.lower() and line.strip().startswith("#"):
+                in_hypothesis = True
+            elif in_hypothesis and line.strip() == "":
+                # Allow blank lines in the block
+                continue
+            elif in_hypothesis:
+                if not line.strip().startswith("#") and line.strip():
+                    in_hypothesis = False
+                else:
+                    hypothesis_lines.append(line)
+        assert len(hypothesis_lines) > 0, "No commented hypothesis config found"
+
+    def test_hypothesis_profiles(self, template: str):
+        """Hypothesis block includes ci and dev profiles."""
+        lower = template.lower()
+        assert "ci" in lower
+        assert "dev" in lower
+        assert "register_profile" in template
+
+
+# =============================================================================
+# Janitor Skill — Template Currency and Framework Health
+# =============================================================================
+
+
+class TestJanitorSkillTemplateCurrency:
+    """Verify janitor skill has Template Currency theme and supporting changes."""
+
+    @pytest.fixture
+    def skill(self) -> str:
+        return (FRAMEWORK_DIR / ".claude" / "skills" / "janitor" / "SKILL.md").read_text()
+
+    def test_template_currency_theme_exists(self, skill: str):
+        """Template Currency investigation theme present."""
+        assert "### Template Currency" in skill
+
+    def test_template_currency_between_artifact_fitness_and_test_fitness(self, skill: str):
+        """Template Currency positioned after Artifact Fitness, before Test Fitness."""
+        artifact_pos = skill.index("### Artifact Fitness")
+        template_pos = skill.index("### Template Currency")
+        test_pos = skill.index("### Test Fitness")
+        assert artifact_pos < template_pos < test_pos
+
+    def test_template_currency_mentions_key_artifacts(self, skill: str):
+        """Theme mentions the main place-once artifacts to compare."""
+        tc_start = skill.index("### Template Currency")
+        tc_end = skill.index("### Test Fitness")
+        tc_section = skill[tc_start:tc_end]
+        assert "test-specifications" in tc_section
+        assert "project-preferences" in tc_section
+        assert "conftest.py" in tc_section
+
+    def test_templates_scope_shorthand(self, skill: str):
+        """'templates' is listed as a theme shorthand for scope."""
+        assert "templates" in skill.lower().split("theme shorthand for scope:")[1].split("\n")[0]
+
+    def test_framework_health_precheck_in_step1(self, skill: str):
+        """Step 1 includes framework health pre-check."""
+        step1_start = skill.index("### Step 1: Orient")
+        step2_start = skill.index("### Step 2: Survey")
+        step1 = skill[step1_start:step2_start]
+        assert "sync-manifest.json" in step1
+        assert "/prawduct-doctor" in step1
+
+    def test_hash_update_in_step7(self, skill: str):
+        """Step 7 includes guidance to update template hashes after review."""
+        step7_start = skill.index("### Step 7: Close")
+        step7 = skill[step7_start:]
+        assert "place_once_templates" in step7
+        assert "template_hash" in step7 or "template hash" in step7

@@ -40,14 +40,15 @@ def get_prawduct_dir(project_dir: Path) -> Path:
 # =============================================================================
 
 
-def try_sync(project_dir: Path, *, quiet: bool = False) -> dict | None:
+def try_sync(project_dir: Path, *, quiet: bool = False) -> tuple[dict | None, list[dict]]:
     """Attempt to run framework sync. Silently does nothing on any failure.
 
     When quiet=False (default), prints sync actions for Claude's context.
     When quiet=True, runs silently.
 
-    Returns version upgrade info dict with 'previous_version' and 'new_version'
-    if a version change occurred, or None otherwise.
+    Returns a tuple of (upgrade_info, advisories):
+    - upgrade_info: dict with 'previous_version' and 'new_version' if version changed, else None
+    - advisories: list of template drift advisory dicts from sync
     """
     try:
         manifest_path = project_dir / ".prawduct" / "sync-manifest.json"
@@ -59,7 +60,7 @@ def try_sync(project_dir: Path, *, quiet: bool = False) -> dict | None:
             # Prawduct repo without manifest — sync will bootstrap one
             fw_source = os.environ.get("PRAWDUCT_FRAMEWORK_DIR") or ""
         else:
-            return  # Not a prawduct repo
+            return None, []  # Not a prawduct repo
 
         # Fall back to sibling ../prawduct if configured source not found
         if not fw_source or not Path(fw_source).is_dir():
@@ -68,14 +69,14 @@ def try_sync(project_dir: Path, *, quiet: bool = False) -> dict | None:
                 fw_source = str(sibling)
 
         if not fw_source:
-            return
+            return None, []
 
         sync_script = Path(fw_source) / "tools" / "prawduct-setup.py"
         if not sync_script.is_file():
             # Backward compat: fall back to old script name
             sync_script = Path(fw_source) / "tools" / "prawduct-sync.py"
         if not sync_script.is_file():
-            return
+            return None, []
 
         result = subprocess.run(
             [sys.executable, str(sync_script), "sync", str(project_dir), "--framework-dir", fw_source, "--json"],
@@ -85,11 +86,13 @@ def try_sync(project_dir: Path, *, quiet: bool = False) -> dict | None:
         )
 
         upgrade_info = None
+        advisories: list[dict] = []
         if result.returncode == 0 and result.stdout.strip():
             try:
                 sync_result = json.loads(result.stdout)
                 actions = sync_result.get("actions", [])
                 notes = sync_result.get("notes", [])
+                advisories = sync_result.get("advisories", [])
 
                 # Check for version upgrade
                 version = sync_result.get("version", {})
@@ -120,11 +123,11 @@ def try_sync(project_dir: Path, *, quiet: bool = False) -> dict | None:
                 pass
         # Check if the framework is stale relative to this product's last sync
         _check_framework_version(project_dir, fw_source, quiet)
-        return upgrade_info
+        return upgrade_info, advisories
 
     except Exception as e:  # prawduct:ok-broad-except — sync must never block session start
         print(f"NOTE: Framework sync failed: {e}", file=sys.stderr)
-        return None
+        return None, []
 
 
 def _check_framework_version(project_dir: Path, fw_source: str, quiet: bool) -> None:
@@ -1093,7 +1096,11 @@ def _get_other_branch_wip(prawduct_dir: Path, current_branch: str) -> list[str]:
 
 
 def assemble_session_briefing(
-    project_dir: Path, staleness: list[str], *, upgrade_info: dict | None = None
+    project_dir: Path,
+    staleness: list[str],
+    *,
+    upgrade_info: dict | None = None,
+    advisories: list[dict] | None = None,
 ) -> str:
     """Assemble session briefing text. Target: <400 tokens (excluding handoff pointer)."""
     prawduct_dir = get_prawduct_dir(project_dir)
@@ -1156,6 +1163,13 @@ def assemble_session_briefing(
     if staleness:
         for s in staleness:
             lines.append(f"Stale: {s}")
+
+    # Template drift advisories from sync
+    if advisories:
+        lines.append(f"Advisories: {len(advisories)} template(s) have new content since project setup")
+        for adv in advisories:
+            msg = adv.get("message", "template drift detected")
+            lines.append(f"  - {msg}")
 
     # CLAUDE.md size check
     claude_md_path = project_dir / "CLAUDE.md"
@@ -1839,7 +1853,7 @@ def cmd_clear(project_dir: Path) -> int:
             )
 
     # Trigger framework sync (best-effort)
-    upgrade_info = try_sync(project_dir)
+    upgrade_info, sync_advisories = try_sync(project_dir)
 
     # Capture git status baseline AFTER sync so sync-modified files
     # (settings.json, product-hook, etc.) don't trigger spurious stop-hook gates
@@ -1852,7 +1866,9 @@ def cmd_clear(project_dir: Path) -> int:
     if prawduct_dir.is_dir():
         try:
             staleness = staleness_scan(project_dir)
-            briefing = assemble_session_briefing(project_dir, staleness, upgrade_info=upgrade_info)
+            briefing = assemble_session_briefing(
+                project_dir, staleness, upgrade_info=upgrade_info, advisories=sync_advisories
+            )
             print(briefing)
         except Exception as e:  # prawduct:ok-broad-except — briefing must never block session start
             print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)

@@ -108,6 +108,40 @@ last_validated: null
      - Action: [the boundary action]
      - Expected: [correct behavior at the boundary] -->
 
+## Property-Based Tests
+
+<!-- Include this section when the domain involves mathematical operations,
+     data transformations, serialization/deserialization round-trips, parsing,
+     stateful protocols, or complex input validation. Property-based tests
+     complement example-based tests by verifying that invariants hold across
+     many automatically generated inputs, catching edge cases that hand-picked
+     examples miss.
+
+     Skip this section when the product is purely CRUD, UI-driven, or has no
+     transformation logic where invariants apply.
+
+     Common property types:
+
+     **Round-trip fidelity** — Convert A→B→A and verify the result matches
+     (within tolerance for lossy transformations). Applies to: serialization,
+     encoding, format conversion, compression.
+
+     **Invariant preservation** — After a transformation, some property of the
+     data must still hold. Applies to: sorting (output is same length, same
+     elements), filtering (output is subset), mathematical operations
+     (result within valid range).
+
+     **Equivalence** — Two implementations or paths produce the same result.
+     Applies to: optimized vs. reference implementation, cached vs. computed,
+     batch vs. single-item processing.
+
+     Use the following format for each property:
+
+     **Property: [invariant name]**
+     - Strategy: [what inputs to generate, what property to verify]
+     - Example: [one concrete instance demonstrating the property]
+     - Library: [hypothesis, proptest, fast-check, etc. — match project-preferences] -->
+
 ## State Transition Tests
 
 <!-- Only include if the Data Model defines state machines.

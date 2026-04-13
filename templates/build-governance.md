@@ -8,7 +8,7 @@ Each chunk follows this cycle. Do not skip steps.
 
 - [ ] **Clean baseline** — All tests pass. No uncommitted changes. Medium+ work uses a feature branch.
 - [ ] **Read the spec** — Chunk entry in build plan + referenced artifacts. Validate targets still exist — plans go stale. Run `/learnings [topic]` for relevant rules.
-- [ ] **Write tests alongside code, never after** — Tests are specification made executable. Unit for logic, integration for interactions, e2e for critical flows.
+- [ ] **Write tests alongside code, never after** — Tests are specification made executable. Unit for logic, integration for interactions, e2e for critical flows. When the domain involves transformations, round-trips, serialization, or complex input validation, consider property-based tests alongside example-based tests (see test-specifications for details).
 - [ ] **Implement** — Make tests pass. Follow `.prawduct/artifacts/project-preferences.md`. Write idiomatic code for the project's language. Prefer simplicity.
 - [ ] **Update artifacts** — Changed API surface, data model, architecture? Update the artifact now, not later.
 - [ ] **Verify** — Full test suite + product verification (launch it, call it, inspect output). Mocks alone are not verification. Record test results to `.prawduct/.test-evidence.json` (see format below). **Before running tests, run `python3 tools/product-hook test-status` — exit 0 means saved evidence still matches the current tree and re-running is unnecessary.**

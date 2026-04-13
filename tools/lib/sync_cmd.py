@@ -19,6 +19,8 @@ from .core import (
     BLOCK_END,
     FILE_RENAMES,
     MANAGED_FILES,
+    PLACE_ONCE_COPY,
+    PLACE_ONCE_TEMPLATES,
     PRAWDUCT_VERSION,
     _resolve_framework_dir,
     _try_pull_framework,
@@ -461,39 +463,82 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 actions.append(f"Merged {rel_path}")
                 notes.append(f"Updated {rel_path} — re-read to pick up changes")
 
-    # Place-once files: create if missing, never tracked for ongoing sync
-    place_once = {
-        ".prawduct/artifacts/project-preferences.md": "templates/project-preferences.md",
-        ".prawduct/artifacts/boundary-patterns.md": "templates/boundary-patterns.md",
-        ".prawduct/change-log.md": "templates/change-log.md",
-        ".prawduct/backlog.md": "templates/backlog.md",
-    }
-    for rel_path, template_rel in place_once.items():
-        dst = product / rel_path
-        if dst.is_file():
-            continue
+    # Place-once files: create if missing, never tracked for ongoing sync.
+    # Template hashes are recorded in manifest["place_once_templates"] so
+    # future syncs can detect when the framework template has evolved.
+    manifest_snapshot_pot = dict(manifest.get("place_once_templates", {}))
+    pot = manifest.get("place_once_templates", {})
+    for rel_path, template_rel in PLACE_ONCE_TEMPLATES.items():
         template_path = fw_dir / template_rel
-        if not template_path.is_file():
-            continue
-        rendered = render_template(template_path, subs)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text(rendered)
-        actions.append(f"Created {rel_path}")
+        dst = product / rel_path
+        if not dst.is_file():
+            if not template_path.is_file():
+                continue
+            rendered = render_template(template_path, subs)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(rendered)
+            actions.append(f"Created {rel_path}")
+        # Record template hash (on creation or bootstrap for pre-existing products).
+        # For pre-existing products without tracking, we bootstrap using the
+        # *current* template hash — we can't know what version was originally
+        # deployed, but we can detect drift from this sync forward.
+        if template_path.is_file() and rel_path not in pot:
+            rendered_for_hash = render_template(template_path, subs)
+            pot[rel_path] = {
+                "template": template_rel,
+                "template_hash": hashlib.sha256(rendered_for_hash.encode()).hexdigest(),
+                "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
 
     # Place-once binary files: copy if missing (no template rendering)
-    place_once_copy = {
-        "tests/conftest.py": "templates/conftest.py",
-    }
-    for rel_path, template_rel in place_once_copy.items():
+    for rel_path, template_rel in PLACE_ONCE_COPY.items():
+        template_path = fw_dir / template_rel
         dst = product / rel_path
-        if dst.is_file():
-            continue
+        if not dst.is_file():
+            if not template_path.is_file():
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, dst)
+            actions.append(f"Created {rel_path}")
+        # Record template hash for binary place-once files
+        if template_path.is_file() and rel_path not in pot:
+            content = template_path.read_bytes()
+            pot[rel_path] = {
+                "template": template_rel,
+                "template_hash": hashlib.sha256(content).hexdigest(),
+                "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+
+    if pot:
+        manifest["place_once_templates"] = pot
+
+    # Detect template drift: compare stored hashes against current templates.
+    # Only check entries that existed before this sync (not freshly bootstrapped
+    # ones, which by definition match the current template).
+    advisories: list[dict[str, str]] = []
+    for rel_path, entry in manifest_snapshot_pot.items():
+        template_rel = entry.get("template", "")
         template_path = fw_dir / template_rel
         if not template_path.is_file():
             continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(template_path, dst)
-        actions.append(f"Created {rel_path}")
+        stored_hash = entry.get("template_hash", "")
+        if not stored_hash:
+            continue
+        # Compute current template hash (same method used at storage time)
+        if template_rel.endswith(".py"):
+            current_hash = hashlib.sha256(template_path.read_bytes()).hexdigest()
+        else:
+            current_content = render_template(template_path, subs)
+            current_hash = hashlib.sha256(current_content.encode()).hexdigest()
+        if current_hash != stored_hash:
+            # Template has evolved since this product was created/last reviewed
+            short_name = rel_path.rsplit("/", 1)[-1]
+            advisories.append({
+                "type": "template_drift",
+                "file": rel_path,
+                "template": template_rel,
+                "message": f"{short_name} template has new content since project setup — run /janitor scope=templates to review",
+            })
 
     # Ensure gitignore stays current
     gi_result = update_gitignore(product)
@@ -510,8 +555,11 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     for path in untracked:
         actions.append(f"Untracked {path} (removed from git index, file kept locally)")
 
-    # Update manifest
-    if actions:
+    # Update manifest when files changed or place-once tracking was bootstrapped
+    pot_bootstrapped = "place_once_templates" in manifest and manifest[
+        "place_once_templates"
+    ] != manifest_snapshot_pot
+    if actions or pot_bootstrapped:
         manifest["files"] = updated_files
         manifest["framework_version"] = PRAWDUCT_VERSION
         manifest["last_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -528,5 +576,6 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         "reason": "ok" if actions else "no updates needed",
         "actions": actions,
         "notes": notes,
+        "advisories": advisories,
         "version": version_info,
     }

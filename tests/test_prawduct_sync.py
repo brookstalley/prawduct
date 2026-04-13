@@ -1463,6 +1463,168 @@ class TestRunSyncPlaceOnce:
         assert "Python" in prefs.read_text()
         assert not any("project-preferences" in a for a in result["actions"])
 
+    def test_records_template_hash_on_creation(self, tmp_path: Path):
+        """Sync records template hash in manifest when creating a place-once file."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        pot = manifest.get("place_once_templates", {})
+        prefs_entry = pot.get(".prawduct/artifacts/project-preferences.md")
+        assert prefs_entry is not None
+        assert "template_hash" in prefs_entry
+        assert "template" in prefs_entry
+        assert "created_at" in prefs_entry
+        assert len(prefs_entry["template_hash"]) == 64  # SHA-256 hex
+
+    def test_bootstraps_hash_for_preexisting_file(self, tmp_path: Path):
+        """For products that already have the file, sync bootstraps hash tracking."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Pre-create the preferences file (simulating a pre-existing product)
+        prefs = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        prefs.write_text("# My custom preferences\n")
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        pot = manifest.get("place_once_templates", {})
+        assert ".prawduct/artifacts/project-preferences.md" in pot
+
+    def test_preserves_existing_hash_tracking(self, tmp_path: Path):
+        """Sync does not overwrite existing place_once_templates entries."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Run sync once to populate tracking
+        run_sync(str(product), framework_dir=str(fw))
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        original_hash = manifest["place_once_templates"][
+            ".prawduct/artifacts/project-preferences.md"
+        ]["template_hash"]
+
+        # Update the template in the framework
+        (fw / "templates" / "project-preferences.md").write_text(
+            "# Updated Preferences\n\n## New Section\n"
+        )
+
+        # Run sync again — hash should NOT be updated (preserves original)
+        run_sync(str(product), framework_dir=str(fw))
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        preserved_hash = manifest["place_once_templates"][
+            ".prawduct/artifacts/project-preferences.md"
+        ]["template_hash"]
+        assert preserved_hash == original_hash
+
+    def test_template_hash_is_deterministic(self, tmp_path: Path):
+        """Same template content produces the same hash."""
+        fw = self._setup_framework(tmp_path)
+
+        # Create two independent products
+        (tmp_path / "a").mkdir()
+        p1 = self._setup_product(tmp_path / "a", fw)
+        (tmp_path / "b").mkdir()
+        p2 = self._setup_product(tmp_path / "b", fw)
+
+        run_sync(str(p1), framework_dir=str(fw))
+        run_sync(str(p2), framework_dir=str(fw))
+
+        m1 = json.loads((p1 / ".prawduct" / "sync-manifest.json").read_text())
+        m2 = json.loads((p2 / ".prawduct" / "sync-manifest.json").read_text())
+
+        h1 = m1["place_once_templates"][".prawduct/artifacts/project-preferences.md"]["template_hash"]
+        h2 = m2["place_once_templates"][".prawduct/artifacts/project-preferences.md"]["template_hash"]
+        assert h1 == h2
+
+
+# =============================================================================
+# run_sync — template drift advisories
+# =============================================================================
+
+
+class TestRunSyncTemplateDrift(TestRunSyncPlaceOnce):
+    """Tests for template drift detection and advisory generation."""
+
+    def test_no_advisory_when_template_unchanged(self, tmp_path: Path):
+        """No advisory when template hasn't changed since tracking was set up."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # First sync: creates file + bootstraps tracking
+        run_sync(str(product), framework_dir=str(fw))
+        # Second sync: template unchanged, no advisory
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        assert result.get("advisories", []) == []
+
+    def test_advisory_when_template_changed(self, tmp_path: Path):
+        """Advisory generated when template evolves after tracking was set up."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # First sync: creates file + bootstraps tracking
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Update the template in the framework
+        (fw / "templates" / "project-preferences.md").write_text(
+            "# Updated Preferences\n\n## New PBT Section\n\n- **Testing strategies**: hypothesis\n"
+        )
+
+        # Second sync: template changed → advisory
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        advisories = result.get("advisories", [])
+        assert len(advisories) == 1
+        assert advisories[0]["type"] == "template_drift"
+        assert "project-preferences.md" in advisories[0]["file"]
+        assert "/janitor" in advisories[0]["message"]
+
+    def test_advisory_persists_across_syncs(self, tmp_path: Path):
+        """Advisory keeps firing until template hash is updated (by janitor)."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Update template
+        (fw / "templates" / "project-preferences.md").write_text("# V2\n")
+
+        # Advisory on second sync
+        result1 = run_sync(str(product), framework_dir=str(fw))
+        assert len(result1.get("advisories", [])) == 1
+
+        # Advisory persists on third sync (hash not updated)
+        result2 = run_sync(str(product), framework_dir=str(fw))
+        assert len(result2.get("advisories", [])) == 1
+
+    def test_no_advisory_for_freshly_bootstrapped(self, tmp_path: Path):
+        """No advisory for entries just bootstrapped in this sync."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Pre-create preferences (simulating pre-existing product)
+        prefs = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        prefs.write_text("# My prefs\n")
+
+        # Now update the template BEFORE first sync
+        (fw / "templates" / "project-preferences.md").write_text("# Different\n")
+
+        # First sync: bootstraps with current template hash → no advisory
+        # (we can't detect drift from the original because we just started tracking)
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result.get("advisories", []) == []
+
 
 # =============================================================================
 # _try_pull_framework

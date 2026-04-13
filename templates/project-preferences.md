@@ -21,6 +21,7 @@ Developer preferences for how code is written in this project. Captured during d
 - **Framework**: (e.g., pytest, vitest, go test)
 - **Style**: (e.g., descriptive names, AAA pattern, table-driven)
 - **Coverage expectations**: (e.g., happy path + error cases, comprehensive edge cases)
+- **Testing strategies**: (e.g., property-based (hypothesis), property-based (proptest), contract testing, not applicable)
 - **Test location**: (e.g., tests/ mirror of src/, colocated, __tests__/)
 - **Parallelization**: (e.g., pytest-xdist with --dist loadgroup, vitest threads)
 

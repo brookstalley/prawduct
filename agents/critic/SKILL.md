@@ -37,6 +37,7 @@ Your goals, in priority order:
 - Test count in `project-state.yaml` has not decreased → **BLOCKING** if it has.
 - Changed or added behavior has corresponding test coverage (read the test files) → **BLOCKING** if untested.
 - Tests are well-structured: they test behavior not implementation, edge cases are covered, assertions are meaningful → **WARNING** if test quality is poor.
+- For code involving mathematical operations, data transformations, serialization round-trips, or complex input validation — consider whether property-based tests would strengthen coverage beyond example-based tests alone. If test-specifications call for property-based tests, verify they exist → **NOTE** if absent.
 - **Security in changed code:**
   - Input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable vector.
   - No injection vectors: SQL, command injection, XSS, path traversal → **BLOCKING**.
