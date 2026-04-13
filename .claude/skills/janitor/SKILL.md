@@ -61,6 +61,26 @@ Do all forms of documentation — comments, READMEs, specs, configs, generated d
 - Orphaned docs describing removed or replaced features
 - TODOs for work that was completed, or abandoned long enough to decide on
 
+### Template Currency
+
+Have product artifacts kept pace with framework template improvements?
+
+When the session briefing shows template drift advisories, or when running a full survey, compare the product's place-once artifacts against the current framework templates. Check `.prawduct/sync-manifest.json` for `place_once_templates` entries — stored hashes indicate which template version was used when the product was created.
+
+- test-specifications.md — Are there new testing strategies (e.g., property-based testing) in the template that this product's specs don't address?
+- project-preferences.md — Are there new preference fields the product hasn't declared?
+- conftest.py — Are there new test infrastructure patterns available?
+- boundary-patterns.md — Are there new contract surface types to consider?
+
+For each difference between the template and the product's version:
+1. Read the current framework template (resolve via `sync-manifest.json` → `framework_source`, or try `../prawduct`)
+2. Read the product's version of the file
+3. Identify sections or fields in the template that are absent from the product's version
+4. Assess whether each missing section is relevant to this product's domain and structural characteristics
+5. Recommend additions where appropriate, noting "not applicable" where not
+
+This is advisory, not mechanical — a CLI tool doesn't need property-based testing guidance just because the template now includes it. Use the product's structural characteristics and domain to judge relevance.
+
 ### Test Fitness
 
 Are tests earning their maintenance cost? Do they catch real bugs and document real behavior?
@@ -109,7 +129,7 @@ Arguments are optional. When provided, they adjust the janitor's behavior:
 - **Scope**: Limit investigation to specific themes. Example: `/janitor scope=vcs,tests`
 - **Survey only**: Produce findings without executing fixes. Example: `/janitor survey-only`
 
-Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `tests`, `deps`, `control`, `obsolescence`
+Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `templates`, `tests`, `deps`, `control`, `obsolescence`
 
 ## Process
 
@@ -118,6 +138,8 @@ Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `tests`, `deps`, 
 Understand the project before investigating. Read `project-state.yaml` to learn the domain, structural characteristics, language, and current state. Scan the directory structure. Identify the build system and test infrastructure. Read `.prawduct/backlog.md` if it exists — backlog items may overlap with maintenance findings.
 
 Also read `project-preferences.md` (if present in `.prawduct/artifacts/`) to understand the project's declared conventions — language idioms, code style, testing approach, architecture patterns, and workflow preferences. These preferences are the project's stated standards, but they may not reflect current practice. Note them for comparison during the survey.
+
+**Framework health pre-check.** Verify `.prawduct/sync-manifest.json` exists and `framework_source` is reachable. If framework infrastructure is broken or the manifest is missing, advise running `/prawduct-doctor` before proceeding — the janitor needs a healthy framework connection for Template Currency checks and general context.
 
 This context shapes how you interpret every theme. "Structural clarity" means something different for a 500-line CLI tool than for a multi-service platform. "Controllability" means something different for firmware with a hardware simulator than for a web app with a dev server.
 
@@ -198,6 +220,7 @@ Review the build cycle in this project's CLAUDE.md before writing any code. Foll
 
 After all approved work is complete:
 - Summarize what was changed, what was deferred, and why
+- If template drift advisories were addressed, update the stored template hashes in `.prawduct/sync-manifest.json` → `place_once_templates` to mark them as reviewed. For each entry where the product's artifact was updated to incorporate the template's new content, recompute the template hash from the current framework template and write it back. This clears the advisory from future session briefings.
 - Triage `.prawduct/backlog.md`: resolve items addressed by maintenance, remove stale items, add any new items discovered during maintenance
 - Capture learnings in `.prawduct/learnings.md` if the maintenance surfaced patterns worth remembering
 - Reflect: did the maintenance reveal systemic issues that suggest process changes, new tooling, or methodology updates?

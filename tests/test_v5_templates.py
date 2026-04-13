@@ -609,3 +609,55 @@ class TestConftestPBT:
         assert "ci" in lower
         assert "dev" in lower
         assert "register_profile" in template
+
+
+# =============================================================================
+# Janitor Skill — Template Currency and Framework Health
+# =============================================================================
+
+
+class TestJanitorSkillTemplateCurrency:
+    """Verify janitor skill has Template Currency theme and supporting changes."""
+
+    @pytest.fixture
+    def skill(self) -> str:
+        return (FRAMEWORK_DIR / ".claude" / "skills" / "janitor" / "SKILL.md").read_text()
+
+    def test_template_currency_theme_exists(self, skill: str):
+        """Template Currency investigation theme present."""
+        assert "### Template Currency" in skill
+
+    def test_template_currency_between_artifact_fitness_and_test_fitness(self, skill: str):
+        """Template Currency positioned after Artifact Fitness, before Test Fitness."""
+        artifact_pos = skill.index("### Artifact Fitness")
+        template_pos = skill.index("### Template Currency")
+        test_pos = skill.index("### Test Fitness")
+        assert artifact_pos < template_pos < test_pos
+
+    def test_template_currency_mentions_key_artifacts(self, skill: str):
+        """Theme mentions the main place-once artifacts to compare."""
+        tc_start = skill.index("### Template Currency")
+        tc_end = skill.index("### Test Fitness")
+        tc_section = skill[tc_start:tc_end]
+        assert "test-specifications" in tc_section
+        assert "project-preferences" in tc_section
+        assert "conftest.py" in tc_section
+
+    def test_templates_scope_shorthand(self, skill: str):
+        """'templates' is listed as a theme shorthand for scope."""
+        assert "templates" in skill.lower().split("theme shorthand for scope:")[1].split("\n")[0]
+
+    def test_framework_health_precheck_in_step1(self, skill: str):
+        """Step 1 includes framework health pre-check."""
+        step1_start = skill.index("### Step 1: Orient")
+        step2_start = skill.index("### Step 2: Survey")
+        step1 = skill[step1_start:step2_start]
+        assert "sync-manifest.json" in step1
+        assert "/prawduct-doctor" in step1
+
+    def test_hash_update_in_step7(self, skill: str):
+        """Step 7 includes guidance to update template hashes after review."""
+        step7_start = skill.index("### Step 7: Close")
+        step7 = skill[step7_start:]
+        assert "place_once_templates" in step7
+        assert "template_hash" in step7 or "template hash" in step7
