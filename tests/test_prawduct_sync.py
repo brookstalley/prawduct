@@ -1549,6 +1549,84 @@ class TestRunSyncPlaceOnce:
 
 
 # =============================================================================
+# run_sync — template drift advisories
+# =============================================================================
+
+
+class TestRunSyncTemplateDrift(TestRunSyncPlaceOnce):
+    """Tests for template drift detection and advisory generation."""
+
+    def test_no_advisory_when_template_unchanged(self, tmp_path: Path):
+        """No advisory when template hasn't changed since tracking was set up."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # First sync: creates file + bootstraps tracking
+        run_sync(str(product), framework_dir=str(fw))
+        # Second sync: template unchanged, no advisory
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        assert result.get("advisories", []) == []
+
+    def test_advisory_when_template_changed(self, tmp_path: Path):
+        """Advisory generated when template evolves after tracking was set up."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # First sync: creates file + bootstraps tracking
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Update the template in the framework
+        (fw / "templates" / "project-preferences.md").write_text(
+            "# Updated Preferences\n\n## New PBT Section\n\n- **Testing strategies**: hypothesis\n"
+        )
+
+        # Second sync: template changed → advisory
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        advisories = result.get("advisories", [])
+        assert len(advisories) == 1
+        assert advisories[0]["type"] == "template_drift"
+        assert "project-preferences.md" in advisories[0]["file"]
+        assert "/janitor" in advisories[0]["message"]
+
+    def test_advisory_persists_across_syncs(self, tmp_path: Path):
+        """Advisory keeps firing until template hash is updated (by janitor)."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Update template
+        (fw / "templates" / "project-preferences.md").write_text("# V2\n")
+
+        # Advisory on second sync
+        result1 = run_sync(str(product), framework_dir=str(fw))
+        assert len(result1.get("advisories", [])) == 1
+
+        # Advisory persists on third sync (hash not updated)
+        result2 = run_sync(str(product), framework_dir=str(fw))
+        assert len(result2.get("advisories", [])) == 1
+
+    def test_no_advisory_for_freshly_bootstrapped(self, tmp_path: Path):
+        """No advisory for entries just bootstrapped in this sync."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # Pre-create preferences (simulating pre-existing product)
+        prefs = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        prefs.write_text("# My prefs\n")
+
+        # Now update the template BEFORE first sync
+        (fw / "templates" / "project-preferences.md").write_text("# Different\n")
+
+        # First sync: bootstraps with current template hash → no advisory
+        # (we can't detect drift from the original because we just started tracking)
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result.get("advisories", []) == []
+
+
+# =============================================================================
 # _try_pull_framework
 # =============================================================================
 

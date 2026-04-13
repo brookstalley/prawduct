@@ -519,6 +519,34 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     if pot:
         manifest["place_once_templates"] = pot
 
+    # Detect template drift: compare stored hashes against current templates.
+    # Only check entries that existed before this sync (not freshly bootstrapped
+    # ones, which by definition match the current template).
+    advisories: list[dict[str, str]] = []
+    for rel_path, entry in manifest_snapshot_pot.items():
+        template_rel = entry.get("template", "")
+        template_path = fw_dir / template_rel
+        if not template_path.is_file():
+            continue
+        stored_hash = entry.get("template_hash", "")
+        if not stored_hash:
+            continue
+        # Compute current template hash (same method used at storage time)
+        if template_rel.endswith(".py"):
+            current_hash = hashlib.sha256(template_path.read_bytes()).hexdigest()
+        else:
+            current_content = render_template(template_path, subs)
+            current_hash = hashlib.sha256(current_content.encode()).hexdigest()
+        if current_hash != stored_hash:
+            # Template has evolved since this product was created/last reviewed
+            short_name = rel_path.rsplit("/", 1)[-1]
+            advisories.append({
+                "type": "template_drift",
+                "file": rel_path,
+                "template": template_rel,
+                "message": f"{short_name} template has new content since project setup — run /janitor scope=templates to review",
+            })
+
     # Ensure gitignore stays current
     gi_result = update_gitignore(product)
     if gi_result["modified"]:
@@ -555,5 +583,6 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         "reason": "ok" if actions else "no updates needed",
         "actions": actions,
         "notes": notes,
+        "advisories": advisories,
         "version": version_info,
     }
