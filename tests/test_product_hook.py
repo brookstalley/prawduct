@@ -1139,6 +1139,38 @@ class TestTestStatus:
         assert result.returncode == 1
         assert "fingerprint drift" in result.stdout
 
+    def test_metadata_changes_do_not_invalidate_fingerprint(self, tmp_path: Path):
+        """Session-metadata file changes between test-run and Critic must not
+        invalidate the fingerprint — they are a normal part of the build cycle
+        (Critic findings written, backlog updated, build-plan ticked) and have
+        no bearing on test results. Regression test for the chronic "stale test
+        evidence" false positive reported across 8+ product sessions.
+        """
+        # Same source-file dirtiness, but the second run also has metadata dirty.
+        # Fingerprints must match.
+        src_only = run_hook(
+            "test-status", tmp_path, git_output=" M src/app.py"
+        )
+        src_plus_metadata = run_hook(
+            "test-status",
+            tmp_path,
+            git_output=(
+                " M src/app.py\n"
+                " M .prawduct/backlog.md\n"
+                " M .prawduct/.critic-findings.json\n"
+                " M .prawduct/artifacts/build-plan.md\n"
+                " M .claude/settings.json\n"
+            ),
+        )
+
+        def _fp(result: subprocess.CompletedProcess) -> str:
+            for line in result.stdout.splitlines():
+                if line.startswith("fingerprint="):
+                    return line.removeprefix("fingerprint=").strip()
+            raise AssertionError(f"no fingerprint line in: {result.stdout!r}")
+
+        assert _fp(src_only) == _fp(src_plus_metadata)
+
 
 # =============================================================================
 # Content validation

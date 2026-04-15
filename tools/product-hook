@@ -407,6 +407,11 @@ def compute_test_fingerprint(project_dir: Path) -> str:
       2. The list of dirty paths from `git status --porcelain` (captures which files changed).
       3. SHA-256 of each dirty file's content (captures the content of uncommitted edits).
 
+    Framework/session metadata paths (see `_is_metadata_path`) are excluded — they
+    change between the test-run step and the Critic step as a normal part of the
+    build cycle (findings written, backlog updated, build-plan ticked), and must
+    not invalidate test evidence.
+
     Two trees with the same fingerprint will produce the same test results, so a
     saved fingerprint in .test-evidence.json can be compared against the current
     fingerprint to decide whether re-running tests is necessary.
@@ -441,6 +446,8 @@ def compute_test_fingerprint(project_dir: Path) -> str:
             rest = rest.split(" -> ", 1)[1]
         # Strip surrounding quotes git adds for paths with special chars.
         path = rest.strip().strip('"')
+        if _is_metadata_path(path):
+            continue
         entries.append((code, path))
     entries.sort(key=lambda e: e[1])
 

@@ -1,6 +1,6 @@
 [project]
 name = "prawduct"
-version = "1.3.1"
+version = "1.3.6"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]

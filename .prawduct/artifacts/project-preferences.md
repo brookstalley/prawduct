@@ -6,7 +6,7 @@ Developer preferences for how code is written in this project. Captured during d
 
 - **Language**: Python 3
 - **Version**: 3.10+ (uses `X | Y` union syntax, `match` statements not required)
-- **Package manager**: pip (no pyproject.toml — scripts are standalone tools, not a package)
+- **Package manager**: pip. `pyproject.toml` exists for pytest configuration and dev dependencies (`pytest`, `pytest-xdist`, `pytest-timeout`, `pyyaml`) — the scripts themselves are standalone tools, not a published package
 
 ## Code Style
 
