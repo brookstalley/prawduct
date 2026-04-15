@@ -13,7 +13,7 @@ Each chunk follows this cycle. Do not skip steps.
 - [ ] **Update artifacts** — Changed API surface, data model, architecture? Update the artifact now, not later.
 - [ ] **Verify** — Full test suite + product verification (launch it, call it, inspect output). Mocks alone are not verification. Record test results to `.prawduct/.test-evidence.json` (see format below). **Before running tests, run `python3 tools/product-hook test-status` — exit 0 means saved evidence still matches the current tree and re-running is unnecessary.**
 - [ ] **Critic review** — Run `/critic`. The Critic reads test evidence from step 6; it does not re-run tests. Fix blocking findings before proceeding.
-- [ ] **Reflect** — What did the Critic catch? Capture deferred work to `.prawduct/backlog.md`.
+- [ ] **Reflect now, not at session end** — Append to `.prawduct/.session-reflected` while context is fresh: what the chunk delivered, what the Critic caught, what surprised you, whether the methodology helped or hindered. Capture deferred work to `.prawduct/backlog.md`. Add a durable rule to `learnings.md` only if this cycle produced one. Writing reflections at chunk boundaries (not when the user is waiting on `/clear`) is a deliberate cadence choice — do it here.
 - [ ] **Commit and persist state** — Commit all work. Update the **Status** section in `build-plan.md` — mark the chunk complete (`[x]`), update the Context line with what's done and what's next. This is mandatory — context compaction can happen at any time, and an empty Status means the next chunk (or session) starts blind. A chunk is not `[x]` until its "Done when" steps are complete.
 
 ## Test Evidence
@@ -64,7 +64,7 @@ Use waivers sparingly — they exist for honestly N/A cases, not for shortcuttin
 
 ## Session End
 
-Each chunk already ends with commit + Status update (step 9). Before `/clear`: verify build plan Status is current → backlog deferred work → write reflection. Never signal "done" until these are complete.
+Each chunk already ends with commit + Status update and a reflection appended at chunk close. Before `/clear`: verify build plan Status is current → backlog deferred work → scan `.session-reflected` and add a short synthesis only if a cross-cutting pattern emerged across chunks. If you've been reflecting at work boundaries as instructed, `/clear` is fast. Never signal "done" until these are complete.
 
 ## Completing Work
 

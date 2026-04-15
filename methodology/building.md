@@ -78,7 +78,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 
-**Reflect.** The Critic just gave you independent feedback — the highest-signal moment for learning. What did the Critic catch that you missed? Does it match a pattern in `learnings.md`? Capture learnings immediately if the finding reveals a blind spot.
+**Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 
 **Verify artifacts are current.** Confirm artifacts reflect the code. The Critic checks bidirectional freshness. CLAUDE.md is an instruction file, not an artifact — the Critic warns when its project content exceeds ~150 lines.
 
@@ -90,7 +90,9 @@ Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades
 
 When you've completed 2-3 chunks, or the user switches tasks, it's time for `/clear`. **Do NOT recommend `/clear` until handoff is complete** — the next session starts cold. Complete first:
 
-1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet). 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** deferred work to `.prawduct/backlog.md`. 5. **Update build plan Status** in `build-plan.md` (mark chunks, update Context). 6. **Reflect** to `.prawduct/.session-reflected`. 7. **Then say** `/clear` with what was persisted.
+1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet). 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** deferred work to `.prawduct/backlog.md`. 5. **Update build plan Status** in `build-plan.md` (mark chunks, update Context). 6. **Reflection synthesis** — scan `.prawduct/.session-reflected` (which you've been appending to at chunk boundaries) and add a one-paragraph synthesis only if a cross-cutting pattern emerged. 7. **Then say** `/clear` with what was persisted.
+
+The goal: when the user says `/clear`, reflection is already done.
 
 Never signal completion before handoff is done — "Ready for next session" implies steps 1-6 are finished. Do the work, then signal.
 

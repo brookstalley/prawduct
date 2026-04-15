@@ -2035,9 +2035,14 @@ def cmd_stop(project_dir: Path) -> int:
         else:
             blockers.append(
                 "REFLECTION: Files were modified but no session reflection was captured.\n"
-                "  Write your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
-                "  happened this session: what changed, what surprised you, what the methodology helped\n"
-                "  or hindered. It gets archived to reflections.md automatically on next session start.\n"
+                "  Append your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
+                "  happened: what changed, what surprised you, what the methodology helped or hindered.\n"
+                "  It gets archived to reflections.md automatically on next session start.\n"
+                "\n"
+                "  Going forward, reflect at WORK BOUNDARIES — right after Critic passes, after a bug\n"
+                "  fix, after error recovery — not at session end. Writing reflections when the user is\n"
+                "  waiting on /clear creates friction and hurts quality. Append to .session-reflected\n"
+                "  as you go; the file accumulates across the session. Then /clear is instant.\n"
                 "\n"
                 "  If this session produced a durable lesson (a rule future sessions should follow),\n"
                 "  also add it to .prawduct/learnings.md. Learnings are concise standing rules;\n"

@@ -94,15 +94,17 @@ For product repos, the reviewer reads `.prawduct/pr-review.md`. For framework ch
 
 ## The Learning Loop
 
-After every significant action (feature completion, bug fix, error recovery, session end):
+Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is fresh. Append to `.prawduct/.session-reflected` as you go. By the time the user says `/clear`, reflection is already captured and the handoff is fast.
+
+After every significant action:
 
 1. **Assess**: What happened? Expected vs. actual?
 2. **Pattern-match**: Check `.prawduct/learnings.md` — does this resemble a known pattern?
 3. **Root cause** (when something went wrong): What structural cause allowed this?
-4. **Capture**: Update `learnings.md` with what was learned
+4. **Capture**: Append a narrative entry to `.prawduct/.session-reflected`; add a durable rule to `learnings.md` only if the cycle produced one.
 5. **Evolve**: Should this learning strengthen a principle or amend the methodology?
 
-Read `methodology/reflection.md` for the complete reflection protocol.
+Session-end becomes a quick synthesis scan, not a from-scratch write. Read `methodology/reflection.md` for the complete protocol.
 
 ## Reference
 

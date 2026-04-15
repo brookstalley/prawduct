@@ -75,7 +75,7 @@ Run `/learnings [planned work]` to surface relevant rules before designing. Gene
 6. **Verify.** Full test suite + product verification (launch it, call it, inspect it). If infrastructure dependencies are declared, verify against real instances — not just mocks. Record test results to `.prawduct/.test-evidence.json` (format in build-governance.md).
 7. **Critic review.** Run `/critic` — it's in the build plan's "Done when" steps. The Critic reads test evidence from step 6; it does not re-run tests.
 8. **Resolve findings.** Fix blocking; address warnings.
-9. **Reflect.** What did the Critic catch? Capture learnings now. Check: any plans or decisions created but not yet written to artifacts?
+9. **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` fast.
 10. **Commit and persist state.** Commit all work. Update the **Status** section in `build-plan.md` — mark the chunk complete (`[x]`), update the Context line (what's done, what's next, key decisions). Mandatory — compaction can strike at any time.
 
 ### Creating Pull Requests
@@ -90,7 +90,7 @@ Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades
 
 1. **Verify chunk handoff is done** — the build cycle's step 10 (commit + Status update) should already be complete for every finished chunk. If not, do it now.
 2. **Capture deferred work** to `.prawduct/backlog.md` — anything identified as out-of-scope during this session.
-3. **Write reflection** to `.prawduct/.session-reflected`.
+3. **Reflection synthesis** — scan `.prawduct/.session-reflected` (populated at chunk boundaries, step 9) and add a short synthesis only if a cross-cutting pattern emerged.
 4. **Then recommend `/clear`** and say what was persisted.
 
 Do not signal completion ("Ready for next session", etc.) until steps 1-3 are done. The `/clear` hook auto-generates `.prawduct/.session-handoff.md` for the next session.

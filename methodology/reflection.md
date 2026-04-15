@@ -6,17 +6,22 @@ This is the most important methodology guide. Without reflection, the system rep
 
 ## When to Reflect
 
-**After every significant action.** Not every keystroke — every meaningful outcome:
-- Completing a feature or chunk
-- Fixing a bug (especially: why did it exist?)
-- Recovering from an error or unexpected state
-- Making a decision that required judgment
-- After receiving Critic findings (the richest source of learnings — an independent perspective surfacing blind spots you can't see yourself)
-- Ending a session where work was done
+**Reflect at work boundaries — not at session end.** The primary reflection moment is when a unit of work concludes, while context is fresh. Writing reflections when the user says "ready to /clear" creates friction (the user is waiting) and hurts quality (rushed recall).
+
+**Primary triggers** (reflect *now*, not later):
+- **Right after Critic passes on a chunk** — the highest-signal moment. The Critic just gave you independent feedback; capture what it surfaced before you move on.
+- **After fixing a bug** — especially: why did it exist? Root cause belongs in writing while the chain of whys is clear.
+- **After recovering from an error or unexpected state** — failure modes are the richest source of learning.
+- **After making a non-trivial judgment call** — the rationale decays fast.
+- **After a PR merge** — the close of a larger unit of work.
+
+**Write reflections as they happen** to `.prawduct/.session-reflected`, appending across work cycles within a session. A session's reflection file accumulates organically: one entry per chunk / bug / recovery, each dated or labeled. By the time the user says `/clear`, the reflection is already done.
+
+**Session-end becomes synthesis, not from-scratch.** When a session ends, scan what you already wrote during the session and add a short synthesis only if a *cross-cutting* pattern emerged (e.g., "I kept hitting the same class of bug today," "the methodology felt heavy for this work type"). If no cross-session pattern is visible, the accumulated per-work-cycle entries ARE the session reflection — no further writing needed. `/clear` is fast.
 
 The depth of reflection scales with significance. A routine bug fix might warrant a single sentence. A structural failure that required significant recovery warrants deep analysis.
 
-**The session-end reflection is mandatory.** Before ending any session where files were modified, reflect on what happened. The stop hook enforces this — not the specific content of the reflection, but the habit of reflecting. If multiple work cycles happened within the session, the reflection should cover all of them — what was accomplished, what surprised you, what the methodology helped or hindered across the full session.
+**The stop hook enforces the habit, not the cadence.** It checks that `.session-reflected` exists and has content. If you've been reflecting at work boundaries throughout the session, the gate is already satisfied — no last-minute scramble.
 
 ## The Reflection Process
 
@@ -43,7 +48,12 @@ Chain the whys:
 Stop when you reach something you can change. The root cause is the deepest point in the chain where a change would prevent recurrence. Fixing a shallow cause patches one instance; fixing a deep cause prevents a class of problems.
 
 ### Step 4: Capture
-Update the project's `.prawduct/learnings.md` with what you learned. Write it in natural language that your future self will actually internalize when reading it at session start.
+Two targets, two purposes:
+
+- **`.prawduct/.session-reflected`** — the *narrative* of what happened this work cycle. Append a short entry (a paragraph or a few bullets) each time you reflect. This is per-session and gets archived to `reflections.md` on next session start.
+- **`.prawduct/learnings.md`** — *standing rules* future sessions should follow. Only add here if this work cycle produced a durable lesson. Most work cycles produce a reflection entry but no new learning; that's fine.
+
+Write in natural language that your future self will actually internalize when reading it at session start.
 
 Good learnings have:
 - **Context**: What was the situation? (Brief — one sentence.)
