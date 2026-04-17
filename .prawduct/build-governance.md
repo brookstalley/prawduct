@@ -11,7 +11,7 @@ Each chunk follows this cycle. Do not skip steps.
 - [ ] **Write tests alongside code, never after** — Tests are specification made executable. Unit for logic, integration for interactions, e2e for critical flows.
 - [ ] **Implement** — Make tests pass. Follow `.prawduct/artifacts/project-preferences.md`. Write idiomatic code for the project's language. Prefer simplicity.
 - [ ] **Update artifacts** — Changed API surface, data model, architecture? Update the artifact now, not later.
-- [ ] **Verify** — Full test suite + product verification (launch it, call it, inspect output). Mocks alone are not verification. Record test results to `.prawduct/.test-evidence.json` (see format below). **Before running tests, run `python3 tools/product-hook test-status` — exit 0 means saved evidence still matches the current tree and re-running is unnecessary.**
+- [ ] **Verify** — Full test suite + product verification (launch it, call it, inspect output). Mocks alone are not verification. Record test results to `.prawduct/.test-evidence.json` (see format below). **Before running tests, run `python3 tools/product-hook test-status` — exit 0 means evidence was recorded this session with all tests passing; re-running is unnecessary.**
 - [ ] **Critic review** — Run `/critic`. The Critic reads test evidence from step 6; it does not re-run tests. Fix blocking findings before proceeding.
 - [ ] **Reflect** — What did the Critic catch? Capture deferred work to `.prawduct/backlog.md`.
 - [ ] **Commit and persist state** — Commit all work. Update the **Status** section in `build-plan.md` — mark the chunk complete (`[x]`), update the Context line with what's done and what's next. This is mandatory — context compaction can happen at any time, and an empty Status means the next chunk (or session) starts blind. A chunk is not `[x]` until its "Done when" steps are complete.
@@ -24,7 +24,6 @@ After running the full test suite in the Verify step, write `.prawduct/.test-evi
 {
   "timestamp": "ISO-8601",
   "git_sha": "HEAD at time of test run",
-  "fingerprint": "tree fingerprint from `python3 tools/product-hook test-status`",
   "test_command": "the command used",
   "passed": 0,
   "failed": 0,
@@ -34,9 +33,9 @@ After running the full test suite in the Verify step, write `.prawduct/.test-evi
 }
 ```
 
-The `fingerprint` field combines HEAD SHA + a hash of every uncommitted file's contents — so it identifies the *exact* tree the tests ran against, including dirty state. After a successful test run, capture the fingerprint from `python3 tools/product-hook test-status` — its second line is `fingerprint=<full sha256>`, ready to drop into the JSON. The Critic and PR reviewer both read this file before running tests; if the fingerprint matches, they skip the re-run.
+The `timestamp` field is compared against `.prawduct/.session-start` to verify evidence was recorded during this session. The Critic and PR reviewer consult `test-status` before reviewing; if evidence is from this session with all tests passing, they skip the re-run.
 
-**Skipping redundant test runs.** Builders, the Critic, and the PR reviewer all consult `test-status` before touching the test suite. Exit 0 ("current") means the saved evidence still applies and re-running is wasteful. Exit 1 ("stale") means the tree changed, the saved evidence is older than the current state, or tests had failures — re-run before relying on the result.
+**Skipping redundant test runs.** Builders, the Critic, and the PR reviewer all consult `test-status` before touching the test suite. Exit 0 ("current") means the saved evidence was recorded this session with all tests passing. Exit 1 ("stale") covers: missing evidence, evidence from a previous session, failing tests, or missing timestamp.
 
 ## Gate Waivers
 

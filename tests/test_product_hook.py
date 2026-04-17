@@ -42,8 +42,8 @@ def run_hook(
             None means git is not available.
         env_extra: Additional env vars to set.
         has_git: Whether to make git available on PATH.
-        head_sha: Mock SHA returned by `git rev-parse HEAD` (used by test
-            fingerprint helpers). Default is deterministic for stable hashes.
+        head_sha: Mock SHA returned by `git rev-parse HEAD`. Default is
+            deterministic for stable test output.
         git_branch: What `git branch --show-current` returns. Defaults to "main"
             so the PR gate doesn't fire by default in tests that don't care.
         gh_pr_list_json: JSON string returned by `gh pr list`. Defaults to "[]"
@@ -1023,7 +1023,7 @@ class TestDefensiveUntrackOfSessionFiles:
 
 
 class TestTestStatus:
-    """The test-status subcommand: single source of truth for 'are saved tests current?'"""
+    """The test-status subcommand: trust-the-cycle session-timestamp freshness check."""
 
     def test_no_evidence_is_stale(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -1036,12 +1036,13 @@ class TestTestStatus:
         assert "no .test-evidence.json" in result.stdout
 
     def test_evidence_with_failing_tests_is_stale(self, tmp_path: Path):
-        """Even with matching fingerprint, failing tests mean evidence is not safe to skip."""
+        """Failing tests mean evidence is stale regardless of timing."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        (prawduct / ".session-start").write_text(now)
         (prawduct / ".test-evidence.json").write_text(json.dumps({
-            "git_sha": "deadbeef" * 5,
-            "fingerprint": "anyfingerprint",
+            "timestamp": now,
             "passed": 100,
             "failed": 3,
             "total": 103,
@@ -1052,64 +1053,51 @@ class TestTestStatus:
         assert result.returncode == 1
         assert "3 test(s) failing" in result.stdout
 
-    def test_matching_fingerprint_is_current(self, tmp_path: Path):
-        """When evidence fingerprint matches current tree, tests are current."""
+    def test_evidence_from_this_session_is_current(self, tmp_path: Path):
+        """Evidence written after session start is current."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
-        # Step 1: ask the hook to compute the current fingerprint by running stop with
-        # a known git_output, then read it back via running the helper indirectly.
-        # Easier path: write evidence with no fingerprint but matching SHA + clean tree.
+        session_start = "2026-04-17T10:00:00Z"
+        evidence_time = "2026-04-17T10:05:00Z"
+        (prawduct / ".session-start").write_text(session_start)
         (prawduct / ".test-evidence.json").write_text(json.dumps({
-            "git_sha": "deadbeef" * 5,
+            "timestamp": evidence_time,
             "passed": 100,
             "failed": 0,
             "total": 100,
         }))
 
-        # Clean working tree -> SHA-only fallback should accept
         result = run_hook("test-status", tmp_path, git_output="")
 
         assert result.returncode == 0, result.stdout
         assert "current" in result.stdout
-        assert "deadbeef" in result.stdout
+        assert "this session" in result.stdout
 
-    def test_prints_full_fingerprint(self, tmp_path: Path):
-        """test-status second line must contain the full sha256 fingerprint of the
-        current tree, so builders can pipe it into .test-evidence.json."""
+    def test_evidence_before_session_start_is_stale(self, tmp_path: Path):
+        """Evidence from a previous session is stale."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
-
-        result = run_hook("test-status", tmp_path, git_output=" M src/app.py")
-
-        # Always reports stale (no evidence) but should still emit the fingerprint
-        lines = result.stdout.strip().splitlines()
-        assert len(lines) >= 2
-        assert lines[0].startswith("stale")
-        assert lines[1].startswith("fingerprint=")
-        # 64 hex chars after the prefix
-        fp = lines[1].removeprefix("fingerprint=").strip()
-        assert len(fp) == 64
-        assert all(c in "0123456789abcdef" for c in fp)
-
-    def test_sha_drift_is_stale(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
+        session_start = "2026-04-17T10:00:00Z"
+        old_evidence = "2026-04-17T09:00:00Z"
+        (prawduct / ".session-start").write_text(session_start)
         (prawduct / ".test-evidence.json").write_text(json.dumps({
-            "git_sha": "0000000000000000000000000000000000000000",
+            "timestamp": old_evidence,
             "passed": 100,
             "failed": 0,
             "total": 100,
         }))
 
-        result = run_hook("test-status", tmp_path, git_output="", head_sha="cafef00d" * 5)
+        result = run_hook("test-status", tmp_path, git_output="")
 
         assert result.returncode == 1
-        assert "git_sha drift" in result.stdout
+        assert "stale" in result.stdout
+        assert "predates session" in result.stdout
 
-    def test_dirty_tree_without_fingerprint_is_stale(self, tmp_path: Path):
-        """SHA matches but uncommitted changes exist and no fingerprint -> can't trust."""
+    def test_no_timestamp_in_evidence_is_stale(self, tmp_path: Path):
+        """Legacy evidence without a timestamp field is stale."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        (prawduct / ".session-start").write_text("2026-04-17T10:00:00Z")
         (prawduct / ".test-evidence.json").write_text(json.dumps({
             "git_sha": "deadbeef" * 5,
             "passed": 100,
@@ -1117,59 +1105,68 @@ class TestTestStatus:
             "total": 100,
         }))
 
-        result = run_hook("test-status", tmp_path, git_output=" M src/app.py")
+        result = run_hook("test-status", tmp_path, git_output="")
 
         assert result.returncode == 1
-        assert "uncommitted changes" in result.stdout
+        assert "no timestamp" in result.stdout
 
-    def test_fingerprint_mismatch_is_stale(self, tmp_path: Path):
-        """Stored fingerprint doesn't match current -> stale."""
+    def test_no_session_marker_accepts_passing_evidence(self, tmp_path: Path):
+        """Without a session-start marker, accept evidence with passing tests."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".test-evidence.json").write_text(json.dumps({
-            "git_sha": "deadbeef" * 5,
-            "fingerprint": "stalefingerprintvalue",
+            "timestamp": "2026-04-17T10:05:00Z",
             "passed": 100,
             "failed": 0,
             "total": 100,
         }))
 
-        result = run_hook("test-status", tmp_path, git_output=" M src/app.py")
+        result = run_hook("test-status", tmp_path, git_output="")
 
-        assert result.returncode == 1
-        assert "fingerprint drift" in result.stdout
+        assert result.returncode == 0, result.stdout
+        assert "current" in result.stdout
+        assert "no session marker" in result.stdout
 
-    def test_metadata_changes_do_not_invalidate_fingerprint(self, tmp_path: Path):
-        """Session-metadata file changes between test-run and Critic must not
-        invalidate the fingerprint — they are a normal part of the build cycle
-        (Critic findings written, backlog updated, build-plan ticked) and have
-        no bearing on test results. Regression test for the chronic "stale test
-        evidence" false positive reported across 8+ product sessions.
-        """
-        # Same source-file dirtiness, but the second run also has metadata dirty.
-        # Fingerprints must match.
-        src_only = run_hook(
-            "test-status", tmp_path, git_output=" M src/app.py"
-        )
-        src_plus_metadata = run_hook(
+    def test_metadata_commits_do_not_invalidate(self, tmp_path: Path):
+        """The whole point: metadata-only commits between test run and Critic
+        must not cause staleness. With session-timestamp checking, only the
+        timestamp matters — git state changes are irrelevant."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        session_start = "2026-04-17T10:00:00Z"
+        evidence_time = "2026-04-17T10:05:00Z"
+        (prawduct / ".session-start").write_text(session_start)
+        (prawduct / ".test-evidence.json").write_text(json.dumps({
+            "timestamp": evidence_time,
+            "passed": 50,
+            "failed": 0,
+            "total": 50,
+        }))
+
+        # Dirty tree with metadata changes — should still be current
+        result = run_hook(
             "test-status",
             tmp_path,
             git_output=(
-                " M src/app.py\n"
                 " M .prawduct/backlog.md\n"
                 " M .prawduct/.critic-findings.json\n"
-                " M .prawduct/artifacts/build-plan.md\n"
                 " M .claude/settings.json\n"
             ),
         )
 
-        def _fp(result: subprocess.CompletedProcess) -> str:
-            for line in result.stdout.splitlines():
-                if line.startswith("fingerprint="):
-                    return line.removeprefix("fingerprint=").strip()
-            raise AssertionError(f"no fingerprint line in: {result.stdout!r}")
+        assert result.returncode == 0, result.stdout
+        assert "current" in result.stdout
 
-        assert _fp(src_only) == _fp(src_plus_metadata)
+    def test_single_line_output(self, tmp_path: Path):
+        """test-status outputs exactly one status line."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("test-status", tmp_path, git_output="")
+
+        lines = result.stdout.strip().splitlines()
+        assert len(lines) == 1
+        assert lines[0].startswith("stale")
 
 
 # =============================================================================

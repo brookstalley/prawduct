@@ -16,7 +16,6 @@ Usage (in .claude/settings.json):
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -399,78 +398,16 @@ def _git_head_sha(project_dir: Path) -> str:
     return ""
 
 
-def compute_test_fingerprint(project_dir: Path) -> str:
-    """Return a fingerprint that uniquely identifies the current test-relevant tree state.
-
-    The fingerprint combines:
-      1. Current HEAD SHA (captures committed code).
-      2. The list of dirty paths from `git status --porcelain` (captures which files changed).
-      3. SHA-256 of each dirty file's content (captures the content of uncommitted edits).
-
-    Framework/session metadata paths (see `_is_metadata_path`) are excluded — they
-    change between the test-run step and the Critic step as a normal part of the
-    build cycle (findings written, backlog updated, build-plan ticked), and must
-    not invalidate test evidence.
-
-    Two trees with the same fingerprint will produce the same test results, so a
-    saved fingerprint in .test-evidence.json can be compared against the current
-    fingerprint to decide whether re-running tests is necessary.
-
-    Returns "" if git is unavailable. Callers should treat empty as "cannot compare —
-    err toward running tests."
-    """
-    head = _git_head_sha(project_dir)
-    if not head:
-        return ""
-
-    status = git_status_output(project_dir)
-    if status is None:
-        return ""
-
-    h = hashlib.sha256()
-    h.update(head.encode())
-    h.update(b"\0")
-
-    # Sort by path so order is deterministic across invocations.
-    entries: list[tuple[str, str]] = []  # (status_code, path)
-    for line in status.splitlines():
-        if not line:
-            continue
-        # Porcelain format: "XY path" where XY is two status chars.
-        if len(line) < 4:
-            continue
-        code = line[:2]
-        rest = line[3:]
-        # Handle renames: "R  old -> new" — fingerprint the new path's content.
-        if " -> " in rest:
-            rest = rest.split(" -> ", 1)[1]
-        # Strip surrounding quotes git adds for paths with special chars.
-        path = rest.strip().strip('"')
-        if _is_metadata_path(path):
-            continue
-        entries.append((code, path))
-    entries.sort(key=lambda e: e[1])
-
-    for code, path in entries:
-        h.update(code.encode())
-        h.update(b" ")
-        h.update(path.encode())
-        h.update(b"\0")
-        # Hash the content of the dirty file (deletions still affect fingerprint
-        # via the path entry above, but have no content to hash).
-        full = project_dir / path
-        try:
-            if full.is_file():
-                h.update(hashlib.sha256(full.read_bytes()).digest())
-        except OSError:
-            pass  # Unreadable file: path-only contribution is enough to invalidate.
-        h.update(b"\0")
-
-    return h.hexdigest()
-
-
 def tests_are_current(project_dir: Path) -> tuple[bool, str]:
-    """Decide whether saved test evidence still matches the current tree.
+    """Decide whether saved test evidence is fresh enough to trust.
+
+    Uses a "trust the cycle" model: evidence is current if it was written
+    during this session (timestamp >= session start) and all tests passed.
+    No fingerprinting or content hashing — the build cycle (write code →
+    run tests → Critic reviews) is the trust boundary.
+
+    Falls back to timestamp-only comparison when no session-start marker
+    exists (e.g., running outside a governed session).
 
     Returns (is_current, reason). reason is a short human-readable string suitable
     for printing back to the agent.
@@ -488,33 +425,31 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     if not isinstance(evidence, dict):
         return False, "evidence is not a JSON object"
 
-    # Test pass/fail check — fail counts make evidence "not current" even if
-    # the tree fingerprint matches.
+    # Test pass/fail check — fail counts make evidence stale regardless of timing.
     failed = evidence.get("failed")
     if isinstance(failed, int) and failed > 0:
         return False, f"{failed} test(s) failing in saved evidence"
 
-    saved_fp = evidence.get("fingerprint")
-    if not isinstance(saved_fp, str) or not saved_fp:
-        # Older evidence without fingerprint — fall back to git_sha-only comparison.
-        saved_sha = evidence.get("git_sha")
-        head = _git_head_sha(project_dir)
-        if not saved_sha or not head:
-            return False, "no fingerprint and no git_sha in evidence"
-        if saved_sha != head:
-            return False, f"git_sha drift ({saved_sha[:8]} -> {head[:8]})"
-        # SHA matches but no fingerprint — only safe if working tree is clean.
-        status = git_status_output(project_dir)
-        if status and status.strip():
-            return False, "git_sha matches but working tree has uncommitted changes (no fingerprint to verify)"
-        return True, f"git_sha matches HEAD ({head[:8]}) and tree is clean"
+    # Timestamp check — evidence must have been written during this session.
+    evidence_ts = evidence.get("timestamp")
+    if not isinstance(evidence_ts, str) or not evidence_ts:
+        return False, "no timestamp in evidence"
 
-    current_fp = compute_test_fingerprint(project_dir)
-    if not current_fp:
-        return False, "could not compute current fingerprint (git unavailable?)"
-    if current_fp == saved_fp:
-        return True, f"fingerprint matches ({current_fp[:12]})"
-    return False, f"fingerprint drift ({saved_fp[:12]} -> {current_fp[:12]})"
+    session_start_path = prawduct_dir / ".session-start"
+    if session_start_path.is_file():
+        try:
+            session_start = session_start_path.read_text().strip()
+        except OSError:
+            session_start = ""
+        if session_start and evidence_ts >= session_start:
+            return True, f"evidence from this session ({evidence_ts})"
+        if session_start:
+            return False, f"evidence predates session ({evidence_ts} < {session_start})"
+
+    # No session-start marker — fall back to recency check.
+    # Evidence exists with passing tests and a timestamp, but we can't verify
+    # it's from this session. Accept it with a note.
+    return True, f"evidence has passing tests ({evidence_ts}, no session marker to verify)"
 
 
 def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
@@ -2189,31 +2124,22 @@ def cmd_stop(project_dir: Path) -> int:
 
 
 def cmd_test_status(project_dir: Path) -> int:
-    """Print whether saved test evidence matches the current tree.
+    """Print whether saved test evidence is fresh enough to trust.
 
     Used by builders, the Critic, and the PR reviewer to decide whether to
-    re-run the test suite. Single source of truth so the same fingerprint logic
-    is used everywhere.
+    re-run the test suite.
 
-    stdout has two lines:
-      line 1: status line (`current: <reason>` or `stale: <reason>`)
-      line 2: `fingerprint=<full sha256 hex>` of the CURRENT tree (always
-              printed when computable). Builders can pipe this directly into
-              the `fingerprint` field of `.prawduct/.test-evidence.json` after
-              a successful test run.
+    stdout: one line — `current: <reason>` or `stale: <reason>`
 
     Exit codes:
       0  - tests are current; safe to skip re-running
-      1  - tests are stale, no evidence, or couldn't compute the fingerprint
+      1  - tests are stale or no evidence
     """
     is_current, reason = tests_are_current(project_dir)
     if is_current:
         print(f"current: {reason}")
     else:
         print(f"stale: {reason}")
-    current_fp = compute_test_fingerprint(project_dir)
-    if current_fp:
-        print(f"fingerprint={current_fp}")
     return 0 if is_current else 1
 
 

@@ -20,7 +20,7 @@ The Critic caught per-chunk issues. You catch what slipped through or emerged fr
 ### 2. Tests Cover the Change
 New code paths tested, edge cases covered, integration tests for cross-component changes, meaningful assertions → **BLOCKING**.
 
-**Do not run the test suite yourself.** Read `.prawduct/.test-evidence.json` and validate freshness via `python3 tools/product-hook test-status` (exit 0 = current, 1 = stale). The fingerprint covers HEAD SHA + uncommitted file content, so it catches drift even when only dirty files changed. If `test-status` reports `stale` or evidence is missing → **WARNING** ("test evidence does not cover the changeset I'm reviewing").
+**Do not run the test suite yourself.** Read `.prawduct/.test-evidence.json` and validate freshness via `python3 tools/product-hook test-status` (exit 0 = current, 1 = stale). If `test-status` reports `stale` or evidence is missing → **WARNING** ("test evidence does not cover the changeset I'm reviewing").
 
 ### 3. Right Scope and Granularity
 Single coherent change, matches work description, no unrelated changes bundled → **WARNING**. Only flag splitting if it's cheap.

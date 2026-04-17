@@ -67,7 +67,7 @@ Add observability alongside features, not after. If the observability strategy c
 
 **Verify.** Two layers:
 
-- *Code:* Run the full suite. First check `python3 tools/product-hook test-status` — exit 0 means saved evidence still covers the tree; re-running is wasteful. After, write `.prawduct/.test-evidence.json` with the `fingerprint=` line.
+- *Code:* Run the full suite. First check `python3 tools/product-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. After running tests, write `.prawduct/.test-evidence.json` with the timestamp and results.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -88,13 +88,17 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades when reviewing many chunks at once — the reviewer loses focus across a large diff. Context compaction within a long session can lose governance context (plans, rationale, decisions that existed only in conversation).
 
-When you've completed 2-3 chunks, or the user switches tasks, it's time for `/clear`. **Do NOT recommend `/clear` until handoff is complete** — the next session starts cold. Complete first:
+**Always complete required governance at chunk boundaries, and actively tell the user when `/clear` is safe.** Governance is not optional — Critic review, reflection capture, plan persistence, and backlog updates must be done before the chunk is considered complete. Once they are done, *say so explicitly*: the user should not have to guess whether it's safe to clear.
 
-1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet). 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** deferred work to `.prawduct/backlog.md`. 5. **Update build plan Status** in `build-plan.md` (mark chunks, update Context). 6. **Reflection synthesis** — scan `.prawduct/.session-reflected` (which you've been appending to at chunk boundaries) and add a one-paragraph synthesis only if a cross-cutting pattern emerged. 7. **Then say** `/clear` with what was persisted.
+When you've completed 2-3 chunks, or the user switches tasks, it's time for `/clear`. Before signaling, complete in order:
 
-The goal: when the user says `/clear`, reflection is already done.
+1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** deferred work to `.prawduct/backlog.md`. 5. **Update build plan Status** in `build-plan.md` (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk (you should have appended at the chunk boundary); add a one-paragraph synthesis only if a cross-cutting pattern emerged.
 
-Never signal completion before handoff is done — "Ready for next session" implies steps 1-6 are finished. Do the work, then signal.
+**Then affirmatively signal**: end your chunk-complete message with a line like *"Chunk N complete — Critic passed, reflection captured, build plan updated. Safe to `/clear` when you're ready."* The user should never have to ask "is it safe to clear now?"
+
+**Do NOT recommend `/clear` until steps 1–6 are done.** The next session starts cold — if any step was skipped, the context is lost. Never signal completion before handoff is done: "Ready for next session" and "safe to /clear" both imply steps 1–6 are finished. Do the work, then signal.
+
+If a required step genuinely cannot be completed (e.g., Critic agent failed), say so explicitly and do NOT green-light `/clear` — flag the gap so the user can decide.
 
 The `/clear` hook auto-generates `.prawduct/.session-handoff.md` from the build plan Status, reflection, Critic findings, and changed files. The next session's briefing surfaces the context inline and points to the handoff file for detail.
 
