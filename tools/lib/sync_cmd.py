@@ -27,6 +27,7 @@ from .core import (
     compute_block_hash,
     compute_hash,
     extract_block,
+    infer_product_name,
     load_json,
     merge_settings,
     render_template,
@@ -51,17 +52,11 @@ def _bootstrap_manifest(product: Path, fw_dir: Path) -> dict:
     """
     from .core import create_manifest
 
-    # Infer product name from project-state.yaml or directory name
-    product_name = product.name
-    state_path = product / ".prawduct" / "project-state.yaml"
-    if state_path.is_file():
-        for line in state_path.read_text().splitlines():
-            stripped = line.strip()
-            if stripped.startswith("product_name:"):
-                val = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-                if val:
-                    product_name = val
-                break
+    # Read product_identity.name from project-state.yaml (committed, stable across
+    # clones). Falls back to the directory name only when the identity block is
+    # missing or unset — which would otherwise make the banner substitution drift
+    # whenever the repo is cloned into a differently-named directory.
+    product_name = infer_product_name(product) or product.name
 
     file_hashes: dict[str, str | None] = {}
     for rel_path, config in MANAGED_FILES.items():

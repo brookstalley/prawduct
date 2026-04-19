@@ -310,7 +310,12 @@ class TestBootstrapManifest:
         assert (product / ".prawduct" / "sync-manifest.json").is_file()
 
     def test_bootstrap_infers_product_name_from_state(self, tmp_path: Path):
-        """Bootstrap reads product_name from project-state.yaml."""
+        """Bootstrap reads product_identity.name from project-state.yaml.
+
+        Regression: bootstrapping previously scanned for a non-existent top-level
+        `product_name:` key, so cloning a repo into a differently-named directory
+        rewrote the banner in .claude/settings.json to the new dir name.
+        """
         fw = tmp_path / "framework"
         fw.mkdir()
         (fw / "templates").mkdir()
@@ -320,7 +325,7 @@ class TestBootstrapManifest:
         prawduct_dir = product / ".prawduct"
         prawduct_dir.mkdir()
         (prawduct_dir / "project-state.yaml").write_text(
-            'product_name: "WorldGround"\nschema_version: 2\n'
+            'product_identity:\n  name: "WorldGround"\nschema_version: 2\n'
         )
 
         manifest = _bootstrap_manifest(product, fw)
