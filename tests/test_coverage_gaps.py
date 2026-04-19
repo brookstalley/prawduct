@@ -1553,6 +1553,38 @@ class TestFrameworkVersionCheck:
         assert result.returncode == 0
         assert "stale" not in result.stdout.lower()
 
+    def test_product_lags_framework_warns(self, tmp_path: Path):
+        """When manifest framework_version < framework VERSION, warns that product-hook is stale.
+
+        Real-world cause: auto-sync at session start failed to update the manifest, so
+        tools/product-hook and templates in the product are running old framework code
+        despite the framework being ahead.
+        """
+        product = _init_product(tmp_path)
+
+        # Product claims it was synced at an old version
+        manifest = _read_manifest(product)
+        manifest["framework_version"] = "0.0.1"
+        _write_manifest(product, manifest)
+
+        # Fake framework with a newer VERSION + no-op sync script so manifest stays stale
+        fake_fw = tmp_path / "fake-prawduct"
+        fake_fw.mkdir()
+        (fake_fw / "VERSION").write_text("99.99.99")
+        (fake_fw / "tools").mkdir()
+        (fake_fw / "tools" / "prawduct-setup.py").write_text("#!/usr/bin/env python3\n")
+
+        result = _run_hook(
+            "clear",
+            product,
+            env_extra={"PRAWDUCT_FRAMEWORK_DIR": str(fake_fw)},
+        )
+        assert result.returncode == 0
+        # Warning names both versions and points the user at prawduct-setup.py sync
+        assert "0.0.1" in result.stdout
+        assert "99.99.99" in result.stdout
+        assert "prawduct-setup.py sync" in result.stdout
+
     def test_no_version_file_no_warning(self, tmp_path: Path):
         """When framework has no VERSION file, no warning."""
         product = _init_product(tmp_path)

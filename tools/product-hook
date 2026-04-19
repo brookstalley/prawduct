@@ -130,10 +130,15 @@ def try_sync(project_dir: Path, *, quiet: bool = False) -> tuple[dict | None, li
 
 
 def _check_framework_version(project_dir: Path, fw_source: str, quiet: bool) -> None:
-    """Warn if the framework's VERSION is older than what last synced this product.
+    """Warn if the product's sync lags (or leads) the framework's VERSION.
 
-    This catches the case where ../prawduct is stale (not pulled) while
-    the product received updated files via its own git pull.
+    Two directions to catch:
+    - Framework older than last sync: ../prawduct is stale (not pulled) while
+      the product received updated files via its own git pull.
+    - Framework newer than last sync: auto-sync at session start did not take
+      effect (sync failed, framework unreachable, or manifest not updated), so
+      the product's product-hook and templates are running old code despite
+      the framework being ahead. This is the "stale hook" safety net.
     """
     try:
         fw_version_file = Path(fw_source) / "VERSION"
@@ -172,6 +177,13 @@ def _check_framework_version(project_dir: Path, fw_source: str, quiet: bool) -> 
                 f"NOTE: Framework at {fw_source} is version {fw_version} but this product "
                 f"was last synced with {synced_version}. Templates may be stale. "
                 f"Run 'git pull' in the framework directory to update."
+            )
+        elif fw_parsed > synced_parsed and not quiet:
+            print(
+                f"NOTE: This product is synced at v{synced_version} but the framework at "
+                f"{fw_source} is v{fw_version} — the auto-sync at session start did not "
+                f"apply. tools/product-hook and templates here are stale. Run: "
+                f"python3 {fw_source}/tools/prawduct-setup.py sync {project_dir}"
             )
     except Exception:  # prawduct:ok-broad-except — version check must never block session start
         pass
