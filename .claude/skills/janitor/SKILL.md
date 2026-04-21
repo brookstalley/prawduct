@@ -50,6 +50,7 @@ Are the codebase's internal qualities sound? Would a domain expert reviewing thi
 - Separation of concerns — are responsibilities clearly divided, or is business logic tangled with infrastructure?
 - Coupling — are components appropriately independent? Can one module change without rippling?
 - Complexity — is complexity proportionate to what the code actually does?
+- Unmodeled state-based problems — anywhere the code moves through a discrete set of conditions (phases, modes, lifecycle stages, UI views, connection status, workflow steps) where the current condition governs what's valid, but the conditions aren't enumerated, valid/invalid transitions aren't named, and "what condition are we in" has to be reconstructed from flag combinations or order-dependent conditionals. Look for clusters of interdependent booleans that must stay in sync, phase/stage/mode variables whose transitions are scattered across call sites, and recovery paths that don't have a known-good condition to return to. Flag candidates for explicit modeling regardless of implementation shape (enum, class, protocol, reducer, type, schema, or doc all qualify) — the goal is to make the conditions, transitions, and invariants explicit, not to impose a particular mechanism.
 
 ### Artifact Fitness
 

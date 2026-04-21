@@ -8,9 +8,9 @@ A **session** is one Claude Code invocation — the period between the `clear` h
 
 A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
 
-**Context compaction** is a context-management event within a session — it is NOT a session boundary. Compaction does not trigger hooks, does not reset the git baseline, and does not create a governance checkpoint. Anything that must survive compaction — plans, decisions, rationale, chunk definitions — must be written to a file before compaction occurs. Conversation context is ephemeral; artifacts persist.
+**Context compaction** is a context-management event, not a session boundary: no hooks, no baseline reset, no governance checkpoint. Anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first. Conversation context is ephemeral; artifacts persist.
 
-**`/clear` between work cycles is recommended** for cleaner governance. It resets the git baseline (so the next work cycle's canary only sees its own changes), archives the previous reflection, and starts fresh context. But it is not required — multiple work cycles within a single session work correctly.
+**`/clear` between work cycles is recommended** for cleaner governance. It resets the git baseline (so the next cycle's canary only sees its own changes), archives the previous reflection, and starts fresh context. Not required — multiple work cycles within a single session work correctly.
 
 The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, and advisory **compliance canary** checks run. Per-work-cycle governance (Critic after each chunk, reflection after each significant action) is the methodology's responsibility, not the hook's.
 
@@ -42,7 +42,7 @@ Classification heuristic: 1-2 files = trivial/small; 5+ files or new dependency 
 - *Git state*: Check for uncommitted changes. Commit or stash unrelated work. A dirty working tree blurs the boundary between what you built and what was already there. For medium+ work, create a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Review any compliance findings from the session briefing. Address or explicitly acknowledge each one.
 
-There is no "pre-existing" exception — for tests, for broad exceptions, for stale artifacts, for anything. If you encounter a problem during your session, it is your responsibility to fix it or explicitly flag it with a reason it can't be fixed now. The concept of "pre-existing" is an escape hatch that allows quality to degrade permanently. Every session starts clean.
+There is no "pre-existing" exception (tests, broad exceptions, stale artifacts, anything). If you encounter a problem, fix it or flag it with a reason it can't be fixed now. "Pre-existing" is an escape hatch that permanently degrades quality. Every session starts clean.
 
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently. Validate that files, modules, and components referenced in the chunk plan still exist — plans go stale when the codebase evolves (module renames, component deletions, API changes). A quick check before starting saves significant rework. Also run `/learnings [this chunk's focus]` to check for relevant project rules and preferences before coding.
 
@@ -88,17 +88,13 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades when reviewing many chunks at once — the reviewer loses focus across a large diff. Context compaction within a long session can lose governance context (plans, rationale, decisions that existed only in conversation).
 
-**Always complete required governance at chunk boundaries, and actively tell the user when `/clear` is safe.** Governance is not optional — Critic review, reflection capture, plan persistence, and backlog updates must be done before the chunk is considered complete. Once they are done, *say so explicitly*: the user should not have to guess whether it's safe to clear.
+**Complete required governance at chunk boundaries, then affirmatively signal when `/clear` is safe.** Critic review, reflection capture, plan persistence, and backlog updates must be done before the chunk is complete — and the user should not have to guess.
 
 When you've completed 2-3 chunks, or the user switches tasks, it's time for `/clear`. Before signaling, complete in order:
 
-1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** deferred work to `.prawduct/backlog.md`. 5. **Update build plan Status** in `build-plan.md` (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk (you should have appended at the chunk boundary); add a one-paragraph synthesis only if a cross-cutting pattern emerged.
+1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** deferred work to `.prawduct/backlog.md`. 5. **Update build plan Status** in `build-plan.md` (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a one-paragraph synthesis only if a cross-cutting pattern emerged.
 
-**Then affirmatively signal**: end your chunk-complete message with a line like *"Chunk N complete — Critic passed, reflection captured, build plan updated. Safe to `/clear` when you're ready."* The user should never have to ask "is it safe to clear now?"
-
-**Do NOT recommend `/clear` until steps 1–6 are done.** The next session starts cold — if any step was skipped, the context is lost. Never signal completion before handoff is done: "Ready for next session" and "safe to /clear" both imply steps 1–6 are finished. Do the work, then signal.
-
-If a required step genuinely cannot be completed (e.g., Critic agent failed), say so explicitly and do NOT green-light `/clear` — flag the gap so the user can decide.
+End your chunk-complete message with a line like *"Chunk N complete — Critic passed, reflection captured, build plan updated. Safe to `/clear` when you're ready."* Do NOT signal completion until steps 1–6 are done — "ready for next session" and "safe to /clear" both imply handoff is finished. If a required step genuinely cannot be completed (e.g., Critic agent failed), say so explicitly and flag the gap for the user.
 
 The `/clear` hook auto-generates `.prawduct/.session-handoff.md` from the build plan Status, reflection, Critic findings, and changed files. The next session's briefing surfaces the context inline and points to the handoff file for detail.
 
@@ -199,11 +195,11 @@ For medium/large reviews, the Critic uses a coordinator pattern — spawning par
 
 See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (products) for full instructions.
 
-**The Critic takes time.** Reviews take 1-5 minutes. Do not check on it or hurry it along. **While it reviews, do your own deep scrub**: re-read changes for completeness, correctness, DRY, encapsulation, test coverage, UX, and documentation. Self-review often pre-resolves Critic findings.
+**The Critic takes time.** Reviews take 1-5 minutes; don't check on it. While it reviews, do your own deep scrub — re-read changes for completeness, correctness, DRY, encapsulation, test coverage, UX, and docs. Self-review often pre-resolves findings.
 
-**Never write Critic findings yourself.** If the Critic agent is slow, wait. Do not write `.critic-findings.json` "based on" expected output — self-authored review evidence is governance fraud. If the agent fails, tell the user and re-invoke.
+**Never write Critic findings yourself.** If the agent is slow, wait. Writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent fails, tell the user and re-invoke.
 
-**Blocking findings** must be resolved before proceeding. **Warnings** should be addressed — the Critic only uses WARNING when confident something is a real issue. **Notes** are genuinely ambiguous — the Critic isn't sure and the builder should decide. If you disagree with a finding, think carefully before dismissing — the Critic catches blind spots the builder can't see.
+**Blocking findings** must be resolved before proceeding. **Warnings** should be addressed — the Critic only uses WARNING when confident. **Notes** are genuinely ambiguous — the builder decides. If you disagree with a finding, think carefully before dismissing — the Critic catches blind spots the builder can't see.
 
 ## Creating Pull Requests
 

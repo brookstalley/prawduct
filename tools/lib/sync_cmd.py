@@ -240,11 +240,35 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     else:
         pull_notes = []
 
-    product_name = manifest.get("product_name", product.name)
     previous_version = manifest.get("framework_version", "")
-    subs = {"{{PRODUCT_NAME}}": product_name, "{{PRAWDUCT_VERSION}}": PRAWDUCT_VERSION}
     actions: list[str] = []
     notes: list[str] = list(pull_notes)
+
+    # Source of truth for the product name is product_identity.name in the
+    # committed project-state.yaml. The manifest-cached product_name is a legacy
+    # fallback for manifests written before identity existed (pre-v1.3.9
+    # bootstraps, or v4 manifests). When identity is present, use it for
+    # rendering and self-heal the manifest cache to match — without this, old
+    # clones whose manifest was bootstrapped against a now-fixed bug would never
+    # recover. Absence of identity keeps the cached value untouched so products
+    # that predate the identity block aren't disturbed.
+    identity_name = infer_product_name(product)
+    cached_name = manifest.get("product_name")
+    product_name = identity_name or cached_name or product.name
+
+    if identity_name and cached_name != identity_name:
+        manifest["product_name"] = identity_name
+        if cached_name:
+            actions.append(
+                f"Corrected product_name in manifest: '{cached_name}' → '{identity_name}' "
+                f"(source of truth is .prawduct/project-state.yaml)"
+            )
+        else:
+            actions.append(
+                f"Populated product_name in manifest from project-state.yaml: '{identity_name}'"
+            )
+
+    subs = {"{{PRODUCT_NAME}}": product_name, "{{PRAWDUCT_VERSION}}": PRAWDUCT_VERSION}
 
     if bootstrapped:
         actions.append("Bootstrapped sync manifest (first framework sync for this repo)")

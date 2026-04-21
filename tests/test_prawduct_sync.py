@@ -974,6 +974,111 @@ class TestRunSync:
         data = json.loads((product / ".claude" / "settings.json").read_text())
         assert "TestApp" in data["companyAnnouncements"]
 
+    def test_self_heals_product_name_from_project_state(self, tmp_path: Path):
+        """Sync re-reads product_identity.name from project-state.yaml and
+        corrects a manifest that was bootstrapped with the wrong name.
+
+        Regression: legacy manifests (pre-v1.3.9 bootstraps, or product_identity
+        changed after init) kept a stale product_name that was never refreshed,
+        so every sync re-rendered settings.json and other templates with the
+        wrong banner — producing perpetual dirty diffs on managed files.
+        """
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw, product_name="OldName")
+
+        # Commit the correct identity in project-state.yaml; manifest still
+        # has "OldName" from _setup_product (simulating a legacy clone).
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            'product_identity:\n  name: "CorrectName"\nschema_version: 2\n'
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is True
+        assert any(
+            "Corrected product_name" in a and "OldName" in a and "CorrectName" in a
+            for a in result["actions"]
+        ), result["actions"]
+
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        assert manifest["product_name"] == "CorrectName"
+
+    def test_leaves_product_name_alone_when_matches_identity(self, tmp_path: Path):
+        """No correction action when manifest and project-state agree."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw, product_name="TestApp")
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            'product_identity:\n  name: "TestApp"\nschema_version: 2\n'
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert not any("Corrected product_name" in a for a in result["actions"])
+
+    def test_falls_back_to_manifest_when_identity_missing(self, tmp_path: Path):
+        """Without product_identity.name, sync keeps the manifest-cached name.
+
+        Ensures the self-heal doesn't clobber legacy manifests whose
+        project-state.yaml predates the identity block.
+        """
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw, product_name="LegacyName")
+        # Intentionally no project-state.yaml
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert not any("Corrected product_name" in a for a in result["actions"])
+        assert not any("Populated product_name" in a for a in result["actions"])
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        assert manifest["product_name"] == "LegacyName"
+
+    def test_populates_missing_product_name_from_identity(self, tmp_path: Path):
+        """When manifest has no product_name but project-state has identity,
+        sync populates the cache and logs a visible action.
+
+        Covers the legacy-manifest path where cached_name is None but identity
+        is present — mutation must persist and be user-visible.
+        """
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw, product_name="TestApp")
+        # Strip product_name from manifest (simulates a manifest format that
+        # never wrote the field, or one that was manually cleared).
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        del manifest["product_name"]
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            'product_identity:\n  name: "RealName"\nschema_version: 2\n'
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert any(
+            "Populated product_name" in a and "RealName" in a
+            for a in result["actions"]
+        ), result["actions"]
+
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["product_name"] == "RealName"
+
+    def test_no_mutation_when_cache_missing_and_identity_missing(self, tmp_path: Path):
+        """When both manifest product_name and identity are absent, sync
+        renders with the directory name but does not silently mutate the
+        manifest cache.
+
+        Keeping the manifest untouched avoids a cache write that would only
+        ever be reflected if some other action triggered a manifest flush.
+        """
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw, product_name="StartName")
+        manifest_path = product / ".prawduct" / "sync-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        del manifest["product_name"]
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+        # No project-state.yaml, no identity.
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        manifest = json.loads(manifest_path.read_text())
+        assert "product_name" not in manifest
+
     def test_backfills_missing_managed_files(self, tmp_path: Path):
         """Sync adds managed files missing from manifest (added after product init)."""
         fw = self._setup_framework(tmp_path)
