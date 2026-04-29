@@ -78,6 +78,8 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 
+**Adversarial pass.** Opt-in; see `methodology/adversarial.md`.
+
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 
 **Verify artifacts are current.** Confirm artifacts reflect the code. The Critic checks bidirectional freshness. CLAUDE.md is an instruction file, not an artifact — the Critic warns when its project content exceeds ~150 lines.
@@ -179,7 +181,7 @@ Tests are the most important artifact you produce during building. They're contr
 
 ## The Critic
 
-After medium+ work, invoke the Critic as a separate agent. The Critic receives signals (files changed, work type, work size) and reasons about what to check. It has seven prioritized goals:
+After medium+ work, invoke the Critic as a separate agent. The Critic receives signals (files changed, work type, work size) and reasons about what to check. It has eight prioritized goals:
 
 1. **Nothing Is Broken** — Test coverage adequate, no security vulnerabilities.
 2. **Nothing Is Missing** — Every requirement implemented or explicitly descoped.
@@ -188,10 +190,11 @@ After medium+ work, invoke the Critic as a separate agent. The Critic receives s
 5. **Decisions Were Deliberate** — Major decisions have rationale, boundary changes investigated.
 6. **The System Can Be Understood** — Error handling present, logging appropriate.
 7. **The Design Is Sound** — Good encapsulation, appropriate coupling, no unnecessary complexity or duplication.
+8. **Attack Surfaces Are Identified** — Opt-in; see `methodology/adversarial.md`.
 
 After goals, the Critic cross-checks learnings and reconciles the backlog (flagging resolved items).
 
-For medium/large reviews, the Critic uses a coordinator pattern — spawning parallel subagents for correctness (1-3), design (4, 7), and sustainability (5-6) to improve throughput.
+For medium/large reviews, the Critic uses a coordinator pattern — spawning parallel subagents for correctness (1-3, 8), design (4, 7), and sustainability (5-6) to improve throughput.
 
 See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (products) for full instructions.
 
