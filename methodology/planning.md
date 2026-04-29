@@ -68,6 +68,8 @@ The build plan decomposes artifacts into buildable chunks — coherent units of 
 
 **Governance checkpoints** are points during the build where you pause to review the whole — not just the current chunk but the trajectory. Place them at natural boundaries: after the first chunk (architecture validation), at the midpoint, and before completion. The number scales with risk (1-2 for low-risk, 3-5 for high-risk).
 
+**Attack-surface declaration (when adversarial review is enabled).** When `.prawduct/project-state.yaml` has `adversarial.enabled: true`, every build-plan chunk declares an `attack_surfaces:` list drawn from `methodology/adversarial-surfaces.md`. Empty list `attack_surfaces: []` is valid and documents that the chunk intentionally won't touch attack surfaces. Declaring upfront drives the wrap-time prompt for adversarial pass and gives the Critic a baseline for verifying the chunk didn't grow beyond plan in security-relevant ways. See `methodology/adversarial.md`.
+
 ## Common Traps
 
 **Over-specification**: Writing specs so detailed they're harder to maintain than the code. Specs should be precise enough to build from but not so rigid they can't adapt to implementation discoveries.

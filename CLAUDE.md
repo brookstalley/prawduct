@@ -111,6 +111,7 @@ Session-end becomes a quick synthesis scan, not a from-scratch write. Read `meth
 - `docs/principles.md` — Full principles with rationale and review perspectives
 - `.prawduct/learnings.md` — Accumulated project wisdom (read at session start)
 - `agents/critic/SKILL.md` — Independent quality review instructions (invoked via `/critic` skill)
+- `agents/adversarial/SKILL.md` — Adversarial edge-case generator (invoked via `/adversarial` skill, opt-in per project; see `methodology/adversarial.md`)
 - `templates/` — Artifact templates for structured output
 - `.prawduct/cross-cutting-concerns.md` — Cross-cutting concerns registry (pipeline coverage matrix)
 - `.prawduct/project-state.yaml` — Source of truth for project state

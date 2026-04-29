@@ -94,6 +94,12 @@ Your goals, in priority order:
 
 This goal applies proportionally — a 2-line helper doesn't need design review. Focus on patterns that will compound: a leaked abstraction others will depend on, coupling that will spread, complexity that will accumulate.
 
+### 8. Attack Surfaces Are Identified
+
+**Applies only when `.prawduct/project-state.yaml` has `adversarial.enabled: true`.** Skipped otherwise.
+
+Read the chunk's diff and identify surfaces from the taxonomy at `methodology/adversarial-surfaces.md` independently of the chunk's declared `attack_surfaces` and any record of adversarial pass invocation — this is the backstop for builder oversight that the builder's own self-check at chunk-end might have missed. Compare your identification against (1) the chunk's declared `attack_surfaces` field in the build-plan and (2) `.prawduct/.adversarial-findings.json` if present. **WARNING** when the chunk touched a surface from the taxonomy that is NOT in its declared `attack_surfaces` — declaration is stale or chunk grew beyond plan. **WARNING** when a declared surface was touched but no adversarial pass was invoked AND no documented dismissal exists — builder skipped the prompt or forgot to disposition. **NOTE** when chunks have empty `attack_surfaces: []` AND the diff legitimately doesn't touch the taxonomy — the declaration was correct, no action needed, but worth noting in review summary as confirmation. The Critic does NOT run adversarial — only flags surfaces and missing-disposition states for the builder to address. This goal exists because no single agent can be relied on to consistently identify all attack surfaces; planning's declaration, the builder's self-check, and the Critic's independent inspection compose into a structurally robust system rather than depending on any single point. Goal 8 is routed to the **correctness reviewer** (1, 2, 3, 8) under the coordinator pattern — it's security/correctness territory, not design or sustainability.
+
 ## Framework-Specific Checks
 
 **Applies only when reviewing framework instruction files, templates, or structural decisions.** Product builds skip these.
