@@ -65,12 +65,18 @@ class TestProductClaudeStructure:
         assert "{{PRODUCT_NAME}}" in template
 
     def test_token_budget(self, template: str):
-        """Prawduct block <2,800 tokens; total template <3,500 tokens."""
+        """Prawduct block <2,900 tokens; total template <3,500 tokens.
+
+        Budget bumped from 2,800 to 2,900 on 2026-05-01 to accommodate the
+        Framework Freshness section (~50 tokens) added with the structured
+        freshness briefing block. Further increases should be deliberate —
+        the budget exists to keep the every-session-read content compact.
+        """
         begin_idx = template.index(BLOCK_BEGIN)
         end_idx = template.index(BLOCK_END) + len(BLOCK_END)
         block_tokens = estimate_tokens(template[begin_idx:end_idx])
         total_tokens = estimate_tokens(template)
-        assert block_tokens <= 2800, f"Block is ~{block_tokens} tokens, budget is 2,800"
+        assert block_tokens <= 2900, f"Block is ~{block_tokens} tokens, budget is 2,900"
         assert total_tokens <= 3500, f"Total is ~{total_tokens} tokens, budget is 3,500"
 
 
@@ -661,3 +667,35 @@ class TestJanitorSkillTemplateCurrency:
         step7 = skill[step7_start:]
         assert "place_once_templates" in step7
         assert "template_hash" in step7 or "template hash" in step7
+
+
+# =============================================================================
+# product-claude.md — Framework Freshness section (anti-conflation guidance)
+# =============================================================================
+
+
+class TestProductClaudeFreshnessSection:
+    """The Framework Freshness section ensures agents report the three drift
+    dimensions (version / commit / template) independently rather than
+    synthesizing them into a single 'on/off latest' answer."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("product-claude.md")
+
+    def test_section_present(self, template: str):
+        assert "Framework Freshness" in template
+
+    def test_names_three_drift_dimensions(self, template: str):
+        # Must give the agent vocabulary for each independent dimension
+        section_idx = template.index("Framework Freshness")
+        section = template[section_idx:section_idx + 1000]
+        assert "version" in section.lower()
+        assert "commit" in section.lower()
+        assert "template" in section.lower()
+
+    def test_warns_against_synthesizing(self, template: str):
+        # The whole point of the section: don't collapse three signals into one
+        section_idx = template.index("Framework Freshness")
+        section = template[section_idx:section_idx + 1000]
+        assert "synthesize" in section.lower() or "on/off" in section.lower()

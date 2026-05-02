@@ -11,6 +11,7 @@ import hashlib
 import json
 import shutil
 import stat
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,6 +41,50 @@ from .migrate_cmd import (
     migrate_project_state_v5,
     split_learnings_v5,
 )
+
+
+def _get_framework_head_commit(fw_dir: Path) -> str | None:
+    """Return short SHA of framework HEAD, or None if fw_dir is not a git repo
+    or git is unavailable. Used to record what commit a sync was anchored to.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(fw_dir), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:  # prawduct:ok-broad-except — best-effort lookup at sync time
+        pass
+    return None
+
+
+def _get_template_last_change(fw_dir: Path, template_rel: str) -> dict[str, str] | None:
+    """Return the most recent commit that modified the given template, as
+    {commit, date, subject}, or None when not derivable (not a git repo,
+    template never committed, etc.). Used to enrich template-drift advisories
+    so the briefing can show why a template drifted.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(fw_dir), "log", "-1", "--format=%h|%ai|%s", "--", template_rel],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parts = result.stdout.strip().split("|", 2)
+            if len(parts) == 3:
+                return {
+                    "commit": parts[0],
+                    "date": parts[1].split(" ", 1)[0],
+                    "subject": parts[2],
+                }
+    except Exception:  # prawduct:ok-broad-except — best-effort lookup
+        pass
+    return None
 
 
 def _bootstrap_manifest(product: Path, fw_dir: Path) -> dict:
@@ -552,11 +597,15 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         if current_hash != stored_hash:
             # Template has evolved since this product was created/last reviewed
             short_name = rel_path.rsplit("/", 1)[-1]
+            last_change = _get_template_last_change(fw_dir, template_rel) or {}
             advisories.append({
                 "type": "template_drift",
                 "file": rel_path,
                 "template": template_rel,
                 "message": f"{short_name} template has new content since project setup — run /janitor scope=templates to review",
+                "last_changed_commit": last_change.get("commit", ""),
+                "last_changed_date": last_change.get("date", ""),
+                "last_changed_subject": last_change.get("subject", ""),
             })
 
     # Ensure gitignore stays current
@@ -581,6 +630,12 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     if actions or pot_bootstrapped:
         manifest["files"] = updated_files
         manifest["framework_version"] = PRAWDUCT_VERSION
+        # Record the framework commit at sync time so freshness checks can
+        # compute commits-behind precisely. Older manifests without this field
+        # will populate it on next sync.
+        fw_commit = _get_framework_head_commit(fw_dir)
+        if fw_commit:
+            manifest["framework_commit"] = fw_commit
         manifest["last_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 

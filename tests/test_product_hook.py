@@ -3642,3 +3642,213 @@ class TestSessionHandoff:
 # Doc-Only Change Detection (multi-line git output tests)
 # =============================================================================
 
+
+# =============================================================================
+# Framework freshness — structured briefing facts
+# =============================================================================
+
+
+def _load_hook_module():
+    """Load product-hook (no .py extension) as a module for direct testing."""
+    import importlib.util
+    import importlib.machinery
+    loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+    spec = importlib.util.spec_from_loader("product_hook", loader)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _basic_project_state(prawduct_dir: Path) -> None:
+    """Minimal project-state.yaml so the briefing can render."""
+    prawduct_dir.mkdir(exist_ok=True)
+    (prawduct_dir / "project-state.yaml").write_text(
+        'product_identity:\n  name: "MyApp"\n\n'
+        "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+        "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+    )
+
+
+class TestComputeFrameworkFreshness:
+    """_compute_framework_freshness extracts structured drift facts from
+    sync-manifest.json and (when available) the framework dir."""
+
+    def test_returns_none_when_no_manifest(self, tmp_path: Path):
+        mod = _load_hook_module()
+        # No .prawduct/sync-manifest.json exists
+        assert mod._compute_framework_freshness(tmp_path, "") is None
+
+    def test_extracts_sync_data_from_manifest(self, tmp_path: Path):
+        mod = _load_hook_module()
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        manifest = {
+            "format_version": 2,
+            "last_sync": "2026-04-23T22:13:36Z",
+            "framework_version": "1.3.10",
+            "framework_commit": "bc44003",
+        }
+        (prawduct / "sync-manifest.json").write_text(json.dumps(manifest))
+
+        result = mod._compute_framework_freshness(tmp_path, "")
+        assert result["last_sync_date"] == "2026-04-23"
+        assert result["last_sync_version"] == "1.3.10"
+        assert result["last_sync_commit"] == "bc44003"
+        # Without fw_dir, framework_* fields and commits_behind stay None
+        assert result["framework_head"] is None
+        assert result["framework_version"] is None
+        assert result["commits_behind"] is None
+
+    def test_handles_legacy_manifest_without_commit(self, tmp_path: Path):
+        mod = _load_hook_module()
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Manifest predates framework_commit field
+        manifest = {
+            "format_version": 2,
+            "last_sync": "2026-04-23T22:13:36Z",
+            "framework_version": "1.3.10",
+        }
+        (prawduct / "sync-manifest.json").write_text(json.dumps(manifest))
+
+        result = mod._compute_framework_freshness(tmp_path, "")
+        assert result["last_sync_commit"] is None
+
+    def test_returns_none_for_malformed_manifest(self, tmp_path: Path):
+        mod = _load_hook_module()
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "sync-manifest.json").write_text("{ this is not valid json")
+        assert mod._compute_framework_freshness(tmp_path, "") is None
+
+
+class TestBriefingFreshnessBlock:
+    """The structured 'Framework freshness:' block in the session briefing —
+    surfaces only when there's actual drift to reason about."""
+
+    def test_no_block_when_in_sync(self, tmp_path: Path):
+        _basic_project_state(tmp_path / ".prawduct")
+        mod = _load_hook_module()
+        freshness = {
+            "framework_head": "abc1234",
+            "framework_head_date": "2026-05-01",
+            "framework_version": "1.3.10",
+            "last_sync_date": "2026-05-01",
+            "last_sync_version": "1.3.10",
+            "last_sync_commit": "abc1234",
+            "commits_behind": 0,
+        }
+        briefing = mod.assemble_session_briefing(tmp_path, [], freshness=freshness, advisories=[])
+        assert "Framework freshness:" not in briefing
+
+    def test_block_shown_when_commits_behind(self, tmp_path: Path):
+        _basic_project_state(tmp_path / ".prawduct")
+        mod = _load_hook_module()
+        freshness = {
+            "framework_head": "5885600",
+            "framework_head_date": "2026-05-01",
+            "framework_version": "1.3.10",
+            "last_sync_date": "2026-04-23",
+            "last_sync_version": "1.3.10",
+            "last_sync_commit": "bc44003",
+            "commits_behind": 1,
+        }
+        briefing = mod.assemble_session_briefing(tmp_path, [], freshness=freshness, advisories=[])
+        assert "Framework freshness:" in briefing
+        assert "5885600" in briefing
+        assert "bc44003" in briefing
+        assert "1 commit(s) since sync" in briefing
+        # Versions match — no version-delta line
+        assert "Version delta" not in briefing
+
+    def test_block_shows_version_delta_when_versions_differ(self, tmp_path: Path):
+        _basic_project_state(tmp_path / ".prawduct")
+        mod = _load_hook_module()
+        freshness = {
+            "framework_head": "abc1234",
+            "framework_head_date": "2026-05-01",
+            "framework_version": "1.3.11",
+            "last_sync_date": "2026-04-23",
+            "last_sync_version": "1.3.10",
+            "last_sync_commit": "bc44003",
+            "commits_behind": 5,
+        }
+        briefing = mod.assemble_session_briefing(tmp_path, [], freshness=freshness, advisories=[])
+        assert "Version delta" in briefing
+        assert "v1.3.10" in briefing
+        assert "v1.3.11" in briefing
+
+    def test_block_renders_drifted_templates_with_commit_info(self, tmp_path: Path):
+        _basic_project_state(tmp_path / ".prawduct")
+        mod = _load_hook_module()
+        freshness = {
+            "framework_head": "5885600",
+            "framework_head_date": "2026-05-01",
+            "framework_version": "1.3.10",
+            "last_sync_date": "2026-04-23",
+            "last_sync_version": "1.3.10",
+            "last_sync_commit": "bc44003",
+            "commits_behind": 1,
+        }
+        advisories = [
+            {
+                "type": "template_drift",
+                "file": ".prawduct/artifacts/project-preferences.md",
+                "template": "templates/project-preferences.md",
+                "message": "msg",
+                "last_changed_commit": "5885600",
+                "last_changed_date": "2026-05-01",
+                "last_changed_subject": "Preference enforcement framework",
+            }
+        ]
+        briefing = mod.assemble_session_briefing(
+            tmp_path, [], freshness=freshness, advisories=advisories
+        )
+        assert "Drifted templates: 1" in briefing
+        assert "project-preferences.md" in briefing
+        assert "5885600" in briefing
+        assert "Preference enforcement framework" in briefing
+
+    def test_legacy_manifest_shows_unknown_commit_delta(self, tmp_path: Path):
+        """When manifest predates commit tracking, the block still renders
+        for advisories but the commit delta is reported as unknown."""
+        _basic_project_state(tmp_path / ".prawduct")
+        mod = _load_hook_module()
+        freshness = {
+            "framework_head": "5885600",
+            "framework_head_date": "2026-05-01",
+            "framework_version": "1.3.10",
+            "last_sync_date": "2026-04-23",
+            "last_sync_version": "1.3.10",
+            "last_sync_commit": None,  # legacy manifest
+            "commits_behind": None,
+        }
+        advisories = [
+            {
+                "type": "template_drift",
+                "file": ".prawduct/artifacts/project-preferences.md",
+                "template": "templates/project-preferences.md",
+                "message": "msg",
+                "last_changed_commit": "",
+                "last_changed_date": "",
+                "last_changed_subject": "",
+            }
+        ]
+        briefing = mod.assemble_session_briefing(
+            tmp_path, [], freshness=freshness, advisories=advisories
+        )
+        assert "Framework freshness:" in briefing
+        assert "manifest predates commit tracking" in briefing
+
+    def test_falls_back_when_freshness_is_none_but_advisories_present(self, tmp_path: Path):
+        """Backward-compat path: when freshness can't be computed but advisories
+        exist, render the simple advisory list rather than dropping it."""
+        _basic_project_state(tmp_path / ".prawduct")
+        mod = _load_hook_module()
+        advisories = [{"file": "X", "message": "X drifted"}]
+        briefing = mod.assemble_session_briefing(
+            tmp_path, [], advisories=advisories, freshness=None
+        )
+        assert "Advisories: 1 template(s)" in briefing
+        assert "X drifted" in briefing
+

@@ -43,6 +43,10 @@ The session briefing (printed at session start) tells you current state, stale a
 
 **First contact** → Explain what this product is (from project-state.yaml) and where things stand.
 
+## Framework Freshness
+
+The briefing's `Framework freshness:` block (when shown) reports three independent drift dimensions — **version** (semver), **commit** (every change, including unreleased work), and **template** (per-file hashes with the causing commit). Don't synthesize them into "on/off latest"; report each dimension as the briefing shows it.
+
 ## Governance Model
 
 A **session** is one Claude Code invocation (clear hook → stop hook). A **work cycle** is one unit of work within a session: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen per session. Context compaction is NOT a session boundary — anything that must survive compaction must be written to a file. `/clear` between work cycles is recommended for cleaner governance but not required.

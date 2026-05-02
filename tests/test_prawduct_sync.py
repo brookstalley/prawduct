@@ -2228,3 +2228,105 @@ class TestMigrateBacklog:
 
         state = (prawduct / "project-state.yaml").read_text()
         assert "migrated to .prawduct/backlog.md" in state
+
+
+# =============================================================================
+# Framework commit recording + advisory enrichment (for the briefing's
+# structured Framework Freshness block).
+# =============================================================================
+
+
+def _git_init_with_initial_commit(fw: Path) -> str:
+    """Init fw as a git repo, commit everything, return short HEAD SHA."""
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=str(fw), check=True)
+    subprocess.run(["git", "-C", str(fw), "config", "user.email", "test@test"], check=True)
+    subprocess.run(["git", "-C", str(fw), "config", "user.name", "Test"], check=True)
+    subprocess.run(["git", "-C", str(fw), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(fw), "commit", "-q", "-m", "initial templates"],
+        check=True,
+    )
+    result = subprocess.run(
+        ["git", "-C", str(fw), "rev-parse", "--short", "HEAD"],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()
+
+
+class TestSyncRecordsFrameworkCommit(TestRunSyncPlaceOnce):
+    """sync writes the framework HEAD short SHA into the manifest at sync
+    time so freshness checks can later compute commits-behind precisely."""
+
+    def test_framework_commit_written_when_fw_is_git(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        sha = _git_init_with_initial_commit(fw)
+        product = self._setup_product(tmp_path, fw)
+
+        # Force a sync action by changing a tracked template
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+        run_sync(str(product), framework_dir=str(fw))
+
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        assert manifest.get("framework_commit") == sha
+
+    def test_framework_commit_omitted_when_fw_not_git(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        # Deliberately NOT git-initialized
+        product = self._setup_product(tmp_path, fw)
+
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+        run_sync(str(product), framework_dir=str(fw))
+
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        assert not manifest.get("framework_commit")
+
+
+class TestAdvisoryEnrichment(TestRunSyncPlaceOnce):
+    """Template-drift advisories include the commit / date / subject of the
+    most recent change to the template, so the briefing can show *what*
+    drifted, not just *that* something drifted."""
+
+    def test_advisory_includes_last_change_when_fw_is_git(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        _git_init_with_initial_commit(fw)
+        product = self._setup_product(tmp_path, fw)
+
+        # First sync bootstraps drift tracking with the current template hash
+        run_sync(str(product), framework_dir=str(fw))
+
+        # Modify and commit the template — drift advisory should fire on next sync
+        (fw / "templates" / "project-preferences.md").write_text(
+            "# Updated Preferences\n\n## New Section\n"
+        )
+        subprocess.run(["git", "-C", str(fw), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(fw), "commit", "-q", "-m", "add new section to prefs"],
+            check=True,
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+        advisories = result.get("advisories", [])
+        assert len(advisories) == 1
+        adv = advisories[0]
+        # Existing fields still present
+        assert adv["type"] == "template_drift"
+        assert "/janitor" in adv["message"]
+        # New enrichment fields populated when fw is git
+        assert adv["last_changed_commit"]  # short SHA
+        assert adv["last_changed_subject"] == "add new section to prefs"
+        assert adv["last_changed_date"]  # YYYY-MM-DD
+
+    def test_advisory_has_empty_change_fields_when_fw_not_git(self, tmp_path: Path):
+        fw = self._setup_framework(tmp_path)
+        # NOT git-initialized
+        product = self._setup_product(tmp_path, fw)
+        run_sync(str(product), framework_dir=str(fw))
+
+        (fw / "templates" / "project-preferences.md").write_text("# v2\n")
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        advisories = result.get("advisories", [])
+        assert len(advisories) == 1
+        # When fw isn't git, helper returns None and fields are empty strings
+        assert advisories[0]["last_changed_commit"] == ""
+        assert advisories[0]["last_changed_subject"] == ""
