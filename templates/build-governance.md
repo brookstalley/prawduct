@@ -24,7 +24,7 @@ After running the full test suite in the Verify step, write `.prawduct/.test-evi
 {
   "timestamp": "ISO-8601",
   "git_sha": "HEAD at time of test run",
-  "test_command": "the command used",
+  "command": "the command used",
   "passed": 0,
   "failed": 0,
   "skipped": 0,
@@ -33,9 +33,11 @@ After running the full test suite in the Verify step, write `.prawduct/.test-evi
 }
 ```
 
+**Required vs. recommended.** The validator (`tests_are_current` and the `validate-evidence` subcommand) requires `timestamp`, `passed`, `failed`, `skipped`, `duration_seconds`, and `command` with the types shown — writer typos (e.g. `ran_at`, `num_passed`) fail loud rather than parsing as silent zeros. `git_sha` and `total` are recommended metadata; extra fields (e.g. `chunk`, `branch`, `notes`) are allowed.
+
 The `timestamp` field is compared against `.prawduct/.session-start` to verify evidence was recorded during this session. The Critic and PR reviewer consult `test-status` before reviewing; if evidence is from this session with all tests passing, they skip the re-run.
 
-**Skipping redundant test runs.** Builders, the Critic, and the PR reviewer all consult `test-status` before touching the test suite. Exit 0 ("current") means the saved evidence was recorded this session with all tests passing. Exit 1 ("stale") covers: missing evidence, evidence from a previous session, failing tests, or missing timestamp.
+**Skipping redundant test runs.** Builders, the Critic, and the PR reviewer all consult `test-status` before touching the test suite. Exit 0 ("current") means the saved evidence was recorded this session with all tests passing. Exit 1 ("stale") covers: missing evidence, evidence from a previous session, failing tests, missing required fields, or schema violations.
 
 ## Gate Waivers
 
