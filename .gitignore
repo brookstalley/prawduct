@@ -1,5 +1,6 @@
 .claude/settings.local.json
 .prawduct/.critic-findings.json
+.prawduct/.critic-test-findings.json
 .prawduct/.pr-reviews/
 .prawduct/.session-git-baseline
 .prawduct/.session-handoff.md
