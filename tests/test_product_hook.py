@@ -1045,6 +1045,9 @@ class TestTestStatus:
             "timestamp": now,
             "passed": 100,
             "failed": 3,
+            "skipped": 0,
+            "duration_seconds": 12,
+            "command": "pytest -q",
             "total": 103,
         }))
 
@@ -1064,6 +1067,9 @@ class TestTestStatus:
             "timestamp": evidence_time,
             "passed": 100,
             "failed": 0,
+            "skipped": 0,
+            "duration_seconds": 12,
+            "command": "pytest -q",
             "total": 100,
         }))
 
@@ -1084,6 +1090,9 @@ class TestTestStatus:
             "timestamp": old_evidence,
             "passed": 100,
             "failed": 0,
+            "skipped": 0,
+            "duration_seconds": 12,
+            "command": "pytest -q",
             "total": 100,
         }))
 
@@ -1094,7 +1103,14 @@ class TestTestStatus:
         assert "predates session" in result.stdout
 
     def test_no_timestamp_in_evidence_is_stale(self, tmp_path: Path):
-        """Legacy evidence without a timestamp field is stale."""
+        """Evidence missing the timestamp field is stale.
+
+        With the schema validator wired into ``tests_are_current``, the
+        missing-field error surfaces before the freshness fallback runs —
+        so the message names the field rather than reporting "no timestamp"
+        from the older fallback path. Either form is acceptable to callers
+        because the exit code is the load-bearing signal.
+        """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-start").write_text("2026-04-17T10:00:00Z")
@@ -1102,13 +1118,17 @@ class TestTestStatus:
             "git_sha": "deadbeef" * 5,
             "passed": 100,
             "failed": 0,
+            "skipped": 0,
+            "duration_seconds": 12,
+            "command": "pytest -q",
             "total": 100,
         }))
 
         result = run_hook("test-status", tmp_path, git_output="")
 
         assert result.returncode == 1
-        assert "no timestamp" in result.stdout
+        assert "stale" in result.stdout
+        assert "timestamp" in result.stdout
 
     def test_no_session_marker_accepts_passing_evidence(self, tmp_path: Path):
         """Without a session-start marker, accept evidence with passing tests."""
@@ -1118,6 +1138,9 @@ class TestTestStatus:
             "timestamp": "2026-04-17T10:05:00Z",
             "passed": 100,
             "failed": 0,
+            "skipped": 0,
+            "duration_seconds": 12,
+            "command": "pytest -q",
             "total": 100,
         }))
 
@@ -1140,6 +1163,9 @@ class TestTestStatus:
             "timestamp": evidence_time,
             "passed": 50,
             "failed": 0,
+            "skipped": 0,
+            "duration_seconds": 12,
+            "command": "pytest -q",
             "total": 50,
         }))
 
@@ -1157,6 +1183,29 @@ class TestTestStatus:
         assert result.returncode == 0, result.stdout
         assert "current" in result.stdout
 
+    def test_schema_violation_surfaces_in_test_status(self, tmp_path: Path):
+        """Writer typo (``ran_at`` instead of ``timestamp``) fails loud
+        with the schema-validator message, not the older "no timestamp"
+        fallback. Proves the schema check runs before the freshness logic.
+        """
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-start").write_text("2026-04-17T10:00:00Z")
+        (prawduct / ".test-evidence.json").write_text(json.dumps({
+            "ran_at": "2026-04-17T10:05:00Z",  # typo: should be "timestamp"
+            "passed": 100,
+            "failed": 0,
+            "skipped": 0,
+            "duration_seconds": 12,
+            "command": "pytest -q",
+        }))
+
+        result = run_hook("test-status", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "missing required field(s)" in result.stdout
+        assert "timestamp" in result.stdout
+
     def test_single_line_output(self, tmp_path: Path):
         """test-status outputs exactly one status line."""
         prawduct = tmp_path / ".prawduct"
@@ -1167,6 +1216,190 @@ class TestTestStatus:
         lines = result.stdout.strip().splitlines()
         assert len(lines) == 1
         assert lines[0].startswith("stale")
+
+
+# =============================================================================
+# validate-evidence subcommand: schema enforcement
+# =============================================================================
+
+
+def _valid_evidence() -> dict:
+    """Build a fully-schema-valid evidence dict.
+
+    Tests reach for this when the test isn't *about* a missing or wrong-typed
+    field — saves repeating the full set of required fields in every fixture.
+    """
+    return {
+        "timestamp": "2026-05-05T12:00:00Z",
+        "passed": 880,
+        "failed": 0,
+        "skipped": 0,
+        "duration_seconds": 287,
+        "command": "pytest -q",
+    }
+
+
+class TestValidateEvidenceSchema:
+    """Schema validation behavior — what the validator accepts and rejects.
+
+    Driven through the ``validate-evidence`` subcommand because that's the
+    user-visible surface; the schema-helper internals aren't importable here.
+    """
+
+    def _write(self, tmp_path: Path, evidence: object) -> None:
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir(exist_ok=True)
+        (prawduct / ".test-evidence.json").write_text(json.dumps(evidence))
+
+    def test_full_valid_schema_accepted(self, tmp_path: Path):
+        self._write(tmp_path, _valid_evidence())
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+        assert "valid" in result.stdout
+
+    def test_extra_fields_allowed(self, tmp_path: Path):
+        """Optional metadata (git_sha, total) and free-form fields don't reject."""
+        evidence = _valid_evidence() | {
+            "git_sha": "deadbeef" * 5,
+            "total": 880,
+            "chunk": "Chunk 01",
+            "branch": "feature/test-evidence-schema-validator",
+            "notes": "all green",
+        }
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+    def test_duration_seconds_as_float_accepted(self, tmp_path: Path):
+        evidence = _valid_evidence() | {"duration_seconds": 287.86}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+    def test_single_missing_field_named(self, tmp_path: Path):
+        evidence = _valid_evidence()
+        del evidence["command"]
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "missing required field(s)" in result.stderr
+        assert "command" in result.stderr
+
+    def test_multiple_missing_fields_sorted_and_comma_joined(self, tmp_path: Path):
+        evidence = _valid_evidence()
+        for f in ("command", "skipped", "duration_seconds"):
+            del evidence[f]
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "missing required field(s): command, duration_seconds, skipped" in result.stderr
+
+    def test_wrong_type_named(self, tmp_path: Path):
+        """``passed: "100"`` (str) names the field and shows expected vs. actual."""
+        evidence = _valid_evidence() | {"passed": "100"}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "schema violation" in result.stderr
+        assert "passed must be int" in result.stderr
+        assert "got str" in result.stderr
+
+    def test_multiple_wrong_types_semicolon_joined(self, tmp_path: Path):
+        evidence = _valid_evidence() | {"passed": "100", "failed": "0"}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "schema violation" in result.stderr
+        # Both violations reported in one error
+        assert "passed must be int" in result.stderr
+        assert "failed must be int" in result.stderr
+        assert ";" in result.stderr
+
+    def test_missing_takes_precedence_over_wrong_type(self, tmp_path: Path):
+        """When evidence has BOTH a missing field AND a wrong-typed field,
+        the validator reports the missing field — fixing missing fields is
+        the higher-priority repair, and we don't want users distracted by
+        wrong-type messages on fields that may not even be present.
+        """
+        evidence = _valid_evidence() | {"passed": "100"}  # wrong type
+        del evidence["timestamp"]                          # missing
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "missing required field(s)" in result.stderr
+        assert "timestamp" in result.stderr
+        # The wrong-type message must NOT appear — missing-field check returns first.
+        assert "schema violation" not in result.stderr
+
+
+class TestValidateEvidenceSubcommand:
+    """Exit-code and IO contract of the ``validate-evidence`` subcommand."""
+
+    def test_missing_file_exits_one(self, tmp_path: Path):
+        (tmp_path / ".prawduct").mkdir()
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert result.stderr.startswith("missing:")
+
+    def test_unreadable_json_exits_one(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".test-evidence.json").write_text("{ this is not json")
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert result.stderr.startswith("unreadable:")
+
+    def test_non_dict_root_exits_one(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".test-evidence.json").write_text(json.dumps([_valid_evidence()]))
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "evidence is not a JSON object" in result.stderr
+
+    def test_schema_invalid_exits_one_with_invalid_prefix(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        evidence = _valid_evidence()
+        del evidence["command"]
+        (prawduct / ".test-evidence.json").write_text(json.dumps(evidence))
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert result.stderr.startswith("invalid:")
+
+    def test_valid_evidence_exits_zero_prints_valid(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".test-evidence.json").write_text(json.dumps(_valid_evidence()))
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "valid"
 
 
 # =============================================================================

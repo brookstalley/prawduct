@@ -527,6 +527,15 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     if not isinstance(evidence, dict):
         return False, "evidence is not a JSON object"
 
+    # Schema check — catches writer typos like ``ran_at`` for ``timestamp`` or
+    # ``num_passed`` for ``passed``. Without this, missing fields silently fall
+    # through ``.get()`` calls and the evidence parses as "no failures, no
+    # timestamp" which the freshness check below would reject for the wrong
+    # reason. Loud failure makes the writer bug obvious.
+    schema_ok, schema_err = _validate_evidence_schema(evidence)
+    if not schema_ok:
+        return False, schema_err
+
     # Test pass/fail check — fail counts make evidence stale regardless of timing.
     failed = evidence.get("failed")
     if isinstance(failed, int) and failed > 0:
@@ -552,6 +561,45 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     # Evidence exists with passing tests and a timestamp, but we can't verify
     # it's from this session. Accept it with a note.
     return True, f"evidence has passing tests ({evidence_ts}, no session marker to verify)"
+
+
+_EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
+    "timestamp": (str,),
+    "passed": (int,),
+    "failed": (int,),
+    "skipped": (int,),
+    "duration_seconds": (int, float),
+    "command": (str,),
+}
+
+
+def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
+    """Reject ``.test-evidence.json`` with missing or wrong-typed fields.
+
+    Catches writer typos that would otherwise silently parse via ``.get()``.
+    Examples this catches: ``ran_at`` instead of ``timestamp``; ``num_passed``
+    instead of ``passed``; passed/failed/skipped emitted as strings.
+
+    Returns ``(True, "")`` on success, ``(False, reason)`` on failure. Missing
+    fields are reported before wrong-typed fields, so a single fix-it pass
+    addresses the highest-priority violations first.
+    """
+    missing: list[str] = []
+    wrong_type: list[str] = []
+    for field, allowed_types in _EVIDENCE_REQUIRED_FIELDS.items():
+        if field not in evidence:
+            missing.append(field)
+            continue
+        if not isinstance(evidence[field], allowed_types):
+            wrong_type.append(
+                f"{field} must be {' | '.join(t.__name__ for t in allowed_types)}, "
+                f"got {type(evidence[field]).__name__}"
+            )
+    if missing:
+        return False, f"evidence missing required field(s): {', '.join(sorted(missing))}"
+    if wrong_type:
+        return False, f"evidence schema violation: {'; '.join(wrong_type)}"
+    return True, ""
 
 
 def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
@@ -2296,13 +2344,46 @@ def cmd_test_status(project_dir: Path) -> int:
 
 
 # =============================================================================
+# validate-evidence command
+# =============================================================================
+
+
+def cmd_validate_evidence(project_dir: Path) -> int:
+    """Schema-only check on ``.test-evidence.json``.
+
+    Useful for CI / pre-commit hooks that want a fast schema sanity check
+    without the freshness comparison ``test-status`` performs. Returns
+    exit 0 only when the file exists, parses, and matches the required
+    schema; exit 1 otherwise.
+    """
+    evidence_path = get_prawduct_dir(project_dir) / ".test-evidence.json"
+    if not evidence_path.is_file():
+        print(f"missing: {evidence_path}", file=sys.stderr)
+        return 1
+    try:
+        evidence = json.loads(evidence_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"unreadable: {exc}", file=sys.stderr)
+        return 1
+    if not isinstance(evidence, dict):
+        print("evidence is not a JSON object", file=sys.stderr)
+        return 1
+    ok, err = _validate_evidence_schema(evidence)
+    if not ok:
+        print(f"invalid: {err}", file=sys.stderr)
+        return 1
+    print("valid")
+    return 0
+
+
+# =============================================================================
 # main
 # =============================================================================
 
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print("Usage: product-hook {clear|stop|test-status}", file=sys.stderr)
+        print("Usage: product-hook {clear|stop|test-status|validate-evidence}", file=sys.stderr)
         return 1
 
     command = sys.argv[1]
@@ -2314,8 +2395,10 @@ def main() -> int:
         return cmd_stop(project_dir)
     elif command == "test-status":
         return cmd_test_status(project_dir)
+    elif command == "validate-evidence":
+        return cmd_validate_evidence(project_dir)
     else:
-        print("Usage: product-hook {clear|stop|test-status}", file=sys.stderr)
+        print("Usage: product-hook {clear|stop|test-status|validate-evidence}", file=sys.stderr)
         return 1
 
 
