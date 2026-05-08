@@ -139,13 +139,13 @@ class TestProductClaudeGovernance:
         assert "lock-in" in lower
 
     def test_active_context(self, template: str):
-        """Learning lifecycle, session briefing, subagent briefing, token budget."""
+        """Learning lifecycle, session briefing, subagent briefing, /learnings skill."""
         lower = template.lower()
         assert "active rules" in lower
         assert "learnings-detail" in lower
         assert "session briefing" in lower
         assert ".subagent-briefing.md" in template
-        assert "3,000 tokens" in template or "3K tokens" in template
+        assert "/learnings" in template
 
     def test_critic_section(self, template: str):
         """Critic instructions with goal-based scope and compact instructions."""

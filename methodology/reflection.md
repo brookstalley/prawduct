@@ -130,37 +130,32 @@ Learnings evolve through stages:
 
 ## Managing Learnings Over Time
 
-`learnings.md` should be a living document, not an ever-growing log:
+Learnings are split across two files by purpose:
 
-**Prune regularly.** When a learning has been incorporated into a principle or methodology update, it can be condensed or removed from learnings.md.
-
-**Consolidate related entries.** Multiple learnings about the same pattern should merge into a single, stronger entry.
-
-**Keep it readable.** If learnings.md grows past ~3,000 tokens, it's time to prune. The most common learnings should be first. Stale or fully-incorporated learnings should be archived or removed.
-
-**Learnings have freshness.** A learning from yesterday is highly relevant. A learning from three months ago that hasn't been reinforced might be an artifact of a specific situation rather than a general pattern.
-
-### When learnings outgrow one file
-
-Projects with sustained building accumulate detailed technical learnings — root cause analyses, debugging stories, framework-specific gotchas. These are valuable as debugging reference but too large for ambient session context. When learnings.md grows past the ~3,000-token threshold and pruning alone isn't enough, split into two files:
-
-**`learnings.md`** (~3,000 tokens, always loaded at session start)
+**`learnings.md`** — concise standing rules
 - Organized by **topic area**, not chronologically
 - Each entry: the rule + brief "why" (1-3 lines)
 - Enough keywords in each rule to trigger pattern recognition when a related problem occurs
-- Footer pointing to the detail file
+- Section headers are extracted by the session briefing for ambient context
 
-**`learnings-detail.md`** (no size limit, consulted when stuck)
-- Full observation / root cause / fix / rule format
-- Organized by topic area with clear `## Topic` headers for searchability
+**`learnings-detail.md`** — full root cause / fix / rule format
 - Consulted when: hitting an error in a known area, debugging something unexpected, or working in a domain with known pitfalls
+- Organized by topic area with clear `## Topic` headers for searchability
 
-The key design: `learnings.md` is the **index** (cheap to load, triggers recognition), `learnings-detail.md` is the **reference** (rich context for when you need to reason about *why* something works the way it does). The concise rules help you know *when* to consult the detail.
+The `/learnings [topic]` skill reads both files in a forked context and returns only what's relevant to your task — keeping your main context clean. Use it before planning work in an unfamiliar area. The Critic and PR reviewer read the full files directly for comprehensive cross-checking.
+
+**Prune regularly.** When a learning has been incorporated into a principle or methodology update, condense or remove it from `learnings.md`. When a learning has been structurally enforced (hook, gate, code pattern that prevents the mistake), it has done its job and can be pruned.
+
+**Consolidate related entries.** Multiple learnings about the same pattern should merge into a single, stronger entry.
+
+**Keep `learnings.md` scannable.** Most common learnings first. Stale or fully-incorporated learnings should be archived or removed. The detail file has no size constraint.
+
+**Learnings have freshness.** A learning from yesterday is highly relevant. A learning from three months ago that hasn't been reinforced might be an artifact of a specific situation rather than a general pattern.
 
 Example of a concise rule in `learnings.md`:
 > **Pydantic v2**: Never use `@computed_field` in models with `extra="forbid"` — it serializes but fails deserialization. Use `@property` for derived values. Model validators that set fields must use `self.__dict__[]` to avoid recursion with `validate_assignment=True`.
 
-The corresponding detail in `learnings-detail.md` would have the full observation, the actual error message, the root cause chain, and the fix — invaluable when debugging a variant of the same problem, but unnecessary as ambient context.
+The corresponding detail in `learnings-detail.md` would have the full observation, the actual error message, the root cause chain, and the fix — invaluable when debugging a variant of the same problem.
 
 ## Reflections Archive
 

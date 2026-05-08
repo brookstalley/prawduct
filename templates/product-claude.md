@@ -37,7 +37,7 @@ Apply with judgment, not mechanically.
 
 The session briefing (printed at session start) tells you current state, stale artifacts, and relevant learnings. Read it first.
 
-**Returning user** → The session briefing highlights what needs attention. If it references `.prawduct/.session-handoff.md`, read that file for previous session context. Read `.prawduct/project-state.yaml` and `.prawduct/learnings.md`. If the briefing shows pending backlog items, review `.prawduct/backlog.md` when planning new work. If `project-preferences.md` is missing and the project has source code, infer preferences from the codebase and create it. If the user says what to work on, proceed. Otherwise orient and ask.
+**Returning user** → The session briefing highlights what needs attention. If it references `.prawduct/.session-handoff.md`, read that file for previous session context. Read `.prawduct/project-state.yaml`. Use `/learnings [topic]` when starting work in an unfamiliar area — the briefing already shows topic headers so you know what's there. If the briefing shows pending backlog items, review `.prawduct/backlog.md` when planning new work. If `project-preferences.md` is missing and the project has source code, infer preferences from the codebase and create it. If the user says what to work on, proceed. Otherwise orient and ask.
 
 **New project** → Read `.prawduct/project-state.yaml`. Continue discovery or planning as appropriate.
 
@@ -123,7 +123,7 @@ When delegating to subagents, include: "Read `.prawduct/.subagent-briefing.md` f
 
 ### Learning Lifecycle
 
-Learnings have tiers: **active rules** (`learnings.md`, <3K tokens, always loaded) and **reference** (`learnings-detail.md`, created when learnings.md outgrows the threshold). Active rules format: "When X, do Y because Z." Promote provisional learnings to active after 2+ confirmations. Remove learnings that have been structurally enforced — if a hook, methodology change, or code pattern now prevents the mistake, the learning has done its job and can be pruned. Use `/learnings [topic]` to look up relevant rules and preferences without loading full files — especially useful for subagents and focused work. The **Critic** and **PR reviewer** read the full files directly for comprehensive cross-checking. The session briefing shows topic headers so you know what's there.
+Learnings are split by purpose: **active rules** (`learnings.md`, concise scannable list) and **reference** (`learnings-detail.md`, full root cause / debugging detail). Active rules format: "When X, do Y because Z." Promote provisional learnings to active after 2+ confirmations. Remove learnings that have been structurally enforced — if a hook, methodology change, or code pattern now prevents the mistake, the learning has done its job and can be pruned. Use `/learnings [topic]` to look up relevant rules and preferences in a forked context — keeps your main context clean and is the preferred path for both main agents and subagents. The **Critic** and **PR reviewer** read the full files directly for comprehensive cross-checking. The session briefing shows topic headers from `learnings.md` so you know what's there.
 
 ## The Critic — Independent Review
 
@@ -141,6 +141,6 @@ CLAUDE.md is *working instructions* (dev commands, test workflows, key conventio
 
 ## Compact Instructions
 
-When compacting, preserve: what's being built, current work and governance level, unresolved issues, instruction to re-read CLAUDE.md and learnings.md, Critic review requirement, reflection requirement, in-progress learnings. Do NOT inline full file contents — summarize what was learned and reference file paths for re-reading.
+When compacting, preserve: what's being built, current work and governance level, unresolved issues, instruction to re-read CLAUDE.md, Critic review requirement, reflection requirement, in-progress learnings. Do NOT inline full file contents — summarize what was learned and reference file paths for re-reading.
 
 <!-- PRAWDUCT:END -->

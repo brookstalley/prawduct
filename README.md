@@ -107,7 +107,7 @@ The framework detects structural characteristics (human interface, API, backgrou
 
 ### Closed learning loop
 
-Learnings are captured during development, and read at session start to inform decisions. A two-tier system keeps active rules concise (<3K tokens in `learnings.md`) with full context in `learnings-detail.md`. Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology). A dedicated /learnings skill lets Claude Code request relevant learnings for planned work rather than loading lots of tokens that aren't relevant to the task at hand.
+Learnings are captured during development and surfaced on demand via the `/learnings` skill, which reads the knowledge files in a forked context and returns only what's relevant to the task at hand. A two-tier system separates concise standing rules (`learnings.md`) from full root cause / debugging detail (`learnings-detail.md`). Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
 
 ## Working with Prawduct
 
@@ -197,7 +197,7 @@ my-product/
 ├── CLAUDE.md                    # 22 principles + methodology (synced from framework)
 ├── .prawduct/
 │   ├── project-state.yaml      # Product definition, work tracking, build plan
-│   ├── learnings.md            # Active rules, read by /learnings skill (<3K tokens)
+│   ├── learnings.md            # Active rules, read by /learnings skill
 │   ├── learnings-detail.md     # Full learning context and history
 │   ├── backlog.md              # Deferred work items (out-of-scope captures)
 │   ├── build-governance.md     # Build governance reference (read before coding)

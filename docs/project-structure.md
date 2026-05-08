@@ -62,7 +62,7 @@ prawduct/
 │   └── examples/                      # Observability strategy examples (API service, event-driven)
 ├── .prawduct/                         # Framework's own prawduct state
 │   ├── project-state.yaml             # Source of truth for framework iteration
-│   ├── learnings.md                   # Accumulated wisdom (read at session start)
+│   ├── learnings.md                   # Accumulated wisdom (surfaced via /learnings skill)
 │   ├── learnings-detail.md            # Full learning context and history
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   └── archive/                       # Archived development history
@@ -78,7 +78,7 @@ my-product/
 ├── CLAUDE.md                          # Self-contained: principles, methodology, Critic instructions
 ├── .prawduct/
 │   ├── project-state.yaml             # Product state (classification, decisions, health_check)
-│   ├── learnings.md                   # Active rules, read at session start (<3K tokens)
+│   ├── learnings.md                   # Active rules, surfaced via /learnings skill
 │   ├── learnings-detail.md            # Full learning context and history
 │   ├── backlog.md                     # Deferred work items (out-of-scope captures)
 │   ├── build-governance.md            # Build governance reference (read before coding)

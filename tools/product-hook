@@ -1931,19 +1931,6 @@ def cmd_clear(project_dir: Path) -> int:
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
 
-    # Warn if learnings.md is oversized
-    learnings_path = prawduct_dir / "learnings.md"
-    if learnings_path.is_file():
-        try:
-            size = learnings_path.stat().st_size
-            if size > 8000:  # ~3000 tokens ≈ ~8KB
-                print(
-                    f"NOTE: .prawduct/learnings.md is {size // 1024}KB — recommend pruning to ~3,000 tokens.\n"
-                    f"  Keep concise rules in learnings.md; move detailed root cause analysis to learnings-detail.md."
-                )
-        except Exception:  # prawduct:ok-broad-except — size check must not block session start
-            pass
-
     # Warn if project-state.yaml is oversized
     state_path = prawduct_dir / "project-state.yaml"
     if state_path.is_file():

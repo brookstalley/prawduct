@@ -1538,41 +1538,6 @@ class TestInvalidCommand:
 # =============================================================================
 
 
-class TestLearningsSizeWarning:
-    """Tests for oversized learnings.md warning on clear."""
-
-    def test_warns_when_learnings_exceeds_threshold(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        # Write a learnings file larger than 8KB
-        (prawduct / "learnings.md").write_text("# Learnings\n" + "x" * 9000)
-
-        result = run_hook("clear", tmp_path)
-
-        assert result.returncode == 0
-        assert "learnings.md" in result.stdout
-        assert "pruning" in result.stdout.lower()
-
-    def test_no_warning_for_small_learnings(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "learnings.md").write_text("# Learnings\nSmall file.")
-
-        result = run_hook("clear", tmp_path)
-
-        assert result.returncode == 0
-        assert "learnings" not in result.stdout.lower()
-
-    def test_no_warning_when_learnings_missing(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-
-        result = run_hook("clear", tmp_path)
-
-        assert result.returncode == 0
-        assert "learnings" not in result.stdout.lower()
-
-
 class TestProjectStateSizeWarning:
     """Tests for oversized project-state.yaml warning on clear."""
 

@@ -109,7 +109,7 @@ Session-end becomes a quick synthesis scan, not a from-scratch write. Read `meth
 ## Reference
 
 - `docs/principles.md` — Full principles with rationale and review perspectives
-- `.prawduct/learnings.md` — Accumulated project wisdom (read at session start)
+- `.prawduct/learnings.md` — Accumulated project wisdom (looked up via `/learnings [topic]` or read directly when needed)
 - `agents/critic/SKILL.md` — Independent quality review instructions (invoked via `/critic` skill)
 - `templates/` — Artifact templates for structured output
 - `.prawduct/cross-cutting-concerns.md` — Cross-cutting concerns registry (pipeline coverage matrix)
@@ -156,7 +156,7 @@ my-product/
 When compacting this conversation, preserve:
 - Which product is being built and its current work (size, type, description)
 - Any unresolved issues, blocked work, or pending decisions
-- The instruction to re-read CLAUDE.md and `.prawduct/learnings.md` after compaction
+- The instruction to re-read CLAUDE.md after compaction
 - The requirement to read `methodology/building.md` before writing any code
 - The requirement for Critic review after each chunk (invoke via `/critic`; the stop hook enforces this)
 - The requirement for reflection before session end (the stop hook enforces this)

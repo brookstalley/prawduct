@@ -2,7 +2,7 @@
 
 Accumulated wisdom from this project's development. Read this at session start — it directly informs how you work. Entries are ordered by relevance; most important patterns first.
 
-When this file grows past ~3,000 tokens, prune: consolidate related entries, archive learnings that have been incorporated into principles or methodology, remove stale entries.
+No size constraint on this file — it's the deep reference, consulted via `/learnings` or directly when debugging in a known area. Prune entries that have been incorporated into principles, methodology, or structural enforcement.
 
 ---
 
@@ -30,9 +30,9 @@ When this file grows past ~3,000 tokens, prune: consolidate related entries, arc
 
 **Pattern**: Discodon's learnings.md grew to 42KB (430 lines, ~12,000 tokens) despite guidance saying "keep under ~3,000 tokens." Each session added detailed technical learnings. No session pruned. The guidance to prune was present but never triggered behavior change — exactly the pattern from "filed-away observations don't change behavior."
 
-**Resolution**: Added learnings size warning to the clear hook. On session start, if learnings.md exceeds ~8KB, a NOTE is printed to stderr recommending pruning. Not blocking (that would be annoying), just a visible nudge.
+**Resolution**: Originally a clear-hook size warning at 8KB (2026-Q1). Superseded when learnings moved to the `/learnings` skill (`context: fork`, filters to ~500 tokens) — the skill makes large knowledge files cheap to consult, so the size threshold no longer earns its complexity. The surviving mechanical-check pattern is the `project-state.yaml > 40KB` warning, which serves the same role for a file that is still loaded directly.
 
-**Principle**: Relates to Close the Learning Loop (#17) and the existing learning about filed observations.
+**Principle**: Relates to Close the Learning Loop (#17). The general rule (size targets need mechanical checks) still holds; the specific case got obsolesced by a better load mechanism.
 
 ---
 

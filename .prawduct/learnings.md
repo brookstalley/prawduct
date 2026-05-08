@@ -1,8 +1,6 @@
 # Learnings
 
-Active rules from this project's development. Read at session start. Entries use "When X, do Y because Z" format. Full context in `learnings-detail.md`.
-
-When this file grows past ~3,000 tokens, prune: consolidate related entries, move incorporated learnings to learnings-detail.md.
+Active rules from this project's development. Surfaced via the `/learnings [topic]` skill — topic headers shown in the session briefing for ambient context. Entries use "When X, do Y because Z" format. Full context in `learnings-detail.md`.
 
 ---
 
@@ -20,7 +18,7 @@ When adding structural enforcement (hooks, gates), check BOTH reasonable locatio
 
 ## Growing files need structural nudges to prune
 
-When a file has a size target, add a mechanical check (not just guidance). Because guidance alone never triggers pruning — the clear hook now warns when learnings.md exceeds 8KB. Relates to Close the Learning Loop (#17).
+When a file has a size target, add a mechanical check (not just guidance). Because guidance alone never triggers pruning — the session-start hook warns when `project-state.yaml` exceeds 40KB, prompting compaction before context bloat compounds. Relates to Close the Learning Loop (#17).
 
 ## Reactive systems can't detect missing things
 
