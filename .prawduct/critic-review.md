@@ -8,17 +8,48 @@ You are an independent reviewer. You have NOT seen the builder's reasoning — t
 
 ## Setup
 
-1. Read `.prawduct/project-state.yaml` for context (current work, what exists)
-2. Assess scope and nature of changes (git diff or read changed files)
-3. Read relevant artifacts in `.prawduct/artifacts/`
-4. Read `.prawduct/learnings.md` for patterns this project has been burned by
-5. Choose your review execution mode (see Review Execution below)
+1. **Determine your mode** from `$ARGUMENTS` (see Modes below). Default: `final`.
+2. Read `.prawduct/project-state.yaml` for context (current work, what exists)
+3. Assess scope and nature of changes (git diff or read changed files)
+4. Read relevant artifacts in `.prawduct/artifacts/`
+5. Read `.prawduct/learnings.md` for patterns this project has been burned by (`final` mode only)
+6. Choose your review execution strategy (see Review Execution below)
+
+## Modes
+
+The Critic runs in one of two modes, selected by the caller via `$ARGUMENTS` (the build cycle invokes you as `/critic chunk` or `/critic final`):
+
+**`chunk`** — fast per-chunk review. Target: 1-2 minutes on a large repo.
+- **Goals run:** 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended) — local correctness against the chunk's just-changed files.
+- **Goals skipped:** 4, 5, 6, 7; Learnings Cross-Check; Backlog Reconciliation; README/top-level docs scan.
+- **Scope:** the chunk's uncommitted diff (`git diff` for tracked changes plus `git status` for new files). The chunk has not yet been committed.
+- **Execution:** single pass. No coordinator pattern.
+- **Use when:** between chunks of a multi-chunk build plan, before committing the current chunk.
+
+**`final`** — full end-of-cycle review. Target: 4-10 minutes.
+- **Goals run:** all 7, plus Learnings Cross-Check and Backlog Reconciliation.
+- **Scope:** the full session diff (since the session baseline) when invoked at end of work cycle, OR the current uncommitted diff when invoked as the only review for non-chunked work.
+- **Execution:** single pass for trivial/small work; coordinator pattern (3 parallel subagents) for medium/large work — see Review Execution below.
+- **Use when:** end of work cycle (last chunk of a multi-chunk plan), non-chunked medium+ work, or whenever the right answer is unclear.
+
+**Default rule:** if `$ARGUMENTS` is empty, lacks a recognized mode token, or is ambiguous → run as `final`. Fail safe to thoroughness. Never silently downgrade to `chunk`.
+
+**Two-form rule for the `mode` value:**
+
+| Form | Where it appears | Values |
+|---|---|---|
+| **Short token** (caller-side) | `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument | `chunk` or `final` |
+| **Verbose string** (persisted-side) | `.prawduct/.critic-findings.json` `mode` field, session briefings, gate WARNINGs | `"chunk (lighter pass, not ready for push)"` or `"final (full review, ready for push)"` |
+
+You read the short token from `$ARGUMENTS`. You write the verbose string to `.critic-findings.json`. Verbose strings are intentional: the JSON is read by humans during session briefings — the value itself communicates the implication without requiring docs.
 
 ## Signals
 
 Decide what to check based on: **files changed** (which layers, boundary crossings), **work size** (trivial → quick check; small → root cause + regression; medium → full review; large → deep architectural review), **work type** (feature → spec compliance; bugfix → root cause; refactor → behavior preservation; optimization → baseline measured; debt → scope discipline).
 
 ## Goals (priority order)
+
+**In `chunk` mode, run only Goals 1, 2, and 3.** In `final` mode, run all seven plus the Learnings Cross-Check and Backlog Reconciliation below.
 
 ### 1. Nothing Is Broken
 **Do not run the test suite.** Read `.prawduct/.test-evidence.json` for test results — the builder records this during the Verify step. **Validate freshness via `python3 tools/product-hook test-status`** (exit 0 = current, 1 = stale): the helper checks that evidence was recorded during this session with all tests passing. If `test-status` reports `stale`, the saved evidence does not apply to the code you're reviewing → **WARNING**. Confirm all tests passed (failures → **BLOCKING**). If the evidence file is missing, note it as a **WARNING** but continue the review — do not attempt to run tests yourself. Your job beyond checking evidence is to review test *quality and coverage* through code analysis. Tests deleted or assertions weakened without documented reason → **BLOCKING** (test consolidation is fine if explained). Changed/added behavior has corresponding test coverage → **BLOCKING** if untested. Tests verify behavior, not implementation → **WARNING** if test quality is poor. For code involving mathematical operations, data transformations, serialization round-trips, or complex input validation — consider whether property-based tests would strengthen coverage beyond example-based tests alone. If test-specifications call for property-based tests, verify they exist → **NOTE** if absent. There is no "pre-existing" exception — if the Critic finds a problem, it's a finding regardless of when it was introduced. **Security in changed code:** input validation at trust boundaries → **BLOCKING** if exploitable; no injection vectors (SQL, command, XSS, path traversal) → **BLOCKING**; no hardcoded secrets → **BLOCKING**; auth/authz on new endpoints → **WARNING** if missing.
@@ -43,11 +74,11 @@ Error handling present → **WARNING** if missing. Logging appropriate → **WAR
 
 ### Learnings Cross-Check
 
-After completing goal-based review, scan your findings against active learnings. If a change reintroduces a pattern that `learnings.md` explicitly warns against, escalate: the project already learned this lesson once. Conversely, if learnings reference patterns relevant to the changed code and the code handles them correctly, no finding is needed — the learning is working.
+**`final` mode only.** After completing goal-based review, scan your findings against active learnings. If a change reintroduces a pattern that `learnings.md` explicitly warns against, escalate: the project already learned this lesson once. Conversely, if learnings reference patterns relevant to the changed code and the code handles them correctly, no finding is needed — the learning is working.
 
 ### Backlog Reconciliation
 
-Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it. Emit a **NOTE** for each resolved item: "Backlog item appears resolved: [item text]. Verify and remove from backlog."
+**`final` mode only.** Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it. Emit a **NOTE** for each resolved item: "Backlog item appears resolved: [item text]. Verify and remove from backlog."
 
 ## Severity
 
@@ -57,9 +88,11 @@ Read `.prawduct/backlog.md`. For each open item, check whether this session's ch
 
 ## Review Execution
 
-**Trivial/small reviews**: Run all goals in a single pass.
+**`chunk` mode**: Always single-pass. The coordinator pattern's overhead exceeds its benefit at this scope, and goals 4-7 (which the coordinator splits across subagents) don't run in `chunk` mode anyway.
 
-**Medium/large reviews**: Use the coordinator pattern — spawn three parallel review subagents (via the Agent tool) for faster, more thorough coverage:
+**`final` mode, trivial/small work**: Run all goals in a single pass.
+
+**`final` mode, medium/large work**: Use the coordinator pattern — spawn three parallel review subagents (via the Agent tool) for faster, more thorough coverage:
 
 1. **Assess**: Read project state, git diff, artifacts. Determine signals. List changed files.
 2. **Dispatch** three subagents in parallel, each receiving the project dir, changed files, and signals. **Tell each subagent not to run any tests — the review is code analysis only.**
@@ -94,6 +127,7 @@ Write to `.prawduct/.critic-findings.json`:
 {
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
   "duration_seconds": 180,
+  "mode": "final (full review, ready for push)",
   "files_reviewed": ["src/app.py"],
   "findings": [
     {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "description"}
@@ -101,6 +135,12 @@ Write to `.prawduct/.critic-findings.json`:
   "summary": "1 warning. Changes ready to proceed after addressing."
 }
 ```
+
+`mode` must be exactly one of:
+- `"chunk (lighter pass, not ready for push)"` — when invoked with the `chunk` short token.
+- `"final (full review, ready for push)"` — when invoked with the `final` short token, or when defaulting because no recognized token was passed.
+
+The verbose string is required; the bare short token (`"chunk"` / `"final"`) is rejected by the hook validator.
 
 `duration_seconds`: your best estimate of wall-clock review time. Surfaced in session briefing to set expectations.
 

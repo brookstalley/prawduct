@@ -573,6 +573,17 @@ _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
 }
 
 
+# Critic mode values persisted in .prawduct/.critic-findings.json's `mode` field.
+# Verbose strings are intentional: the JSON is read by humans during session
+# briefings and gate WARNINGs, so the value itself communicates the implication.
+# The bare short tokens ("chunk" / "final") that callers pass via $ARGUMENTS
+# are NOT accepted in the persisted form — `validate_critic_findings` rejects them
+# so writer drift surfaces immediately.
+_CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
+_CRITIC_MODE_FINAL = "final (full review, ready for push)"
+_CRITIC_MODE_VALUES = frozenset({_CRITIC_MODE_CHUNK, _CRITIC_MODE_FINAL})
+
+
 def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
     """Reject ``.test-evidence.json`` with missing or wrong-typed fields.
 
@@ -2019,7 +2030,11 @@ def validate_critic_findings(findings_path: Path) -> bool:
     """Validate that critic findings JSON has required structure.
 
     Requires: non-empty files_reviewed list, findings list where each entry
-    has goal/severity/summary, and a non-empty summary string.
+    has goal/severity/summary, and a non-empty summary string. The `mode`
+    field is optional (legacy hooks pre-v1.3.13 omit it) but, when present,
+    must be one of the verbose strings in ``_CRITIC_MODE_VALUES``. The bare
+    short tokens (``"chunk"`` / ``"final"``) are rejected — those are the
+    caller-side input form, not the persistence form.
     """
     try:
         data = json.loads(findings_path.read_text())
@@ -2043,9 +2058,108 @@ def validate_critic_findings(findings_path: Path) -> bool:
         summary = data.get("summary")
         if not isinstance(summary, str) or not summary.strip():
             return False
+        # Mode field is optional (back-compat). If present, must be exactly one
+        # of the verbose strings — bare tokens, unknown strings, and non-string
+        # values are all rejected so writer drift surfaces here, not later.
+        if "mode" in data:
+            mode = data["mode"]
+            if not isinstance(mode, str) or mode not in _CRITIC_MODE_VALUES:
+                return False
         return True
     except Exception:  # prawduct:ok-broad-except — validation must not crash gate check
         return False
+
+
+def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
+    """Count chunks in build-plan.md's Status section.
+
+    Returns ``(total, complete)``: total chunks declared, and how many are
+    marked ``[x]``. Returns ``(0, 0)`` if the plan is missing, has no Status
+    section, or has no chunk items. Mirrors the parsing rules in
+    ``_parse_build_plan_status`` (skip HTML comments; exit on next ``## ``).
+    """
+    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    if not plan_path.is_file():
+        return 0, 0
+    try:
+        content = plan_path.read_text()
+        in_status = False
+        in_comment = False
+        total = 0
+        complete = 0
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped == "## Status":
+                in_status = True
+                continue
+            if not in_status:
+                continue
+            if stripped.startswith("## ") and stripped != "## Status":
+                break
+            if "<!--" in stripped:
+                in_comment = True
+            if "-->" in stripped:
+                in_comment = False
+                continue
+            if in_comment:
+                continue
+            if stripped.startswith("- [ ]"):
+                total += 1
+            elif stripped.startswith("- [x]") or stripped.startswith("- [X]"):
+                total += 1
+                complete += 1
+        return total, complete
+    except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
+        return 0, 0
+
+
+def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
+    """Check whether the latest Critic findings satisfy end-of-cycle synthesis.
+
+    Returns ``(True, "")`` when the gate is satisfied, ``(False, reason)``
+    otherwise. The gate is advisory: it fires when a multi-chunk build plan
+    has all chunks marked ``[x]`` but the most recent Critic review was
+    ``chunk`` mode — meaning end-of-cycle goals (Coherence, Design, Learnings
+    Cross-Check, Backlog Reconciliation, Framework-Specific Checks) were
+    skipped.
+
+    Specific cases (in order):
+    1. No build plan, or no chunks declared → satisfied (non-chunked work).
+    2. Single-chunk plan → satisfied (the one Critic run is the final).
+    3. Multi-chunk plan with incomplete chunks → satisfied (mid-cycle).
+    4. Multi-chunk plan, all chunks ``[x]``, latest mode is ``_CRITIC_MODE_CHUNK``
+       → unsatisfied. Run ``/critic final`` for end-of-cycle synthesis.
+    5. Multi-chunk plan, all chunks ``[x]``, latest mode is ``_CRITIC_MODE_FINAL``
+       (or absent — legacy records default to final) → satisfied.
+
+    Caller is expected to invoke this only after the existing critic-required
+    blocker has cleared (i.e. findings exist and ``validate_critic_findings``
+    returned True). Defensive checks here keep the helper standalone-safe.
+    """
+    total, complete = _count_build_plan_chunks(prawduct_dir)
+    if total == 0:
+        return True, ""
+    if total == 1:
+        return True, ""
+    if complete < total:
+        return True, ""
+
+    findings_path = prawduct_dir / ".critic-findings.json"
+    if not findings_path.is_file():
+        return True, ""
+    try:
+        data = json.loads(findings_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return True, ""
+    mode = data.get("mode", _CRITIC_MODE_FINAL)
+    if mode == _CRITIC_MODE_CHUNK:
+        return False, (
+            f"All {total} chunks complete; last Critic review was "
+            f"'{_CRITIC_MODE_CHUNK}'. Run /critic final for end-of-cycle "
+            "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
+            "Reconciliation) before pushing."
+        )
+    return True, ""
 
 
 def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
@@ -2216,6 +2330,21 @@ def cmd_stop(project_dir: Path) -> int:
                 "  run `/critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
                 "  and records findings to .prawduct/.critic-findings.json\n"
             )
+
+    # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed, which
+    # already enforces this-session freshness on the findings file. So if we
+    # reach this branch, the findings represent a real review the agent ran
+    # this session; the gate doesn't need to re-check freshness. When all
+    # chunks of a multi-chunk plan are complete but the latest review was
+    # chunk-mode, end-of-cycle synthesis (Coherence, Design, Learnings
+    # Cross-Check, Backlog Reconciliation) hasn't run. Advisory NOT blocking —
+    # chunk-mode reviews are valid mid-cycle, and the builder may legitimately
+    # defer the final review (e.g., next session).
+    if has_changes and not doc_only and not critic_would_block:
+        mode_satisfied, mode_reason = _critic_session_satisfies_gate(prawduct_dir)
+        if not mode_satisfied:
+            print("", file=sys.stderr)
+            print(f"NOTE: {mode_reason}", file=sys.stderr)
 
     # Gate 3: PR review evidence (when a PR exists for the current branch).
     # Skipped for doc-only changes. The waiver is only noted when the gate

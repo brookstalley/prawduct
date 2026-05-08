@@ -1504,6 +1504,235 @@ class TestCriticContentValidation:
         assert result.returncode == 2
 
 
+def _load_product_hook():
+    """Import product-hook as a module so we can call internal helpers directly.
+
+    The shebang script has no .py extension, so the standard import machinery
+    won't resolve it. Mirrors the pattern used by TestSessionBriefing.
+    """
+    import importlib.machinery
+    import importlib.util
+
+    loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+    spec = importlib.util.spec_from_loader("product_hook", loader)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestCriticModeGate:
+    """The advisory mode gate fires when a multi-chunk plan is fully complete
+    but the latest Critic review was chunk-mode (end-of-cycle synthesis skipped).
+
+    Tests reference the canonical constants from product-hook
+    (`_CRITIC_MODE_CHUNK`, `_CRITIC_MODE_FINAL`) rather than the literal verbose
+    strings — single source of truth in the module under test.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    def _make_findings(
+        self,
+        prawduct: Path,
+        *,
+        mode: str | None = None,
+        files_reviewed: list[str] | None = None,
+    ) -> Path:
+        data: dict = {
+            "files_reviewed": files_reviewed or ["src/app.py"],
+            "findings": [],
+            "summary": "No issues found. Changes are ready to proceed.",
+        }
+        if mode is not None:
+            data["mode"] = mode
+        path = prawduct / ".critic-findings.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def _make_plan(self, prawduct: Path, *, total: int, complete: int) -> None:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        lines = ["# Build Plan\n", "## Status\n"]
+        for i in range(complete):
+            lines.append(f"- [x] Chunk 0{i+1}: completed\n")
+        for i in range(complete, total):
+            lines.append(f"- [ ] Chunk 0{i+1}: pending\n")
+        (artifacts / "build-plan.md").write_text("".join(lines))
+
+    # ---- _critic_session_satisfies_gate ----
+
+    def test_no_build_plan_satisfies_gate(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_CHUNK)
+        ok, reason = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is True
+        assert reason == ""
+
+    def test_single_chunk_plan_with_chunk_mode_satisfies_gate(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=1, complete=1)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_CHUNK)
+        ok, _ = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is True
+
+    def test_single_chunk_plan_with_final_mode_satisfies_gate(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=1, complete=1)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_FINAL)
+        ok, _ = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is True
+
+    def test_multi_chunk_plan_with_incomplete_chunks_satisfies_gate(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=3, complete=1)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_CHUNK)
+        ok, _ = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is True, "mid-cycle chunk-mode review is fine; gate fires only when all chunks are [x]"
+
+    def test_multi_chunk_plan_all_complete_with_chunk_mode_unsatisfied(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=3, complete=3)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_CHUNK)
+        ok, reason = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is False
+        assert "3 chunks complete" in reason
+        assert self.mod._CRITIC_MODE_CHUNK in reason
+        assert "/critic final" in reason
+
+    def test_multi_chunk_plan_all_complete_with_final_mode_satisfies_gate(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=3, complete=3)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_FINAL)
+        ok, _ = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is True
+
+    def test_findings_without_mode_field_treated_as_final(self, tmp_path: Path):
+        """Back-compat: legacy records pre-dating v1.3.13 omit `mode`. Default to final."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=3, complete=3)
+        self._make_findings(prawduct, mode=None)  # no mode key
+        ok, _ = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is True
+
+    # ---- validate_critic_findings (mode validation) ----
+
+    def test_validate_critic_findings_accepts_verbose_chunk_mode(self, tmp_path: Path):
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_CHUNK,
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_accepts_verbose_final_mode(self, tmp_path: Path):
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_FINAL,
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_accepts_no_mode(self, tmp_path: Path):
+        """Mode is optional; legacy records (no `mode` key) remain valid."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_rejects_short_token_mode(self, tmp_path: Path):
+        """The bare short token is a writer error; the persisted form is verbose."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": "chunk",
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
+    def test_validate_critic_findings_rejects_unknown_mode_string(self, tmp_path: Path):
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": "weird-value",
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
+    def test_validate_critic_findings_rejects_non_string_mode(self, tmp_path: Path):
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": 7,
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
+    # ---- Integration: cmd_stop surfaces the advisory NOTE ----
+
+    def test_stop_hook_surfaces_advisory_when_all_chunks_complete_with_chunk_mode(
+        self, tmp_path: Path
+    ):
+        """End-to-end: 3-chunk plan all [x], findings mode=chunk → NOTE on stderr."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=3, complete=3)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_CHUNK)
+        # Even with "complete" chunks, the existing critic gate still passes
+        # because findings exist and validate. The mode advisory is the new layer.
+        (prawduct / ".session-reflected").write_text(
+            "Reflection captured: implemented all chunks and ran chunk-mode reviews."
+        )
+        make_session_start(prawduct, offset_seconds=-60)
+        # Touch findings AFTER session start so they count as this-session.
+        time.sleep(0.05)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_CHUNK)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        # Plan is "complete" so existing reflection/critic gates may not block.
+        # The advisory NOTE should appear on stderr regardless of return code.
+        assert "Run /critic final" in result.stderr or "/critic final" in result.stderr
+        assert self.mod._CRITIC_MODE_CHUNK in result.stderr
+
+    def test_stop_hook_no_advisory_when_final_mode_recorded(self, tmp_path: Path):
+        """End-to-end: 3-chunk plan all [x], findings mode=final → no advisory."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=3, complete=3)
+        (prawduct / ".session-reflected").write_text(
+            "Reflection: ran final-mode review at end of cycle as expected."
+        )
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_FINAL)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert "Run /critic final" not in result.stderr
+        # The verbose chunk string must not appear in stderr — that text is only
+        # in the gate's reason, which only fires for unsatisfied gates.
+        assert "lighter pass, not ready for push" not in result.stderr
+
+
 # =============================================================================
 # Invalid command
 # =============================================================================
