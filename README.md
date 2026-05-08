@@ -119,7 +119,10 @@ Product repos sync automatically at session start via the product-hook. To sync 
 python3 prawduct/tools/prawduct-setup.py sync ~/my-product
 ```
 
-For whole-file templates (e.g. `.prawduct/critic-review.md`, `.prawduct/build-governance.md`), if the product file has local edits, sync skips it with a message. Use `--force` to accept the new template version (overwrites local edits):
+For whole-file templates (e.g. `.prawduct/critic-review.md`, `.prawduct/build-governance.md`), sync classifies each stale file:
+
+- **Stale-clean** (file content matches a historical framework template render — common after framework upgrades when `sync-manifest.json` is gitignored): auto-resolves on the next sync, reported as `Auto-resolved {file} (stale-clean from {short_sha})`. No `--force` needed.
+- **Local edit** (file matches no historical render — a real user customization): sync skips with a message. Use `--force` to accept the new template version:
 
 ```bash
 python3 prawduct/tools/prawduct-setup.py sync ~/my-product --force

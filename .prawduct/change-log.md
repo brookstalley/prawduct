@@ -3,6 +3,30 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-08: Stale-clean detection auto-resolves false-edit syncs (v1.3.14)
+
+**Why:** When a product repo gitignores `sync-manifest.json` (the convention for several large client projects), every fresh clone bootstraps the manifest from current on-disk hashes. After a few framework releases, those hashes drift from what current templates would produce — so `template`-strategy files look "locally edited" to sync, even when no human ever touched them. Empirically: 5 of 6 currently-stale files across `discodon` and `discodon-brooks2` were stale-clean, hiding the one file with a real edit under `--force` advice noise. The conservative skip behavior was hostile to upgrade UX precisely when the framework released improvements.
+
+**What:** Sync now detects stale-clean files via historical template render. When a `template`-strategy file's hash doesn't match the manifest's stored hash AND doesn't match the current rendered template, sync walks the framework's git history of that template (with `--follow` for renames, capped at 100 commits, with per-sync render caching). If any historical render matches the current file content, the file is framework-produced from an older version → safe to overwrite without `--force`. Auto-resolved files emit `Auto-resolved {file} (stale-clean from {short_sha})`. Files matching no historical render fall through to the existing skip-with-`--force` behavior — no change in handling for genuine local edits.
+
+The same classification powers `prawduct-doctor`'s `framework_currency` check, which now reports per-file class (`stale-clean` / `local-edit` / `missing`) with an action-oriented detail string and recommends the appropriate next step.
+
+**Behavioral notes:**
+- Stale-clean detection runs *before* the `--force` fallback. When a file is both stale-clean and `--force` is set, the action label is `Auto-resolved` (truer to what happened) rather than `Force-updated`. The user's `--force` intent is preserved for genuine local edits, where it's still required.
+- `block_template` files (CLAUDE.md) and `always_update` files always overwrite on sync per their existing strategy — doctor classifies any drift as `stale-clean` for those. This piggybacks on the v1.3.13 marker contract change (framework owns content inside `PRAWDUCT:BEGIN/END`).
+- Briefing's `Drifted templates` header renamed to `Place-once template advisories` to clarify it's about the place-once template set (project-preferences, boundary-patterns, change-log, backlog, conftest.py) — files the user owns where the framework template has evolved. Distinguishes from doctor's `framework_currency` lens, which covers the managed file set sync actively maintains.
+
+**Files:**
+
+- `tools/lib/sync_cmd.py`: new `_HISTORICAL_RENDER_DEPTH_CAP = 100` constant. New `_match_historical_render(fw_dir, template_rel, target_hash, subs, cache=None)` helper — walks `git log --follow --format=%H --name-only` and pairs each historical SHA with the file's path at that commit, so renamed templates are findable via `git show <sha>:<historical-path>`. Cache keyed by `(sha, historical_path)`. `run_sync()` `template`-strategy branch declares a per-sync `historical_render_cache` and calls the helper between the existing autofix and the local-edits skip.
+- `tools/lib/__init__.py`, `tools/prawduct-setup.py`: re-export `_match_historical_render` and `_HISTORICAL_RENDER_DEPTH_CAP` for the legacy importlib test surface.
+- `tools/lib/validate_cmd.py`: `framework_currency` refactored to classify each stale file as `stale-clean` / `local-edit` / `missing`. Detail string format: `"<N> files differ — <K1> auto-resolve on next sync (X, Y); <K2> have local edits (Z — review diff or sync --force); <K3> missing (W — sync will create)"`. Recommendations are action-oriented per class. Restart files only listed when they will actually change.
+- `tools/product-hook`: briefing label renamed `Drifted templates` → `Place-once template advisories`.
+- `VERSION`: `1.3.13` → `1.3.14`.
+- `.claude/settings.json`: banner string `Built with Prawduct v1.3.13` → `v1.3.14`.
+- `tests/test_prawduct_sync.py`: new `TestMatchHistoricalRender` (7 tests covering HEAD/mid-history match, no-match, --follow across renames, no-git fallback, depth-cap, cache hit). New `TestStaleCleanDetection` (6 tests covering auto-resolve happy path with manifest refresh, genuine-edit skip preservation, --force still works for genuine edits, stale-clean precedence over --force, mixed-batch per-file outcome, per-sync cache populated).
+- `tests/test_product_compat.py`: new `TestDoctorClassification` (4 tests covering stale-clean classification, local-edit classification, mixed-class aggregation, happy path unchanged).
+
 ## 2026-05-08: `block_template` — framework owns content inside markers
 
 **Why:** Discodon sync from v1.3.5 → v1.3.13 reported `Skipped CLAUDE.md — block has local edits` even though the local block had no user customization — it was just stale framework content from the previous sync. Investigation showed the same false-edit signal would fire on every framework upgrade for repos that gitignore `sync-manifest.json` (which bootstraps fresh per clone, recording on-disk hashes that don't match what the current template renders). The marker convention already promises "framework-owned region" (the `<!-- PRAWDUCT:BEGIN -->` / `<!-- PRAWDUCT:END -->` markers exist for exactly that purpose) but sync was treating in-block content as co-edited shared space.

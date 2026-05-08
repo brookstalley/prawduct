@@ -2337,7 +2337,7 @@ class TestSessionBriefing:
             }
         ]
         briefing = mod.assemble_session_briefing(tmp_path, [], advisories=advisories)
-        assert "Advisories:" in briefing
+        assert "Place-once template advisories:" in briefing
         assert "project-preferences.md" in briefing
         assert "/janitor" in briefing
 
@@ -4205,7 +4205,7 @@ class TestBriefingFreshnessBlock:
         assert "v1.3.10" in briefing
         assert "v1.3.11" in briefing
 
-    def test_block_renders_drifted_templates_with_commit_info(self, tmp_path: Path):
+    def test_block_renders_place_once_advisories_with_commit_info(self, tmp_path: Path):
         _basic_project_state(tmp_path / ".prawduct")
         mod = _load_hook_module()
         freshness = {
@@ -4231,7 +4231,7 @@ class TestBriefingFreshnessBlock:
         briefing = mod.assemble_session_briefing(
             tmp_path, [], freshness=freshness, advisories=advisories
         )
-        assert "Drifted templates: 1" in briefing
+        assert "Place-once template advisories: 1" in briefing
         assert "project-preferences.md" in briefing
         assert "5885600" in briefing
         assert "Preference enforcement framework" in briefing
@@ -4276,6 +4276,6 @@ class TestBriefingFreshnessBlock:
         briefing = mod.assemble_session_briefing(
             tmp_path, [], advisories=advisories, freshness=None
         )
-        assert "Advisories: 1 template(s)" in briefing
+        assert "Place-once template advisories: 1 template(s)" in briefing
         assert "X drifted" in briefing
 

@@ -1301,7 +1301,7 @@ def assemble_session_briefing(
         if has_version_delta:
             lines.append(f"  Version delta:     v{sync_v} → v{fw_v}")
         if advisories:
-            lines.append(f"  Drifted templates: {len(advisories)}")
+            lines.append(f"  Place-once template advisories: {len(advisories)}")
             for adv in advisories:
                 short = adv.get("file", "?").rsplit("/", 1)[-1]
                 commit = adv.get("last_changed_commit", "")
@@ -1315,7 +1315,7 @@ def assemble_session_briefing(
     elif advisories:
         # Manifest exists but freshness couldn't be computed (e.g., no fw_dir
         # access). Fall back to the simple advisory list rather than dropping it.
-        lines.append(f"Advisories: {len(advisories)} template(s) have new content since project setup")
+        lines.append(f"Place-once template advisories: {len(advisories)} template(s) have new content since project setup")
         for adv in advisories:
             msg = adv.get("message", "template drift detected")
             lines.append(f"  - {msg}")

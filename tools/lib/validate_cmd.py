@@ -25,6 +25,7 @@ from .core import (
     load_json,
     render_template,
 )
+from .sync_cmd import _match_historical_render
 
 
 def run_validate(target_dir: str, *, framework_dir: str | None = None) -> dict:
@@ -252,7 +253,15 @@ def run_validate(target_dir: str, *, framework_dir: str | None = None) -> dict:
         target,
     )
     if fw_dir_resolved and fw_dir_resolved.is_dir():
-        stale_files = []
+        # Classify each managed file:
+        # - "stale-clean": current content matches a historical framework render
+        #   (sync auto-resolves on next run, no --force needed)
+        # - "local-edit": current content matches no known render (sync would skip
+        #   without --force; user should review the diff before forcing)
+        # - "missing": file expected but not present (sync creates on next run)
+        # block_template and always_update strategies are always overwritten on
+        # sync, so any drift is auto-resolvable (classified as stale-clean).
+        per_file_class: dict[str, str] = {}
         product_name_for_check = "Unknown"
         if manifest_path.is_file():
             try:
@@ -261,55 +270,92 @@ def run_validate(target_dir: str, *, framework_dir: str | None = None) -> dict:
             except json.JSONDecodeError:
                 pass
         check_subs = {"{{PRODUCT_NAME}}": product_name_for_check, "{{PRAWDUCT_VERSION}}": PRAWDUCT_VERSION}
+        history_cache: dict[tuple[str, str], str] = {}
 
         for rel_path, config in MANAGED_FILES.items():
             strategy = config.get("strategy", "template")
             dst = target / rel_path
             if not dst.is_file():
+                per_file_class[rel_path] = "missing"
                 continue
 
             if strategy == "template":
                 template_rel = config.get("template", "")
                 template_path = fw_dir_resolved / template_rel
-                if template_path.is_file():
-                    rendered = render_template(template_path, check_subs)
-                    rendered_hash = hashlib.sha256(rendered.encode()).hexdigest()
-                    current_hash = compute_hash(dst)
-                    if current_hash != rendered_hash:
-                        stale_files.append(rel_path)
+                if not template_path.is_file():
+                    continue
+                rendered = render_template(template_path, check_subs)
+                rendered_hash = hashlib.sha256(rendered.encode()).hexdigest()
+                current_hash = compute_hash(dst)
+                if current_hash == rendered_hash:
+                    continue
+                matched = _match_historical_render(
+                    fw_dir_resolved, template_rel, current_hash, check_subs, history_cache
+                )
+                per_file_class[rel_path] = "stale-clean" if matched else "local-edit"
             elif strategy == "block_template":
                 template_rel = config.get("template", "")
                 template_path = fw_dir_resolved / template_rel
-                if template_path.is_file():
-                    rendered = render_template(template_path, check_subs)
-                    rendered_block, _, _ = extract_block(rendered)
-                    if rendered_block:
-                        product_content = dst.read_text()
-                        product_block, _, _ = extract_block(product_content)
-                        if product_block:
-                            if hashlib.sha256(product_block.encode()).hexdigest() != hashlib.sha256(rendered_block.encode()).hexdigest():
-                                stale_files.append(rel_path)
+                if not template_path.is_file():
+                    continue
+                rendered = render_template(template_path, check_subs)
+                rendered_block, _, _ = extract_block(rendered)
+                if not rendered_block:
+                    continue
+                product_content = dst.read_text()
+                product_block, _, _ = extract_block(product_content)
+                if not product_block:
+                    continue
+                if hashlib.sha256(product_block.encode()).hexdigest() != hashlib.sha256(rendered_block.encode()).hexdigest():
+                    # block_template always overwrites in-marker content on sync
+                    # (marker contract from v1.3.13). Drift is always auto-resolvable.
+                    per_file_class[rel_path] = "stale-clean"
             elif strategy == "always_update":
                 source_rel = config.get("source", "")
                 source_path = fw_dir_resolved / source_rel
                 if source_path.is_file():
                     if source_path.read_bytes() != dst.read_bytes():
-                        stale_files.append(rel_path)
+                        per_file_class[rel_path] = "stale-clean"
             # merge_settings: skip — hard to compare without side effects
 
-        if stale_files:
+        if not per_file_class:
+            checks.append({"name": "framework_currency", "status": "pass", "detail": "All managed files match framework templates"})
+        else:
+            stale_clean = [r for r, c in per_file_class.items() if c == "stale-clean"]
+            local_edit = [r for r, c in per_file_class.items() if c == "local-edit"]
+            missing = [r for r, c in per_file_class.items() if c == "missing"]
+            parts: list[str] = []
+            if stale_clean:
+                parts.append(f"{len(stale_clean)} auto-resolve on next sync ({', '.join(stale_clean)})")
+            if local_edit:
+                parts.append(
+                    f"{len(local_edit)} have local edits ({', '.join(local_edit)} — review diff or sync --force)"
+                )
+            if missing:
+                parts.append(f"{len(missing)} missing ({', '.join(missing)} — sync will create)")
+            detail = f"{len(per_file_class)} files differ — " + "; ".join(parts)
             checks.append({
                 "name": "framework_currency",
                 "status": "warn",
-                "detail": f"Files differ from framework templates: {', '.join(stale_files)}",
+                "detail": detail,
             })
-            # Check if settings.json or CLAUDE.md are stale — those need restart
-            restart_files = [f for f in stale_files if f in ("CLAUDE.md", ".claude/settings.json")]
+
+            # Action-oriented recommendation
+            if local_edit:
+                recommendations.append(
+                    "Review files with local edits before running sync; for stale-clean files, sync auto-resolves them on next run"
+                )
+            elif stale_clean or missing:
+                recommendations.append("Run prawduct-sync to bring files up to date (no --force needed)")
+
+            # Restart needed only for files that will actually change
+            restart_files = [
+                f for f, c in per_file_class.items()
+                if f in ("CLAUDE.md", ".claude/settings.json") and c in ("stale-clean", "missing")
+            ]
             if restart_files:
                 needs_restart = True
-                recommendations.append(f"Run sync then restart Claude Code ({', '.join(restart_files)} will update)")
-        else:
-            checks.append({"name": "framework_currency", "status": "pass", "detail": "All managed files match framework templates"})
+                recommendations.append(f"Restart Claude Code after sync ({', '.join(restart_files)} will update)")
 
     # --- Compute overall ---
     overall = "healthy"

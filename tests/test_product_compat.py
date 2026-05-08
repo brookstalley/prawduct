@@ -688,3 +688,92 @@ class TestSyncStability:
         result = run_validate(str(product), framework_dir=str(ROOT))
         assert "version" in result
         assert result["version"] == "v5"
+
+
+# =============================================================================
+# Test Suite 7: Doctor framework_currency classification (v1.3.14)
+# =============================================================================
+
+
+def _framework_currency_check(result: dict) -> dict:
+    return next(c for c in result["checks"] if c["name"] == "framework_currency")
+
+
+class TestDoctorClassification:
+    """Verifies prawduct-doctor's framework_currency check classifies stale
+    files into stale-clean / local-edit / missing with action-oriented detail
+    strings and recommendations (v1.3.14)."""
+
+    def test_no_stale_files_passes(self, tmp_path: Path):
+        product = _init_product(tmp_path)
+        result = run_validate(str(product), framework_dir=str(ROOT))
+        check = _framework_currency_check(result)
+        assert check["status"] == "pass", check
+        assert "All managed files match" in check["detail"]
+
+    def test_stale_clean_classified_as_auto_resolvable(self, tmp_path: Path):
+        """File matches a historical framework render → classified as stale-clean,
+        recommendation says no --force needed."""
+        product = _init_product(tmp_path)
+        # Replace critic-review.md with a historical version (commit 58432e5
+        # is the documented test fixture from build-plan empirical evidence)
+        critic_path = product / ".prawduct" / "critic-review.md"
+        result = subprocess.run(
+            ["git", "show", "58432e564f75:templates/critic-review.md"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, "Test fixture: commit 58432e5 not reachable"
+        # Apply current PRODUCT_NAME substitution
+        manifest = _read_manifest(product)
+        product_name = manifest.get("product_name", "CompatProduct")
+        historical = result.stdout.replace("{{PRODUCT_NAME}}", product_name)
+        critic_path.write_text(historical)
+
+        result = run_validate(str(product), framework_dir=str(ROOT))
+        check = _framework_currency_check(result)
+        assert check["status"] == "warn", check
+        assert "auto-resolve" in check["detail"], check["detail"]
+        assert "critic-review.md" in check["detail"]
+        # Recommendation should mention sync and explicitly say no --force needed
+        assert any("sync" in r.lower() and "no --force" in r for r in result.get("recommendations", []))
+
+    def test_local_edit_classified_separately(self, tmp_path: Path):
+        """File matches no historical render → classified as local-edit, recommendation
+        warns about review before sync."""
+        product = _init_product(tmp_path)
+        critic_path = product / ".prawduct" / "critic-review.md"
+        critic_path.write_text("# I hand-wrote this; never a framework version\n")
+
+        result = run_validate(str(product), framework_dir=str(ROOT))
+        check = _framework_currency_check(result)
+        assert check["status"] == "warn", check
+        assert "local edits" in check["detail"], check["detail"]
+        assert "critic-review.md" in check["detail"]
+        # Recommendation should warn about review
+        assert any("Review" in r or "review" in r for r in result.get("recommendations", []))
+
+    def test_mixed_classes_aggregated_in_detail(self, tmp_path: Path):
+        """Both stale-clean and local-edit present → detail lists both classes."""
+        product = _init_product(tmp_path)
+        # Stale-clean: critic-review.md to historical version
+        critic_path = product / ".prawduct" / "critic-review.md"
+        result = subprocess.run(
+            ["git", "show", "58432e564f75:templates/critic-review.md"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, "Test fixture: commit 58432e5 not reachable (shallow clone?)"
+        manifest = _read_manifest(product)
+        product_name = manifest.get("product_name", "CompatProduct")
+        critic_path.write_text(result.stdout.replace("{{PRODUCT_NAME}}", product_name))
+        # Local-edit: build-governance.md hand-written
+        gov_path = product / ".prawduct" / "build-governance.md"
+        gov_path.write_text("# Hand-written governance — not a framework version\n")
+
+        result = run_validate(str(product), framework_dir=str(ROOT))
+        check = _framework_currency_check(result)
+        assert check["status"] == "warn"
+        # Both classes should appear
+        assert "auto-resolve" in check["detail"]
+        assert "local edits" in check["detail"]
+        assert "critic-review.md" in check["detail"]
+        assert "build-governance.md" in check["detail"]
