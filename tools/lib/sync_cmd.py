@@ -388,6 +388,18 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
 
             # Template changed — check if user edited the file
             current_hash = compute_hash(dst)
+
+            # Auto-fix: local already matches current template. Catches stale
+            # stored_hash, null stored_hash with matching content, and hand-pasted
+            # template state. Refresh the manifest — there is nothing to merge,
+            # so no warning, but record the hash repair as an action so the
+            # manifest gets persisted and `git status` shows the resolved state.
+            if current_hash == rendered_hash:
+                updated_files[rel_path] = dict(config)
+                updated_files[rel_path]["generated_hash"] = rendered_hash
+                actions.append(f"Refreshed manifest for {rel_path} (file already at target)")
+                continue
+
             if current_hash is not None and current_hash != stored_hash:
                 if force:
                     dst.write_text(rendered)
@@ -473,6 +485,15 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
 
             # Check if user edited the block
             product_block_hash = hashlib.sha256(product_block.encode()).hexdigest()
+
+            # Auto-fix: block already matches current template — refresh the
+            # manifest hash (parallels the template-strategy autofix above).
+            if product_block_hash == rendered_block_hash:
+                updated_files[rel_path] = dict(config)
+                updated_files[rel_path]["generated_hash"] = rendered_block_hash
+                actions.append(f"Refreshed manifest for {rel_path} (block already at target)")
+                continue
+
             if product_block_hash != stored_hash:
                 if force:
                     new_content = before + rendered_block + after

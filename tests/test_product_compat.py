@@ -222,7 +222,7 @@ class TestFreshV5Product:
         actions = result.get("actions", [])
         # Allowed: place-once file creation, hook updates, gitignore, renames
         allowed_terms = ["created", "product-hook", "gitignore", "backfill",
-                         "rename", "updated", "repaired"]
+                         "rename", "updated", "repaired", "refreshed"]
         for action in actions:
             assert any(
                 term in action.lower() for term in allowed_terms

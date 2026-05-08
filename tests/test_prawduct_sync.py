@@ -952,6 +952,62 @@ class TestRunSync:
         assert any("Force-updated" in a and "critic-review" in a for a in result["actions"])
         assert "Critic v2" in (product / ".prawduct" / "critic-review.md").read_text()
 
+    def test_autofix_local_already_at_target_refreshes_manifest_silently(self, tmp_path: Path):
+        # Local content matches the current rendered template, but the manifest's
+        # stored_hash is stale (e.g. a prior manual sync left the file caught up
+        # without updating the manifest). The previous code reported "local edits"
+        # and skipped — silently freezing the file forever. Autofix detects
+        # local == rendered and refreshes the manifest hash without warning.
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+        (product / ".prawduct" / "critic-review.md").write_text("# TestApp Critic v2")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        assert not any("local edits" in n and "critic-review" in n for n in result["notes"])
+        assert not any("Force-updated" in a and "critic-review" in a for a in result["actions"])
+        assert (product / ".prawduct" / "critic-review.md").read_text() == "# TestApp Critic v2"
+
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        rendered_hash = hashlib.sha256(b"# TestApp Critic v2").hexdigest()
+        assert manifest["files"][".prawduct/critic-review.md"]["generated_hash"] == rendered_hash
+
+    def test_autofix_null_stored_hash_with_matching_content(self, tmp_path: Path):
+        # null stored_hash + local matches current template → autofix records the hash.
+        # Previously this was the most common silent-skip case.
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        manifest["files"][".prawduct/critic-review.md"]["generated_hash"] = None
+        (product / ".prawduct" / "sync-manifest.json").write_text(json.dumps(manifest, indent=2))
+
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+        (product / ".prawduct" / "critic-review.md").write_text("# TestApp Critic v2")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        assert not any("local edits" in n and "critic-review" in n for n in result["notes"])
+        new_manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        assert new_manifest["files"][".prawduct/critic-review.md"]["generated_hash"] is not None
+
+    def test_autofix_does_not_mask_genuine_local_edits(self, tmp_path: Path):
+        # Autofix only triggers when local == rendered. Files with genuine local
+        # customization (different from both stored and current template) still skip
+        # with the "local edits" warning, preserving user work.
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        (product / ".prawduct" / "critic-review.md").write_text("# Custom local critic")
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        assert (product / ".prawduct" / "critic-review.md").read_text() == "# Custom local critic"
+        assert any("local edits" in n and "critic-review" in n for n in result["notes"])
+
     def test_merge_settings_during_sync(self, tmp_path: Path):
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
@@ -1350,6 +1406,28 @@ class TestRunSyncBlockTemplate:
         assert "Content v2" in content
         assert "My Custom Section" in content
         assert "User notes here." in content
+
+    def test_autofix_block_already_at_target_refreshes_manifest_silently(self, tmp_path: Path):
+        # Parallel to the template-strategy autofix: when the block content matches
+        # the current rendered template, sync silently refreshes the manifest hash
+        # rather than reporting "local edits" on a file that's already in shape.
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# CLAUDE.md — {{{{PRODUCT_NAME}}}}\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v2\n\n{BLOCK_END}\n"
+        )
+        (product / "CLAUDE.md").write_text(
+            f"# CLAUDE.md — TestApp\n\n"
+            f"{BLOCK_BEGIN}\n\n## What This Is\n\nContent v2\n\n{BLOCK_END}\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw))
+
+        assert not any("local edits" in n and "CLAUDE.md" in n for n in result["notes"])
+        assert not any("Force-updated" in a for a in result["actions"])
+        assert "Content v2" in (product / "CLAUDE.md").read_text()
 
     def test_skips_user_edited_block(self, tmp_path: Path):
         """If user edited content inside markers, skip with note."""
