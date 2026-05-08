@@ -469,6 +469,12 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
 
     updated_files = dict(files)
 
+    # Cache for stale-clean detection (Chunk 02 of stale-clean-detection feature).
+    # Shared across all files in this sync run so multiple stale files using the
+    # same template don't redundantly re-render shared history. Keyed by
+    # (commit_sha, historical_path) — see _match_historical_render.
+    historical_render_cache: dict[tuple[str, str], str] = {}
+
     for rel_path, config in files.items():
         strategy = config.get("strategy", "template")
         dst = product / rel_path
@@ -504,6 +510,26 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 continue
 
             if current_hash is not None and current_hash != stored_hash:
+                # Stale-clean detection: when the file's content matches a
+                # historical render of this template, the file is framework-
+                # produced from an older version, not user-edited. Safe to
+                # auto-resolve to the current template without --force. This
+                # rescues the common case where sync-manifest.json is gitignored
+                # and bootstraps fresh per-clone with hashes that drift from
+                # what subsequent syncs would produce.
+                matched_sha = _match_historical_render(
+                    fw_dir, template_rel, current_hash, subs, historical_render_cache
+                )
+                if matched_sha is not None:
+                    dst.write_text(rendered)
+                    new_hash = compute_hash(dst)
+                    updated_files[rel_path] = dict(config)
+                    updated_files[rel_path]["generated_hash"] = new_hash
+                    actions.append(
+                        f"Auto-resolved {rel_path} (stale-clean from {matched_sha})"
+                    )
+                    continue
+
                 if force:
                     dst.write_text(rendered)
                     new_hash = compute_hash(dst)

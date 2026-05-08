@@ -1221,6 +1221,255 @@ class TestRunSync:
 
 
 # =============================================================================
+# run_sync — stale-clean detection (auto-resolves files matching historical templates)
+# =============================================================================
+
+
+class TestStaleCleanDetection:
+    """Verifies that run_sync auto-resolves 'stale-clean' files (whose content
+    matches a historical framework template render) without --force, while
+    still skipping genuinely user-edited files."""
+
+    def _make_git_framework(self, tmp_path: Path) -> Path:
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=fw, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t"], cwd=fw, check=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=fw, check=True)
+        (fw / "templates").mkdir()
+        # Initial templates required by run_sync
+        (fw / "templates" / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n{BLOCK_BEGIN}\nv1 block\n{BLOCK_END}\n"
+        )
+        (fw / "templates" / "critic-review.md").write_text("# v1 critic for {{PRODUCT_NAME}}\n")
+        (fw / "templates" / "pr-review.md").write_text("# v1 pr review for {{PRODUCT_NAME}}\n")
+        (fw / "templates" / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            }
+        }, indent=2))
+        (fw / "tools").mkdir()
+        (fw / "tools" / "product-hook").write_text("#!/usr/bin/env python3\n# hook v1")
+        subprocess.run(["git", "add", "."], cwd=fw, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "initial framework"], cwd=fw, check=True)
+        return fw
+
+    def _bump_critic_template(self, fw: Path, content: str, message: str) -> None:
+        (fw / "templates" / "critic-review.md").write_text(content)
+        subprocess.run(["git", "add", "templates/critic-review.md"], cwd=fw, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", message], cwd=fw, check=True)
+
+    def _bump_pr_template(self, fw: Path, content: str, message: str) -> None:
+        (fw / "templates" / "pr-review.md").write_text(content)
+        subprocess.run(["git", "add", "templates/pr-review.md"], cwd=fw, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", message], cwd=fw, check=True)
+
+    def _make_product_with_stale_critic(self, tmp_path: Path, fw: Path,
+                                          critic_content: str) -> Path:
+        """Set up product with critic-review.md content NOT matching the manifest's
+        stored hash AND not matching the current rendered template (the stale-file
+        situation)."""
+        product = tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+        (product / "tools").mkdir()
+        (product / ".claude").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": "App"}
+        # CLAUDE.md and product-hook stay current
+        (product / "CLAUDE.md").write_text(
+            render_template(fw / "templates" / "product-claude.md", subs)
+        )
+        (product / "tools" / "product-hook").write_text(
+            (fw / "tools" / "product-hook").read_text()
+        )
+        (product / ".claude" / "settings.json").write_text(
+            (fw / "templates" / "product-settings.json").read_text()
+        )
+        # Critic gets the supplied content (the "stale" or "edited" content)
+        (product / ".prawduct" / "critic-review.md").write_text(critic_content)
+
+        # Manifest stores a fake "stored hash" different from both current file and
+        # the current rendered template — this triggers the local-edits skip path
+        # (or the new stale-clean check).
+        hashes = {
+            "CLAUDE.md": compute_block_hash((product / "CLAUDE.md").read_text()),
+            ".prawduct/critic-review.md": "stale-stored-hash-doesnt-match-anything",
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,
+        }
+        (product / ".gitignore").write_text("\n".join(GITIGNORE_ENTRIES) + "\n")
+        manifest = create_manifest(product, fw, "App", hashes)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+        return product
+
+    def test_stale_clean_file_auto_resolved(self, tmp_path: Path):
+        """Product file matches an old historical render → auto-update without --force,
+        action contains 'Auto-resolved' and the short SHA, manifest hash is updated."""
+        fw = self._make_git_framework(tmp_path)
+        # Bump critic template; v1 content is now historical
+        self._bump_critic_template(fw, "# v2 critic for {{PRODUCT_NAME}}\n", "bump critic")
+
+        # Product still has v1's rendered content (the stale-clean case)
+        product = self._make_product_with_stale_critic(tmp_path, fw, "# v1 critic for App\n")
+
+        result = run_sync(str(product), framework_dir=str(fw), no_pull=True)
+        critic_actions = [a for a in result["actions"] if "critic-review.md" in a]
+        assert any("Auto-resolved" in a for a in critic_actions), critic_actions
+        # File is now at v2 (current template render)
+        assert (product / ".prawduct" / "critic-review.md").read_text() == "# v2 critic for App\n"
+        # Manifest's generated_hash now matches the current rendered template
+        new_manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        new_hash = new_manifest["files"][".prawduct/critic-review.md"]["generated_hash"]
+        expected_hash = hashlib.sha256(b"# v2 critic for App\n").hexdigest()
+        assert new_hash == expected_hash
+        # No skip note for this file
+        assert not any("local edits" in n and "critic-review.md" in n for n in result["notes"])
+
+    def test_genuine_local_edit_still_skipped(self, tmp_path: Path):
+        """Product file matches no historical render → existing skip-with-force note."""
+        fw = self._make_git_framework(tmp_path)
+        self._bump_critic_template(fw, "# v2 critic for {{PRODUCT_NAME}}\n", "bump critic")
+
+        # Product has hand-edited content that no historical template render produced
+        product = self._make_product_with_stale_critic(
+            tmp_path, fw, "# my hand-written critic — not a framework version\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw), no_pull=True)
+        assert any("local edits" in n and "critic-review.md" in n for n in result["notes"])
+        assert not any("Auto-resolved" in a and "critic-review.md" in a for a in result["actions"])
+        # File unchanged
+        assert (product / ".prawduct" / "critic-review.md").read_text() == \
+            "# my hand-written critic — not a framework version\n"
+
+    def test_force_flag_still_works_for_genuine_edits(self, tmp_path: Path):
+        """--force overrides the genuine-edit skip and overwrites with the current template."""
+        fw = self._make_git_framework(tmp_path)
+        self._bump_critic_template(fw, "# v2 critic for {{PRODUCT_NAME}}\n", "bump critic")
+
+        product = self._make_product_with_stale_critic(
+            tmp_path, fw, "# my hand-written critic — not a framework version\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw), no_pull=True, force=True)
+        assert any("Force-updated" in a and "critic-review.md" in a for a in result["actions"])
+        assert (product / ".prawduct" / "critic-review.md").read_text() == "# v2 critic for App\n"
+
+    def test_stale_clean_takes_precedence_over_force(self, tmp_path: Path):
+        """Even with --force, the stale-clean path runs first (cheaper note for the user
+        and unambiguous about why the file changed)."""
+        fw = self._make_git_framework(tmp_path)
+        self._bump_critic_template(fw, "# v2 critic for {{PRODUCT_NAME}}\n", "bump critic")
+
+        product = self._make_product_with_stale_critic(tmp_path, fw, "# v1 critic for App\n")
+
+        result = run_sync(str(product), framework_dir=str(fw), no_pull=True, force=True)
+        # Auto-resolved wins; no Force-updated for this file
+        critic_actions = [a for a in result["actions"] if "critic-review.md" in a]
+        assert any("Auto-resolved" in a for a in critic_actions)
+        assert not any("Force-updated" in a for a in critic_actions)
+
+    def test_mixed_batch_per_file_outcome(self, tmp_path: Path):
+        """Two stale files in one sync, different templates: one stale-clean,
+        one genuinely edited. Each file gets its correct outcome — auto-resolved
+        for the stale-clean, skipped for the edited."""
+        fw = self._make_git_framework(tmp_path)
+        # Bump both templates so v1 content for each is now historical
+        self._bump_critic_template(fw, "# v2 critic for {{PRODUCT_NAME}}\n", "bump critic")
+        self._bump_pr_template(fw, "# v2 pr review for {{PRODUCT_NAME}}\n", "bump pr-review")
+
+        # Set up product with critic-review.md stale-clean (matches v1 render)
+        # and pr-review.md genuinely edited (matches no historical render)
+        product = self._make_product_with_stale_critic(tmp_path, fw, "# v1 critic for App\n")
+        (product / ".prawduct" / "pr-review.md").write_text(
+            "# my hand-written pr-review — never a framework version\n"
+        )
+        # Manifest needs an entry for pr-review.md with a stale stored hash
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        manifest["files"][".prawduct/pr-review.md"] = {
+            "template": "templates/pr-review.md",
+            "strategy": "template",
+            "generated_hash": "stale-stored-hash-doesnt-match-anything",
+        }
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+
+        result = run_sync(str(product), framework_dir=str(fw), no_pull=True)
+
+        # critic-review.md → auto-resolved (stale-clean)
+        assert any(
+            "Auto-resolved" in a and "critic-review.md" in a
+            for a in result["actions"]
+        ), result["actions"]
+        # pr-review.md → skipped (genuine edit)
+        assert any(
+            "local edits" in n and "pr-review.md" in n
+            for n in result["notes"]
+        ), result["notes"]
+        # And not the wrong way around
+        assert not any(
+            "Auto-resolved" in a and "pr-review.md" in a
+            for a in result["actions"]
+        )
+        assert not any(
+            "local edits" in n and "critic-review.md" in n
+            for n in result["notes"]
+        )
+
+        # Confirm files: critic updated to v2; pr-review unchanged
+        assert (product / ".prawduct" / "critic-review.md").read_text() == "# v2 critic for App\n"
+        assert (product / ".prawduct" / "pr-review.md").read_text() == \
+            "# my hand-written pr-review — never a framework version\n"
+
+    def test_render_cache_populated_during_history_walk(self, tmp_path: Path):
+        """The per-sync render cache must be populated by _match_historical_render
+        as it walks history. Verified by counting `git show` invocations: each
+        unique (sha, historical_path) pair should be looked up at most once."""
+        fw = self._make_git_framework(tmp_path)
+        # Multiple bumps so the helper has several commits to walk
+        self._bump_critic_template(fw, "# v2 critic for {{PRODUCT_NAME}}\n", "bump critic v2")
+        self._bump_critic_template(fw, "# v3 critic for {{PRODUCT_NAME}}\n", "bump critic v3")
+        self._bump_critic_template(fw, "# v4 critic for {{PRODUCT_NAME}}\n", "bump critic v4")
+
+        product = self._make_product_with_stale_critic(tmp_path, fw, "# v1 critic for App\n")
+
+        original_run = subprocess.run
+        show_calls: list[list[str]] = []
+
+        def counting_run(*args, **kwargs):
+            cmd = args[0] if args else kwargs.get("args", [])
+            if isinstance(cmd, list) and "show" in cmd and any(":" in str(t) for t in cmd):
+                show_calls.append(list(cmd))
+            return original_run(*args, **kwargs)
+
+        import unittest.mock as mock
+        with mock.patch.object(subprocess, "run", side_effect=counting_run):
+            run_sync(str(product), framework_dir=str(fw), no_pull=True)
+
+        # Each `git show <sha>:<path>` argument should appear at most once
+        # — duplicates would mean the cache failed to memoize.
+        show_args = []
+        for c in show_calls:
+            for token in c:
+                if isinstance(token, str) and ":" in token and "/" in token:
+                    show_args.append(token)
+        assert len(show_args) == len(set(show_args)), (
+            f"Duplicate git-show args (cache miss): {show_args}"
+        )
+        # And we did walk *some* history (sanity check — at least one show happened)
+        assert len(show_args) >= 1, "Expected at least one git-show during history walk"
+
+
+# =============================================================================
 # extract_block
 # =============================================================================
 
