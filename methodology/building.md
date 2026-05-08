@@ -169,7 +169,7 @@ Tests are the most important artifact you produce during building. They're contr
 
 **Tests are independent.** No shared mutable state, no ordering dependency.
 
-**Tests never weaken.** Test count doesn't decrease. Assertion depth doesn't decrease. Fix the code, never the test. This is Principle 1, and it's a bright line.
+**Tests never weaken.** Don't delete tests or relax assertions to make code pass. Test consolidation is fine — name the reason in the change-log. Fix the code, never the test. This is Principle 1, and it's a bright line.
 
 **All tests pass, always.** There is no "pre-existing" exception. Diagnose and fix every failure.
 

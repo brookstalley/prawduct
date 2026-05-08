@@ -385,7 +385,6 @@ These scripted responses extend the test conversation for the build stages.
 **Must-do:**
 
 - `[simulation]` Critic review runs after each feature chunk.
-- `[simulation]` Test count never decreases between chunks.
 - `[simulation]` Critic actively reviews each feature chunk with at least 2 specific findings per feature chunk (any severity), each with file/line references.
 - `[simulation]` Critic review was invoked automatically, not prompted by user request.
 - `[simulation]` At least one finding addresses multi-process concerns (process lifecycle, IPC correctness, concurrent database access, stale data handling).

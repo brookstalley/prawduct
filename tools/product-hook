@@ -1336,7 +1336,7 @@ def assemble_session_briefing(
         except Exception:  # prawduct:ok-broad-except — briefing must never block session start
             pass
 
-    # Test count (computed, not tracked)
+    # Test count — informational only; .test-evidence.json is the canonical count
     try:
         test_count = _count_test_functions(project_dir)
         if test_count > 0:

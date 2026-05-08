@@ -35,6 +35,8 @@ After running the full test suite in the Verify step, write `.prawduct/.test-evi
 
 **Required vs. recommended.** The validator (`tests_are_current` and the `validate-evidence` subcommand) requires `timestamp`, `passed`, `failed`, `skipped`, `duration_seconds`, and `command` with the types shown — writer typos (e.g. `ran_at`, `num_passed`) fail loud rather than parsing as silent zeros. `git_sha` and `total` are recommended metadata; extra fields (e.g. `chunk`, `branch`, `notes`) are allowed.
 
+**Canonical count.** `.test-evidence.json` is the authoritative test count for this session. Counts may also appear in change-log entries as informational context; the JSON file is the source of truth. Don't compare counts across files — they may legitimately differ (regex fallback in the briefing, pre-run estimates in change-log drafts).
+
 The `timestamp` field is compared against `.prawduct/.session-start` to verify evidence was recorded during this session. The Critic and PR reviewer consult `test-status` before reviewing; if evidence is from this session with all tests passing, they skip the re-run.
 
 **Skipping redundant test runs.** Builders, the Critic, and the PR reviewer all consult `test-status` before touching the test suite. Exit 0 ("current") means the saved evidence was recorded this session with all tests passing. Exit 1 ("stale") covers: missing evidence, evidence from a previous session, failing tests, missing required fields, or schema violations.
@@ -56,7 +58,7 @@ Use waivers sparingly — they exist for honestly N/A cases, not for shortcuttin
 
 ## Rules
 
-- **Tests are contracts.** Fix the code, never weaken the test. Count never decreases.
+- **Tests are contracts.** Fix the code, never weaken the test. Don't delete tests or relax assertions without a documented reason.
 - **Complete delivery.** Every requirement implemented or explicitly descoped.
 - **Scope discipline.** Build what the plan says. No unrequested features.
 - **No "pre-existing" exception.** If you find a problem, fix or flag it.
