@@ -124,7 +124,7 @@ def main() -> int:
     sync_parser.add_argument("--framework-dir", default=None, help="Framework directory (overrides manifest and env var)")
     sync_parser.add_argument("--json", action="store_true", dest="json_mode", help="JSON output only")
     sync_parser.add_argument("--no-pull", action="store_true", dest="no_pull", help="Skip git pull/fetch of the framework repo")
-    sync_parser.add_argument("--force", action="store_true", help="Overwrite locally-edited files with new template versions")
+    sync_parser.add_argument("--force", action="store_true", help="Overwrite locally-edited whole-file templates (no effect on block_template files; their in-marker content is always overwritten)")
 
     # --- validate ---
     validate_parser = subparsers.add_parser(

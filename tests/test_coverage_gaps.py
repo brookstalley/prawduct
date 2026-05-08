@@ -859,31 +859,25 @@ class TestForceFlag:
         # Content is now the framework template, not user edits
         assert "My Custom Critic Review" not in cr.read_text()
 
-    def test_block_template_force_overwrites(self, tmp_path: Path):
-        """User edits CLAUDE.md block → sync skips → force overwrites."""
+    def test_block_template_overwrites_user_edits(self, tmp_path: Path):
+        """User edits inside CLAUDE.md block are overwritten on every sync.
+        Marker contract: block content is framework-owned, --force is unnecessary."""
         product = _init_product(tmp_path)
         fw = str(FRAMEWORK_DIR)
 
-        # User edits the block content
         claude_md = product / "CLAUDE.md"
         content = claude_md.read_text()
-        original_block_hash = compute_block_hash(content)
         content = content.replace("Tests Are Contracts", "Tests Are Optional")
         claude_md.write_text(content)
 
-        # Simulate template change by changing stored hash
         manifest = _read_manifest(product)
         manifest["files"]["CLAUDE.md"]["generated_hash"] = "stale-hash"
         _write_manifest(product, manifest)
 
         result = run_sync(str(product), fw, no_pull=True, force=False)
-        assert any("local edits" in n for n in result.get("notes", []))
-        assert "Tests Are Optional" in claude_md.read_text()
-
-        # With --force
-        result = run_sync(str(product), fw, no_pull=True, force=True)
-        assert any("Force-updated" in a for a in result.get("actions", []))
+        assert not any("local edits" in n and "CLAUDE.md" in n for n in result.get("notes", []))
         assert "Tests Are Optional" not in claude_md.read_text()
+        assert any("CLAUDE.md" in a for a in result.get("actions", []))
 
     def test_force_preserves_content_outside_markers(self, tmp_path: Path):
         """Force-updating CLAUDE.md block preserves user content outside markers."""
@@ -922,27 +916,25 @@ class TestBlockTemplateDriftRepair:
     """Test that sync restores a drifted CLAUDE.md block when template is unchanged."""
 
     def test_drifted_block_restored(self, tmp_path: Path):
-        """Product block drifted from synced version → sync restores it."""
+        """Product block drifted from synced version → sync overwrites it.
+        Action label changed to 'Updated ... block' under the framework-owned
+        marker contract."""
         product = _init_product(tmp_path)
         fw = str(FRAMEWORK_DIR)
 
-        # Record the original block hash
         claude_md = product / "CLAUDE.md"
-        original_content = claude_md.read_text()
-        manifest = _read_manifest(product)
-        stored_hash = manifest["files"]["CLAUDE.md"]["generated_hash"]
 
         # User edits the block (simulating drift)
         content = claude_md.read_text()
         content = content.replace("Tests Are Contracts", "Tests Are Malleable")
         claude_md.write_text(content)
 
-        # Sync with same template (no template change) → should restore
+        # Sync with same template (no template change) → should overwrite
         result = run_sync(str(product), fw, no_pull=True)
 
         restored = claude_md.read_text()
         assert "Tests Are Malleable" not in restored
-        assert any("Restored" in a for a in result.get("actions", []))
+        assert any("CLAUDE.md" in a for a in result.get("actions", []))
 
     def test_matching_block_not_restored(self, tmp_path: Path):
         """Block matches stored hash → no restoration needed."""

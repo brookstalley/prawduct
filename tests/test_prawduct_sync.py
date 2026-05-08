@@ -810,11 +810,13 @@ class TestRunSync:
         content = (product / "CLAUDE.md").read_text()
         assert "Content v2" in content
 
-    def test_user_edited_block_skipped(self, tmp_path: Path):
+    def test_user_edits_inside_block_overwritten(self, tmp_path: Path):
+        """Marker contract: content inside the block is framework-owned and
+        overwritten on sync regardless of --force."""
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
 
-        # User edits inside the block
+        # User edits inside the block (against the contract)
         claude = (product / "CLAUDE.md").read_text()
         claude = claude.replace("Content v1", "My custom content")
         (product / "CLAUDE.md").write_text(claude)
@@ -826,30 +828,29 @@ class TestRunSync:
         )
 
         result = run_sync(str(product), framework_dir=str(fw))
-        # Should skip CLAUDE.md because user edited the block
-        assert not any("CLAUDE.md" in a for a in result["actions"])
-        assert any("Skipped CLAUDE.md" in n for n in result["notes"])
-        # User's content preserved
-        assert "My custom content" in (product / "CLAUDE.md").read_text()
+        assert any("CLAUDE.md" in a for a in result["actions"])
+        assert not any("Skipped CLAUDE.md" in n for n in result["notes"])
+        content = (product / "CLAUDE.md").read_text()
+        assert "Content v2" in content
+        assert "My custom content" not in content
 
-    def test_force_overwrites_user_edited_block(self, tmp_path: Path):
-        """--force overwrites user block edits with new template."""
+    def test_force_flag_no_op_for_block_template(self, tmp_path: Path):
+        """--force is unnecessary for block_template (always overwrites by default)
+        but should produce the same result without errors."""
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
 
-        # User edits inside the block
         claude = (product / "CLAUDE.md").read_text()
         claude = claude.replace("Content v1", "My custom content")
         (product / "CLAUDE.md").write_text(claude)
 
-        # Update template
         (fw / "templates" / "product-claude.md").write_text(
             f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
             f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
         )
 
         result = run_sync(str(product), framework_dir=str(fw), force=True)
-        assert any("Force-updated CLAUDE.md" in a for a in result["actions"])
+        assert any("CLAUDE.md" in a for a in result["actions"])
         content = (product / "CLAUDE.md").read_text()
         assert "Content v2" in content
         assert "My custom content" not in content
@@ -1429,12 +1430,14 @@ class TestRunSyncBlockTemplate:
         assert not any("Force-updated" in a for a in result["actions"])
         assert "Content v2" in (product / "CLAUDE.md").read_text()
 
-    def test_skips_user_edited_block(self, tmp_path: Path):
-        """If user edited content inside markers, skip with note."""
+    def test_overwrites_user_edits_inside_block(self, tmp_path: Path):
+        """Marker contract: content inside PRAWDUCT:BEGIN/END is framework-owned.
+        User edits inside the block are overwritten on sync — customization belongs
+        outside the markers."""
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
 
-        # User edits inside the markers
+        # User edits inside the markers (against the contract)
         claude = (product / "CLAUDE.md").read_text()
         claude = claude.replace("Content v1", "My custom content")
         (product / "CLAUDE.md").write_text(claude)
@@ -1446,9 +1449,11 @@ class TestRunSyncBlockTemplate:
         )
 
         result = run_sync(str(product), framework_dir=str(fw))
-        assert not any("CLAUDE.md" in a for a in result["actions"])
-        assert any("block has local edits" in n for n in result["notes"])
-        assert "My custom content" in (product / "CLAUDE.md").read_text()
+        assert any("CLAUDE.md" in a for a in result["actions"])
+        assert not any("block has local edits" in n for n in result["notes"])
+        new_content = (product / "CLAUDE.md").read_text()
+        assert "My custom content" not in new_content
+        assert "Content v2" in new_content
 
     def test_handles_missing_markers_in_product(self, tmp_path: Path):
         """Product file without markers — skip with note."""
@@ -1509,7 +1514,8 @@ class TestRunSyncBlockTemplate:
         assert result["reason"] == "no updates needed"
 
     def test_restores_drifted_block(self, tmp_path: Path):
-        """When template hasn't changed but product block drifted, restore it."""
+        """When template hasn't changed but product block drifted, overwrite it.
+        Marker contract: block content is framework-owned regardless of why it drifted."""
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
 
@@ -1521,8 +1527,7 @@ class TestRunSyncBlockTemplate:
         # Template is unchanged — stored hash matches rendered block hash
         result = run_sync(str(product), framework_dir=str(fw))
         assert result["synced"] is True
-        assert any("Restored CLAUDE.md" in a for a in result["actions"])
-        assert any("drifted" in n for n in result["notes"])
+        assert any("CLAUDE.md" in a for a in result["actions"])
 
         # Block should be restored to original template content
         content = (product / "CLAUDE.md").read_text()

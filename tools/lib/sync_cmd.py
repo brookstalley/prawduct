@@ -427,13 +427,16 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 notes.append(f"Updated {rel_path} — re-read to pick up changes")
 
         elif strategy == "block_template":
+            # Marker contract: content between PRAWDUCT:BEGIN/END is framework-owned
+            # and always overwritten. User customization belongs outside the markers
+            # (before/after), which sync preserves verbatim. The stored hash is
+            # informational only — we don't gate on local edits inside the block.
             template_rel = config.get("template", "")
             template_path = fw_dir / template_rel
             if not template_path.is_file():
                 notes.append(f"Template missing: {template_rel}")
                 continue
 
-            # Render current template and extract block
             rendered = render_template(template_path, subs)
             rendered_block, _, _ = extract_block(rendered)
             if rendered_block is None:
@@ -441,31 +444,9 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 continue
 
             rendered_block_hash = hashlib.sha256(rendered_block.encode()).hexdigest()
-
-            # Check if template block has changed since last sync
             stored_hash = config.get("generated_hash")
-            if stored_hash == rendered_block_hash:
-                # Template hasn't changed — but check if product drifted
-                if dst.is_file():
-                    product_content = dst.read_text()
-                    product_block, _, _ = extract_block(product_content)
-                    if product_block is not None:
-                        product_block_hash = hashlib.sha256(product_block.encode()).hexdigest()
-                        if product_block_hash != stored_hash:
-                            # Product drifted from last sync — re-apply
-                            before_idx = product_content.find(BLOCK_BEGIN)
-                            end_idx = product_content.find(BLOCK_END)
-                            before = product_content[:before_idx]
-                            after = product_content[end_idx + len(BLOCK_END):]
-                            new_content = before + rendered_block + after
-                            dst.write_text(new_content)
-                            actions.append(f"Restored {rel_path}")
-                            notes.append(f"Restored {rel_path} — block had drifted from synced version")
-                continue
 
-            # Template changed — check product file
             if not dst.is_file():
-                # Product file missing — create from full template
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 dst.write_text(rendered)
                 updated_files[rel_path] = dict(config)
@@ -483,37 +464,21 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 )
                 continue
 
-            # Check if user edited the block
             product_block_hash = hashlib.sha256(product_block.encode()).hexdigest()
 
-            # Auto-fix: block already matches current template — refresh the
-            # manifest hash (parallels the template-strategy autofix above).
             if product_block_hash == rendered_block_hash:
-                updated_files[rel_path] = dict(config)
-                updated_files[rel_path]["generated_hash"] = rendered_block_hash
-                actions.append(f"Refreshed manifest for {rel_path} (block already at target)")
-                continue
-
-            if product_block_hash != stored_hash:
-                if force:
-                    new_content = before + rendered_block + after
-                    dst.write_text(new_content)
+                # Already at target. Refresh manifest if hash drifted, silently otherwise.
+                if stored_hash != rendered_block_hash:
                     updated_files[rel_path] = dict(config)
                     updated_files[rel_path]["generated_hash"] = rendered_block_hash
-                    actions.append(f"Force-updated {rel_path} block (local edits overwritten)")
-                    notes.append(f"Updated {rel_path} — re-read to pick up changes")
-                else:
-                    notes.append(
-                        f"Skipped {rel_path} — new template available but block has local edits (re-run with --force to overwrite)"
-                    )
+                    actions.append(f"Refreshed manifest for {rel_path} (block already at target)")
                 continue
 
-            # Safe to replace block in-place, preserving before/after
             new_content = before + rendered_block + after
             dst.write_text(new_content)
             updated_files[rel_path] = dict(config)
             updated_files[rel_path]["generated_hash"] = rendered_block_hash
-            actions.append(f"Updated {rel_path}")
+            actions.append(f"Updated {rel_path} block")
             notes.append(f"Updated {rel_path} — re-read to pick up changes")
 
         elif strategy == "always_update":

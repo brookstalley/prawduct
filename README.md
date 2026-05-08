@@ -119,11 +119,13 @@ Product repos sync automatically at session start via the product-hook. To sync 
 python3 prawduct/tools/prawduct-setup.py sync ~/my-product
 ```
 
-If a template changed but the product file has local edits, sync skips it with a message. Use `--force` to accept the new template version (overwrites local edits):
+For whole-file templates (e.g. `.prawduct/critic-review.md`, `.prawduct/build-governance.md`), if the product file has local edits, sync skips it with a message. Use `--force` to accept the new template version (overwrites local edits):
 
 ```bash
 python3 prawduct/tools/prawduct-setup.py sync ~/my-product --force
 ```
+
+For files with `<!-- PRAWDUCT:BEGIN -->` / `<!-- PRAWDUCT:END -->` markers (e.g. `CLAUDE.md`), content **inside** the markers is framework-owned and overwritten on every sync — `--force` is not required. Put your customization **outside** the markers (before or after); sync preserves that content verbatim.
 
 ### Health check a product repo
 
