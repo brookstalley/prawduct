@@ -139,6 +139,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   - What artifacts to read (which specs govern this chunk)
   - What tests to write (mapped from test-specifications)
   - Acceptance criteria (concrete, verifiable)
+  - Critic mode (`chunk` for fast per-chunk review; `final` for end-of-cycle synthesis)
   - Dependencies (which chunks must complete first)
   - Done-when steps (acceptance + Critic + commit — use the standard list)
 -->
@@ -154,9 +155,17 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        or extends (e.g., "adds unit tests for scoring logic, integration test for
        DB persistence, extends E2E test for full score flow"). -->
 - **Acceptance criteria:** [Concrete checks — "npm test passes", "page renders scores", etc.]
+- **Critic mode:** [pick one: `chunk` or `final`]
+  <!-- Replace the bracketed placeholder with the single chosen value, not both.
+       Heuristic: first N-1 chunks of a multi-chunk plan use `chunk` (fast review,
+       Goals 1-3 only, target 1-2 min). Last chunk uses `final` (full review, all
+       7 goals, target 4-10 min). Single-chunk plans use `final`. Trivial chunks
+       (typo-level edits inside a larger plan) waive Critic via `.gates-waived`.
+       Missing field → builder treats as `final` (fail-safe to thoroughness).
+       See `agents/critic/review-cycle.md` for full per-mode behavior. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass
-  2. `/critic` run and blocking findings resolved
+  2. `/critic <mode>` run (using the mode declared above) and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
 
 <!-- Repeat for each chunk -->
@@ -176,6 +185,14 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
 <!--
   When the Critic runs a full cross-chunk review (not just per-chunk review).
   Typically: after the early feedback milestone and after all chunks complete.
+-->
+
+**Commit & PR cadence:** [e.g., "Commit per chunk after `/critic <mode>` passes; PR after the final chunk's `/critic final` passes."]
+<!--
+  Per-chunk commit is the default and the contract for `chunk`-mode Critic
+  reviews — each chunk's diff scope is the working tree against the previous
+  chunk's commit. Squash-at-end plans are out of scope (no `Critic base SHA:`
+  tracking yet); if you genuinely need it, deferred to backlog.
 -->
 
 - After chunk [ID]: [Review type and rationale]

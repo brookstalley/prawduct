@@ -74,7 +74,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
-**Critic review.** Run `/critic` — it's in the build plan's "Done when" steps. The Critic runs as a separate agent with its own context and restricted tools.
+**Critic review.** Read the chunk's `Critic mode:` and run `/critic chunk` or `/critic final` (default `final` if absent). The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 
@@ -189,11 +189,16 @@ After medium+ work, invoke the Critic as a separate agent. The Critic receives s
 6. **The System Can Be Understood** — Error handling present, logging appropriate.
 7. **The Design Is Sound** — Good encapsulation, appropriate coupling, no unnecessary complexity or duplication.
 
-After goals, the Critic cross-checks learnings and reconciles the backlog (flagging resolved items).
+In `final` mode the Critic also cross-checks learnings and reconciles the backlog. Medium/large `final` reviews use a coordinator pattern — parallel subagents for correctness (1-3), design (4, 7), and sustainability (5-6).
 
-For medium/large reviews, the Critic uses a coordinator pattern — spawning parallel subagents for correctness (1-3), design (4, 7), and sustainability (5-6) to improve throughput.
+### Modes
 
-See `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (products) for full instructions.
+Each chunk declares `Critic mode:` in the build plan; the build cycle passes it to `/critic` via `$ARGUMENTS`.
+
+- **`chunk`** — Goals 1-3 only against the chunk's uncommitted diff. Single-pass. Target 1-2 min.
+- **`final`** — all 7 goals + cross-checks + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
+
+Missing/unrecognized mode → `final`. See `agents/critic/review-cycle.md` for the per-mode table and `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (products) for goal definitions.
 
 **The Critic takes time.** Reviews take 1-5 minutes; don't check on it. While it reviews, do your own deep scrub — re-read changes for completeness, correctness, DRY, encapsulation, test coverage, UX, and docs. Self-review often pre-resolves findings.
 
@@ -249,3 +254,5 @@ Broad catches that swallow errors without logging (`except Exception: pass`, emp
 **Unnecessary backwards compatibility**: Adding migration paths or fallbacks when there's no existing deployment to migrate. Backwards compatibility is a requirement to be elicited, not an assumption.
 
 **Opinionated defaults without configuration**: Shipping a workflow-affecting feature with one hardcoded behavior. If a feature could reasonably work two ways, make it a preference in `project-preferences.md` with a safe default.
+
+**Skipping `final` mode**: chunk-mode reviews skip Coherence, Design, Learnings Cross-Check, and Backlog Reconciliation. After all chunks are `[x]`, run `/critic final` before pushing — the stop hook surfaces an advisory WARNING otherwise.

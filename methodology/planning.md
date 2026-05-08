@@ -68,6 +68,23 @@ The build plan decomposes artifacts into buildable chunks — coherent units of 
 
 **Governance checkpoints** are points during the build where you pause to review the whole — not just the current chunk but the trajectory. Place them at natural boundaries: after the first chunk (architecture validation), at the midpoint, and before completion. The number scales with risk (1-2 for low-risk, 3-5 for high-risk).
 
+### Critic Mode Per Chunk
+
+Every chunk in a build plan declares `Critic mode: chunk | final`. The mode controls how heavy the per-chunk review is — this is what makes Critic review proportional rather than re-paying full-review cost on every chunk.
+
+**Heuristic when authoring a build plan:**
+- **Single-chunk plan** → `final`. The one Critic run is also the end-of-cycle synthesis.
+- **Multi-chunk plan** → first N-1 chunks `chunk`, last chunk `final`. Each per-chunk review covers Goals 1-3 against just that chunk's diff (target 1-2 min); the final chunk's review covers all 7 goals plus Learnings Cross-Check, Backlog Reconciliation, and Framework-Specific Checks against the full session diff (target 4-10 min).
+- **Trivial chunks** (typo-level edits buried inside a larger plan) → waive Critic entirely via `.gates-waived`.
+
+**Why this layering:** the per-chunk goals (Nothing Is Broken, Missing, Unintended) catch the high-frequency failures — fix-by-fudging, dropped requirements, broad exceptions — and they're cheap to run because they scope to local changes. The final-chunk goals (Coherence, Decisions, Understood, Design, plus the cross-checks) need the full diff to do their job — coherence is across files, design is a system-wide property — so they belong at the end of the cycle, not on every chunk.
+
+**Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk has been committed, so the working-tree diff is just the current chunk's changes. Plans that batch-commit at the end break the assumption — if you need that, declare every chunk `final` (squash-at-end with full-review-per-chunk is heavy but safe; squash-at-end with `chunk`-mode is wrong because the diff scope is unbounded).
+
+**Fail-safe default:** if `Critic mode:` is absent from a chunk, the build cycle treats it as `final`. Don't omit the field expecting the default — declare it. The Critic itself, if invoked without a recognized mode token in `$ARGUMENTS`, also defaults to `final`. Both layers fail safe to thoroughness.
+
+See `methodology/building.md` for the runtime behavior (how the build cycle reads the mode and invokes `/critic`) and `agents/critic/review-cycle.md` for the per-mode behavior table.
+
 ## Common Traps
 
 **Over-specification**: Writing specs so detailed they're harder to maintain than the code. Specs should be precise enough to build from but not so rigid they can't adapt to implementation discoveries.

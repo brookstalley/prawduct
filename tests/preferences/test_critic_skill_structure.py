@@ -109,6 +109,84 @@ class TestCriticVerboseModeStrings:
         )
 
 
+class TestProportionalCriticMethodology:
+    """The proportional-Critic feature spans Critic skill files AND methodology files.
+
+    Chunk 02 of the proportional-Critic build plan extended mode documentation
+    into `methodology/planning.md` (heuristic for choosing per-chunk modes) and
+    `methodology/building.md` (runtime behavior — how the build cycle reads the
+    mode and invokes /critic). The build-plan and build-governance templates
+    were updated to surface the field at the right level.
+
+    Drift detection: if any of these files loses the mode terminology, the
+    documented contract for proportional Critic invocation breaks down. A
+    builder reading the build plan template won't know to declare a mode; a
+    builder reading the build cycle won't know to read it. Pin the load-bearing
+    headings and field placeholders.
+    """
+
+    PLANNING_MD = REPO_ROOT / "methodology" / "planning.md"
+    BUILDING_MD = REPO_ROOT / "methodology" / "building.md"
+    BUILD_PLAN_TEMPLATE = REPO_ROOT / "templates" / "build-plan.md"
+    BUILD_GOVERNANCE_TEMPLATE = REPO_ROOT / "templates" / "build-governance.md"
+
+    def test_planning_has_critic_mode_per_chunk_heading(self) -> None:
+        content = self.PLANNING_MD.read_text()
+        assert "### Critic Mode Per Chunk" in content, (
+            "methodology/planning.md is missing `### Critic Mode Per Chunk`. "
+            "Without the heuristic, plan authors won't know to declare modes."
+        )
+
+    def test_planning_documents_heuristic(self) -> None:
+        content = self.PLANNING_MD.read_text()
+        assert "single-chunk plan" in content.lower(), (
+            "methodology/planning.md must spell out the single-chunk-plan rule "
+            "(uses `final`)."
+        )
+        assert "multi-chunk plan" in content.lower(), (
+            "methodology/planning.md must spell out the multi-chunk-plan rule "
+            "(first N-1 `chunk`, last `final`)."
+        )
+
+    def test_building_has_modes_subsection(self) -> None:
+        content = self.BUILDING_MD.read_text()
+        assert "### Modes" in content, (
+            "methodology/building.md is missing the `### Modes` subsection under "
+            "## The Critic. Without it, the build cycle has no documented "
+            "per-mode behavior in the methodology guide."
+        )
+
+    def test_building_cycle_references_mode_from_build_plan(self) -> None:
+        content = self.BUILDING_MD.read_text()
+        assert "Critic mode:" in content, (
+            "methodology/building.md must reference `Critic mode:` so the "
+            "build cycle reads the field from the build plan."
+        )
+
+    def test_build_plan_template_has_critic_mode_placeholder(self) -> None:
+        content = self.BUILD_PLAN_TEMPLATE.read_text()
+        assert "**Critic mode:**" in content, (
+            "templates/build-plan.md chunk template must declare a `**Critic mode:**` "
+            "field. Plans authored from this template won't carry the mode otherwise."
+        )
+
+    def test_build_plan_template_has_commit_pr_cadence(self) -> None:
+        content = self.BUILD_PLAN_TEMPLATE.read_text()
+        assert "Commit & PR cadence" in content, (
+            "templates/build-plan.md Governance Checkpoints must include a "
+            "`Commit & PR cadence:` line. Per-chunk commit is the contract that "
+            "makes `chunk`-mode Critic reviews work; spell it out."
+        )
+
+    def test_build_governance_references_mode(self) -> None:
+        content = self.BUILD_GOVERNANCE_TEMPLATE.read_text()
+        assert "Critic mode:" in content or "/critic chunk" in content or "/critic final" in content, (
+            "templates/build-governance.md (synced into product repos) must "
+            "reference the mode field or the mode-aware /critic invocation. "
+            "Without it, products don't get the per-mode contract."
+        )
+
+
 class TestCriticSkillEntryPoints:
     """Slash-command entry points expose the mode argument.
 

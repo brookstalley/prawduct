@@ -71,8 +71,13 @@ class TestBuildingMethodology:
         assert "Design Is Sound" in self.content
 
     def test_token_budget(self):
+        # Bumped from 3900 → 4100 in v1.3.13 (proportional Critic / chunk vs.
+        # final modes). The Modes subsection, mode-aware Critic invocation, and
+        # "Skipping final mode" Common Trap add ~120 tokens of essential
+        # documentation after aggressive trimming. If this test fails again,
+        # prefer trimming over another bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3900, f"building.md is ~{tokens} tokens, should be <3900"
+        assert tokens < 4100, f"building.md is ~{tokens} tokens, should be <4100"
 
 
 # =============================================================================
