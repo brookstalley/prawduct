@@ -4,6 +4,7 @@ user-invocable: true
 disable-model-invocation: false
 context: fork
 allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Write, Agent
+argument-hint: chunk | final
 ---
 
 <!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only. -->
@@ -24,9 +25,10 @@ When using the coordinator pattern (medium/large reviews), tell each subagent: "
 
 ## Getting Started
 
-1. Read `.prawduct/critic-review.md` for the full review protocol
-2. Read `.prawduct/project-state.yaml` for project context
-3. Read `.prawduct/.test-evidence.json` for test results, then run `python3 tools/product-hook test-status` to validate evidence is from this session (exit 1 = stale, raise as a WARNING in your review)
-4. Assess changes via `git diff` and reading changed files
-5. Execute the review following the protocol
-6. Write findings to `.prawduct/.critic-findings.json`
+1. **Read mode from `$ARGUMENTS`.** If it contains the token `chunk`, run in `chunk` mode (fast, goals 1-3 only). If it contains `final`, run in `final` mode (full review). If empty, missing, or unrecognized, default to `final` — fail safe to thoroughness. Never silently downgrade to `chunk`.
+2. Read `.prawduct/critic-review.md` for the full review protocol — including the per-mode goal scoping and the two-form rule for the `mode` value (short token in / verbose string out).
+3. Read `.prawduct/project-state.yaml` for project context
+4. Read `.prawduct/.test-evidence.json` for test results, then run `python3 tools/product-hook test-status` to validate evidence is from this session (exit 1 = stale, raise as a WARNING in your review)
+5. Assess changes via `git diff` and reading changed files
+6. Execute the review following the protocol
+7. Write findings to `.prawduct/.critic-findings.json` with the `mode` field set to the verbose string for your mode (`"chunk (lighter pass, not ready for push)"` or `"final (full review, ready for push)"`).

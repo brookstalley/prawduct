@@ -188,8 +188,14 @@ class TestCriticSkill:
         assert "Instruction Clarity" in self.content
 
     def test_token_budget(self):
+        # Bumped from 3500 → 3700 in v1.3.13 (proportional Critic / chunk vs.
+        # final modes). The Modes section, activation step, goal preamble, and
+        # JSON `mode` field add ~150 tokens of essential documentation for the
+        # new feature. If this test fails again, prefer trimming over another
+        # bump — the Critic skill is loaded fresh on every invocation and
+        # the budget bounds that cost.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3500, f"SKILL.md is ~{tokens} tokens, should be <3500"
+        assert tokens < 3700, f"SKILL.md is ~{tokens} tokens, should be <3700"
 
 
 # =============================================================================

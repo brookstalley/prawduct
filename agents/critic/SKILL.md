@@ -10,13 +10,22 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 ## When You Are Activated
 
-1. Read `.prawduct/project-state.yaml` for context (current work, what exists).
-2. Assess the **scope and nature** of changes (use git diff or read changed files).
-3. Read relevant artifacts in `.prawduct/artifacts/`.
-4. Read `docs/principles.md` for the framework's principles.
-5. Read `.prawduct/learnings.md` for patterns this project has been burned by.
-6. Decide what to check based on the signals below — you reason about scope, not follow a fixed checklist.
-7. Choose your review execution mode (see Review Execution below).
+1. **Determine your mode** from `$ARGUMENTS` (see Modes below). Default: `final`.
+2. Read `.prawduct/project-state.yaml` for context.
+3. Assess the **scope and nature** of changes (use git diff or read changed files).
+4. Read relevant artifacts in `.prawduct/artifacts/`.
+5. Read `docs/principles.md` and `.prawduct/learnings.md` (`final` mode only).
+6. Decide what to check based on the signals below.
+7. Choose your review execution strategy (see Review Execution below).
+
+## Modes
+
+`$ARGUMENTS` selects the mode. See `agents/critic/review-cycle.md` for full per-mode behavior.
+
+- **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
+- **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
+
+**Default:** missing/ambiguous → `final`. Never silently downgrade. The `mode` field in findings uses the verbose form (see Output Format).
 
 ## Signals That Guide Your Review
 
@@ -28,7 +37,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 ## Review Goals
 
-Your goals, in priority order:
+Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 1. Nothing Is Broken
 - **Do not run the test suite.** Read `.prawduct/.test-evidence.json` for test results — the builder records this during the Verify step. **Validate freshness via `python3 tools/product-hook test-status`** (exit 0 = current, 1 = stale): the helper checks that evidence was recorded during this session with all tests passing. If `test-status` reports `stale`, the saved evidence does not apply to the code under review → **WARNING**. Confirm all tests passed (failures → **BLOCKING**). If the file is missing, note it as a **WARNING** but continue the review — do not attempt to run tests yourself. Your job beyond checking evidence is to review the *quality and coverage* of tests through code analysis, not to re-execute them.
@@ -96,7 +105,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ## Framework-Specific Checks
 
-**Applies only when reviewing framework instruction files, templates, or structural decisions.** Product builds skip these.
+**Applies only in `final` mode when reviewing framework instruction files, templates, or structural decisions.** `chunk` mode and product builds skip these.
 
 Read `agents/critic/framework-checks.md` for the complete definitions:
 - **Generality**: Instructions work across product types.
@@ -106,11 +115,11 @@ Read `agents/critic/framework-checks.md` for the complete definitions:
 
 ### Learnings Cross-Check
 
-After completing goal-based review, scan your findings against active learnings. If a change reintroduces a pattern that `learnings.md` explicitly warns against, escalate: the project already learned this lesson once. Conversely, if learnings reference patterns relevant to the changed code and the code handles them correctly, no finding is needed — the learning is working.
+**`final` mode only.** After completing goal-based review, scan your findings against active learnings. If a change reintroduces a pattern that `learnings.md` explicitly warns against, escalate: the project already learned this lesson once. Conversely, if learnings reference patterns relevant to the changed code and the code handles them correctly, no finding is needed — the learning is working.
 
 ### Backlog Reconciliation
 
-Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly (the item was the work) or incidentally (other work addressed the underlying issue). For each resolved item, emit a **NOTE** finding: "Backlog item appears resolved: [item text]. Verify and remove from backlog." This ensures the backlog reflects reality. Do not remove items yourself — the builder verifies and removes.
+**`final` mode only.** Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly (the item was the work) or incidentally (other work addressed the underlying issue). For each resolved item, emit a **NOTE** finding: "Backlog item appears resolved: [item text]. Verify and remove from backlog." This ensures the backlog reflects reality. Do not remove items yourself — the builder verifies and removes.
 
 ## Severity Levels
 
@@ -120,9 +129,9 @@ Read `.prawduct/backlog.md`. For each open item, check whether this session's ch
 
 ## Review Execution
 
-**Trivial/small reviews**: Run all goals in a single pass. Parallelization overhead isn't worth it.
-
-**Medium/large reviews**: Use the coordinator pattern for faster, more thorough coverage.
+- **`chunk` mode**: always single-pass.
+- **`final` mode, trivial/small**: single pass.
+- **`final` mode, medium/large**: coordinator pattern (below).
 
 ### Coordinator Pattern
 
@@ -177,6 +186,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 {
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
   "duration_seconds": 180,
+  "mode": "final (full review, ready for push)",
   "files_reviewed": ["file1", "file2"],
   "findings": [
     {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description"}
@@ -185,15 +195,15 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`duration_seconds` is your best estimate of how long the review took (wall-clock, from activation to writing findings). This is surfaced in the session briefing to set expectations for future reviews.
+`mode`: write the verbose form — `"chunk (lighter pass, not ready for push)"` or `"final (full review, ready for push)"`. The hook validator rejects bare short tokens.
+
+`duration_seconds`: best estimate of wall-clock review time. Surfaced in the session briefing.
 
 For a clean review, findings array is empty and summary says "No issues found."
 
 ## Review Cycle
 
-**Product builds:** Read `agents/critic/review-cycle.md` for the per-chunk lifecycle.
-
-**Framework changes:** Review all edited files, record findings. One review after all modifications, before committing.
+Read `agents/critic/review-cycle.md` for the per-chunk lifecycle and mode selection. Framework changes follow the same protocol as product changes; framework-only fixes without a build plan run a single `final` review.
 
 ## Extending This Skill
 
