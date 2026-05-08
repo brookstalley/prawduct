@@ -62,7 +62,9 @@ from .migrate_cmd import (  # noqa: F401
 
 # Sync operations
 from .sync_cmd import (  # noqa: F401
+    _HISTORICAL_RENDER_DEPTH_CAP,
     _bootstrap_manifest,
+    _match_historical_render,
     apply_renames,
     migrate_v4_to_v5,
     run_sync,

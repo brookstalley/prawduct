@@ -32,6 +32,8 @@ FILE_RENAMES = _mod.FILE_RENAMES
 MANAGED_FILES = _mod.MANAGED_FILES
 run_sync = _mod.run_sync
 _try_pull_framework = _mod._try_pull_framework
+_match_historical_render = _mod._match_historical_render
+_HISTORICAL_RENDER_DEPTH_CAP = _mod._HISTORICAL_RENDER_DEPTH_CAP
 BLOCK_BEGIN = _mod.BLOCK_BEGIN
 BLOCK_END = _mod.BLOCK_END
 GITIGNORE_ENTRIES = _mod.GITIGNORE_ENTRIES
@@ -1286,6 +1288,166 @@ class TestComputeBlockHash:
         content_a = f"header A\n{block}\nfooter A\n"
         content_b = f"header B\n{block}\nfooter B\n"
         assert compute_block_hash(content_a) == compute_block_hash(content_b)
+
+
+# =============================================================================
+# _match_historical_render
+# =============================================================================
+
+
+class TestMatchHistoricalRender:
+    """Verifies the helper that detects 'stale-clean' files — files whose
+    current content matches a historical framework template render. A match
+    means the file was framework-produced at some past version and is safe
+    to overwrite without --force."""
+
+    def _make_git_framework(self, tmp_path: Path) -> Path:
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=fw, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=fw, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=fw, check=True)
+        (fw / "templates").mkdir()
+        return fw
+
+    def _commit(self, fw: Path, paths: list[str], message: str) -> str:
+        subprocess.run(["git", "add", *paths], cwd=fw, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", message], cwd=fw, check=True)
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=fw, check=True, capture_output=True, text=True
+        )
+        return result.stdout.strip()
+
+    def test_matches_current_template_returns_head_sha(self, tmp_path: Path):
+        fw = self._make_git_framework(tmp_path)
+        (fw / "templates" / "foo.md").write_text("Hello {{PRODUCT_NAME}}\n")
+        head_sha = self._commit(fw, ["templates/foo.md"], "add foo")
+
+        target_hash = hashlib.sha256(b"Hello App\n").hexdigest()
+        result = _match_historical_render(
+            fw, "templates/foo.md", target_hash, {"{{PRODUCT_NAME}}": "App"}
+        )
+        assert result == head_sha[:12]
+
+    def test_matches_mid_history_returns_old_sha(self, tmp_path: Path):
+        fw = self._make_git_framework(tmp_path)
+        (fw / "templates" / "foo.md").write_text("v1 {{PRODUCT_NAME}}\n")
+        v1_sha = self._commit(fw, ["templates/foo.md"], "v1")
+        (fw / "templates" / "foo.md").write_text("v2 {{PRODUCT_NAME}}\n")
+        v2_sha = self._commit(fw, ["templates/foo.md"], "v2")
+        (fw / "templates" / "foo.md").write_text("v3 {{PRODUCT_NAME}}\n")
+        self._commit(fw, ["templates/foo.md"], "v3")
+
+        # Target file content matches v2's render with current subs
+        target_hash = hashlib.sha256(b"v2 App\n").hexdigest()
+        result = _match_historical_render(
+            fw, "templates/foo.md", target_hash, {"{{PRODUCT_NAME}}": "App"}
+        )
+        assert result == v2_sha[:12]
+
+    def test_no_match_returns_none(self, tmp_path: Path):
+        fw = self._make_git_framework(tmp_path)
+        (fw / "templates" / "foo.md").write_text("v1 {{PRODUCT_NAME}}\n")
+        self._commit(fw, ["templates/foo.md"], "v1")
+        (fw / "templates" / "foo.md").write_text("v2 {{PRODUCT_NAME}}\n")
+        self._commit(fw, ["templates/foo.md"], "v2")
+
+        # Genuine local edit — never produced by the framework
+        target_hash = hashlib.sha256(b"hand-edited content\n").hexdigest()
+        result = _match_historical_render(
+            fw, "templates/foo.md", target_hash, {"{{PRODUCT_NAME}}": "App"}
+        )
+        assert result is None
+
+    def test_template_renamed_uses_follow(self, tmp_path: Path):
+        fw = self._make_git_framework(tmp_path)
+        # Stable shared lines so git's rename-detection similarity threshold
+        # recognizes the rename across content changes (single-line files
+        # below the threshold won't be detected as renames).
+        stable = (
+            "shared line one — stable across versions\n"
+            "shared line two — stable across versions\n"
+            "shared line three — stable across versions\n"
+        )
+        # Commit 1: file at old path with unique first line
+        (fw / "templates" / "old-name.md").write_text(f"v1 legacy {{{{PRODUCT_NAME}}}}\n{stable}")
+        legacy_sha = self._commit(fw, ["templates/old-name.md"], "add old-name")
+        # Commit 2: rename + change first line so v1 only exists in commit 1
+        subprocess.run(["git", "mv", "templates/old-name.md", "templates/new-name.md"], cwd=fw, check=True)
+        (fw / "templates" / "new-name.md").write_text(f"v2 mid {{{{PRODUCT_NAME}}}}\n{stable}")
+        subprocess.run(["git", "commit", "-q", "-am", "rename + bump"], cwd=fw, check=True)
+        # Commit 3: another content update at the new path
+        (fw / "templates" / "new-name.md").write_text(f"v3 latest {{{{PRODUCT_NAME}}}}\n{stable}")
+        self._commit(fw, ["templates/new-name.md"], "v3")
+
+        # Without --follow, commit 1 is invisible from the new path. With --follow,
+        # the helper finds it.
+        target_hash = hashlib.sha256(f"v1 legacy App\n{stable}".encode()).hexdigest()
+        result = _match_historical_render(
+            fw, "templates/new-name.md", target_hash, {"{{PRODUCT_NAME}}": "App"}
+        )
+        assert result == legacy_sha[:12]
+
+    def test_template_not_in_git_returns_none(self, tmp_path: Path):
+        # fw is not a git repo at all
+        fw = tmp_path / "no-git"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+        (fw / "templates" / "foo.md").write_text("anything\n")
+        result = _match_historical_render(
+            fw, "templates/foo.md", "deadbeef" * 8, {}
+        )
+        assert result is None
+
+    def test_depth_cap_respected(self, tmp_path: Path):
+        fw = self._make_git_framework(tmp_path)
+        # Create cap+10 commits; oldest commit's content is the target
+        oldest_content = "oldest version\n"
+        (fw / "templates" / "foo.md").write_text(oldest_content)
+        oldest_sha = self._commit(fw, ["templates/foo.md"], "commit 1")
+        for i in range(2, _HISTORICAL_RENDER_DEPTH_CAP + 11):
+            (fw / "templates" / "foo.md").write_text(f"version {i}\n")
+            self._commit(fw, ["templates/foo.md"], f"commit {i}")
+
+        # Oldest is now beyond the cap → should NOT be found
+        target_hash = hashlib.sha256(oldest_content.encode()).hexdigest()
+        result = _match_historical_render(fw, "templates/foo.md", target_hash, {})
+        assert result is None
+        # Sanity: a commit within the cap window IS found
+        recent_target = hashlib.sha256(
+            f"version {_HISTORICAL_RENDER_DEPTH_CAP + 10}\n".encode()
+        ).hexdigest()
+        result_recent = _match_historical_render(fw, "templates/foo.md", recent_target, {})
+        assert result_recent is not None
+        # And that result is NOT the oldest sha
+        assert result_recent != oldest_sha[:12]
+
+    def test_cache_avoids_redundant_renders(self, tmp_path: Path):
+        fw = self._make_git_framework(tmp_path)
+        (fw / "templates" / "foo.md").write_text("v1 {{PRODUCT_NAME}}\n")
+        self._commit(fw, ["templates/foo.md"], "v1")
+        (fw / "templates" / "foo.md").write_text("v2 {{PRODUCT_NAME}}\n")
+        self._commit(fw, ["templates/foo.md"], "v2")
+
+        cache: dict = {}
+        target_hash = hashlib.sha256(b"v2 App\n").hexdigest()
+        result1 = _match_historical_render(
+            fw, "templates/foo.md", target_hash, {"{{PRODUCT_NAME}}": "App"}, cache=cache
+        )
+        cache_after_first = dict(cache)
+        assert result1 is not None
+        assert len(cache_after_first) >= 1
+
+        # Second call with the same cache: any commits already rendered should
+        # not be re-rendered. The cache should not grow if all relevant SHAs
+        # were already populated. We verify by asserting the second call
+        # returns the same result and doesn't shrink/clear the cache.
+        result2 = _match_historical_render(
+            fw, "templates/foo.md", target_hash, {"{{PRODUCT_NAME}}": "App"}, cache=cache
+        )
+        assert result2 == result1
+        # Cache contents preserved (no spurious recomputation)
+        assert cache == cache_after_first
 
 
 # =============================================================================

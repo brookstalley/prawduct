@@ -87,6 +87,109 @@ def _get_template_last_change(fw_dir: Path, template_rel: str) -> dict[str, str]
     return None
 
 
+_HISTORICAL_RENDER_DEPTH_CAP = 100
+
+
+def _match_historical_render(
+    fw_dir: Path,
+    template_rel: str,
+    target_hash: str,
+    subs: dict[str, str],
+    cache: dict[tuple[str, str], str] | None = None,
+) -> str | None:
+    """Find a historical commit whose rendered template matches target_hash.
+
+    Walks the framework's git history of `template_rel` (with --follow for
+    renames), capped at `_HISTORICAL_RENDER_DEPTH_CAP` commits. For each
+    historical commit, checks out the template content via `git show`,
+    applies current `subs`, hashes, and compares to `target_hash`.
+
+    A match means the product file's current content was produced by the
+    framework at some past template version — i.e. the file is "stale-clean"
+    rather than user-edited. Sync uses this to safely auto-resolve files that
+    look edited only because the manifest's stored hash drifted.
+
+    Returns short SHA (first 12 chars) on match, or None when:
+      - fw_dir is not a git repo
+      - the template was never tracked
+      - no historical render matches within the depth cap
+      - git is unavailable
+
+    The optional `cache` (mutated in-place) maps (commit_sha, template_rel) →
+    rendered_hash to avoid redundant git-show + render + hash work when
+    multiple stale files share template history within one sync run.
+    """
+    if cache is None:
+        cache = {}
+
+    try:
+        # --name-only emits each commit's SHA followed by the path the file
+        # had at that commit, with blank-line separators. Parsing the path
+        # per-commit lets us follow renames: `git show <sha>:<historical-path>`
+        # works for old commits where the file lived at a different path,
+        # whereas `git show <sha>:<current-path>` would fail.
+        log_result = subprocess.run(
+            ["git", "-C", str(fw_dir), "log", "--follow", "--format=%H",
+             "--name-only", f"-n{_HISTORICAL_RENDER_DEPTH_CAP}",
+             "--", template_rel],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except Exception:  # prawduct:ok-broad-except — best-effort lookup at sync time
+        return None
+
+    if log_result.returncode != 0 or not log_result.stdout.strip():
+        return None
+
+    # Parse alternating SHA / blank / path / blank entries into (sha, path) pairs.
+    entries: list[tuple[str, str]] = []
+    lines = log_result.stdout.splitlines()
+    i = 0
+    while i < len(lines):
+        sha = lines[i].strip()
+        i += 1
+        if not sha:
+            continue
+        # Skip blank lines between sha and path
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        if i < len(lines):
+            path = lines[i].strip()
+            entries.append((sha, path))
+            i += 1
+        # Skip trailing blank line(s) before next entry
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+
+    for sha, historical_path in entries:
+        # Cache key uses the historical path so renamed templates cache correctly.
+        cache_key = (sha, historical_path)
+        if cache_key in cache:
+            rendered_hash = cache[cache_key]
+        else:
+            try:
+                show_result = subprocess.run(
+                    ["git", "-C", str(fw_dir), "show", f"{sha}:{historical_path}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except Exception:  # prawduct:ok-broad-except — best-effort lookup
+                continue
+            if show_result.returncode != 0:
+                continue
+            content = show_result.stdout
+            for key, value in subs.items():
+                content = content.replace(key, value)
+            rendered_hash = hashlib.sha256(content.encode()).hexdigest()
+            cache[cache_key] = rendered_hash
+        if rendered_hash == target_hash:
+            return sha[:12]
+
+    return None
+
+
 def _bootstrap_manifest(product: Path, fw_dir: Path) -> dict:
     """Create initial sync manifest for a prawduct repo that doesn't have one.
 
