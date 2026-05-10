@@ -14,32 +14,32 @@ When building multiple chunks, update artifacts (test specs, architecture, data 
 
 ## Structural gates must match natural workflow
 
-When adding structural enforcement (hooks, gates), check BOTH reasonable locations for the thing being enforced. Because the Critic gate only checked `artifacts/build-plan.md` but the natural location was `project-state.yaml`, so the gate never fired for 40+ sessions. Relates to Governance Is Structural (#21).
+When adding structural enforcement (hooks, gates), check BOTH reasonable locations for the thing being enforced. Because the Critic gate only checked `artifacts/build-plan.md` but the natural location was `project-state.yaml`, so the gate never fired for 40+ sessions. Relates to Governance Is Structural (#22).
 
 ## Growing files need structural nudges to prune
 
-When a file has a size target, add a mechanical check (not just guidance). Because guidance alone never triggers pruning — the session-start hook warns when `project-state.yaml` exceeds 40KB, prompting compaction before context bloat compounds. Relates to Close the Learning Loop (#17).
+When a file has a size target, add a mechanical check (not just guidance). Because guidance alone never triggers pruning — the session-start hook warns when `project-state.yaml` exceeds 40KB, prompting compaction before context bloat compounds. Relates to Close the Learning Loop (#18).
 
 ## Reactive systems can't detect missing things
 
-When validating work, also ask "what should exist here that doesn't?" — not just "is what exists correct?" Because the learning pipeline, Critic, and reviews all validate quality of existing work but cannot identify missing cross-cutting concerns or artifact categories. Relates to Automatic Reflection (#16).
+When validating work, also ask "what should exist here that doesn't?" — not just "is what exists correct?" Because the learning pipeline, Critic, and reviews all validate quality of existing work but cannot identify missing cross-cutting concerns or artifact categories. Relates to Automatic Reflection (#17).
 
 ## Governance complexity breeds governance complexity
 
-When adding enforcement, first ask "is this failure already covered by something that exists?" Because after 11 independent additions, hooks alone exceeded the skill files they protected. Impact-scaled processes (lightweight for small, heavy for structural) reduce the temptation to make everything heavyweight. Relates to Proportional Effort (#10).
+When adding enforcement, first ask "is this failure already covered by something that exists?" Because after 11 independent additions, hooks alone exceeded the skill files they protected. Impact-scaled processes (lightweight for small, heavy for structural) reduce the temptation to make everything heavyweight. Relates to Proportional Effort (#11).
 
 ## Principles need runtime enforcement, not just change-time checks
 
-When receiving guidance or making decisions, actively check against principles — not just during retrospective review. Because the framework accepted a 285-line technology-specific design that violated "Generality Over Enumeration" since the principle wasn't applied at decision time. Relates to Governance Is Structural (#21).
+When receiving guidance or making decisions, actively check against principles — not just during retrospective review. Because the framework accepted a 285-line technology-specific design that violated "Generality Over Enumeration" since the principle wasn't applied at decision time. Relates to Governance Is Structural (#22).
 
 ## Denormalized state drifts without mechanical validation
 
-When data appears in multiple places, compute derived values on demand or mechanically validate after writes. Because 5 parallel agents produced 12 inconsistencies in denormalized inverse-dependency fields. Relates to Coherent Artifacts (#12).
+When data appears in multiple places, compute derived values on demand or mechanically validate after writes. Because 5 parallel agents produced 12 inconsistencies in denormalized inverse-dependency fields. Relates to Coherent Artifacts (#13).
 
 ## Coherence cascades require checking summaries, not just primary locations
 
-When adding a concept to a system, grep for every place that *summarizes* or *enumerates* what the system contains. Because summaries are denormalized state — they drift when the source changes. Also check scope declarations (section comments saying "only for X") and test scenarios (sibling concepts need rubric criteria too). Reinforced 2026-02-22 with identical miss. Relates to Coherent Artifacts (#12).
+When adding a concept to a system, grep for every place that *summarizes* or *enumerates* what the system contains. Because summaries are denormalized state — they drift when the source changes. Also check scope declarations (section comments saying "only for X") and test scenarios (sibling concepts need rubric criteria too). Reinforced 2026-02-22 with identical miss. Relates to Coherent Artifacts (#13).
 
 ## Escape hatches in classification create silent failures
 
-When classifying inputs with an "unknown" or "other" bucket, default to blocked, not allowed. Because an entire product was built without governance when unregistered repos fell into the "ungoverned" auto-allow escape hatch. Relates to Governance Is Structural (#21).
+When classifying inputs with an "unknown" or "other" bucket, default to blocked, not allowed. Because an entire product was built without governance when unregistered repos fell into the "ungoverned" auto-allow escape hatch. Relates to Governance Is Structural (#22).

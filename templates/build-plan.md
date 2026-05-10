@@ -101,7 +101,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   Keep it proportionate. Don't build elaborate verification infrastructure for
   a personal utility.
 
-  All verification infrastructure is development-only (Principle #9).
+  All verification infrastructure is development-only (Principle #10).
 -->
 
 [How the builder verifies the product works beyond tests. Describe the approach, scaled to product complexity.]

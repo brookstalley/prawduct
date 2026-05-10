@@ -14,7 +14,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Resolution**: (1) Updated build cycle step 8 to explicitly include artifact updates. (2) Added bidirectional artifact freshness check to Critic's Coherence check. (3) This is Principle 3 (Living Documentation) applied to specifications — the same principle that prevents documentation fiction also applies to specs that become planning fiction.
 
-**Principle**: Relates to Living Documentation (#3), Coherent Artifacts (#12).
+**Principle**: Relates to Living Documentation (#3), Coherent Artifacts (#13).
 
 ## Structural gates must match natural workflow, not prescribed workflow
 
@@ -24,7 +24,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Resolution**: Updated the hook to check both `artifacts/build-plan.md` and `project-state.yaml` for build plan content. Updated methodology to acknowledge both locations.
 
-**Principle**: Relates to Governance Is Structural (#21) — structural gates must match how people actually work.
+**Principle**: Relates to Governance Is Structural (#22) — structural gates must match how people actually work.
 
 ## Growing files need structural nudges to prune
 
@@ -32,7 +32,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Resolution**: Originally a clear-hook size warning at 8KB (2026-Q1). Superseded when learnings moved to the `/learnings` skill (`context: fork`, filters to ~500 tokens) — the skill makes large knowledge files cheap to consult, so the size threshold no longer earns its complexity. The surviving mechanical-check pattern is the `project-state.yaml > 40KB` warning, which serves the same role for a file that is still loaded directly.
 
-**Principle**: Relates to Close the Learning Loop (#17). The general rule (size targets need mechanical checks) still holds; the specific case got obsolesced by a better load mechanism.
+**Principle**: Relates to Close the Learning Loop (#18). The general rule (size targets need mechanical checks) still holds; the specific case got obsolesced by a better load mechanism.
 
 ---
 
@@ -58,7 +58,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: When multiple scripts need shared logic, extract it to one canonical module and import via importlib rather than duplicating. This prevented three copies of `merge_settings` from drifting apart. The pattern is: one module owns the function, others import it.
 
-**Principle**: Relates to Coherent Artifacts (#12) — one source of truth for shared logic.
+**Principle**: Relates to Coherent Artifacts (#13) — one source of truth for shared logic.
 
 ## Judgment alone won't interrupt momentum
 
@@ -66,7 +66,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: There's an asymmetry between behaviors Claude will self-regulate and behaviors it won't. Claude follows principles about *how* to do work (test quality, scope discipline, spec fidelity). It does *not* self-impose process interruptions that halt momentum (invoke a reviewer, pause to read methodology). The first category can be governed by principles. The second needs structural gates. The minimum structural enforcement is: force independent review before declaring work complete.
 
-**Principle**: Relates to Governance Is Structural (#21) and Independent Review (#13).
+**Principle**: Relates to Governance Is Structural (#22) and Independent Review (#14).
 
 ## Products must be self-contained for parallel agent work
 
@@ -74,7 +74,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: Product repos must carry everything they need: their own CLAUDE.md with principles, their own hooks, their own Critic instructions. No runtime dependency on a framework clone. No shared state between agents. The framework is a *generator* that produces self-contained product repos, not a *runtime* that products depend on. This is also the distribution story — if products are self-contained, they work anywhere Claude Code runs.
 
-**Principle**: Relates to Clean Deployment (#9) and structural independence.
+**Principle**: Relates to Clean Deployment (#10) and structural independence.
 
 ## Reactive systems can't detect missing things
 
@@ -82,7 +82,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: Correctness validation ("does this work?") and completeness auditing ("is this everything?") are fundamentally different capabilities. You need both. Periodically step back and ask "what should exist here that doesn't?" — not just "is what exists correct?"
 
-**Principle**: Relates to Automatic Reflection (#16) — reflection must include completeness, not just correctness.
+**Principle**: Relates to Automatic Reflection (#17) — reflection must include completeness, not just correctness.
 
 ## Governance complexity breeds governance complexity
 
@@ -90,7 +90,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: Before adding any new enforcement mechanism, ask: "Is this failure already covered by something that exists? Am I adding defense-in-depth where defense-in-one suffices?" Impact-scaled processes (lightweight for small changes, heavy for structural ones) reduce the temptation to make everything heavyweight.
 
-**Principle**: Relates to Proportional Effort (#10) — governance itself must be proportional.
+**Principle**: Relates to Proportional Effort (#11) — governance itself must be proportional.
 
 ## Independent review catches what self-review misses
 
@@ -98,7 +98,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: Independence is a feature for review functions. The reviewer should NOT see the builder's conversation context — that's what creates blind spots. Invoke the Critic as a separate agent via the Task tool. This likely applies to any review function.
 
-**Principle**: Relates to Independent Review (#13).
+**Principle**: Relates to Independent Review (#14).
 
 ## Principles need runtime enforcement, not just change-time checks
 
@@ -106,7 +106,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: Principles apply to decisions as they happen, not just during retrospective review. When receiving guidance or making decisions, actively check: does this violate a principle? Especially watch for: technology specificity, structural assumptions, scope creep, and instance-specific solutions where general ones exist.
 
-**Principle**: Relates to Governance Is Structural (#21) — governance applies continuously, not at checkpoints.
+**Principle**: Relates to Governance Is Structural (#22) — governance applies continuously, not at checkpoints.
 
 ## Filed-away observations don't change behavior
 
@@ -114,7 +114,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: Learnings must live where they're read, not where they're filed. This file exists because YAML archives don't change behavior. Keep learnings here, in natural language, where they're loaded at session start and directly influence decisions. When a learning has been incorporated into a principle or methodology update, it can be condensed here.
 
-**Principle**: Relates to Close the Learning Loop (#17).
+**Principle**: Relates to Close the Learning Loop (#18).
 
 ## Phase-based implementation enables independent testing and rollback
 
@@ -122,7 +122,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: For significant changes, plan phases so each one is independently testable and the system remains functional at every boundary. The opposite pattern — monolithic changes with deferred integration — creates fragility and makes rollback difficult.
 
-**Principle**: Relates to Validate Before Propagating (#14).
+**Principle**: Relates to Validate Before Propagating (#15).
 
 ## Denormalized state drifts without mechanical validation
 
@@ -130,7 +130,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: Either compute derived data on demand from the source of truth, or mechanically validate it after writes. Never trust denormalized caches maintained by independent actors. This applies to any computed or derived field in any artifact.
 
-**Principle**: Relates to Coherent Artifacts (#12).
+**Principle**: Relates to Coherent Artifacts (#13).
 
 ## Coherence cascades require checking summaries, not just primary locations
 
@@ -140,7 +140,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Reinforcement (2026-02-22)**: Fell into this exact pattern again when adding `error_handling_approach` under a "UI only" section comment and omitting test scenario rubric coverage. The learning was already captured; reading it wasn't enough to prevent the miss. The scope-declaration variant (section comments) and the test-scenario variant are now explicitly called out above.
 
-**Principle**: Relates to Coherent Artifacts (#12) and Living Documentation (#3).
+**Principle**: Relates to Coherent Artifacts (#13) and Living Documentation (#3).
 
 ## Escape hatches in classification create silent failures
 
@@ -148,4 +148,4 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Lesson**: When classifying inputs, the "unknown" category should default to "suspicious/blocked", not "allowed." Fail-closed is almost always safer than fail-open. This applies broadly: any classification with an "other" bucket that auto-allows is a potential escape hatch.
 
-**Principle**: Relates to Governance Is Structural (#21).
+**Principle**: Relates to Governance Is Structural (#22).

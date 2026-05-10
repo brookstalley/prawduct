@@ -27,7 +27,7 @@ These degrade at scale. The session briefing reinforces them; the stop hook dete
 
 Apply with judgment, not mechanically.
 
-- **Quality**: Tests Are Contracts · Complete Delivery · Living Documentation · Reasoned Decisions · Honest Confidence
+- **Quality**: Tests Are Contracts · Complete Delivery · Living Documentation · Reasoned Decisions · Honest Confidence · Requirements Precede Code
 - **Product**: Bring Expertise · Accessibility From the Start · Visible Costs · Clean Deployment
 - **Process**: Proportional Effort · Scope Discipline · Coherent Artifacts · Independent Review · Validate Before Propagating
 - **Learning**: Root Cause Discipline · Automatic Reflection · Close the Learning Loop · Evolving Principles

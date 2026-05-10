@@ -139,7 +139,7 @@ These scripted responses extend the test conversation for the build stages.
 - `[interactive]` Questions use plain language — "Where will you use this?" not "What's your target platform?"
 - `[interactive]` Inferences are made and confirmed rather than asked open-endedly: "Since this is for family game nights, I'm assuming you don't need enterprise security — just a simple way to identify who's playing. Sound right?"
 - `[interactive]` Prior art awareness is proportionate: briefly acknowledges board-game-scoring apps exist; respects the user's choice to build their own. Does not recommend specific alternatives or spend multiple turns researching the space.
-- `[interactive]` **Challenge Gently, Defer Gracefully (Principle 22):** The system must NOT challenge the non-technical user's cosmetic preferences (app name "Score Night", wanting it to feel "fun and colorful"). The system should only push back if the user's direction conflicts with a quality principle (e.g., requesting inaccessible color choices would conflict with Principle 7).
+- `[interactive]` **Challenge Gently, Defer Gracefully (Principle 23):** The system must NOT challenge the non-technical user's cosmetic preferences (app name "Score Night", wanting it to feel "fun and colorful"). The system should only push back if the user's direction conflicts with a quality principle (e.g., requesting inaccessible color choices would conflict with Principle 8).
 
 ### Session Management (C1)
 

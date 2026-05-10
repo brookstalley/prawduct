@@ -163,7 +163,7 @@ To ensure repeatable evaluation, the following scripted responses define what Al
 - `[interactive]` Questions surface considerations user hasn't raised (alerting, silent failure, rate limits from sources, cost of LLM-based filtering if applicable).
 - `[hybrid]` Inferences are made about technical choices the user hasn't specified (deployment target, data storage) and confirmed.
 - `[hybrid]` Prior art awareness surfaces relevant tools (RSS aggregators, existing feed-to-Slack solutions) and key libraries as expertise. Acknowledges alternatives exist but respects Alex's choice to build a custom solution. For low-medium risk, 2-3 searches covering solutions and relevant libraries is proportionate.
-- `[interactive]` **Challenge Gently, Defer Gracefully (Principle 22):** If the technical user names a specific technology as the solution (e.g., "just use Kafka for this"), the system should challenge proportionately — explaining why the simpler approach may suffice for a side project and offering the general principle, while deferring if the user insists.
+- `[interactive]` **Challenge Gently, Defer Gracefully (Principle 23):** If the technical user names a specific technology as the solution (e.g., "just use Kafka for this"), the system should challenge proportionately — explaining why the simpler approach may suffice for a side project and offering the general principle, while deferring if the user insists.
 
 ### Session Management (C1)
 

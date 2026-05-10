@@ -129,7 +129,7 @@ Record major decisions in the most affected artifact with: what was decided, alt
 
 ## Delegating Work to Subagents
 
-**When the user asks you to do work in a subagent, do it.** This is a direct instruction from the user (Principle 22).
+**When the user asks you to do work in a subagent, do it.** This is a direct instruction from the user (Principle 23).
 
 Subagent delegation is especially valuable when:
 - The user explicitly requests it
@@ -233,7 +233,7 @@ Broad catches that swallow errors without logging (`except Exception: pass`, emp
 
 **Silent requirement dropping**: Implementing 9 of 10 requirements and hoping nobody notices.
 
-**Gold plating**: Adding features the spec didn't ask for. Scope Discipline (Principle 11).
+**Gold plating**: Adding features the spec didn't ask for. Scope Discipline (Principle 12).
 
 **Test-last**: Writing tests that pass against existing implementation documents behavior including bugs.
 

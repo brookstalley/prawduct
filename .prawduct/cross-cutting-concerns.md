@@ -13,14 +13,14 @@ Maps concerns to pipeline coverage. Use this as a starting point for completenes
 | Concern | Discovery | Artifact | Builder | Critic | Notes |
 |---------|-----------|----------|---------|--------|-------|
 | Security | Structural: `handles_sensitive_data` | Security model artifact | building.md | Goal 1 (Nothing Is Broken: injection, secrets, input validation) + Goal 2 (auth completeness) | Full coverage |
-| Accessibility | discovery.md: Surface Accessibility Needs | project-state.yaml: `accessibility_approach` | building.md (Principle 7 ref) | Goal 2 (Nothing Is Missing) | Added in meta-reflection |
+| Accessibility | discovery.md: Surface Accessibility Needs | project-state.yaml: `accessibility_approach` | building.md (Principle 8 ref) | Goal 2 (Nothing Is Missing) | Added in meta-reflection |
 | Testing | Inferred from risk level; domain-driven strategies (PBT, contract, state-machine) surfaced in discovery | Test specifications artifact (incl. Property-Based Tests section); project-preferences: Testing strategies | building.md: Test Discipline + "Test strategies match the domain" | Goal 1 (Nothing Is Broken: PBT NOTE check) | Full coverage incl. strategy guidance |
 | Cost awareness | discovery.md: Surface Operational Costs | project-state.yaml: `cost_estimates`, `cost_constraints` | — | — | Discovery + artifact only; no build/critic enforcement. Proportionate for now. |
 | Observability | discovery.md: Surface Observability Needs | Observability strategy artifact; project-state.yaml: `observability_approach` | building.md: observability guidance | Goal 6 (System Can Be Understood) | Full coverage |
 | Performance | Structural: `runs_unattended`, scale signals | NFR artifact | building.md (implicit) | Goal 5 (Decisions Were Deliberate) | Indirect coverage via NFR |
 | Error handling | discovery.md: Surface Error Handling Approach | project-state.yaml: `error_handling_approach` | building.md: Exception Handling section + pragma convention | Goal 3 (broad-except pragma verification) + Goal 6 (System Can Be Understood) | v6: pragma marking for intentional broad catches; canary detects unmarked catches |
 | Data privacy | Structural: `handles_sensitive_data` | Security model artifact | building.md | Goal 2 (Nothing Is Missing) | Covered via security pipeline |
-| Deployment | Structural awareness | Build plan artifact | building.md (Principle 9) | Goal 3 (Nothing Is Unintended) | Indirect coverage |
+| Deployment | Structural awareness | Build plan artifact | building.md (Principle 10) | Goal 3 (Nothing Is Unintended) | Indirect coverage |
 | Dependency management | — | Build plan: dependency manifest | building.md | Goal 3 (Nothing Is Unintended: unlisted deps) | No discovery trigger; starts at planning |
 | Infrastructure dependencies | discovery.md: Surface Infrastructure Dependencies | project-state.yaml: `infrastructure_dependencies` | building.md: Verify step + Common Traps | Goal 2 (Nothing Is Missing) + Goal 4 (Coherence) | Full coverage |
 | Boundary coherence | Structural: detected at build time | boundary-patterns.md | building.md: Investigated Changes | Goal 5 (Decisions Were Deliberate) | v5: boundary investigation + compliance canary |

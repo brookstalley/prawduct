@@ -48,7 +48,7 @@ The right amount of discovery is the minimum that prevents building the wrong th
 
 ## Surface Prior Art
 
-After you understand the concept and structural characteristics — typically after the first exchange — search for what already exists in this space. This isn't a gate or a report; it's expertise you bring to the conversation (Principle #6).
+After you understand the concept and structural characteristics — typically after the first exchange — search for what already exists in this space. This isn't a gate or a report; it's expertise you bring to the conversation (Principle #7).
 
 **What to search for.** Always look for existing solutions that solve the same core problem. For medium-risk and above, also search for key libraries, established patterns, and relevant standards. If web search is available, use it — it surfaces current, specific results that training data may miss. If it's not available, draw on your domain knowledge and say so.
 
@@ -60,7 +60,7 @@ After you understand the concept and structural characteristics — typically af
 
 ## Surface Operational Costs
 
-When structural characteristics indicate ongoing costs — `runs_unattended`, uses external APIs, deploys to cloud infrastructure — surface them during discovery, not after deployment (Principle 8).
+When structural characteristics indicate ongoing costs — `runs_unattended`, uses external APIs, deploys to cloud infrastructure — surface them during discovery, not after deployment (Principle 9).
 
 **Use infer-confirm-proceed.** "Since this calls the OpenAI API, it'll have per-request costs — probably a few dollars/month at the usage you're describing. Want me to estimate more precisely, or is 'low single digits' enough to proceed?" Don't interrogate about budgets; make a reasonable inference and let the user correct.
 
@@ -70,7 +70,7 @@ When structural characteristics indicate ongoing costs — `runs_unattended`, us
 
 ## Surface Accessibility Needs
 
-When `has_human_interface` is detected, accessibility is a structural concern — not an afterthought (Principle 7).
+When `has_human_interface` is detected, accessibility is a structural concern — not an afterthought (Principle 8).
 
 **Use infer-confirm-proceed.** "Since this has a user interface, I'll design with standard accessibility for the platform — sufficient contrast, keyboard or alternative navigation, and meaningful labels. Any specific accessibility needs I should know about?" This establishes the baseline without interrogating.
 
