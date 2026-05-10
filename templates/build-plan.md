@@ -19,6 +19,34 @@ depends_on:
 last_validated: null
 ---
 
+## Requirements Confidence
+
+<!--
+  Self-assessed confidence that requirements are clear enough to build well.
+  Required field. Forces an explicit acknowledgment of clarity (or its absence)
+  before chunks proceed. See Principle 6 — Requirements Precede Code.
+
+  - **High** — Problem, success criteria, and scope each statable in one
+    sentence. No significant unknowns. Build can proceed.
+  - **Medium** — Most is clear, but specific aspects are inferred or assumed.
+    List the assumptions; chunks may need to revisit them.
+  - **Low** — Significant unknowns remain. List them and what would resolve
+    them. Either Chunk 01 closes the gap, or you proceed knowing you're
+    building on soft ground — that's a deliberate choice, not silent risk.
+
+  This field is the artifact-level expression of the readiness check the
+  builder runs before any work cycle. Be honest: self-assessed High that
+  turns out to be Low is more dangerous than honest Low.
+-->
+
+**Level:** [High | Medium | Low]
+
+**Why:** [One sentence — what makes confidence what it is]
+
+**Open assumptions / unknowns:** [If Medium/Low, list them. If High, "None."]
+
+**What would raise confidence:** [If Medium/Low, what discovery, decision, or research closes the gap? If High, "N/A."]
+
 ## Status
 
 <!--

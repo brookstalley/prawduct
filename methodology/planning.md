@@ -56,6 +56,18 @@ If an artifact is genuinely not applicable (e.g., API contract for a product wit
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
 
+### Requirements Confidence
+
+Every build plan opens with a **Requirements Confidence** level — High, Medium, or Low — that's an honest self-assessment of whether you understand what to build well enough to build it well (Principle 6 — Requirements Precede Code).
+
+- **High** means the problem, success criteria, and scope are each statable in one sentence with no significant unknowns. Proceed.
+- **Medium** means most is clear but specific assumptions are unconfirmed. List them. Expect to revisit during early chunks.
+- **Low** means significant unknowns remain. List them and what would resolve them. Either the first chunk closes the gap, or you proceed knowingly — silent low-confidence work is the failure mode the field exists to prevent.
+
+The field is required, but it's not a gate. No review blocks Medium or Low plans — the value is that committing to a Confidence level forces honesty. A plan that says "High" is making a claim. Chunk-level Critic reviews surface acceptance criteria that aren't observable behavior, which is the most common downstream symptom of overstated confidence; the Confidence field gives the builder a chance to catch this earlier.
+
+When confidence is Medium or Low, the plan also lists *what would raise it*. Don't leave that field as "more thinking." Specify the missing information and the cheapest path to get it: a single clarifying question, a 30-minute spike, a 5-line scope sketch to confirm. The cure isn't more process — it's the cheapest concrete step that closes the gap.
+
 **Good chunks are:**
 - **Vertically sliced** — each chunk delivers working, testable functionality from data model through UI (if applicable)
 - **Dependency-ordered** — later chunks build on earlier ones; the first chunk validates the architecture
