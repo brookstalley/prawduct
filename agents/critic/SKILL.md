@@ -56,6 +56,8 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 2. Nothing Is Missing
 - Every requirement for this work is implemented or explicitly descoped → **BLOCKING** if silently dropped.
+- **Acceptance criteria are observable behavior, not implementation.** "Function X exists" is implementation; "user can submit form and see confirmation" is behavior. Implementation-only acceptance criteria → **WARNING**.
+- **Requirements Confidence field present.** Build plan declares `Requirements Confidence: High | Medium | Low` (see `methodology/planning.md`). Missing field → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
 - **Behavioral choices**: Does this change introduce a new feature that affects user workflow? If so, is the behavior configurable via `project-preferences.md` with a safe default? A feature that could reasonably work two ways (automatic vs. manual, verbose vs. quiet) but ships with only one hardcoded behavior → **WARNING**.
 - For user-visible changes: was the product verified beyond tests? → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.

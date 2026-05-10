@@ -66,6 +66,23 @@ When someone opens this directory, route based on context:
 
 A **session** is one Claude Code invocation (clear hook → stop hook). A **work cycle** is one unit of work within a session with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen per session. Context compaction is NOT a session boundary — persist plans and decisions to files before compaction. See `methodology/building.md` for the full model.
 
+## Before Building: Requirements Clarity
+
+When the user says "build X," "implement Y," or "let's add Z," check three things before responding:
+
+1. **What problem does this solve?** (Observable, not abstract.)
+2. **What does success look like?** (Specific, verifiable.)
+3. **What's out of scope?** (What you're deliberately not doing.)
+
+If any is unclear, **don't start building.** Instead:
+- State the gap explicitly: "Before I start, I want to confirm…"
+- Offer the cheapest close: one targeted question, an inferred assumption to confirm, or a 5-line scope sketch.
+- Wait for confirmation, then proceed.
+
+The cost of one round of clarification is small. The cost of building the wrong thing is much higher (Principle 6 — Requirements Precede Code).
+
+**Don't interrogate.** One inference to confirm beats five questions. Pairs with Principle 20 (Infer, Confirm, Proceed). Once requirements are clear, the methodology files (`methodology/discovery.md`, `methodology/planning.md`, `methodology/building.md`) tell you what to do next.
+
 ## Methodology
 
 These narrative guides teach the approach. **Read the relevant guide when entering each type of work** — not from memory, actually read the file:

@@ -47,6 +47,10 @@ The session briefing (printed at session start) tells you current state, stale a
 
 The briefing's `Framework freshness:` block (when shown) reports three independent drift dimensions — **version** (semver), **commit** (every change, including unreleased work), and **template** (per-file hashes with the causing commit). Don't synthesize them into "on/off latest"; report each dimension as the briefing shows it.
 
+## Before Building: Requirements Clarity
+
+When asked to "build X" or "implement Y," answer three questions first: what problem does this solve (observable), what does success look like (specific, verifiable), what's out of scope. If any is unclear, state the gap and offer the cheapest close — one targeted question or an inferred assumption to confirm — then wait. Building on guesses turns unclear requirements into debt (Principle 6 — Requirements Precede Code). Don't interrogate; one inference to confirm beats five questions (Principle 20 — Infer, Confirm, Proceed).
+
 ## Governance Model
 
 A **session** is one Claude Code invocation (clear hook → stop hook). A **work cycle** is one unit of work within a session: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen per session. Context compaction is NOT a session boundary — anything that must survive compaction must be written to a file. `/clear` between work cycles is recommended for cleaner governance but not required.

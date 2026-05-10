@@ -65,19 +65,28 @@ class TestProductClaudeStructure:
         assert "{{PRODUCT_NAME}}" in template
 
     def test_token_budget(self, template: str):
-        """Prawduct block <2,900 tokens; total template <3,500 tokens.
+        """Prawduct block <3,050 tokens; total template <3,650 tokens.
 
         Budget bumped from 2,800 to 2,900 on 2026-05-01 to accommodate the
         Framework Freshness section (~50 tokens) added with the structured
-        freshness briefing block. Further increases should be deliberate —
-        the budget exists to keep the every-session-read content compact.
+        freshness briefing block.
+
+        Bumped from 2,900 to 3,050 in v1.3.15 (Requirements Precede Code)
+        to accommodate the "Before Building: Requirements Clarity" section
+        (~110 tokens after aggressive trimming) — the runtime trigger for
+        Principle 6 in product repos. The section is the every-session-read
+        expression of the new principle; trimming further loses the
+        actionable structure.
+
+        Further increases should be deliberate — the budget exists to keep
+        the every-session-read content compact.
         """
         begin_idx = template.index(BLOCK_BEGIN)
         end_idx = template.index(BLOCK_END) + len(BLOCK_END)
         block_tokens = estimate_tokens(template[begin_idx:end_idx])
         total_tokens = estimate_tokens(template)
-        assert block_tokens <= 2900, f"Block is ~{block_tokens} tokens, budget is 2,900"
-        assert total_tokens <= 3500, f"Total is ~{total_tokens} tokens, budget is 3,500"
+        assert block_tokens <= 3050, f"Block is ~{block_tokens} tokens, budget is 3,050"
+        assert total_tokens <= 3650, f"Total is ~{total_tokens} tokens, budget is 3,650"
 
 
 # =============================================================================
