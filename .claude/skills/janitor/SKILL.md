@@ -2,7 +2,6 @@
 description: Periodic codebase maintenance — systematic health check across VCS hygiene, code quality, documentation fitness, test coverage, dependencies, controllability, and more
 argument-hint: "[staleness=Nd] [scope=theme,...] [survey-only]"
 user-invocable: true
-disable-model-invocation: true
 allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Read, Write, Edit, Glob, Grep, Agent
 ---
 

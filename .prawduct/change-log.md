@@ -3,6 +3,14 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-10: Janitor skill becomes model-invocable (v1.3.16)
+
+**Why:** The janitor skill shipped with `disable-model-invocation: true` in its frontmatter, which prevented the agent from launching it via the Skill tool. It still appeared in the user's slash-command list (because `user-invocable: true`), so users saw it but the agent couldn't run it — confusing asymmetry. The intent was always for the agent to be able to drive periodic maintenance, not just respond when the user types `/janitor`.
+
+**What:** Removed the `disable-model-invocation: true` line from `.claude/skills/janitor/SKILL.md` frontmatter. `user-invocable: true` and the `allowed-tools` allowlist remain unchanged. After sync, product repos pick up the same change (the framework's janitor SKILL.md is the source for product instances per `tools/lib/core.py`).
+
+**Also:** Bundles dogfood re-syncs of `.prawduct/build-governance.md` and `.prawduct/critic-review.md` that the session start hook applied automatically when upgrading to v1.3.15 templates (the framework repo is its own product instance, so its `.prawduct/` files lag template changes by one session-start cycle).
+
 ## 2026-05-09: Requirements Precede Code — visible/assessed requirements clarity (v1.3.15)
 
 **Why:** Recurring quality issues across products using Prawduct trace to a common root: both user and agent get excited and start design/code before requirements are clear. The previous framework had no friction at the right boundary — Critic and PR review fire *after* code exists, by which point design is committed. Discovery was treated as a one-time phase, with each new feature implicitly skipping its own micro-discovery. The agent had no trigger to pause when the user said "build X." The cure couldn't be heavy gates (too straitjacketing) or pure principle (history shows judgment alone won't interrupt momentum) — it needed light, distributed friction that surfaces requirements clarity at multiple places without blocking.

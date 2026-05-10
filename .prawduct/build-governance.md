@@ -2,6 +2,22 @@
 
 This defines **how** to build. The build plan defines **what**. Read both before starting.
 
+## Before You Build: Confidence Check
+
+Before any work cycle on a non-trivial change, answer three questions in one sentence each:
+
+1. **What problem are we solving?** (Observable, not abstract.)
+2. **What does success look like?** (Specific, verifiable — "user can do X and see Y," not "it works.")
+3. **What's out of scope?** (What you're deliberately not doing.)
+
+If any can't be answered in one sentence, requirements aren't clear enough to build well (Principle 6 — Requirements Precede Code). Three options:
+
+- **Close the gap** — one targeted question or an inference to confirm
+- **Sketch and confirm** — write the answers, present, proceed once confirmed
+- **Proceed knowingly** — declare the unknowns in the build plan's Requirements Confidence field as Medium or Low, and accept the rework risk
+
+Don't silently start building on guesses. Code built on unclear requirements is debt the moment it's written. Skip the check for trivial work (typo, config); apply it for any chunk that touches behavior.
+
 ## Build Cycle
 
 Each chunk follows this cycle. Do not skip steps.
