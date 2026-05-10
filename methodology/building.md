@@ -34,6 +34,16 @@ There are no phases. The depth of governance scales with two dimensions:
 
 Classification heuristic: 1-2 files = trivial/small; 5+ files or new dependency = medium; new directory structure or API surface = large.
 
+## Before You Build: Confidence Check
+
+Before any non-trivial work cycle, answer three questions in one sentence each:
+
+1. **What problem are we solving?** (Observable, not abstract.)
+2. **What does success look like?** "User can do X and see Y," not "it works."
+3. **What's out of scope?** What you're deliberately not doing.
+
+If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Don't silently build on guesses — that's how unclear requirements become debt. Apply for any chunk that touches behavior; skip for trivial (typo, config). Mirrors the discovery-side pattern (see `methodology/discovery.md` "Discovery Recurs").
+
 ## The Build Cycle
 
 **Establish a clean baseline.** Before starting the first work cycle of a session, establish a clean state:

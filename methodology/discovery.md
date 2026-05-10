@@ -34,6 +34,22 @@ After detecting structural characteristics, assess risk. Risk drives how much di
 
 The right amount of discovery is the minimum that prevents building the wrong thing. Over-discovery wastes the user's time and patience. Under-discovery leads to rework or missing entire categories of requirements.
 
+## Discovery Recurs
+
+Discovery isn't a phase — it's a mode you enter every time the project takes on a non-trivial new piece of work — a new feature, a refactor that changes user-visible behavior, an integration with a new system. Each recurrence follows the same pattern (infer, confirm, proceed) at smaller scale.
+
+**Initial discovery** establishes the product's foundation — structural characteristics, personas, scope, success criteria — and is captured in `project-state.yaml`.
+
+**Feature-level discovery** is shorter. For each non-trivial new feature, answer three questions in one sentence each:
+
+1. What problem does this solve? (Observable, not abstract.)
+2. What does success look like? (Specific, verifiable.)
+3. What's out of scope for this iteration? (What you're deliberately not doing.)
+
+If you can answer all three, you have enough — capture them in the build plan's Requirements Confidence field and proceed. If you can't answer one in a sentence, you don't have enough — and one round of clarification will probably get you there. The cure for excitement-driven coding isn't more process; it's recognizing the moment when you've shifted from "thinking about it" to "building it" and asking, before that shift, whether you've understood the problem or just the request. The cheapest close is often a 60-second sketch ("here's what I think you want — confirm?") rather than a full discovery session.
+
+This connects directly to Principle 6 (Requirements Precede Code) and Principle 20 (Infer, Confirm, Proceed). The build cycle's `Before You Build: Confidence Check` (see `methodology/building.md`) is the same pattern at the next stage — discovery framing asks "what's the problem"; the build-side check asks "are we ready to commit code to the answer?"
+
 ## How to Discover
 
 **Infer, confirm, proceed.** Don't interrogate. Use context to form hypotheses, state them, and let the user correct you. "Since this handles payment data, I'm assuming we need PCI-DSS awareness and encrypted storage. Sound right?" moves faster than "What security requirements do you have?"
@@ -157,7 +173,7 @@ Discovery produces a `project-state.yaml` with:
 - **Product identity**: name, personality, technology preferences
 - **Workflow preferences**: behavioral choices for automation, PRs, merging — captured in `project-preferences.md`
 
-Discovery isn't a phase — it's continuous. Initial discovery produces enough understanding to start planning and building. But discovery continues throughout the project: new features need their own discovery, bug reports reveal missing understanding, and user feedback surfaces unasked questions. The depth of discovery scales with the work's size and risk, not with where you are in a timeline.
+Discovery scales with the work's size and risk, not with where you are in a timeline. See "Discovery Recurs" earlier in this guide for the recurrence pattern.
 
 ## Common Traps
 

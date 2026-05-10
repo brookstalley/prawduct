@@ -76,8 +76,16 @@ class TestBuildingMethodology:
         # "Skipping final mode" Common Trap add ~120 tokens of essential
         # documentation after aggressive trimming. If this test fails again,
         # prefer trimming over another bump.
+        #
+        # Bumped from 4100 → 4250 in v1.3.15 (Requirements Precede Code).
+        # The new "Before You Build: Confidence Check" section anchors
+        # Principle 6 in the build cycle — three questions, three response
+        # options. Trimmed to ~100 tokens (5 sentences) before bumping.
+        # Further trimming would lose the pedagogical structure the section
+        # depends on. If this test fails again, prefer trimming over another
+        # bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4100, f"building.md is ~{tokens} tokens, should be <4100"
+        assert tokens < 4250, f"building.md is ~{tokens} tokens, should be <4250"
 
 
 # =============================================================================
