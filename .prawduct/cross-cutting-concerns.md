@@ -26,6 +26,7 @@ Maps concerns to pipeline coverage. Use this as a starting point for completenes
 | Boundary coherence | Structural: detected at build time | boundary-patterns.md | building.md: Investigated Changes | Goal 5 (Decisions Were Deliberate) | v5: boundary investigation + compliance canary |
 | Subagent governance | — | .subagent-briefing.md (generated) | building.md: Delegating Work | Goal 4 (Everything Is Coherent) | v5: briefing file + Critic reviews all output |
 | PR review | N/A (framework capability) | agents/pr-reviewer/SKILL.md, templates/pr-review.md | building.md: Creating Pull Requests | N/A (PR reviewer is peer of Critic) | `/pr` skill invokes reviewer agent; stop hook blocks without evidence |
+| Requirements clarity | discovery.md: Discovery Recurs + Feature-Level Discovery | build-plan.md: Requirements Confidence section | building.md: Before You Build + build-governance.md mirror; CLAUDE.md: Before Building runtime trigger | Goal 2 (acceptance criteria as observable behavior + Requirements Confidence field present) | v1.3.15 — full pipeline coverage anchored on Principle 6 (Requirements Precede Code) |
 
 ## Known Gaps
 

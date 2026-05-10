@@ -166,7 +166,7 @@ class TestProductClaudeGovernance:
 
 
 class TestProductClaudePrinciples:
-    """All 22 principles must be present."""
+    """All 23 principles must be present."""
 
     @pytest.fixture
     def template(self) -> str:
@@ -178,23 +178,24 @@ class TestProductClaudePrinciples:
         (3, "Living Documentation"),
         (4, "Reasoned Decisions"),
         (5, "Honest Confidence"),
-        (6, "Bring Expertise"),
-        (7, "Accessibility From the Start"),
-        (8, "Visible Costs"),
-        (9, "Clean Deployment"),
-        (10, "Proportional Effort"),
-        (11, "Scope Discipline"),
-        (12, "Coherent Artifacts"),
-        (13, "Independent Review"),
-        (14, "Validate Before Propagating"),
-        (15, "Root Cause Discipline"),
-        (16, "Automatic Reflection"),
-        (17, "Close the Learning Loop"),
-        (18, "Evolving Principles"),
-        (19, "Infer, Confirm, Proceed"),
-        (20, "Structural Awareness"),
-        (21, "Governance Is Structural"),
-        (22, "Challenge Gently, Defer Gracefully"),
+        (6, "Requirements Precede Code"),
+        (7, "Bring Expertise"),
+        (8, "Accessibility From the Start"),
+        (9, "Visible Costs"),
+        (10, "Clean Deployment"),
+        (11, "Proportional Effort"),
+        (12, "Scope Discipline"),
+        (13, "Coherent Artifacts"),
+        (14, "Independent Review"),
+        (15, "Validate Before Propagating"),
+        (16, "Root Cause Discipline"),
+        (17, "Automatic Reflection"),
+        (18, "Close the Learning Loop"),
+        (19, "Evolving Principles"),
+        (20, "Infer, Confirm, Proceed"),
+        (21, "Structural Awareness"),
+        (22, "Governance Is Structural"),
+        (23, "Challenge Gently, Defer Gracefully"),
     ])
     def test_principle_present(self, template: str, num: int, name: str):
         assert name in template, f"Principle {num} ({name}) missing from template"

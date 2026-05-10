@@ -4,7 +4,7 @@ The framework repo layout:
 
 ```
 prawduct/
-├── CLAUDE.md                          # Primary instruction surface: 22 principles + methodology pointers
+├── CLAUDE.md                          # Primary instruction surface: 23 principles + methodology pointers
 ├── README.md                          # Human-facing project overview
 ├── methodology/                       # Narrative guides (essays, not checklists)
 │   ├── discovery.md                   # How to explore a problem space
@@ -57,7 +57,7 @@ prawduct/
 │   ├── test_pr_reviewer.py              # PR reviewer agent tests
 │   └── scenarios/                     # 8 test scenarios for framework validation
 ├── docs/
-│   ├── principles.md                  # Full 22 principles with rationale
+│   ├── principles.md                  # Full 23 principles with rationale
 │   ├── project-structure.md           # This file
 │   └── examples/                      # Observability strategy examples (API service, event-driven)
 ├── .prawduct/                         # Framework's own prawduct state

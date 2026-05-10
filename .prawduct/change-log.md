@@ -3,6 +3,58 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-09: Requirements Precede Code — visible/assessed requirements clarity (v1.3.15)
+
+**Why:** Recurring quality issues across products using Prawduct trace to a common root: both user and agent get excited and start design/code before requirements are clear. The previous framework had no friction at the right boundary — Critic and PR review fire *after* code exists, by which point design is committed. Discovery was treated as a one-time phase, with each new feature implicitly skipping its own micro-discovery. The agent had no trigger to pause when the user said "build X." The cure couldn't be heavy gates (too straitjacketing) or pure principle (history shows judgment alone won't interrupt momentum) — it needed light, distributed friction that surfaces requirements clarity at multiple places without blocking.
+
+**What:** Six interlocking changes, all in service of the same idea: make requirements clarity a visible, assessed property at every appropriate boundary.
+
+1. **New Quality principle: Requirements Precede Code (#6).** "Code built on unclear requirements is debt the moment it's written." Sits beside Honest Confidence (#5): one is about what you know; this is about whether you understand the problem. Old principles 6-22 renumbered to 7-23; active by-number references swept across `methodology/`, `templates/`, learnings, registry, and test scenarios in both "Principle N" and "(#N)" forms. Historical files (changelog, reflections, change_log_history) left frozen per the framework's existing rule.
+
+2. **Requirements Confidence field on build plans.** `templates/build-plan.md` now has a required section between YAML frontmatter and Status: Level (High | Medium | Low), Why (one sentence), Open assumptions / unknowns, What would raise confidence. The field is honest self-assessment, not a gate. `methodology/planning.md` documents the semantics under Build Planning.
+
+3. **Pre-build readiness check.** `methodology/building.md` gains a "Before You Build: Confidence Check" section before The Build Cycle — three questions in one sentence each (problem, success, out-of-scope), three response options when unclear (close the gap, sketch and confirm, proceed knowingly).
+
+4. **Recursive discovery framing.** `methodology/discovery.md` promotes "Discovery Recurs" from a buried trailing paragraph to a top-of-file section. Distinguishes initial discovery (project foundation) from feature-level discovery (the same three questions at smaller scale, captured in the Confidence field).
+
+5. **Agent-side trigger in CLAUDE.md.** Both framework `CLAUDE.md` and `templates/product-claude.md` now have "Before Building: Requirements Clarity" sections that fire when the user says "build X" / "implement Y" / "let's add Z." Three questions, cheap close, don't interrogate (pairs with Principle 20 — Infer, Confirm, Proceed).
+
+6. **Critic Goal 2 checks.** `agents/critic/SKILL.md` and `templates/critic-review.md` Goal 2 (Nothing Is Missing) gain two new checks: (a) acceptance criteria as observable behavior, not implementation ("function X exists" is implementation; "user can submit form and see confirmation" is behavior) → WARNING; (b) Requirements Confidence field present, with open assumptions listed if Medium/Low → WARNING. Catches overstated confidence after the fact, creating downstream pressure on the upstream framing.
+
+**Bootstrap demonstration:** the build plan for this work itself used the new Requirements Confidence field before Chunk 02 codified it (declared "High" with an Open Assumption about exact prose for new Critic bullets). That uncertainty held: the prose got refined under token-budget pressure during Chunk 04. Useful proof that the field surfaces unresolved bits without blocking progress.
+
+**Behavioral notes:**
+- The check sits before methodology, not as a gate. No stop-hook or other enforcement blocks low-confidence plans. The forcing function is honest self-assessment plus downstream Critic visibility.
+- "Don't interrogate" disclaimer in both CLAUDE.md sections explicitly pairs the check with Principle 20 (Infer, Confirm, Proceed). One inference to confirm > five questions.
+- Discovery's existing closing paragraph (which mentioned recurrence) was reduced to a pointer at "Discovery Recurs" earlier in the file, avoiding duplication.
+- Two token-budget bumps: `methodology/building.md` 4100 → 4250 (Before-You-Build section, ~100 tokens after aggressive trim); `templates/product-claude.md` block 2900 → 3050 (Before-Building section, ~110 tokens). Both bumps documented in test rationale matching prior bump pattern.
+- `templates/skill-critic.md` is a thin launcher pointing at `.prawduct/critic-review.md`; product Critic instructions reach product repos through `templates/critic-review.md` (already updated). No edit needed there.
+
+**Files:**
+
+- `docs/principles.md`: new Principle 6 inserted after Honest Confidence; principles 6-22 renumbered to 7-23
+- `CLAUDE.md`: inline-numbered Quality list gains entry at 6; Product/Process/Learning/Judgment clusters renumbered; new "Before Building: Requirements Clarity" section between Sessions and Methodology
+- `methodology/building.md`: new "Before You Build: Confidence Check" section before The Build Cycle; principle-by-number references updated (Principle 11 → 12, 22 → 23)
+- `methodology/discovery.md`: new "Discovery Recurs" section after Risk Calibration; trailing recurrence paragraph reduced to pointer; principle-by-number references updated (Principle #6 → #7, 7 → 8, 8 → 9)
+- `methodology/planning.md`: new "Requirements Confidence" subsection under Build Planning
+- `templates/build-plan.md`: new "Requirements Confidence" section between frontmatter and Status; principle-by-number reference updated (Principle #9 → #10)
+- `templates/build-governance.md`: condensed mirror of the readiness check before the Build Cycle steps
+- `templates/product-claude.md`: new "Before Building: Requirements Clarity" section in framework-managed block; Quality principle list gains "Requirements Precede Code"
+- `agents/critic/SKILL.md`: Goal 2 (Nothing Is Missing) gains two bullets — acceptance criteria as observable behavior, Requirements Confidence field present
+- `templates/critic-review.md`: matching dense-paragraph form for product Critic instructions
+- `.prawduct/cross-cutting-concerns.md`: principle-by-number references updated (Principle 7 → 8, 9 → 10); new "Requirements clarity" row added with full pipeline coverage
+- `.prawduct/learnings.md`, `.prawduct/learnings-detail.md`: `(#N)` references swept (#21→#22, #17→#18, #16→#17, #14→#15, #13→#14, #12→#13, #10→#11, #9→#10)
+- `tests/scenarios/family-utility.md`, `background-data-pipeline.md`, `terminal-arcade-game.md`: principle-by-number references updated (Principle 7→8, 10→11, 22→23)
+- `tests/test_v5_methodology.py`: building.md token budget 4100 → 4250 with rationale
+- `tests/test_v5_templates.py`: product-claude.md block budget 2900 → 3050, total 3500 → 3650, with rationale; TestProductClaudePrinciples parametrize updated to enumerate all 23 principles (adds Principle 6, shifts subsequent)
+- `README.md`: four occurrences of "22 principles" → "23 principles"
+- `docs/project-structure.md`: two occurrences of "22 principles" → "23 principles"
+- `.prawduct/backlog.md`: token-budget-bumps item promoted from Queue to "Active — next up" (third bump trigger fired this release)
+- `VERSION`: 1.3.14 → 1.3.15
+- `.claude/settings.json`: banner v1.3.14 → v1.3.15
+
+**Post-/critic-final fixes:** the README/project-structure/test-parametrize/cross-cutting-row/backlog-promotion edits in this list landed in response to three warnings and one note from `/critic final`. The Critic catching the "22 principles" drift in user-facing docs and the test-contract drift in the principles parametrize was a clean illustration of why final-mode is needed: chunk-mode reviews scope to changed files; final-mode reads cross-cutting summaries (README, registry, test enumerations) that drift silently when a sweep misses them.
+
 ## 2026-05-08: Stale-clean detection auto-resolves false-edit syncs (v1.3.14)
 
 **Why:** When a product repo gitignores `sync-manifest.json` (the convention for several large client projects), every fresh clone bootstraps the manifest from current on-disk hashes. After a few framework releases, those hashes drift from what current templates would produce — so `template`-strategy files look "locally edited" to sync, even when no human ever touched them. Empirically: 5 of 6 currently-stale files across `discodon` and `discodon-brooks2` were stale-clean, hiding the one file with a real edit under `--force` advice noise. The conservative skip behavior was hostile to upgrade UX precisely when the framework released improvements.

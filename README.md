@@ -81,7 +81,7 @@ Prawduct enforces governance at four levels:
 - **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
 - **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
 
-Everything else is governed by 22 principles and four methodology guides that stay in context via CLAUDE.md.
+Everything else is governed by 23 principles and four methodology guides that stay in context via CLAUDE.md.
 
 ### Independent Critic review
 
@@ -199,7 +199,7 @@ The coordinating Claude spawns a second session that does the work without seein
 
 ```
 my-product/
-├── CLAUDE.md                    # 22 principles + methodology (synced from framework)
+├── CLAUDE.md                    # 23 principles + methodology (synced from framework)
 ├── .prawduct/
 │   ├── project-state.yaml      # Product definition, work tracking, build plan
 │   ├── learnings.md            # Active rules, read by /learnings skill
@@ -232,7 +232,7 @@ my-product/
 
 ```
 prawduct/
-├── CLAUDE.md                   # 22 principles + methodology pointers
+├── CLAUDE.md                   # 23 principles + methodology pointers
 ├── methodology/                # Narrative guides: discovery, planning, building, reflection
 ├── agents/critic/              # Independent per-chunk review agent
 ├── agents/pr-reviewer/         # Independent PR release-readiness reviewer
@@ -247,7 +247,7 @@ prawduct/
 
 Three layers:
 
-1. **22 Principles** — Always in context via CLAUDE.md. Grouped into Quality, Product, Process, Learning, and Judgment. They govern how work gets done but don't enforce process interruptions.
+1. **23 Principles** — Always in context via CLAUDE.md. Grouped into Quality, Product, Process, Learning, and Judgment. They govern how work gets done but don't enforce process interruptions.
 
 2. **Methodology guides** — Narrative essays read when entering each activity (discovery, planning, building, reflection). They teach the approach rather than prescribing rigid steps. Governance depth scales with work size and type.
 
