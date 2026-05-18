@@ -115,14 +115,14 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 
 When a chunk wraps a foreign API or SDK — anything whose surface the agent doesn't own and can't change — **the first step is reading source or running discovery probes, not drafting handlers from documentation.** Vendor docs lag behind code; LLM training data lags further. Tests written against an assumed signature pass against fakes that mirror the same assumption, then fail at integration time when the real surface diverges. This pattern recurs every time the framework or a product touches a foreign SDK (hallucinote's Ableton Live MCP integration is the canonical case — handlers shipped against signatures that didn't match the real API, found at integration time).
 
-**The rule.** A chunk that wraps a foreign API declares `foreign_api: <name>` in the build plan and includes a `verify-api` step as the first item in its Done-when. `verify-api` means one of, in preference order:
+**The rule.** A chunk that wraps a foreign API declares `**Foreign API:** <name>` in the build plan (between `**Type:**` and `**Done when:**`) and includes a `verify-api` step as the first item in its Done-when. `verify-api` means one of, in preference order:
 - Read the foreign code directly (vendor SDK source, MCP server source, library `.pyi` stubs).
 - Run a discovery probe against a live instance (curl, REPL session, smoke script) and capture the actual response shape.
 - If neither is possible, document the docs source consulted and flag the chunk as `Requirements Confidence: Medium` with "API surface assumed from docs" listed as an open assumption.
 
 Fakes and mocks are built *after* `verify-api` confirms the real shape, not before. The cost is one-time per API surface (~5-30 min depending on surface size); the cost it replaces is one or more chunk-reworks when the assumed shape turns out wrong.
 
-The Critic's Goal 2 reads `foreign_api:` from the chunk and emits a **WARNING** if no `verify-api` step appears in Done-when. Missing `foreign_api:` field is safe (no foreign API to verify); the field is declared only when relevant.
+The Critic's Goal 2 looks for `Foreign API:` in the chunk and emits a **WARNING** if no `verify-api` step appears in Done-when. Missing `Foreign API:` field is safe (no foreign API to verify); the field is declared only when relevant.
 
 **Worked example (the pattern the Critic matches).** Prepend `verify-api` as Done-when step 0 so the existing step numbering is preserved across chunks with and without a foreign API:
 
@@ -153,7 +153,7 @@ vs. the WARNING form (same chunk with step 0 omitted):
 
 The Critic finds the `verify-api` step by case-insensitive substring match anywhere in the chunk's Done-when items — exact phrasing doesn't matter, but the literal token `verify-api` should appear.
 
-**Discovery surfaces foreign APIs early.** When discovery flags an external SDK or service in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry that forward into the build plan as `foreign_api: <name>` on whichever chunk first touches the wrapper. Annotation in the plan is what triggers the Critic check.
+**Discovery surfaces foreign APIs early.** When discovery flags an external SDK or service in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry that forward into the build plan as `**Foreign API:** <name>` on whichever chunk first touches the wrapper. Annotation in the plan is what triggers the Critic check.
 
 ## Common Traps
 

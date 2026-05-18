@@ -2111,6 +2111,46 @@ class TestParseBuildPlanChunkRefs:
         assert "tools/product-hook" in paths
         assert "parse_func" not in paths
 
+    def test_ignores_slash_command_tokens(self, tmp_path: Path):
+        """Backticked slash-commands (`/pr`, `/learnings`, `/critic`) contain
+        `/` but are not file paths — single-segment identifiers starting with
+        `/`. They must not be extracted as path refs (else they produce
+        BLOCKING ref-drift false-positives against legitimate chunk prose
+        that references framework skills)."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** `/pr` skill blocks creation; run `/learnings`"
+            " before `/critic`. Touches `tools/product-hook`.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "tools/product-hook" in paths
+        assert "/pr" not in paths
+        assert "/learnings" not in paths
+        assert "/critic" not in paths
+
+    def test_keeps_absolute_paths_with_structure(self, tmp_path: Path):
+        """The slash-command exclusion must not over-match: absolute paths
+        like `/etc/foo.conf` (further `/`) and `/file.md` (has `.`) are
+        still file paths and should be extracted (and reported missing if
+        they don't exist)."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** reads `/etc/foo.conf` and writes `/file.md`.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "/etc/foo.conf" in paths
+        assert "/file.md" in paths
+
 
 class TestVerifyChunkRefsSubcommand:
     """The `verify-chunk-refs [chunk_id]` subcommand drives the Critic's

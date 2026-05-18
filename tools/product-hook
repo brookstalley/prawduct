@@ -2534,8 +2534,17 @@ def _looks_like_file_path(token: str) -> bool:
     contains ``/`` — i.e. the chunk author wrote a specific relative path.
     Bare filenames in prose (e.g. ``backlog.md``, ``SKILL.md``) are usually
     conceptual references whose actual location varies, so they're not
-    verifiable in a useful way."""
-    return "/" in token
+    verifiable in a useful way.
+
+    Slash-commands (``/pr``, ``/learnings``, ``/critic``) also contain
+    ``/`` but are not file paths. Exclude tokens that start with ``/``,
+    have no further ``/``, and contain no ``.`` — that shape is a single
+    slash-command identifier, not a path."""
+    if "/" not in token:
+        return False
+    if token.startswith("/") and "/" not in token[1:] and "." not in token:
+        return False
+    return True
 
 
 def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:

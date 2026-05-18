@@ -43,3 +43,11 @@ When adding a concept to a system, grep for every place that *summarizes* or *en
 ## Escape hatches in classification create silent failures
 
 When classifying inputs with an "unknown" or "other" bucket, default to blocked, not allowed. Because an entire product was built without governance when unregistered repos fell into the "ungoverned" auto-allow escape hatch. Relates to Governance Is Structural (#22).
+
+## Cumulative-Critic finds first-use regressions chunk-Critic can't
+
+When wrapping a multi-chunk bundle, expect the cumulative-Critic pass to surface ≥1 finding the chunk passes missed — mechanisms introduced in chunk N often misbehave only against prose in chunk M. Plan a remediation slot before `/pr create` rather than treating the cumulative pass as a formality. Because the lens differs: chunk-Critic diffs the chunk's own commit; cumulative-Critic diffs `merge-base...HEAD` and catches helper-vs-prose interactions invisible at chunk scope. Wave 1's `_looks_like_file_path` (Chunk 02) false-positived on slash-commands in Chunk 01's prose — only the cumulative pass saw both at once. Relates to Independent Review (#14).
+
+## Build-plan fields use `**Title Case:**`, not snake_case
+
+When adding a new build-plan field, format the label as `**Title Case:**` (bold, words-with-spaces, colon) — matching `**Type:**`, `**Critic mode:**`, `**Requirements Confidence:**`, `**Acceptance criteria:**`, `**Done when:**`. Snake_case (`foreign_api:`, `coverage_required:`) is the YAML-key namespace in `project-state.yaml`, a different surface. The methodology's prose form must be string-identical to the template's label except for the `**...**` bolding — so the Critic's substring-match finds real plans. Wave 1's F8 conflated the two namespaces (`foreign_api:` in prose, `**Foreign API:**` in template) and the Critic-check substring never matched a real plan. Relates to Coherent Artifacts (#13).

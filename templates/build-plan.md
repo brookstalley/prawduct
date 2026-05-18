@@ -228,11 +228,12 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
 - **Foreign API:** [optional — omit unless this chunk wraps a foreign API/SDK. Format: `<name>` (e.g., `ableton-live-mcp`, `stripe-js-sdk`)]
   <!-- When this chunk wraps a foreign API or SDK whose surface the project
        doesn't own (vendor APIs, MCP servers, third-party libraries with
-       non-trivial wrappers), declare `foreign_api: <name>` here. The Critic's
-       Goal 2 then verifies the chunk's Done-when includes a `verify-api` step
-       (read source or run discovery probes before drafting handlers) — missing
-       step → WARNING. Carries forward `infrastructure_dependencies` flagged
-       in discovery (see `methodology/planning.md` "Foreign API Verification").
+       non-trivial wrappers), declare `**Foreign API:** <name>` here. The
+       Critic's Goal 2 then verifies the chunk's Done-when includes a
+       `verify-api` step (read source or run discovery probes before drafting
+       handlers) — missing step → WARNING. Carries forward
+       `infrastructure_dependencies` flagged in discovery (see
+       `methodology/planning.md` "Foreign API Verification").
 
        Example (verify-api prepended as step 0, existing numbering preserved):
          **Foreign API:** ableton-live-mcp
