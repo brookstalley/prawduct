@@ -1910,6 +1910,26 @@ class TestCheckCumulativeCriticSubcommand:
         assert result.returncode == 1
         assert "cumulative" in result.stderr.lower()
 
+    def test_missing_session_start_fails_closed(self, tmp_path: Path):
+        """When `.session-start` is absent the gate must fail closed: the
+        freshness check cannot verify that fresh-looking cumulative findings
+        are from the current session, so accepting them would be a silent
+        escape hatch (see learnings.md: "Escape hatches in classification
+        create silent failures"). Mirrors `_check_previous_session_gates`'s
+        `needs_review = True` default."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        # Cumulative findings exist and would otherwise satisfy the gate —
+        # only the missing .session-start should cause failure.
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_CUMULATIVE)
+        assert not (prawduct / ".session-start").exists()
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "session-start" in result.stderr.lower()
+
     def test_findings_stale_exits_one(self, tmp_path: Path):
         """Findings from a prior session do not satisfy the gate — must be this-session."""
         prawduct = tmp_path / ".prawduct"

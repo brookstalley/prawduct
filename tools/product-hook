@@ -2828,27 +2828,44 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         )
         return 1
 
+    # Freshness check — fail closed if the marker is missing or the check
+    # itself crashes. Mirrors the `needs_review = True` default in
+    # `_check_previous_session_gates` around line 1872; the cumulative gate
+    # cannot vouch for freshness it can't verify. (See "Escape hatches in
+    # classification create silent failures" in learnings.md.)
     session_start_path = prawduct_dir / ".session-start"
-    if session_start_path.is_file():
-        try:
-            session_start = session_start_path.read_text().strip()
-            findings_mtime = datetime.fromtimestamp(
-                findings_path.stat().st_mtime, tz=timezone.utc
-            ).strftime("%Y-%m-%dT%H:%M:%SZ")
-            # Lexicographic compare on whole-second %Y-%m-%dT%H:%M:%SZ strings
-            # is order-preserving — same convention as cmd_clear's gate check
-            # around line 1874. Adding fractional seconds to the format would
-            # break both sides; keep them in lockstep.
-            if findings_mtime <= session_start:
-                print(
-                    f"stale: cumulative findings ({findings_mtime}) "
-                    f"predate session-start ({session_start}). Re-run "
-                    "/critic cumulative in the current session before opening a PR.",
-                    file=sys.stderr,
-                )
-                return 1
-        except Exception:  # prawduct:ok-broad-except — gate must not crash; fall through to severity check
-            pass
+    if not session_start_path.is_file():
+        print(
+            "no-session-start: missing .prawduct/.session-start — cannot "
+            "validate cumulative-Critic freshness. Run /clear to start a "
+            "session, then re-run /critic cumulative.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        session_start = session_start_path.read_text().strip()
+        findings_mtime = datetime.fromtimestamp(
+            findings_path.stat().st_mtime, tz=timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception as exc:  # prawduct:ok-broad-except — fail closed if freshness inputs are unreadable
+        print(
+            f"freshness-check-failed: could not compare cumulative-Critic "
+            f"findings vs session-start ({exc!r}). Re-run /critic cumulative.",
+            file=sys.stderr,
+        )
+        return 1
+    # Lexicographic compare on whole-second %Y-%m-%dT%H:%M:%SZ strings is
+    # order-preserving — same convention as cmd_clear's gate check around
+    # line 1874. Adding fractional seconds to the format would break both
+    # sides; keep them in lockstep.
+    if findings_mtime <= session_start:
+        print(
+            f"stale: cumulative findings ({findings_mtime}) "
+            f"predate session-start ({session_start}). Re-run "
+            "/critic cumulative in the current session before opening a PR.",
+            file=sys.stderr,
+        )
+        return 1
 
     findings = data.get("findings", [])
     blocking = [f for f in findings if isinstance(f, dict) and f.get("severity") == "blocking"]
