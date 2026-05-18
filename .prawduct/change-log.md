@@ -31,7 +31,7 @@
 
 **Test coverage:** 1002 passing (+3 over pre-wave baseline of 999). New test classes: `TestDesignerHandoffSkipsCriticGate`, `TestCheckCumulativeCriticSubcommand` (8 tests, including the W4 fail-closed regression pin), `TestParseBuildPlanChunkRefs`, `TestVerifyChunkRefsSubcommand`, `TestParseBuildPlanChunkType`. Test evidence fresh in-session.
 
-**Compatibility:** The `check-cumulative-critic` gate is new structural enforcement; product owners syncing v1.3.17 will hit it on the first `/pr create` after sync. The backlog item "v1.4 release-readiness: document the new `/pr create` gate before tagging" tracks the change-log entry / doctor migration prompt before the full v1.4 release. For v1.3.17 (this patch), no behavior change in product repos — the gate runs only when `/pr` is invoked and product repos pull the updated `pr/SKILL.md` through normal sync.
+**Compatibility — read before syncing:** The `check-cumulative-critic` gate is new structural enforcement. After syncing v1.3.17, the next `/pr create` in any product repo will require a fresh `cumulative`-mode Critic record (produced by `/critic cumulative`) covering `merge-base...HEAD` — the gate refuses to open the PR without one. This is a real behavior change at the PR boundary: workflows that previously ran chunk-Critics and went straight to `/pr` now have an additional cumulative pass before PR creation. Day-to-day chunk work is unchanged; only the PR-creation step gains the gate. The backlog item "v1.4 release-readiness: document the new `/pr create` gate before tagging" tracks adding a `prawduct-doctor` migration prompt and full release-notes section before the v1.4 minor bump consolidates this and subsequent waves.
 
 ## 2026-05-10: Janitor skill becomes model-invocable (v1.3.16)
 
