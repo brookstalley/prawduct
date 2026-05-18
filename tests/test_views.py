@@ -322,6 +322,413 @@ class TestIsViewsEnabled:
 
 
 # =============================================================================
+# Pure-function tests — new F1b helpers (scope + release-notes views)
+# =============================================================================
+
+
+class TestExtractYamlTopLevelBlock:
+    def test_finds_single_line_block(self):
+        content = "views_enabled: true\n# next section\nother: 1\n"
+        start, end, block = views.extract_yaml_top_level_block(content, "views_enabled")
+        assert start == 0
+        assert end == 1
+        assert block == ["views_enabled: true"]
+
+    def test_finds_multi_line_block(self):
+        content = (
+            "scope_rollups:\n"
+            "  v1.4:\n"
+            "    chunks: [\"00\"]\n"
+            "\n"
+            "# next\n"
+            "other: 1\n"
+        )
+        start, end, block = views.extract_yaml_top_level_block(content, "scope_rollups")
+        assert start == 0
+        # Trailing blank line excluded (belongs to next block).
+        assert end == 3
+        assert block == ["scope_rollups:", "  v1.4:", '    chunks: ["00"]']
+
+    def test_block_at_end_of_file(self):
+        content = "other: 1\nviews_enabled: true\n"
+        start, end, block = views.extract_yaml_top_level_block(content, "views_enabled")
+        assert start == 1
+        assert end == 2
+        assert block == ["views_enabled: true"]
+
+    def test_missing_key_returns_negative(self):
+        content = "other: 1\nfoo: bar\n"
+        start, end, block = views.extract_yaml_top_level_block(content, "missing")
+        assert (start, end, block) == (-1, -1, [])
+
+    def test_comment_header_terminates_block(self):
+        content = (
+            "scope_rollups:\n"
+            "  v1.4:\n"
+            "    chunks: []\n"
+            "# === DEPRECATED TERMS ===\n"
+            "deprecated_terms: []\n"
+        )
+        start, end, block = views.extract_yaml_top_level_block(content, "scope_rollups")
+        assert start == 0
+        assert end == 3
+        assert block == ["scope_rollups:", "  v1.4:", "    chunks: []"]
+
+    def test_indented_key_not_matched(self):
+        """A nested `scope_rollups:` under another key must not be treated as
+        the top-level block."""
+        content = (
+            "parent:\n"
+            "  scope_rollups:\n"
+            "    foo: bar\n"
+            "scope_rollups:\n"
+            "  v1.4:\n"
+            "    chunks: []\n"
+        )
+        start, end, block = views.extract_yaml_top_level_block(content, "scope_rollups")
+        # Should match the column-0 one (line 3), not the indented one (line 1).
+        assert start == 3
+        assert block[0] == "scope_rollups:"
+
+
+class TestBuildScopeView:
+    BASE_STATE = "classification:\n  domain: util\nviews_enabled: true\n"
+
+    def test_appends_block_when_absent(self):
+        change_log = (
+            "## 2026-05-18: rel\n"
+            "<!-- prawduct: chunks=00,01 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+        )
+        new, scopes = views.build_scope_view(change_log, self.BASE_STATE)
+        assert new is not None
+        assert "scope_rollups:" in new
+        assert "v1.4:" in new
+        assert '"00"' in new
+        assert '"01"' in new
+        assert '"v1.3.17"' in new
+        assert scopes == {"v1.4": {"chunks": ["00", "01"], "releases": ["v1.3.17"]}}
+
+    def test_replaces_existing_block(self):
+        state = (
+            "views_enabled: true\n"
+            "scope_rollups:\n"
+            "  v1.4:\n"
+            '    chunks: ["00"]\n'
+            "    releases: []\n"
+            "deprecated_terms: []\n"
+        )
+        change_log = (
+            "## 2026-05-18: rel\n"
+            "<!-- prawduct: chunks=00,01 | status=shipped | scope=v1.4 -->\n"
+        )
+        new, scopes = views.build_scope_view(change_log, state)
+        assert new is not None
+        # Block content replaced — both chunks now present.
+        assert '"00"' in new and '"01"' in new
+        # Surrounding content preserved.
+        assert "deprecated_terms: []" in new
+        assert "views_enabled: true" in new
+
+    def test_idempotent_when_existing_block_matches(self):
+        # Build once to get the canonical block, then feed it back.
+        change_log = (
+            "## 2026-05-18: rel\n"
+            "<!-- prawduct: chunks=00,01 | status=shipped | scope=v1.4 -->\n"
+        )
+        first, _ = views.build_scope_view(change_log, self.BASE_STATE)
+        assert first is not None
+        second, _ = views.build_scope_view(change_log, first)
+        assert second is None
+
+    def test_empty_scopes_when_no_scope_tags(self):
+        change_log = (
+            "## 2026-05-18: rel\n"
+            "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped -->\n"
+        )
+        new, scopes = views.build_scope_view(change_log, self.BASE_STATE)
+        assert scopes == {}
+        # Block appended with `{}` body.
+        assert new is not None
+        assert "scope_rollups: {}" in new
+
+    def test_multiple_scopes_sorted(self):
+        change_log = (
+            "## 2026-06-01: w\n"
+            "<!-- prawduct: chunks=06 | status=shipped | scope=v1.4 -->\n"
+            "## 2026-07-01: x\n"
+            "<!-- prawduct: chunks=10 | status=shipped | scope=v1.5 -->\n"
+        )
+        new, scopes = views.build_scope_view(change_log, self.BASE_STATE)
+        assert list(scopes.keys()) == ["v1.4", "v1.5"]
+        # v1.4 appears before v1.5 in output.
+        v14_pos = new.index("v1.4:")
+        v15_pos = new.index("v1.5:")
+        assert v14_pos < v15_pos
+
+    def test_in_progress_and_deferred_excluded(self):
+        change_log = (
+            "## 2026-05-18: a\n"
+            "<!-- prawduct: chunks=00 | status=shipped | scope=v1.4 -->\n"
+            "## 2026-05-19: b\n"
+            "<!-- prawduct: chunks=07 | status=in-progress | scope=v1.4 -->\n"
+            "## 2026-05-20: c\n"
+            "<!-- prawduct: chunks=99 | status=deferred | scope=v1.4 -->\n"
+        )
+        _, scopes = views.build_scope_view(change_log, self.BASE_STATE)
+        assert scopes == {"v1.4": {"chunks": ["00"], "releases": []}}
+
+    def test_chunks_deduplicated_and_sorted(self):
+        change_log = (
+            "## 2026-05-18: a\n"
+            "<!-- prawduct: chunks=02,01 | status=shipped | scope=v1.4 -->\n"
+            "## 2026-05-19: b\n"
+            "<!-- prawduct: chunks=01,03 | status=shipped | scope=v1.4 -->\n"
+        )
+        _, scopes = views.build_scope_view(change_log, self.BASE_STATE)
+        assert scopes["v1.4"]["chunks"] == ["01", "02", "03"]
+
+
+class TestBuildReleaseNotesView:
+    def test_none_when_no_releases(self):
+        change_log = "## 2026-05-18: untagged\n\nBody.\n"
+        assert views.build_release_notes_view(change_log) is None
+
+    def test_none_when_only_unshipped_releases(self):
+        change_log = (
+            "## 2026-05-18: rel\n"
+            "<!-- prawduct: chunks=00 | release=v1.4.0 | status=in-progress -->\n"
+        )
+        assert views.build_release_notes_view(change_log) is None
+
+    def test_single_release_section(self):
+        change_log = (
+            "## 2026-05-18: v1.4 Wave 1 (v1.3.17)\n"
+            "<!-- prawduct: chunks=00,01,02 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        assert out.startswith("# Release Notes")
+        assert "## v1.3.17" in out
+        assert "**Chunks shipped:** 00, 01, 02" in out
+        assert "**Scope:** v1.4" in out
+        assert "2026-05-18: v1.4 Wave 1" in out  # title
+
+    def test_multiple_releases_preserve_changelog_order(self):
+        # Change-log convention: newest first.
+        change_log = (
+            "## 2026-05-18: newer (v1.3.17)\n"
+            "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped -->\n"
+            "## 2026-04-01: older (v1.3.16)\n"
+            "<!-- prawduct: chunks=99 | release=v1.3.16 | status=shipped -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        pos_newer = out.index("## v1.3.17")
+        pos_older = out.index("## v1.3.16")
+        assert pos_newer < pos_older
+
+    def test_multiple_entries_same_release_merged(self):
+        change_log = (
+            "## 2026-05-18: first part (v1.3.17)\n"
+            "<!-- prawduct: chunks=00,01 | release=v1.3.17 | status=shipped -->\n"
+            "## 2026-05-18: second part (v1.3.17)\n"
+            "<!-- prawduct: chunks=02,03 | release=v1.3.17 | status=shipped -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        # One section per release version.
+        assert out.count("## v1.3.17") == 1
+        # Chunks from both entries unioned + sorted.
+        assert "**Chunks shipped:** 00, 01, 02, 03" in out
+
+    def test_idempotent_against_own_output(self):
+        change_log = (
+            "## 2026-05-18: rel\n"
+            "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped -->\n"
+        )
+        first = views.build_release_notes_view(change_log)
+        # Feeding the same input twice produces identical content.
+        second = views.build_release_notes_view(change_log)
+        assert first == second
+
+    def test_entries_without_release_tag_excluded(self):
+        change_log = (
+            "## 2026-05-18: with release\n"
+            "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped -->\n"
+            "## 2026-05-19: no release\n"
+            "<!-- prawduct: chunks=05 | status=shipped | scope=v1.4 -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        # Only the release-tagged entry appears.
+        assert "## v1.3.17" in out
+        assert "**Chunks shipped:** 00" in out
+        # The unreleased shipped chunk does not appear in any Chunks line.
+        chunks_lines = [ln for ln in out.splitlines() if ln.startswith("**Chunks shipped:**")]
+        assert all("05" not in ln for ln in chunks_lines)
+
+
+# =============================================================================
+# Pure-function tests — shared plan_regen / apply_regen helpers
+# =============================================================================
+
+
+def _make_prawduct_dir(
+    tmp_path: Path,
+    *,
+    views_enabled: bool = True,
+    change_log: str = "",
+    build_plan: str = "## Status\n",
+    extra_state: str = "",
+) -> Path:
+    """Build a minimal `.prawduct/` skeleton for plan_regen/apply_regen tests."""
+    prawduct_dir = tmp_path / ".prawduct"
+    (prawduct_dir / "artifacts").mkdir(parents=True)
+    state = ("views_enabled: true\n" if views_enabled else "views_enabled: false\n") + extra_state
+    (prawduct_dir / "project-state.yaml").write_text(state)
+    (prawduct_dir / "change-log.md").write_text(change_log)
+    (prawduct_dir / "artifacts" / "build-plan.md").write_text(build_plan)
+    return prawduct_dir
+
+
+class TestPlanRegen:
+    def test_disabled_returns_empty(self, tmp_path: Path):
+        prawduct_dir = _make_prawduct_dir(tmp_path, views_enabled=False)
+        enabled, results = views.plan_regen(prawduct_dir)
+        assert enabled is False
+        assert results == []
+
+    def test_enabled_returns_three_results(self, tmp_path: Path):
+        prawduct_dir = _make_prawduct_dir(
+            tmp_path,
+            change_log=(
+                "## 2026-05-18: rel\n"
+                "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+            ),
+            build_plan="## Status\n- [ ] Chunk 00: A\n",
+        )
+        enabled, results = views.plan_regen(prawduct_dir)
+        assert enabled is True
+        names = [r.name for r in results]
+        assert names == ["status", "release-notes", "scope-rollups"]
+        # Status would flip; release-notes would be created; scope would be written.
+        actions = {r.name: r.action for r in results}
+        assert actions["status"] == "write"
+        assert actions["release-notes"] == "create"
+        assert actions["scope-rollups"] == "write"
+
+    def test_idempotent_after_apply_regen(self, tmp_path: Path):
+        prawduct_dir = _make_prawduct_dir(
+            tmp_path,
+            change_log=(
+                "## 2026-05-18: rel\n"
+                "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+            ),
+            build_plan="## Status\n- [ ] Chunk 00: A\n",
+        )
+        # First plan + apply.
+        _, results = views.plan_regen(prawduct_dir)
+        views.apply_regen(prawduct_dir, results)
+        # Second plan: every view should now be a noop.
+        _, second_results = views.plan_regen(prawduct_dir)
+        assert all(r.action == "noop" for r in second_results)
+
+    def test_missing_change_log_raises(self, tmp_path: Path):
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text("views_enabled: true\n")
+        (prawduct_dir / "artifacts" / "build-plan.md").write_text("## Status\n")
+        with pytest.raises(FileNotFoundError):
+            views.plan_regen(prawduct_dir)
+
+
+class TestApplyRegen:
+    def test_writes_files_for_non_noop_results(self, tmp_path: Path):
+        prawduct_dir = _make_prawduct_dir(
+            tmp_path,
+            change_log=(
+                "## 2026-05-18: rel\n"
+                "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+            ),
+            build_plan="## Status\n- [ ] Chunk 00: A\n",
+        )
+        _, results = views.plan_regen(prawduct_dir)
+        views.apply_regen(prawduct_dir, results)
+        # All three outputs landed.
+        assert (prawduct_dir / "release-notes.md").exists()
+        plan = (prawduct_dir / "artifacts" / "build-plan.md").read_text()
+        assert "- [x] Chunk 00: A" in plan
+        state = (prawduct_dir / "project-state.yaml").read_text()
+        assert "scope_rollups:" in state
+
+    def test_noops_dont_touch_files(self, tmp_path: Path):
+        """apply_regen with a list of noop-only results must not mutate any file."""
+        prawduct_dir = _make_prawduct_dir(
+            tmp_path,
+            change_log="## 2026-05-18: untagged\n",
+            build_plan="## Status\n- [ ] Chunk 00: A\n",
+        )
+        _, results = views.plan_regen(prawduct_dir)
+        # Capture pre-state.
+        before_plan = (prawduct_dir / "artifacts" / "build-plan.md").read_text()
+        before_state = (prawduct_dir / "project-state.yaml").read_text()
+        views.apply_regen(prawduct_dir, [r for r in results if r.action == "noop"])
+        assert (prawduct_dir / "artifacts" / "build-plan.md").read_text() == before_plan
+        assert (prawduct_dir / "project-state.yaml").read_text() == before_state
+        assert not (prawduct_dir / "release-notes.md").exists()
+
+
+class TestRunViewsCommand:
+    def test_direct_dry_run(self, tmp_path: Path):
+        from lib.views_cmd import run_views_command
+        product = tmp_path / "product"
+        prawduct_dir = product / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text("views_enabled: true\n")
+        (prawduct_dir / "change-log.md").write_text(
+            "## 2026-05-18: rel\n"
+            "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+        )
+        (prawduct_dir / "artifacts" / "build-plan.md").write_text(
+            "## Status\n- [ ] Chunk 00: A\n"
+        )
+        result = run_views_command(str(product), refresh=False)
+        assert result["enabled"] is True
+        assert result["refresh"] is False
+        # Dry-run leaves files alone.
+        assert not (prawduct_dir / "release-notes.md").exists()
+        names = [v["name"] for v in result["views"]]
+        assert names == ["status", "release-notes", "scope-rollups"]
+
+    def test_direct_refresh_writes(self, tmp_path: Path):
+        from lib.views_cmd import run_views_command
+        product = tmp_path / "product"
+        prawduct_dir = product / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text("views_enabled: true\n")
+        (prawduct_dir / "change-log.md").write_text(
+            "## 2026-05-18: rel\n"
+            "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+        )
+        (prawduct_dir / "artifacts" / "build-plan.md").write_text(
+            "## Status\n- [ ] Chunk 00: A\n"
+        )
+        result = run_views_command(str(product), refresh=True)
+        assert "error" not in result
+        # Files written.
+        assert (prawduct_dir / "release-notes.md").exists()
+        assert "- [x] Chunk 00: A" in (prawduct_dir / "artifacts" / "build-plan.md").read_text()
+
+    def test_direct_not_a_prawduct_dir(self, tmp_path: Path):
+        from lib.views_cmd import run_views_command
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = run_views_command(str(empty), refresh=False)
+        assert "error" in result
+        assert "no .prawduct" in result["error"].lower() or "not a prawduct" in result["error"].lower()
+
+
+# =============================================================================
 # Integration tests — product-hook regen-views subcommand
 # =============================================================================
 
@@ -411,7 +818,9 @@ class TestRegenViewsCommand:
         )
         result = _run_regen(product)
         assert result.returncode == 0
-        assert "no changes" in result.stdout.lower() or "already" in result.stdout.lower()
+        out = result.stdout.lower()
+        # Status view reports its idempotent state with one of these phrases.
+        assert "up to date" in out or "no changes" in out
 
     def test_missing_change_log_returns_nonzero(self, tmp_path: Path):
         product = tmp_path / "product"
@@ -447,3 +856,182 @@ class TestRegenViewsCommand:
         new_plan = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
         # Tag-derived view: no shipped tag for 99 → checkbox flips to [ ].
         assert "- [ ] Chunk 99: orphan" in new_plan
+
+
+class TestRegenViewsAllThree:
+    """End-to-end: a single regen-views invocation produces all three views."""
+
+    def test_three_views_in_one_pass(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-05-18: v1.4 Wave 1 (v1.3.17)\n"
+                "<!-- prawduct: chunks=00,01,02 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+            ),
+            build_plan=(
+                "## Status\n"
+                "- [ ] Chunk 00: A\n"
+                "- [ ] Chunk 01: B\n"
+                "- [ ] Chunk 02: C\n"
+            ),
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stderr
+
+        # 1) Status view applied.
+        plan = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+        assert "- [x] Chunk 00: A" in plan
+        assert "- [x] Chunk 02: C" in plan
+
+        # 2) Release-notes view created.
+        rn_path = product / ".prawduct" / "release-notes.md"
+        assert rn_path.exists()
+        rn = rn_path.read_text()
+        assert "# Release Notes" in rn
+        assert "## v1.3.17" in rn
+        assert "**Chunks shipped:** 00, 01, 02" in rn
+
+        # 3) Scope-rollups appended to project-state.yaml.
+        state = (product / ".prawduct" / "project-state.yaml").read_text()
+        assert "scope_rollups:" in state
+        assert "v1.4:" in state
+        assert '"v1.3.17"' in state
+
+        # Output summarizes all three.
+        out = result.stdout.lower()
+        assert "status" in out
+        assert "release notes" in out
+        assert "scope" in out
+
+    def test_idempotent_three_views(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-05-18: rel\n"
+                "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+            ),
+            build_plan="## Status\n- [x] Chunk 00: A\n",
+        )
+        first = _run_regen(product)
+        assert first.returncode == 0
+        # Capture file mtimes/contents after first regen.
+        rn_after_first = (product / ".prawduct" / "release-notes.md").read_text()
+        state_after_first = (product / ".prawduct" / "project-state.yaml").read_text()
+        plan_after_first = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+
+        # Second run: should report up-to-date and produce identical content.
+        second = _run_regen(product)
+        assert second.returncode == 0
+        assert (product / ".prawduct" / "release-notes.md").read_text() == rn_after_first
+        assert (product / ".prawduct" / "project-state.yaml").read_text() == state_after_first
+        assert (product / ".prawduct" / "artifacts" / "build-plan.md").read_text() == plan_after_first
+        # And output reflects no work done.
+        assert "up to date" in second.stdout.lower() or "no changes" in second.stdout.lower()
+
+
+# =============================================================================
+# Integration tests — prawduct-setup.py `views` subcommand (/prawduct-doctor)
+# =============================================================================
+
+
+SETUP_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
+
+
+def _run_doctor_views(
+    product_dir: Path, *, refresh: bool = False, json_mode: bool = False
+) -> subprocess.CompletedProcess:
+    args = ["python3", str(SETUP_PATH), "views", str(product_dir)]
+    if refresh:
+        args.append("--refresh")
+    if json_mode:
+        args.append("--json")
+    return subprocess.run(args, capture_output=True, text=True, timeout=20)
+
+
+class TestDoctorViewsSubcommand:
+    def test_dry_run_reports_planned_actions_without_writing(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-05-18: rel\n"
+                "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+            ),
+            build_plan="## Status\n- [ ] Chunk 00: A\n",
+        )
+        result = _run_doctor_views(product)
+        assert result.returncode == 0, result.stderr
+        # Dry-run should NOT write any files.
+        assert (
+            "- [ ] Chunk 00: A"
+            in (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+        )
+        assert not (product / ".prawduct" / "release-notes.md").exists()
+        # Human-readable output goes to stderr (matches sync/validate pattern).
+        out = result.stderr.lower()
+        assert "status" in out
+        assert "release notes" in out
+        assert "scope" in out
+        assert "--refresh" in out
+
+    def test_refresh_writes_all_views(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-05-18: rel\n"
+                "<!-- prawduct: chunks=00,01 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+            ),
+            build_plan="## Status\n- [ ] Chunk 00: A\n- [ ] Chunk 01: B\n",
+        )
+        result = _run_doctor_views(product, refresh=True)
+        assert result.returncode == 0, result.stderr
+        # All three views written.
+        plan = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+        assert "- [x] Chunk 00: A" in plan
+        assert (product / ".prawduct" / "release-notes.md").exists()
+        state = (product / ".prawduct" / "project-state.yaml").read_text()
+        assert "scope_rollups:" in state
+
+    def test_views_disabled_reports_clearly(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=False,
+            change_log="## x\n<!-- prawduct: chunks=00 | status=shipped -->\n",
+            build_plan="## Status\n- [ ] Chunk 00: A\n",
+        )
+        result = _run_doctor_views(product)
+        assert result.returncode == 0
+        assert "disabled" in result.stderr.lower()
+
+    def test_json_output_shape(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-05-18: rel\n"
+                "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
+            ),
+            build_plan="## Status\n- [x] Chunk 00: A\n",
+        )
+        result = _run_doctor_views(product, json_mode=True)
+        assert result.returncode == 0, result.stderr
+        import json as _json
+        payload = _json.loads(result.stdout)
+        assert payload["enabled"] is True
+        assert payload["refresh"] is False
+        names = [v["name"] for v in payload["views"]]
+        assert names == ["status", "release-notes", "scope-rollups"]
+        for view in payload["views"]:
+            assert view["action"] in ("noop", "write", "create")
+            assert isinstance(view["summary"], str) and view["summary"]
+
+    def test_not_a_prawduct_product_returns_error(self, tmp_path: Path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = _run_doctor_views(empty)
+        assert result.returncode != 0
+        err = result.stderr.lower()
+        assert "not a prawduct" in err or "no .prawduct" in err

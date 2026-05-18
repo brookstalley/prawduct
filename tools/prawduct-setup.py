@@ -9,11 +9,14 @@ Subcommands:
   setup     Auto-detect repo state and init/migrate/sync as needed
   sync      Sync product repo with framework template updates
   validate  Health check — verify repo structure and configuration
+  views     Inspect derived views (Status / release-notes / scope-rollups);
+            --refresh regenerates them from change-log tags
 
 Usage:
   python3 tools/prawduct-setup.py setup <target> [--name NAME]
   python3 tools/prawduct-setup.py sync <product_dir> [--framework-dir <dir>]
   python3 tools/prawduct-setup.py validate <target> [--json]
+  python3 tools/prawduct-setup.py views <product_dir> [--refresh] [--json]
 """
 
 from __future__ import annotations
@@ -87,6 +90,7 @@ from lib import (  # noqa: F401
     run_migrate,
     run_sync,
     run_validate,
+    run_views_command,
     split_learnings_v5,
     untrack_gitignored_files,
     update_gitignore,
@@ -135,6 +139,19 @@ def main() -> int:
     )
     validate_parser.add_argument("target_dir", help="Product repo directory to validate")
     validate_parser.add_argument("--json", action="store_true", dest="json_mode", help="JSON output only")
+
+    # --- views ---
+    views_parser = subparsers.add_parser(
+        "views",
+        help="Inspect or refresh derived views (Status / release-notes / scope-rollups)",
+    )
+    views_parser.add_argument("product_dir", help="Product repo directory")
+    views_parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Regenerate views (write files); without this, reports planned actions only",
+    )
+    views_parser.add_argument("--json", action="store_true", dest="json_mode", help="JSON output only")
 
     args = parser.parse_args()
 
@@ -200,6 +217,30 @@ def main() -> int:
                     log(f"  + {action}")
             for note in result.get("notes", []):
                 log(f"  * {note}")
+        return 0
+
+    elif args.command == "views":
+        result = run_views_command(args.product_dir, refresh=args.refresh)
+
+        if args.json_mode:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                log(f"Error: {result['error']}")
+                return 1
+            if not result["enabled"]:
+                log("Views disabled (set views_enabled: true in project-state.yaml).")
+                return 0
+            mode = "refresh" if args.refresh else "dry-run"
+            log(f"Derived views ({mode}):")
+            for view in result["views"]:
+                marker = {"noop": " ", "write": "*", "create": "+"}.get(view["action"], "?")
+                log(f"  {marker} {view['summary']}")
+            if not args.refresh:
+                any_changes = any(v["action"] != "noop" for v in result["views"])
+                if any_changes:
+                    log("")
+                    log("  Run with --refresh to apply.")
         return 0
 
     elif args.command == "validate":

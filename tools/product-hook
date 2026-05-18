@@ -2890,11 +2890,14 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
 def cmd_regen_views(project_dir: Path) -> int:
     """Regenerate derived views from the change-log canonical store.
 
-    Currently regenerates the build-plan `## Status` block from `status=shipped`
-    tagged entries in change-log.md. No-op when `views_enabled: true` is absent
-    from project-state.yaml (opt-in by design — see F1 in v1.4 plan).
+    Three views are produced in one pass when `views_enabled: true`:
 
-    Release-notes and project-state.scope views are deferred to Chunk 06.
+      1. Build-plan `## Status` block — checkbox flips from `status=shipped` tags
+      2. Release-notes view — `.prawduct/release-notes.md` from `release=` tags
+      3. Scope-rollup view — `scope_rollups:` block in `project-state.yaml`
+         from `scope=` tags
+
+    No-op when `views_enabled: true` is absent (opt-in by design — see F1).
 
     Exit codes:
       0 - success (views disabled, no changes needed, or regen applied cleanly)
@@ -2908,46 +2911,33 @@ def cmd_regen_views(project_dir: Path) -> int:
     from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
 
     prawduct_dir = get_prawduct_dir(project_dir)
-    state_path = prawduct_dir / "project-state.yaml"
-    if not views.is_views_enabled(state_path):
-        print("Views disabled (set views_enabled: true in project-state.yaml).")
-        return 0
-
-    change_log_path = prawduct_dir / "change-log.md"
-    build_plan_path = prawduct_dir / "artifacts" / "build-plan.md"
-    if not change_log_path.exists():
-        print(f"ERROR: change-log not found at {change_log_path}", file=sys.stderr)
-        return 2
-    if not build_plan_path.exists():
-        print(f"ERROR: build-plan not found at {build_plan_path}", file=sys.stderr)
-        return 2
-
     try:
-        change_log = change_log_path.read_text(encoding="utf-8")
-        build_plan = build_plan_path.read_text(encoding="utf-8")
+        enabled, results = views.plan_regen(prawduct_dir)
+    except FileNotFoundError as e:
+        msg = str(e)
+        if "change-log" in msg:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        elif "build-plan" in msg:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        else:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        return 2
     except OSError as e:
         print(f"ERROR reading view inputs: {e}", file=sys.stderr)
         return 2
 
-    new_content, changes = views.build_status_view(change_log, build_plan)
-    if new_content is None:
-        print("No changes — Status view already up to date.")
+    if not enabled:
+        print("Views disabled (set views_enabled: true in project-state.yaml).")
         return 0
 
     try:
-        build_plan_path.write_text(new_content, encoding="utf-8")
+        views.apply_regen(prawduct_dir, results)
     except OSError as e:
-        print(f"ERROR writing build-plan: {e}", file=sys.stderr)
+        print(f"ERROR writing view output: {e}", file=sys.stderr)
         return 2
 
-    shipped = sorted(cid for cid, _, new in changes if new == "x")
-    unshipped = sorted(cid for cid, _, new in changes if new == " ")
-    parts = []
-    if shipped:
-        parts.append(f"shipped [{', '.join(shipped)}]")
-    if unshipped:
-        parts.append(f"unshipped [{', '.join(unshipped)}]")
-    print(f"Regenerated Status: {len(changes)} chunk(s) flipped — " + "; ".join(parts))
+    for r in results:
+        print(r.summary)
     return 0
 
 

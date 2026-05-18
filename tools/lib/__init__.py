@@ -72,3 +72,6 @@ from .sync_cmd import (  # noqa: F401
 
 # Validate command
 from .validate_cmd import run_validate  # noqa: F401
+
+# Views command (doctor `views` subcommand)
+from .views_cmd import run_views_command  # noqa: F401

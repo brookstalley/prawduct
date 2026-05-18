@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-18: Chunk 06 — F1b remaining views (release-notes + scope-rollups + doctor views)
+
+<!-- prawduct: chunks=06 | status=shipped | scope=v1.4 -->
+
+**Why:** F1a (Chunk 05) shipped the schema, the parser, and one view (build-plan Status). F1's load-bearing premise — *one canonical store, multiple derived views replacing hand-curated summaries* — needs the remaining two views (release notes, scope rollups) before Chunk 07 can ship migration tooling. The doctor `views` subcommand fills the F1 deliverable for ad-hoc inter-commit regen and gives `/prawduct-doctor` users a one-stop dry-run/refresh surface.
+
+**What:** Three views regenerate in one pass via `python3 tools/product-hook regen-views` (or `python3 tools/prawduct-setup.py views <dir> --refresh`):
+
+1. **Status** (existing, from Chunk 05) — build-plan `## Status` checkboxes from `status=shipped` tags.
+2. **Release notes** (new) — `.prawduct/release-notes.md` digest, one section per `release=` tag, preserving change-log order (newest first). Multiple change-log entries sharing a release tag merge into one section.
+3. **Scope rollups** (new) — `scope_rollups:` top-level block in `project-state.yaml`, listing chunks + releases per `scope=` tag. Alphabetically sorted scopes, deduplicated chunks. Chunk IDs YAML-quoted to preserve leading zeros. Block appended at end-of-file with comment header on first regen; subsequent regens replace the key-and-body in place (preserves surrounding content via `extract_yaml_top_level_block`).
+
+**Shared regen pipeline:** new `views.plan_regen(prawduct_dir) → (enabled, [ViewRegenResult])` + `views.apply_regen(prawduct_dir, results)` helpers consolidate the read/build/write logic so both `product-hook regen-views` and the new doctor `views` subcommand reach the same path. `ViewRegenResult` carries `name` (`status`/`release-notes`/`scope-rollups`), `action` (`noop`/`write`/`create`), `summary`, and the new content — letting the doctor surface dry-run intent without writing.
+
+**Doctor `views` subcommand:** `python3 tools/prawduct-setup.py views <product_dir>` reports per-view freshness (Status / release-notes / scope-rollups) and prompts for `--refresh` when changes would apply. `--refresh` performs the regen. `--json` for scripted consumption. New `tools/lib/views_cmd.py` (~60 lines) wraps `plan_regen` + `apply_regen` with the doctor's payload shape. The /prawduct-doctor skill picks this up via prawduct-setup.py's subparser table.
+
+**Source-of-truth guardrails (broadened from Status to all three views):** Critic Goal 4 ("Derived views" bullet) + templates/critic-review.md + .prawduct/critic-review.md + PR-reviewer SKILL + templates/pr-review.md + .prawduct/pr-review.md + methodology/building.md chunk-close pointer + templates/product-claude.md step 10 all updated. Common message: when `views_enabled: true`, all three views derive from change-log tags via `regen-views`; tag is canonical; any view↔tag mismatch → WARNING ("run regen-views"). Aggressive trim-before-bump kept Critic SKILL.md under the existing 3250 ceiling (broader wording would have grown to 3261; trimmed back to 3243) and templates/product-claude.md block under 3050 (broader wording would have grown to 3061; trimmed back to ≤3050).
+
+**Schema / template changes:** `templates/change-log.md` schema comment expanded to mention the release-notes + scope_rollups outputs (previously only mentioned Status). `templates/project-state.yaml` opt-in comment broadened; `scope_rollups: {}` placeholder added (default empty, populated only on first regen with shipped+scoped entries).
+
+**Test coverage:** 1077 passing (+36 over Chunk 05's 1041). New tests/test_views.py classes: TestExtractYamlTopLevelBlock (6 — find/missing/multi-line/comment-terminated/indented-not-matched/end-of-file), TestBuildScopeView (7 — append/replace/idempotent/empty/multi-sort/non-shipped-excluded/dedup-sort), TestBuildReleaseNotesView (6 — none/in-progress-excluded/single/multi-order/merge/no-release-tag-excluded), TestPlanRegen (4), TestApplyRegen (2), TestRunViewsCommand (3 direct), TestRegenViewsAllThree (2 integration), TestDoctorViewsSubcommand (5 subprocess + 1 JSON-shape). Public-function coverage test (`test_every_public_lib_function_referenced_in_some_test`) confirms `plan_regen`/`apply_regen`/`run_views_command` have direct test references, not just transitive.
+
+**Dogfooded:** regen-views against the framework's own change-log produced `.prawduct/release-notes.md` with v1.3.17 + v1.3.16 sections and appended `scope_rollups:` to `.prawduct/project-state.yaml` with `v1.4` listing chunks 00-05 + release v1.3.17. Idempotent second run reports `Status: up to date / Release notes: up to date / Scope rollups: up to date`.
+
+**Methodology decision recorded in change-log entry as well as in the maintenance plan:** pre-commit regen for views is *deferred* to Chunk 07 (per the F1 plan line that originally promised it). v1.4 ships **on-demand regen only** — via `product-hook regen-views` (run manually or by chunk-close governance per methodology/building.md) and `prawduct-setup.py views <dir> --refresh` (manual). The backlog note filed during Chunk 05's Critic capturing this scope-shift is now consolidated here.
+
+## 2026-05-18: Chunk 05 — F1a derived views (work-log schema + Status view)
+
+<!-- prawduct: chunks=05 | status=shipped | scope=v1.4 -->
+
+**Why:** F1's load-bearing premise (one canonical store, derived views replacing hand-curated summaries) needs a working derived-view pipeline before the remaining views (release notes, scope) can land in Chunk 06 and migration tooling in Chunk 07. Chunk 05 ships the schema, the parser, the first view (build-plan Status), and the source-of-truth guardrails threaded across Critic + PR-reviewer + methodology surfaces.
+
+**What:** New `tools/lib/views.py` (HTML-comment tag-line parser + Status-section view builder + `views_enabled` reader, stdlib-only ~216 lines). New `product-hook regen-views` subcommand reads change-log + build-plan, rewrites Status checkboxes from `status=shipped` tags. Tagged-entry schema documented in `templates/change-log.md`. Status marker added to `templates/build-plan.md`. `views_enabled` opt-in field added to `templates/project-state.yaml` (default false) and `.prawduct/project-state.yaml` (true — dogfooding). v1.3.17 and v1.3.16 entries backfilled with tag lines so the first regen against current Status is a no-op. Source-of-truth guardrails added at 8 surfaces — when `views_enabled` is true, the change-log tag is canonical and Status is derived; Critic/PR reviewer flag mismatches as WARNING. Test suite: 39 new tests in `tests/test_views.py`, 1041 total.
+
+**Status semantic decided (2026-05-18):** `status=shipped` means "merged to mainline" — per-chunk timing. A chunk's checkbox flips `[x]` the moment its merge commit lands, independent of whether a tagged release has consolidated it yet. Release inclusion is tracked separately via the `release=vN.M.P` tag on a per-chunk or per-wave entry.
+
 ## 2026-05-18: v1.4 Wave 1 — proportional Critic + cumulative gate + foreign-API verification (v1.3.17)
 
 <!-- prawduct: chunks=00,01,02,03,04 | release=v1.3.17 | status=shipped | scope=v1.4 -->
