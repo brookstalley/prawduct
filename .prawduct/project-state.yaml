@@ -419,6 +419,16 @@ build_state:
   source_root: "."
 
 # =============================================================================
+# DERIVED VIEWS (opt-in, v1.4+)
+# =============================================================================
+# When true, the build-plan `## Status` block is a derived view of
+# change-log.md tagged entries. Run `python3 tools/product-hook regen-views`
+# to apply. Prawduct dogfoods this — change-log v1.3.17/v1.3.16 entries carry
+# tag lines so regen produces the correct Wave-1-complete Status state.
+
+views_enabled: true
+
+# =============================================================================
 # DEPRECATED TERMS
 # =============================================================================
 # Track vocabulary changes to catch stale references.

@@ -83,6 +83,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - **README and top-level docs**: Actively read the project's README (and any top-level docs/) when features are added, removed, or renamed. README that describes removed features, contains wrong setup instructions, or omits significant new capabilities → **WARNING**. README with actively misleading instructions (wrong commands, deleted config references) → **BLOCKING**.
 - **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
+- **Derived views**: `views_enabled` ⇒ Status checkboxes derive from change-log `status=shipped` tags via `regen-views`. Tag is canonical. Checkbox/tag mismatch or shipped chunk without tag → **WARNING**.
 - **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING** ("CLAUDE.md project content is N lines — move architecture, config tables, and component inventories to docs/ or .prawduct/artifacts/"). Applies to the current changeset.
 - For framework changes: concept ripple check — renamed/removed terms still referenced in *active* files (not changelogs or archives) → **WARNING**.
 

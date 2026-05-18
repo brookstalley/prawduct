@@ -5,6 +5,8 @@
 
 ## 2026-05-18: v1.4 Wave 1 — proportional Critic + cumulative gate + foreign-API verification (v1.3.17)
 
+<!-- prawduct: chunks=00,01,02,03,04 | release=v1.3.17 | status=shipped | scope=v1.4 -->
+
 **Why:** Five recurring quality-governance gaps surfaced across recent product work: (F2) per-chunk Critics passed clean but cross-chunk integration cracks (helper introduced in chunk N misbehaving against prose in chunk M) only emerged at merge time, with no structural gate to catch them; (F3) build plans drift from real file paths as a chunk's scope evolves, and the Critic had no mechanical way to detect references to files that no longer exist; (F6) the Critic ran the full 7-goal protocol against every chunk regardless of work type — wasteful for docs/cleanup chunks, occasionally missing the right goals for designer-handoff chunks; (F8) chunks wrapping foreign APIs (vendor SDKs, MCP servers) routinely shipped against assumed signatures that didn't match the real surface, found at integration time. Each gap had been surfaced as a learning or backlog item over the prior quarter; v1.4's first wave addresses them in one bundle.
 
 **What:** Five chunks delivering four new mechanisms, plus three remediation rounds dogfooded against the cumulative-Critic gate they introduce.
@@ -34,6 +36,8 @@
 **Compatibility — read before syncing:** The `check-cumulative-critic` gate is new structural enforcement. After syncing v1.3.17, the next `/pr create` in any product repo will require a fresh `cumulative`-mode Critic record (produced by `/critic cumulative`) covering `merge-base...HEAD` — the gate refuses to open the PR without one. This is a real behavior change at the PR boundary: workflows that previously ran chunk-Critics and went straight to `/pr` now have an additional cumulative pass before PR creation. Day-to-day chunk work is unchanged; only the PR-creation step gains the gate. The backlog item "v1.4 release-readiness: document the new `/pr create` gate before tagging" tracks adding a `prawduct-doctor` migration prompt and full release-notes section before the v1.4 minor bump consolidates this and subsequent waves.
 
 ## 2026-05-10: Janitor skill becomes model-invocable (v1.3.16)
+
+<!-- prawduct: release=v1.3.16 | status=shipped -->
 
 **Why:** The janitor skill shipped with `disable-model-invocation: true` in its frontmatter, which prevented the agent from launching it via the Skill tool. It still appeared in the user's slash-command list (because `user-invocable: true`), so users saw it but the agent couldn't run it — confusing asymmetry. The intent was always for the agent to be able to drive periodic maintenance, not just respond when the user types `/janitor`.
 

@@ -84,8 +84,14 @@ class TestBuildingMethodology:
         # Further trimming would lose the pedagogical structure the section
         # depends on. If this test fails again, prefer trimming over another
         # bump.
+        #
+        # Bumped from 4250 → 4275 in v1.4 Chunk 05 (F1a derived views). The
+        # chunk-close step gains a one-clause pointer that Status may be a
+        # derived view (~13 tokens) — needed so methodology readers know the
+        # full guidance lives in change-log.md schema and product-claude.md
+        # step 10. Trimmed to a parenthetical before bumping.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4250, f"building.md is ~{tokens} tokens, should be <4250"
+        assert tokens < 4275, f"building.md is ~{tokens} tokens, should be <4275"
 
 
 # =============================================================================
@@ -217,8 +223,16 @@ class TestCriticSkill:
         # (framework-only checks). If this test fails again, prefer trimming
         # over another bump — the Critic skill is loaded fresh on every
         # invocation and the budget bounds that cost.
+        #
+        # Bumped from 3200 → 3250 in v1.4 Chunk 05 (F1a derived views). Goal 4
+        # gains a "Derived views" bullet that pins the Critic's behavior when
+        # `views_enabled` is true — the change-log tag line, not the regenerated
+        # Status checkbox, is canonical. The check is structural (not a check
+        # the per-product critic-review.md can carry alone, since framework
+        # Critic reviews read SKILL.md directly), and was trimmed to ~35
+        # tokens before bumping.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3200, f"SKILL.md is ~{tokens} tokens, should be <3200"
+        assert tokens < 3250, f"SKILL.md is ~{tokens} tokens, should be <3250"
 
 
 # =============================================================================

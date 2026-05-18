@@ -2887,9 +2887,74 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
 # =============================================================================
 
 
+def cmd_regen_views(project_dir: Path) -> int:
+    """Regenerate derived views from the change-log canonical store.
+
+    Currently regenerates the build-plan `## Status` block from `status=shipped`
+    tagged entries in change-log.md. No-op when `views_enabled: true` is absent
+    from project-state.yaml (opt-in by design — see F1 in v1.4 plan).
+
+    Release-notes and project-state.scope views are deferred to Chunk 06.
+
+    Exit codes:
+      0 - success (views disabled, no changes needed, or regen applied cleanly)
+      2 - I/O or schema error (missing change-log or build-plan)
+    """
+    # Ensure tools/ is on sys.path so `from lib import views` resolves both
+    # when invoked as a script and when imported via SourceFileLoader in tests.
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    state_path = prawduct_dir / "project-state.yaml"
+    if not views.is_views_enabled(state_path):
+        print("Views disabled (set views_enabled: true in project-state.yaml).")
+        return 0
+
+    change_log_path = prawduct_dir / "change-log.md"
+    build_plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    if not change_log_path.exists():
+        print(f"ERROR: change-log not found at {change_log_path}", file=sys.stderr)
+        return 2
+    if not build_plan_path.exists():
+        print(f"ERROR: build-plan not found at {build_plan_path}", file=sys.stderr)
+        return 2
+
+    try:
+        change_log = change_log_path.read_text(encoding="utf-8")
+        build_plan = build_plan_path.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"ERROR reading view inputs: {e}", file=sys.stderr)
+        return 2
+
+    new_content, changes = views.build_status_view(change_log, build_plan)
+    if new_content is None:
+        print("No changes — Status view already up to date.")
+        return 0
+
+    try:
+        build_plan_path.write_text(new_content, encoding="utf-8")
+    except OSError as e:
+        print(f"ERROR writing build-plan: {e}", file=sys.stderr)
+        return 2
+
+    shipped = sorted(cid for cid, _, new in changes if new == "x")
+    unshipped = sorted(cid for cid, _, new in changes if new == " ")
+    parts = []
+    if shipped:
+        parts.append(f"shipped [{', '.join(shipped)}]")
+    if unshipped:
+        parts.append(f"unshipped [{', '.join(unshipped)}]")
+    print(f"Regenerated Status: {len(changes)} chunk(s) flipped — " + "; ".join(parts))
+    return 0
+
+
 _USAGE = (
     "Usage: product-hook "
-    "{clear|stop|test-status|validate-evidence|check-cumulative-critic|verify-chunk-refs [chunk_id]}"
+    "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
+    "verify-chunk-refs [chunk_id]|regen-views}"
 )
 
 
@@ -2914,6 +2979,8 @@ def main() -> int:
     elif command == "verify-chunk-refs":
         chunk_id = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_verify_chunk_refs(project_dir, chunk_id)
+    elif command == "regen-views":
+        return cmd_regen_views(project_dir)
     else:
         print(_USAGE, file=sys.stderr)
         return 1

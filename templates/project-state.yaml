@@ -203,6 +203,18 @@ build_state:
   source_root: null           # Where source code lives (e.g., "src/")
 
 # =============================================================================
+# DERIVED VIEWS (opt-in, v1.4+)
+# =============================================================================
+# When true, the build-plan `## Status` block becomes a derived view of
+# change-log.md tagged entries (see that file for the tag format). Run
+# `python3 tools/product-hook regen-views` to apply. With this off (default),
+# Status is hand-edited as before. Flip to `true` only after backfilling tag
+# lines on existing change-log entries so the first regen produces the
+# correct Status state.
+
+views_enabled: false
+
+# =============================================================================
 # CHANGE LOG
 # =============================================================================
 # Change log is in .prawduct/change-log.md (separate file to reduce merge conflicts).
