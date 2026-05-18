@@ -178,6 +178,14 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
 - **Depends on:** [chunk IDs, or "none" for scaffold]
 - **Artifacts consumed:** [Which artifact files the Builder reads for this chunk]
 - **Deliverables:** [Specific files or components produced]
+  <!-- File-path refs (backticked paths containing `/`) in the current chunk's
+       section are verified to exist on disk by the Critic's Goal 2
+       (build-plan ref drift check). Files this chunk *creates* should be
+       preceded by the word "new" on the same line — e.g. "new
+       `agents/foo/bar.md`" — to flag them as forward refs. Future-chunk
+       sections (Chunk N+1, N+2, …) are never checked; forward references
+       there are fine. -->
+
 - **Tests:** [Test scenarios from test-specifications that apply to this chunk]
   <!-- For medium/high-risk products, note which test levels this chunk introduces
        or extends (e.g., "adds unit tests for scoring logic, integration test for
@@ -190,11 +198,66 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        7 goals, target 4-10 min). Single-chunk plans use `final`. Trivial chunks
        (typo-level edits inside a larger plan) waive Critic via `.gates-waived`.
        Missing field → builder treats as `final` (fail-safe to thoroughness).
+       The third mode, `cumulative`, is invoked separately before `/pr create`
+       (not a per-chunk mode — see Governance Checkpoints below).
        See `agents/critic/review-cycle.md` for full per-mode behavior. -->
+- **Type:** [optional — defaults to `code`. Allowed: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final`]
+  <!-- The Type axis is orthogonal to Critic mode — mode controls how deep the
+       review is; Type controls what kind of work is under review (v1.4 F6).
+       Declare Type only when it deviates from `code` (minimal-declaration
+       convention). Missing or unrecognized values fall back to `code` — the
+       full Critic protocol — so under-declaration is safe.
+
+       - `code`: code or behavior changes (default).
+       - `doc-only`: prose-only edits (methodology, templates, comments). Critic
+         skips test-evidence checks; the stop-hook Critic gate still fires unless
+         the session is empirically doc-only too (file extensions).
+       - `cleanup`: branch hygiene, file moves, dead-code removal. Critic tolerates
+         a zero diff; structural-only review.
+       - `designer-handoff`: visual / token / design-asset handoff to a human
+         designer. Critic returns "Review skipped — Type: designer-handoff" and
+         the stop-hook gate is also skipped. **Use deliberately — this is the
+         only Type that bypasses Critic enforcement.**
+       - `cumulative-final`: marker on the last chunk of a multi-chunk plan;
+         signals that a `/critic cumulative` review against `merge-base...HEAD`
+         is required in addition to the chunk's own `final` review (see Done-when
+         step 4 below).
+
+       See `agents/critic/review-cycle.md` "Per-Chunk Type Protocol Selector"
+       for the full per-type protocol matrix. -->
+- **Foreign API:** [optional — omit unless this chunk wraps a foreign API/SDK. Format: `<name>` (e.g., `ableton-live-mcp`, `stripe-js-sdk`)]
+  <!-- When this chunk wraps a foreign API or SDK whose surface the project
+       doesn't own (vendor APIs, MCP servers, third-party libraries with
+       non-trivial wrappers), declare `**Foreign API:** <name>` here. The
+       Critic's Goal 2 then verifies the chunk's Done-when includes a
+       `verify-api` step (read source or run discovery probes before drafting
+       handlers) — missing step → WARNING. Carries forward
+       `infrastructure_dependencies` flagged in discovery (see
+       `methodology/planning.md` "Foreign API Verification").
+
+       Example (verify-api prepended as step 0, existing numbering preserved):
+         **Foreign API:** ableton-live-mcp
+         **Done when:**
+           0. verify-api — read MCP server source for the resource handlers
+              this chunk wraps; capture actual response shapes in
+              `.prawduct/artifacts/api-notes-ableton.md`
+           1. Acceptance criteria met and tests pass
+           ...
+
+       Omit the field entirely when no foreign API is involved — the Critic
+       check doesn't fire. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/critic <mode>` run (using the mode declared above) and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
+  <!-- If `Foreign API:` is declared above, add as step 0 (runs before tests
+       and implementation):
+         0. `verify-api` — read foreign source or run discovery probes; capture
+            actual signatures in chunk notes or a referenced artifact.
+       On the final chunk of a multi-cycle branch (or any time a PR will be
+       opened for this work), also add as step 4:
+         4. `/critic cumulative` run against `merge-base...HEAD` and blocking
+            findings resolved — this is the structural gate for `/pr create`. -->
 
 <!-- Repeat for each chunk -->
 
@@ -215,12 +278,16 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   Typically: after the early feedback milestone and after all chunks complete.
 -->
 
-**Commit & PR cadence:** [e.g., "Commit per chunk after `/critic <mode>` passes; PR after the final chunk's `/critic final` passes."]
+**Commit & PR cadence:** [e.g., "Commit per chunk after `/critic <mode>` passes; PR after the final chunk's `/critic final` AND `/critic cumulative` pass."]
 <!--
   Per-chunk commit is the default and the contract for `chunk`-mode Critic
   reviews — each chunk's diff scope is the working tree against the previous
   chunk's commit. Squash-at-end plans are out of scope (no `Critic base SHA:`
   tracking yet); if you genuinely need it, deferred to backlog.
+
+  Cumulative-Critic gate: `/pr create` calls `product-hook check-cumulative-critic`
+  and refuses to open a PR without a fresh, blocking-free `cumulative` record.
+  Plan for cumulative review wall-time (~4-10 min) as part of the final chunk.
 -->
 
 - After chunk [ID]: [Review type and rationale]

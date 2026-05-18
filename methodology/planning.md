@@ -97,6 +97,64 @@ Every chunk in a build plan declares `Critic mode: chunk | final`. The mode cont
 
 See `methodology/building.md` for the runtime behavior (how the build cycle reads the mode and invokes `/critic`) and `agents/critic/review-cycle.md` for the per-mode behavior table.
 
+### Choosing a Chunk Type
+
+Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `agents/critic/review-cycle.md`.
+
+Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final`. Default is `code` — the fully-armed protocol — so a missing field is the safe option, not a carveout. Declare a non-default Type only when the chunk actually deviates.
+
+- **`code`** — code or behavior changes. The default; you rarely need to write it explicitly.
+- **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage. Use when the chunk truly doesn't touch executable code.
+- **`cleanup`** — branch hygiene, file moves, dead-code removal. Critic tolerates a zero diff; structural-only review. Use when the chunk's value is the removal, not the new code.
+- **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped — Type: designer-handoff" and the stop-hook Critic gate also skips. **This is the only Type that bypasses Critic enforcement entirely — use deliberately.** Replaces the prior user-memory carveout with a framework-level rule.
+- **`cumulative-final`** — marker on the last chunk of a multi-chunk plan. Signals that a `/critic cumulative` review against `merge-base...HEAD` is required in addition to the chunk's own `final` review. The cumulative review is the `/pr create` gate (Principle 14 — Independent Review at the bundle level).
+
+**Type vs. mode orthogonality.** A `Type: doc-only` chunk can still be `Critic mode: final` (full review of prose deliverables); a `Type: code` chunk can be `Critic mode: chunk` (lightweight Goals 1-3 review). The two fields answer different questions — declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review).
+
+### Foreign API Verification
+
+When a chunk wraps a foreign API or SDK — anything whose surface the agent doesn't own and can't change — **the first step is reading source or running discovery probes, not drafting handlers from documentation.** Vendor docs lag behind code; LLM training data lags further. Tests written against an assumed signature pass against fakes that mirror the same assumption, then fail at integration time when the real surface diverges. This pattern recurs every time the framework or a product touches a foreign SDK (hallucinote's Ableton Live MCP integration is the canonical case — handlers shipped against signatures that didn't match the real API, found at integration time).
+
+**The rule.** A chunk that wraps a foreign API declares `**Foreign API:** <name>` in the build plan (between `**Type:**` and `**Done when:**`) and includes a `verify-api` step as the first item in its Done-when. `verify-api` means one of, in preference order:
+- Read the foreign code directly (vendor SDK source, MCP server source, library `.pyi` stubs).
+- Run a discovery probe against a live instance (curl, REPL session, smoke script) and capture the actual response shape.
+- If neither is possible, document the docs source consulted and flag the chunk as `Requirements Confidence: Medium` with "API surface assumed from docs" listed as an open assumption.
+
+Fakes and mocks are built *after* `verify-api` confirms the real shape, not before. The cost is one-time per API surface (~5-30 min depending on surface size); the cost it replaces is one or more chunk-reworks when the assumed shape turns out wrong.
+
+The Critic's Goal 2 looks for `Foreign API:` in the chunk and emits a **WARNING** if no `verify-api` step appears in Done-when. Missing `Foreign API:` field is safe (no foreign API to verify); the field is declared only when relevant.
+
+**Worked example (the pattern the Critic matches).** Prepend `verify-api` as Done-when step 0 so the existing step numbering is preserved across chunks with and without a foreign API:
+
+```
+### Chunk 3: Ableton transport handlers
+
+- **Foreign API:** ableton-live-mcp                    # ← field declared
+- **Done when:**
+  0. verify-api — read MCP server source for the     # ← step present → no finding
+     transport resource handlers; capture actual
+     response shapes in api-notes-ableton.md
+  1. Acceptance criteria met and tests pass
+  2. /critic chunk run and blocking findings resolved
+  3. Committed and chunk marked [x] in Status
+```
+
+vs. the WARNING form (same chunk with step 0 omitted):
+
+```
+### Chunk 3: Ableton transport handlers
+
+- **Foreign API:** ableton-live-mcp                    # ← field declared
+- **Done when:**
+  1. Acceptance criteria met and tests pass            # ← no verify-api → WARNING
+  2. /critic chunk run and blocking findings resolved
+  3. Committed and chunk marked [x] in Status
+```
+
+The Critic finds the `verify-api` step by case-insensitive substring match anywhere in the chunk's Done-when items — exact phrasing doesn't matter, but the literal token `verify-api` should appear.
+
+**Discovery surfaces foreign APIs early.** When discovery flags an external SDK or service in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry that forward into the build plan as `**Foreign API:** <name>` on whichever chunk first touches the wrapper. Annotation in the plan is what triggers the Critic check.
+
 ## Common Traps
 
 **Over-specification**: Writing specs so detailed they're harder to maintain than the code. Specs should be precise enough to build from but not so rigid they can't adapt to implementation discoveries.

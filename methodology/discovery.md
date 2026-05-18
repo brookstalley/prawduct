@@ -120,6 +120,8 @@ When the product needs external services to function — databases, message queu
 
 **Capture to `project-state.yaml`** under `design_decisions.infrastructure_dependencies`. This connects to the build phase where test specifications require integration tests against declared dependencies, and the Critic verifies that infrastructure assumptions in code match what's specified.
 
+**Foreign APIs are a distinct subcategory.** When a dependency is a foreign API or SDK (one whose surface the project doesn't own and can't change — vendor APIs, MCP servers, third-party libraries with non-trivial wrappers), name the API explicitly in the dependencies list so the planner can carry it forward as `**Foreign API:** <name>` on the chunk that first wraps it. The build-plan annotation triggers a Critic check that the chunk includes a `verify-api` step (read source or run discovery probes before drafting handlers — see `methodology/planning.md` "Foreign API Verification").
+
 ## Surface Observability Needs
 
 Every product has observability needs — even when the answer is "console.error is enough." The depth depends on structural characteristics: products with `runs_unattended`, `exposes_programmatic_interface`, or `multi_process_distributed` need deeper observability design. Single-user local tools need minimal (error logging is sufficient).

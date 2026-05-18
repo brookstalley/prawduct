@@ -594,6 +594,90 @@ class TestStopCriticGate:
 # =============================================================================
 
 
+class TestDesignerHandoffSkipsCriticGate:
+    """v1.4 F6 — chunks declared `Type: designer-handoff` skip the stop-hook
+    Critic gate. This formalizes the carveout that previously lived as a
+    user-memory rule (not a framework rule), so the structural enforcement
+    matches the methodology.
+
+    Only `designer-handoff` skips the gate. `doc-only` and `cleanup` still
+    require Critic findings — only their *protocol* adjusts (Critic's domain,
+    not the gate's). Unknown Type values fall through to the default
+    behavior (gate fires) per the helper's fail-closed default.
+    """
+
+    def test_designer_handoff_skips_critic_with_code_changes(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Visual polish\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Visual polish\n\n"
+            "- **Type:** designer-handoff\n",
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: handed off design tokens for designer review; no Critic gating per F6."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/styles.css")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "CRITIC" not in result.stderr
+        # User must see the skip — invisible carveouts are exactly what
+        # the framework rule replaces.
+        assert "designer-handoff" in result.stderr.lower()
+
+    def test_code_chunk_still_requires_critic(self, tmp_path: Path):
+        """Sanity check: when the current chunk's Type is `code` (the default),
+        the Critic gate still fires for non-doc-only changes."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Feature\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Feature\n\n"
+            "- **Type:** code\n",
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented feature and verified all tests pass correctly."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+    def test_unknown_type_falls_through_to_critic_gate(self, tmp_path: Path):
+        """Fail-closed contract: a typo'd Type value must not silently skip
+        the Critic — the gate fires as if the field were `code`. (The parser
+        surfaces the typo error elsewhere; the gate just refuses to honor it.)"""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Mystery\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Mystery\n\n"
+            "- **Type:** wibble\n",
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: did something, value unclear; tests all pass currently."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+
 class TestDocOnlySkipsCriticGate:
     """Doc-only sessions should not require Critic review even with an active build plan."""
 
@@ -1686,6 +1770,28 @@ class TestCriticModeGate:
         }))
         assert self.mod.validate_critic_findings(path) is False
 
+    def test_validate_critic_findings_accepts_verbose_cumulative_mode(self, tmp_path: Path):
+        """The third mode (added in v1.4 F2) reviews `merge-base...HEAD` for PR gating."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_CUMULATIVE,
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_rejects_bare_cumulative_token(self, tmp_path: Path):
+        """Bare 'cumulative' is the caller-side $ARGUMENTS form, not the persistence form."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": "cumulative",
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
     # ---- Integration: cmd_stop surfaces the advisory NOTE ----
 
     def test_stop_hook_surfaces_advisory_when_all_chunks_complete_with_chunk_mode(
@@ -1731,6 +1837,623 @@ class TestCriticModeGate:
         # The verbose chunk string must not appear in stderr — that text is only
         # in the gate's reason, which only fires for unsatisfied gates.
         assert "lighter pass, not ready for push" not in result.stderr
+
+
+# =============================================================================
+# check-cumulative-critic subcommand (v1.4 F2 — PR gate)
+# =============================================================================
+
+
+class TestCheckCumulativeCriticSubcommand:
+    """The `check-cumulative-critic` subcommand provides the structural gate
+    `/pr create` calls before opening a PR. It enforces that a cumulative-mode
+    Critic review exists, is fresh (this session), is schema-valid, and has
+    no unresolved BLOCKING findings.
+
+    Exit 0 = gate satisfied; exit 1 = gate fails (stderr explains why).
+    """
+
+    def _make_cumulative_findings(
+        self,
+        prawduct: Path,
+        *,
+        mode: str | None,
+        findings: list[dict] | None = None,
+        summary: str = "No issues found. Bundle is ready to merge.",
+    ) -> Path:
+        data: dict = {
+            "files_reviewed": ["src/app.py"],
+            "findings": findings if findings is not None else [],
+            "summary": summary,
+        }
+        if mode is not None:
+            data["mode"] = mode
+        path = prawduct / ".critic-findings.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_missing_findings_file_exits_one(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "missing" in result.stderr.lower() or "no cumulative" in result.stderr.lower()
+
+    def test_findings_exist_but_chunk_mode_exits_one(self, tmp_path: Path):
+        """chunk-mode findings do NOT satisfy the cumulative gate, even if fresh."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_CHUNK)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "cumulative" in result.stderr.lower()
+
+    def test_findings_exist_but_final_mode_exits_one(self, tmp_path: Path):
+        """final-mode findings cover end-of-cycle but not `merge-base...HEAD` — gate still fails."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_FINAL)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "cumulative" in result.stderr.lower()
+
+    def test_missing_session_start_fails_closed(self, tmp_path: Path):
+        """When `.session-start` is absent the gate must fail closed: the
+        freshness check cannot verify that fresh-looking cumulative findings
+        are from the current session, so accepting them would be a silent
+        escape hatch (see learnings.md: "Escape hatches in classification
+        create silent failures"). Mirrors `_check_previous_session_gates`'s
+        `needs_review = True` default."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        # Cumulative findings exist and would otherwise satisfy the gate —
+        # only the missing .session-start should cause failure.
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_CUMULATIVE)
+        assert not (prawduct / ".session-start").exists()
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "session-start" in result.stderr.lower()
+
+    def test_findings_stale_exits_one(self, tmp_path: Path):
+        """Findings from a prior session do not satisfy the gate — must be this-session."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        # Write findings BEFORE setting session-start so mtime predates it.
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_CUMULATIVE)
+        time.sleep(0.05)
+        make_session_start(prawduct, offset_seconds=0)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "stale" in result.stderr.lower() or "predate" in result.stderr.lower()
+
+    def test_findings_with_blocking_exits_one(self, tmp_path: Path):
+        """Cumulative findings with unresolved BLOCKING fail the gate."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(
+            prawduct,
+            mode=mod._CRITIC_MODE_CUMULATIVE,
+            findings=[{
+                "goal": "Nothing Is Broken",
+                "severity": "blocking",
+                "summary": "Off-by-one in pagination handler",
+            }],
+            summary="1 blocking. Not ready to merge.",
+        )
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "blocking" in result.stderr.lower()
+
+    def test_fresh_clean_cumulative_findings_exit_zero(self, tmp_path: Path):
+        """Happy path: cumulative mode, in session window, no blocking → gate satisfied."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_CUMULATIVE)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+        assert "satisfied" in result.stdout.lower() or "ok" in result.stdout.lower()
+
+    def test_cumulative_findings_with_warnings_exit_zero(self, tmp_path: Path):
+        """Warnings are advisory at the PR gate — only BLOCKING blocks. Matches existing PR-reviewer semantics."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(
+            prawduct,
+            mode=mod._CRITIC_MODE_CUMULATIVE,
+            findings=[{
+                "goal": "Design Is Sound",
+                "severity": "warning",
+                "summary": "Consider extracting the duplicated parser into a helper.",
+            }],
+            summary="1 warning. Bundle ready to merge after addressing.",
+        )
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+
+class TestParseBuildPlanChunkRefs:
+    """`_parse_build_plan_chunk_refs` extracts backticked file-path references
+    from a single chunk's `### Chunk NN:` section in build-plan.md.
+
+    Scope of chunk 02 is **file paths only** — symbol and backlog-id extraction
+    are deliberately deferred (see Chunk 02 plan-vs-execution divergence in
+    commit message). Symbols/backlog produce too many false positives without
+    project-specific conventions; file-path drift is the highest-value check.
+    """
+
+    def _write_plan(self, prawduct: Path, body: str) -> Path:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        path = artifacts / "build-plan.md"
+        path.write_text(body)
+        return path
+
+    def test_extracts_file_paths_from_named_chunk(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** modify `agents/critic/SKILL.md` and `tools/product-hook`.\n"
+            "- **Type:** code\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "agents/critic/SKILL.md" in paths
+        assert "tools/product-hook" in paths
+        assert refs.get("error") is None
+
+    def test_excludes_other_chunks(self, tmp_path: Path):
+        """Refs in Chunk 02 must NOT be returned when asking for Chunk 01."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: First\n\n"
+            "- **Description:** touches `path/in/chunk1.md`.\n\n"
+            "### Chunk 02: Second\n\n"
+            "- **Description:** touches `path/in/chunk2.md`.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "path/in/chunk1.md" in paths
+        assert "path/in/chunk2.md" not in paths
+
+    def test_skips_paths_preceded_by_new_qualifier(self, tmp_path: Path):
+        """A backticked path immediately preceded by the word "new" is a
+        forward reference within the current chunk (a file the chunk creates,
+        not modifies). The verifier must not flag it as missing."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Deliverables:**\n"
+            "  - `existing/file.md` or new `new/file.md`: detail.\n"
+            "  - new `another/new.md`: more detail.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "existing/file.md" in paths
+        assert "new/file.md" not in paths
+        assert "another/new.md" not in paths
+
+    def test_skips_paths_inside_code_fences(self, tmp_path: Path):
+        """Fenced code blocks (project-structure diagrams) shouldn't trigger
+        ref extraction — those are illustrative, not load-bearing."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** modifies `real/file.md`.\n"
+            "\n```\n"
+            "project/\n"
+            "├── `inside/fence.md`\n"
+            "```\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "real/file.md" in paths
+        assert "inside/fence.md" not in paths
+
+    def test_missing_chunk_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Only one\n\n- **Description:** nothing.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "99")
+        assert refs["file_paths"] == []
+        assert "not found" in refs["error"].lower() or "chunk 99" in refs["error"].lower()
+
+    def test_missing_build_plan_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+        assert "build-plan" in refs["error"].lower() or "missing" in refs["error"].lower()
+
+    def test_ignores_non_path_backticks(self, tmp_path: Path):
+        """Backticked identifiers without path-like shape (no `/`, no known
+        file suffix) are not extracted as paths."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** adds `parse_func` helper to `tools/product-hook`.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "tools/product-hook" in paths
+        assert "parse_func" not in paths
+
+    def test_ignores_slash_command_tokens(self, tmp_path: Path):
+        """Backticked slash-commands (`/pr`, `/learnings`, `/critic`) contain
+        `/` but are not file paths — single-segment identifiers starting with
+        `/`. They must not be extracted as path refs (else they produce
+        BLOCKING ref-drift false-positives against legitimate chunk prose
+        that references framework skills)."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** `/pr` skill blocks creation; run `/learnings`"
+            " before `/critic`. Touches `tools/product-hook`.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "tools/product-hook" in paths
+        assert "/pr" not in paths
+        assert "/learnings" not in paths
+        assert "/critic" not in paths
+
+    def test_keeps_absolute_paths_with_structure(self, tmp_path: Path):
+        """The slash-command exclusion must not over-match: absolute paths
+        like `/etc/foo.conf` (further `/`) and `/file.md` (has `.`) are
+        still file paths and should be extracted (and reported missing if
+        they don't exist)."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** reads `/etc/foo.conf` and writes `/file.md`.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "/etc/foo.conf" in paths
+        assert "/file.md" in paths
+
+
+class TestVerifyChunkRefsSubcommand:
+    """The `verify-chunk-refs [chunk_id]` subcommand drives the Critic's
+    Goal-2 symbol-reference check. Exit 0 = all refs exist; exit 1 = at
+    least one ref is missing or the gate cannot be evaluated.
+
+    Without an explicit `chunk_id`, uses the current chunk from Status
+    (first `- [ ]` item, mirroring `_parse_build_plan_status`).
+    """
+
+    def _make_project(self, tmp_path: Path) -> Path:
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        return prawduct
+
+    def test_all_refs_exist_exit_zero(self, tmp_path: Path):
+        prawduct = self._make_project(tmp_path)
+        (tmp_path / "real.md").write_text("content")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** modifies `real.md`.\n",
+        )
+        result = run_hook("verify-chunk-refs", tmp_path, git_output="")
+        # With no current chunk in Status (only Build Chunks section), the
+        # gate would skip — so pass chunk_id explicitly via stdin? Better:
+        # Use stop-style env. The subcommand accepts chunk_id as second arg.
+        # Retry with explicit chunk_id.
+        env_extra = {"PRAWDUCT_VERIFY_CHUNK_ID": "01"}
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra=env_extra,
+        )
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+
+    def test_bogus_file_path_exit_one(self, tmp_path: Path):
+        prawduct = self._make_project(tmp_path)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** modifies `does/not/exist.md`.\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra={"PRAWDUCT_VERIFY_CHUNK_ID": "01"},
+        )
+        assert result.returncode == 1
+        assert "does/not/exist.md" in result.stderr
+
+    def test_forward_ref_in_other_chunk_not_flagged(self, tmp_path: Path):
+        """A bogus path in Chunk 02's section must not fail the Chunk 01 gate."""
+        prawduct = self._make_project(tmp_path)
+        (tmp_path / "real.md").write_text("content")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: First\n\n"
+            "- **Description:** modifies `real.md`.\n\n"
+            "### Chunk 02: Future\n\n"
+            "- **Description:** will create `future/thing.md`.\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra={"PRAWDUCT_VERIFY_CHUNK_ID": "01"},
+        )
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    def test_new_qualifier_skipped(self, tmp_path: Path):
+        """Paths preceded by 'new' aren't expected to exist."""
+        prawduct = self._make_project(tmp_path)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Deliverables:** new `creates/this.md`: details.\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra={"PRAWDUCT_VERIFY_CHUNK_ID": "01"},
+        )
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    def test_no_build_plan_exit_one(self, tmp_path: Path):
+        (tmp_path / ".prawduct").mkdir()
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra={"PRAWDUCT_VERIFY_CHUNK_ID": "01"},
+        )
+        assert result.returncode == 1
+        assert "build-plan" in result.stderr.lower() or "missing" in result.stderr.lower()
+
+    def test_uses_current_chunk_when_id_omitted(self, tmp_path: Path):
+        """Without an explicit ID, the subcommand reads Status' first `- [ ]`."""
+        prawduct = self._make_project(tmp_path)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n"
+            "- [x] Chunk 01: Done\n"
+            "- [ ] Chunk 02: Current\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Done\n- **Description:** nothing.\n\n"
+            "### Chunk 02: Current\n\n"
+            "- **Description:** modifies `does/not/exist.md`.\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+        )
+        assert result.returncode == 1
+        assert "does/not/exist.md" in result.stderr
+
+    def test_no_active_chunk_exit_zero(self, tmp_path: Path):
+        """No chunk_id given and no Status section (or all complete) → nothing
+        to check. Exit 0 (gate is moot, not violated)."""
+        prawduct = self._make_project(tmp_path)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n- [x] Chunk 01: All done\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+        )
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+
+# =============================================================================
+# v1.4 Chunk 03 (F6) — chunk-Type declaration parser
+# =============================================================================
+
+
+class TestParseBuildPlanChunkType:
+    """`_parse_build_plan_chunk_type` extracts the `Type:` declaration from a
+    single chunk's `### Chunk NN:` section. Allowed values:
+      code | doc-only | cleanup | designer-handoff | cumulative-final.
+    Default (field absent) is ``code`` — fail closed per learnings rule
+    "escape hatches in classification create silent failures" — a missing
+    field gets the full Critic protocol, never the carveout.
+    Unknown values are surfaced as an error so the builder fixes the typo
+    rather than silently falling through.
+    """
+
+    def _write_plan(self, prawduct: Path, body: str) -> Path:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        path = artifacts / "build-plan.md"
+        path.write_text(body)
+        return path
+
+    def test_extracts_type_code(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** something.\n"
+            "- **Type:** code\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type == "code"
+        assert error is None
+
+    def test_extracts_type_doc_only(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 04: Methodology edit\n\n"
+            "- **Type:** doc-only (no executable code changes)\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "04")
+        # Trailing parenthetical prose must not corrupt the type token.
+        assert chunk_type == "doc-only"
+        assert error is None
+
+    def test_extracts_type_designer_handoff(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 07: Visual polish\n\n"
+            "- **Type:** designer-handoff\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "07")
+        assert chunk_type == "designer-handoff"
+        assert error is None
+
+    def test_missing_type_defaults_to_code(self, tmp_path: Path):
+        """Omitted Type field is the most common case — must default to the
+        most-thorough protocol (code). This is the fail-closed contract that
+        prevents accidental Critic-skip."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** something.\n"
+            "- **Depends on:** none\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type == "code"
+        assert error is None
+
+    def test_unknown_type_returns_error(self, tmp_path: Path):
+        """Unknown values are typos or stale conventions — surface them
+        explicitly so the author fixes the field, don't silently default."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Type:** wibble\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type is None
+        assert error is not None
+        assert "wibble" in error.lower()
+
+    def test_excludes_sibling_chunk_type(self, tmp_path: Path):
+        """A Type declaration in Chunk 02 must NOT bleed into Chunk 01."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: First\n\n"
+            "- **Description:** no type declared.\n\n"
+            "### Chunk 02: Second\n\n"
+            "- **Type:** doc-only\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type == "code"
+        assert error is None
+
+    def test_missing_chunk_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Only one\n\n- **Type:** code\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "99")
+        assert chunk_type is None
+        assert error is not None
+        assert "99" in error or "not found" in error.lower()
+
+    def test_missing_build_plan_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type is None
+        assert error is not None
+        assert "build-plan" in error.lower() or "missing" in error.lower()
+
+    def test_leading_zeros_tolerant(self, tmp_path: Path):
+        """`02` and `2` resolve to the same chunk — matches Chunk 02's
+        ref-parser convention."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 2: Match by number\n\n"
+            "- **Type:** cleanup\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "02")
+        assert chunk_type == "cleanup"
+        assert error is None
 
 
 # =============================================================================

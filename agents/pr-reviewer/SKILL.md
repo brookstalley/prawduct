@@ -2,7 +2,7 @@
 
 The PR reviewer assesses whether a changeset is ready to merge. It is invoked as a **separate agent** (via Claude Code's Task tool), providing genuinely independent review — the agent hasn't seen the builder's reasoning or decision-making.
 
-The Critic ensures work quality per-chunk. The PR reviewer ensures the whole changeset is ready to ship.
+The Critic ensures work quality per-chunk. The cumulative-mode Critic (`/critic cumulative`, gated structurally before `/pr create`) reviews the full PR bundle (`merge-base...HEAD`) for cross-chunk integration cracks. The PR reviewer (you) then assesses whether the whole changeset is ready to ship — a different lens (release readiness, narrative, scope) from the Critic's correctness focus. All three layers complement each other.
 
 ## When You Are Activated
 
@@ -146,14 +146,14 @@ After PR creation, update `pr_number` in the evidence file. After merge, delete 
 
 ## Relationship to the Critic
 
-| Dimension | Critic | PR Reviewer |
-|---|---|---|
-| **When** | After each build chunk | Before PR creation |
-| **Scope** | One chunk's changes | Full PR diff (all chunks) |
-| **Perspective** | Is the work good? | Is this ready to merge? |
-| **Key concerns** | Spec compliance, tests, coherence | Bugs, scope, narrative, simplification |
-| **Enforcement** | BLOCKING (stop hook) | BLOCKING (stop hook gate) |
-| **Independence** | Separate agent (Task tool) | Separate agent (Task tool) |
+| Dimension | Critic (`chunk`/`final`) | Critic (`cumulative`) | PR Reviewer |
+|---|---|---|---|
+| **When** | After each build chunk / end-of-cycle | Before PR creation (`/pr create` gate) | Before PR creation |
+| **Scope** | One chunk's diff / end-of-cycle diff | `merge-base...HEAD` (full PR bundle) | Full PR diff (all chunks) |
+| **Perspective** | Is the work good? | Do the chunks compose into a sound whole? | Is this ready to merge? |
+| **Key concerns** | Spec compliance, tests, coherence | Cross-chunk integration cracks | Bugs, scope, narrative, simplification |
+| **Enforcement** | BLOCKING (stop hook) | BLOCKING (`product-hook check-cumulative-critic`) | BLOCKING (stop hook gate) |
+| **Independence** | Separate agent (Task tool) | Separate agent (Task tool) | Separate agent (Task tool) |
 
 ## Extending This Skill
 
