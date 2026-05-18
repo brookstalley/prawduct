@@ -46,6 +46,24 @@ The build plan is authoritative. Each chunk declares `Critic mode: chunk | final
 
 Read short, write verbose. Verbose makes the JSON self-documenting in briefings — anyone reading the file sees what mode was used without consulting docs. The hook validator in `tools/product-hook` rejects bare short tokens in the persisted `mode` field.
 
+### Per-Chunk Type Protocol Selector (v1.4 F6)
+
+Each chunk also declares `Type:` (a separate axis from `Critic mode:`). The two are orthogonal — `Critic mode:` controls *how deep* the review is, `Type:` controls *what kind of work* is being reviewed. The Critic reads both and selects protocol per the matrix below.
+
+Default `Type:` is `code` — fail-closed. A missing or unrecognized `Type:` is treated as `code` (full protocol). The stop-hook helper `_parse_build_plan_chunk_type` surfaces unknown values as an error; the Critic itself should also refuse to honor an unknown Type and default to `code`.
+
+| Chunk type | When to use | Goals 1 (Broken) | Goal 2 (Missing) | Goal 3 (Unintended) | Test-evidence check | Stop-hook Critic gate |
+|---|---|---|---|---|---|---|
+| `code` (default) | Code or behavior changes | full | full | full | required | fires |
+| `doc-only` | Methodology / template / prose-only edits | prose & numeric counts only | requirement coverage of prose deliverables | scope discipline | skipped (no test evidence required) | fires unless session is empirically doc-only too (file-extension based) |
+| `cleanup` | Branch hygiene, file moves, dead-code removal | structural-only (no broken refs) | requirement coverage | scope discipline; tolerate zero diff | skipped | fires |
+| `designer-handoff` | Visual / token / design-asset handoff to a human designer | skipped | skipped | skipped | skipped | **skipped** (formalized carveout — previously a user-memory rule) |
+| `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — triggers `/critic cumulative` in addition to the chunk's own `final` review | — | — | — | fires |
+
+The `Type:` field defaults to `code` when omitted. Declare `Type:` only when it deviates from `code`; minimal-declaration is the v1.4 convention. **The `Type:` axis is the proportional-effort knob (P11) — under-declaring is safe (worst case: redundant Critic time), over-declaring is unsafe (designer-handoff on a code chunk silently skips review).**
+
+When chunk type is `designer-handoff` and the Critic is invoked anyway, output a single line: `Review skipped — Type: designer-handoff (visual handoff; review-by-human)` and exit clean. No findings file is required; the stop-hook gate skip is the structural enforcement.
+
 ### Cumulative-mode diff scope and PR gate
 
 `cumulative` is the only mode whose scope is *not* derived from working-tree state. Compute the base via `git merge-base <base-branch> HEAD` (typically `main` or `develop` — read `project-preferences.md` if a different default is set). Then diff `<merge-base>...HEAD`. This deliberately spans every commit on the branch, not just the end-of-cycle diff `final` would see, so cross-chunk integration cracks surface here even if every per-chunk review was clean.

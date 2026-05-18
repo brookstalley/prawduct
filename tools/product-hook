@@ -2309,8 +2309,24 @@ def cmd_stop(project_dir: Path) -> int:
     # noted when the gate would have actually blocked (valid findings absent).
     # `has_changes` already reflects baseline-aware diff via git_has_session_changes,
     # so no extra "code changes" check is needed beyond `not doc_only`.
-    critic_would_block = False
+    #
+    # v1.4 F6 — Type: designer-handoff also skips the gate (formalizes the
+    # prior user-memory carveout into a framework rule). Other declared types
+    # (code, doc-only, cleanup, cumulative-final) leave the gate behavior
+    # unchanged — only Critic's *protocol* adjusts inside the agent.
+    designer_handoff_skip = False
     if has_changes and has_build_plan and not doc_only:
+        current_chunk_id = _current_chunk_id_from_status(prawduct_dir)
+        if current_chunk_id is not None:
+            chunk_type, _ = _parse_build_plan_chunk_type(prawduct_dir, current_chunk_id)
+            if chunk_type == "designer-handoff":
+                designer_handoff_skip = True
+                waiver_notes.append(
+                    f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff — v1.4 F6 carveout)"
+                )
+
+    critic_would_block = False
+    if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
         critic_would_block = True
         critic_findings = prawduct_dir / ".critic-findings.json"
         session_start_file = prawduct_dir / ".session-start"
@@ -2504,6 +2520,13 @@ def cmd_validate_evidence(project_dir: Path) -> int:
 
 _BUILD_PLAN_PATH_RE = re.compile(r"`([^`\s]+)`")
 _BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
+# Per-chunk Type declaration (v1.4 F6 — proportional Critic via chunk type).
+# Matches `- **Type:** <token>` or `**Type:** <token>` as a list item; trailing
+# parenthetical prose is allowed and ignored.
+_BUILD_PLAN_TYPE_RE = re.compile(r"^[\s\-\*]*\*\*Type:\*\*\s*([A-Za-z][\w\-]*)")
+_BUILD_PLAN_ALLOWED_TYPES = frozenset(
+    {"code", "doc-only", "cleanup", "designer-handoff", "cumulative-final"}
+)
 
 
 def _looks_like_file_path(token: str) -> bool:
@@ -2596,6 +2619,92 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
             seen.add(key)
             result["file_paths"].append({"line_num": line_num, "ref": token})
     return result
+
+
+def _parse_build_plan_chunk_type(
+    prawduct_dir: Path, chunk_id: str
+) -> tuple[str | None, str | None]:
+    """Extract the `Type:` declaration from a chunk's build-plan section.
+
+    Returns ``(chunk_type, error)``. ``chunk_type`` is one of
+    ``code | doc-only | cleanup | designer-handoff | cumulative-final``.
+    Default (field absent) is ``code`` — fail-closed so a missing declaration
+    runs the full Critic protocol rather than silently triggering a carveout
+    (learnings: "escape hatches in classification create silent failures").
+    Unknown values surface as ``(None, "unknown type: <value>")`` so the
+    author fixes the typo instead of getting silent fall-through.
+
+    Section discovery mirrors ``_parse_build_plan_chunk_refs`` — name-anchored
+    on ``### Chunk <chunk_id>:`` with leading-zero tolerance; fenced code
+    blocks are skipped.
+    """
+    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    if not plan_path.is_file():
+        return None, f"missing build-plan: {plan_path}"
+    try:
+        content = plan_path.read_text()
+    except OSError as exc:
+        return None, f"unreadable build-plan: {exc}"
+
+    target = chunk_id.lstrip("0") or "0"
+
+    in_section = False
+    in_fence = False
+    section_found = False
+    declared: str | None = None
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("### Chunk "):
+            rest = stripped[len("### Chunk "):]
+            head = rest.split(":", 1)[0].strip()
+            head_norm = head.lstrip("0") or "0"
+            if in_section:
+                break  # hit sibling chunk
+            if head_norm == target:
+                in_section = True
+                section_found = True
+            continue
+        if not in_section:
+            continue
+        if stripped.startswith("## "):
+            break
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = _BUILD_PLAN_TYPE_RE.match(line)
+        if m:
+            declared = m.group(1)
+            break
+
+    if not section_found:
+        return None, f"chunk {chunk_id!r} not found in build-plan"
+
+    if declared is None:
+        return "code", None  # fail-closed default
+    if declared not in _BUILD_PLAN_ALLOWED_TYPES:
+        allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
+        return None, f"unknown type: {declared!r} (allowed: {allowed})"
+    return declared, None
+
+
+def _current_chunk_id_from_status(prawduct_dir: Path) -> str | None:
+    """Extract the chunk id of the first `- [ ]` item in the build-plan Status
+    section, e.g. ``"03"`` for ``- [ ] Chunk 03: Foo``. Returns ``None`` if
+    Status is missing, has no current chunk (all complete), or the chunk text
+    isn't in the expected ``Chunk NN:`` form.
+
+    Mirrors the resolution logic in ``cmd_verify_chunk_refs`` so the stop
+    hook and the Critic helper agree on "which chunk is current."
+    """
+    status = _parse_build_plan_status(prawduct_dir)
+    current = status.get("current_chunk", "")
+    if not current.startswith("Chunk "):
+        return None
+    rest = current[len("Chunk "):]
+    chunk_id = rest.split(":", 1)[0].strip()
+    return chunk_id or None
 
 
 def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:

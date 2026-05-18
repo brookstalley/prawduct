@@ -24,9 +24,11 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
-- **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/pr create`; catches cross-chunk integration cracks. See `review-cycle.md`.
+- **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/pr create`. See `review-cycle.md`.
 
 **Default:** missing/ambiguous → `final`. Never silently downgrade. The `mode` field in findings uses the verbose form (see Output Format).
+
+**Chunk type axis.** Chunks declare `Type:` (orthogonal to mode). `Type: designer-handoff` → output "Review skipped — Type: designer-handoff", exit clean (no findings file). Other types adjust per-goal protocol — see `review-cycle.md` "Per-Chunk Type Protocol Selector." Missing/unrecognized → `code` (full protocol).
 
 ## Signals That Guide Your Review
 
@@ -123,13 +125,12 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 - **BLOCKING**: Must fix before proceeding. Broken tests, dropped requirements, security vulnerabilities, unlisted dependencies.
 - **WARNING**: Should fix. The Critic is confident this is a real issue: missing coverage, scope drift, stale artifacts, missing rationale, design problems, documentation drift.
-- **NOTE**: Genuinely ambiguous — the Critic sees something that might be an issue but isn't certain. The builder evaluates and decides. Don't use NOTE when confident — if you're sure something should change, it's at least WARNING. NOTEs suggesting future work should recommend adding to `.prawduct/backlog.md` rather than acting on them in the current cycle.
+- **NOTE**: Genuinely ambiguous — the Critic sees something that might be an issue but isn't certain. NOTEs suggesting future work should recommend adding to `.prawduct/backlog.md` rather than acting on them now.
 
 ## Review Execution
 
-- **`chunk` mode**: always single-pass.
-- **`final` mode, trivial/small**: single pass.
-- **`final` mode, medium/large**: coordinator pattern (below).
+- **`chunk` mode and `final` trivial/small**: single-pass.
+- **`final` medium/large**: coordinator pattern (below).
 
 ### Coordinator Pattern
 
@@ -186,7 +187,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`mode`: write the verbose form for whichever mode ran — see `review-cycle.md`'s two-form rule. The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. For a clean review, findings is empty and summary says "No issues found."
+`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. For a clean review, findings is empty and summary says "No issues found."
 
 ## Review Cycle
 

@@ -201,6 +201,30 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        The third mode, `cumulative`, is invoked separately before `/pr create`
        (not a per-chunk mode — see Governance Checkpoints below).
        See `agents/critic/review-cycle.md` for full per-mode behavior. -->
+- **Type:** [optional — defaults to `code`. Allowed: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final`]
+  <!-- The Type axis is orthogonal to Critic mode — mode controls how deep the
+       review is; Type controls what kind of work is under review (v1.4 F6).
+       Declare Type only when it deviates from `code` (minimal-declaration
+       convention). Missing or unrecognized values fall back to `code` — the
+       full Critic protocol — so under-declaration is safe.
+
+       - `code`: code or behavior changes (default).
+       - `doc-only`: prose-only edits (methodology, templates, comments). Critic
+         skips test-evidence checks; the stop-hook Critic gate still fires unless
+         the session is empirically doc-only too (file extensions).
+       - `cleanup`: branch hygiene, file moves, dead-code removal. Critic tolerates
+         a zero diff; structural-only review.
+       - `designer-handoff`: visual / token / design-asset handoff to a human
+         designer. Critic returns "Review skipped — Type: designer-handoff" and
+         the stop-hook gate is also skipped. **Use deliberately — this is the
+         only Type that bypasses Critic enforcement.**
+       - `cumulative-final`: marker on the last chunk of a multi-chunk plan;
+         signals that a `/critic cumulative` review against `merge-base...HEAD`
+         is required in addition to the chunk's own `final` review (see Done-when
+         step 4 below).
+
+       See `agents/critic/review-cycle.md` "Per-Chunk Type Protocol Selector"
+       for the full per-type protocol matrix. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/critic <mode>` run (using the mode declared above) and blocking findings resolved

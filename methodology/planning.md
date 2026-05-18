@@ -97,6 +97,20 @@ Every chunk in a build plan declares `Critic mode: chunk | final`. The mode cont
 
 See `methodology/building.md` for the runtime behavior (how the build cycle reads the mode and invokes `/critic`) and `agents/critic/review-cycle.md` for the per-mode behavior table.
 
+### Choosing a Chunk Type
+
+Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `agents/critic/review-cycle.md`.
+
+Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final`. Default is `code` — the fully-armed protocol — so a missing field is the safe option, not a carveout. Declare a non-default Type only when the chunk actually deviates.
+
+- **`code`** — code or behavior changes. The default; you rarely need to write it explicitly.
+- **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage. Use when the chunk truly doesn't touch executable code.
+- **`cleanup`** — branch hygiene, file moves, dead-code removal. Critic tolerates a zero diff; structural-only review. Use when the chunk's value is the removal, not the new code.
+- **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped — Type: designer-handoff" and the stop-hook Critic gate also skips. **This is the only Type that bypasses Critic enforcement entirely — use deliberately.** Replaces the prior user-memory carveout with a framework-level rule.
+- **`cumulative-final`** — marker on the last chunk of a multi-chunk plan. Signals that a `/critic cumulative` review against `merge-base...HEAD` is required in addition to the chunk's own `final` review. The cumulative review is the `/pr create` gate (Principle 14 — Independent Review at the bundle level).
+
+**Type vs. mode orthogonality.** A `Type: doc-only` chunk can still be `Critic mode: final` (full review of prose deliverables); a `Type: code` chunk can be `Critic mode: chunk` (lightweight Goals 1-3 review). The two fields answer different questions — declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review).
+
 ## Common Traps
 
 **Over-specification**: Writing specs so detailed they're harder to maintain than the code. Specs should be precise enough to build from but not so rigid they can't adapt to implementation discoveries.

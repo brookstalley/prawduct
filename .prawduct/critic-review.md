@@ -40,6 +40,16 @@ The Critic runs in one of three modes, selected by the caller via `$ARGUMENTS` (
 
 **Default rule:** if `$ARGUMENTS` is empty, lacks a recognized mode token, or is ambiguous → run as `final`. Fail safe to thoroughness. Never silently downgrade to `chunk`.
 
+**Chunk type axis (v1.4 F6).** Each chunk also declares `Type:` — orthogonal to mode. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. Read the current chunk's `Type:` from `build-plan.md` and apply:
+
+- **`code`** (default): full protocol per the mode above.
+- **`doc-only`**: skip test-evidence checks (Goal 1) and symbol-coverage checks; review prose deliverables for requirement coverage and scope discipline.
+- **`cleanup`**: structural-only review (Goals 1-3); tolerate a zero diff (the deletion *is* the deliverable); skip symbol coverage.
+- **`designer-handoff`**: **output a single line — `Review skipped — Type: designer-handoff (visual handoff; review-by-human)` — and exit clean. Do NOT write a findings file.** The stop-hook Critic gate also skips for this Type (structural enforcement of the carveout).
+- **`cumulative-final`**: marker on the last chunk of a multi-chunk plan; doesn't change protocol but signals that a separate `/critic cumulative` run is required before `/pr create`.
+
+Missing or unrecognized `Type:` → treat as `code` (full protocol). Refuse to honor a typo'd value — only the exact tokens above bypass any check.
+
 **Two-form rule for the `mode` value:**
 
 | Form | Where it appears | Values |

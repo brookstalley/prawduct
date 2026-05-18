@@ -594,6 +594,90 @@ class TestStopCriticGate:
 # =============================================================================
 
 
+class TestDesignerHandoffSkipsCriticGate:
+    """v1.4 F6 — chunks declared `Type: designer-handoff` skip the stop-hook
+    Critic gate. This formalizes the carveout that previously lived as a
+    user-memory rule (not a framework rule), so the structural enforcement
+    matches the methodology.
+
+    Only `designer-handoff` skips the gate. `doc-only` and `cleanup` still
+    require Critic findings — only their *protocol* adjusts (Critic's domain,
+    not the gate's). Unknown Type values fall through to the default
+    behavior (gate fires) per the helper's fail-closed default.
+    """
+
+    def test_designer_handoff_skips_critic_with_code_changes(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Visual polish\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Visual polish\n\n"
+            "- **Type:** designer-handoff\n",
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: handed off design tokens for designer review; no Critic gating per F6."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/styles.css")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "CRITIC" not in result.stderr
+        # User must see the skip — invisible carveouts are exactly what
+        # the framework rule replaces.
+        assert "designer-handoff" in result.stderr.lower()
+
+    def test_code_chunk_still_requires_critic(self, tmp_path: Path):
+        """Sanity check: when the current chunk's Type is `code` (the default),
+        the Critic gate still fires for non-doc-only changes."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Feature\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Feature\n\n"
+            "- **Type:** code\n",
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented feature and verified all tests pass correctly."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+    def test_unknown_type_falls_through_to_critic_gate(self, tmp_path: Path):
+        """Fail-closed contract: a typo'd Type value must not silently skip
+        the Critic — the gate fires as if the field were `code`. (The parser
+        surfaces the typo error elsewhere; the gate just refuses to honor it.)"""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Mystery\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Mystery\n\n"
+            "- **Type:** wibble\n",
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: did something, value unclear; tests all pass currently."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC" in result.stderr
+
+
 class TestDocOnlySkipsCriticGate:
     """Doc-only sessions should not require Critic review even with an active build plan."""
 
@@ -2159,6 +2243,157 @@ class TestVerifyChunkRefsSubcommand:
             git_output="",
         )
         assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+
+# =============================================================================
+# v1.4 Chunk 03 (F6) — chunk-Type declaration parser
+# =============================================================================
+
+
+class TestParseBuildPlanChunkType:
+    """`_parse_build_plan_chunk_type` extracts the `Type:` declaration from a
+    single chunk's `### Chunk NN:` section. Allowed values:
+      code | doc-only | cleanup | designer-handoff | cumulative-final.
+    Default (field absent) is ``code`` — fail closed per learnings rule
+    "escape hatches in classification create silent failures" — a missing
+    field gets the full Critic protocol, never the carveout.
+    Unknown values are surfaced as an error so the builder fixes the typo
+    rather than silently falling through.
+    """
+
+    def _write_plan(self, prawduct: Path, body: str) -> Path:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        path = artifacts / "build-plan.md"
+        path.write_text(body)
+        return path
+
+    def test_extracts_type_code(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** something.\n"
+            "- **Type:** code\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type == "code"
+        assert error is None
+
+    def test_extracts_type_doc_only(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 04: Methodology edit\n\n"
+            "- **Type:** doc-only (no executable code changes)\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "04")
+        # Trailing parenthetical prose must not corrupt the type token.
+        assert chunk_type == "doc-only"
+        assert error is None
+
+    def test_extracts_type_designer_handoff(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 07: Visual polish\n\n"
+            "- **Type:** designer-handoff\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "07")
+        assert chunk_type == "designer-handoff"
+        assert error is None
+
+    def test_missing_type_defaults_to_code(self, tmp_path: Path):
+        """Omitted Type field is the most common case — must default to the
+        most-thorough protocol (code). This is the fail-closed contract that
+        prevents accidental Critic-skip."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** something.\n"
+            "- **Depends on:** none\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type == "code"
+        assert error is None
+
+    def test_unknown_type_returns_error(self, tmp_path: Path):
+        """Unknown values are typos or stale conventions — surface them
+        explicitly so the author fixes the field, don't silently default."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Type:** wibble\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type is None
+        assert error is not None
+        assert "wibble" in error.lower()
+
+    def test_excludes_sibling_chunk_type(self, tmp_path: Path):
+        """A Type declaration in Chunk 02 must NOT bleed into Chunk 01."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: First\n\n"
+            "- **Description:** no type declared.\n\n"
+            "### Chunk 02: Second\n\n"
+            "- **Type:** doc-only\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type == "code"
+        assert error is None
+
+    def test_missing_chunk_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Only one\n\n- **Type:** code\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "99")
+        assert chunk_type is None
+        assert error is not None
+        assert "99" in error or "not found" in error.lower()
+
+    def test_missing_build_plan_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "01")
+        assert chunk_type is None
+        assert error is not None
+        assert "build-plan" in error.lower() or "missing" in error.lower()
+
+    def test_leading_zeros_tolerant(self, tmp_path: Path):
+        """`02` and `2` resolve to the same chunk — matches Chunk 02's
+        ref-parser convention."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 2: Match by number\n\n"
+            "- **Type:** cleanup\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "02")
+        assert chunk_type == "cleanup"
+        assert error is None
 
 
 # =============================================================================
