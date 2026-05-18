@@ -2502,6 +2502,163 @@ def cmd_validate_evidence(project_dir: Path) -> int:
 # =============================================================================
 
 
+_BUILD_PLAN_PATH_RE = re.compile(r"`([^`\s]+)`")
+_BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
+
+
+def _looks_like_file_path(token: str) -> bool:
+    """A backticked token is a precise file-path reference only when it
+    contains ``/`` — i.e. the chunk author wrote a specific relative path.
+    Bare filenames in prose (e.g. ``backlog.md``, ``SKILL.md``) are usually
+    conceptual references whose actual location varies, so they're not
+    verifiable in a useful way."""
+    return "/" in token
+
+
+def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
+    """Extract backticked file-path references from a single chunk's section
+    in ``.prawduct/artifacts/build-plan.md``.
+
+    The section is located by name (``### Chunk <chunk_id>:`` prefix, leading
+    zeros tolerant), and parsing stops at the next ``### `` or ``## `` heading
+    — sibling chunks' refs are NOT returned. Fenced code blocks (```...```)
+    are skipped because project-structure diagrams aren't load-bearing prose.
+    Paths preceded by the word ``new`` on the same line are skipped as
+    intra-chunk forward references (files the chunk creates rather than
+    modifies).
+
+    Returns ``{"file_paths": [{"line_num": int, "ref": str}, ...],
+    "error": str | None}``. Symbol and backlog-ID extraction are deferred —
+    see Chunk 02 plan-vs-execution divergence (commit message).
+    """
+    result: dict = {"file_paths": [], "error": None}
+    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    if not plan_path.is_file():
+        result["error"] = f"missing build-plan: {plan_path}"
+        return result
+    try:
+        content = plan_path.read_text()
+    except OSError as exc:
+        result["error"] = f"unreadable build-plan: {exc}"
+        return result
+
+    # Normalize chunk_id: strip leading zeros for matching ("02" matches
+    # "### Chunk 2:" and vice versa) but report the original in errors.
+    target = chunk_id.lstrip("0") or "0"
+
+    in_section = False
+    in_fence = False
+    section_lines: list[tuple[int, str]] = []
+    for line_num, line in enumerate(content.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith("### Chunk "):
+            # Heading format: "### Chunk NN: Name"
+            rest = stripped[len("### Chunk "):]
+            head = rest.split(":", 1)[0].strip()
+            head_norm = head.lstrip("0") or "0"
+            if in_section:
+                # Entered a sibling chunk; stop accumulating.
+                break
+            if head_norm == target:
+                in_section = True
+            continue
+        if not in_section:
+            continue
+        if stripped.startswith("## "):
+            # Left the Build Chunks section entirely.
+            break
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        section_lines.append((line_num, line))
+
+    if not in_section and not section_lines:
+        result["error"] = f"chunk {chunk_id!r} not found in build-plan"
+        return result
+
+    seen: set[tuple[str, int]] = set()
+    for line_num, line in section_lines:
+        # Collect spans preceded by "new " — these get filtered out.
+        excluded_spans: list[tuple[int, int]] = [
+            m.span(1) for m in _BUILD_PLAN_NEW_QUALIFIER_RE.finditer(line)
+        ]
+        for match in _BUILD_PLAN_PATH_RE.finditer(line):
+            token = match.group(1)
+            if not _looks_like_file_path(token):
+                continue
+            if any(start == match.start(1) for start, _ in excluded_spans):
+                continue
+            key = (token, line_num)
+            if key in seen:
+                continue
+            seen.add(key)
+            result["file_paths"].append({"line_num": line_num, "ref": token})
+    return result
+
+
+def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
+    """Verify each file-path ref exists relative to ``project_dir``.
+    Returns a list of ``{"kind", "ref", "line_num", "reason"}`` for missing
+    entries. Empty list = all refs resolved.
+    """
+    missing: list[dict] = []
+    for entry in refs.get("file_paths", []):
+        ref = entry["ref"]
+        target = project_dir / ref
+        if not target.exists():
+            missing.append({
+                "kind": "file_path",
+                "ref": ref,
+                "line_num": entry["line_num"],
+                "reason": "file does not exist",
+            })
+    return missing
+
+
+def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
+    """Critic Goal-2 helper: verify symbols/paths referenced in the current
+    chunk's build-plan section actually exist on the filesystem.
+
+    Exit 0 = all refs resolved (or nothing to check). Exit 1 = at least one
+    ref is missing, or the gate cannot be evaluated. stderr lists each
+    missing ref so the Critic can quote it in findings.
+
+    With no ``chunk_id``, reads the current chunk from Status (first unchecked
+    ``- [ ]`` item). If Status has no current chunk (all complete or no
+    Status section), exits 0 — there is nothing to verify.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if chunk_id is None:
+        chunk_id = os.environ.get("PRAWDUCT_VERIFY_CHUNK_ID")
+    if chunk_id is None:
+        status = _parse_build_plan_status(prawduct_dir)
+        current = status.get("current_chunk", "")
+        # current is e.g. "Chunk 02: F3 — …"
+        if not current.startswith("Chunk "):
+            print("ok: no current chunk in Status; nothing to verify")
+            return 0
+        rest = current[len("Chunk "):]
+        chunk_id = rest.split(":", 1)[0].strip()
+
+    refs = _parse_build_plan_chunk_refs(prawduct_dir, chunk_id)
+    if refs["error"]:
+        print(f"error: {refs['error']}", file=sys.stderr)
+        return 1
+    missing = _verify_chunk_refs(project_dir, refs)
+    if missing:
+        for m in missing:
+            print(
+                f"missing-ref: {m['ref']} (line {m['line_num']}, {m['kind']}): {m['reason']}",
+                file=sys.stderr,
+            )
+        return 1
+    count = len(refs["file_paths"])
+    print(f"ok: chunk {chunk_id} — {count} file ref(s) verified")
+    return 0
+
+
 def cmd_check_cumulative_critic(project_dir: Path) -> int:
     """Structural gate for `/pr create`: require a fresh cumulative-Critic record.
 
@@ -2595,7 +2752,10 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
 # =============================================================================
 
 
-_USAGE = "Usage: product-hook {clear|stop|test-status|validate-evidence|check-cumulative-critic}"
+_USAGE = (
+    "Usage: product-hook "
+    "{clear|stop|test-status|validate-evidence|check-cumulative-critic|verify-chunk-refs [chunk_id]}"
+)
 
 
 def main() -> int:
@@ -2616,6 +2776,9 @@ def main() -> int:
         return cmd_validate_evidence(project_dir)
     elif command == "check-cumulative-critic":
         return cmd_check_cumulative_critic(project_dir)
+    elif command == "verify-chunk-refs":
+        chunk_id = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_verify_chunk_refs(project_dir, chunk_id)
     else:
         print(_USAGE, file=sys.stderr)
         return 1

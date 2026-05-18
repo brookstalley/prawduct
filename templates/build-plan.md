@@ -178,6 +178,14 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
 - **Depends on:** [chunk IDs, or "none" for scaffold]
 - **Artifacts consumed:** [Which artifact files the Builder reads for this chunk]
 - **Deliverables:** [Specific files or components produced]
+  <!-- File-path refs (backticked paths containing `/`) in the current chunk's
+       section are verified to exist on disk by the Critic's Goal 2
+       (build-plan ref drift check). Files this chunk *creates* should be
+       preceded by the word "new" on the same line — e.g. "new
+       `agents/foo/bar.md`" — to flag them as forward refs. Future-chunk
+       sections (Chunk N+1, N+2, …) are never checked; forward references
+       there are fine. -->
+
 - **Tests:** [Test scenarios from test-specifications that apply to this chunk]
   <!-- For medium/high-risk products, note which test levels this chunk introduces
        or extends (e.g., "adds unit tests for scoring logic, integration test for

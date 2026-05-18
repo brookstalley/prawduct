@@ -57,13 +57,14 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 2. Nothing Is Missing
 - Every requirement for this work is implemented or explicitly descoped → **BLOCKING** if silently dropped.
-- **Acceptance criteria are observable behavior, not implementation.** "Function X exists" is implementation; "user can submit form and see confirmation" is behavior. Implementation-only acceptance criteria → **WARNING**.
-- **Requirements Confidence field present.** Build plan declares `Requirements Confidence: High | Medium | Low` (see `methodology/planning.md`). Missing field → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
-- **Behavioral choices**: Does this change introduce a new feature that affects user workflow? If so, is the behavior configurable via `project-preferences.md` with a safe default? A feature that could reasonably work two ways (automatic vs. manual, verbose vs. quiet) but ships with only one hardcoded behavior → **WARNING**.
-- For user-visible changes: was the product verified beyond tests? → **WARNING** if no evidence.
+- **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
+- **Requirements Confidence field present** (`High | Medium | Low`, see `methodology/planning.md`). Missing → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
+- **Build-plan ref drift**: run `python3 tools/product-hook verify-chunk-refs` — non-zero exit → **BLOCKING** per missing path (plan names a file that doesn't exist; drift between plan and code).
+- **Behavioral choices**: workflow-affecting features should be configurable via `project-preferences.md` with a safe default — a feature that could reasonably work two ways but ships with one hardcoded behavior → **WARNING**.
+- For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
-- If `infrastructure_dependencies` is declared in project-state.yaml: are there integration tests that exercise real dependencies (not just mocks)? → **WARNING** if all tests for a declared dependency use mocks.
+- If `infrastructure_dependencies` is declared in project-state.yaml: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 
 ### 3. Nothing Is Unintended
 - No unlisted dependencies → **BLOCKING**.

@@ -3,7 +3,7 @@ description: Independent Critic review — quality governance for code changes
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Write, Agent
+allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Write, Agent
 argument-hint: chunk | final | cumulative
 ---
 

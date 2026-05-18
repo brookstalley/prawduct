@@ -1901,6 +1901,266 @@ class TestCheckCumulativeCriticSubcommand:
         assert result.returncode == 0, result.stderr
 
 
+class TestParseBuildPlanChunkRefs:
+    """`_parse_build_plan_chunk_refs` extracts backticked file-path references
+    from a single chunk's `### Chunk NN:` section in build-plan.md.
+
+    Scope of chunk 02 is **file paths only** — symbol and backlog-id extraction
+    are deliberately deferred (see Chunk 02 plan-vs-execution divergence in
+    commit message). Symbols/backlog produce too many false positives without
+    project-specific conventions; file-path drift is the highest-value check.
+    """
+
+    def _write_plan(self, prawduct: Path, body: str) -> Path:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        path = artifacts / "build-plan.md"
+        path.write_text(body)
+        return path
+
+    def test_extracts_file_paths_from_named_chunk(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** modify `agents/critic/SKILL.md` and `tools/product-hook`.\n"
+            "- **Type:** code\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "agents/critic/SKILL.md" in paths
+        assert "tools/product-hook" in paths
+        assert refs.get("error") is None
+
+    def test_excludes_other_chunks(self, tmp_path: Path):
+        """Refs in Chunk 02 must NOT be returned when asking for Chunk 01."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: First\n\n"
+            "- **Description:** touches `path/in/chunk1.md`.\n\n"
+            "### Chunk 02: Second\n\n"
+            "- **Description:** touches `path/in/chunk2.md`.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "path/in/chunk1.md" in paths
+        assert "path/in/chunk2.md" not in paths
+
+    def test_skips_paths_preceded_by_new_qualifier(self, tmp_path: Path):
+        """A backticked path immediately preceded by the word "new" is a
+        forward reference within the current chunk (a file the chunk creates,
+        not modifies). The verifier must not flag it as missing."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Deliverables:**\n"
+            "  - `existing/file.md` or new `new/file.md`: detail.\n"
+            "  - new `another/new.md`: more detail.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "existing/file.md" in paths
+        assert "new/file.md" not in paths
+        assert "another/new.md" not in paths
+
+    def test_skips_paths_inside_code_fences(self, tmp_path: Path):
+        """Fenced code blocks (project-structure diagrams) shouldn't trigger
+        ref extraction — those are illustrative, not load-bearing."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** modifies `real/file.md`.\n"
+            "\n```\n"
+            "project/\n"
+            "├── `inside/fence.md`\n"
+            "```\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "real/file.md" in paths
+        assert "inside/fence.md" not in paths
+
+    def test_missing_chunk_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Only one\n\n- **Description:** nothing.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "99")
+        assert refs["file_paths"] == []
+        assert "not found" in refs["error"].lower() or "chunk 99" in refs["error"].lower()
+
+    def test_missing_build_plan_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+        assert "build-plan" in refs["error"].lower() or "missing" in refs["error"].lower()
+
+    def test_ignores_non_path_backticks(self, tmp_path: Path):
+        """Backticked identifiers without path-like shape (no `/`, no known
+        file suffix) are not extracted as paths."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** adds `parse_func` helper to `tools/product-hook`.\n",
+        )
+        mod = _load_product_hook()
+        refs = mod._parse_build_plan_chunk_refs(prawduct, "01")
+        paths = [r["ref"] for r in refs["file_paths"]]
+        assert "tools/product-hook" in paths
+        assert "parse_func" not in paths
+
+
+class TestVerifyChunkRefsSubcommand:
+    """The `verify-chunk-refs [chunk_id]` subcommand drives the Critic's
+    Goal-2 symbol-reference check. Exit 0 = all refs exist; exit 1 = at
+    least one ref is missing or the gate cannot be evaluated.
+
+    Without an explicit `chunk_id`, uses the current chunk from Status
+    (first `- [ ]` item, mirroring `_parse_build_plan_status`).
+    """
+
+    def _make_project(self, tmp_path: Path) -> Path:
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        return prawduct
+
+    def test_all_refs_exist_exit_zero(self, tmp_path: Path):
+        prawduct = self._make_project(tmp_path)
+        (tmp_path / "real.md").write_text("content")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** modifies `real.md`.\n",
+        )
+        result = run_hook("verify-chunk-refs", tmp_path, git_output="")
+        # With no current chunk in Status (only Build Chunks section), the
+        # gate would skip — so pass chunk_id explicitly via stdin? Better:
+        # Use stop-style env. The subcommand accepts chunk_id as second arg.
+        # Retry with explicit chunk_id.
+        env_extra = {"PRAWDUCT_VERIFY_CHUNK_ID": "01"}
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra=env_extra,
+        )
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+
+    def test_bogus_file_path_exit_one(self, tmp_path: Path):
+        prawduct = self._make_project(tmp_path)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Description:** modifies `does/not/exist.md`.\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra={"PRAWDUCT_VERIFY_CHUNK_ID": "01"},
+        )
+        assert result.returncode == 1
+        assert "does/not/exist.md" in result.stderr
+
+    def test_forward_ref_in_other_chunk_not_flagged(self, tmp_path: Path):
+        """A bogus path in Chunk 02's section must not fail the Chunk 01 gate."""
+        prawduct = self._make_project(tmp_path)
+        (tmp_path / "real.md").write_text("content")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: First\n\n"
+            "- **Description:** modifies `real.md`.\n\n"
+            "### Chunk 02: Future\n\n"
+            "- **Description:** will create `future/thing.md`.\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra={"PRAWDUCT_VERIFY_CHUNK_ID": "01"},
+        )
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    def test_new_qualifier_skipped(self, tmp_path: Path):
+        """Paths preceded by 'new' aren't expected to exist."""
+        prawduct = self._make_project(tmp_path)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Setup\n\n"
+            "- **Deliverables:** new `creates/this.md`: details.\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra={"PRAWDUCT_VERIFY_CHUNK_ID": "01"},
+        )
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    def test_no_build_plan_exit_one(self, tmp_path: Path):
+        (tmp_path / ".prawduct").mkdir()
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+            env_extra={"PRAWDUCT_VERIFY_CHUNK_ID": "01"},
+        )
+        assert result.returncode == 1
+        assert "build-plan" in result.stderr.lower() or "missing" in result.stderr.lower()
+
+    def test_uses_current_chunk_when_id_omitted(self, tmp_path: Path):
+        """Without an explicit ID, the subcommand reads Status' first `- [ ]`."""
+        prawduct = self._make_project(tmp_path)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n"
+            "- [x] Chunk 01: Done\n"
+            "- [ ] Chunk 02: Current\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Done\n- **Description:** nothing.\n\n"
+            "### Chunk 02: Current\n\n"
+            "- **Description:** modifies `does/not/exist.md`.\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+        )
+        assert result.returncode == 1
+        assert "does/not/exist.md" in result.stderr
+
+    def test_no_active_chunk_exit_zero(self, tmp_path: Path):
+        """No chunk_id given and no Status section (or all complete) → nothing
+        to check. Exit 0 (gate is moot, not violated)."""
+        prawduct = self._make_project(tmp_path)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n- [x] Chunk 01: All done\n",
+        )
+        result = run_hook(
+            "verify-chunk-refs",
+            tmp_path,
+            git_output="",
+        )
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+
 # =============================================================================
 # Invalid command
 # =============================================================================
