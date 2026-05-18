@@ -225,11 +225,35 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
 
        See `agents/critic/review-cycle.md` "Per-Chunk Type Protocol Selector"
        for the full per-type protocol matrix. -->
+- **Foreign API:** [optional — omit unless this chunk wraps a foreign API/SDK. Format: `<name>` (e.g., `ableton-live-mcp`, `stripe-js-sdk`)]
+  <!-- When this chunk wraps a foreign API or SDK whose surface the project
+       doesn't own (vendor APIs, MCP servers, third-party libraries with
+       non-trivial wrappers), declare `foreign_api: <name>` here. The Critic's
+       Goal 2 then verifies the chunk's Done-when includes a `verify-api` step
+       (read source or run discovery probes before drafting handlers) — missing
+       step → WARNING. Carries forward `infrastructure_dependencies` flagged
+       in discovery (see `methodology/planning.md` "Foreign API Verification").
+
+       Example (verify-api prepended as step 0, existing numbering preserved):
+         **Foreign API:** ableton-live-mcp
+         **Done when:**
+           0. verify-api — read MCP server source for the resource handlers
+              this chunk wraps; capture actual response shapes in
+              `.prawduct/artifacts/api-notes-ableton.md`
+           1. Acceptance criteria met and tests pass
+           ...
+
+       Omit the field entirely when no foreign API is involved — the Critic
+       check doesn't fire. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/critic <mode>` run (using the mode declared above) and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
-  <!-- On the final chunk of a multi-cycle branch (or any time a PR will be
+  <!-- If `Foreign API:` is declared above, add as step 0 (runs before tests
+       and implementation):
+         0. `verify-api` — read foreign source or run discovery probes; capture
+            actual signatures in chunk notes or a referenced artifact.
+       On the final chunk of a multi-cycle branch (or any time a PR will be
        opened for this work), also add as step 4:
          4. `/critic cumulative` run against `merge-base...HEAD` and blocking
             findings resolved — this is the structural gate for `/pr create`. -->

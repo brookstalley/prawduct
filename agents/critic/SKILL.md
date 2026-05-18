@@ -58,15 +58,16 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
   - Dependencies without known critical vulnerabilities → **WARNING**.
 
 ### 2. Nothing Is Missing
-- Every requirement for this work is implemented or explicitly descoped → **BLOCKING** if silently dropped.
+- Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
 - **Requirements Confidence field present** (`High | Medium | Low`, see `methodology/planning.md`). Missing → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
-- **Build-plan ref drift**: run `python3 tools/product-hook verify-chunk-refs` — non-zero exit → **BLOCKING** per missing path (plan names a file that doesn't exist; drift between plan and code).
-- **Behavioral choices**: workflow-affecting features should be configurable via `project-preferences.md` with a safe default — a feature that could reasonably work two ways but ships with one hardcoded behavior → **WARNING**.
+- **Build-plan ref drift**: run `python3 tools/product-hook verify-chunk-refs` — non-zero exit → **BLOCKING** per missing path (plan names a file that doesn't exist).
+- **Behavioral choices**: workflow-affecting features should be configurable via `project-preferences.md` with a safe default — hardcoded when two paths would reasonably work → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
 - If `infrastructure_dependencies` is declared in project-state.yaml: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
+- **Foreign API**: chunks declaring `foreign_api: <name>` need a `verify-api` step in Done-when (read source or probe before drafting handlers — see `methodology/planning.md`) → **WARNING** if missing.
 
 ### 3. Nothing Is Unintended
 - No unlisted dependencies → **BLOCKING**.

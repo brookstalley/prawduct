@@ -23,7 +23,7 @@ Don't silently start building on guesses. Code built on unclear requirements is 
 Each chunk follows this cycle. Do not skip steps.
 
 - [ ] **Clean baseline** — All tests pass. No uncommitted changes. Medium+ work uses a feature branch.
-- [ ] **Read the spec** — Chunk entry in build plan + referenced artifacts. Validate targets still exist — plans go stale. Run `/learnings [topic]` for relevant rules.
+- [ ] **Read the spec** — Chunk entry in build plan + referenced artifacts. Validate targets still exist — plans go stale. Run `/learnings [topic]` for relevant rules. If the chunk declares `Foreign API: <name>`, do the `verify-api` step (read source or run discovery probes) BEFORE writing tests or handlers — see `methodology/planning.md` "Foreign API Verification" (v1.4 F8).
 - [ ] **Write tests alongside code, never after** — Tests are specification made executable. Unit for logic, integration for interactions, e2e for critical flows. When the domain involves transformations, round-trips, serialization, or complex input validation, consider property-based tests alongside example-based tests (see test-specifications for details).
 - [ ] **Implement** — Make tests pass. Follow `.prawduct/artifacts/project-preferences.md`. Write idiomatic code for the project's language. Prefer simplicity.
 - [ ] **Update artifacts** — Changed API surface, data model, architecture? Update the artifact now, not later.
