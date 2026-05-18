@@ -76,9 +76,9 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - **Project preferences**: If `project-preferences.md` exists, code in changed files must follow the stated conventions (language idioms, naming, structure, dependencies). Preferences are the team's declared standards → **BLOCKING** if violated.
 - **Infrastructure coherence**: If project-state.yaml declares infrastructure dependencies, do code's infrastructure assumptions match? A declared Postgres dependency with only in-memory storage in code → **WARNING**. Mocked dependencies should be explicitly documented as mocked, not silently substituted.
 - **README and top-level docs**: Actively read the project's README (and any top-level docs/) when features are added, removed, or renamed. README that describes removed features, contains wrong setup instructions, or omits significant new capabilities → **WARNING**. README with actively misleading instructions (wrong commands, deleted config references) → **BLOCKING**.
-- **Documentation drift**: Comments that contradict the code they describe → **WARNING**. Type annotations that don't match runtime behavior → **WARNING**. API documentation that doesn't match implementation → **WARNING**.
-- **Changelog scope**: When reviewing `change-log.md` or `change_log_history` in project-state.yaml, only check entries added or modified in the current changeset. Older entries are append-only history — they describe what was true when written and must not be flagged for stale terminology, outdated counts, or superseded descriptions. The same applies to commit messages and archived working notes.
-- **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check the project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING** ("CLAUDE.md project content is N lines — move architecture descriptions, config tables, and component inventories to docs/ or .prawduct/artifacts/"). This check applies to the current changeset — if the changeset adds content that belongs elsewhere, flag it.
+- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**.
+- **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
+- **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING** ("CLAUDE.md project content is N lines — move architecture, config tables, and component inventories to docs/ or .prawduct/artifacts/"). Applies to the current changeset.
 - For framework changes: concept ripple check — renamed/removed terms still referenced in *active* files (not changelogs or archives) → **WARNING**.
 
 ### 5. Decisions Were Deliberate
@@ -100,8 +100,8 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - **Coupling**: Changes in one module shouldn't force changes in unrelated modules. Watch for god objects/functions that concentrate too many responsibilities, and for modules that know too much about each other's internals. → **WARNING** if coupling is inappropriate.
 - **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** is a common variant: migration paths, fallbacks, or compatibility shims when there is no existing deployment to migrate. If nobody asked for backwards compatibility, it's unnecessary complexity → **WARNING**.
 - **Deduplication**: Duplicated logic that should be extracted. Copy-paste patterns across files. Near-identical implementations that vary only in superficial ways. → **WARNING** for meaningful duplication.
-- **Idiomatic language usage**: Code should follow the conventions and idioms of its language — Pythonic Python, idiomatic Go, natural JavaScript/TypeScript patterns, etc. Non-idiomatic code that works but ignores language-specific best practices (e.g., `for i in range(len(items))` instead of `for item in items` in Python, manual null checks instead of optional chaining in TypeScript) → **WARNING**. Check `project-preferences.md` for declared language conventions.
-- **Unmodeled state-based problems**: Some problems are inherently state-based — the system moves through a discrete set of conditions (phases, modes, lifecycle stages, UI views, connection status, workflow steps), the current condition determines what operations are valid and what outputs are produced, and correctness depends on every part of the code agreeing on which condition we're in. When a state-based problem is solved without making the states and transitions explicit — tracked instead through interdependent booleans, scattered conditionals on order-of-events, or inferred from combinations of flags — invalid combinations become reachable, transition rules live nowhere in particular, and recovery paths can't tell what condition to return to. This is the pattern to flag, independent of language, domain, or implementation shape (UI view routing, protocol handshakes, data lifecycle, workflow progression — all qualify). What must be explicit: **the set of conditions the system can be in**, **which transitions between them are valid**, **which are invalid and why**, and **a single unambiguous answer to "what condition are we in now"** that the rest of the code reads from rather than reconstructs. How that explicitness is expressed (enum, class, protocol, reducer, state variable, type system, schema, documentation) is an implementation choice — flag the absence of the *model*, not the absence of a particular mechanism. **BLOCKING** when the lack of modeling causes correctness or safety failures: invalid combinations reachable, double-transitions possible, persisted state can diverge, terminal/error conditions silently misclassified. **WARNING** when three or more interdependent state signals exist with no single source of truth and transition logic spans multiple call sites, even if no bug is demonstrable yet. **NOTE** when the pattern is borderline (two signals, localized logic, early complexity) and modeling would help but isn't urgent — recommend adding to `.prawduct/backlog.md`. When flagging, enumerate the conditions and transitions you observed so the builder can decide what to explicitly name.
+- **Idiomatic language usage**: Code should follow its language's conventions (Pythonic Python, idiomatic Go, natural JS/TS). Non-idiomatic working code that ignores language best practices (e.g., `for i in range(len(items))` instead of `for item in items`) → **WARNING**. Check `project-preferences.md` for declared language conventions.
+- **Unmodeled state-based problems**: Some problems are inherently state-based — the system moves through a discrete set of conditions (phases, modes, lifecycle stages, UI views, connection status, workflow steps) and correctness depends on every part of the code agreeing which condition we're in. When such a problem is solved through interdependent booleans, scattered conditionals on order-of-events, or flag combinations rather than an explicit model, invalid combinations become reachable and transition rules live nowhere in particular. What must be explicit: the set of conditions, which transitions are valid, which are invalid and why, and a single unambiguous answer to "what condition are we in now" the rest of the code reads rather than reconstructs. How that's expressed (enum, class, reducer, state variable, type, schema) is an implementation choice — flag absence of the *model*, not absence of a specific mechanism. **BLOCKING** when the gap causes correctness or safety failures (invalid combos reachable, double-transitions possible, persisted state can diverge, error states silently misclassified). **WARNING** when 3+ interdependent state signals exist with no single source of truth and transition logic spans multiple call sites, even without a demonstrable bug. **NOTE** when borderline (two signals, localized logic) — recommend adding to `.prawduct/backlog.md`. When flagging, enumerate the conditions and transitions you observed.
 
 This goal applies proportionally — a 2-line helper doesn't need design review. Focus on patterns that will compound: a leaked abstraction others will depend on, coupling that will spread, complexity that will accumulate.
 
@@ -115,19 +115,15 @@ Read `agents/critic/framework-checks.md` for the complete definitions:
 - **Cumulative Health**: Total instruction payload stays within budgets.
 - **Pipeline Coverage**: New concerns have discovery → artifact → builder → Critic coverage.
 
-### Learnings Cross-Check
+### Learnings Cross-Check and Backlog Reconciliation
 
-**`final` mode only.** After completing goal-based review, scan your findings against active learnings. If a change reintroduces a pattern that `learnings.md` explicitly warns against, escalate: the project already learned this lesson once. Conversely, if learnings reference patterns relevant to the changed code and the code handles them correctly, no finding is needed — the learning is working.
-
-### Backlog Reconciliation
-
-**`final` mode only.** Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly (the item was the work) or incidentally (other work addressed the underlying issue). For each resolved item, emit a **NOTE** finding: "Backlog item appears resolved: [item text]. Verify and remove from backlog." This ensures the backlog reflects reality. Do not remove items yourself — the builder verifies and removes.
+**`final` mode only.** See `agents/critic/review-cycle.md` for the per-mode behavior: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern), then walk `.prawduct/backlog.md` and emit **NOTE** findings for items this session appears to resolve.
 
 ## Severity Levels
 
 - **BLOCKING**: Must fix before proceeding. Broken tests, dropped requirements, security vulnerabilities, unlisted dependencies.
 - **WARNING**: Should fix. The Critic is confident this is a real issue: missing coverage, scope drift, stale artifacts, missing rationale, design problems, documentation drift.
-- **NOTE**: Genuinely ambiguous — the Critic sees something that might be an issue but isn't certain. The builder should evaluate and decide. Do not use NOTE for things you're confident about; if you're sure something should change, it's at least a WARNING. NOTEs that suggest future work (e.g., "this pattern might benefit from refactoring") should recommend the builder add them to `.prawduct/backlog.md` rather than acting on them in the current work cycle.
+- **NOTE**: Genuinely ambiguous — the Critic sees something that might be an issue but isn't certain. The builder evaluates and decides. Don't use NOTE when confident — if you're sure something should change, it's at least WARNING. NOTEs suggesting future work should recommend adding to `.prawduct/backlog.md` rather than acting on them in the current cycle.
 
 ## Review Execution
 
@@ -137,24 +133,17 @@ Read `agents/critic/framework-checks.md` for the complete definitions:
 
 ### Coordinator Pattern
 
-1. **Assess** (you, the coordinator):
-   - Read project state, run git diff, read relevant artifacts
-   - Determine signals: files changed, work size, work type, boundaries crossed
-   - List the changed files and summarize what each change does
+1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed).
 
-2. **Dispatch** three parallel review subagents (via the Agent tool). Each receives the project directory, the changed files list, and the signals summary. **Important: tell each subagent not to run any tests — the review is code analysis only.**
+2. **Dispatch** three parallel review subagents via the Agent tool. Each receives the project directory, the changed-files list, and the signals summary. Use this prompt template, substituting `<NAME>` and `<GOALS>`:
 
-   - **Correctness reviewer** — Goals 1, 2, 3: "You are a Critic review subagent. Read `[critic instructions path]` for the goal definitions. Review ONLY Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended). The project is at `[dir]`. Changed files: [list]. Signals: [summary]. Do NOT run any tests — review through code analysis only. Report findings using the Critic output format from that file."
+   > "You are a Critic review subagent (`<NAME>` reviewer). Read `[critic instructions path]` for the goal definitions. Review ONLY <GOALS>. The project is at `[dir]`. Changed files: [list]. Signals: [summary]. Do NOT run any tests — review through code analysis only. Report findings using the Critic output format from that file."
 
-   - **Design reviewer** — Goals 4, 7: "You are a Critic review subagent. Read `[critic instructions path]` for the goal definitions. Review ONLY Goals 4 (Everything Is Coherent) and 7 (The Design Is Sound). [same context]. Do NOT run any tests — review through code analysis only."
+   - **Correctness reviewer** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended).
+   - **Design reviewer** — Goals 4 (Everything Is Coherent), 7 (The Design Is Sound).
+   - **Sustainability reviewer** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood).
 
-   - **Sustainability reviewer** — Goals 5, 6: "You are a Critic review subagent. Read `[critic instructions path]` for the goal definitions. Review ONLY Goals 5 (Decisions Were Deliberate) and 6 (The System Can Be Understood). [same context]. Do NOT run any tests — review through code analysis only."
-
-3. **Aggregate** findings from all three subagents:
-   - Collect all findings into a single review
-   - Deduplicate: if multiple subagents flagged the same issue, keep the highest severity
-   - Write the combined review in the standard output format below
-   - Write `.prawduct/.critic-findings.json`
+3. **Aggregate**: collect findings; if multiple subagents flag the same issue, keep highest severity; write the combined review in the standard output format below and persist `.prawduct/.critic-findings.json`.
 
 ## Output Format
 
@@ -197,11 +186,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`mode`: write the verbose form — `"chunk (lighter pass, not ready for push)"` or `"final (full review, ready for push)"`. The hook validator rejects bare short tokens.
-
-`duration_seconds`: best estimate of wall-clock review time. Surfaced in the session briefing.
-
-For a clean review, findings array is empty and summary says "No issues found."
+`mode`: write the verbose form — `"chunk (lighter pass, not ready for push)"` or `"final (full review, ready for push)"`. The hook validator rejects bare short tokens. `duration_seconds`: best estimate of wall-clock review time. For a clean review, findings is empty and summary says "No issues found."
 
 ## Review Cycle
 

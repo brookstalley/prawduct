@@ -57,6 +57,18 @@ Read short, write verbose. Verbose makes the JSON self-documenting in briefings 
 4. **Record findings** to `.prawduct/.critic-findings.json` (see main SKILL.md for format).
 5. **If no BLOCKING findings:** chunk is complete, proceed to next chunk.
 
+## Final-Mode Cross-Checks
+
+After completing the goal-based review in `final` mode, run two additional passes that `chunk` mode skips:
+
+### Learnings Cross-Check
+
+Scan your findings against active learnings. If a change reintroduces a pattern that `.prawduct/learnings.md` explicitly warns against, escalate severity — the project already learned this lesson once and tolerating regression undoes the learning. Conversely, if learnings reference patterns relevant to the changed code and the code handles them correctly, no finding is needed: the learning is working as intended.
+
+### Backlog Reconciliation
+
+Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly (the item was the work) or incidentally (other work addressed the underlying issue). For each resolved item, emit a **NOTE** finding: "Backlog item appears resolved: [item text]. Verify and remove from backlog." This keeps the backlog reflecting reality. Do not remove items yourself — the builder verifies and removes.
+
 ## Directional Change Review
 
 When a significant architectural or design change spans multiple chunks, review the change holistically after all chunks are complete:

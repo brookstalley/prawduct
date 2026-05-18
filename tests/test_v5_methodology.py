@@ -204,11 +204,21 @@ class TestCriticSkill:
         # Bumped from 3500 → 3700 in v1.3.13 (proportional Critic / chunk vs.
         # final modes). The Modes section, activation step, goal preamble, and
         # JSON `mode` field add ~150 tokens of essential documentation for the
-        # new feature. If this test fails again, prefer trimming over another
-        # bump — the Critic skill is loaded fresh on every invocation and
-        # the budget bounds that cost.
+        # new feature.
+        #
+        # Tightened from 3700 → 3200 in v1.4 Chunk 00 (SKILL.md trim-pass).
+        # The Coordinator Pattern was deduplicated, Goal 7's state-modeling
+        # paragraph was condensed, and final-mode-only sections (Learnings
+        # Cross-Check, Backlog Reconciliation) moved to review-cycle.md.
+        # The 500-token reduction in ceiling (not slack — actual slack
+        # against <3200 is small) is reserved for v1.4's F2/F3/F4/F6 Critic
+        # protocol additions. Future Critic prose additions should prefer
+        # `review-cycle.md` (per-mode behavior) or `framework-checks.md`
+        # (framework-only checks). If this test fails again, prefer trimming
+        # over another bump — the Critic skill is loaded fresh on every
+        # invocation and the budget bounds that cost.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3700, f"SKILL.md is ~{tokens} tokens, should be <3700"
+        assert tokens < 3200, f"SKILL.md is ~{tokens} tokens, should be <3200"
 
 
 # =============================================================================
