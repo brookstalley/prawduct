@@ -190,11 +190,17 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        7 goals, target 4-10 min). Single-chunk plans use `final`. Trivial chunks
        (typo-level edits inside a larger plan) waive Critic via `.gates-waived`.
        Missing field → builder treats as `final` (fail-safe to thoroughness).
+       The third mode, `cumulative`, is invoked separately before `/pr create`
+       (not a per-chunk mode — see Governance Checkpoints below).
        See `agents/critic/review-cycle.md` for full per-mode behavior. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/critic <mode>` run (using the mode declared above) and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
+  <!-- On the final chunk of a multi-cycle branch (or any time a PR will be
+       opened for this work), also add as step 4:
+         4. `/critic cumulative` run against `merge-base...HEAD` and blocking
+            findings resolved — this is the structural gate for `/pr create`. -->
 
 <!-- Repeat for each chunk -->
 
@@ -215,12 +221,16 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   Typically: after the early feedback milestone and after all chunks complete.
 -->
 
-**Commit & PR cadence:** [e.g., "Commit per chunk after `/critic <mode>` passes; PR after the final chunk's `/critic final` passes."]
+**Commit & PR cadence:** [e.g., "Commit per chunk after `/critic <mode>` passes; PR after the final chunk's `/critic final` AND `/critic cumulative` pass."]
 <!--
   Per-chunk commit is the default and the contract for `chunk`-mode Critic
   reviews — each chunk's diff scope is the working tree against the previous
   chunk's commit. Squash-at-end plans are out of scope (no `Critic base SHA:`
   tracking yet); if you genuinely need it, deferred to backlog.
+
+  Cumulative-Critic gate: `/pr create` calls `product-hook check-cumulative-critic`
+  and refuses to open a PR without a fresh, blocking-free `cumulative` record.
+  Plan for cumulative review wall-time (~4-10 min) as part of the final chunk.
 -->
 
 - After chunk [ID]: [Review type and rationale]

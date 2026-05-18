@@ -12,8 +12,11 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Small** (bug fix, minor feature) | One `final` review, optional. |
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
 | **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk. |
+| **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (in addition to the per-chunk reviews above). |
 
 The stop hook enforces review for code changes when a build plan exists. It also surfaces an advisory WARNING when all chunks are marked `[x]` but the most recent review was `chunk` mode — run `/critic final` before pushing.
+
+`/pr create` is gated by `python3 tools/product-hook check-cumulative-critic` — opening a PR without a fresh, blocking-free `cumulative` record fails the gate.
 
 ## Mode Selection
 
@@ -28,20 +31,28 @@ The build plan is authoritative. Each chunk declares `Critic mode: chunk | final
 
 ## Per-Mode Behavior
 
-| Aspect | `chunk` | `final` |
-|---|---|---|
-| **Goals run** | 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended) | All 7 goals |
-| **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Framework-Specific Checks (7-10); README/top-level docs scan | None |
-| **Scope** | The chunk's uncommitted diff (`git diff` for tracked files plus `git status` for new files) | Full session diff at end-of-cycle, OR uncommitted diff for non-chunked work |
-| **Execution** | Always single-pass; no coordinator pattern | Single pass for trivial/small; coordinator pattern (3 subagents) for medium/large |
-| **Target wall-clock** | 1-2 min | 4-10 min |
-| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear |
+| Aspect | `chunk` | `final` | `cumulative` |
+|---|---|---|---|
+| **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals |
+| **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Framework-Specific Checks (7-10); README/top-level docs scan | None | None |
+| **Scope** | Chunk's uncommitted diff (`git diff` + `git status` for new files) | Full session diff at end-of-cycle, OR uncommitted diff for non-chunked work | `git diff <base-branch>...HEAD` — the entire PR bundle, all commits on the branch since it diverged |
+| **Execution** | Always single-pass | Single pass for trivial/small; coordinator pattern for medium/large | Single pass for trivial/small; coordinator pattern for medium/large |
+| **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min |
+| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/pr create`). Catches cross-chunk integration cracks. |
 
 **Two-form rule for the `mode` value:**
-- **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument): the short token — `chunk` or `final`.
-- **Persisted-side** (in `.prawduct/.critic-findings.json`'s `mode` field, session briefings, gate WARNINGs): the verbose string — exactly `"chunk (lighter pass, not ready for push)"` or `"final (full review, ready for push)"`.
+- **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument): the short token — `chunk`, `final`, or `cumulative`.
+- **Persisted-side** (in `.prawduct/.critic-findings.json`'s `mode` field, session briefings, gate WARNINGs): the verbose string — exactly `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, or `"cumulative (bundle review, ready for merge)"`.
 
 Read short, write verbose. Verbose makes the JSON self-documenting in briefings — anyone reading the file sees what mode was used without consulting docs. The hook validator in `tools/product-hook` rejects bare short tokens in the persisted `mode` field.
+
+### Cumulative-mode diff scope and PR gate
+
+`cumulative` is the only mode whose scope is *not* derived from working-tree state. Compute the base via `git merge-base <base-branch> HEAD` (typically `main` or `develop` — read `project-preferences.md` if a different default is set). Then diff `<merge-base>...HEAD`. This deliberately spans every commit on the branch, not just the end-of-cycle diff `final` would see, so cross-chunk integration cracks surface here even if every per-chunk review was clean.
+
+`/pr create` calls `python3 tools/product-hook check-cumulative-critic` and refuses to open the PR if the gate fails. The gate requires: cumulative-mode findings file present, schema-valid, recorded in the current session (mtime later than `.session-start`), and free of unresolved BLOCKING findings. WARNING and NOTE are advisory at the PR gate — they do not block, matching the PR reviewer's own severity contract.
+
+**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes synchronously. Before invoking it, complete any prep work that doesn't depend on its findings: `/learnings` for next-chunk topics, draft the PR description, audit the backlog for items this branch resolves, capture deferred chunk-boundary reflections. This does NOT shorten the wait — it reorganizes work so the agent can integrate findings the moment Critic returns rather than spinning up fresh post-wait. See `methodology/building.md` for the full guidance.
 
 ## Per-Chunk Cycle
 

@@ -1686,6 +1686,28 @@ class TestCriticModeGate:
         }))
         assert self.mod.validate_critic_findings(path) is False
 
+    def test_validate_critic_findings_accepts_verbose_cumulative_mode(self, tmp_path: Path):
+        """The third mode (added in v1.4 F2) reviews `merge-base...HEAD` for PR gating."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_CUMULATIVE,
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_rejects_bare_cumulative_token(self, tmp_path: Path):
+        """Bare 'cumulative' is the caller-side $ARGUMENTS form, not the persistence form."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": "cumulative",
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
     # ---- Integration: cmd_stop surfaces the advisory NOTE ----
 
     def test_stop_hook_surfaces_advisory_when_all_chunks_complete_with_chunk_mode(
@@ -1731,6 +1753,152 @@ class TestCriticModeGate:
         # The verbose chunk string must not appear in stderr — that text is only
         # in the gate's reason, which only fires for unsatisfied gates.
         assert "lighter pass, not ready for push" not in result.stderr
+
+
+# =============================================================================
+# check-cumulative-critic subcommand (v1.4 F2 — PR gate)
+# =============================================================================
+
+
+class TestCheckCumulativeCriticSubcommand:
+    """The `check-cumulative-critic` subcommand provides the structural gate
+    `/pr create` calls before opening a PR. It enforces that a cumulative-mode
+    Critic review exists, is fresh (this session), is schema-valid, and has
+    no unresolved BLOCKING findings.
+
+    Exit 0 = gate satisfied; exit 1 = gate fails (stderr explains why).
+    """
+
+    def _make_cumulative_findings(
+        self,
+        prawduct: Path,
+        *,
+        mode: str | None,
+        findings: list[dict] | None = None,
+        summary: str = "No issues found. Bundle is ready to merge.",
+    ) -> Path:
+        data: dict = {
+            "files_reviewed": ["src/app.py"],
+            "findings": findings if findings is not None else [],
+            "summary": summary,
+        }
+        if mode is not None:
+            data["mode"] = mode
+        path = prawduct / ".critic-findings.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_missing_findings_file_exits_one(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "missing" in result.stderr.lower() or "no cumulative" in result.stderr.lower()
+
+    def test_findings_exist_but_chunk_mode_exits_one(self, tmp_path: Path):
+        """chunk-mode findings do NOT satisfy the cumulative gate, even if fresh."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_CHUNK)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "cumulative" in result.stderr.lower()
+
+    def test_findings_exist_but_final_mode_exits_one(self, tmp_path: Path):
+        """final-mode findings cover end-of-cycle but not `merge-base...HEAD` — gate still fails."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_FINAL)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "cumulative" in result.stderr.lower()
+
+    def test_findings_stale_exits_one(self, tmp_path: Path):
+        """Findings from a prior session do not satisfy the gate — must be this-session."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        # Write findings BEFORE setting session-start so mtime predates it.
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_CUMULATIVE)
+        time.sleep(0.05)
+        make_session_start(prawduct, offset_seconds=0)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "stale" in result.stderr.lower() or "predate" in result.stderr.lower()
+
+    def test_findings_with_blocking_exits_one(self, tmp_path: Path):
+        """Cumulative findings with unresolved BLOCKING fail the gate."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(
+            prawduct,
+            mode=mod._CRITIC_MODE_CUMULATIVE,
+            findings=[{
+                "goal": "Nothing Is Broken",
+                "severity": "blocking",
+                "summary": "Off-by-one in pagination handler",
+            }],
+            summary="1 blocking. Not ready to merge.",
+        )
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "blocking" in result.stderr.lower()
+
+    def test_fresh_clean_cumulative_findings_exit_zero(self, tmp_path: Path):
+        """Happy path: cumulative mode, in session window, no blocking → gate satisfied."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(prawduct, mode=mod._CRITIC_MODE_CUMULATIVE)
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+        assert "satisfied" in result.stdout.lower() or "ok" in result.stdout.lower()
+
+    def test_cumulative_findings_with_warnings_exit_zero(self, tmp_path: Path):
+        """Warnings are advisory at the PR gate — only BLOCKING blocks. Matches existing PR-reviewer semantics."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        time.sleep(0.05)
+        mod = _load_product_hook()
+        self._make_cumulative_findings(
+            prawduct,
+            mode=mod._CRITIC_MODE_CUMULATIVE,
+            findings=[{
+                "goal": "Design Is Sound",
+                "severity": "warning",
+                "summary": "Consider extracting the duplicated parser into a helper.",
+            }],
+            summary="1 warning. Bundle ready to merge after addressing.",
+        )
+
+        result = run_hook("check-cumulative-critic", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
 
 
 # =============================================================================

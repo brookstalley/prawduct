@@ -24,6 +24,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
+- **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/pr create`; catches cross-chunk integration cracks. See `review-cycle.md`.
 
 **Default:** missing/ambiguous → `final`. Never silently downgrade. The `mode` field in findings uses the verbose form (see Output Format).
 
@@ -107,9 +108,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ## Framework-Specific Checks
 
-**Applies only in `final` mode when reviewing framework instruction files, templates, or structural decisions.** `chunk` mode and product builds skip these.
-
-Read `agents/critic/framework-checks.md` for the complete definitions:
+**Applies only in `final` and `cumulative` modes when reviewing framework instruction files, templates, or structural decisions.** `chunk` mode and product builds skip these. Read `agents/critic/framework-checks.md` for the complete definitions:
 - **Generality**: Instructions work across product types.
 - **Instruction Clarity**: LLM-facing text is unambiguous and testable.
 - **Cumulative Health**: Total instruction payload stays within budgets.
@@ -117,7 +116,7 @@ Read `agents/critic/framework-checks.md` for the complete definitions:
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final` mode only.** See `agents/critic/review-cycle.md` for the per-mode behavior: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern), then walk `.prawduct/backlog.md` and emit **NOTE** findings for items this session appears to resolve.
+**`final` and `cumulative` modes only.** See `agents/critic/review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern), then walk `.prawduct/backlog.md` and emit **NOTE** findings for items resolved.
 
 ## Severity Levels
 
@@ -186,7 +185,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`mode`: write the verbose form — `"chunk (lighter pass, not ready for push)"` or `"final (full review, ready for push)"`. The hook validator rejects bare short tokens. `duration_seconds`: best estimate of wall-clock review time. For a clean review, findings is empty and summary says "No issues found."
+`mode`: write the verbose form for whichever mode ran — see `review-cycle.md`'s two-form rule. The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. For a clean review, findings is empty and summary says "No issues found."
 
 ## Review Cycle
 

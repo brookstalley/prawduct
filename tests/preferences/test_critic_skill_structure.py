@@ -34,6 +34,16 @@ _FRAMEWORK_SKILL = REPO_ROOT / "agents" / "critic" / "SKILL.md"
 _PRODUCT_TEMPLATE = REPO_ROOT / "templates" / "critic-review.md"
 _REVIEW_CYCLE = REPO_ROOT / "agents" / "critic" / "review-cycle.md"
 
+# Critic entry-point skills — these are the actual files Claude Code loads when
+# the user types `/critic <mode>`. They must enumerate every recognized mode
+# token in `argument-hint` and the Getting-Started step that reads `$ARGUMENTS`.
+# v1.4 F2 added `cumulative` and Chunk 01 missed updating these two files; the
+# drift produced an end-to-end-unusable feature (cumulative invocation silently
+# downgraded to final, then the new gate rejected the resulting record). The
+# Critic caught it; this test pins it so the next mode addition can't repeat.
+_FRAMEWORK_ENTRY_SKILL = REPO_ROOT / ".claude" / "skills" / "critic" / "SKILL.md"
+_PRODUCT_ENTRY_SKILL_TEMPLATE = REPO_ROOT / "templates" / "skill-critic.md"
+
 
 @pytest.mark.parametrize(
     "path,required_section",
@@ -70,23 +80,41 @@ class TestCriticModeDocumentation:
             "Mode terminology must stay consistent across all Critic instruction files."
         )
 
+    def test_cumulative_mode_referenced(self, path: Path, required_section: str) -> None:
+        """v1.4 F2: the cumulative mode reviews `merge-base...HEAD` for the /pr gate."""
+        content = path.read_text()
+        assert "`cumulative`" in content, (
+            f"{path.relative_to(REPO_ROOT)} does not reference the `cumulative` mode token. "
+            "v1.4 F2 added this mode and the `/pr create` gate depends on it being "
+            "consistently named across the framework + product Critic instruction files."
+        )
+
 
 class TestCriticVerboseModeStrings:
-    """The verbose-form mode strings must appear in the source-of-truth skill files.
+    """The verbose-form mode strings must appear in the source-of-truth instruction files.
 
     These exact strings are written to `.prawduct/.critic-findings.json` and
     surfaced in session briefings. Drift between the documented strings and
     the strings the validator accepts (in `tools/product-hook`) breaks both
     the validator and the gate WARNING text. Pin them.
+
+    Where the strings live after v1.4 Chunk 00 (SKILL.md trim-pass):
+      - **Framework**: `agents/critic/review-cycle.md` — per-mode behavior was
+        relocated here so SKILL.md stays a focused orchestrator. SKILL.md
+        retains the short tokens (chunk | final | cumulative) and points to
+        review-cycle.md for verbose forms.
+      - **Product repos**: `templates/critic-review.md` — single self-contained
+        Critic instruction file, so verbose strings stay inline.
     """
 
     CHUNK_VERBOSE = "chunk (lighter pass, not ready for push)"
     FINAL_VERBOSE = "final (full review, ready for push)"
+    CUMULATIVE_VERBOSE = "cumulative (bundle review, ready for merge)"
 
     @pytest.mark.parametrize(
         "path",
-        [_FRAMEWORK_SKILL, _PRODUCT_TEMPLATE],
-        ids=["framework_skill", "product_template"],
+        [_REVIEW_CYCLE, _PRODUCT_TEMPLATE],
+        ids=["review_cycle", "product_template"],
     )
     def test_chunk_verbose_string_present(self, path: Path) -> None:
         content = path.read_text()
@@ -98,14 +126,65 @@ class TestCriticVerboseModeStrings:
 
     @pytest.mark.parametrize(
         "path",
-        [_FRAMEWORK_SKILL, _PRODUCT_TEMPLATE],
-        ids=["framework_skill", "product_template"],
+        [_REVIEW_CYCLE, _PRODUCT_TEMPLATE],
+        ids=["review_cycle", "product_template"],
     )
     def test_final_verbose_string_present(self, path: Path) -> None:
         content = path.read_text()
         assert self.FINAL_VERBOSE in content, (
             f"{path.relative_to(REPO_ROOT)} is missing the verbose final-mode string "
             f"`{self.FINAL_VERBOSE}`. Drift here means docs and validator disagree."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [_REVIEW_CYCLE, _PRODUCT_TEMPLATE],
+        ids=["review_cycle", "product_template"],
+    )
+    def test_cumulative_verbose_string_present(self, path: Path) -> None:
+        """v1.4 F2: the cumulative verbose form must match what `validate_critic_findings` accepts."""
+        content = path.read_text()
+        assert self.CUMULATIVE_VERBOSE in content, (
+            f"{path.relative_to(REPO_ROOT)} is missing the verbose cumulative-mode string "
+            f"`{self.CUMULATIVE_VERBOSE}`. The validator in tools/product-hook accepts "
+            "this exact string; drift here means the docs and validator disagree."
+        )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [_FRAMEWORK_ENTRY_SKILL, _PRODUCT_ENTRY_SKILL_TEMPLATE],
+    ids=["framework_entry_skill", "product_entry_skill_template"],
+)
+class TestCriticEntrySkillEnumeratesAllModes:
+    """The `/critic` entry-point skill files must enumerate every recognized mode.
+
+    These are the files Claude Code reads when the user types `/critic <mode>`.
+    The `argument-hint` advertises the valid arguments; the Getting-Started step
+    that parses `$ARGUMENTS` decides which mode to run. If a new mode is added
+    to `agents/critic/SKILL.md` (or `templates/critic-review.md`) but these
+    entry files aren't updated, the slash invocation silently downgrades to
+    `final`, breaking any downstream gate that requires the new mode.
+
+    v1.4 Chunk 01 (F2) added `cumulative`; this test prevents the same drift
+    on the next mode addition.
+    """
+
+    def test_argument_hint_enumerates_all_modes(self, path: Path) -> None:
+        content = path.read_text()
+        assert "argument-hint: chunk | final | cumulative" in content, (
+            f"{path.relative_to(REPO_ROOT)} has an `argument-hint` that does not "
+            "enumerate every recognized mode. Slash invocation drops modes the "
+            "hint doesn't advertise. Update to: `argument-hint: chunk | final | cumulative`."
+        )
+
+    def test_getting_started_recognizes_cumulative(self, path: Path) -> None:
+        content = path.read_text()
+        assert "cumulative" in content, (
+            f"{path.relative_to(REPO_ROOT)} does not mention `cumulative` in its "
+            "Getting-Started instructions. The $ARGUMENTS parser must recognize "
+            "the token, otherwise it silently downgrades to `final` and the "
+            "/pr cumulative-Critic gate rejects the resulting record."
         )
 
 

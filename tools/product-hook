@@ -581,7 +581,12 @@ _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
 # so writer drift surfaces immediately.
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
 _CRITIC_MODE_FINAL = "final (full review, ready for push)"
-_CRITIC_MODE_VALUES = frozenset({_CRITIC_MODE_CHUNK, _CRITIC_MODE_FINAL})
+_CRITIC_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"
+_CRITIC_MODE_VALUES = frozenset({
+    _CRITIC_MODE_CHUNK,
+    _CRITIC_MODE_FINAL,
+    _CRITIC_MODE_CUMULATIVE,
+})
 
 
 def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
@@ -2493,13 +2498,109 @@ def cmd_validate_evidence(project_dir: Path) -> int:
 
 
 # =============================================================================
+# check-cumulative-critic command (v1.4 F2 — PR gate)
+# =============================================================================
+
+
+def cmd_check_cumulative_critic(project_dir: Path) -> int:
+    """Structural gate for `/pr create`: require a fresh cumulative-Critic record.
+
+    Exit 0 only when the Critic findings file:
+      - exists and parses,
+      - is schema-valid (``validate_critic_findings``),
+      - has ``mode == _CRITIC_MODE_CUMULATIVE`` (chunk/final do not satisfy
+        this gate — cumulative is specifically the ``merge-base...HEAD``
+        bundle review),
+      - is fresh (mtime later than the current session's ``.session-start``
+        marker; stale evidence from a prior session is rejected),
+      - contains no unresolved BLOCKING severity findings (WARNING and NOTE
+        are advisory at the PR gate, matching the PR reviewer's semantics).
+
+    Exit 1 otherwise. stderr names the specific check that failed so the
+    caller (`/pr` skill) can present an actionable message to the user.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    findings_path = prawduct_dir / ".critic-findings.json"
+
+    if not findings_path.is_file():
+        print(
+            "missing: no cumulative-Critic findings at "
+            f"{findings_path}. Run /critic cumulative before opening a PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not validate_critic_findings(findings_path):
+        print(
+            f"invalid: {findings_path} did not pass schema validation",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        data = json.loads(findings_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"unreadable: {exc}", file=sys.stderr)
+        return 1
+
+    mode = data.get("mode")
+    if mode != _CRITIC_MODE_CUMULATIVE:
+        print(
+            f"wrong-mode: findings mode is {mode!r}, expected cumulative "
+            f"({_CRITIC_MODE_CUMULATIVE!r}). The cumulative review covers "
+            "`merge-base...HEAD` — re-run /critic cumulative.",
+            file=sys.stderr,
+        )
+        return 1
+
+    session_start_path = prawduct_dir / ".session-start"
+    if session_start_path.is_file():
+        try:
+            session_start = session_start_path.read_text().strip()
+            findings_mtime = datetime.fromtimestamp(
+                findings_path.stat().st_mtime, tz=timezone.utc
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+            # Lexicographic compare on whole-second %Y-%m-%dT%H:%M:%SZ strings
+            # is order-preserving — same convention as cmd_clear's gate check
+            # around line 1874. Adding fractional seconds to the format would
+            # break both sides; keep them in lockstep.
+            if findings_mtime <= session_start:
+                print(
+                    f"stale: cumulative findings ({findings_mtime}) "
+                    f"predate session-start ({session_start}). Re-run "
+                    "/critic cumulative in the current session before opening a PR.",
+                    file=sys.stderr,
+                )
+                return 1
+        except Exception:  # prawduct:ok-broad-except — gate must not crash; fall through to severity check
+            pass
+
+    findings = data.get("findings", [])
+    blocking = [f for f in findings if isinstance(f, dict) and f.get("severity") == "blocking"]
+    if blocking:
+        first = blocking[0].get("summary", "<no summary>")
+        print(
+            f"blocking: cumulative-Critic recorded {len(blocking)} BLOCKING "
+            f"finding(s). First: {first}. Resolve before opening a PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"satisfied: cumulative-Critic record is fresh and clean ({findings_path})")
+    return 0
+
+
+# =============================================================================
 # main
 # =============================================================================
 
 
+_USAGE = "Usage: product-hook {clear|stop|test-status|validate-evidence|check-cumulative-critic}"
+
+
 def main() -> int:
     if len(sys.argv) < 2:
-        print("Usage: product-hook {clear|stop|test-status|validate-evidence}", file=sys.stderr)
+        print(_USAGE, file=sys.stderr)
         return 1
 
     command = sys.argv[1]
@@ -2513,8 +2614,10 @@ def main() -> int:
         return cmd_test_status(project_dir)
     elif command == "validate-evidence":
         return cmd_validate_evidence(project_dir)
+    elif command == "check-cumulative-critic":
+        return cmd_check_cumulative_critic(project_dir)
     else:
-        print("Usage: product-hook {clear|stop|test-status|validate-evidence}", file=sys.stderr)
+        print(_USAGE, file=sys.stderr)
         return 1
 
 

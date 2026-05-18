@@ -17,7 +17,7 @@ You are an independent reviewer. You have NOT seen the builder's reasoning — t
 
 ## Modes
 
-The Critic runs in one of two modes, selected by the caller via `$ARGUMENTS` (the build cycle invokes you as `/critic chunk` or `/critic final`):
+The Critic runs in one of three modes, selected by the caller via `$ARGUMENTS` (the build cycle invokes you as `/critic chunk`, `/critic final`, or `/critic cumulative`):
 
 **`chunk`** — fast per-chunk review. Target: 1-2 minutes on a large repo.
 - **Goals run:** 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended) — local correctness against the chunk's just-changed files.
@@ -32,14 +32,20 @@ The Critic runs in one of two modes, selected by the caller via `$ARGUMENTS` (th
 - **Execution:** single pass for trivial/small work; coordinator pattern (3 parallel subagents) for medium/large work — see Review Execution below.
 - **Use when:** end of work cycle (last chunk of a multi-chunk plan), non-chunked medium+ work, or whenever the right answer is unclear.
 
+**`cumulative`** — full PR-bundle review before opening a pull request. Target: 4-10 minutes.
+- **Goals run:** all 7, plus Learnings Cross-Check and Backlog Reconciliation (same as `final`).
+- **Scope:** `git diff <base-branch>...HEAD` — every commit on the branch since it diverged from the base, regardless of how many work cycles produced them. Compute the base via `git merge-base <base-branch> HEAD` (typically `main` or `develop` — read `project-preferences.md` if a different default is set).
+- **Execution:** single pass for trivial/small work; coordinator pattern for medium/large.
+- **Use when:** before invoking `/pr create`. The `/pr` skill calls `python3 tools/product-hook check-cumulative-critic` and refuses to open the PR without a fresh, blocking-free cumulative record. This mode catches cross-chunk integration cracks that per-chunk and end-of-cycle reviews can't see.
+
 **Default rule:** if `$ARGUMENTS` is empty, lacks a recognized mode token, or is ambiguous → run as `final`. Fail safe to thoroughness. Never silently downgrade to `chunk`.
 
 **Two-form rule for the `mode` value:**
 
 | Form | Where it appears | Values |
 |---|---|---|
-| **Short token** (caller-side) | `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument | `chunk` or `final` |
-| **Verbose string** (persisted-side) | `.prawduct/.critic-findings.json` `mode` field, session briefings, gate WARNINGs | `"chunk (lighter pass, not ready for push)"` or `"final (full review, ready for push)"` |
+| **Short token** (caller-side) | `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument | `chunk`, `final`, or `cumulative` |
+| **Verbose string** (persisted-side) | `.prawduct/.critic-findings.json` `mode` field, session briefings, gate WARNINGs | `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, or `"cumulative (bundle review, ready for merge)"` |
 
 You read the short token from `$ARGUMENTS`. You write the verbose string to `.critic-findings.json`. Verbose strings are intentional: the JSON is read by humans during session briefings — the value itself communicates the implication without requiring docs.
 
