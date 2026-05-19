@@ -32,6 +32,11 @@ FILE_RENAMES = _mod.FILE_RENAMES
 MANAGED_FILES = _mod.MANAGED_FILES
 run_sync = _mod.run_sync
 _try_pull_framework = _mod._try_pull_framework
+_try_auto_commit = _mod._lib_sync_cmd._try_auto_commit
+_read_sync_config = _mod._lib_sync_cmd._read_sync_config
+_branch_is_protected = _mod._lib_sync_cmd._branch_is_protected
+_DEFAULT_PROTECTED_BRANCHES = _mod._lib_sync_cmd._DEFAULT_PROTECTED_BRANCHES
+PRAWDUCT_VERSION = _mod.PRAWDUCT_VERSION
 _match_historical_render = _mod._match_historical_render
 _HISTORICAL_RENDER_DEPTH_CAP = _mod._HISTORICAL_RENDER_DEPTH_CAP
 BLOCK_BEGIN = _mod.BLOCK_BEGIN
@@ -3376,3 +3381,436 @@ class TestRunMigrateCoverage:
             "actions",
             "notes",
         }
+
+
+# =============================================================================
+# F5a — auto-commit on sync
+# =============================================================================
+
+
+def _git_init(repo: Path, *, branch: str = "main") -> None:
+    """Initialize a git repo in `repo` with a deterministic identity."""
+    subprocess.run(["git", "init", "-q", "-b", branch, str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.name", "Test"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "commit.gpgsign", "false"], check=True
+    )
+
+
+def _git_commit_all(repo: Path, message: str) -> None:
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-q", "-m", message], check=True
+    )
+
+
+def _git_log_subjects(repo: Path) -> list[str]:
+    result = subprocess.run(
+        ["git", "-C", str(repo), "log", "--format=%s"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [line for line in result.stdout.splitlines() if line]
+
+
+class TestReadSyncConfig:
+    """F5a — `_read_sync_config` is the column-0 YAML scanner."""
+
+    def test_defaults_when_no_project_state(self, tmp_path: Path):
+        product = tmp_path / "p"
+        product.mkdir()
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is True
+        assert config["protected_branches"] == list(_DEFAULT_PROTECTED_BRANCHES)
+
+    def test_defaults_when_no_sync_block(self, tmp_path: Path):
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: Demo\nother: thing\n"
+        )
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is True
+        assert config["protected_branches"] == list(_DEFAULT_PROTECTED_BRANCHES)
+
+    def test_explicit_disable(self, tmp_path: Path):
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "sync:\n  auto_commit: false\n"
+        )
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is False
+
+    def test_custom_protected_branches(self, tmp_path: Path):
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "sync:\n"
+            "  auto_commit: true\n"
+            "  protected_branches:\n"
+            "    - production\n"
+            "    - \"hotfix/*\"\n"
+        )
+        config = _read_sync_config(product)
+        assert config["protected_branches"] == ["production", "hotfix/*"]
+
+    def test_inline_comment_on_value_is_tolerated(self, tmp_path: Path):
+        """Mirrors the Chunk 10 inline-comment-asymmetry fix: detector and
+        consumer must both tolerate trailing comments."""
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "sync:\n  auto_commit: false  # opt out for this product\n"
+        )
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is False
+
+    def test_malformed_falls_back_to_defaults(self, tmp_path: Path):
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        # Unreadable file — patch by making it a directory
+        (product / ".prawduct" / "project-state.yaml").mkdir()
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is True
+
+
+class TestBranchIsProtected:
+    def test_exact_match(self):
+        assert _branch_is_protected("main", ["main", "master"]) is True
+        assert _branch_is_protected("master", ["main", "master"]) is True
+        assert _branch_is_protected("feature/x", ["main", "master"]) is False
+
+    def test_glob_match(self):
+        assert _branch_is_protected("release/1.0", ["release/*"]) is True
+        assert _branch_is_protected("release/foo/bar", ["release/*"]) is True
+        assert _branch_is_protected("rel/1.0", ["release/*"]) is False
+
+    def test_empty_branch_is_protected(self):
+        """Detached HEAD (empty branch name) must be treated as protected —
+        commits in detached HEAD become unreachable after checkout."""
+        assert _branch_is_protected("", ["main"]) is True
+
+
+class _AutoCommitFixture:
+    """Helper for F5a tests — build a product repo with a real git history."""
+
+    def __init__(self, tmp_path: Path):
+        self.tmp_path = tmp_path
+        self.fw = self._setup_framework()
+        self.product = self._setup_product()
+
+    def _setup_framework(self) -> Path:
+        fw = self.tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+            }
+        }, indent=2))
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v2")
+        return fw
+
+    def _setup_product(self) -> Path:
+        product = self.tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": "TestApp"}
+
+        # Older content so sync will detect drift on these managed files.
+        claude_v1 = (
+            f"# TestApp CLAUDE.md\n\n{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (product / "CLAUDE.md").write_text(claude_v1)
+
+        critic_v1 = "# TestApp Critic v1"
+        (product / ".prawduct" / "critic-review.md").write_text(critic_v1)
+
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_text(
+            "#!/usr/bin/env python3\n# hook v1"
+        )
+
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(
+            (self.fw / "templates" / "product-settings.json").read_text()
+        )
+
+        hashes = {
+            "CLAUDE.md": compute_block_hash(claude_v1),
+            ".prawduct/critic-review.md": compute_hash(
+                product / ".prawduct" / "critic-review.md"
+            ),
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,
+        }
+
+        (product / ".gitignore").write_text("\n".join(GITIGNORE_ENTRIES) + "\n")
+
+        manifest = create_manifest(product, self.fw, "TestApp", hashes)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+
+        # Project-state.yaml: feature-branch friendly defaults (main is protected
+        # by default, which we override per-test as needed).
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: TestApp\n"
+        )
+
+        return product
+
+    def init_git(self, *, branch: str = "feature/work") -> None:
+        _git_init(self.product, branch=branch)
+        _git_commit_all(self.product, "initial product import")
+
+    def sync(self) -> dict:
+        return run_sync(
+            str(self.product), str(self.fw), no_pull=True
+        )
+
+
+class TestAutoCommitHappyPath:
+    """Clean feature branch + framework-managed drift → single marker commit."""
+
+    def test_creates_single_chore_sync_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        # The HEAD commit is the auto-commit; the initial import remains below.
+        assert subjects[0].startswith("chore(sync): prawduct v"), subjects
+        # Only one new commit was produced.
+        assert len(subjects) == 2
+
+        # The action list records the commit shorthand.
+        assert any(
+            "Auto-committed framework sync as 'chore(sync): prawduct v" in a
+            for a in result["actions"]
+        ), result["actions"]
+
+    def test_no_sync_pending_marker_on_success(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # Pre-existing stale marker — auto-commit success must clear it.
+        (fix.product / ".prawduct" / ".sync-pending").write_text(
+            '{"reason":"stale"}\n'
+        )
+
+        fix.sync()
+
+        assert not (fix.product / ".prawduct" / ".sync-pending").exists()
+
+    def test_working_tree_clean_after_auto_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        fix.sync()
+        result = subprocess.run(
+            ["git", "-C", str(fix.product), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == "", result.stdout
+
+    def test_commit_message_pins_framework_version(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        fix.sync()
+        subjects = _git_log_subjects(fix.product)
+        assert subjects[0] == f"chore(sync): prawduct v{PRAWDUCT_VERSION}"
+
+
+class TestAutoCommitPreconditions:
+    """Each precondition must skip auto-commit and write the sync-pending marker."""
+
+    def test_protected_branch_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="main")  # default-protected
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        # No auto-commit was added.
+        assert not subjects[0].startswith("chore(sync):")
+        assert any("'main' is protected" in n for n in result["notes"]), result["notes"]
+        marker = json.loads(
+            (fix.product / ".prawduct" / ".sync-pending").read_text()
+        )
+        assert "main" in marker["reason"]
+        assert marker["version"] == PRAWDUCT_VERSION
+
+    def test_wip_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # Introduce an unrelated WIP file (untracked, not in framework-managed list).
+        (fix.product / "src").mkdir()
+        (fix.product / "src" / "user_code.py").write_text("# WIP\n")
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        assert not subjects[0].startswith("chore(sync):")
+        assert any("non-framework changes present" in n for n in result["notes"])
+        marker_path = fix.product / ".prawduct" / ".sync-pending"
+        assert marker_path.is_file()
+        marker = json.loads(marker_path.read_text())
+        assert any(
+            "non-framework" in b for b in marker["blocked_by"]
+        ), marker
+
+    def test_rebase_in_progress_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # Simulate an interactive rebase by creating the marker dir.
+        (fix.product / ".git" / "rebase-merge").mkdir()
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        assert not subjects[0].startswith("chore(sync):")
+        assert any("rebase in progress" in n for n in result["notes"])
+
+    def test_merge_in_progress_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        (fix.product / ".git" / "MERGE_HEAD").write_text("abc123\n")
+
+        result = fix.sync()
+
+        assert any("merge in progress" in n for n in result["notes"])
+
+    def test_cherry_pick_in_progress_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        (fix.product / ".git" / "CHERRY_PICK_HEAD").write_text("abc123\n")
+
+        result = fix.sync()
+
+        assert any("cherry-pick in progress" in n for n in result["notes"])
+
+    def test_auto_commit_disabled_via_project_state(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        (fix.product / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: TestApp\nsync:\n  auto_commit: false\n"
+        )
+        fix.init_git(branch="feature/work")
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        assert not subjects[0].startswith("chore(sync):")
+        # No commit; no marker either — disable is an explicit user choice, not
+        # a precondition failure.
+        assert not (fix.product / ".prawduct" / ".sync-pending").exists()
+        assert not any(
+            "Auto-commit skipped" in n for n in result["notes"]
+        ), result["notes"]
+
+
+class TestAutoCommitSafety:
+    """Edge cases that must degrade silently or be inert."""
+
+    def test_not_a_git_repo_is_silent_noop(self, tmp_path: Path):
+        """No `.git/` directory → auto-commit step quietly does nothing."""
+        fix = _AutoCommitFixture(tmp_path)
+        # Intentionally do NOT init git.
+        result = fix.sync()
+        # Sync still completes — it returns its normal action list.
+        assert result["synced"] is True
+        # No marker is written; nothing to commit against.
+        assert not (fix.product / ".prawduct" / ".sync-pending").exists()
+        # No "Auto-committed" or "Auto-commit skipped" lines.
+        for entry in result["actions"] + result["notes"]:
+            assert "Auto-commit" not in entry, entry
+
+    def test_no_drift_clears_stale_marker(self, tmp_path: Path):
+        """Pre-existing marker should be cleared when there's no drift to commit."""
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # First sync resolves all drift.
+        fix.sync()
+        # Plant a stale marker.
+        (fix.product / ".prawduct" / ".sync-pending").write_text(
+            '{"reason":"stale"}\n'
+        )
+        # Second sync has nothing to commit and should clear the marker.
+        fix.sync()
+        assert not (fix.product / ".prawduct" / ".sync-pending").exists()
+
+    def test_user_authored_place_once_edits_treated_as_wip(self, tmp_path: Path):
+        """Regression for Chunk 11 Critic finding 1: a user-authored append to
+        `.prawduct/change-log.md` (a place-once file) at SessionStart-style
+        sync time must be treated as WIP and block auto-commit, NOT swept into
+        the chore(sync) marker commit. Pre-fix, PLACE_ONCE_TEMPLATES were in
+        the framework-known set; the very co-mingling F5a aims to prevent was
+        the default behavior on every chunk close."""
+        fix = _AutoCommitFixture(tmp_path)
+        # Seed `.prawduct/change-log.md` so it exists at initial-commit time.
+        (fix.product / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-01-01: baseline\n"
+        )
+        fix.init_git(branch="feature/work")
+        # User appends to change-log.md mid-session — the typical chunk-close
+        # pattern.
+        existing = (fix.product / ".prawduct" / "change-log.md").read_text()
+        (fix.product / ".prawduct" / "change-log.md").write_text(
+            existing + "\n## 2026-05-19: user-authored chunk entry\n"
+        )
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        # No auto-commit was made: the change-log edit is user WIP, not
+        # framework drift.
+        assert not subjects[0].startswith("chore(sync):"), subjects
+        assert any(
+            "non-framework changes present" in n for n in result["notes"]
+        ), result["notes"]
+        marker_path = fix.product / ".prawduct" / ".sync-pending"
+        assert marker_path.is_file()
+        marker = json.loads(marker_path.read_text())
+        joined = " ".join(marker["blocked_by"])
+        assert "change-log.md" in joined, marker
+
+    def test_managed_paths_committed_wip_excluded(self, tmp_path: Path):
+        """When committing, the auto-commit must NOT pull in WIP — but if WIP
+        is present we don't auto-commit at all. This test pins the contract by
+        verifying that on success, the committed paths are framework-managed."""
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        fix.sync()
+        # Inspect last commit's diff.
+        result = subprocess.run(
+            ["git", "-C", str(fix.product), "show", "--name-only", "--format=", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        changed = [p for p in result.stdout.splitlines() if p]
+        managed = set(MANAGED_FILES.keys()) | {".prawduct/sync-manifest.json"}
+        for p in changed:
+            assert p in managed or p.startswith(".prawduct/"), (
+                f"non-managed path {p} in auto-commit"
+            )
+

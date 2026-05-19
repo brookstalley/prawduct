@@ -3181,6 +3181,76 @@ class TestSessionBriefing:
         briefing = mod.assemble_session_briefing(tmp_path, [], advisories=[])
         assert "Advisories:" not in briefing
 
+    def test_briefing_shows_sync_pending_marker(self, tmp_path: Path):
+        """F5a — when sync skipped auto-commit, the marker surfaces in briefing."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+        (prawduct / ".sync-pending").write_text(json.dumps({
+            "reason": "branch 'main' is protected",
+            "blocked_by": ["branch 'main' is protected"],
+            "version": "1.3.17",
+            "ts": "2026-05-19T18:00:00Z",
+        }))
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        briefing = mod.assemble_session_briefing(tmp_path, [])
+        assert "Framework sync pending" in briefing
+        assert "branch 'main' is protected" in briefing
+        assert "v1.3.17" in briefing
+
+    def test_briefing_no_sync_pending_when_marker_absent(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        briefing = mod.assemble_session_briefing(tmp_path, [])
+        assert "Framework sync pending" not in briefing
+
+    def test_briefing_handles_corrupt_sync_pending(self, tmp_path: Path):
+        """Marker file with invalid JSON must not crash briefing assembly."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+        (prawduct / ".sync-pending").write_text("not json{{")
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        briefing = mod.assemble_session_briefing(tmp_path, [])
+        # Fallback line points the user at the file rather than crashing.
+        assert "Framework sync pending" in briefing
+        assert "unreadable" in briefing
+
     def test_briefing_shows_work_in_progress(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()

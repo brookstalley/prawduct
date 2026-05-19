@@ -425,6 +425,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.session-start",
     ".prawduct/.subagent-briefing.md",
     ".prawduct/.gates-waived",
+    ".prawduct/.sync-pending",
     ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
     ".prawduct/artifacts/build-plan.md",
@@ -1366,6 +1367,28 @@ def assemble_session_briefing(
         for adv in advisories:
             msg = adv.get("message", "template drift detected")
             lines.append(f"  - {msg}")
+
+    # F5a sync-pending marker — surfaces when sync couldn't auto-commit
+    # framework drift because a precondition (WIP, protected branch,
+    # in-progress git op) blocked it. Surface so the user/Claude know there
+    # is uncommitted framework drift that should be resolved.
+    sync_pending_path = prawduct_dir / ".sync-pending"
+    if sync_pending_path.is_file():
+        try:
+            pending = json.loads(sync_pending_path.read_text())
+            reason = pending.get("reason", "unknown")
+            version = pending.get("version", "")
+            v_suffix = f" (v{version})" if version else ""
+            lines.append(
+                f"Framework sync pending{v_suffix}: {reason}. "
+                f"Resolve and commit `.prawduct/`/`CLAUDE.md`/etc. drift, "
+                f"or rerun sync once the blocker clears."
+            )
+        except (json.JSONDecodeError, OSError):
+            lines.append(
+                "Framework sync pending: marker file present but unreadable; "
+                "inspect `.prawduct/.sync-pending`."
+            )
 
     # CLAUDE.md size check
     claude_md_path = project_dir / "CLAUDE.md"
