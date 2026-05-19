@@ -4,11 +4,11 @@
      This file is separate from project-state.yaml to reduce merge conflicts
      when multiple branches add entries simultaneously.
 
-     # Tagged entries (optional, opt-in via `views_enabled: true` in project-state.yaml)
+     # Tagged entries (enabled by default; set `views_enabled: false` in project-state.yaml to opt out)
 
-     When views are enabled, add a tag-line directly under each ## header to
-     mark which build-plan chunks the entry shipped and which release it
-     belongs to. `product-hook regen-views` (or `prawduct-setup.py views <dir>
+     With views enabled (the default), add a tag-line directly under each ##
+     header to mark which build-plan chunks the entry shipped and which
+     release it belongs to. `product-hook regen-views` (or `prawduct-setup.py views <dir>
      --refresh`) uses these tags to regenerate three derived views:
        * build-plan `## Status` block — checkboxes flip from `status=shipped`
        * `.prawduct/release-notes.md` — sections grouped by `release=`

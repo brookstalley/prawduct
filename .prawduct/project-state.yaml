@@ -419,9 +419,9 @@ build_state:
   source_root: "."
 
 # =============================================================================
-# DERIVED VIEWS (opt-in, v1.4+)
+# DERIVED VIEWS (enabled by default, v1.4+)
 # =============================================================================
-# When true, the build-plan `## Status` block is a derived view of
+# When true (default), the build-plan `## Status` block is a derived view of
 # change-log.md tagged entries. Run `python3 tools/product-hook regen-views`
 # to apply. Prawduct dogfoods this — change-log v1.3.17/v1.3.16 entries carry
 # tag lines so regen produces the correct Wave-1-complete Status state.
@@ -451,5 +451,5 @@ deprecated_terms:
 
 scope_rollups:
   v1.4:
-    chunks: ["00", "01", "02", "03", "04", "05", "06"]
+    chunks: ["00", "01", "02", "03", "04", "05", "06", "07"]
     releases: ["v1.3.17"]

@@ -73,6 +73,7 @@ from lib import (  # noqa: F401
     create_manifest,
     delete_v1_files,
     detect_version,
+    enable_v1_4_views,
     ensure_dir,
     extract_block,
     generate_sync_manifest,

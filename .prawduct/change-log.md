@@ -3,6 +3,30 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-19: Chunk 07 — F1c sync auto-enables derived views for existing repos
+
+<!-- prawduct: chunks=07 | status=shipped | scope=v1.4 -->
+
+**Why:** Chunks 05–06 shipped the views pipeline behind `views_enabled: true` with `false` as the template default — products had to opt in via a planned `prawduct-doctor migrate v1.4 --enable-views` migration command. During Chunk 07 planning the user redirected: "all users should get views for free, with no mandatory opt-in. it will be fine." That collapses migration tooling into the sync path (which every existing repo already runs every session) and removes the need for the doctor migration subcommand entirely. The compat shim that matters — untagged legacy entries still render unchanged — already lives in the views.py tag-filtering logic from Chunk 05.
+
+**What:** `tools/lib/migrate_cmd.py::enable_v1_4_views(product_dir, manifest)` — new one-shot helper (~85 lines). Wired into `run_sync()` immediately after `migrate_change_log` / `migrate_backlog`. Behavior:
+
+1. Returns early when `manifest["v1_4_views_enabled"]` is already True (one-shot tracking — first sync flips the flag; subsequent syncs never touch the file, so a user who later sets `views_enabled: false` manually is respected).
+2. On `project-state.yaml`, detects the two real-world shapes:
+   * **Pre-Chunk-06 v1.3.x bootstrap** (neither key present): appends `scope_rollups: {}` block + `views_enabled: true` block, each with its own comment header matching the new template wording.
+   * **Post-Chunk-06 default** (`views_enabled: false` + `scope_rollups: {}` already from template): flips `false` → `true` line-by-line, leaves `scope_rollups: {}` alone.
+3. Sets `manifest["v1_4_views_enabled"] = True` regardless of whether the file needed changes — the flag means "this sync has visited the v1.4 migration step," not "we mutated the file." Existing `run_sync` manifest write-back persists it.
+
+**Template changes:** `templates/project-state.yaml` now defaults `views_enabled: true` (was `false`) with updated comment ("enabled by default" → "set to `false` to opt out"). `templates/change-log.md` schema header refreshed to "enabled by default" wording. Framework's own `.prawduct/project-state.yaml` derived-views comment refreshed to match (the value was already `true` for dogfooding).
+
+**Plan revision:** Chunk 07's description in `.prawduct/artifacts/build-plan.md` rewritten — Status line + Context closer + body block. The dropped `prawduct-doctor migrate v1.4 --enable-views` subcommand is captured here, not as deferred work. The maintenance plan F1 compat paragraph + R2 removal-trigger criterion now reflect "auto-enabled, opt-out is explicit." `tools/product-hook cmd_regen_views` docstring updated (Critic NOTE: "opt-in by design" wording was stale).
+
+**Test coverage:** 1087 passing (+10 over Chunk 06 baseline). `TestEnableV1_4Views` in `tests/test_prawduct_sync.py` — 10 tests covering: no project-state no-op; manifest flag short-circuits without reading file; pre-Chunk-06 legacy adds both keys; post-Chunk-06 default flips false→true and preserves scope_rollups; already-on no-edit (flag still records); idempotent second run respects user opt-out; only-scope-missing path; commented-out keys not counted; nested keys not counted (lightweight substring detector intentionally scoped to top level); end-to-end `run_sync` integration confirms manifest flag persists across sessions. `test_every_public_lib_function_referenced_in_some_test` confirms the new function has direct test references.
+
+**Dry-run evidence (discodon + hallucinote):** both repos are v1.3.x bootstraps without either key. Function appends both blocks (~1019 bytes added), sets manifest flag, second pass is byte-identical no-op, and a manual opt-out (setting `false` post-flag) is respected on subsequent passes. Run captured via inline harness against tmp copies — no commits to those repos.
+
+**No regen-views invocation in this chunk** — the F1c work is sync logic only. Each affected repo will see views materialize on the next regen (manual `python3 tools/product-hook regen-views` or chunk-close governance per `methodology/building.md`).
+
 ## 2026-05-18: Chunk 06 — F1b remaining views (release-notes + scope-rollups + doctor views)
 
 <!-- prawduct: chunks=06 | status=shipped | scope=v1.4 -->

@@ -2897,7 +2897,8 @@ def cmd_regen_views(project_dir: Path) -> int:
       3. Scope-rollup view — `scope_rollups:` block in `project-state.yaml`
          from `scope=` tags
 
-    No-op when `views_enabled: true` is absent (opt-in by design — see F1).
+    No-op when `views_enabled: true` is absent (enabled by default in v1.4;
+    sync auto-enables for existing repos and `false` is the explicit opt-out).
 
     Exit codes:
       0 - success (views disabled, no changes needed, or regen applied cleanly)

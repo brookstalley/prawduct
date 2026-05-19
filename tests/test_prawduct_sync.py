@@ -38,6 +38,7 @@ BLOCK_BEGIN = _mod.BLOCK_BEGIN
 BLOCK_END = _mod.BLOCK_END
 GITIGNORE_ENTRIES = _mod.GITIGNORE_ENTRIES
 migrate_backlog = _mod.migrate_backlog
+enable_v1_4_views = _mod.enable_v1_4_views
 untrack_gitignored_files = _mod.untrack_gitignored_files
 
 
@@ -2824,3 +2825,226 @@ class TestAdvisoryEnrichment(TestRunSyncPlaceOnce):
         # When fw isn't git, helper returns None and fields are empty strings
         assert advisories[0]["last_changed_commit"] == ""
         assert advisories[0]["last_changed_subject"] == ""
+
+
+# =============================================================================
+# v1.4 derived-views auto-enable (one-shot migration during sync).
+#
+# Sync silently flips ``views_enabled`` to ``true`` and lands a ``scope_rollups:
+# {}`` placeholder so existing v1.3.x repos pick up the v1.4 derived-views
+# feature without an explicit opt-in. Tracked via manifest one-shot flag.
+# =============================================================================
+
+
+class TestEnableV1_4Views:
+
+    def test_no_project_state_no_op(self, tmp_path: Path):
+        """Missing .prawduct/project-state.yaml — returns empty, no flag set."""
+        manifest: dict = {}
+        assert enable_v1_4_views(tmp_path, manifest) == []
+        assert "v1_4_views_enabled" not in manifest
+
+    def test_already_migrated_no_op(self, tmp_path: Path):
+        """Manifest flag set — short-circuits without reading the file."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Write a file that WOULD trigger changes if the function ran
+        (prawduct / "project-state.yaml").write_text("views_enabled: false\n")
+        manifest: dict = {"v1_4_views_enabled": True}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert actions == []
+        # File unchanged
+        assert (prawduct / "project-state.yaml").read_text() == "views_enabled: false\n"
+
+    def test_pre_chunk_06_repo_adds_both_keys(self, tmp_path: Path):
+        """Legacy v1.3.x bootstrap: neither key present → both appended, flag set."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: TestApp\n\nbuild_state:\n  source_root: src\n"
+        )
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Added scope_rollups" in a for a in actions)
+        assert any("Added views_enabled: true" in a for a in actions)
+        assert manifest["v1_4_views_enabled"] is True
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "scope_rollups: {}" in state
+        assert "views_enabled: true" in state
+        # Pre-existing content preserved
+        assert "product_identity:" in state
+        assert "name: TestApp" in state
+        assert "build_state:" in state
+
+    def test_post_chunk_06_repo_flips_false_to_true(self, tmp_path: Path):
+        """Post-Chunk-06 template default: ``views_enabled: false`` and
+        ``scope_rollups: {}`` present → flag flips, scope_rollups untouched."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = (
+            "product_identity:\n  name: TestApp\n\n"
+            "views_enabled: false\n\n"
+            "scope_rollups: {}\n"
+        )
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Flipped views_enabled" in a for a in actions)
+        # No scope_rollups action — it was already present
+        assert not any("Added scope_rollups" in a for a in actions)
+        assert manifest["v1_4_views_enabled"] is True
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "views_enabled: true" in state
+        assert "views_enabled: false" not in state
+        # scope_rollups: {} preserved verbatim
+        assert "scope_rollups: {}" in state
+
+    def test_already_on_no_file_changes(self, tmp_path: Path):
+        """Both keys present and views_enabled already true → no file edits,
+        but the one-shot flag is still recorded so subsequent syncs skip."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "views_enabled: true\n\nscope_rollups: {}\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert actions == []
+        assert manifest["v1_4_views_enabled"] is True
+        # File byte-identical
+        assert (prawduct / "project-state.yaml").read_text() == original
+
+    def test_idempotent_second_run(self, tmp_path: Path):
+        """After a successful run sets the flag, second invocation is a no-op
+        even with mutating content."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("views_enabled: false\n")
+        manifest: dict = {}
+
+        actions1 = enable_v1_4_views(tmp_path, manifest)
+        assert actions1  # First run does work
+        assert manifest["v1_4_views_enabled"] is True
+
+        # User then opts back out manually:
+        (prawduct / "project-state.yaml").write_text("views_enabled: false\n")
+
+        # Second run respects the user's explicit choice — flag is still set,
+        # so no flip back to true.
+        actions2 = enable_v1_4_views(tmp_path, manifest)
+        assert actions2 == []
+        assert (prawduct / "project-state.yaml").read_text() == "views_enabled: false\n"
+
+    def test_only_scope_missing_adds_just_scope(self, tmp_path: Path):
+        """``views_enabled: true`` present but no ``scope_rollups:`` → adds
+        only the placeholder, no flip needed."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: A\n\nviews_enabled: true\n"
+        )
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Added scope_rollups" in a for a in actions)
+        assert not any("Flipped views_enabled" in a for a in actions)
+        assert not any("Added views_enabled" in a for a in actions)
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "scope_rollups: {}" in state
+
+    def test_commented_views_key_does_not_count(self, tmp_path: Path):
+        """A commented-out ``# views_enabled: ...`` doesn't satisfy detection —
+        the function still appends the real top-level key."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "# old: views_enabled: false (commented)\nproduct_identity:\n  name: A\n"
+        )
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Added views_enabled: true" in a for a in actions)
+        state = (prawduct / "project-state.yaml").read_text()
+        # Both the comment and the real top-level key are present
+        assert "# old: views_enabled: false (commented)" in state
+        assert "\nviews_enabled: true" in state
+
+    def test_nested_views_key_not_counted_as_top_level(self, tmp_path: Path):
+        """A nested ``views_enabled: false`` (indented under another key) is
+        not the top-level field. ``has_views_key`` doesn't match it (the
+        substring check looks for ``\\nviews_enabled:`` with no leading space),
+        so the function appends a real top-level key. The nested line is left
+        verbatim."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "nested:\n  views_enabled: false\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Added views_enabled: true" in a for a in actions)
+        assert not any("Flipped views_enabled" in a for a in actions)
+
+        state = (prawduct / "project-state.yaml").read_text()
+        # Nested line preserved unchanged
+        assert "  views_enabled: false" in state
+        # New top-level key appended
+        assert "\nviews_enabled: true" in state
+
+    def test_run_sync_integrates_enable_v1_4_views(self, tmp_path: Path):
+        """End-to-end: run_sync on a legacy product repo (no scope_rollups, no
+        views_enabled) lands both keys, sets manifest flag, and persists it."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+        # Minimal templates so run_sync doesn't trip on missing files
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic\n")
+        (fw / "templates" / "project-preferences.md").write_text("# Preferences\n")
+        (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review\n")
+        (fw / "templates" / "boundary-patterns.md").write_text("# Boundaries\n")
+        (fw / "tools").mkdir()
+        (fw / "tools" / "product-hook").write_text("#!/usr/bin/env python3\n")
+
+        product = tmp_path / "product"
+        prawduct = product / ".prawduct"
+        prawduct.mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: LegacyApp\n"
+        )
+        # Pre-existing v5 manifest without v1_4_views_enabled flag
+        manifest = {
+            "framework_version": "1.3.15",
+            "framework_path": str(fw),
+            "format_version": 2,
+            "product_name": "LegacyApp",
+            "files": {},
+            "auto_pull": False,
+        }
+        (prawduct / "sync-manifest.json").write_text(json.dumps(manifest))
+
+        run_sync(str(product), framework_dir=str(fw), no_pull=True)
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "views_enabled: true" in state
+        assert "scope_rollups: {}" in state
+
+        post = json.loads((prawduct / "sync-manifest.json").read_text())
+        assert post.get("v1_4_views_enabled") is True
+
+        # Second sync: flag set, no re-enable actions related to v1.4 views
+        result2 = run_sync(str(product), framework_dir=str(fw), no_pull=True)
+        for a in result2.get("actions", []):
+            assert "views_enabled" not in a
+            assert "scope_rollups" not in a

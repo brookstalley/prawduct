@@ -51,6 +51,7 @@ from .migrate_cmd import (  # noqa: F401
     clean_gitignore,
     clean_v1_session_files,
     delete_v1_files,
+    enable_v1_4_views,
     generate_sync_manifest,
     migrate_backlog,
     migrate_change_log,

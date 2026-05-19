@@ -203,20 +203,19 @@ build_state:
   source_root: null           # Where source code lives (e.g., "src/")
 
 # =============================================================================
-# DERIVED VIEWS (opt-in, v1.4+)
+# DERIVED VIEWS (enabled by default, v1.4+)
 # =============================================================================
-# When true, three derived views are regenerated from change-log.md tagged
-# entries (see that file for the tag format):
+# When true (default), three derived views are regenerated from change-log.md
+# tagged entries (see that file for the tag format):
 #   * build-plan `## Status` block (checkboxes from `status=shipped` tags)
 #   * `.prawduct/release-notes.md` (from `release=` tags)
 #   * `scope_rollups:` block below (from `scope=` tags)
 # Run `python3 tools/product-hook regen-views` to apply, or
 # `python3 tools/prawduct-setup.py views <dir> --refresh` for ad-hoc regen.
-# With this off (default), Status is hand-edited and the other views are not
-# produced. Flip to `true` only after backfilling tag lines on existing
-# change-log entries so the first regen produces the correct view state.
+# Set to `false` to opt out — Status becomes hand-edited and the other views
+# are not produced.
 
-views_enabled: false
+views_enabled: true
 
 # Scope rollups — derived view, populated by regen-views when views_enabled is
 # true. Lists chunks (and releases) shipped under each scope rollup tag.

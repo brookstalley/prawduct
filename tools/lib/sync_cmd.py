@@ -36,6 +36,7 @@ from .core import (
     update_gitignore,
 )
 from .migrate_cmd import (
+    enable_v1_4_views,
     migrate_backlog,
     migrate_change_log,
     migrate_project_state_v5,
@@ -433,6 +434,10 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
 
     # Migrate remaining_work/future_work/backlog from project-state.yaml to backlog.md
     actions.extend(migrate_backlog(product))
+
+    # v1.4: auto-enable derived views for existing repos (one-shot; mutates
+    # manifest in place; existing write-back below persists the flag).
+    actions.extend(enable_v1_4_views(product, manifest))
 
     files = manifest.get("files", {})
 
