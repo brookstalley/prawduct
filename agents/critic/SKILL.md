@@ -56,6 +56,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
   - No hardcoded secrets or credentials in source code → **BLOCKING**.
   - Auth/authz checks on new endpoints or state-changing operations → **WARNING** if missing.
   - Dependencies without known critical vulnerabilities → **WARNING**.
+- **Symbol coverage (v1.4 F4b):** run `python3 tools/product-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
 
 ### 2. Nothing Is Missing
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.

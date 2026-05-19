@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-19: Chunk 09 — F4b Critic symbol-coverage check + methodology principle
+
+<!-- prawduct: chunks=09 | status=shipped | scope=v1.4 -->
+
+**Why:** Chunk 08 shipped the F4a schema (every chunk now emits `verifier` / `tests_executed` / `changes_referenced` / `coverage_level`) but no enforcement read it. F4b closes the loop: when a project opts in via `coverage_required: true`, the Critic's Goal 1 cross-checks the diff against `changes_referenced` and emits BLOCKING per missing file, with language scaled to the declared `coverage_level` — floor (`referenced`) explicitly disclaims execution; `executed` does not. The chunk's other half is the methodology principle in `building.md` that names what the floor doesn't prove, so authors don't treat "verifier reported clean" as "tests cover this change."
+
+**What:** Three surfaces — new product-hook subcommand, Critic instruction, methodology paragraph.
+
+1. **`tools/product-hook verify-coverage`.** New ~110-line subcommand backed by helpers `_read_bool_yaml_key` (column-0 YAML scanner mirroring `views.py::is_views_enabled`), `_coverage_resolve_base` (matches `tools/test-reference-verify`'s base-resolution so reader and writer agree on diff set), and `_coverage_changed_files` (union of `git diff --name-only BASE` and `git ls-files --others --exclude-standard` — untracked-file inclusion is the silent-failure mode the check exists to catch). Exit semantics: 0 = skipped (`coverage_required: false`, the v1.4 default) or all covered; 1 = preconditions failed (missing/invalid evidence, no `verifier` field, unresolved diff base) or per-file missing coverage. stderr emits one `missing-coverage: PATH (coverage_level: LEVEL) — SUFFIX` line per missing file with `SUFFIX` scaled to level (`floor check — does not prove execution.` vs. `has no executing test.`); the Critic quotes the line verbatim in BLOCKING findings.
+
+2. **Critic Goal 1 (three files in lockstep — `agents/critic/SKILL.md`, `templates/critic-review.md`, `.prawduct/critic-review.md`).** Goal 1 gains one sentence mapping `verify-coverage` exit codes to BLOCKING per file, with explicit instruction not to soften the per-level wording (the wording IS the distinction the chunk introduces). Other exit-1 reasons (missing evidence, no `verifier`, schema invalid) are also BLOCKING — the project opted in, so failing-to-evaluate is real failure, not silent skip.
+
+3. **`methodology/building.md` Test Discipline.** New "Idiomatic tooling, honest coverage" paragraph — language-native incremental/cached runners avoid re-running unchanged tests, the framework asserts the contract (changes covered) not a specific verifier, the reference verifier is a *floor* (catches untested new code, cannot prove execution), and products that need real coverage SHOULD plug in language-native tooling and emit `coverage_level: executed`. This is the F4c methodology principle the maintenance plan called for.
+
+**Compat:** Strictly opt-in. `coverage_required` defaults `false` in v1.4 (set in Chunk 08), so existing projects keep their current Critic behavior — verify-coverage exits 0 with "skipped" and the Critic moves on. Framework dogfoods the schema (every chunk's evidence carries the F4a fields) but doesn't enforce it on itself yet — flag stays off until v1.5 sweep.
+
+**Test coverage:** 1126 passing (+13 over Chunk 08's 1113). New `TestVerifyCoverageSubcommand` in `tests/test_product_hook.py` — 13 tests on real-git mini-repo fixtures (no mocking, matching `test_reference_verifier.py` style since the subcommand's contract is its git interaction): skip-default-false, skip-key-absent, indented-key-doesn't-satisfy-flag, missing-evidence, legacy-evidence-no-verifier, invalid-schema, all-covered-clean, missing-at-referenced-floor-language, missing-at-executed-stronger-language (asserts floor language is NOT emitted at executed level — the per-level distinction is the chunk's reason for existing), multiple-files-listed-individually, untracked-treated-as-missing, no-changes-clean, unresolvable-base-errors. Token-budget tests in `tests/test_v5_methodology.py` bumped: building.md 4275 → 4375 (~75 tokens for the new paragraph after aggressive trimming), SKILL.md 3250 → 3325 (~50 tokens for the Goal-1 bullet — explicitly drawing from the F4 protocol-additions budget the Chunk 00 trim-pass reserved). Both bump-comments instruct future readers to prefer trimming over another bump.
+
+**Dogfooding:** `python3 tools/product-hook verify-coverage` against this chunk's own diff reports `skipped: coverage_required is false (default in v1.4)` — by design (framework holds off until v1.5 to keep template parity with downstream products that need a migration window). The verifier still runs and `.test-evidence.json` carries the F4a fields, so the day enforcement flips on, this chunk is already covered.
+
+**Critic chunk review:** 0 BLOCKING, 0 WARNINGs, 1 NOTE (deferred to backlog — `_read_bool_yaml_key` duplicates the column-0 scanner in `views.py::is_views_enabled`; intentional inline duplication is documented, extraction earns a backlog candidacy when a third caller appears).
+
 ## 2026-05-19: Chunk 08 — F4a evidence-schema extension + reference floor verifier
 
 <!-- prawduct: chunks=08 | status=shipped | scope=v1.4 -->

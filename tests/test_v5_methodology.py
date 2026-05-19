@@ -90,8 +90,16 @@ class TestBuildingMethodology:
         # derived view (~13 tokens) — needed so methodology readers know the
         # full guidance lives in change-log.md schema and product-claude.md
         # step 10. Trimmed to a parenthetical before bumping.
+        #
+        # Bumped from 4275 → 4375 in v1.4 Chunk 09 (F4b — Critic symbol-coverage
+        # check + methodology principle). The chunk's spec required a new
+        # paragraph under Test Discipline naming the floor verifier, the
+        # `coverage_level` contract, and the `verify-coverage` Critic check
+        # (~75 tokens after aggressive trimming — the floor-vs-executed
+        # distinction is the chunk's reason for existing). If this test
+        # fails again, prefer trimming over another bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4275, f"building.md is ~{tokens} tokens, should be <4275"
+        assert tokens < 4375, f"building.md is ~{tokens} tokens, should be <4375"
 
 
 # =============================================================================
@@ -231,8 +239,16 @@ class TestCriticSkill:
         # the per-product critic-review.md can carry alone, since framework
         # Critic reviews read SKILL.md directly), and was trimmed to ~35
         # tokens before bumping.
+        #
+        # Bumped from 3250 → 3325 in v1.4 Chunk 09 (F4b — Critic symbol-coverage
+        # check). Goal 1 gains a `verify-coverage` bullet that maps the helper's
+        # exit codes and stderr-line format to BLOCKING findings, scaled to
+        # `coverage_level` (~50 tokens after aggressive trimming). This is one
+        # of the F4 protocol additions the Chunk 00 trim-pass explicitly
+        # reserved budget for. If this test fails again, prefer trimming over
+        # another bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3250, f"SKILL.md is ~{tokens} tokens, should be <3250"
+        assert tokens < 3325, f"SKILL.md is ~{tokens} tokens, should be <3325"
 
 
 # =============================================================================

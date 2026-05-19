@@ -2813,6 +2813,174 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
     return 0
 
 
+# v1.4 F4b — coverage-required gate inputs.
+# Helper kept parallel to ``is_views_enabled`` in tools/lib/views.py: column-0
+# key scan, fail-closed default of False. Inline rather than imported to keep
+# the product-hook surface flat (no new lib dependency just for a 10-line
+# scanner). Same idiom = same drift discipline as views_enabled.
+def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
+    if not state_path.exists():
+        return False
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    needle = f"{key}:"
+    for raw in content.splitlines():
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        value = line.split(":", 1)[1].strip().lower()
+        return value == "true"
+    return False
+
+
+def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:
+    """Pick the git diff base for coverage verification. Mirrors
+    ``_resolve_base`` in ``tools/test-reference-verify`` so writer (verifier)
+    and reader (verify-coverage) examine the same set of changes. If the
+    bases diverge, every chunk's verify-coverage would emit spurious
+    missing-coverage findings on files outside the verifier's base.
+    """
+    for candidate in ("origin/main", "main", "HEAD~1"):
+        proc = subprocess.run(
+            ["git", "rev-parse", "--verify", candidate],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode == 0:
+            return candidate, candidate
+    return None, "no base candidate resolved (origin/main, main, HEAD~1 all absent)"
+
+
+def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
+    """Files changed between ``base`` and the working tree, union untracked.
+    Mirrors ``_changed_files`` in ``tools/test-reference-verify`` — same
+    union over ``git diff`` + ``git ls-files --others --exclude-standard``
+    so verify-coverage sees exactly the file set the verifier scored.
+    """
+    proc = subprocess.run(
+        ["git", "diff", "--name-only", base],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git diff failed: {proc.stderr.strip()}")
+    files = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+
+    proc2 = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc2.returncode == 0:
+        files.update(line.strip() for line in proc2.stdout.splitlines() if line.strip())
+    return sorted(files)
+
+
+def cmd_verify_coverage(project_dir: Path) -> int:
+    """Critic Goal-1 helper (v1.4 F4b): when ``coverage_required: true`` in
+    project-state.yaml, verify every changed file in the diff appears in
+    ``.test-evidence.json``'s ``changes_referenced`` list.
+
+    Exit codes:
+      0 — check passed, or skipped (``coverage_required: false`` — the v1.4
+          default; opt-in by design).
+      1 — at least one changed file is missing from ``changes_referenced``,
+          or a precondition failed (evidence missing/invalid, schema lacks
+          F4a fields, git base unresolved).
+
+    stderr lists each missing file with language scaled to the declared
+    ``coverage_level`` — ``referenced`` (floor) vs ``executed`` (real
+    coverage tool) — so the Critic can quote it directly in BLOCKING
+    findings without re-deriving the wording.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    state_path = prawduct_dir / "project-state.yaml"
+
+    if not _read_bool_yaml_key(state_path, "coverage_required"):
+        print("skipped: coverage_required is false (default in v1.4)")
+        return 0
+
+    evidence_path = prawduct_dir / ".test-evidence.json"
+    if not evidence_path.is_file():
+        print(
+            f"error: coverage_required=true but {evidence_path} is missing — "
+            "run the test suite + verifier first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        evidence = json.loads(evidence_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"error: cannot read evidence: {exc}", file=sys.stderr)
+        return 1
+
+    if "verifier" not in evidence:
+        print(
+            "error: coverage_required=true but evidence lacks F4a schema "
+            "(no `verifier` field) — emit coverage fields with "
+            "`tools/test-reference-verify` (or a stronger product-specific "
+            "verifier) before re-running.",
+            file=sys.stderr,
+        )
+        return 1
+
+    ok, reason = _validate_evidence_schema(evidence)
+    if not ok:
+        print(f"error: {reason}", file=sys.stderr)
+        return 1
+
+    coverage_level = evidence["coverage_level"]
+    referenced = set(evidence.get("changes_referenced", []))
+
+    base, base_reason = _coverage_resolve_base(project_dir)
+    if base is None:
+        print(f"error: cannot resolve diff base — {base_reason}", file=sys.stderr)
+        return 1
+
+    try:
+        changed = _coverage_changed_files(project_dir, base)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    missing = [f for f in changed if f not in referenced]
+    if not missing:
+        print(
+            f"ok: {len(changed)} changed file(s) covered "
+            f"(level: {coverage_level})"
+        )
+        return 0
+
+    # Severity wording is per the F4a spec — the floor (``referenced``)
+    # explicitly disclaims execution, the real-coverage level
+    # (``executed``) asserts it. Critic quotes these lines verbatim.
+    if coverage_level == "executed":
+        suffix = "has no executing test."
+    else:
+        suffix = (
+            "is not referenced by any executed test "
+            "(floor check — does not prove execution)."
+        )
+
+    for m in missing:
+        print(
+            f"missing-coverage: {m} (coverage_level: {coverage_level}) — {suffix}",
+            file=sys.stderr,
+        )
+    return 1
+
+
 def cmd_check_cumulative_critic(project_dir: Path) -> int:
     """Structural gate for `/pr create`: require a fresh cumulative-Critic record.
 
@@ -2981,7 +3149,7 @@ def cmd_regen_views(project_dir: Path) -> int:
 _USAGE = (
     "Usage: product-hook "
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
-    "verify-chunk-refs [chunk_id]|regen-views}"
+    "verify-chunk-refs [chunk_id]|verify-coverage|regen-views}"
 )
 
 
@@ -3006,6 +3174,8 @@ def main() -> int:
     elif command == "verify-chunk-refs":
         chunk_id = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_verify_chunk_refs(project_dir, chunk_id)
+    elif command == "verify-coverage":
+        return cmd_verify_coverage(project_dir)
     elif command == "regen-views":
         return cmd_regen_views(project_dir)
     else:
