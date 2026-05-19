@@ -3,6 +3,20 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-19: `/pr` doc-only fast-path
+
+<!-- prawduct: release=v1.4.0 | status=shipped | scope=v1.4 -->
+
+**Why:** Pain-point audit (this session) found `/pr create` runs the full cumulative-Critic + PR-reviewer gates even when the entire `merge-base...HEAD` diff is `.md` — a one-line `.prawduct/backlog.md` edit on a protected branch was a 10-minute ordeal. The stop hook already exempts session-end doc-only changes (`_session_changes_are_doc_only`), but `/pr` did not inherit that proportionality. Audit verdicts captured the gap; this entry closes it for the create flow.
+
+**What:** New `check-pr-doc-only` product-hook subcommand mirrors the stop hook's exemption at the PR boundary, computing the diff over `merge-base...HEAD` (not the session baseline — semantically required because a PR can span multiple sessions). Base resolution uses the same `origin/main` → `main` → `HEAD~1` precedence as `_coverage_resolve_base`, so the gate sees the same diff surface as the cumulative-Critic flow. `.claude/skills/pr/SKILL.md` gains a Step 1b that calls the new subcommand; exit 0 skips Steps 2 (cumulative-Critic), 2b (operator-verification), 3 (PR reviewer), and 4 (review evidence gate), jumping straight to Step 5 (Create PR). Exit 1 (any reason — non-`.md` file present, empty diff, no resolvable base, git failure) falls through to the full review path. The gate fails closed by design.
+
+**Scope deferred:** The other three pain points surfaced in the audit are not addressed here. (1) Small-bugfix proportionality (no code-change escape hatch) — open. (2) Many-small-chunks Critic overhead — partially mitigated via wave-batching + chunk-mode already; no further work. (3) develop→main artifact stripping — backlog item filed 2026-05-19, not implemented. The doc-only fast-path was the cheapest win and the most acute friction.
+
+**Test coverage:** 1284 passing (+6 over Chunk 14's 1278). `TestCheckPrDocOnlySubcommand` (6 tests) covers: all-`.md` exits 0; mixed `.md`+code exits 1 with the offending path in stderr; code-only exits 1; `.yaml` in `.prawduct/` (governance file, not docs) exits 1; empty diff exits 1 (fail-closed: no diff ≠ doc-only); no resolvable base exits 1 (fail-closed: cannot evaluate). Tests use a real git repo per the `_init_real_git_repo` pattern — the subcommand calls real `git diff`, mocking it would just re-test the mock.
+
+**Version:** v1.4.0 (was 1.3.17). Joins the v1.4 release alongside the F10 operator-verification gate (Chunk 14) and the earlier wave work. The fast-path is the closing piece of v1.4's "PR-boundary proportionality" theme.
+
 ## 2026-05-19: Chunk 14 — F10 operator-verification queue + `/pr` BLOCKING gate
 
 <!-- prawduct: chunks=05,06,07,08,09,10,11,12,13,14 | release=v1.4.0 | status=shipped | scope=v1.4 -->

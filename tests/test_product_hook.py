@@ -2102,6 +2102,156 @@ class TestCheckCumulativeCriticSubcommand:
         assert result.returncode == 0, result.stderr
 
 
+class TestCheckPrDocOnlySubcommand:
+    """The `check-pr-doc-only` subcommand is the PR-boundary mirror of
+    the stop hook's `_session_changes_are_doc_only` exemption: when every
+    file in `merge-base...HEAD` is `.md`, `/pr create` may skip the
+    cumulative-Critic and PR-reviewer gates.
+
+    Exit 0 = PR diff is all `.md` (fast-path eligible).
+    Exit 1 = anything else (non-`.md` present, empty diff, no base
+    branch, or git failure). Fails closed — the `/pr` skill falls through
+    to the full review path on any exit 1.
+    """
+
+    def _run_check_with_real_git(
+        self, project_dir: Path
+    ) -> subprocess.CompletedProcess:
+        env = {
+            "HOME": str(project_dir),
+            "CLAUDE_PROJECT_DIR": str(project_dir),
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        return subprocess.run(
+            ["python3", str(HOOK_PATH), "check-pr-doc-only"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=20,
+        )
+
+    def _seed_repo_with_main(self, repo: Path) -> None:
+        """Init a repo with one commit on main as the base for diffs."""
+        _init_real_git_repo(repo)
+        (repo / "seed.md").write_text("seed\n")
+        subprocess.run(["git", "add", "seed.md"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+    def _branch_and_commit(self, repo: Path, files: dict[str, str]) -> None:
+        subprocess.run(
+            ["git", "checkout", "-q", "-b", "feature/test"], cwd=repo, check=True
+        )
+        for rel, body in files.items():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text(body)
+            subprocess.run(["git", "add", rel], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feature changes"], cwd=repo, check=True
+        )
+
+    def test_all_md_files_exits_zero(self, tmp_path: Path):
+        """A PR diff of only `.md` files satisfies the fast-path."""
+        self._seed_repo_with_main(tmp_path)
+        self._branch_and_commit(
+            tmp_path,
+            {
+                ".prawduct/backlog.md": "- New backlog item\n",
+                "docs/notes.md": "# Notes\n",
+            },
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "doc-only" in result.stdout.lower()
+
+    def test_mixed_md_and_code_exits_one(self, tmp_path: Path):
+        """A single non-`.md` file in the diff disqualifies the fast-path."""
+        self._seed_repo_with_main(tmp_path)
+        self._branch_and_commit(
+            tmp_path,
+            {
+                "docs/notes.md": "# Notes\n",
+                "src/app.py": "def f(): pass\n",
+            },
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "not-doc-only" in result.stderr.lower()
+        assert "src/app.py" in result.stderr
+
+    def test_code_only_exits_one(self, tmp_path: Path):
+        """A code-only PR diff disqualifies the fast-path."""
+        self._seed_repo_with_main(tmp_path)
+        self._branch_and_commit(
+            tmp_path,
+            {"src/app.py": "def f(): pass\n"},
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "not-doc-only" in result.stderr.lower()
+
+    def test_yaml_in_diff_disqualifies(self, tmp_path: Path):
+        """Non-`.md` governance files like `.yaml` are not docs — full review required."""
+        self._seed_repo_with_main(tmp_path)
+        self._branch_and_commit(
+            tmp_path,
+            {
+                ".prawduct/backlog.md": "- Item\n",
+                ".prawduct/project-state.yaml": "size: tiny\n",
+            },
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "project-state.yaml" in result.stderr
+
+    def test_empty_diff_exits_one(self, tmp_path: Path):
+        """No commits ahead of base means the fast-path is not applicable —
+        fail closed rather than silently passing (no diff != doc-only)."""
+        self._seed_repo_with_main(tmp_path)
+        subprocess.run(
+            ["git", "checkout", "-q", "-b", "feature/empty"], cwd=tmp_path, check=True
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "empty-diff" in result.stderr.lower()
+
+    def test_no_base_branch_exits_one(self, tmp_path: Path):
+        """When no base candidate (`origin/main`, `main`, `HEAD~1`) resolves,
+        the gate fails closed so `/pr` falls through to full review."""
+        # Init repo but never commit — HEAD~1 won't resolve, no main branch ref.
+        subprocess.run(
+            ["git", "init", "--quiet", "-b", "feature/x"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "config", "commit.gpgsign", "false"], cwd=tmp_path, check=True
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "no-base" in result.stderr.lower()
+
+
 class TestParseBuildPlanChunkRefs:
     """`_parse_build_plan_chunk_refs` extracts backticked file-path references
     from a single chunk's `### Chunk NN:` section in build-plan.md.

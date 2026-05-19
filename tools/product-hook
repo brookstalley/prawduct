@@ -3235,12 +3235,79 @@ def cmd_accept_operator_verification(
     return 0
 
 
+def cmd_check_pr_doc_only(project_dir: Path) -> int:
+    """Fast-path gate for `/pr create`: report whether the PR diff is doc-only.
+
+    Exit 0 when every file in ``merge-base...HEAD`` ends in ``.md`` and the
+    diff is non-empty — the `/pr` skill uses this to skip the cumulative-
+    Critic and PR-reviewer gates, mirroring the session-end stop-hook
+    behavior (`_session_changes_are_doc_only`) at the PR boundary.
+
+    Exit 1 otherwise (any non-``.md`` file, empty diff, no resolvable base
+    branch, or git failure). Fails closed: when the gate cannot be evaluated,
+    fall through to the full review path rather than silently skipping it.
+
+    Base resolution mirrors ``_coverage_resolve_base`` — same precedence
+    (``origin/main``, ``main``, ``HEAD~1``) so the gate sees the same diff
+    surface as the verifier and the cumulative-Critic flow.
+    """
+    base, base_note = _coverage_resolve_base(project_dir)
+    if base is None:
+        print(
+            f"no-base: {base_note}. Cannot determine PR diff — falling back "
+            "to full review path.",
+            file=sys.stderr,
+        )
+        return 1
+
+    proc = subprocess.run(
+        ["git", "diff", "--name-only", f"{base}...HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        print(
+            f"git-failed: git diff {base}...HEAD failed: "
+            f"{proc.stderr.strip()}. Falling back to full review path.",
+            file=sys.stderr,
+        )
+        return 1
+
+    files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if not files:
+        print(
+            f"empty-diff: no files changed in {base}...HEAD. Doc-only fast-path "
+            "is not applicable.",
+            file=sys.stderr,
+        )
+        return 1
+
+    non_md = [f for f in files if not f.endswith(".md")]
+    if non_md:
+        sample = ", ".join(non_md[:3])
+        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
+        print(
+            f"not-doc-only: PR includes non-.md files: {sample}{more}. "
+            "Full review required.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"doc-only: PR diff ({len(files)} file(s) in {base}...HEAD) is all "
+        ".md — cumulative-Critic and PR-reviewer gates may be skipped."
+    )
+    return 0
+
+
 _USAGE = (
     "Usage: product-hook "
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
-    "regen-views}"
+    "check-pr-doc-only|regen-views}"
 )
 
 
@@ -3272,6 +3339,8 @@ def main() -> int:
     elif command == "accept-operator-verification":
         rationale = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_accept_operator_verification(project_dir, rationale)
+    elif command == "check-pr-doc-only":
+        return cmd_check_pr_doc_only(project_dir)
     elif command == "regen-views":
         return cmd_regen_views(project_dir)
     else:
