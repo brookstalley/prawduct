@@ -21,6 +21,7 @@ Then route:
 | Explicit target path provided | **Onboard**: set up the target as a product repo |
 | Current dir is a product repo (has `.prawduct/`) | **Health check**: validate and offer repair. If health is good, mention available per-feature migrations (`migrate --enable-coverage`, `migrate --enable-settings-layout`) when relevant. |
 | User asks "enable coverage" / "turn on F4" / "stamp settings layout" / "run migrate-settings" / similar | **Migrate**: see Migrate Flow below |
+| User asks "audit learnings" / "retire structurally-enforced learnings" / "check lifecycle metadata" / similar | **Audit Learnings**: see Audit Learnings Flow below |
 | Current dir is the framework repo (has `tools/prawduct-setup.py`) and no target | Ask what the user wants to do |
 
 ## Onboard Flow (target path provided)
@@ -72,6 +73,30 @@ Mostly a signal operation: stamps `v1_4_settings_migrated: true` in the manifest
 Re-runs the migration even when the manifest tracks it as complete. Use cases:
 - `--enable-coverage --force`: re-surface evidence-shape NOTEs after wiring up a verifier.
 - `--enable-settings-layout --force`: re-normalize settings.json after a hand-edit.
+
+## Audit Learnings Flow (lifecycle metadata triage)
+
+The `audit-learnings` subcommand walks `.prawduct/learnings.md`, reads the optional per-entry metadata comment, and reports promotion candidates (advisory), retirement candidates (sentinel-protected), and stale single-confirmation entries (>90 days old).
+
+The metadata comment is a single line placed immediately after each `## Title`:
+
+```markdown
+## My learning
+<!-- prawduct-learning: confirmations=2; created=2026-02-22; sentinel=tests/test_critic.py::test_summaries_check -->
+
+Body of the learning…
+```
+
+All three fields are optional. An entry without the comment is treated as "active, no lifecycle metadata" and stays untouched.
+
+Use when the user asks to "audit learnings", "retire structurally-enforced learnings", "check lifecycle metadata", or similar.
+
+1. Resolve the framework path the same way as Health Check.
+2. Run: `python3 <framework>/tools/prawduct-setup.py audit-learnings "$CLAUDE_PROJECT_DIR" --json`
+3. Relay each list — surface promotion candidates as advisory ("the rule has been confirmed twice — consider whether it belongs in `learnings.md` or can move to historical detail"), retirement candidates pending `--apply` ("the declared sentinel passes; running with `--apply` moves the entry to `learnings-detail.md`"), stale flags ("the entry is over 90 days old with no second confirmation — has the rule held up?"), and errors (failing sentinels, malformed dates).
+4. If the user confirms intent to retire, re-run with `--apply`: `python3 <framework>/tools/prawduct-setup.py audit-learnings "$CLAUDE_PROJECT_DIR" --apply --json`. The `--apply` invocation mutates two files: `.prawduct/learnings.md` (entry removed) and `.prawduct/learnings-detail.md` (entry appended under the "Historical (structurally enforced)" section).
+
+The audit is read-only by default. Promotion is always advisory — `learnings.md` doesn't have a sectioned active/promoted split; the count just surfaces in the report. Retirement is the only mutation, and only when `--apply` is passed AND the sentinel passes.
 
 ## Important Notes
 

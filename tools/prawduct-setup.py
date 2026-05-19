@@ -57,6 +57,7 @@ from lib import (  # noqa: F401
     V1_SESSION_FILES,
     V3_GITIGNORE_ENTRIES,
     V4_GITIGNORE_ENTRIES,
+    LearningEntry,
     _HISTORICAL_RENDER_DEPTH_CAP,
     _bootstrap_manifest,
     _match_historical_render,
@@ -65,6 +66,7 @@ from lib import (  # noqa: F401
     add_block_markers,
     apply_renames,
     archive_v1_dirs,
+    audit_learnings,
     clean_gitignore,
     clean_v1_session_files,
     compute_block_hash,
@@ -87,12 +89,16 @@ from lib import (  # noqa: F401
     migrate_change_log,
     migrate_project_state_v5,
     migrate_v4_to_v5,
+    parse_learning_metadata,
+    parse_learnings_file,
     render_template,
     replace_settings,
+    run_audit_learnings,
     run_init,
     run_migrate,
     run_migrate_coverage,
     run_migrate_settings_layout,
+    run_sentinel,
     run_sync,
     run_validate,
     run_views_command,
@@ -206,6 +212,31 @@ def main() -> int:
         help="Regenerate views (write files); without this, reports planned actions only",
     )
     views_parser.add_argument("--json", action="store_true", dest="json_mode", help="JSON output only")
+
+    # --- audit-learnings ---
+    audit_parser = subparsers.add_parser(
+        "audit-learnings",
+        help=(
+            "Audit .prawduct/learnings.md against optional lifecycle metadata "
+            "(confirmations / created / sentinel). Reports promotion / "
+            "retirement / stale candidates; --apply retires sentinel-pass "
+            "entries to learnings-detail.md."
+        ),
+    )
+    audit_parser.add_argument("product_dir", help="Product repo directory")
+    audit_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help=(
+            "Move sentinel-pass entries from learnings.md to "
+            "learnings-detail.md under the 'Historical (structurally "
+            "enforced)' section. Without --apply, the command only reports "
+            "what would change."
+        ),
+    )
+    audit_parser.add_argument(
+        "--json", action="store_true", dest="json_mode", help="JSON output only"
+    )
 
     args = parser.parse_args()
 
@@ -355,6 +386,65 @@ def main() -> int:
                 + f" {on_off_location}."
             )
         return 0 if "error" not in result else 1
+
+    elif args.command == "audit-learnings":
+        result = run_audit_learnings(args.product_dir, apply=args.apply)
+
+        if args.json_mode:
+            print(json.dumps(result, indent=2))
+            return 0 if "error" not in result else 1
+
+        if "error" in result:
+            log(f"Error: {result['error']}")
+            return 1
+
+        promotions = result["promotions"]
+        retirements = result["retirements"]
+        stale_flags = result["stale_flags"]
+        errors = result["errors"]
+
+        mode_label = "apply" if result["applied"] else "dry-run"
+        log(f"Learnings audit ({mode_label}): {result['product_dir']}")
+
+        if promotions:
+            log("")
+            log(f"  Promotion candidates ({len(promotions)} — advisory):")
+            for p in promotions:
+                log(f"    * {p['title']} (confirmations={p['confirmations']})")
+
+        if retirements:
+            log("")
+            log(f"  Retirement candidates ({len(retirements)}):")
+            for r in retirements:
+                if r["passed"] is True:
+                    status = "applied" if r["applied"] else "pending --apply"
+                    log(f"    * {r['title']}  [sentinel pass — {status}]")
+                elif r["passed"] is False:
+                    log(f"    ! {r['title']}  [sentinel FAIL — {r['sentinel']}]")
+                else:
+                    log(f"    ? {r['title']}  [sentinel skipped — {r['sentinel']}]")
+
+        if stale_flags:
+            log("")
+            log(f"  Stale flags ({len(stale_flags)}):")
+            for s in stale_flags:
+                log(
+                    f"    * {s['title']}  "
+                    f"(created={s['created']}, age={s['age_days']}d, "
+                    f"confirmations={s['confirmations']})"
+                )
+
+        if errors:
+            log("")
+            log(f"  Errors ({len(errors)}):")
+            for e in errors:
+                log(f"    ! {e['title']}: {e['error']}")
+
+        if not (promotions or retirements or stale_flags or errors):
+            log("  No lifecycle actions — every entry is either active "
+                "with no metadata or annotated but not yet a candidate.")
+
+        return 0
 
     elif args.command == "validate":
         result = run_validate(args.target_dir)
