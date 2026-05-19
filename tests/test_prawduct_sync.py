@@ -46,6 +46,8 @@ migrate_backlog = _mod.migrate_backlog
 enable_v1_4_views = _mod.enable_v1_4_views
 enable_v1_4_coverage = _mod.enable_v1_4_coverage
 run_migrate_coverage = _mod.run_migrate_coverage
+enable_v1_4_settings_layout = _mod.enable_v1_4_settings_layout
+run_migrate_settings_layout = _mod.run_migrate_settings_layout
 untrack_gitignored_files = _mod.untrack_gitignored_files
 
 
@@ -3380,6 +3382,422 @@ class TestRunMigrateCoverage:
             "force",
             "actions",
             "notes",
+        }
+
+
+# =============================================================================
+# F5b — settings.json layout migration (manifest flag + legacy_cleanup pass).
+# =============================================================================
+
+
+def _minimal_template(tmp_path: Path) -> Path:
+    """v1.4 canonical settings.json template. Mirrors templates/product-settings.json:
+    two single-line dispatches to product-hook + a banner."""
+    tpl = tmp_path / "product-settings.json"
+    tpl.write_text(json.dumps({
+        "hooks": {
+            "SessionStart": [{"matcher": "startup|clear|resume", "hooks": [
+                {"type": "command",
+                 "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+            ]}],
+            "Stop": [{"matcher": "", "hooks": [
+                {"type": "command",
+                 "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+            ]}],
+        },
+        "companyAnnouncements": ["{{PRODUCT_NAME}} — Built with Prawduct"],
+    }, indent=2))
+    return tpl
+
+
+class TestEnableV1_4SettingsLayout:
+
+    def test_no_settings_file_no_op(self, tmp_path: Path):
+        """No .claude/settings.json — function exits cleanly without setting the
+        manifest flag (the flag means 'I migrated', not 'I tried and there was
+        nothing'). Mirrors enable_v1_4_views' fail-quiet contract for repos that
+        aren't fully scaffolded."""
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest
+        )
+
+        assert actions == []
+        assert notes == []
+        assert "v1_4_settings_migrated" not in manifest
+
+    def test_already_minimal_sets_flag_only(self, tmp_path: Path):
+        """Product already on canonical layout (modern hook dispatch, no v1
+        markers) → no file mutation, but manifest flag is set so this product
+        counts as migrated. The user has explicitly opted in even though
+        nothing needed changing."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup|clear|resume", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            },
+            "companyAnnouncements": ["MyApp — Built with Prawduct"],
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "MyApp"}, manifest
+        )
+
+        assert actions == []
+        assert manifest["v1_4_settings_migrated"] is True
+        # Surface to the user that this is a no-op so they don't suspect
+        # the migration silently failed.
+        assert any("already on the canonical" in n.lower() for n in notes)
+
+    def test_strips_v1_hook_markers(self, tmp_path: Path):
+        """Legacy v1 settings.json with framework-path / governance-hook
+        markers → stripped, replaced with current dispatch, manifest flag set,
+        action reported."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup", "hooks": [
+                    {"type": "command",
+                     "command": "bash $CLAUDE_PROJECT_DIR/tools/governance-hook clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command",
+                     "command": "bash $CLAUDE_PROJECT_DIR/tools/governance-hook stop"}
+                ]}],
+            },
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {}
+
+        actions, _ = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "Legacy"}, manifest
+        )
+
+        assert any("settings.json" in a.lower() for a in actions)
+        assert manifest["v1_4_settings_migrated"] is True
+
+        merged = json.loads(settings.read_text())
+        # All hook commands now go through product-hook (the canonical form);
+        # the governance-hook bash dispatcher is gone.
+        cmds = [
+            h.get("command", "")
+            for entries in merged["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert all("governance-hook" not in c for c in cmds)
+        assert any("product-hook" in c and c.startswith("python3 ") for c in cmds)
+
+    def test_preserves_user_hooks_during_cleanup(self, tmp_path: Path):
+        """User-added Stop hook stays alongside the prawduct hook after
+        migration. The legacy_cleanup pass strips only prawduct-owned entries,
+        never user-authored ones — same invariant as TestMergeSettings."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup", "hooks": [
+                    {"type": "command",
+                     "command": "bash $CLAUDE_PROJECT_DIR/tools/governance-hook clear"}
+                ]}],
+                "Stop": [
+                    {"matcher": "", "hooks": [
+                        {"type": "command",
+                         "command": "bash $CLAUDE_PROJECT_DIR/tools/governance-hook stop"}
+                    ]},
+                    {"matcher": "", "hooks": [
+                        {"type": "command", "command": "my-custom-cleanup"}
+                    ]},
+                ],
+            },
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+
+        enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest={}
+        )
+
+        stop_cmds = [
+            h.get("command", "")
+            for entry in json.loads(settings.read_text())["hooks"]["Stop"]
+            for h in entry.get("hooks", [])
+        ]
+        assert "my-custom-cleanup" in stop_cmds
+        assert any("product-hook" in c and "python3" in c for c in stop_cmds)
+        assert not any("governance-hook" in c for c in stop_cmds)
+
+    def test_preserves_top_level_user_keys(self, tmp_path: Path):
+        """Non-prawduct top-level keys (customSetting, permissions, etc.) are
+        preserved verbatim. The migration touches hooks + banner only."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "customSetting": True,
+            "permissions": {"allow": ["Bash(echo *)"]},
+            "hooks": {},
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+
+        enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest={}
+        )
+
+        merged = json.loads(settings.read_text())
+        assert merged["customSetting"] is True
+        assert merged["permissions"] == {"allow": ["Bash(echo *)"]}
+
+    def test_one_shot_manifest_short_circuits(self, tmp_path: Path):
+        """Manifest flag set → no file read, no actions, no notes. Mirrors
+        enable_v1_4_coverage's one-shot tracking. Without this, an
+        accidental re-invocation would re-normalize a settings.json the user
+        may have since hand-edited."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        # Write something that WOULD be normalized, to prove it isn't read.
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "bash governance-hook clear"}
+                ]}]
+            }
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+        original = settings.read_text()
+        manifest: dict = {"v1_4_settings_migrated": True}
+
+        actions, notes = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest
+        )
+
+        assert actions == []
+        assert notes == []
+        assert settings.read_text() == original
+
+    def test_force_overrides_one_shot(self, tmp_path: Path):
+        """`force=True` bypasses the manifest one-shot. Use case: a user
+        re-runs after manually re-editing settings.json to re-normalize."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "bash governance-hook clear"}
+                ]}]
+            }
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {"v1_4_settings_migrated": True}
+
+        actions, _ = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest, force=True
+        )
+
+        assert any("settings.json" in a.lower() for a in actions)
+        # File mutated despite the pre-existing flag.
+        cmds = [
+            h.get("command", "")
+            for entries in json.loads(settings.read_text())["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert not any("governance-hook" in c for c in cmds)
+
+    def test_bad_json_surfaces_diagnostic(self, tmp_path: Path):
+        """Unparseable settings.json → diagnostic note, no crash, manifest
+        flag NOT set (the migration didn't actually run to completion).
+        Mirrors merge_settings' bad-JSON tolerance (returns False)."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text("not valid json {{{")
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest
+        )
+
+        assert actions == []
+        assert any("could not parse" in n.lower() or "parse" in n.lower() for n in notes)
+        # No silent flag-flip when the migration didn't actually run.
+        assert "v1_4_settings_migrated" not in manifest
+
+
+# =============================================================================
+# `prawduct-setup migrate --enable-settings-layout` subcommand runner.
+# =============================================================================
+
+
+class TestRunMigrateSettingsLayout:
+
+    def _scaffold_product(self, tmp_path: Path, framework: Path) -> Path:
+        """Create a minimal product layout with .prawduct/, .claude/settings.json
+        already on the minimal layout, and a sync-manifest.json pointing at
+        the given framework. Returns the product root."""
+        product = tmp_path / "product"
+        prawduct = product / ".prawduct"
+        prawduct.mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "TestApp"\n'
+        )
+        (prawduct / "sync-manifest.json").write_text(
+            json.dumps({
+                "framework_version": "1.3.17",
+                "framework_source": str(framework),
+                "product_name": "TestApp",
+                "files": {},
+            })
+        )
+        settings = product / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup|clear|resume", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            },
+            "companyAnnouncements": ["TestApp — Built with Prawduct"],
+        }, indent=2))
+        return product
+
+    def _scaffold_framework(self, tmp_path: Path) -> Path:
+        """Synthetic framework checkout with just enough on disk for the
+        runner to resolve templates: templates/product-settings.json."""
+        fw = tmp_path / "framework"
+        (fw / "templates").mkdir(parents=True)
+        (fw / "templates" / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup|clear|resume", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            },
+            "companyAnnouncements": ["{{PRODUCT_NAME}} — Built with Prawduct"],
+        }, indent=2))
+        return fw
+
+    def test_no_prawduct_returns_error(self, tmp_path: Path):
+        result = run_migrate_settings_layout(str(tmp_path))
+        assert "error" in result
+        assert ".prawduct" in result["error"]
+
+    def test_no_manifest_returns_actionable_error(self, tmp_path: Path):
+        (tmp_path / ".prawduct").mkdir()
+        result = run_migrate_settings_layout(str(tmp_path))
+        assert "error" in result
+        assert "prawduct-setup setup" in result["error"]
+
+    def test_framework_unreachable_returns_actionable_error(self, tmp_path: Path):
+        """Manifest's framework_source points nowhere → error names the env
+        var fallback. Mirrors run_sync's framework-resolution error path so
+        the recovery advice is consistent across commands."""
+        product = tmp_path / "product"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps({"framework_source": "/nonexistent/framework", "files": {}})
+        )
+        result = run_migrate_settings_layout(str(product))
+        assert "error" in result
+        assert "framework" in result["error"].lower()
+
+    def test_persists_manifest_flag(self, tmp_path: Path):
+        """After a successful run, sync-manifest.json on disk has
+        v1_4_settings_migrated set — even when nothing changed in the file
+        (already-minimal case still counts as 'opted in')."""
+        fw = self._scaffold_framework(tmp_path)
+        product = self._scaffold_product(tmp_path, fw)
+
+        result = run_migrate_settings_layout(str(product))
+
+        assert "error" not in result
+        assert result["migrated"] is True
+
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        assert manifest.get("v1_4_settings_migrated") is True
+
+    def test_one_shot_short_circuits_without_force(self, tmp_path: Path):
+        """Second invocation without --force is a fast no-op (flag already
+        in manifest). Mirrors run_migrate_coverage's one-shot semantics."""
+        fw = self._scaffold_framework(tmp_path)
+        product = self._scaffold_product(tmp_path, fw)
+
+        run_migrate_settings_layout(str(product))
+        # Mutate settings.json to a non-canonical shape — second run without
+        # --force should NOT touch it (flag short-circuits).
+        settings_path = product / ".claude" / "settings.json"
+        settings_path.write_text(json.dumps({
+            "hooks": {"Stop": [{"matcher": "", "hooks": [
+                {"type": "command", "command": "bash governance-hook stop"}
+            ]}]}
+        }, indent=2))
+
+        result = run_migrate_settings_layout(str(product))
+
+        assert result["actions"] == []
+        # Still has the bad shape because we didn't actually re-run.
+        cmds = [
+            h.get("command", "")
+            for entries in json.loads(settings_path.read_text())["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert any("governance-hook" in c for c in cmds)
+
+    def test_force_re_runs_normalization(self, tmp_path: Path):
+        """--force bypasses the one-shot and re-normalizes."""
+        fw = self._scaffold_framework(tmp_path)
+        product = self._scaffold_product(tmp_path, fw)
+
+        run_migrate_settings_layout(str(product))
+        settings_path = product / ".claude" / "settings.json"
+        settings_path.write_text(json.dumps({
+            "hooks": {"Stop": [{"matcher": "", "hooks": [
+                {"type": "command", "command": "bash governance-hook stop"}
+            ]}]}
+        }, indent=2))
+
+        result = run_migrate_settings_layout(str(product), force=True)
+
+        assert any("settings.json" in a.lower() for a in result["actions"])
+        cmds = [
+            h.get("command", "")
+            for entries in json.loads(settings_path.read_text())["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert not any("governance-hook" in c for c in cmds)
+
+    def test_result_shape_is_stable(self, tmp_path: Path):
+        """JSON-mode callers depend on the keys being present in every
+        branch: product_dir, migrated, force, actions, notes."""
+        fw = self._scaffold_framework(tmp_path)
+        product = self._scaffold_product(tmp_path, fw)
+
+        result = run_migrate_settings_layout(str(product))
+
+        assert set(result.keys()) >= {
+            "product_dir", "migrated", "force", "actions", "notes",
         }
 
 

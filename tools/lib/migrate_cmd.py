@@ -20,6 +20,7 @@ from .core import (
     V1_GITIGNORE_ENTRIES,
     V1_SESSION_FILES,
     V4_GITIGNORE_ENTRIES,
+    _resolve_framework_dir,
     compute_block_hash,
     compute_hash,
     copy_hook,
@@ -649,6 +650,215 @@ def run_migrate_coverage(product_dir: str, *, force: bool = False) -> dict:
     return {
         "product_dir": str(product_path),
         "enabled": enabled,
+        "force": force,
+        "actions": actions,
+        "notes": notes,
+    }
+
+
+# =============================================================================
+# F5b — settings.json layout migration (manifest flag + legacy_cleanup pass).
+# =============================================================================
+#
+# Unlike ``enable_v1_4_views`` (silent auto-enable every sync) and unlike
+# ``enable_v1_4_coverage`` (commits the project to BLOCKING Critic findings),
+# the settings-layout migration is mostly a *signal* operation: it stamps
+# ``v1_4_settings_migrated: true`` in the manifest as the explicit user opt-in.
+# For products already on the canonical minimal layout (the framework's own
+# template since v1.3.x), the file mutation is a no-op; for older repos with
+# v1/v3 hook markers that normal sync skipped, the ``legacy_cleanup=True``
+# pass strips them. The flag exists so v1.4.1's Critic NOTE on unmigrated
+# repos has a single state bit to read — not so this migration does anything
+# load-bearing in v1.4.0.
+
+def enable_v1_4_settings_layout(
+    product_dir: Path,
+    template_path: Path,
+    subs: dict[str, str],
+    manifest: dict,
+    *,
+    force: bool = False,
+) -> tuple[list[str], list[str]]:
+    """User-invoked v1.4 migration: stamp settings.json as on the canonical
+    minimal layout.
+
+    Invokes :func:`merge_settings` with ``legacy_cleanup=True`` against the
+    product's ``.claude/settings.json``, then records the migration in the
+    manifest. The cleanup pass is the same one used by v1→v5 migration
+    (``migrate_cmd.py:run_migrate``); running it again on a v5 product is a
+    no-op when nothing predates the current layout, which is the expected
+    state for products that have been syncing regularly.
+
+    Sets ``manifest["v1_4_settings_migrated"] = True`` on success so an
+    accidental re-invocation short-circuits. The flag means "the user
+    explicitly opted into the canonical layout," not "the file changed" —
+    products already minimal get the flag and a single explanatory NOTE.
+
+    Returns ``(actions, notes)``:
+      * Actions are file mutations (one line if settings.json was rewritten).
+      * Notes surface the already-minimal-no-op case, parse failures, and
+        the v1.4.1-NOTE consequence.
+
+    Tolerates missing settings.json (returns empty, no flag) and unparseable
+    settings.json (returns empty, surfaces diagnostic note, no flag). In both
+    cases the migration didn't actually run to completion, so flipping the
+    flag would falsely advertise success.
+    """
+    actions: list[str] = []
+    notes: list[str] = []
+
+    if manifest.get("v1_4_settings_migrated") and not force:
+        return actions, notes
+
+    settings_path = product_dir / ".claude" / "settings.json"
+    if not settings_path.is_file():
+        return actions, notes
+
+    # Validate JSON shape up front. ``merge_settings`` already handles bad
+    # JSON by logging and returning False, but we need to surface the parse
+    # failure as a NOTE *and* refuse to set the manifest flag — otherwise a
+    # silently-broken settings.json gets "migrated" with no diagnostic trail.
+    try:
+        json.loads(settings_path.read_text())
+    except json.JSONDecodeError as exc:
+        notes.append(
+            f"Could not parse .claude/settings.json ({exc}); fix the JSON "
+            "syntax and re-run migrate --enable-settings-layout."
+        )
+        return actions, notes
+
+    changed = merge_settings(
+        settings_path, template_path, subs, legacy_cleanup=True
+    )
+
+    if changed:
+        actions.append(
+            "Normalized .claude/settings.json (stripped legacy hooks, "
+            "regenerated banner; user hooks preserved)"
+        )
+    else:
+        # Distinguish "already minimal" from "we wrote something" so the user
+        # knows whether their file changed. Without this NOTE, a no-op migration
+        # is indistinguishable from a silently-failed one.
+        notes.append(
+            "Settings.json was already on the canonical minimal layout; "
+            "no file changes were necessary. Manifest flag updated."
+        )
+
+    notes.append(
+        "Next-release consequence: v1.4.1's Critic surfaces a NOTE on "
+        "products that haven't run this migration. Running migrate "
+        "--enable-settings-layout silences that NOTE going forward."
+    )
+
+    # One-shot manifest tracking. Set after the cleanup pass succeeds so a
+    # parse-failure path above can't silently advertise migration.
+    manifest["v1_4_settings_migrated"] = True
+
+    return actions, notes
+
+
+def run_migrate_settings_layout(
+    product_dir: str, *, force: bool = False
+) -> dict:
+    """User-facing runner for ``prawduct-setup migrate --enable-settings-layout``.
+
+    Loads ``sync-manifest.json``, resolves the framework path the same way
+    ``run_sync`` does (manifest ``framework_source`` → ``PRAWDUCT_FRAMEWORK_DIR``
+    env → sibling ``../prawduct`` fallback), constructs the canonical
+    ``{{PRODUCT_NAME}}`` / ``{{PRAWDUCT_VERSION}}`` subs, invokes
+    :func:`enable_v1_4_settings_layout`, and persists the manifest.
+
+    Returns a dict shaped for both human and JSON output:
+
+        {
+          "product_dir": "/abs/path",
+          "migrated": bool,           # True iff manifest flag ended up true
+          "force": bool,
+          "actions": [str, ...],     # file mutations
+          "notes": [str, ...],       # already-minimal / next-release guidance
+        }
+
+    On error returns ``{"error": "..."}`` and skips manifest write-back.
+    Errors are actionable: each names the next command to run rather than
+    just "not found" (mirrors ``run_migrate_coverage`` shape).
+
+    The runner is intentionally thin: policy lives in
+    :func:`enable_v1_4_settings_layout`. The framework-resolution layer
+    matches ``run_sync`` so the recovery advice users see is consistent
+    across commands.
+    """
+    product_path = Path(product_dir).resolve()
+    prawduct_dir = product_path / ".prawduct"
+    if not prawduct_dir.is_dir():
+        return {
+            "error": f"Not a prawduct product: {product_path} has no .prawduct/ directory"
+        }
+
+    manifest_path = prawduct_dir / "sync-manifest.json"
+    if not manifest_path.is_file():
+        return {
+            "error": (
+                f"No sync-manifest.json at {manifest_path} — run "
+                "`prawduct-setup setup` to initialize the product repo before "
+                "migrating."
+            )
+        }
+
+    try:
+        manifest = load_json(manifest_path)
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"error": f"Could not read sync-manifest.json: {exc}"}
+
+    framework = _resolve_framework_dir(manifest, None, product_path)
+    if framework is None:
+        return {
+            "error": (
+                "Could not resolve framework directory (checked manifest "
+                "framework_source, PRAWDUCT_FRAMEWORK_DIR env, and sibling "
+                "../prawduct). Set PRAWDUCT_FRAMEWORK_DIR or clone the "
+                "framework as a sibling directory, then re-run."
+            )
+        }
+
+    template_path = framework / "templates" / "product-settings.json"
+    if not template_path.is_file():
+        return {
+            "error": (
+                f"Framework at {framework} is missing "
+                "templates/product-settings.json — the resolved framework "
+                "checkout looks incomplete."
+            )
+        }
+
+    product_name = (
+        infer_product_name(product_path)
+        or manifest.get("product_name")
+        or product_path.name
+    )
+    subs = {
+        "{{PRODUCT_NAME}}": product_name,
+        "{{PRAWDUCT_VERSION}}": PRAWDUCT_VERSION,
+    }
+
+    try:
+        actions, notes = enable_v1_4_settings_layout(
+            product_path, template_path, subs, manifest, force=force
+        )
+    except OSError as exc:
+        return {"error": f"Migration failed: {exc}"}
+
+    # Persist manifest regardless of whether anything changed in the file —
+    # the one-shot flag may have been set even on a no-op so subsequent
+    # accidental invocations short-circuit.
+    try:
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    except OSError as exc:
+        return {"error": f"Could not write sync-manifest.json: {exc}"}
+
+    return {
+        "product_dir": str(product_path),
+        "migrated": bool(manifest.get("v1_4_settings_migrated")),
         "force": force,
         "actions": actions,
         "notes": notes,

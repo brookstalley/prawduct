@@ -52,6 +52,7 @@ from .migrate_cmd import (  # noqa: F401
     clean_v1_session_files,
     delete_v1_files,
     enable_v1_4_coverage,
+    enable_v1_4_settings_layout,
     enable_v1_4_views,
     generate_sync_manifest,
     migrate_backlog,
@@ -59,6 +60,7 @@ from .migrate_cmd import (  # noqa: F401
     migrate_project_state_v5,
     run_migrate,
     run_migrate_coverage,
+    run_migrate_settings_layout,
     split_learnings_v5,
     upgrade_manifest_strategy,
 )

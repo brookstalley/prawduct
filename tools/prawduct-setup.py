@@ -74,6 +74,7 @@ from lib import (  # noqa: F401
     delete_v1_files,
     detect_version,
     enable_v1_4_coverage,
+    enable_v1_4_settings_layout,
     enable_v1_4_views,
     ensure_dir,
     extract_block,
@@ -91,6 +92,7 @@ from lib import (  # noqa: F401
     run_init,
     run_migrate,
     run_migrate_coverage,
+    run_migrate_settings_layout,
     run_sync,
     run_validate,
     run_views_command,
@@ -150,7 +152,7 @@ def main() -> int:
     # enforcement, which commits the project to BLOCKING Critic findings).
     migrate_parser = subparsers.add_parser(
         "migrate",
-        help="Per-feature v1.4 opt-in migrations (e.g. --enable-coverage)",
+        help="Per-feature v1.4 opt-in migrations (e.g. --enable-coverage, --enable-settings-layout)",
     )
     migrate_parser.add_argument("product_dir", help="Product repo directory")
     migrate_parser.add_argument(
@@ -165,12 +167,24 @@ def main() -> int:
         ),
     )
     migrate_parser.add_argument(
+        "--enable-settings-layout",
+        action="store_true",
+        dest="enable_settings_layout",
+        help=(
+            "Stamp .claude/settings.json as on the v1.4 canonical minimal "
+            "layout. Runs an aggressive legacy_cleanup pass (strips v1/v3 "
+            "hook markers, regenerates the banner, preserves user hooks) "
+            "and sets the manifest's v1_4_settings_migrated flag. v1.4.1's "
+            "Critic NOTE on unmigrated products keys off this flag."
+        ),
+    )
+    migrate_parser.add_argument(
         "--force",
         action="store_true",
         help=(
             "Re-run even when the manifest tracks the migration as complete "
             "(useful for re-surfacing evidence-shape NOTEs after wiring up a "
-            "verifier)."
+            "verifier, or re-normalizing a hand-edited settings.json)."
         ),
     )
     migrate_parser.add_argument(
@@ -284,16 +298,41 @@ def main() -> int:
         return 0
 
     elif args.command == "migrate":
-        # Currently the only migration is --enable-coverage. When future
-        # feature opt-ins land (e.g. --enable-operator-verification per F10),
-        # this dispatch grows a second branch; until then, missing flag is
-        # treated as "what do you want to do?" rather than silently passing.
-        if not args.enable_coverage:
-            log("error: `migrate` requires a feature flag (e.g. --enable-coverage)")
+        # Per-feature opt-in migrations. Each flag dispatches to its own
+        # runner; exactly one must be set. Mutual exclusion is enforced at
+        # dispatch time rather than via argparse mutually_exclusive_group so
+        # the help text shows both flags as peer options.
+        feature_flags = [
+            ("enable_coverage", args.enable_coverage),
+            ("enable_settings_layout", args.enable_settings_layout),
+        ]
+        active = [name for name, on in feature_flags if on]
+        if not active:
+            log(
+                "error: `migrate` requires a feature flag "
+                "(--enable-coverage or --enable-settings-layout)"
+            )
             migrate_parser.print_help()
             return 1
+        if len(active) > 1:
+            log(
+                "error: `migrate` accepts one feature flag per invocation; "
+                f"got {', '.join(active)}. Run them as separate commands."
+            )
+            return 1
 
-        result = run_migrate_coverage(args.product_dir, force=args.force)
+        if args.enable_coverage:
+            result = run_migrate_coverage(args.product_dir, force=args.force)
+            success_label = "Coverage migration"
+            on_off_field = "enabled"
+            on_off_label = "coverage_required"
+            on_off_location = "on disk"
+        else:  # args.enable_settings_layout
+            result = run_migrate_settings_layout(args.product_dir, force=args.force)
+            success_label = "Settings-layout migration"
+            on_off_field = "migrated"
+            on_off_label = "v1_4_settings_migrated"
+            on_off_location = "in manifest"
 
         if args.json_mode:
             print(json.dumps(result, indent=2))
@@ -302,18 +341,18 @@ def main() -> int:
                 log(f"Error: {result['error']}")
                 return 1
             if result["actions"]:
-                log(f"Coverage migration applied to {result['product_dir']}:")
+                log(f"{success_label} applied to {result['product_dir']}:")
                 for action in result["actions"]:
                     log(f"  + {action}")
             else:
-                log(f"Coverage migration: no changes ({result['product_dir']})")
+                log(f"{success_label}: no changes ({result['product_dir']})")
             for note in result["notes"]:
                 log(f"  * {note}")
             log("")
             log(
-                "  coverage_required is "
-                + ("ON" if result["enabled"] else "OFF")
-                + " on disk."
+                f"  {on_off_label} is "
+                + ("ON" if result.get(on_off_field) else "OFF")
+                + f" {on_off_location}."
             )
         return 0 if "error" not in result else 1
 
