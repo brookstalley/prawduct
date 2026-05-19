@@ -69,6 +69,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
 - If `infrastructure_dependencies` is declared in project-state.yaml: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when (read source or probe before drafting handlers — see `methodology/planning.md`) → **WARNING** if missing.
+- **Operator verification (F10):** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ### 3. Nothing Is Unintended
 - No unlisted dependencies → **BLOCKING**.

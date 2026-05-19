@@ -52,6 +52,7 @@ from .migrate_cmd import (  # noqa: F401
     clean_v1_session_files,
     delete_v1_files,
     enable_v1_4_coverage,
+    enable_v1_4_operator_verification,
     enable_v1_4_settings_layout,
     enable_v1_4_views,
     generate_sync_manifest,
@@ -60,6 +61,7 @@ from .migrate_cmd import (  # noqa: F401
     migrate_project_state_v5,
     run_migrate,
     run_migrate_coverage,
+    run_migrate_operator_verification,
     run_migrate_settings_layout,
     split_learnings_v5,
     upgrade_manifest_strategy,
@@ -89,4 +91,19 @@ from .audit_learnings_cmd import (  # noqa: F401
     parse_learnings_file,
     run_audit_learnings,
     run_sentinel,
+)
+
+# Operator-verification queue (F10 — pre-merge human-verification gate)
+from .operator_verification import (  # noqa: F401
+    VerificationEntry,
+    count_pending,
+    format_operator_verification,
+    is_operator_verification_required,
+    mark_accepted,
+    mark_verified,
+    parse_operator_verification,
+    pending_entries,
+    run_accept_pending,
+    run_check_operator_verification,
+    run_verify_entry,
 )

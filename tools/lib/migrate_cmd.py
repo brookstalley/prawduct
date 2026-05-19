@@ -1462,3 +1462,231 @@ def run_migrate(target_dir: str, product_name: str | None = None) -> dict:
         "actions": actions,
         "files_changed": len(actions),
     }
+
+
+# =============================================================================
+# F10 — operator-verification queue (manifest flag + project-state flip +
+# template placement). Mirrors ``enable_v1_4_coverage`` rather than
+# ``enable_v1_4_settings_layout``: the migration is enforcement-touching, so
+# turning it on commits the project to BLOCKING /pr gates whenever the queue
+# has pending entries. Per the "Auto-enable belongs with visibility, not
+# enforcement" learning, this never auto-fires from sync — only from explicit
+# ``prawduct-setup migrate --enable-operator-verification``.
+# =============================================================================
+
+
+def enable_v1_4_operator_verification(
+    product_dir: Path,
+    manifest: dict,
+    *,
+    force: bool = False,
+) -> tuple[list[str], list[str]]:
+    """User-invoked v1.4 migration: enable F10 operator-verification gate.
+
+    Three side effects, each idempotent:
+
+      1. Flips ``operator_verification_required: false`` → ``true`` in
+         ``project-state.yaml`` (appends a documented block when the key
+         is absent — same column-0 detector/mutator pattern as
+         ``enable_v1_4_coverage`` so inline-comment forms are tolerated).
+      2. Places ``.prawduct/operator-verification.md`` from the framework
+         template if absent (the queue file must exist before the
+         ``/pr`` gate can read it).
+      3. Sets ``manifest['v1_4_operator_verification_enabled'] = True`` so
+         accidental re-invocations short-circuit. ``force=True`` bypasses
+         the one-shot check.
+
+    Returns ``(actions, notes)``. Actions are file mutations; notes
+    surface the next-PR consequence (Critic Goal 2 NOTE for visual-change
+    chunks; ``/pr create`` BLOCKING on pending entries).
+    """
+    actions: list[str] = []
+    notes: list[str] = []
+
+    if manifest.get("v1_4_operator_verification_enabled") and not force:
+        return actions, notes
+
+    prawduct_dir = product_dir / ".prawduct"
+    state_path = prawduct_dir / "project-state.yaml"
+    queue_path = prawduct_dir / "operator-verification.md"
+
+    if not state_path.is_file():
+        return actions, notes
+
+    content = state_path.read_text()
+    original = content
+
+    has_key = (
+        "\noperator_verification_required:" in content
+        or content.startswith("operator_verification_required:")
+    )
+
+    already_on = False
+    if has_key:
+        for raw in content.splitlines():
+            if raw[:1] in (" ", "\t"):
+                continue
+            stripped = raw.split("#", 1)[0].rstrip()
+            if stripped.startswith("operator_verification_required:"):
+                value = stripped.split(":", 1)[1].strip().lower()
+                already_on = value == "true"
+                break
+
+    if has_key and not already_on:
+        new_lines: list[str] = []
+        flipped = False
+        for line in content.split("\n"):
+            if flipped or line[:1] in (" ", "\t"):
+                new_lines.append(line)
+                continue
+            stripped = line.split("#", 1)[0].rstrip()
+            if (
+                stripped.startswith("operator_verification_required:")
+                and stripped.split(":", 1)[1].strip().lower() == "false"
+            ):
+                tail = line.split("#", 1)[1] if "#" in line else ""
+                rewritten = "operator_verification_required: true"
+                if tail:
+                    rewritten += "  #" + tail
+                new_lines.append(rewritten)
+                flipped = True
+            else:
+                new_lines.append(line)
+        if flipped:
+            content = "\n".join(new_lines)
+            actions.append(
+                "Flipped operator_verification_required: false → true in "
+                "project-state.yaml (v1.4 F10 operator-verification gate enabled)"
+            )
+
+    if not has_key:
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += (
+            "\n"
+            "# =============================================================================\n"
+            "# OPERATOR VERIFICATION (opt-in, v1.4+)\n"
+            "# =============================================================================\n"
+            "# When true, `/pr create` BLOCKS if `.prawduct/operator-verification.md`\n"
+            "# has any entry with `**Status:** pending`. Drain via\n"
+            "# `python3 tools/prawduct-setup.py verify <product_dir> <VRF-ID>` or\n"
+            "# override per-PR with `--accept-pending-verification \"rationale\"`.\n"
+            "# Enabled by `prawduct-setup migrate --enable-operator-verification`.\n"
+            "\n"
+            "operator_verification_required: true\n"
+        )
+        actions.append(
+            "Added operator_verification_required: true to project-state.yaml "
+            "(v1.4 F10 operator-verification gate enabled)"
+        )
+
+    if content != original:
+        state_path.write_text(content)
+
+    if already_on and not actions:
+        notes.append(
+            "operator_verification_required is already true — nothing to "
+            "flip. Re-running with --force re-places the queue template if missing."
+        )
+
+    # Place the queue template if absent. Mutates only on first run (and on
+    # --force re-placement when the file is missing); existing queues are
+    # never overwritten — they are append-only user state.
+    if not queue_path.is_file():
+        template_path = TEMPLATES_DIR / "operator-verification.md"
+        if template_path.is_file():
+            prawduct_dir.mkdir(parents=True, exist_ok=True)
+            queue_path.write_text(template_path.read_text())
+            actions.append(
+                f"Placed {queue_path.relative_to(product_dir)} from template "
+                "(empty queue; ready for chunk-close enqueues)"
+            )
+        else:
+            notes.append(
+                f"Could not place {queue_path.relative_to(product_dir)}: "
+                f"framework template missing at {template_path}. "
+                "Verify the framework checkout is complete."
+            )
+
+    notes.append(
+        "Next-PR consequence: `/pr create` will BLOCK whenever "
+        "`.prawduct/operator-verification.md` has pending entries. "
+        "Append entries during chunk-close for visual / live-integration "
+        "changes (see methodology/building.md). Override with "
+        "`/pr create --accept-pending-verification \"rationale\"`."
+    )
+
+    manifest["v1_4_operator_verification_enabled"] = True
+
+    return actions, notes
+
+
+def run_migrate_operator_verification(
+    product_dir: str, *, force: bool = False
+) -> dict:
+    """User-facing runner for ``prawduct-setup migrate --enable-operator-verification``.
+
+    Loads ``sync-manifest.json``, invokes :func:`enable_v1_4_operator_verification`,
+    persists the manifest, and returns a dict shaped like the other migrate
+    runners (``product_dir``, ``enabled``, ``force``, ``actions``, ``notes``)
+    or ``{"error": "..."}``.
+
+    Re-reads ``operator_verification_required`` from on-disk state after
+    the migration so ``enabled`` reflects ground truth (the manifest flag
+    records "we ran the migration"; the YAML may have been hand-edited
+    between runs).
+    """
+    product_path = Path(product_dir).resolve()
+    prawduct_dir = product_path / ".prawduct"
+    if not prawduct_dir.is_dir():
+        return {
+            "error": (
+                f"Not a prawduct product: {product_path} has no .prawduct/ directory"
+            )
+        }
+
+    manifest_path = prawduct_dir / "sync-manifest.json"
+    if not manifest_path.is_file():
+        return {
+            "error": (
+                f"No sync-manifest.json at {manifest_path} — run "
+                "`prawduct-setup setup` to initialize the product repo before "
+                "migrating."
+            )
+        }
+
+    try:
+        manifest = load_json(manifest_path)
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"error": f"Could not read sync-manifest.json: {exc}"}
+
+    try:
+        actions, notes = enable_v1_4_operator_verification(
+            product_path, manifest, force=force
+        )
+    except OSError as exc:
+        return {"error": f"Migration failed: {exc}"}
+
+    try:
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    except OSError as exc:
+        return {"error": f"Could not write sync-manifest.json: {exc}"}
+
+    state_path = prawduct_dir / "project-state.yaml"
+    enabled = False
+    if state_path.is_file():
+        for raw in state_path.read_text().splitlines():
+            if raw[:1] in (" ", "\t"):
+                continue
+            stripped = raw.split("#", 1)[0].rstrip()
+            if stripped.startswith("operator_verification_required:"):
+                enabled = stripped.split(":", 1)[1].strip().lower() == "true"
+                break
+
+    return {
+        "product_dir": str(product_path),
+        "enabled": enabled,
+        "force": force,
+        "actions": actions,
+        "notes": notes,
+    }

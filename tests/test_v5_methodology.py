@@ -98,8 +98,17 @@ class TestBuildingMethodology:
         # (~75 tokens after aggressive trimming — the floor-vs-executed
         # distinction is the chunk's reason for existing). If this test
         # fails again, prefer trimming over another bump.
+        #
+        # Bumped from 4375 → 4400 in v1.4 Chunk 14 (F10 — operator-verification
+        # queue + /pr BLOCKING gate). The chunk-close step gains a one-sentence
+        # pointer naming the queue file, the `Visual change:` declaration, and
+        # the `operator_verification_required` flag — trimmed to ~30 tokens
+        # before bumping by 25. The new chunk-close step is required by the
+        # v1.4 maintenance plan (methodology pipeline coverage); folding it
+        # into "Update build plan Status" was rejected because the enqueue
+        # action is conceptually separate from marking the chunk shipped.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4375, f"building.md is ~{tokens} tokens, should be <4375"
+        assert tokens < 4400, f"building.md is ~{tokens} tokens, should be <4400"
 
 
 # =============================================================================

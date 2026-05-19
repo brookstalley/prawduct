@@ -90,6 +90,8 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 
+**Operator verification (F10).** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/pr create` blocks on pending entries when `operator_verification_required: true`.
+
 **Verify artifacts are current.** Confirm artifacts reflect the code. The Critic checks bidirectional freshness. CLAUDE.md is an instruction file, not an artifact — the Critic warns when its project content exceeds ~150 lines.
 
 **Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section. Update the Context line with what's done and what's next — this is the cross-session handoff. (When `views_enabled`, Status/release-notes/scope_rollups are derived views — add a tagged change-log entry and run regen-views instead.)

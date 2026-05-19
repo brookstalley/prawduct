@@ -19,8 +19,9 @@ Then route:
 | Context | Action |
 |---|---|
 | Explicit target path provided | **Onboard**: set up the target as a product repo |
-| Current dir is a product repo (has `.prawduct/`) | **Health check**: validate and offer repair. If health is good, mention available per-feature migrations (`migrate --enable-coverage`, `migrate --enable-settings-layout`) when relevant. |
-| User asks "enable coverage" / "turn on F4" / "stamp settings layout" / "run migrate-settings" / similar | **Migrate**: see Migrate Flow below |
+| Current dir is a product repo (has `.prawduct/`) | **Health check**: validate and offer repair. If health is good, mention available per-feature migrations (`migrate --enable-coverage`, `migrate --enable-settings-layout`, `migrate --enable-operator-verification`) when relevant. |
+| User asks "enable coverage" / "turn on F4" / "stamp settings layout" / "run migrate-settings" / "enable operator verification" / "turn on F10" / similar | **Migrate**: see Migrate Flow below |
+| User asks to "verify VRF-NN" / "drain operator verification" / "mark verified" | **Verify**: see Verify Flow below |
 | User asks "audit learnings" / "retire structurally-enforced learnings" / "check lifecycle metadata" / similar | **Audit Learnings**: see Audit Learnings Flow below |
 | Current dir is the framework repo (has `tools/prawduct-setup.py`) and no target | Ask what the user wants to do |
 
@@ -68,11 +69,32 @@ Mostly a signal operation: stamps `v1_4_settings_migrated: true` in the manifest
 3. Run: `python3 <framework>/tools/prawduct-setup.py migrate --enable-settings-layout "$CLAUDE_PROJECT_DIR" --json`
 4. Relay `actions` and `notes`. The "already on the canonical minimal layout" note is the common case and confirms the no-op outcome.
 
-### `--force` (both migrations)
+### `--enable-operator-verification` (F10 — pre-merge human-verification gate)
+
+Enables the `/pr create` BLOCKING gate that reads `.prawduct/operator-verification.md`. While the gate is on, any entry with `**Status:** pending` blocks PR creation; the queue is the work-log for visual / live-integration changes that automated tests can't fully cover. Per-PR override available via `/pr create --accept-pending-verification "rationale"` (rationale is recorded back into each entry). Use when the user asks to "enable operator verification", "turn on F10", "enable visual gate", or similar.
+
+1. Resolve the framework path the same way as Health Check.
+2. Confirm intent — emphasize the BLOCKING consequence: every future PR will block on pending entries, and the override requires a non-empty rationale.
+3. Run: `python3 <framework>/tools/prawduct-setup.py migrate --enable-operator-verification "$CLAUDE_PROJECT_DIR" --json`
+4. Relay `actions` (file mutations) and `notes` (the next-PR consequence). The migration places `.prawduct/operator-verification.md` from template if absent.
+
+### `--force` (all three migrations)
 
 Re-runs the migration even when the manifest tracks it as complete. Use cases:
 - `--enable-coverage --force`: re-surface evidence-shape NOTEs after wiring up a verifier.
 - `--enable-settings-layout --force`: re-normalize settings.json after a hand-edit.
+- `--enable-operator-verification --force`: re-place the queue template if missing.
+
+## Verify Flow (drain operator-verification queue)
+
+Drains a single pending entry in `.prawduct/operator-verification.md` after the human-verification step is genuinely complete.
+
+1. Resolve the framework path the same way as Health Check.
+2. Confirm the user has actually performed the verification described in the entry's `**Verify:**` checklist — `verify` is a deliberate user action, not a session-time auto-flip.
+3. Run: `python3 <framework>/tools/prawduct-setup.py verify "$CLAUDE_PROJECT_DIR" <VRF-id> --json`
+4. Relay `previous_status` → `status` ("pending → verified") and the action line. If the entry was already verified, the command is a no-op and surfaces a note.
+
+Refuses to verify an `accepted` entry — `accepted` means the gate was overridden via `--accept-pending-verification`; flipping to verified would erase the override rationale. Edit the file by hand if the verification is now genuine.
 
 ## Audit Learnings Flow (lifecycle metadata triage)
 

@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v1.4.0
+
+**Entry:** 2026-05-19: Chunk 14 — F10 operator-verification queue + `/pr` BLOCKING gate
+
+**Chunks shipped:** 05, 06, 07, 08, 09, 10, 11, 12, 13, 14
+
+**Scope:** v1.4
+
+See `.prawduct/change-log.md` for full details.
+
 ## v1.3.17
 
 **Entry:** 2026-05-18: v1.4 Wave 1 — proportional Critic + cumulative gate + foreign-API verification (v1.3.17)

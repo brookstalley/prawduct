@@ -3175,10 +3175,72 @@ def cmd_regen_views(project_dir: Path) -> int:
     return 0
 
 
+def cmd_check_operator_verification(project_dir: Path) -> int:
+    """Structural gate for `/pr create`: refuse open when queue has pending entries.
+
+    Mirrors :func:`cmd_check_cumulative_critic` semantics — exit 0 only
+    when the gate is satisfied, exit 1 with stderr describing the
+    blocker. The gate is only active when ``operator_verification_required:
+    true`` is set in ``project-state.yaml``; otherwise the command is a
+    no-op exit 0.
+    """
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+
+    result = ov.run_check_operator_verification(project_dir)
+    if not result["required"]:
+        return 0
+    if result["pending"] == 0:
+        print(result["message"])
+        return 0
+    print(result["message"], file=sys.stderr)
+    return 1
+
+
+def cmd_accept_operator_verification(
+    project_dir: Path, rationale: str | None
+) -> int:
+    """Flip all pending entries to ``accepted`` with the supplied rationale.
+
+    Invoked by ``/pr create --accept-pending-verification "rationale"``.
+    Refuses an empty or missing rationale — the work-log capture is the
+    whole point of the override.
+    """
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+
+    if rationale is None or not rationale.strip():
+        print(
+            "error: accept-operator-verification requires a non-empty "
+            "rationale argument — `/pr create --accept-pending-verification "
+            '"rationale"`. The override is recorded in operator-verification.md '
+            "as the work-log entry.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = ov.run_accept_pending(project_dir, rationale)
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    for action in result["actions"]:
+        print(action)
+    for note in result["notes"]:
+        print(f"  * {note}")
+    return 0
+
+
 _USAGE = (
     "Usage: product-hook "
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
-    "verify-chunk-refs [chunk_id]|verify-coverage|regen-views}"
+    "verify-chunk-refs [chunk_id]|verify-coverage|"
+    "check-operator-verification|accept-operator-verification <rationale>|"
+    "regen-views}"
 )
 
 
@@ -3205,6 +3267,11 @@ def main() -> int:
         return cmd_verify_chunk_refs(project_dir, chunk_id)
     elif command == "verify-coverage":
         return cmd_verify_coverage(project_dir)
+    elif command == "check-operator-verification":
+        return cmd_check_operator_verification(project_dir)
+    elif command == "accept-operator-verification":
+        rationale = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_accept_operator_verification(project_dir, rationale)
     elif command == "regen-views":
         return cmd_regen_views(project_dir)
     else:

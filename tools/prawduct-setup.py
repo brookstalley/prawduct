@@ -76,6 +76,7 @@ from lib import (  # noqa: F401
     delete_v1_files,
     detect_version,
     enable_v1_4_coverage,
+    enable_v1_4_operator_verification,
     enable_v1_4_settings_layout,
     enable_v1_4_views,
     ensure_dir,
@@ -97,10 +98,12 @@ from lib import (  # noqa: F401
     run_init,
     run_migrate,
     run_migrate_coverage,
+    run_migrate_operator_verification,
     run_migrate_settings_layout,
     run_sentinel,
     run_sync,
     run_validate,
+    run_verify_entry,
     run_views_command,
     split_learnings_v5,
     untrack_gitignored_files,
@@ -185,6 +188,18 @@ def main() -> int:
         ),
     )
     migrate_parser.add_argument(
+        "--enable-operator-verification",
+        action="store_true",
+        dest="enable_operator_verification",
+        help=(
+            "Enable v1.4 F10 operator-verification gate: flip "
+            "operator_verification_required: true in project-state.yaml "
+            "and place .prawduct/operator-verification.md from template. "
+            "`/pr create` will BLOCK whenever the queue has pending entries; "
+            "override per-PR with `--accept-pending-verification \"rationale\"`."
+        ),
+    )
+    migrate_parser.add_argument(
         "--force",
         action="store_true",
         help=(
@@ -212,6 +227,27 @@ def main() -> int:
         help="Regenerate views (write files); without this, reports planned actions only",
     )
     views_parser.add_argument("--json", action="store_true", dest="json_mode", help="JSON output only")
+
+    # --- verify ---
+    # Drain a single pending operator-verification entry. The /pr gate
+    # (`check-operator-verification`) reads the queue; this is the
+    # complement — the user-facing drain operation.
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help=(
+            "Mark a pending operator-verification entry as verified "
+            "(drain the queue one entry at a time)"
+        ),
+    )
+    verify_parser.add_argument("product_dir", help="Product repo directory")
+    verify_parser.add_argument(
+        "vrf_id",
+        help="Verification entry ID (e.g. VRF-001) as it appears in "
+        ".prawduct/operator-verification.md",
+    )
+    verify_parser.add_argument(
+        "--json", action="store_true", dest="json_mode", help="JSON output only"
+    )
 
     # --- audit-learnings ---
     audit_parser = subparsers.add_parser(
@@ -336,12 +372,14 @@ def main() -> int:
         feature_flags = [
             ("enable_coverage", args.enable_coverage),
             ("enable_settings_layout", args.enable_settings_layout),
+            ("enable_operator_verification", args.enable_operator_verification),
         ]
         active = [name for name, on in feature_flags if on]
         if not active:
             log(
                 "error: `migrate` requires a feature flag "
-                "(--enable-coverage or --enable-settings-layout)"
+                "(--enable-coverage, --enable-settings-layout, "
+                "or --enable-operator-verification)"
             )
             migrate_parser.print_help()
             return 1
@@ -358,12 +396,20 @@ def main() -> int:
             on_off_field = "enabled"
             on_off_label = "coverage_required"
             on_off_location = "on disk"
-        else:  # args.enable_settings_layout
+        elif args.enable_settings_layout:
             result = run_migrate_settings_layout(args.product_dir, force=args.force)
             success_label = "Settings-layout migration"
             on_off_field = "migrated"
             on_off_label = "v1_4_settings_migrated"
             on_off_location = "in manifest"
+        else:  # args.enable_operator_verification
+            result = run_migrate_operator_verification(
+                args.product_dir, force=args.force
+            )
+            success_label = "Operator-verification migration"
+            on_off_field = "enabled"
+            on_off_label = "operator_verification_required"
+            on_off_location = "on disk"
 
         if args.json_mode:
             print(json.dumps(result, indent=2))
@@ -386,6 +432,28 @@ def main() -> int:
                 + f" {on_off_location}."
             )
         return 0 if "error" not in result else 1
+
+    elif args.command == "verify":
+        result = run_verify_entry(args.product_dir, args.vrf_id)
+
+        if args.json_mode:
+            print(json.dumps(result, indent=2))
+            return 0 if "error" not in result else 1
+
+        if "error" in result:
+            log(f"Error: {result['error']}")
+            return 1
+
+        log(
+            f"Operator-verification: {result['vrf_id']} "
+            f"{result['previous_status']} → {result['status']} "
+            f"({result['product_dir']})"
+        )
+        for action in result["actions"]:
+            log(f"  + {action}")
+        for note in result["notes"]:
+            log(f"  * {note}")
+        return 0
 
     elif args.command == "audit-learnings":
         result = run_audit_learnings(args.product_dir, apply=args.apply)

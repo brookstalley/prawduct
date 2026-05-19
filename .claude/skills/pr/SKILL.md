@@ -3,7 +3,7 @@ description: PR lifecycle management — create, update, merge, or check status 
 argument-hint: "[create|update|merge|status]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(gh *), Bash(git *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook check-cumulative-critic), Read, Write, Agent
+allowed-tools: Bash(gh *), Bash(git *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook check-cumulative-critic), Bash(python3 tools/product-hook check-operator-verification), Bash(python3 tools/product-hook accept-operator-verification *), Read, Write, Agent
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -41,6 +41,16 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 **Run `python3 tools/product-hook check-cumulative-critic`.** This gate requires a fresh, blocking-free `cumulative`-mode Critic record covering `merge-base...HEAD`. If it exits non-zero, **STOP**: invoke `/critic cumulative` to produce the missing record, resolve any blocking findings, then re-check. Do NOT proceed to Step 3 until this gate passes.
 
 While `/critic cumulative` runs (~4-10 min), do prep that doesn't depend on findings: `/learnings` for next-chunk topics, draft the PR description in your head, audit `.prawduct/backlog.md` for items this branch resolves, capture deferred chunk-boundary reflections. Reorganizes wait time; doesn't shorten it.
+
+### Step 2b: Operator-verification gate — MANDATORY when `$ARGUMENTS` doesn't include `--accept-pending-verification`
+**Run `python3 tools/product-hook check-operator-verification`.** Exit 0 means the gate is satisfied (either the queue requirement is off, or every entry is verified/accepted). Exit 1 means there are pending entries in `.prawduct/operator-verification.md` — stderr names the first ID and suggests next steps.
+
+When pending entries exist, two paths:
+
+1. **Verify the items** (preferred): for each pending `VRF-NNN`, complete the human-verification step described in the entry, then run `python3 tools/prawduct-setup.py verify <project_dir> <VRF-NNN>` to flip its status. Re-run the gate.
+2. **Override for this PR**: if the user explicitly passes `--accept-pending-verification "rationale"` in `$ARGUMENTS`, run `python3 tools/product-hook accept-operator-verification "<rationale>"`. This flips every pending entry to `accepted` and records the rationale into each entry — the queue file is the work-log. The override is per-PR; future PRs will block again if new pending entries appear.
+
+If the user did NOT supply the override flag and pending entries exist, **STOP**: do not proceed to Step 3 until either path above is taken. Present the stderr message and the two options to the user.
 
 ### Step 3: Independent review — MANDATORY
 **STOP. Do NOT proceed to step 4 until the reviewer agent has completed and written its evidence file.**
@@ -104,5 +114,6 @@ PR review evidence is stored in `.prawduct/.pr-reviews/<branch-name>.json` (with
 - The reviewer reads `.prawduct/pr-review.md` for its instructions
 - Run the full test suite before creating a PR — but check `python3 tools/product-hook test-status` first; skip the run if it reports `current`
 - **Run `python3 tools/product-hook check-cumulative-critic` before creating a PR** — this gate refuses to open a PR without a fresh, blocking-free `cumulative`-mode Critic record (see Step 2). The cumulative review (`merge-base...HEAD`) catches cross-chunk integration cracks per-chunk reviews can't see.
+- **Run `python3 tools/product-hook check-operator-verification`** — when `operator_verification_required: true`, the gate refuses to open a PR if `.prawduct/operator-verification.md` has any pending entries. Drain via `python3 tools/prawduct-setup.py verify <dir> <VRF-id>` or override per-PR with `--accept-pending-verification "rationale"` (see Step 2b).
 - Include review findings summary in the PR description
 - **Never run `gh pr create` without a valid evidence file on disk**

@@ -232,6 +232,16 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
 
        See `agents/critic/review-cycle.md` "Per-Chunk Type Protocol Selector"
        for the full per-type protocol matrix. -->
+- **Visual change:** [optional — `yes` if the chunk produces a user-visible change that needs human verification before merge (UI screen, CLI output format, generated artifact appearance, live external integration). Otherwise omit.]
+  <!-- When declared `yes`, append an entry to `.prawduct/operator-verification.md`
+       at chunk-close describing what to verify and where. When
+       `operator_verification_required: true` in project-state.yaml, `/pr create`
+       blocks on pending entries; drain via
+       `python3 tools/prawduct-setup.py verify <project_dir> <VRF-id>`, or
+       override per-PR with `--accept-pending-verification "rationale"`. The
+       Critic emits a NOTE if a chunk declares `Visual change: yes` but no
+       queue entry references it. Methodology: `methodology/building.md`
+       chunk-close step. -->
 - **Foreign API:** [optional — omit unless this chunk wraps a foreign API/SDK. Format: `<name>` (e.g., `ableton-live-mcp`, `stripe-js-sdk`)]
   <!-- When this chunk wraps a foreign API or SDK whose surface the project
        doesn't own (vendor APIs, MCP servers, third-party libraries with
