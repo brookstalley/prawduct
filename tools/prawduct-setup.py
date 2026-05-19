@@ -73,6 +73,7 @@ from lib import (  # noqa: F401
     create_manifest,
     delete_v1_files,
     detect_version,
+    enable_v1_4_coverage,
     enable_v1_4_views,
     ensure_dir,
     extract_block,
@@ -89,6 +90,7 @@ from lib import (  # noqa: F401
     replace_settings,
     run_init,
     run_migrate,
+    run_migrate_coverage,
     run_sync,
     run_validate,
     run_views_command,
@@ -140,6 +142,43 @@ def main() -> int:
     )
     validate_parser.add_argument("target_dir", help="Product repo directory to validate")
     validate_parser.add_argument("--json", action="store_true", dest="json_mode", help="JSON output only")
+
+    # --- migrate ---
+    # Per-feature opt-in migrations. Unlike `setup`, which auto-detects
+    # version and migrates the whole layout, `migrate` is the explicit
+    # surface for v1.4 features that require user intent (e.g. coverage
+    # enforcement, which commits the project to BLOCKING Critic findings).
+    migrate_parser = subparsers.add_parser(
+        "migrate",
+        help="Per-feature v1.4 opt-in migrations (e.g. --enable-coverage)",
+    )
+    migrate_parser.add_argument("product_dir", help="Product repo directory")
+    migrate_parser.add_argument(
+        "--enable-coverage",
+        action="store_true",
+        dest="enable_coverage",
+        help=(
+            "Enable v1.4 F4 symbol-coverage enforcement: flip "
+            "coverage_required: true in project-state.yaml and surface "
+            "evidence-shape NOTEs. Critic Goal 1 will BLOCK on changed "
+            "files missing from .test-evidence.json's changes_referenced."
+        ),
+    )
+    migrate_parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Re-run even when the manifest tracks the migration as complete "
+            "(useful for re-surfacing evidence-shape NOTEs after wiring up a "
+            "verifier)."
+        ),
+    )
+    migrate_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_mode",
+        help="JSON output only",
+    )
 
     # --- views ---
     views_parser = subparsers.add_parser(
@@ -243,6 +282,40 @@ def main() -> int:
                     log("")
                     log("  Run with --refresh to apply.")
         return 0
+
+    elif args.command == "migrate":
+        # Currently the only migration is --enable-coverage. When future
+        # feature opt-ins land (e.g. --enable-operator-verification per F10),
+        # this dispatch grows a second branch; until then, missing flag is
+        # treated as "what do you want to do?" rather than silently passing.
+        if not args.enable_coverage:
+            log("error: `migrate` requires a feature flag (e.g. --enable-coverage)")
+            migrate_parser.print_help()
+            return 1
+
+        result = run_migrate_coverage(args.product_dir, force=args.force)
+
+        if args.json_mode:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                log(f"Error: {result['error']}")
+                return 1
+            if result["actions"]:
+                log(f"Coverage migration applied to {result['product_dir']}:")
+                for action in result["actions"]:
+                    log(f"  + {action}")
+            else:
+                log(f"Coverage migration: no changes ({result['product_dir']})")
+            for note in result["notes"]:
+                log(f"  * {note}")
+            log("")
+            log(
+                "  coverage_required is "
+                + ("ON" if result["enabled"] else "OFF")
+                + " on disk."
+            )
+        return 0 if "error" not in result else 1
 
     elif args.command == "validate":
         result = run_validate(args.target_dir)

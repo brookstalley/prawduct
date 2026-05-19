@@ -391,6 +391,270 @@ def enable_v1_4_views(product_dir: Path, manifest: dict) -> list[str]:
     return actions
 
 
+def enable_v1_4_coverage(
+    product_dir: Path,
+    manifest: dict,
+    *,
+    force: bool = False,
+) -> tuple[list[str], list[str]]:
+    """User-invoked v1.4 migration: enable F4 coverage enforcement.
+
+    Unlike ``enable_v1_4_views`` (silent auto-enable on every sync — the
+    decision was "all users should get views for free"), coverage
+    enforcement is opt-in: turning it on commits the project to BLOCKING
+    Critic findings whenever a changed file is missing from
+    ``.test-evidence.json``'s ``changes_referenced``. The migration is
+    intentionally explicit — invoked via the new ``prawduct-setup migrate
+    --enable-coverage`` subcommand, never silently from sync.
+
+    Mutates ``.prawduct/project-state.yaml`` in place:
+      * Flips standalone ``coverage_required: false`` → ``true``.
+      * Appends a ``coverage_required: true`` block with header comment
+        when the key is absent entirely.
+      * No rewrite when the key is already ``true``.
+
+    Mutates ``manifest`` to set ``v1_4_coverage_enabled: True`` so a later
+    accidental re-invocation short-circuits. ``force=True`` ignores the
+    one-shot flag and re-surfaces NOTEs (useful when a user re-runs to
+    re-check evidence shape after wiring up a verifier).
+
+    Returns ``(actions, notes)``. Actions are file mutations; notes
+    surface deprecation + next-step guidance:
+      * Legacy-shape ``.test-evidence.json`` (no ``verifier`` field) →
+        a v1.5-removal-warning NOTE pointing at ``tools/test-reference-verify``
+        as the floor (or a stronger product-supplied verifier).
+      * Missing evidence file → a NOTE telling the user to run the test
+        suite + verifier before relying on the new gate.
+      * Successful flip → a NOTE summarizing the next-PR consequence
+        (Critic Goal 1 now BLOCKS on missing coverage).
+    """
+    actions: list[str] = []
+    notes: list[str] = []
+
+    if manifest.get("v1_4_coverage_enabled") and not force:
+        return actions, notes
+
+    state_path = product_dir / ".prawduct" / "project-state.yaml"
+    if not state_path.is_file():
+        return actions, notes
+
+    content = state_path.read_text()
+    original = content
+
+    # ``has_*_key`` checks scan column-0 occurrences (preceded by a newline
+    # or at start-of-file) so a comment-quoted ``coverage_required:`` or
+    # an indented nested mention doesn't trick the detector.
+    has_coverage_key = (
+        "\ncoverage_required:" in content
+        or content.startswith("coverage_required:")
+    )
+
+    already_on = False
+    if has_coverage_key:
+        for raw in content.splitlines():
+            if raw[:1] in (" ", "\t"):
+                continue
+            stripped = raw.split("#", 1)[0].rstrip()
+            if stripped.startswith("coverage_required:"):
+                value = stripped.split(":", 1)[1].strip().lower()
+                already_on = value == "true"
+                break
+
+    if has_coverage_key and not already_on:
+        # Flip the first column-0 ``coverage_required: false`` line, regardless
+        # of trailing inline comment (``false  # opt-in``). Detector and
+        # mutator must agree on shape — Critic Chunk 10 NOTE flagged the
+        # earlier asymmetry where the detector stripped comments but the
+        # mutator only matched the bare line, leaving inline-commented forms
+        # in a silent no-op state.
+        new_lines: list[str] = []
+        flipped = False
+        for line in content.split("\n"):
+            if flipped or line[:1] in (" ", "\t"):
+                new_lines.append(line)
+                continue
+            stripped = line.split("#", 1)[0].rstrip()
+            if (
+                stripped.startswith("coverage_required:")
+                and stripped.split(":", 1)[1].strip().lower() == "false"
+            ):
+                # Preserve any inline comment by re-attaching the post-#
+                # tail; only the value changes.
+                tail = line.split("#", 1)[1] if "#" in line else ""
+                rewritten = "coverage_required: true"
+                if tail:
+                    rewritten += "  #" + tail
+                new_lines.append(rewritten)
+                flipped = True
+            else:
+                new_lines.append(line)
+        if flipped:
+            content = "\n".join(new_lines)
+            actions.append(
+                "Flipped coverage_required: false → true in project-state.yaml "
+                "(v1.4 F4 symbol-coverage enforcement enabled)"
+            )
+
+    if not has_coverage_key:
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += (
+            "\n"
+            "# =============================================================================\n"
+            "# COVERAGE EVIDENCE (opt-in, v1.4+)\n"
+            "# =============================================================================\n"
+            "# When true, the Critic's Goal 1 requires every changed file to appear\n"
+            "# in `.test-evidence.json`'s `changes_referenced` list and scales severity\n"
+            "# language to the declared `coverage_level` (`referenced` floor vs.\n"
+            "# `executed` real). See `methodology/building.md` + the reference\n"
+            "# verifier at `tools/test-reference-verify`. Enabled by\n"
+            "# `prawduct-setup migrate --enable-coverage`.\n"
+            "\n"
+            "coverage_required: true\n"
+        )
+        actions.append(
+            "Added coverage_required: true to project-state.yaml "
+            "(v1.4 F4 symbol-coverage enforcement enabled)"
+        )
+
+    if content != original:
+        state_path.write_text(content)
+
+    if already_on and not actions:
+        notes.append(
+            "coverage_required is already true — nothing to flip. "
+            "Re-running with --force re-surfaces evidence-shape NOTEs."
+        )
+
+    # Inspect the latest test evidence to surface deprecation / next-step
+    # guidance. The evidence file is gitignored in normal product layouts,
+    # so missing-file is a likely state for a project that has never run
+    # the verifier — surface explicitly rather than failing silently.
+    evidence_path = product_dir / ".prawduct" / ".test-evidence.json"
+    if not evidence_path.is_file():
+        notes.append(
+            "No .prawduct/.test-evidence.json on disk — run the test suite and "
+            "`python3 tools/test-reference-verify --merge-into .prawduct/.test-evidence.json` "
+            "before relying on the new Critic gate."
+        )
+    else:
+        try:
+            evidence = json.loads(evidence_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            notes.append(
+                f"Could not parse .prawduct/.test-evidence.json ({exc}); "
+                "re-emit with `python3 tools/test-reference-verify` "
+                "before relying on the new gate."
+            )
+        else:
+            if "verifier" not in evidence:
+                notes.append(
+                    "Legacy evidence shape detected (no `verifier` field). "
+                    "v1.5 will drop the legacy-shape compat path — emit the "
+                    "F4a fields with `python3 tools/test-reference-verify "
+                    "--merge-into .prawduct/.test-evidence.json` (Python "
+                    "floor) or plug in a language-native coverage tool "
+                    "and set `coverage_level: executed`."
+                )
+
+    # One-shot manifest tracking. Set even when nothing changed in the
+    # YAML (an already-on repo still counts as migrated) so accidental
+    # re-runs short-circuit. ``--force`` callers bypass this check at the
+    # top of the function.
+    manifest["v1_4_coverage_enabled"] = True
+
+    if actions and not already_on:
+        notes.append(
+            "Next-PR consequence: Critic Goal 1 will BLOCK on changed files "
+            "missing from changes_referenced. Wire a verifier into your test "
+            "command — `tools/test-reference-verify` is the shipped Python "
+            "floor; see `methodology/building.md` for stronger alternatives."
+        )
+
+    return actions, notes
+
+
+def run_migrate_coverage(product_dir: str, *, force: bool = False) -> dict:
+    """User-facing runner for ``prawduct-setup migrate --enable-coverage``.
+
+    Loads ``sync-manifest.json``, invokes :func:`enable_v1_4_coverage`,
+    persists the manifest, and returns a dict shaped for both human and
+    JSON output:
+
+        {
+          "product_dir": "/abs/path",
+          "enabled": bool,           # True iff coverage_required ended up true
+          "force": bool,
+          "actions": [str, ...],     # file mutations
+          "notes": [str, ...],       # deprecation + next-step guidance
+        }
+
+    On error returns ``{"error": "..."}`` and skips manifest write-back.
+
+    The runner is intentionally thin: the policy lives in
+    :func:`enable_v1_4_coverage`. This wrapper exists so the CLI surface
+    matches the other ``run_*`` commands (init / sync / validate / views)
+    — a single dict result that the ``prawduct-setup.py`` layer can
+    render or json-dump uniformly.
+    """
+    product_path = Path(product_dir).resolve()
+    prawduct_dir = product_path / ".prawduct"
+    if not prawduct_dir.is_dir():
+        return {
+            "error": f"Not a prawduct product: {product_path} has no .prawduct/ directory"
+        }
+
+    manifest_path = prawduct_dir / "sync-manifest.json"
+    if not manifest_path.is_file():
+        return {
+            "error": (
+                f"No sync-manifest.json at {manifest_path} — run "
+                "`prawduct-setup setup` to initialize the product repo before "
+                "migrating."
+            )
+        }
+
+    try:
+        manifest = load_json(manifest_path)
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"error": f"Could not read sync-manifest.json: {exc}"}
+
+    try:
+        actions, notes = enable_v1_4_coverage(product_path, manifest, force=force)
+    except OSError as exc:
+        return {"error": f"Migration failed: {exc}"}
+
+    # Persist manifest regardless of whether anything changed in the YAML —
+    # the one-shot flag may have been set even on a no-op so subsequent
+    # accidental invocations short-circuit.
+    try:
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    except OSError as exc:
+        return {"error": f"Could not write sync-manifest.json: {exc}"}
+
+    # Re-read coverage_required from the on-disk state to report ground
+    # truth (the manifest flag tracks "we ran the migration", not "the
+    # YAML currently says true" — a user could re-edit between runs).
+    state_path = prawduct_dir / "project-state.yaml"
+    enabled = False
+    if state_path.is_file():
+        for raw in state_path.read_text().splitlines():
+            if raw[:1] in (" ", "\t"):
+                continue
+            stripped = raw.split("#", 1)[0].rstrip()
+            if stripped.startswith("coverage_required:"):
+                enabled = stripped.split(":", 1)[1].strip().lower() == "true"
+                break
+
+    return {
+        "product_dir": str(product_path),
+        "enabled": enabled,
+        "force": force,
+        "actions": actions,
+        "notes": notes,
+    }
+
+
 def migrate_project_state_v5(product_dir: Path) -> list[str]:
     """Add v5 sections to project-state.yaml, remove v4-only fields.
 

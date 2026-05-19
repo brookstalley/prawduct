@@ -39,6 +39,8 @@ BLOCK_END = _mod.BLOCK_END
 GITIGNORE_ENTRIES = _mod.GITIGNORE_ENTRIES
 migrate_backlog = _mod.migrate_backlog
 enable_v1_4_views = _mod.enable_v1_4_views
+enable_v1_4_coverage = _mod.enable_v1_4_coverage
+run_migrate_coverage = _mod.run_migrate_coverage
 untrack_gitignored_files = _mod.untrack_gitignored_files
 
 
@@ -3048,3 +3050,329 @@ class TestEnableV1_4Views:
         for a in result2.get("actions", []):
             assert "views_enabled" not in a
             assert "scope_rollups" not in a
+
+
+# =============================================================================
+# v1.4 F4c — coverage-required opt-in migration (Chunk 10).
+#
+# Unlike v1.4 views, coverage enforcement is intentionally NOT auto-enabled on
+# sync — turning it on commits the project to BLOCKING Critic findings on
+# missing changes_referenced. The helper is invoked only via the new
+# `prawduct-setup migrate --enable-coverage` subcommand.
+# =============================================================================
+
+
+class TestEnableV1_4Coverage:
+
+    def test_no_project_state_no_op(self, tmp_path: Path):
+        """Missing .prawduct/project-state.yaml — returns empty actions/notes,
+        no manifest flag set. Mirrors enable_v1_4_views' fail-quiet contract
+        for repos that aren't fully scaffolded."""
+        manifest: dict = {}
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+        assert actions == []
+        assert notes == []
+        assert "v1_4_coverage_enabled" not in manifest
+
+    def test_pre_v1_4_repo_appends_block(self, tmp_path: Path):
+        """Legacy v1.3.x bootstrap (no coverage_required key) → block
+        appended at end, flag set, surfaces next-PR consequence + missing-
+        evidence note (no evidence file exists in this fresh fixture)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: TestApp\n\nbuild_state:\n  source_root: src\n"
+        )
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Added coverage_required: true" in a for a in actions)
+        assert manifest["v1_4_coverage_enabled"] is True
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "coverage_required: true" in state
+        # Pre-existing content preserved (additive append, not rewrite)
+        assert "product_identity:" in state
+        assert "name: TestApp" in state
+
+        # Notes surface both the missing-evidence path and the next-PR
+        # consequence so the user can't enable enforcement and then be
+        # surprised at the first BLOCKING finding.
+        assert any("No .prawduct/.test-evidence.json" in n for n in notes)
+        assert any("BLOCK on changed files" in n for n in notes)
+
+    def test_flips_false_to_true(self, tmp_path: Path):
+        """Explicit `coverage_required: false` → flips to true; the YAML
+        rewrite is targeted (one line replaced)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = (
+            "product_identity:\n  name: TestApp\n\n"
+            "coverage_required: false\n"
+        )
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions, _ = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Flipped coverage_required: false → true" in a for a in actions)
+        assert manifest["v1_4_coverage_enabled"] is True
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "coverage_required: true" in state
+        assert "coverage_required: false" not in state
+        # Unrelated content untouched
+        assert "product_identity:" in state
+        assert "name: TestApp" in state
+
+    def test_already_on_no_file_changes(self, tmp_path: Path):
+        """Key already true → no rewrite, no actions, manifest flag set,
+        notes mention 'already true'. The flag is still recorded so a later
+        accidental re-run short-circuits."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "coverage_required: true\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert actions == []
+        assert manifest["v1_4_coverage_enabled"] is True
+        # File byte-identical
+        assert (prawduct / "project-state.yaml").read_text() == original
+        assert any("already true" in n for n in notes)
+
+    def test_one_shot_manifest_short_circuits(self, tmp_path: Path):
+        """Manifest flag set → function returns empty without reading the
+        YAML. Mirrors enable_v1_4_views' one-shot tracking so a user who
+        re-edits coverage_required back to false isn't fought."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: false\n")
+        manifest: dict = {"v1_4_coverage_enabled": True}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert actions == []
+        assert notes == []
+        # File unchanged — the one-shot tracking didn't even read it
+        assert (prawduct / "project-state.yaml").read_text() == (
+            "coverage_required: false\n"
+        )
+
+    def test_force_overrides_one_shot(self, tmp_path: Path):
+        """`force=True` bypasses the one-shot tracking. The intended use is
+        re-surfacing evidence-shape NOTEs after wiring up a verifier — the
+        YAML may already be on, but the user wants to re-check the evidence
+        situation."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: true\n")
+        # Legacy evidence to trigger the deprecation note
+        (prawduct / ".test-evidence.json").write_text(
+            '{"timestamp":"2026-05-19T00:00:00Z","passed":1,"failed":0,'
+            '"skipped":0,"duration_seconds":1.0,"command":"pytest"}'
+        )
+        manifest: dict = {"v1_4_coverage_enabled": True}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest, force=True)
+
+        # No YAML actions (already on), but the legacy-evidence NOTE fires.
+        assert actions == []
+        assert any("Legacy evidence shape detected" in n for n in notes)
+        assert any("v1.5 will drop" in n for n in notes)
+
+    def test_legacy_evidence_surfaces_deprecation_note(self, tmp_path: Path):
+        """Evidence file exists but has no `verifier` field → v1.5-removal
+        warning. The wording is load-bearing for the chunk's deprecation
+        signaling."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: false\n")
+        (prawduct / ".test-evidence.json").write_text(
+            '{"timestamp":"2026-05-19T00:00:00Z","passed":1,"failed":0,'
+            '"skipped":0,"duration_seconds":1.0,"command":"pytest"}'
+        )
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Flipped coverage_required" in a for a in actions)
+        assert any("Legacy evidence shape detected" in n for n in notes)
+        assert any("test-reference-verify" in n for n in notes)
+
+    def test_modern_evidence_emits_no_deprecation(self, tmp_path: Path):
+        """F4a-shape evidence (has `verifier`) suppresses the legacy NOTE —
+        only the next-PR consequence is surfaced. Otherwise the migration
+        would cry wolf at every freshly-onboarded product that already
+        emits the new schema."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: false\n")
+        (prawduct / ".test-evidence.json").write_text(
+            '{"timestamp":"2026-05-19T00:00:00Z","passed":1,"failed":0,'
+            '"skipped":0,"duration_seconds":1.0,"command":"pytest",'
+            '"verifier":"test-reference-verify (floor: symbol-grep)",'
+            '"coverage_level":"referenced","tests_executed":[],'
+            '"changes_referenced":[]}'
+        )
+        manifest: dict = {}
+
+        _, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert not any("Legacy evidence shape" in n for n in notes)
+        assert any("BLOCK on changed files" in n for n in notes)
+
+    def test_unparseable_evidence_surfaces_diagnostic(self, tmp_path: Path):
+        """Bad JSON in evidence → diagnostic NOTE, not a crash. Mirrors the
+        verify-coverage tolerance — a broken evidence file shouldn't make
+        the migration unreachable."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: false\n")
+        (prawduct / ".test-evidence.json").write_text("{not valid json")
+        manifest: dict = {}
+
+        _, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Could not parse" in n for n in notes)
+
+    def test_flip_preserves_inline_comment(self, tmp_path: Path):
+        """`coverage_required: false  # opt-in deferred` → flips to true,
+        comment preserved. Detector strips comments via `split('#', 1)`;
+        the mutator must match the same shape or a silent no-op results
+        (Critic Chunk 10 NOTE). Catches asymmetry regression."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "coverage_required: false  # opt-in deferred to next sprint\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions, _ = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Flipped coverage_required" in a for a in actions)
+        state = (prawduct / "project-state.yaml").read_text()
+        # Value flipped, comment preserved verbatim
+        assert "coverage_required: true" in state
+        assert "# opt-in deferred to next sprint" in state
+        # The pre-flip form is gone
+        assert "coverage_required: false" not in state
+
+    def test_indented_key_does_not_count_as_top_level(self, tmp_path: Path):
+        """Nested `coverage_required: true` (indented under another section)
+        is NOT detected as the top-level setting. The function appends a real
+        top-level key; the nested line is left verbatim. Mirrors the column-0
+        discipline shared with `is_views_enabled` and `verify-coverage`."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "nested:\n  coverage_required: true\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions, _ = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Added coverage_required: true" in a for a in actions)
+        state = (prawduct / "project-state.yaml").read_text()
+        # Nested line preserved unchanged
+        assert "  coverage_required: true" in state
+        # New top-level key appended
+        assert "\ncoverage_required: true" in state
+
+
+# =============================================================================
+# `prawduct-setup migrate --enable-coverage` subcommand runner.
+# =============================================================================
+
+
+class TestRunMigrateCoverage:
+
+    def _scaffold(self, tmp_path: Path, yaml: str) -> Path:
+        """Create a minimal product layout: .prawduct/ with project-state.yaml
+        and a sync-manifest.json. Returns the product root."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(yaml)
+        (prawduct / "sync-manifest.json").write_text(
+            json.dumps({"version": "1.3.17", "files": {}})
+        )
+        return tmp_path
+
+    def test_no_prawduct_returns_error(self, tmp_path: Path):
+        """Refuse to migrate a non-product directory."""
+        result = run_migrate_coverage(str(tmp_path))
+        assert "error" in result
+        assert "no .prawduct/ directory" in result["error"]
+
+    def test_no_manifest_returns_actionable_error(self, tmp_path: Path):
+        """Half-scaffolded repo (.prawduct/ exists but no manifest) → error
+        names what to run next, not just 'not found'."""
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text("")
+        result = run_migrate_coverage(str(tmp_path))
+        assert "error" in result
+        assert "prawduct-setup setup" in result["error"]
+
+    def test_persists_manifest_flag(self, tmp_path: Path):
+        """After a successful run, sync-manifest.json on disk has
+        v1_4_coverage_enabled set."""
+        product = self._scaffold(tmp_path, "coverage_required: false\n")
+        result = run_migrate_coverage(str(product))
+        assert "error" not in result
+        assert result["enabled"] is True
+
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        assert manifest.get("v1_4_coverage_enabled") is True
+
+    def test_reports_enabled_state_from_disk(self, tmp_path: Path):
+        """`enabled` field in result reflects the on-disk YAML, not the
+        manifest flag — a user could re-edit between runs, and the runner
+        must report ground truth."""
+        product = self._scaffold(tmp_path, "coverage_required: false\n")
+        run_migrate_coverage(str(product))
+
+        # User manually reverts
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: false\n"
+        )
+
+        # Re-run without --force: one-shot kicks in, no flip — but the
+        # `enabled` report reflects what's actually in the YAML now.
+        result = run_migrate_coverage(str(product))
+        assert result["enabled"] is False
+        assert result["actions"] == []
+
+    def test_force_flag_bypasses_one_shot(self, tmp_path: Path):
+        """--force re-runs even after manifest one-shot is set, so users can
+        re-surface evidence-shape NOTEs after wiring up a verifier."""
+        product = self._scaffold(tmp_path, "coverage_required: true\n")
+        (product / ".prawduct" / ".test-evidence.json").write_text(
+            '{"timestamp":"2026-05-19T00:00:00Z","passed":1,"failed":0,'
+            '"skipped":0,"duration_seconds":1.0,"command":"pytest"}'
+        )
+
+        # First run: sets the flag.
+        run_migrate_coverage(str(product))
+        # Second run: without --force, manifest one-shot short-circuits.
+        no_force = run_migrate_coverage(str(product))
+        assert no_force["notes"] == []
+        # Third run: with --force, notes re-surface.
+        forced = run_migrate_coverage(str(product), force=True)
+        assert any("Legacy evidence shape" in n for n in forced["notes"])
+
+    def test_result_shape_is_stable(self, tmp_path: Path):
+        """The result dict must always carry product_dir, enabled, force,
+        actions, notes — JSON-mode callers depend on the keys being
+        present regardless of branch."""
+        product = self._scaffold(tmp_path, "coverage_required: false\n")
+        result = run_migrate_coverage(str(product))
+        assert set(result.keys()) >= {
+            "product_dir",
+            "enabled",
+            "force",
+            "actions",
+            "notes",
+        }

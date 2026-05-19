@@ -23,7 +23,10 @@ Usage:
 Without --output and --merge-into, prints the F4a fields as JSON to stdout.
 With --output, writes a coverage-fields-only JSON file at PATH.
 With --merge-into, reads existing evidence, merges F4a fields in, writes back
-(useful for combining with a fingerprint record produced by pytest).
+(useful for combining with the pytest-emitted v1.3.x-shape evidence record —
+the "legacy" evidence with timestamp/passed/failed/skipped/command but no
+F4a coverage fields; "fingerprint" was the old name from when freshness
+relied on tree-hash, removed pre-v1.4).
 
 Exit codes:
     0 — verifier completed; evidence written/printed. Note that emitting

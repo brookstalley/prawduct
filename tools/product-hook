@@ -505,8 +505,10 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
 
     Uses a "trust the cycle" model: evidence is current if it was written
     during this session (timestamp >= session start) and all tests passed.
-    No fingerprinting or content hashing — the build cycle (write code →
-    run tests → Critic reviews) is the trust boundary.
+    No tree-hashing or content fingerprinting (those mechanisms were
+    removed pre-v1.4 after chronic false positives from metadata churn) —
+    the build cycle (write code → run tests → Critic reviews) is the
+    trust boundary.
 
     Falls back to timestamp-only comparison when no session-start marker
     exists (e.g., running outside a governed session).
@@ -612,8 +614,12 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
 
     v1.4 F4a: when ``verifier`` is present, the writer has opted into the
     coverage-evidence schema and ``tests_executed`` / ``changes_referenced``
-    / ``coverage_level`` are also required. Legacy fingerprint-only evidence
-    (no ``verifier`` field) is accepted unchanged.
+    / ``coverage_level`` are also required. Legacy evidence (pre-F4a shape:
+    no ``verifier`` field — historically called "fingerprint" though the
+    tree-hash mechanism it referred to was removed pre-v1.4) is accepted
+    unchanged; v1.5 will drop the compat path (see Chunk 10's migration
+    NOTE — `prawduct-setup migrate --enable-coverage` surfaces the
+    deprecation).
 
     Returns ``(True, "")`` on success, ``(False, reason)`` on failure. Missing
     fields are reported before wrong-typed fields, so a single fix-it pass
