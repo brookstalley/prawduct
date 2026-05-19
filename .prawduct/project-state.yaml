@@ -429,6 +429,20 @@ build_state:
 views_enabled: true
 
 # =============================================================================
+# COVERAGE EVIDENCE (opt-in, v1.4+)
+# =============================================================================
+# When true, the Critic requires every changed file to appear in
+# `.test-evidence.json`'s `changes_referenced` list and scales severity
+# language to the declared `coverage_level` (`referenced` floor vs.
+# `executed` real). See build-governance.md "Coverage Evidence" + the
+# reference verifier at `tools/test-reference-verify`. Default off in
+# v1.4 — schema is checked but content is not enforced (Chunk 09 ships
+# the Critic check). The framework dogfoods the new evidence schema
+# regardless (every chunk emits the new fields) so drift surfaces early.
+
+coverage_required: false
+
+# =============================================================================
 # DEPRECATED TERMS
 # =============================================================================
 # Track vocabulary changes to catch stale references.
@@ -451,5 +465,5 @@ deprecated_terms:
 
 scope_rollups:
   v1.4:
-    chunks: ["00", "01", "02", "03", "04", "05", "06", "07"]
+    chunks: ["00", "01", "02", "03", "04", "05", "06", "07", "08"]
     releases: ["v1.3.17"]

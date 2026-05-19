@@ -223,6 +223,19 @@ views_enabled: true
 scope_rollups: {}
 
 # =============================================================================
+# COVERAGE EVIDENCE (opt-in, v1.4+)
+# =============================================================================
+# When true, the Critic requires every changed file to appear in
+# `.test-evidence.json`'s `changes_referenced` list and scales severity
+# language to the declared `coverage_level` (`referenced` floor vs.
+# `executed` real). The reference verifier at `tools/test-reference-verify`
+# emits the floor; products with non-trivial coverage concerns should plug
+# in a stronger verifier. See build-governance.md "Coverage Evidence".
+# Default off in v1.4 — schema is checked but content is not enforced.
+
+coverage_required: false
+
+# =============================================================================
 # CHANGE LOG
 # =============================================================================
 # Change log is in .prawduct/change-log.md (separate file to reduce merge conflicts).

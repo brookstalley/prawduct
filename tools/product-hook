@@ -572,6 +572,20 @@ _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
     "command": (str,),
 }
 
+# v1.4 F4a — coverage-evidence fields. Presence of ``verifier`` is the
+# discriminator: legacy evidence without ``verifier`` validates exactly as
+# before (compat). When ``verifier`` IS present, the writer has opted into
+# the new schema and the other three fields become conditionally required —
+# so writer typos (``coverage`` vs. ``coverage_level``, ``tests_ran`` vs.
+# ``tests_executed``) fail loud instead of silently dropping coverage data.
+_EVIDENCE_COVERAGE_FIELDS: dict[str, tuple[type, ...]] = {
+    "verifier": (str,),
+    "tests_executed": (list,),
+    "changes_referenced": (list,),
+    "coverage_level": (str,),
+}
+_EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
+
 
 # Critic mode values persisted in .prawduct/.critic-findings.json's `mode` field.
 # Verbose strings are intentional: the JSON is read by humans during session
@@ -596,13 +610,22 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
     Examples this catches: ``ran_at`` instead of ``timestamp``; ``num_passed``
     instead of ``passed``; passed/failed/skipped emitted as strings.
 
+    v1.4 F4a: when ``verifier`` is present, the writer has opted into the
+    coverage-evidence schema and ``tests_executed`` / ``changes_referenced``
+    / ``coverage_level`` are also required. Legacy fingerprint-only evidence
+    (no ``verifier`` field) is accepted unchanged.
+
     Returns ``(True, "")`` on success, ``(False, reason)`` on failure. Missing
     fields are reported before wrong-typed fields, so a single fix-it pass
     addresses the highest-priority violations first.
     """
+    required = dict(_EVIDENCE_REQUIRED_FIELDS)
+    if "verifier" in evidence:
+        required.update(_EVIDENCE_COVERAGE_FIELDS)
+
     missing: list[str] = []
     wrong_type: list[str] = []
-    for field, allowed_types in _EVIDENCE_REQUIRED_FIELDS.items():
+    for field, allowed_types in required.items():
         if field not in evidence:
             missing.append(field)
             continue
@@ -615,6 +638,19 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
         return False, f"evidence missing required field(s): {', '.join(sorted(missing))}"
     if wrong_type:
         return False, f"evidence schema violation: {'; '.join(wrong_type)}"
+
+    # Enum check for coverage_level — only when the coverage schema is in use
+    # AND the field's type is already known good (str). Bad-type errors are
+    # surfaced by the loop above; here we just refuse out-of-set values.
+    if "verifier" in evidence:
+        level = evidence.get("coverage_level")
+        if isinstance(level, str) and level not in _EVIDENCE_COVERAGE_LEVELS:
+            allowed = ", ".join(sorted(_EVIDENCE_COVERAGE_LEVELS))
+            return False, (
+                f"evidence schema violation: coverage_level must be one of "
+                f"{{{allowed}}}, got {level!r}"
+            )
+
     return True, ""
 
 

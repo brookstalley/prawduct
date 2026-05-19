@@ -1432,6 +1432,103 @@ class TestValidateEvidenceSchema:
         assert "schema violation" not in result.stderr
 
 
+class TestCoverageEvidenceSchema:
+    """v1.4 F4a — coverage-evidence fields (verifier, tests_executed,
+    changes_referenced, coverage_level).
+
+    Presence of ``verifier`` is the schema discriminator: legacy fingerprint
+    evidence (no ``verifier``) keeps validating; new evidence with ``verifier``
+    must also carry the other three fields with the right types. This
+    enforces compat in both directions — old writers don't break, new
+    writers can't silently typo a field name and lose the coverage data.
+    """
+
+    def _write(self, tmp_path: Path, evidence: object) -> None:
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir(exist_ok=True)
+        (prawduct / ".test-evidence.json").write_text(json.dumps(evidence))
+
+    def _coverage_evidence(self) -> dict:
+        return _valid_evidence() | {
+            "verifier": "test-reference-verify (floor: symbol-grep)",
+            "tests_executed": ["tests/test_product_hook.py"],
+            "changes_referenced": ["tools/product-hook"],
+            "coverage_level": "referenced",
+        }
+
+    def test_legacy_fingerprint_only_still_valid(self, tmp_path: Path):
+        """Evidence without ``verifier`` validates as before (compat)."""
+        self._write(tmp_path, _valid_evidence())
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+    def test_full_coverage_evidence_accepted(self, tmp_path: Path):
+        self._write(tmp_path, self._coverage_evidence())
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+    def test_executed_level_accepted(self, tmp_path: Path):
+        """Both enum values for ``coverage_level`` are valid."""
+        evidence = self._coverage_evidence() | {"coverage_level": "executed"}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+    def test_unknown_coverage_level_rejected(self, tmp_path: Path):
+        evidence = self._coverage_evidence() | {"coverage_level": "partial"}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "coverage_level must be one of" in result.stderr
+        assert "'partial'" in result.stderr
+
+    def test_verifier_without_companion_fields_rejected(self, tmp_path: Path):
+        """Opting into the new schema requires the full set —
+        a typo like ``tests_ran`` for ``tests_executed`` is caught."""
+        evidence = self._coverage_evidence()
+        del evidence["tests_executed"]
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "missing required field(s)" in result.stderr
+        assert "tests_executed" in result.stderr
+
+    def test_changes_referenced_wrong_type_rejected(self, tmp_path: Path):
+        """Lists are required so the Critic can iterate them."""
+        evidence = self._coverage_evidence() | {"changes_referenced": "tools/product-hook"}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "changes_referenced must be list" in result.stderr
+
+    def test_empty_lists_accepted(self, tmp_path: Path):
+        """A clean run with no changes legitimately has empty lists —
+        and shape validation should accept that. Whether empty lists
+        constitute a finding is the Critic's call (Chunk 09), not the
+        schema's."""
+        evidence = self._coverage_evidence() | {
+            "tests_executed": [],
+            "changes_referenced": [],
+        }
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+
 class TestValidateEvidenceSubcommand:
     """Exit-code and IO contract of the ``validate-evidence`` subcommand."""
 

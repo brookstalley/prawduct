@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-19: Chunk 08 — F4a evidence-schema extension + reference floor verifier
+
+<!-- prawduct: chunks=08 | status=shipped | scope=v1.4 -->
+
+**Why:** Wave 3 opener. The framework's safety claim "tests passed" is currently falsifiable on untested new code — `.test-evidence.json` records pass/fail counts but never asserts that the tests actually *referenced* the code that changed. F4a closes the schema half of this gap: extend the evidence record with four coverage fields (additive, compat-preserving) and ship a reference verifier so products on Python have a working floor implementation. The Critic enforcement that *uses* this data lands in Chunk 09 (F4b); the migration tooling + fingerprint cleanup lands in Chunk 10 (F4c).
+
+**What:** Two surfaces — schema validator + new tool.
+
+1. **Schema extension in `tools/product-hook::_validate_evidence_schema`.** Presence of a `verifier` field is the discriminator. Legacy fingerprint-only evidence (no `verifier`) validates unchanged. When `verifier` IS present, the writer has opted into the coverage schema and `tests_executed` (list), `changes_referenced` (list), and `coverage_level` (enum: `referenced` | `executed`) become conditionally required. Out-of-set `coverage_level` values are rejected with the allowed-set listed. The error precedence (missing > wrong-type > enum) already established for the fingerprint half is preserved.
+
+2. **`tools/test-reference-verify` — floor coverage verifier.** New ~300-line standalone CLI. Resolves a diff base (explicit `--base REV`, else auto-detects `origin/main` → `main` → `HEAD~1`), enumerates changed files (`git diff --name-only BASE` PLUS `git ls-files --others --exclude-standard` so untracked new files participate — the silent-failure mode this exists to catch), extracts Python `def`/`class` symbols via regex (including async-def and shebang-Python scripts without `.py` suffix), greps the test tree for any symbol per changed file, emits the four F4a fields as JSON. Three output modes: stdout (default), `--output PATH` (standalone JSON), `--merge-into PATH` (overlay onto existing fingerprint evidence). Documented in-script as a **floor**, not a default-good-enough — products with non-trivial coverage concerns SHOULD plug in stronger language-native tooling and emit `coverage_level: executed`.
+
+**Template / docs:** `templates/build-governance.md` + `.prawduct/build-governance.md` gain a "Coverage Evidence (v1.4 F4a, opt-in)" section explaining the presence-of-`verifier` discriminator, the enum, the floor caveat, and the `coverage_required` flag (default off). `templates/project-state.yaml` gains a top-level `coverage_required: false` block with comment header; v1.4 default is off because Chunk 09 ships the Critic check that actually enforces it. Framework's own state file mirrors the default.
+
+**Compat:** Strictly additive. Legacy evidence keeps validating with no changes. `coverage_required` default off means existing repos sync the template addition with zero behavior change; opting in is a one-line yaml edit. Schema validator rejects new-shape records that drop a field — a typo like `tests_ran` (vs. `tests_executed`) fails loud instead of silently dropping coverage signal.
+
+**Test coverage:** 1113 passing (+26 over Chunk 07's 1087). New `TestCoverageEvidenceSchema` in `tests/test_product_hook.py` — 7 tests covering: legacy fingerprint-only compat; full coverage evidence accepted; both enum values valid; unknown `coverage_level` rejected with allowed-set listed; `verifier` without companion fields rejected (catches typos); list-type enforcement on `changes_referenced`; empty lists accepted (shape vs. content — content is the Critic's job per Chunk 09). New `tests/test_reference_verifier.py` — 20 tests across 6 classes built on real-git mini-repo fixtures (no mocking): output shape stability, diff-base resolution (explicit / auto / unresolvable), modified-file detection, untracked-file inclusion, untracked-with-test reference matching, unchanged-file exclusion, Python class symbol matching, async-def extraction, shebang-Python script extraction (catches the `tools/foo` CLI-verb pattern), non-Python stem fallback, `--output` writes standalone fields, `--merge-into` preserves fingerprint and overlays F4a, `--output`/`--merge-into` mutual exclusion, missing-file errors, `TestSelfCompat` cross-validates that the verifier's emitted shape satisfies the schema validator (drift catcher).
+
+**Dogfooding:** Verifier run against this chunk's own diff via `python3 tools/test-reference-verify --base HEAD --merge-into .prawduct/.test-evidence.json` produces a `changes_referenced` list of 8 files (all changed files reference some test symbol). `test-status` reports `current`. `validate-evidence` reports `valid` against the merged record.
+
+**Critic chunk review:** 0 BLOCKING, 0 WARNINGs, 3 NOTEs (all resolved in-chunk):
+
+1. Build-plan structure table promised a `templates/project-state.yaml` edit in Chunk 08 — addressed by adding the `coverage_required: false` default now rather than deferring to Chunk 09.
+2. `_has_reference` re-opens test files per changed file (O(N*T) I/O) — backlog item filed (`Cache test-file contents in tools/test-reference-verify`).
+3. `_extract_symbols` returns empty set when a Python file has no `def`/`class` — docstring updated to flag the floor caveat for next reader.
+
 ## 2026-05-19: Chunk 07 — F1c sync auto-enables derived views for existing repos
 
 <!-- prawduct: chunks=07 | status=shipped | scope=v1.4 -->

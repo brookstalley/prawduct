@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""test-reference-verify — reference floor verifier for F4a coverage evidence.
+
+Produces the F4a fields of `.test-evidence.json`:
+    - `verifier`           — this script's identifier
+    - `coverage_level`     — always `referenced` (floor)
+    - `changes_referenced` — changed files whose symbols appear textually in
+                             at least one test file
+    - `tests_executed`     — test files discovered under the tests directory
+
+The mechanism is deliberately naive: extract function/class names from each
+changed Python file, then grep across the tests tree for those names. A
+referenced symbol does NOT prove a test exercises the code — only that some
+test mentions it. Products with non-trivial coverage concerns SHOULD supply
+their own verifier (language-native coverage, test-impact analysis) and emit
+`coverage_level: executed`. The framework's Critic check scales severity
+language to the declared `coverage_level`.
+
+Usage:
+    python3 tools/test-reference-verify [--base REV] [--tests-dir DIR]
+                                        [--output PATH] [--merge-into PATH]
+
+Without --output and --merge-into, prints the F4a fields as JSON to stdout.
+With --output, writes a coverage-fields-only JSON file at PATH.
+With --merge-into, reads existing evidence, merges F4a fields in, writes back
+(useful for combining with a fingerprint record produced by pytest).
+
+Exit codes:
+    0 — verifier completed; evidence written/printed. Note that emitting
+        evidence is the only job — enforcement of `changes_referenced`
+        completeness is the Critic's job (see v1.4 F4b).
+    1 — argument or I/O error.
+    2 — git failed (e.g., no commits to diff against).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+VERIFIER_NAME = "test-reference-verify (floor: symbol-grep)"
+
+# Symbol-extraction patterns — Python-focused floor.
+# Matches `def NAME`, `async def NAME`, `class NAME`. Module-level identifiers
+# captured naively; nested defs are fine because we only need *some* symbol
+# from the file that tests might reference.
+_PY_SYMBOL_RE = re.compile(
+    r"^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_]\w*)", re.MULTILINE
+)
+
+
+def _git(args: list[str], cwd: Path) -> tuple[int, str, str]:
+    """Run git with list-form argv. Returns (returncode, stdout, stderr)."""
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def _resolve_base(cwd: Path, requested: str | None) -> tuple[str | None, str]:
+    """Pick the diff base.
+
+    If `requested` is given, it must resolve. Otherwise try, in order:
+    `origin/main`, `main`, `HEAD~1`. Returns (resolved_rev, reason).
+    """
+    if requested:
+        rc, _, err = _git(["rev-parse", "--verify", requested], cwd)
+        if rc != 0:
+            return None, f"--base {requested!r} does not resolve: {err.strip()}"
+        return requested, f"explicit base {requested}"
+
+    for candidate in ("origin/main", "main", "HEAD~1"):
+        rc, _, _ = _git(["rev-parse", "--verify", candidate], cwd)
+        if rc == 0:
+            return candidate, f"auto-detected base {candidate}"
+    return None, "no base candidate resolved (origin/main, main, HEAD~1 all absent)"
+
+
+def _changed_files(cwd: Path, base: str) -> list[str]:
+    """Files changed between `base` and the working tree.
+
+    Combines two sources because `git diff` alone misses untracked files —
+    and untracked new code with no test reference is precisely the silent
+    failure this verifier exists to catch.
+
+    - `git diff --name-only <base>` — committed-on-branch + unstaged working-tree
+      changes (everything not in `base`, except untracked).
+    - `git ls-files --others --exclude-standard` — untracked files Git would
+      add on `git add .` (i.e. respects .gitignore).
+
+    Returns a sorted, deduplicated list.
+    """
+    rc, out, err = _git(["diff", "--name-only", base], cwd)
+    if rc != 0:
+        raise RuntimeError(f"git diff failed: {err.strip()}")
+    files = {line.strip() for line in out.splitlines() if line.strip()}
+
+    rc2, out2, _ = _git(["ls-files", "--others", "--exclude-standard"], cwd)
+    if rc2 == 0:
+        files.update(line.strip() for line in out2.splitlines() if line.strip())
+
+    return sorted(files)
+
+
+def _looks_like_python(path: Path) -> bool:
+    """Detect Python shebang scripts that lack a `.py` suffix.
+
+    Catches the common `tools/foo` pattern where the file is Python but its
+    name is a CLI verb. Without this, the verifier would fall back to
+    filename-stem matching for these files — a much weaker floor that misses
+    real `def`/`class` references.
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            first = fh.readline()
+    except OSError:
+        return False
+    return first.startswith("#!") and "python" in first
+
+
+def _extract_symbols(path: Path) -> set[str]:
+    """Return Python defs/classes declared in `path`.
+
+    Non-Python files fall back to the filename stem so any test that names
+    the file (e.g. `open('config.yaml')`) still counts as a reference.
+
+    Floor caveat: Python files with no `def`/`class` (re-export-only
+    `__init__.py`, constants-only module) return an empty set, so they
+    can never appear in `changes_referenced` — even if tests legitimately
+    use their constants. Products that care about non-callable surfaces
+    should plug in a stronger verifier.
+    """
+    if path.suffix == ".py" or _looks_like_python(path):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return set()
+        return set(_PY_SYMBOL_RE.findall(text))
+    return {path.stem} if path.stem else set()
+
+
+def _discover_tests(tests_dir: Path) -> list[Path]:
+    """List test files under `tests_dir` (Python test_*.py / *_test.py).
+
+    Order is sorted to keep evidence stable across runs.
+    """
+    if not tests_dir.is_dir():
+        return []
+    out: list[Path] = []
+    for p in tests_dir.rglob("*.py"):
+        name = p.name
+        if name.startswith("test_") or name.endswith("_test.py"):
+            out.append(p)
+    return sorted(out)
+
+
+def _has_reference(test_files: list[Path], symbols: set[str]) -> bool:
+    """True if any test file textually references any symbol in `symbols`."""
+    if not symbols:
+        return False
+    for tp in test_files:
+        try:
+            text = tp.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for sym in symbols:
+            if sym and sym in text:
+                return True
+    return False
+
+
+def _build_evidence_fields(
+    cwd: Path,
+    base: str,
+    tests_dir: Path,
+) -> dict:
+    """Compute the F4a coverage fields for the current diff."""
+    changed = _changed_files(cwd, base)
+    test_files = _discover_tests(tests_dir)
+    test_file_paths = [str(t.relative_to(cwd)) for t in test_files]
+
+    referenced: list[str] = []
+    for f in changed:
+        fp = cwd / f
+        if not fp.is_file():
+            # File was deleted in the diff — nothing for tests to reference.
+            continue
+        symbols = _extract_symbols(fp)
+        if _has_reference(test_files, symbols):
+            referenced.append(f)
+
+    return {
+        "verifier": VERIFIER_NAME,
+        "coverage_level": "referenced",
+        "tests_executed": test_file_paths,
+        "changes_referenced": referenced,
+    }
+
+
+def _merge_into(evidence_path: Path, new_fields: dict) -> None:
+    """Read existing evidence, overlay F4a fields, write back."""
+    if not evidence_path.is_file():
+        raise FileNotFoundError(evidence_path)
+    existing = json.loads(evidence_path.read_text())
+    if not isinstance(existing, dict):
+        raise ValueError(f"{evidence_path}: existing evidence is not a JSON object")
+    existing.update(new_fields)
+    evidence_path.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="test-reference-verify",
+        description="Floor coverage verifier — naive symbol-grep across changed files.",
+    )
+    parser.add_argument(
+        "--base",
+        default=None,
+        help="Git rev to diff against (default: origin/main, then main, then HEAD~1).",
+    )
+    parser.add_argument(
+        "--tests-dir",
+        default="tests",
+        help="Directory to search for test files (default: tests).",
+    )
+    parser.add_argument(
+        "--repo",
+        default=".",
+        help="Project root (default: cwd). Resolves --tests-dir and the git work tree.",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Write F4a fields as standalone JSON to this path.",
+    )
+    parser.add_argument(
+        "--merge-into",
+        default=None,
+        help="Merge F4a fields into an existing evidence JSON at this path.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.output and args.merge_into:
+        print("error: --output and --merge-into are mutually exclusive", file=sys.stderr)
+        return 1
+
+    repo = Path(args.repo).resolve()
+    tests_dir = (repo / args.tests_dir).resolve()
+
+    base, base_reason = _resolve_base(repo, args.base)
+    if base is None:
+        print(f"error: cannot resolve diff base — {base_reason}", file=sys.stderr)
+        return 2
+
+    try:
+        fields = _build_evidence_fields(repo, base, tests_dir)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.merge_into:
+        try:
+            _merge_into(Path(args.merge_into).resolve(), fields)
+        except (FileNotFoundError, ValueError, json.JSONDecodeError, OSError) as exc:
+            print(f"error: merge-into failed: {exc}", file=sys.stderr)
+            return 1
+        return 0
+
+    if args.output:
+        out = Path(args.output).resolve()
+        try:
+            out.write_text(json.dumps(fields, indent=2, sort_keys=True) + "\n")
+        except OSError as exc:
+            print(f"error: write failed: {exc}", file=sys.stderr)
+            return 1
+        return 0
+
+    print(json.dumps(fields, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
