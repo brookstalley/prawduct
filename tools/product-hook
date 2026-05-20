@@ -2460,20 +2460,33 @@ def cmd_stop(project_dir: Path) -> int:
                         pass
 
                 if has_pr:
-                    # Check for review evidence with content validation
-                    branch_file = current_branch.replace("/", "--") + ".json"
-                    evidence_path = pr_reviews_dir / branch_file
-                    pr_review_valid = False
-                    if evidence_path.is_file():
-                        try:
-                            data = json.loads(evidence_path.read_text())
-                            if isinstance(data.get("findings"), list) and data.get("summary"):
-                                pr_review_valid = True
-                        except (json.JSONDecodeError, OSError):
-                            pass
-                    if not pr_review_valid:
-                        pr_would_block = True
-                        pr_block_branch = current_branch
+                    # Symmetry with `/pr create` Step 1b: when the PR diff is
+                    # currently doc-only (merge-base...HEAD all .md), the
+                    # cumulative-Critic and PR-reviewer gates were legitimately
+                    # skipped at create-time and no evidence file was written.
+                    # Gate 3 would otherwise block session end with a misleading
+                    # "no review evidence" error for a PR that doesn't need one.
+                    # If a later session adds non-.md changes, this check returns
+                    # False and the gate fires as intended — matching the create-
+                    # flow contract.
+                    pr_is_doc_only, _ = _pr_diff_is_doc_only(project_dir)
+                    if pr_is_doc_only:
+                        pass  # PR diff is all .md — no evidence required
+                    else:
+                        # Check for review evidence with content validation
+                        branch_file = current_branch.replace("/", "--") + ".json"
+                        evidence_path = pr_reviews_dir / branch_file
+                        pr_review_valid = False
+                        if evidence_path.is_file():
+                            try:
+                                data = json.loads(evidence_path.read_text())
+                                if isinstance(data.get("findings"), list) and data.get("summary"):
+                                    pr_review_valid = True
+                            except (json.JSONDecodeError, OSError):
+                                pass
+                        if not pr_review_valid:
+                            pr_would_block = True
+                            pr_block_branch = current_branch
         except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
             pass
 
@@ -3235,30 +3248,20 @@ def cmd_accept_operator_verification(
     return 0
 
 
-def cmd_check_pr_doc_only(project_dir: Path) -> int:
-    """Fast-path gate for `/pr create`: report whether the PR diff is doc-only.
+def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
+    """Shared helper: is the PR diff (``merge-base...HEAD``) all ``.md``?
 
-    Exit 0 when every file in ``merge-base...HEAD`` ends in ``.md`` and the
-    diff is non-empty — the `/pr` skill uses this to skip the cumulative-
-    Critic and PR-reviewer gates, mirroring the session-end stop-hook
-    behavior (`_session_changes_are_doc_only`) at the PR boundary.
-
-    Exit 1 otherwise (any non-``.md`` file, empty diff, no resolvable base
-    branch, or git failure). Fails closed: when the gate cannot be evaluated,
-    fall through to the full review path rather than silently skipping it.
-
-    Base resolution mirrors ``_coverage_resolve_base`` — same precedence
-    (``origin/main``, ``main``, ``HEAD~1``) so the gate sees the same diff
-    surface as the verifier and the cumulative-Critic flow.
+    Returns ``(is_doc_only, status_message)``. ``is_doc_only`` is True only
+    when the diff is non-empty AND every file ends in ``.md``. The status
+    message names the specific reason for False (``no-base``, ``git-failed``,
+    ``empty-diff``, ``not-doc-only: <files>``) so both the CLI gate and the
+    stop-hook Gate 3 can surface actionable detail without re-implementing
+    the diff inspection. Base resolution mirrors ``_coverage_resolve_base``
+    so the helper sees the same diff surface as the cumulative-Critic flow.
     """
     base, base_note = _coverage_resolve_base(project_dir)
     if base is None:
-        print(
-            f"no-base: {base_note}. Cannot determine PR diff — falling back "
-            "to full review path.",
-            file=sys.stderr,
-        )
-        return 1
+        return False, f"no-base: {base_note}"
 
     proc = subprocess.run(
         ["git", "diff", "--name-only", f"{base}...HEAD"],
@@ -3268,38 +3271,51 @@ def cmd_check_pr_doc_only(project_dir: Path) -> int:
         timeout=30,
     )
     if proc.returncode != 0:
-        print(
-            f"git-failed: git diff {base}...HEAD failed: "
-            f"{proc.stderr.strip()}. Falling back to full review path.",
-            file=sys.stderr,
-        )
-        return 1
+        return False, f"git-failed: git diff {base}...HEAD failed: {proc.stderr.strip()}"
 
     files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
     if not files:
-        print(
-            f"empty-diff: no files changed in {base}...HEAD. Doc-only fast-path "
-            "is not applicable.",
-            file=sys.stderr,
-        )
-        return 1
+        return False, f"empty-diff: no files changed in {base}...HEAD"
 
     non_md = [f for f in files if not f.endswith(".md")]
     if non_md:
         sample = ", ".join(non_md[:3])
         more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
-        print(
-            f"not-doc-only: PR includes non-.md files: {sample}{more}. "
-            "Full review required.",
-            file=sys.stderr,
-        )
-        return 1
+        return False, f"not-doc-only: PR includes non-.md files: {sample}{more}"
 
-    print(
-        f"doc-only: PR diff ({len(files)} file(s) in {base}...HEAD) is all "
-        ".md — cumulative-Critic and PR-reviewer gates may be skipped."
+    return True, f"doc-only: {len(files)} file(s) in {base}...HEAD all .md"
+
+
+def cmd_check_pr_doc_only(project_dir: Path) -> int:
+    """Fast-path gate for `/pr create`: report whether the PR diff is doc-only.
+
+    Exit 0 when every file in ``merge-base...HEAD`` ends in ``.md`` and the
+    diff is non-empty — the `/pr` skill uses this to skip the cumulative-
+    Critic and PR-reviewer gates, mirroring the session-end stop-hook
+    behavior (`_session_changes_are_doc_only`) at the PR boundary. The
+    stop hook's PR-review evidence gate (Gate 3) consults the same helper
+    so a doc-only PR doesn't get blocked at session end for missing
+    evidence — symmetric behavior across both gates.
+
+    Exit 1 otherwise (any non-``.md`` file, empty diff, no resolvable base
+    branch, or git failure). Fails closed: when the gate cannot be evaluated,
+    fall through to the full review path rather than silently skipping it.
+    """
+    is_doc_only, status = _pr_diff_is_doc_only(project_dir)
+    if is_doc_only:
+        print(
+            f"{status} — cumulative-Critic and PR-reviewer gates may be skipped."
+        )
+        return 0
+    suffix = (
+        ". Doc-only fast-path is not applicable."
+        if status.startswith("empty-diff")
+        else ". Falling back to full review path."
+        if status.startswith(("no-base", "git-failed"))
+        else ". Full review required."
     )
-    return 0
+    print(f"{status}{suffix}", file=sys.stderr)
+    return 1
 
 
 _USAGE = (

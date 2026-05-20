@@ -7,7 +7,7 @@
 
 ## v1.4.0
 
-**Entry:** 2026-05-19: Chunk 14 — F10 operator-verification queue + `/pr` BLOCKING gate
+**Entry:** 2026-05-19: `/pr` doc-only fast-path
 
 **Chunks shipped:** 05, 06, 07, 08, 09, 10, 11, 12, 13, 14
 
