@@ -90,9 +90,11 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 
+**Operator verification (F10).** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/pr create` blocks on pending entries when `operator_verification_required: true`.
+
 **Verify artifacts are current.** Confirm artifacts reflect the code. The Critic checks bidirectional freshness. CLAUDE.md is an instruction file, not an artifact — the Critic warns when its project content exceeds ~150 lines.
 
-**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section. Update the Context line with what's done and what's next — this is the cross-session handoff.
+**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section. Update the Context line with what's done and what's next — this is the cross-session handoff. (When `views_enabled`, Status/release-notes/scope_rollups are derived views — add a tagged change-log entry and run regen-views instead.)
 
 ## Session Scope Discipline
 
@@ -186,6 +188,8 @@ Tests are the most important artifact you produce during building. They're contr
 **Test coverage is proportionate.** Match coverage to risk. Every product needs at least: happy path, error handling for likely failures, and edge cases for anything involving money, data, or safety.
 
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively — proportionality applies to strategies too.
+
+**Idiomatic tooling, honest coverage.** Use language-native incremental/cached runners to skip re-runs when nothing changed. The framework asserts the *contract* (every change appears in `.test-evidence.json`'s `changes_referenced`), not a specific verifier. `tools/test-reference-verify` is a **floor**: symbol-grep catches untested new code but cannot prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`; the Critic's `verify-coverage` scales finding language accordingly.
 
 ## The Critic
 

@@ -84,8 +84,31 @@ class TestBuildingMethodology:
         # Further trimming would lose the pedagogical structure the section
         # depends on. If this test fails again, prefer trimming over another
         # bump.
+        #
+        # Bumped from 4250 → 4275 in v1.4 Chunk 05 (F1a derived views). The
+        # chunk-close step gains a one-clause pointer that Status may be a
+        # derived view (~13 tokens) — needed so methodology readers know the
+        # full guidance lives in change-log.md schema and product-claude.md
+        # step 10. Trimmed to a parenthetical before bumping.
+        #
+        # Bumped from 4275 → 4375 in v1.4 Chunk 09 (F4b — Critic symbol-coverage
+        # check + methodology principle). The chunk's spec required a new
+        # paragraph under Test Discipline naming the floor verifier, the
+        # `coverage_level` contract, and the `verify-coverage` Critic check
+        # (~75 tokens after aggressive trimming — the floor-vs-executed
+        # distinction is the chunk's reason for existing). If this test
+        # fails again, prefer trimming over another bump.
+        #
+        # Bumped from 4375 → 4400 in v1.4 Chunk 14 (F10 — operator-verification
+        # queue + /pr BLOCKING gate). The chunk-close step gains a one-sentence
+        # pointer naming the queue file, the `Visual change:` declaration, and
+        # the `operator_verification_required` flag — trimmed to ~30 tokens
+        # before bumping by 25. The new chunk-close step is required by the
+        # v1.4 maintenance plan (methodology pipeline coverage); folding it
+        # into "Update build plan Status" was rejected because the enqueue
+        # action is conceptually separate from marking the chunk shipped.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4250, f"building.md is ~{tokens} tokens, should be <4250"
+        assert tokens < 4400, f"building.md is ~{tokens} tokens, should be <4400"
 
 
 # =============================================================================
@@ -217,8 +240,24 @@ class TestCriticSkill:
         # (framework-only checks). If this test fails again, prefer trimming
         # over another bump — the Critic skill is loaded fresh on every
         # invocation and the budget bounds that cost.
+        #
+        # Bumped from 3200 → 3250 in v1.4 Chunk 05 (F1a derived views). Goal 4
+        # gains a "Derived views" bullet that pins the Critic's behavior when
+        # `views_enabled` is true — the change-log tag line, not the regenerated
+        # Status checkbox, is canonical. The check is structural (not a check
+        # the per-product critic-review.md can carry alone, since framework
+        # Critic reviews read SKILL.md directly), and was trimmed to ~35
+        # tokens before bumping.
+        #
+        # Bumped from 3250 → 3325 in v1.4 Chunk 09 (F4b — Critic symbol-coverage
+        # check). Goal 1 gains a `verify-coverage` bullet that maps the helper's
+        # exit codes and stderr-line format to BLOCKING findings, scaled to
+        # `coverage_level` (~50 tokens after aggressive trimming). This is one
+        # of the F4 protocol additions the Chunk 00 trim-pass explicitly
+        # reserved budget for. If this test fails again, prefer trimming over
+        # another bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3200, f"SKILL.md is ~{tokens} tokens, should be <3200"
+        assert tokens < 3325, f"SKILL.md is ~{tokens} tokens, should be <3325"
 
 
 # =============================================================================

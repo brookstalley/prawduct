@@ -141,6 +141,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.session-start",
     ".prawduct/.subagent-briefing.md",
     ".prawduct/.gates-waived",
+    ".prawduct/.sync-pending",
     ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
     ".prawduct/artifacts/build-plan.md",

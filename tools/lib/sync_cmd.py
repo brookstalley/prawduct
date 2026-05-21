@@ -7,6 +7,7 @@ manifests, renames, version migrations, and place-once files.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import shutil
@@ -36,6 +37,7 @@ from .core import (
     update_gitignore,
 )
 from .migrate_cmd import (
+    enable_v1_4_views,
     migrate_backlog,
     migrate_change_log,
     migrate_project_state_v5,
@@ -327,6 +329,383 @@ def migrate_v4_to_v5(product_dir: Path) -> list[str]:
     return actions
 
 
+# F5a auto-commit defaults. Kept as constants so tests can introspect them
+# without re-parsing project-state.yaml. `release/*` is a fnmatch glob, not a
+# regex — see `_branch_is_protected`.
+_DEFAULT_PROTECTED_BRANCHES: tuple[str, ...] = ("main", "master", "release/*")
+_SYNC_PENDING_MARKER = ".prawduct/.sync-pending"
+
+
+def _read_sync_config(product: Path) -> dict:
+    """Read F5a sync config from `.prawduct/project-state.yaml`.
+
+    Returns a dict with keys:
+      - auto_commit: bool — default True (F5 ships on by default; protected
+        branches and WIP checks are the safety net)
+      - protected_branches: list[str] — fnmatch globs; default
+        ('main', 'master', 'release/*')
+
+    Parsed via column-0 YAML scan (no PyYAML dependency) matching the pattern
+    used elsewhere in product-hook for `views_enabled` / `coverage_required`.
+    The block looked for is::
+
+        sync:
+          auto_commit: true
+          protected_branches:
+            - main
+            - master
+            - "release/*"
+
+    Anything malformed falls back to defaults — sync must never block on
+    config parse errors.
+    """
+    config = {
+        "auto_commit": True,
+        "protected_branches": list(_DEFAULT_PROTECTED_BRANCHES),
+    }
+    state_path = product / ".prawduct" / "project-state.yaml"
+    if not state_path.is_file():
+        return config
+    try:
+        text = state_path.read_text()
+    except OSError:
+        return config
+
+    lines = text.splitlines()
+    in_sync = False
+    in_protected = False
+    for line in lines:
+        stripped = line.rstrip()
+        if not stripped or stripped.lstrip().startswith("#"):
+            continue
+        # Column-0 keys exit sub-block scope.
+        if not line.startswith((" ", "\t")):
+            in_sync = stripped.startswith("sync:")
+            in_protected = False
+            continue
+        if not in_sync:
+            continue
+        # Two-space indented child keys of `sync:`.
+        if line.startswith("  ") and not line.startswith("   "):
+            key_part = line[2:].split("#", 1)[0].rstrip()
+            if key_part.startswith("auto_commit:"):
+                value = key_part.split(":", 1)[1].strip().strip("\"'").lower()
+                config["auto_commit"] = value in ("true", "yes", "on", "1")
+                in_protected = False
+            elif key_part.startswith("protected_branches:"):
+                # Multi-line list follows; reset to capture entries.
+                config["protected_branches"] = []
+                in_protected = True
+            else:
+                in_protected = False
+        elif in_protected and line.lstrip().startswith("- "):
+            entry = line.lstrip()[2:].split("#", 1)[0].strip().strip("\"'")
+            if entry:
+                config["protected_branches"].append(entry)
+    if not config["protected_branches"]:
+        # User wrote `protected_branches:` with no entries — interpret as
+        # "no protected branches" only if they spelled it `protected_branches: []`.
+        # The empty-list-from-no-entries case is more likely a YAML mistake;
+        # fall back to defaults to stay safe.
+        config["protected_branches"] = list(_DEFAULT_PROTECTED_BRANCHES)
+    return config
+
+
+def _branch_is_protected(branch: str, patterns: list[str]) -> bool:
+    """fnmatch each pattern against branch name. Empty branch (detached HEAD)
+    is treated as protected — we don't auto-commit in detached HEAD because
+    the commit would be unreachable after checkout."""
+    if not branch:
+        return True
+    return any(fnmatch.fnmatchcase(branch, p) for p in patterns)
+
+
+def _current_branch(product: Path) -> str:
+    """Return current branch name or empty string when detached / not a repo."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(product), "symbolic-ref", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.SubprocessError, OSError, FileNotFoundError):
+        pass
+    return ""
+
+
+def _git_op_in_progress(product: Path) -> str:
+    """Return the in-progress git op name, or empty string when none.
+
+    Checks the well-known marker files in `.git/`. If `.git` is a file (git
+    worktree), resolve the actual gitdir.
+    """
+    git_path = product / ".git"
+    if not git_path.exists():
+        return ""
+    if git_path.is_file():
+        # Worktree: .git is a file like `gitdir: /path/to/main/.git/worktrees/x`
+        try:
+            content = git_path.read_text().strip()
+            if content.startswith("gitdir:"):
+                git_path = Path(content.split(":", 1)[1].strip())
+        except OSError:
+            return ""
+    markers = [
+        ("MERGE_HEAD", "merge"),
+        ("REBASE_HEAD", "rebase"),
+        ("CHERRY_PICK_HEAD", "cherry-pick"),
+        ("REVERT_HEAD", "revert"),
+    ]
+    for filename, op in markers:
+        if (git_path / filename).exists():
+            return op
+    # Interactive rebase uses a directory, not a file.
+    if (git_path / "rebase-merge").is_dir() or (git_path / "rebase-apply").is_dir():
+        return "rebase"
+    return ""
+
+
+def _git_porcelain(product: Path) -> list[tuple[str, str]]:
+    """Return list of (status_code, path) from `git status --porcelain -z`.
+
+    Empty list when not a git repo or git fails. Status codes are the raw
+    two-char porcelain v1 codes (e.g., ' M', 'M ', '??', 'A ', 'AM').
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(product), "status", "--porcelain", "-z"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.SubprocessError, OSError, FileNotFoundError):
+        return []
+    if result.returncode != 0:
+        return []
+    entries: list[tuple[str, str]] = []
+    # -z separates entries with NUL; each entry is "XY path" where rename/copy
+    # would add a second NUL-separated source path. We don't auto-commit
+    # renames anyway, so flatten the source-path entries into themselves.
+    raw = result.stdout
+    i = 0
+    parts = raw.split("\0")
+    while i < len(parts):
+        entry = parts[i]
+        if not entry:
+            i += 1
+            continue
+        if len(entry) < 3:
+            i += 1
+            continue
+        code = entry[:2]
+        path = entry[3:]
+        entries.append((code, path))
+        # Rename/copy: next NUL field is the source path; skip it.
+        if code[0] in ("R", "C"):
+            i += 2
+        else:
+            i += 1
+    return entries
+
+
+def _framework_known_paths(manifest: dict) -> set[str]:
+    """Paths sync owns or mutates — auto-commit may claim any of these.
+
+    Anything NOT in this set is, by definition, outside the framework's
+    write surface; user WIP. Sources:
+      - manifest["files"] — the canonical per-product managed file list
+        (every entry has a `template`/`source` that sync re-renders on
+        each run, so drift here is always framework-authored)
+      - `.prawduct/sync-manifest.json` — written every sync
+      - `.prawduct/project-state.yaml` — mutated by enable_v1_4_views and
+        the v5 migration path
+      - `.gitignore` — kept current by update_gitignore
+
+    `PLACE_ONCE_TEMPLATES` / `PLACE_ONCE_COPY` are *deliberately excluded*:
+    sync only creates them when absent and never re-writes thereafter, so
+    porcelain drift on `.prawduct/change-log.md`, `.prawduct/backlog.md`,
+    or `tests/conftest.py` is virtually always user-authored content —
+    sweeping that into `chore(sync):` would re-create the exact
+    co-mingling F5a aims to prevent. The trade-off: first-time creation of
+    a place-once file leaves an untracked file in the working tree for the
+    user to commit deliberately, which is appropriate (initial content of
+    change-log.md / backlog.md is a moment that deserves explicit
+    acknowledgement).
+    """
+    known = set(manifest.get("files", {}).keys())
+    known.add(".prawduct/sync-manifest.json")
+    known.add(".prawduct/project-state.yaml")
+    known.add(".gitignore")
+    return known
+
+
+def _classify_changes(
+    porcelain: list[tuple[str, str]], known: set[str]
+) -> tuple[list[str], list[str]]:
+    """Partition porcelain entries into (framework_changed, wip_changed).
+
+    A path counts as framework when it appears in `known` (see
+    `_framework_known_paths`). Everything else is user WIP and blocks
+    auto-commit.
+    """
+    framework_changed: list[str] = []
+    wip: list[str] = []
+    for _code, path in porcelain:
+        if path in known:
+            framework_changed.append(path)
+        else:
+            wip.append(path)
+    return framework_changed, wip
+
+
+def _write_sync_pending(product: Path, reason: str, blocked_by: list[str]) -> None:
+    """Write the F5a sync-pending marker. Best-effort — never raises."""
+    marker = product / _SYNC_PENDING_MARKER
+    payload = {
+        "reason": reason,
+        "blocked_by": blocked_by,
+        "version": PRAWDUCT_VERSION,
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    except OSError:
+        pass
+
+
+def _clear_sync_pending(product: Path) -> None:
+    """Remove the F5a sync-pending marker if present. Best-effort."""
+    marker = product / _SYNC_PENDING_MARKER
+    try:
+        if marker.is_file():
+            marker.unlink()
+    except OSError:
+        pass
+
+
+def _try_auto_commit(
+    product: Path,
+    *,
+    actions: list[str],
+    notes: list[str],
+    manifest: dict,
+) -> None:
+    """F5a: auto-commit framework drift as a single marker commit per upgrade.
+
+    Inspects `git status` after sync has finished writing files. Partitions
+    changes into framework-known and user WIP using
+    `_framework_known_paths(manifest)`. The auto-commit only stages and
+    commits known framework paths; anything else is user WIP and blocks the
+    commit (a `.sync-pending` marker explains why).
+
+    Mutates `actions` and `notes` in place. Side effects:
+      - on success: creates one commit, appends to `actions`, clears any
+        prior `.sync-pending` marker
+      - on precondition failure: writes `.sync-pending` marker, appends a
+        descriptive note (visible to user via product-hook briefing)
+      - silent no-op when not a git repo, when auto_commit is disabled, or
+        when there is no framework drift to commit
+
+    The contract is best-effort: any subprocess failure or unexpected git
+    state degrades to "skip auto-commit, leave drift in working tree" — sync
+    itself must never fail because of this step.
+    """
+    git_dir = product / ".git"
+    if not git_dir.exists():
+        return  # Not a git repo — nothing to commit against.
+
+    config = _read_sync_config(product)
+    if not config["auto_commit"]:
+        return
+
+    porcelain = _git_porcelain(product)
+    known = _framework_known_paths(manifest)
+    managed_changed, wip = _classify_changes(porcelain, known)
+    if not managed_changed:
+        # No framework-managed drift to commit. If a stale marker exists,
+        # clear it — drift is resolved.
+        _clear_sync_pending(product)
+        return
+
+    blocked_by: list[str] = []
+    if wip:
+        sample = ", ".join(wip[:3])
+        extra = f" (+{len(wip) - 3} more)" if len(wip) > 3 else ""
+        blocked_by.append(f"non-framework changes present: {sample}{extra}")
+
+    op = _git_op_in_progress(product)
+    if op:
+        blocked_by.append(f"git {op} in progress")
+
+    branch = _current_branch(product)
+    if not branch:
+        blocked_by.append("detached HEAD")
+    elif _branch_is_protected(branch, config["protected_branches"]):
+        blocked_by.append(f"branch '{branch}' is protected")
+
+    if blocked_by:
+        reason = "; ".join(blocked_by)
+        _write_sync_pending(product, reason, blocked_by)
+        notes.append(
+            f"Auto-commit skipped: {reason}. "
+            f"Framework-managed drift left in working tree; "
+            f"resolve and commit when ready."
+        )
+        return
+
+    # Preconditions pass — stage and commit the framework-managed paths only.
+    try:
+        add_result = subprocess.run(
+            ["git", "-C", str(product), "add", "--", *managed_changed],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if add_result.returncode != 0:
+            notes.append(
+                f"Auto-commit skipped: git add failed ({add_result.stderr.strip()})"
+            )
+            _write_sync_pending(product, "git add failed", [add_result.stderr.strip()])
+            return
+
+        message = f"chore(sync): prawduct v{PRAWDUCT_VERSION}"
+        # Use -- only to disambiguate; we already staged via add.
+        commit_result = subprocess.run(
+            ["git", "-C", str(product), "commit", "-m", message],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if commit_result.returncode != 0:
+            # Most common cause: pre-commit hook rejected the change. Surface
+            # the error and leave the staged changes for the user to inspect.
+            err = commit_result.stderr.strip() or commit_result.stdout.strip()
+            notes.append(
+                f"Auto-commit failed at git commit ({err[:200]}); "
+                f"changes remain staged for manual commit."
+            )
+            _write_sync_pending(product, "git commit failed", [err[:200]])
+            return
+
+        sha_result = subprocess.run(
+            ["git", "-C", str(product), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        sha = sha_result.stdout.strip() if sha_result.returncode == 0 else ""
+        suffix = f" (commit {sha})" if sha else ""
+        actions.append(f"Auto-committed framework sync as '{message}'{suffix}")
+        _clear_sync_pending(product)
+    except (subprocess.SubprocessError, OSError, FileNotFoundError) as exc:
+        notes.append(f"Auto-commit skipped: {exc}")
+        _write_sync_pending(product, "auto-commit subprocess error", [str(exc)])
+
+
 def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: bool = False, force: bool = False) -> dict:
     """Run the sync algorithm on a product directory.
 
@@ -433,6 +812,10 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
 
     # Migrate remaining_work/future_work/backlog from project-state.yaml to backlog.md
     actions.extend(migrate_backlog(product))
+
+    # v1.4: auto-enable derived views for existing repos (one-shot; mutates
+    # manifest in place; existing write-back below persists the flag).
+    actions.extend(enable_v1_4_views(product, manifest))
 
     files = manifest.get("files", {})
 
@@ -753,6 +1136,12 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
             manifest["framework_commit"] = fw_commit
         manifest["last_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+    # F5a: after all framework-managed mutations land on disk and the
+    # manifest is updated, attempt the single marker commit. Quarantines
+    # framework drift to one dated `chore(sync): prawduct vX.Y.Z` per upgrade,
+    # never co-mingling with chunk diffs. Best-effort — never blocks sync.
+    _try_auto_commit(product, actions=actions, notes=notes, manifest=manifest)
 
     # Include version change info so callers can surface upgrade notices
     version_info: dict[str, str] = {"new_version": PRAWDUCT_VERSION}

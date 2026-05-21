@@ -9,11 +9,14 @@ Subcommands:
   setup     Auto-detect repo state and init/migrate/sync as needed
   sync      Sync product repo with framework template updates
   validate  Health check — verify repo structure and configuration
+  views     Inspect derived views (Status / release-notes / scope-rollups);
+            --refresh regenerates them from change-log tags
 
 Usage:
   python3 tools/prawduct-setup.py setup <target> [--name NAME]
   python3 tools/prawduct-setup.py sync <product_dir> [--framework-dir <dir>]
   python3 tools/prawduct-setup.py validate <target> [--json]
+  python3 tools/prawduct-setup.py views <product_dir> [--refresh] [--json]
 """
 
 from __future__ import annotations
@@ -54,6 +57,7 @@ from lib import (  # noqa: F401
     V1_SESSION_FILES,
     V3_GITIGNORE_ENTRIES,
     V4_GITIGNORE_ENTRIES,
+    LearningEntry,
     _HISTORICAL_RENDER_DEPTH_CAP,
     _bootstrap_manifest,
     _match_historical_render,
@@ -62,6 +66,7 @@ from lib import (  # noqa: F401
     add_block_markers,
     apply_renames,
     archive_v1_dirs,
+    audit_learnings,
     clean_gitignore,
     clean_v1_session_files,
     compute_block_hash,
@@ -70,6 +75,10 @@ from lib import (  # noqa: F401
     create_manifest,
     delete_v1_files,
     detect_version,
+    enable_v1_4_coverage,
+    enable_v1_4_operator_verification,
+    enable_v1_4_settings_layout,
+    enable_v1_4_views,
     ensure_dir,
     extract_block,
     generate_sync_manifest,
@@ -81,12 +90,21 @@ from lib import (  # noqa: F401
     migrate_change_log,
     migrate_project_state_v5,
     migrate_v4_to_v5,
+    parse_learning_metadata,
+    parse_learnings_file,
     render_template,
     replace_settings,
+    run_audit_learnings,
     run_init,
     run_migrate,
+    run_migrate_coverage,
+    run_migrate_operator_verification,
+    run_migrate_settings_layout,
+    run_sentinel,
     run_sync,
     run_validate,
+    run_verify_entry,
+    run_views_command,
     split_learnings_v5,
     untrack_gitignored_files,
     update_gitignore,
@@ -135,6 +153,126 @@ def main() -> int:
     )
     validate_parser.add_argument("target_dir", help="Product repo directory to validate")
     validate_parser.add_argument("--json", action="store_true", dest="json_mode", help="JSON output only")
+
+    # --- migrate ---
+    # Per-feature opt-in migrations. Unlike `setup`, which auto-detects
+    # version and migrates the whole layout, `migrate` is the explicit
+    # surface for v1.4 features that require user intent (e.g. coverage
+    # enforcement, which commits the project to BLOCKING Critic findings).
+    migrate_parser = subparsers.add_parser(
+        "migrate",
+        help="Per-feature v1.4 opt-in migrations (e.g. --enable-coverage, --enable-settings-layout)",
+    )
+    migrate_parser.add_argument("product_dir", help="Product repo directory")
+    migrate_parser.add_argument(
+        "--enable-coverage",
+        action="store_true",
+        dest="enable_coverage",
+        help=(
+            "Enable v1.4 F4 symbol-coverage enforcement: flip "
+            "coverage_required: true in project-state.yaml and surface "
+            "evidence-shape NOTEs. Critic Goal 1 will BLOCK on changed "
+            "files missing from .test-evidence.json's changes_referenced."
+        ),
+    )
+    migrate_parser.add_argument(
+        "--enable-settings-layout",
+        action="store_true",
+        dest="enable_settings_layout",
+        help=(
+            "Stamp .claude/settings.json as on the v1.4 canonical minimal "
+            "layout. Runs an aggressive legacy_cleanup pass (strips v1/v3 "
+            "hook markers, regenerates the banner, preserves user hooks) "
+            "and sets the manifest's v1_4_settings_migrated flag. v1.4.1's "
+            "Critic NOTE on unmigrated products keys off this flag."
+        ),
+    )
+    migrate_parser.add_argument(
+        "--enable-operator-verification",
+        action="store_true",
+        dest="enable_operator_verification",
+        help=(
+            "Enable v1.4 F10 operator-verification gate: flip "
+            "operator_verification_required: true in project-state.yaml "
+            "and place .prawduct/operator-verification.md from template. "
+            "`/pr create` will BLOCK whenever the queue has pending entries; "
+            "override per-PR with `--accept-pending-verification \"rationale\"`."
+        ),
+    )
+    migrate_parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Re-run even when the manifest tracks the migration as complete "
+            "(useful for re-surfacing evidence-shape NOTEs after wiring up a "
+            "verifier, or re-normalizing a hand-edited settings.json)."
+        ),
+    )
+    migrate_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_mode",
+        help="JSON output only",
+    )
+
+    # --- views ---
+    views_parser = subparsers.add_parser(
+        "views",
+        help="Inspect or refresh derived views (Status / release-notes / scope-rollups)",
+    )
+    views_parser.add_argument("product_dir", help="Product repo directory")
+    views_parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Regenerate views (write files); without this, reports planned actions only",
+    )
+    views_parser.add_argument("--json", action="store_true", dest="json_mode", help="JSON output only")
+
+    # --- verify ---
+    # Drain a single pending operator-verification entry. The /pr gate
+    # (`check-operator-verification`) reads the queue; this is the
+    # complement — the user-facing drain operation.
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help=(
+            "Mark a pending operator-verification entry as verified "
+            "(drain the queue one entry at a time)"
+        ),
+    )
+    verify_parser.add_argument("product_dir", help="Product repo directory")
+    verify_parser.add_argument(
+        "vrf_id",
+        help="Verification entry ID (e.g. VRF-001) as it appears in "
+        ".prawduct/operator-verification.md",
+    )
+    verify_parser.add_argument(
+        "--json", action="store_true", dest="json_mode", help="JSON output only"
+    )
+
+    # --- audit-learnings ---
+    audit_parser = subparsers.add_parser(
+        "audit-learnings",
+        help=(
+            "Audit .prawduct/learnings.md against optional lifecycle metadata "
+            "(confirmations / created / sentinel). Reports promotion / "
+            "retirement / stale candidates; --apply retires sentinel-pass "
+            "entries to learnings-detail.md."
+        ),
+    )
+    audit_parser.add_argument("product_dir", help="Product repo directory")
+    audit_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help=(
+            "Move sentinel-pass entries from learnings.md to "
+            "learnings-detail.md under the 'Historical (structurally "
+            "enforced)' section. Without --apply, the command only reports "
+            "what would change."
+        ),
+    )
+    audit_parser.add_argument(
+        "--json", action="store_true", dest="json_mode", help="JSON output only"
+    )
 
     args = parser.parse_args()
 
@@ -200,6 +338,180 @@ def main() -> int:
                     log(f"  + {action}")
             for note in result.get("notes", []):
                 log(f"  * {note}")
+        return 0
+
+    elif args.command == "views":
+        result = run_views_command(args.product_dir, refresh=args.refresh)
+
+        if args.json_mode:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                log(f"Error: {result['error']}")
+                return 1
+            if not result["enabled"]:
+                log("Views disabled (set views_enabled: true in project-state.yaml).")
+                return 0
+            mode = "refresh" if args.refresh else "dry-run"
+            log(f"Derived views ({mode}):")
+            for view in result["views"]:
+                marker = {"noop": " ", "write": "*", "create": "+"}.get(view["action"], "?")
+                log(f"  {marker} {view['summary']}")
+            if not args.refresh:
+                any_changes = any(v["action"] != "noop" for v in result["views"])
+                if any_changes:
+                    log("")
+                    log("  Run with --refresh to apply.")
+        return 0
+
+    elif args.command == "migrate":
+        # Per-feature opt-in migrations. Each flag dispatches to its own
+        # runner; exactly one must be set. Mutual exclusion is enforced at
+        # dispatch time rather than via argparse mutually_exclusive_group so
+        # the help text shows both flags as peer options.
+        feature_flags = [
+            ("enable_coverage", args.enable_coverage),
+            ("enable_settings_layout", args.enable_settings_layout),
+            ("enable_operator_verification", args.enable_operator_verification),
+        ]
+        active = [name for name, on in feature_flags if on]
+        if not active:
+            log(
+                "error: `migrate` requires a feature flag "
+                "(--enable-coverage, --enable-settings-layout, "
+                "or --enable-operator-verification)"
+            )
+            migrate_parser.print_help()
+            return 1
+        if len(active) > 1:
+            log(
+                "error: `migrate` accepts one feature flag per invocation; "
+                f"got {', '.join(active)}. Run them as separate commands."
+            )
+            return 1
+
+        if args.enable_coverage:
+            result = run_migrate_coverage(args.product_dir, force=args.force)
+            success_label = "Coverage migration"
+            on_off_field = "enabled"
+            on_off_label = "coverage_required"
+            on_off_location = "on disk"
+        elif args.enable_settings_layout:
+            result = run_migrate_settings_layout(args.product_dir, force=args.force)
+            success_label = "Settings-layout migration"
+            on_off_field = "migrated"
+            on_off_label = "v1_4_settings_migrated"
+            on_off_location = "in manifest"
+        else:  # args.enable_operator_verification
+            result = run_migrate_operator_verification(
+                args.product_dir, force=args.force
+            )
+            success_label = "Operator-verification migration"
+            on_off_field = "enabled"
+            on_off_label = "operator_verification_required"
+            on_off_location = "on disk"
+
+        if args.json_mode:
+            print(json.dumps(result, indent=2))
+        else:
+            if "error" in result:
+                log(f"Error: {result['error']}")
+                return 1
+            if result["actions"]:
+                log(f"{success_label} applied to {result['product_dir']}:")
+                for action in result["actions"]:
+                    log(f"  + {action}")
+            else:
+                log(f"{success_label}: no changes ({result['product_dir']})")
+            for note in result["notes"]:
+                log(f"  * {note}")
+            log("")
+            log(
+                f"  {on_off_label} is "
+                + ("ON" if result.get(on_off_field) else "OFF")
+                + f" {on_off_location}."
+            )
+        return 0 if "error" not in result else 1
+
+    elif args.command == "verify":
+        result = run_verify_entry(args.product_dir, args.vrf_id)
+
+        if args.json_mode:
+            print(json.dumps(result, indent=2))
+            return 0 if "error" not in result else 1
+
+        if "error" in result:
+            log(f"Error: {result['error']}")
+            return 1
+
+        log(
+            f"Operator-verification: {result['vrf_id']} "
+            f"{result['previous_status']} → {result['status']} "
+            f"({result['product_dir']})"
+        )
+        for action in result["actions"]:
+            log(f"  + {action}")
+        for note in result["notes"]:
+            log(f"  * {note}")
+        return 0
+
+    elif args.command == "audit-learnings":
+        result = run_audit_learnings(args.product_dir, apply=args.apply)
+
+        if args.json_mode:
+            print(json.dumps(result, indent=2))
+            return 0 if "error" not in result else 1
+
+        if "error" in result:
+            log(f"Error: {result['error']}")
+            return 1
+
+        promotions = result["promotions"]
+        retirements = result["retirements"]
+        stale_flags = result["stale_flags"]
+        errors = result["errors"]
+
+        mode_label = "apply" if result["applied"] else "dry-run"
+        log(f"Learnings audit ({mode_label}): {result['product_dir']}")
+
+        if promotions:
+            log("")
+            log(f"  Promotion candidates ({len(promotions)} — advisory):")
+            for p in promotions:
+                log(f"    * {p['title']} (confirmations={p['confirmations']})")
+
+        if retirements:
+            log("")
+            log(f"  Retirement candidates ({len(retirements)}):")
+            for r in retirements:
+                if r["passed"] is True:
+                    status = "applied" if r["applied"] else "pending --apply"
+                    log(f"    * {r['title']}  [sentinel pass — {status}]")
+                elif r["passed"] is False:
+                    log(f"    ! {r['title']}  [sentinel FAIL — {r['sentinel']}]")
+                else:
+                    log(f"    ? {r['title']}  [sentinel skipped — {r['sentinel']}]")
+
+        if stale_flags:
+            log("")
+            log(f"  Stale flags ({len(stale_flags)}):")
+            for s in stale_flags:
+                log(
+                    f"    * {s['title']}  "
+                    f"(created={s['created']}, age={s['age_days']}d, "
+                    f"confirmations={s['confirmations']})"
+                )
+
+        if errors:
+            log("")
+            log(f"  Errors ({len(errors)}):")
+            for e in errors:
+                log(f"    ! {e['title']}: {e['error']}")
+
+        if not (promotions or retirements or stale_flags or errors):
+            log("  No lifecycle actions — every entry is either active "
+                "with no metadata or annotated but not yet a candidate.")
+
         return 0
 
     elif args.command == "validate":

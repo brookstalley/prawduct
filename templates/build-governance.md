@@ -57,6 +57,24 @@ The `timestamp` field is compared against `.prawduct/.session-start` to verify e
 
 **Skipping redundant test runs.** Builders, the Critic, and the PR reviewer all consult `test-status` before touching the test suite. Exit 0 ("current") means the saved evidence was recorded this session with all tests passing. Exit 1 ("stale") covers: missing evidence, evidence from a previous session, failing tests, missing required fields, or schema violations.
 
+### Coverage Evidence (v1.4 F4a, opt-in)
+
+Evidence can additionally assert that the changeset is covered by the executed tests. When the new schema is in use, the JSON carries four extra fields:
+
+```json
+{
+  "verifier": "name of the tool that produced changes_referenced",
+  "tests_executed": ["tests/foo.py", "tests/bar.py"],
+  "changes_referenced": ["src/foo.py"],
+  "coverage_level": "referenced"
+}
+```
+
+- **Presence of `verifier`** is the discriminator: legacy evidence (pre-F4a shape — no `verifier` field; historically called "fingerprint" though the tree-hash mechanism that name referred to was removed pre-v1.4) keeps validating unchanged. New-schema evidence (any record carrying `verifier`) must also carry `tests_executed`, `changes_referenced`, and `coverage_level`, and the schema validator will reject the record if any are missing or wrong-typed. **The legacy-shape compat path is v1.4-only — v1.5 will drop it after the migration window. Opt in early via `python3 tools/prawduct-setup.py migrate --enable-coverage <product_dir>`.**
+- **`coverage_level`** is an enum: `referenced` (a test mentions a symbol from the changed file — floor heuristic, does NOT prove execution) or `executed` (a real coverage tool confirmed the test ran the changed code).
+- **Reference verifier.** `python3 tools/test-reference-verify [--base REV] [--tests-dir DIR] [--output PATH] [--merge-into PATH]` ships as a Python-focused floor. It greps test files for `def`/`class` names extracted from changed files and emits a `coverage_level: referenced` record. **It is a floor, not a default-good-enough.** A test can `import` a module by name without ever executing it; the verifier will still mark it referenced. Products with non-trivial coverage concerns SHOULD plug in a stronger verifier (language-native coverage, test-impact analysis) and set `coverage_level: executed`.
+- **Critic enforcement is opt-in** (v1.4: default off via `coverage_required: false` in `project-state.yaml`). Flip it on with `python3 tools/prawduct-setup.py migrate --enable-coverage <product_dir>` — the migration also surfaces deprecation NOTEs for legacy-shape evidence and a "next-PR consequence" reminder. When opted in, Critic Goal 1 will require every changed file to appear in `changes_referenced` and will scale severity language to the declared `coverage_level`. Until enforcement is opted in, the schema is checked but content is not — emitting the new fields earns no false safety guarantee.
+
 ## Gate Waivers
 
 Some sessions truly do not need every governance gate. A docs-only typo fix does not need a Critic review; a refactor that will never get a PR does not need PR review evidence. To declare a gate N/A for the current session, write `.prawduct/.gates-waived` as a JSON object with one key per waived gate and a non-empty reason string:

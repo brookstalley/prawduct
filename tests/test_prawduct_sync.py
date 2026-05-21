@@ -32,12 +32,22 @@ FILE_RENAMES = _mod.FILE_RENAMES
 MANAGED_FILES = _mod.MANAGED_FILES
 run_sync = _mod.run_sync
 _try_pull_framework = _mod._try_pull_framework
+_try_auto_commit = _mod._lib_sync_cmd._try_auto_commit
+_read_sync_config = _mod._lib_sync_cmd._read_sync_config
+_branch_is_protected = _mod._lib_sync_cmd._branch_is_protected
+_DEFAULT_PROTECTED_BRANCHES = _mod._lib_sync_cmd._DEFAULT_PROTECTED_BRANCHES
+PRAWDUCT_VERSION = _mod.PRAWDUCT_VERSION
 _match_historical_render = _mod._match_historical_render
 _HISTORICAL_RENDER_DEPTH_CAP = _mod._HISTORICAL_RENDER_DEPTH_CAP
 BLOCK_BEGIN = _mod.BLOCK_BEGIN
 BLOCK_END = _mod.BLOCK_END
 GITIGNORE_ENTRIES = _mod.GITIGNORE_ENTRIES
 migrate_backlog = _mod.migrate_backlog
+enable_v1_4_views = _mod.enable_v1_4_views
+enable_v1_4_coverage = _mod.enable_v1_4_coverage
+run_migrate_coverage = _mod.run_migrate_coverage
+enable_v1_4_settings_layout = _mod.enable_v1_4_settings_layout
+run_migrate_settings_layout = _mod.run_migrate_settings_layout
 untrack_gitignored_files = _mod.untrack_gitignored_files
 
 
@@ -2824,3 +2834,1401 @@ class TestAdvisoryEnrichment(TestRunSyncPlaceOnce):
         # When fw isn't git, helper returns None and fields are empty strings
         assert advisories[0]["last_changed_commit"] == ""
         assert advisories[0]["last_changed_subject"] == ""
+
+
+# =============================================================================
+# v1.4 derived-views auto-enable (one-shot migration during sync).
+#
+# Sync silently flips ``views_enabled`` to ``true`` and lands a ``scope_rollups:
+# {}`` placeholder so existing v1.3.x repos pick up the v1.4 derived-views
+# feature without an explicit opt-in. Tracked via manifest one-shot flag.
+# =============================================================================
+
+
+class TestEnableV1_4Views:
+
+    def test_no_project_state_no_op(self, tmp_path: Path):
+        """Missing .prawduct/project-state.yaml — returns empty, no flag set."""
+        manifest: dict = {}
+        assert enable_v1_4_views(tmp_path, manifest) == []
+        assert "v1_4_views_enabled" not in manifest
+
+    def test_already_migrated_no_op(self, tmp_path: Path):
+        """Manifest flag set — short-circuits without reading the file."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Write a file that WOULD trigger changes if the function ran
+        (prawduct / "project-state.yaml").write_text("views_enabled: false\n")
+        manifest: dict = {"v1_4_views_enabled": True}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert actions == []
+        # File unchanged
+        assert (prawduct / "project-state.yaml").read_text() == "views_enabled: false\n"
+
+    def test_pre_chunk_06_repo_adds_both_keys(self, tmp_path: Path):
+        """Legacy v1.3.x bootstrap: neither key present → both appended, flag set."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: TestApp\n\nbuild_state:\n  source_root: src\n"
+        )
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Added scope_rollups" in a for a in actions)
+        assert any("Added views_enabled: true" in a for a in actions)
+        assert manifest["v1_4_views_enabled"] is True
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "scope_rollups: {}" in state
+        assert "views_enabled: true" in state
+        # Pre-existing content preserved
+        assert "product_identity:" in state
+        assert "name: TestApp" in state
+        assert "build_state:" in state
+
+    def test_post_chunk_06_repo_flips_false_to_true(self, tmp_path: Path):
+        """Post-Chunk-06 template default: ``views_enabled: false`` and
+        ``scope_rollups: {}`` present → flag flips, scope_rollups untouched."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = (
+            "product_identity:\n  name: TestApp\n\n"
+            "views_enabled: false\n\n"
+            "scope_rollups: {}\n"
+        )
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Flipped views_enabled" in a for a in actions)
+        # No scope_rollups action — it was already present
+        assert not any("Added scope_rollups" in a for a in actions)
+        assert manifest["v1_4_views_enabled"] is True
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "views_enabled: true" in state
+        assert "views_enabled: false" not in state
+        # scope_rollups: {} preserved verbatim
+        assert "scope_rollups: {}" in state
+
+    def test_already_on_no_file_changes(self, tmp_path: Path):
+        """Both keys present and views_enabled already true → no file edits,
+        but the one-shot flag is still recorded so subsequent syncs skip."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "views_enabled: true\n\nscope_rollups: {}\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert actions == []
+        assert manifest["v1_4_views_enabled"] is True
+        # File byte-identical
+        assert (prawduct / "project-state.yaml").read_text() == original
+
+    def test_idempotent_second_run(self, tmp_path: Path):
+        """After a successful run sets the flag, second invocation is a no-op
+        even with mutating content."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("views_enabled: false\n")
+        manifest: dict = {}
+
+        actions1 = enable_v1_4_views(tmp_path, manifest)
+        assert actions1  # First run does work
+        assert manifest["v1_4_views_enabled"] is True
+
+        # User then opts back out manually:
+        (prawduct / "project-state.yaml").write_text("views_enabled: false\n")
+
+        # Second run respects the user's explicit choice — flag is still set,
+        # so no flip back to true.
+        actions2 = enable_v1_4_views(tmp_path, manifest)
+        assert actions2 == []
+        assert (prawduct / "project-state.yaml").read_text() == "views_enabled: false\n"
+
+    def test_only_scope_missing_adds_just_scope(self, tmp_path: Path):
+        """``views_enabled: true`` present but no ``scope_rollups:`` → adds
+        only the placeholder, no flip needed."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: A\n\nviews_enabled: true\n"
+        )
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Added scope_rollups" in a for a in actions)
+        assert not any("Flipped views_enabled" in a for a in actions)
+        assert not any("Added views_enabled" in a for a in actions)
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "scope_rollups: {}" in state
+
+    def test_commented_views_key_does_not_count(self, tmp_path: Path):
+        """A commented-out ``# views_enabled: ...`` doesn't satisfy detection —
+        the function still appends the real top-level key."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "# old: views_enabled: false (commented)\nproduct_identity:\n  name: A\n"
+        )
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Added views_enabled: true" in a for a in actions)
+        state = (prawduct / "project-state.yaml").read_text()
+        # Both the comment and the real top-level key are present
+        assert "# old: views_enabled: false (commented)" in state
+        assert "\nviews_enabled: true" in state
+
+    def test_nested_views_key_not_counted_as_top_level(self, tmp_path: Path):
+        """A nested ``views_enabled: false`` (indented under another key) is
+        not the top-level field. ``has_views_key`` doesn't match it (the
+        substring check looks for ``\\nviews_enabled:`` with no leading space),
+        so the function appends a real top-level key. The nested line is left
+        verbatim."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "nested:\n  views_enabled: false\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions = enable_v1_4_views(tmp_path, manifest)
+
+        assert any("Added views_enabled: true" in a for a in actions)
+        assert not any("Flipped views_enabled" in a for a in actions)
+
+        state = (prawduct / "project-state.yaml").read_text()
+        # Nested line preserved unchanged
+        assert "  views_enabled: false" in state
+        # New top-level key appended
+        assert "\nviews_enabled: true" in state
+
+    def test_run_sync_integrates_enable_v1_4_views(self, tmp_path: Path):
+        """End-to-end: run_sync on a legacy product repo (no scope_rollups, no
+        views_enabled) lands both keys, sets manifest flag, and persists it."""
+        fw = tmp_path / "framework"
+        fw.mkdir()
+        (fw / "templates").mkdir()
+        # Minimal templates so run_sync doesn't trip on missing files
+        (fw / "templates" / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic\n")
+        (fw / "templates" / "project-preferences.md").write_text("# Preferences\n")
+        (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review\n")
+        (fw / "templates" / "boundary-patterns.md").write_text("# Boundaries\n")
+        (fw / "tools").mkdir()
+        (fw / "tools" / "product-hook").write_text("#!/usr/bin/env python3\n")
+
+        product = tmp_path / "product"
+        prawduct = product / ".prawduct"
+        prawduct.mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: LegacyApp\n"
+        )
+        # Pre-existing v5 manifest without v1_4_views_enabled flag
+        manifest = {
+            "framework_version": "1.3.15",
+            "framework_path": str(fw),
+            "format_version": 2,
+            "product_name": "LegacyApp",
+            "files": {},
+            "auto_pull": False,
+        }
+        (prawduct / "sync-manifest.json").write_text(json.dumps(manifest))
+
+        run_sync(str(product), framework_dir=str(fw), no_pull=True)
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "views_enabled: true" in state
+        assert "scope_rollups: {}" in state
+
+        post = json.loads((prawduct / "sync-manifest.json").read_text())
+        assert post.get("v1_4_views_enabled") is True
+
+        # Second sync: flag set, no re-enable actions related to v1.4 views
+        result2 = run_sync(str(product), framework_dir=str(fw), no_pull=True)
+        for a in result2.get("actions", []):
+            assert "views_enabled" not in a
+            assert "scope_rollups" not in a
+
+
+# =============================================================================
+# v1.4 F4c — coverage-required opt-in migration (Chunk 10).
+#
+# Unlike v1.4 views, coverage enforcement is intentionally NOT auto-enabled on
+# sync — turning it on commits the project to BLOCKING Critic findings on
+# missing changes_referenced. The helper is invoked only via the new
+# `prawduct-setup migrate --enable-coverage` subcommand.
+# =============================================================================
+
+
+class TestEnableV1_4Coverage:
+
+    def test_no_project_state_no_op(self, tmp_path: Path):
+        """Missing .prawduct/project-state.yaml — returns empty actions/notes,
+        no manifest flag set. Mirrors enable_v1_4_views' fail-quiet contract
+        for repos that aren't fully scaffolded."""
+        manifest: dict = {}
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+        assert actions == []
+        assert notes == []
+        assert "v1_4_coverage_enabled" not in manifest
+
+    def test_pre_v1_4_repo_appends_block(self, tmp_path: Path):
+        """Legacy v1.3.x bootstrap (no coverage_required key) → block
+        appended at end, flag set, surfaces next-PR consequence + missing-
+        evidence note (no evidence file exists in this fresh fixture)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "product_identity:\n  name: TestApp\n\nbuild_state:\n  source_root: src\n"
+        )
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Added coverage_required: true" in a for a in actions)
+        assert manifest["v1_4_coverage_enabled"] is True
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "coverage_required: true" in state
+        # Pre-existing content preserved (additive append, not rewrite)
+        assert "product_identity:" in state
+        assert "name: TestApp" in state
+
+        # Notes surface both the missing-evidence path and the next-PR
+        # consequence so the user can't enable enforcement and then be
+        # surprised at the first BLOCKING finding.
+        assert any("No .prawduct/.test-evidence.json" in n for n in notes)
+        assert any("BLOCK on changed files" in n for n in notes)
+
+    def test_flips_false_to_true(self, tmp_path: Path):
+        """Explicit `coverage_required: false` → flips to true; the YAML
+        rewrite is targeted (one line replaced)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = (
+            "product_identity:\n  name: TestApp\n\n"
+            "coverage_required: false\n"
+        )
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions, _ = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Flipped coverage_required: false → true" in a for a in actions)
+        assert manifest["v1_4_coverage_enabled"] is True
+
+        state = (prawduct / "project-state.yaml").read_text()
+        assert "coverage_required: true" in state
+        assert "coverage_required: false" not in state
+        # Unrelated content untouched
+        assert "product_identity:" in state
+        assert "name: TestApp" in state
+
+    def test_already_on_no_file_changes(self, tmp_path: Path):
+        """Key already true → no rewrite, no actions, manifest flag set,
+        notes mention 'already true'. The flag is still recorded so a later
+        accidental re-run short-circuits."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "coverage_required: true\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert actions == []
+        assert manifest["v1_4_coverage_enabled"] is True
+        # File byte-identical
+        assert (prawduct / "project-state.yaml").read_text() == original
+        assert any("already true" in n for n in notes)
+
+    def test_one_shot_manifest_short_circuits(self, tmp_path: Path):
+        """Manifest flag set → function returns empty without reading the
+        YAML. Mirrors enable_v1_4_views' one-shot tracking so a user who
+        re-edits coverage_required back to false isn't fought."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: false\n")
+        manifest: dict = {"v1_4_coverage_enabled": True}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert actions == []
+        assert notes == []
+        # File unchanged — the one-shot tracking didn't even read it
+        assert (prawduct / "project-state.yaml").read_text() == (
+            "coverage_required: false\n"
+        )
+
+    def test_force_overrides_one_shot(self, tmp_path: Path):
+        """`force=True` bypasses the one-shot tracking. The intended use is
+        re-surfacing evidence-shape NOTEs after wiring up a verifier — the
+        YAML may already be on, but the user wants to re-check the evidence
+        situation."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: true\n")
+        # Legacy evidence to trigger the deprecation note
+        (prawduct / ".test-evidence.json").write_text(
+            '{"timestamp":"2026-05-19T00:00:00Z","passed":1,"failed":0,'
+            '"skipped":0,"duration_seconds":1.0,"command":"pytest"}'
+        )
+        manifest: dict = {"v1_4_coverage_enabled": True}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest, force=True)
+
+        # No YAML actions (already on), but the legacy-evidence NOTE fires.
+        assert actions == []
+        assert any("Legacy evidence shape detected" in n for n in notes)
+        assert any("v1.5 will drop" in n for n in notes)
+
+    def test_legacy_evidence_surfaces_deprecation_note(self, tmp_path: Path):
+        """Evidence file exists but has no `verifier` field → v1.5-removal
+        warning. The wording is load-bearing for the chunk's deprecation
+        signaling."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: false\n")
+        (prawduct / ".test-evidence.json").write_text(
+            '{"timestamp":"2026-05-19T00:00:00Z","passed":1,"failed":0,'
+            '"skipped":0,"duration_seconds":1.0,"command":"pytest"}'
+        )
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Flipped coverage_required" in a for a in actions)
+        assert any("Legacy evidence shape detected" in n for n in notes)
+        assert any("test-reference-verify" in n for n in notes)
+
+    def test_modern_evidence_emits_no_deprecation(self, tmp_path: Path):
+        """F4a-shape evidence (has `verifier`) suppresses the legacy NOTE —
+        only the next-PR consequence is surfaced. Otherwise the migration
+        would cry wolf at every freshly-onboarded product that already
+        emits the new schema."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: false\n")
+        (prawduct / ".test-evidence.json").write_text(
+            '{"timestamp":"2026-05-19T00:00:00Z","passed":1,"failed":0,'
+            '"skipped":0,"duration_seconds":1.0,"command":"pytest",'
+            '"verifier":"test-reference-verify (floor: symbol-grep)",'
+            '"coverage_level":"referenced","tests_executed":[],'
+            '"changes_referenced":[]}'
+        )
+        manifest: dict = {}
+
+        _, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert not any("Legacy evidence shape" in n for n in notes)
+        assert any("BLOCK on changed files" in n for n in notes)
+
+    def test_unparseable_evidence_surfaces_diagnostic(self, tmp_path: Path):
+        """Bad JSON in evidence → diagnostic NOTE, not a crash. Mirrors the
+        verify-coverage tolerance — a broken evidence file shouldn't make
+        the migration unreachable."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: false\n")
+        (prawduct / ".test-evidence.json").write_text("{not valid json")
+        manifest: dict = {}
+
+        _, notes = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Could not parse" in n for n in notes)
+
+    def test_flip_preserves_inline_comment(self, tmp_path: Path):
+        """`coverage_required: false  # opt-in deferred` → flips to true,
+        comment preserved. Detector strips comments via `split('#', 1)`;
+        the mutator must match the same shape or a silent no-op results
+        (Critic Chunk 10 NOTE). Catches asymmetry regression."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "coverage_required: false  # opt-in deferred to next sprint\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions, _ = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Flipped coverage_required" in a for a in actions)
+        state = (prawduct / "project-state.yaml").read_text()
+        # Value flipped, comment preserved verbatim
+        assert "coverage_required: true" in state
+        assert "# opt-in deferred to next sprint" in state
+        # The pre-flip form is gone
+        assert "coverage_required: false" not in state
+
+    def test_indented_key_does_not_count_as_top_level(self, tmp_path: Path):
+        """Nested `coverage_required: true` (indented under another section)
+        is NOT detected as the top-level setting. The function appends a real
+        top-level key; the nested line is left verbatim. Mirrors the column-0
+        discipline shared with `is_views_enabled` and `verify-coverage`."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        original = "nested:\n  coverage_required: true\n"
+        (prawduct / "project-state.yaml").write_text(original)
+        manifest: dict = {}
+
+        actions, _ = enable_v1_4_coverage(tmp_path, manifest)
+
+        assert any("Added coverage_required: true" in a for a in actions)
+        state = (prawduct / "project-state.yaml").read_text()
+        # Nested line preserved unchanged
+        assert "  coverage_required: true" in state
+        # New top-level key appended
+        assert "\ncoverage_required: true" in state
+
+
+# =============================================================================
+# `prawduct-setup migrate --enable-coverage` subcommand runner.
+# =============================================================================
+
+
+class TestRunMigrateCoverage:
+
+    def _scaffold(self, tmp_path: Path, yaml: str) -> Path:
+        """Create a minimal product layout: .prawduct/ with project-state.yaml
+        and a sync-manifest.json. Returns the product root."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(yaml)
+        (prawduct / "sync-manifest.json").write_text(
+            json.dumps({"version": "1.3.17", "files": {}})
+        )
+        return tmp_path
+
+    def test_no_prawduct_returns_error(self, tmp_path: Path):
+        """Refuse to migrate a non-product directory."""
+        result = run_migrate_coverage(str(tmp_path))
+        assert "error" in result
+        assert "no .prawduct/ directory" in result["error"]
+
+    def test_no_manifest_returns_actionable_error(self, tmp_path: Path):
+        """Half-scaffolded repo (.prawduct/ exists but no manifest) → error
+        names what to run next, not just 'not found'."""
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text("")
+        result = run_migrate_coverage(str(tmp_path))
+        assert "error" in result
+        assert "prawduct-setup setup" in result["error"]
+
+    def test_persists_manifest_flag(self, tmp_path: Path):
+        """After a successful run, sync-manifest.json on disk has
+        v1_4_coverage_enabled set."""
+        product = self._scaffold(tmp_path, "coverage_required: false\n")
+        result = run_migrate_coverage(str(product))
+        assert "error" not in result
+        assert result["enabled"] is True
+
+        manifest = json.loads(
+            (product / ".prawduct" / "sync-manifest.json").read_text()
+        )
+        assert manifest.get("v1_4_coverage_enabled") is True
+
+    def test_reports_enabled_state_from_disk(self, tmp_path: Path):
+        """`enabled` field in result reflects the on-disk YAML, not the
+        manifest flag — a user could re-edit between runs, and the runner
+        must report ground truth."""
+        product = self._scaffold(tmp_path, "coverage_required: false\n")
+        run_migrate_coverage(str(product))
+
+        # User manually reverts
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: false\n"
+        )
+
+        # Re-run without --force: one-shot kicks in, no flip — but the
+        # `enabled` report reflects what's actually in the YAML now.
+        result = run_migrate_coverage(str(product))
+        assert result["enabled"] is False
+        assert result["actions"] == []
+
+    def test_force_flag_bypasses_one_shot(self, tmp_path: Path):
+        """--force re-runs even after manifest one-shot is set, so users can
+        re-surface evidence-shape NOTEs after wiring up a verifier."""
+        product = self._scaffold(tmp_path, "coverage_required: true\n")
+        (product / ".prawduct" / ".test-evidence.json").write_text(
+            '{"timestamp":"2026-05-19T00:00:00Z","passed":1,"failed":0,'
+            '"skipped":0,"duration_seconds":1.0,"command":"pytest"}'
+        )
+
+        # First run: sets the flag.
+        run_migrate_coverage(str(product))
+        # Second run: without --force, manifest one-shot short-circuits.
+        no_force = run_migrate_coverage(str(product))
+        assert no_force["notes"] == []
+        # Third run: with --force, notes re-surface.
+        forced = run_migrate_coverage(str(product), force=True)
+        assert any("Legacy evidence shape" in n for n in forced["notes"])
+
+    def test_result_shape_is_stable(self, tmp_path: Path):
+        """The result dict must always carry product_dir, enabled, force,
+        actions, notes — JSON-mode callers depend on the keys being
+        present regardless of branch."""
+        product = self._scaffold(tmp_path, "coverage_required: false\n")
+        result = run_migrate_coverage(str(product))
+        assert set(result.keys()) >= {
+            "product_dir",
+            "enabled",
+            "force",
+            "actions",
+            "notes",
+        }
+
+
+# =============================================================================
+# F5b — settings.json layout migration (manifest flag + legacy_cleanup pass).
+# =============================================================================
+
+
+def _minimal_template(tmp_path: Path) -> Path:
+    """v1.4 canonical settings.json template. Mirrors templates/product-settings.json:
+    two single-line dispatches to product-hook + a banner."""
+    tpl = tmp_path / "product-settings.json"
+    tpl.write_text(json.dumps({
+        "hooks": {
+            "SessionStart": [{"matcher": "startup|clear|resume", "hooks": [
+                {"type": "command",
+                 "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+            ]}],
+            "Stop": [{"matcher": "", "hooks": [
+                {"type": "command",
+                 "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+            ]}],
+        },
+        "companyAnnouncements": ["{{PRODUCT_NAME}} — Built with Prawduct"],
+    }, indent=2))
+    return tpl
+
+
+class TestEnableV1_4SettingsLayout:
+
+    def test_no_settings_file_no_op(self, tmp_path: Path):
+        """No .claude/settings.json — function exits cleanly without setting the
+        manifest flag (the flag means 'I migrated', not 'I tried and there was
+        nothing'). Mirrors enable_v1_4_views' fail-quiet contract for repos that
+        aren't fully scaffolded."""
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest
+        )
+
+        assert actions == []
+        assert notes == []
+        assert "v1_4_settings_migrated" not in manifest
+
+    def test_already_minimal_sets_flag_only(self, tmp_path: Path):
+        """Product already on canonical layout (modern hook dispatch, no v1
+        markers) → no file mutation, but manifest flag is set so this product
+        counts as migrated. The user has explicitly opted in even though
+        nothing needed changing."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup|clear|resume", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            },
+            "companyAnnouncements": ["MyApp — Built with Prawduct"],
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "MyApp"}, manifest
+        )
+
+        assert actions == []
+        assert manifest["v1_4_settings_migrated"] is True
+        # Surface to the user that this is a no-op so they don't suspect
+        # the migration silently failed.
+        assert any("already on the canonical" in n.lower() for n in notes)
+
+    def test_strips_v1_hook_markers(self, tmp_path: Path):
+        """Legacy v1 settings.json with framework-path / governance-hook
+        markers → stripped, replaced with current dispatch, manifest flag set,
+        action reported."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup", "hooks": [
+                    {"type": "command",
+                     "command": "bash $CLAUDE_PROJECT_DIR/tools/governance-hook clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command",
+                     "command": "bash $CLAUDE_PROJECT_DIR/tools/governance-hook stop"}
+                ]}],
+            },
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {}
+
+        actions, _ = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "Legacy"}, manifest
+        )
+
+        assert any("settings.json" in a.lower() for a in actions)
+        assert manifest["v1_4_settings_migrated"] is True
+
+        merged = json.loads(settings.read_text())
+        # All hook commands now go through product-hook (the canonical form);
+        # the governance-hook bash dispatcher is gone.
+        cmds = [
+            h.get("command", "")
+            for entries in merged["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert all("governance-hook" not in c for c in cmds)
+        assert any("product-hook" in c and c.startswith("python3 ") for c in cmds)
+
+    def test_preserves_user_hooks_during_cleanup(self, tmp_path: Path):
+        """User-added Stop hook stays alongside the prawduct hook after
+        migration. The legacy_cleanup pass strips only prawduct-owned entries,
+        never user-authored ones — same invariant as TestMergeSettings."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup", "hooks": [
+                    {"type": "command",
+                     "command": "bash $CLAUDE_PROJECT_DIR/tools/governance-hook clear"}
+                ]}],
+                "Stop": [
+                    {"matcher": "", "hooks": [
+                        {"type": "command",
+                         "command": "bash $CLAUDE_PROJECT_DIR/tools/governance-hook stop"}
+                    ]},
+                    {"matcher": "", "hooks": [
+                        {"type": "command", "command": "my-custom-cleanup"}
+                    ]},
+                ],
+            },
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+
+        enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest={}
+        )
+
+        stop_cmds = [
+            h.get("command", "")
+            for entry in json.loads(settings.read_text())["hooks"]["Stop"]
+            for h in entry.get("hooks", [])
+        ]
+        assert "my-custom-cleanup" in stop_cmds
+        assert any("product-hook" in c and "python3" in c for c in stop_cmds)
+        assert not any("governance-hook" in c for c in stop_cmds)
+
+    def test_preserves_top_level_user_keys(self, tmp_path: Path):
+        """Non-prawduct top-level keys (customSetting, permissions, etc.) are
+        preserved verbatim. The migration touches hooks + banner only."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "customSetting": True,
+            "permissions": {"allow": ["Bash(echo *)"]},
+            "hooks": {},
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+
+        enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest={}
+        )
+
+        merged = json.loads(settings.read_text())
+        assert merged["customSetting"] is True
+        assert merged["permissions"] == {"allow": ["Bash(echo *)"]}
+
+    def test_one_shot_manifest_short_circuits(self, tmp_path: Path):
+        """Manifest flag set → no file read, no actions, no notes. Mirrors
+        enable_v1_4_coverage's one-shot tracking. Without this, an
+        accidental re-invocation would re-normalize a settings.json the user
+        may have since hand-edited."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        # Write something that WOULD be normalized, to prove it isn't read.
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "bash governance-hook clear"}
+                ]}]
+            }
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+        original = settings.read_text()
+        manifest: dict = {"v1_4_settings_migrated": True}
+
+        actions, notes = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest
+        )
+
+        assert actions == []
+        assert notes == []
+        assert settings.read_text() == original
+
+    def test_force_overrides_one_shot(self, tmp_path: Path):
+        """`force=True` bypasses the manifest one-shot. Use case: a user
+        re-runs after manually re-editing settings.json to re-normalize."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "", "hooks": [
+                    {"type": "command", "command": "bash governance-hook clear"}
+                ]}]
+            }
+        }, indent=2))
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {"v1_4_settings_migrated": True}
+
+        actions, _ = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest, force=True
+        )
+
+        assert any("settings.json" in a.lower() for a in actions)
+        # File mutated despite the pre-existing flag.
+        cmds = [
+            h.get("command", "")
+            for entries in json.loads(settings.read_text())["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert not any("governance-hook" in c for c in cmds)
+
+    def test_bad_json_surfaces_diagnostic(self, tmp_path: Path):
+        """Unparseable settings.json → diagnostic note, no crash, manifest
+        flag NOT set (the migration didn't actually run to completion).
+        Mirrors merge_settings' bad-JSON tolerance (returns False)."""
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text("not valid json {{{")
+        tpl = _minimal_template(tmp_path)
+        manifest: dict = {}
+
+        actions, notes = enable_v1_4_settings_layout(
+            tmp_path, tpl, {"{{PRODUCT_NAME}}": "X"}, manifest
+        )
+
+        assert actions == []
+        assert any("could not parse" in n.lower() or "parse" in n.lower() for n in notes)
+        # No silent flag-flip when the migration didn't actually run.
+        assert "v1_4_settings_migrated" not in manifest
+
+
+# =============================================================================
+# `prawduct-setup migrate --enable-settings-layout` subcommand runner.
+# =============================================================================
+
+
+class TestRunMigrateSettingsLayout:
+
+    def _scaffold_product(self, tmp_path: Path, framework: Path) -> Path:
+        """Create a minimal product layout with .prawduct/, .claude/settings.json
+        already on the minimal layout, and a sync-manifest.json pointing at
+        the given framework. Returns the product root."""
+        product = tmp_path / "product"
+        prawduct = product / ".prawduct"
+        prawduct.mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "TestApp"\n'
+        )
+        (prawduct / "sync-manifest.json").write_text(
+            json.dumps({
+                "framework_version": "1.3.17",
+                "framework_source": str(framework),
+                "product_name": "TestApp",
+                "files": {},
+            })
+        )
+        settings = product / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup|clear|resume", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            },
+            "companyAnnouncements": ["TestApp — Built with Prawduct"],
+        }, indent=2))
+        return product
+
+    def _scaffold_framework(self, tmp_path: Path) -> Path:
+        """Synthetic framework checkout with just enough on disk for the
+        runner to resolve templates: templates/product-settings.json."""
+        fw = tmp_path / "framework"
+        (fw / "templates").mkdir(parents=True)
+        (fw / "templates" / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "startup|clear|resume", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+                "Stop": [{"matcher": "", "hooks": [
+                    {"type": "command",
+                     "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" stop"}
+                ]}],
+            },
+            "companyAnnouncements": ["{{PRODUCT_NAME}} — Built with Prawduct"],
+        }, indent=2))
+        return fw
+
+    def test_no_prawduct_returns_error(self, tmp_path: Path):
+        result = run_migrate_settings_layout(str(tmp_path))
+        assert "error" in result
+        assert ".prawduct" in result["error"]
+
+    def test_no_manifest_returns_actionable_error(self, tmp_path: Path):
+        (tmp_path / ".prawduct").mkdir()
+        result = run_migrate_settings_layout(str(tmp_path))
+        assert "error" in result
+        assert "prawduct-setup setup" in result["error"]
+
+    def test_framework_unreachable_returns_actionable_error(self, tmp_path: Path):
+        """Manifest's framework_source points nowhere → error names the env
+        var fallback. Mirrors run_sync's framework-resolution error path so
+        the recovery advice is consistent across commands."""
+        product = tmp_path / "product"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps({"framework_source": "/nonexistent/framework", "files": {}})
+        )
+        result = run_migrate_settings_layout(str(product))
+        assert "error" in result
+        assert "framework" in result["error"].lower()
+
+    def test_persists_manifest_flag(self, tmp_path: Path):
+        """After a successful run, sync-manifest.json on disk has
+        v1_4_settings_migrated set — even when nothing changed in the file
+        (already-minimal case still counts as 'opted in')."""
+        fw = self._scaffold_framework(tmp_path)
+        product = self._scaffold_product(tmp_path, fw)
+
+        result = run_migrate_settings_layout(str(product))
+
+        assert "error" not in result
+        assert result["migrated"] is True
+
+        manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
+        assert manifest.get("v1_4_settings_migrated") is True
+
+    def test_one_shot_short_circuits_without_force(self, tmp_path: Path):
+        """Second invocation without --force is a fast no-op (flag already
+        in manifest). Mirrors run_migrate_coverage's one-shot semantics."""
+        fw = self._scaffold_framework(tmp_path)
+        product = self._scaffold_product(tmp_path, fw)
+
+        run_migrate_settings_layout(str(product))
+        # Mutate settings.json to a non-canonical shape — second run without
+        # --force should NOT touch it (flag short-circuits).
+        settings_path = product / ".claude" / "settings.json"
+        settings_path.write_text(json.dumps({
+            "hooks": {"Stop": [{"matcher": "", "hooks": [
+                {"type": "command", "command": "bash governance-hook stop"}
+            ]}]}
+        }, indent=2))
+
+        result = run_migrate_settings_layout(str(product))
+
+        assert result["actions"] == []
+        # Still has the bad shape because we didn't actually re-run.
+        cmds = [
+            h.get("command", "")
+            for entries in json.loads(settings_path.read_text())["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert any("governance-hook" in c for c in cmds)
+
+    def test_force_re_runs_normalization(self, tmp_path: Path):
+        """--force bypasses the one-shot and re-normalizes."""
+        fw = self._scaffold_framework(tmp_path)
+        product = self._scaffold_product(tmp_path, fw)
+
+        run_migrate_settings_layout(str(product))
+        settings_path = product / ".claude" / "settings.json"
+        settings_path.write_text(json.dumps({
+            "hooks": {"Stop": [{"matcher": "", "hooks": [
+                {"type": "command", "command": "bash governance-hook stop"}
+            ]}]}
+        }, indent=2))
+
+        result = run_migrate_settings_layout(str(product), force=True)
+
+        assert any("settings.json" in a.lower() for a in result["actions"])
+        cmds = [
+            h.get("command", "")
+            for entries in json.loads(settings_path.read_text())["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert not any("governance-hook" in c for c in cmds)
+
+    def test_result_shape_is_stable(self, tmp_path: Path):
+        """JSON-mode callers depend on the keys being present in every
+        branch: product_dir, migrated, force, actions, notes."""
+        fw = self._scaffold_framework(tmp_path)
+        product = self._scaffold_product(tmp_path, fw)
+
+        result = run_migrate_settings_layout(str(product))
+
+        assert set(result.keys()) >= {
+            "product_dir", "migrated", "force", "actions", "notes",
+        }
+
+
+# =============================================================================
+# F5a — auto-commit on sync
+# =============================================================================
+
+
+def _git_init(repo: Path, *, branch: str = "main") -> None:
+    """Initialize a git repo in `repo` with a deterministic identity."""
+    subprocess.run(["git", "init", "-q", "-b", branch, str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.name", "Test"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "commit.gpgsign", "false"], check=True
+    )
+
+
+def _git_commit_all(repo: Path, message: str) -> None:
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-q", "-m", message], check=True
+    )
+
+
+def _git_log_subjects(repo: Path) -> list[str]:
+    result = subprocess.run(
+        ["git", "-C", str(repo), "log", "--format=%s"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [line for line in result.stdout.splitlines() if line]
+
+
+class TestReadSyncConfig:
+    """F5a — `_read_sync_config` is the column-0 YAML scanner."""
+
+    def test_defaults_when_no_project_state(self, tmp_path: Path):
+        product = tmp_path / "p"
+        product.mkdir()
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is True
+        assert config["protected_branches"] == list(_DEFAULT_PROTECTED_BRANCHES)
+
+    def test_defaults_when_no_sync_block(self, tmp_path: Path):
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: Demo\nother: thing\n"
+        )
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is True
+        assert config["protected_branches"] == list(_DEFAULT_PROTECTED_BRANCHES)
+
+    def test_explicit_disable(self, tmp_path: Path):
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "sync:\n  auto_commit: false\n"
+        )
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is False
+
+    def test_custom_protected_branches(self, tmp_path: Path):
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "sync:\n"
+            "  auto_commit: true\n"
+            "  protected_branches:\n"
+            "    - production\n"
+            "    - \"hotfix/*\"\n"
+        )
+        config = _read_sync_config(product)
+        assert config["protected_branches"] == ["production", "hotfix/*"]
+
+    def test_inline_comment_on_value_is_tolerated(self, tmp_path: Path):
+        """Mirrors the Chunk 10 inline-comment-asymmetry fix: detector and
+        consumer must both tolerate trailing comments."""
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "sync:\n  auto_commit: false  # opt out for this product\n"
+        )
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is False
+
+    def test_malformed_falls_back_to_defaults(self, tmp_path: Path):
+        product = tmp_path / "p"
+        (product / ".prawduct").mkdir(parents=True)
+        # Unreadable file — patch by making it a directory
+        (product / ".prawduct" / "project-state.yaml").mkdir()
+        config = _read_sync_config(product)
+        assert config["auto_commit"] is True
+
+
+class TestBranchIsProtected:
+    def test_exact_match(self):
+        assert _branch_is_protected("main", ["main", "master"]) is True
+        assert _branch_is_protected("master", ["main", "master"]) is True
+        assert _branch_is_protected("feature/x", ["main", "master"]) is False
+
+    def test_glob_match(self):
+        assert _branch_is_protected("release/1.0", ["release/*"]) is True
+        assert _branch_is_protected("release/foo/bar", ["release/*"]) is True
+        assert _branch_is_protected("rel/1.0", ["release/*"]) is False
+
+    def test_empty_branch_is_protected(self):
+        """Detached HEAD (empty branch name) must be treated as protected —
+        commits in detached HEAD become unreachable after checkout."""
+        assert _branch_is_protected("", ["main"]) is True
+
+
+class _AutoCommitFixture:
+    """Helper for F5a tests — build a product repo with a real git history."""
+
+    def __init__(self, tmp_path: Path):
+        self.tmp_path = tmp_path
+        self.fw = self._setup_framework()
+        self.product = self._setup_product()
+
+    def _setup_framework(self) -> Path:
+        fw = self.tmp_path / "framework"
+        fw.mkdir()
+        templates = fw / "templates"
+        templates.mkdir()
+        (templates / "product-claude.md").write_text(
+            f"# {{{{PRODUCT_NAME}}}} CLAUDE.md\n\n"
+            f"{BLOCK_BEGIN}\nContent v2\n{BLOCK_END}\n"
+        )
+        (templates / "critic-review.md").write_text("# {{PRODUCT_NAME}} Critic v2")
+        (templates / "product-settings.json").write_text(json.dumps({
+            "hooks": {
+                "SessionStart": [{"matcher": "clear", "hooks": [
+                    {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/product-hook\" clear"}
+                ]}],
+            }
+        }, indent=2))
+        tools = fw / "tools"
+        tools.mkdir()
+        (tools / "product-hook").write_text("#!/usr/bin/env python3\n# hook v2")
+        return fw
+
+    def _setup_product(self) -> Path:
+        product = self.tmp_path / "product"
+        product.mkdir()
+        (product / ".prawduct").mkdir()
+
+        subs = {"{{PRODUCT_NAME}}": "TestApp"}
+
+        # Older content so sync will detect drift on these managed files.
+        claude_v1 = (
+            f"# TestApp CLAUDE.md\n\n{BLOCK_BEGIN}\nContent v1\n{BLOCK_END}\n"
+        )
+        (product / "CLAUDE.md").write_text(claude_v1)
+
+        critic_v1 = "# TestApp Critic v1"
+        (product / ".prawduct" / "critic-review.md").write_text(critic_v1)
+
+        (product / "tools").mkdir()
+        (product / "tools" / "product-hook").write_text(
+            "#!/usr/bin/env python3\n# hook v1"
+        )
+
+        (product / ".claude").mkdir()
+        (product / ".claude" / "settings.json").write_text(
+            (self.fw / "templates" / "product-settings.json").read_text()
+        )
+
+        hashes = {
+            "CLAUDE.md": compute_block_hash(claude_v1),
+            ".prawduct/critic-review.md": compute_hash(
+                product / ".prawduct" / "critic-review.md"
+            ),
+            "tools/product-hook": compute_hash(product / "tools" / "product-hook"),
+            ".claude/settings.json": None,
+        }
+
+        (product / ".gitignore").write_text("\n".join(GITIGNORE_ENTRIES) + "\n")
+
+        manifest = create_manifest(product, self.fw, "TestApp", hashes)
+        (product / ".prawduct" / "sync-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n"
+        )
+
+        # Project-state.yaml: feature-branch friendly defaults (main is protected
+        # by default, which we override per-test as needed).
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: TestApp\n"
+        )
+
+        return product
+
+    def init_git(self, *, branch: str = "feature/work") -> None:
+        _git_init(self.product, branch=branch)
+        _git_commit_all(self.product, "initial product import")
+
+    def sync(self) -> dict:
+        return run_sync(
+            str(self.product), str(self.fw), no_pull=True
+        )
+
+
+class TestAutoCommitHappyPath:
+    """Clean feature branch + framework-managed drift → single marker commit."""
+
+    def test_creates_single_chore_sync_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        # The HEAD commit is the auto-commit; the initial import remains below.
+        assert subjects[0].startswith("chore(sync): prawduct v"), subjects
+        # Only one new commit was produced.
+        assert len(subjects) == 2
+
+        # The action list records the commit shorthand.
+        assert any(
+            "Auto-committed framework sync as 'chore(sync): prawduct v" in a
+            for a in result["actions"]
+        ), result["actions"]
+
+    def test_no_sync_pending_marker_on_success(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # Pre-existing stale marker — auto-commit success must clear it.
+        (fix.product / ".prawduct" / ".sync-pending").write_text(
+            '{"reason":"stale"}\n'
+        )
+
+        fix.sync()
+
+        assert not (fix.product / ".prawduct" / ".sync-pending").exists()
+
+    def test_working_tree_clean_after_auto_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        fix.sync()
+        result = subprocess.run(
+            ["git", "-C", str(fix.product), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == "", result.stdout
+
+    def test_commit_message_pins_framework_version(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        fix.sync()
+        subjects = _git_log_subjects(fix.product)
+        assert subjects[0] == f"chore(sync): prawduct v{PRAWDUCT_VERSION}"
+
+
+class TestAutoCommitPreconditions:
+    """Each precondition must skip auto-commit and write the sync-pending marker."""
+
+    def test_protected_branch_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="main")  # default-protected
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        # No auto-commit was added.
+        assert not subjects[0].startswith("chore(sync):")
+        assert any("'main' is protected" in n for n in result["notes"]), result["notes"]
+        marker = json.loads(
+            (fix.product / ".prawduct" / ".sync-pending").read_text()
+        )
+        assert "main" in marker["reason"]
+        assert marker["version"] == PRAWDUCT_VERSION
+
+    def test_wip_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # Introduce an unrelated WIP file (untracked, not in framework-managed list).
+        (fix.product / "src").mkdir()
+        (fix.product / "src" / "user_code.py").write_text("# WIP\n")
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        assert not subjects[0].startswith("chore(sync):")
+        assert any("non-framework changes present" in n for n in result["notes"])
+        marker_path = fix.product / ".prawduct" / ".sync-pending"
+        assert marker_path.is_file()
+        marker = json.loads(marker_path.read_text())
+        assert any(
+            "non-framework" in b for b in marker["blocked_by"]
+        ), marker
+
+    def test_rebase_in_progress_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # Simulate an interactive rebase by creating the marker dir.
+        (fix.product / ".git" / "rebase-merge").mkdir()
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        assert not subjects[0].startswith("chore(sync):")
+        assert any("rebase in progress" in n for n in result["notes"])
+
+    def test_merge_in_progress_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        (fix.product / ".git" / "MERGE_HEAD").write_text("abc123\n")
+
+        result = fix.sync()
+
+        assert any("merge in progress" in n for n in result["notes"])
+
+    def test_cherry_pick_in_progress_blocks_commit(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        (fix.product / ".git" / "CHERRY_PICK_HEAD").write_text("abc123\n")
+
+        result = fix.sync()
+
+        assert any("cherry-pick in progress" in n for n in result["notes"])
+
+    def test_auto_commit_disabled_via_project_state(self, tmp_path: Path):
+        fix = _AutoCommitFixture(tmp_path)
+        (fix.product / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: TestApp\nsync:\n  auto_commit: false\n"
+        )
+        fix.init_git(branch="feature/work")
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        assert not subjects[0].startswith("chore(sync):")
+        # No commit; no marker either — disable is an explicit user choice, not
+        # a precondition failure.
+        assert not (fix.product / ".prawduct" / ".sync-pending").exists()
+        assert not any(
+            "Auto-commit skipped" in n for n in result["notes"]
+        ), result["notes"]
+
+
+class TestAutoCommitSafety:
+    """Edge cases that must degrade silently or be inert."""
+
+    def test_not_a_git_repo_is_silent_noop(self, tmp_path: Path):
+        """No `.git/` directory → auto-commit step quietly does nothing."""
+        fix = _AutoCommitFixture(tmp_path)
+        # Intentionally do NOT init git.
+        result = fix.sync()
+        # Sync still completes — it returns its normal action list.
+        assert result["synced"] is True
+        # No marker is written; nothing to commit against.
+        assert not (fix.product / ".prawduct" / ".sync-pending").exists()
+        # No "Auto-committed" or "Auto-commit skipped" lines.
+        for entry in result["actions"] + result["notes"]:
+            assert "Auto-commit" not in entry, entry
+
+    def test_no_drift_clears_stale_marker(self, tmp_path: Path):
+        """Pre-existing marker should be cleared when there's no drift to commit."""
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # First sync resolves all drift.
+        fix.sync()
+        # Plant a stale marker.
+        (fix.product / ".prawduct" / ".sync-pending").write_text(
+            '{"reason":"stale"}\n'
+        )
+        # Second sync has nothing to commit and should clear the marker.
+        fix.sync()
+        assert not (fix.product / ".prawduct" / ".sync-pending").exists()
+
+    def test_user_authored_place_once_edits_treated_as_wip(self, tmp_path: Path):
+        """Regression for Chunk 11 Critic finding 1: a user-authored append to
+        `.prawduct/change-log.md` (a place-once file) at SessionStart-style
+        sync time must be treated as WIP and block auto-commit, NOT swept into
+        the chore(sync) marker commit. Pre-fix, PLACE_ONCE_TEMPLATES were in
+        the framework-known set; the very co-mingling F5a aims to prevent was
+        the default behavior on every chunk close."""
+        fix = _AutoCommitFixture(tmp_path)
+        # Seed `.prawduct/change-log.md` so it exists at initial-commit time.
+        (fix.product / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-01-01: baseline\n"
+        )
+        fix.init_git(branch="feature/work")
+        # User appends to change-log.md mid-session — the typical chunk-close
+        # pattern.
+        existing = (fix.product / ".prawduct" / "change-log.md").read_text()
+        (fix.product / ".prawduct" / "change-log.md").write_text(
+            existing + "\n## 2026-05-19: user-authored chunk entry\n"
+        )
+
+        result = fix.sync()
+
+        subjects = _git_log_subjects(fix.product)
+        # No auto-commit was made: the change-log edit is user WIP, not
+        # framework drift.
+        assert not subjects[0].startswith("chore(sync):"), subjects
+        assert any(
+            "non-framework changes present" in n for n in result["notes"]
+        ), result["notes"]
+        marker_path = fix.product / ".prawduct" / ".sync-pending"
+        assert marker_path.is_file()
+        marker = json.loads(marker_path.read_text())
+        joined = " ".join(marker["blocked_by"])
+        assert "change-log.md" in joined, marker
+
+    def test_managed_paths_committed_wip_excluded(self, tmp_path: Path):
+        """When committing, the auto-commit must NOT pull in WIP — but if WIP
+        is present we don't auto-commit at all. This test pins the contract by
+        verifying that on success, the committed paths are framework-managed."""
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        fix.sync()
+        # Inspect last commit's diff.
+        result = subprocess.run(
+            ["git", "-C", str(fix.product), "show", "--name-only", "--format=", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        changed = [p for p in result.stdout.splitlines() if p]
+        managed = set(MANAGED_FILES.keys()) | {".prawduct/sync-manifest.json"}
+        for p in changed:
+            assert p in managed or p.startswith(".prawduct/"), (
+                f"non-managed path {p} in auto-commit"
+            )
+

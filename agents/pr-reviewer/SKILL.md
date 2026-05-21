@@ -72,6 +72,7 @@ The Critic may have caught these per-chunk. You catch what slipped through or em
 - No unintended file changes (lock files, IDE configs, unrelated formatting)
 - No TODOs or placeholders left in shipped code
 - No secrets or credentials
+- **Derived views** (when `views_enabled: true` in `project-state.yaml`): build-plan `## Status` checkboxes, `.prawduct/release-notes.md`, and the `scope_rollups:` block in `project-state.yaml` are all derived from change-log.md tags via `product-hook regen-views`. The canonical source is the change-log tag line. If any view diff has no matching change-log tag-line edit (Status flip with no `status=shipped` tag, release-notes section with no `release=` tag, scope_rollups update with no `scope=` tag), regen wasn't run or the tag is missing → **WARNING**. Don't review derived files as hand-curated content.
 
 ### 7. Proportionality
 **Severity: NOTE**

@@ -1432,6 +1432,103 @@ class TestValidateEvidenceSchema:
         assert "schema violation" not in result.stderr
 
 
+class TestCoverageEvidenceSchema:
+    """v1.4 F4a — coverage-evidence fields (verifier, tests_executed,
+    changes_referenced, coverage_level).
+
+    Presence of ``verifier`` is the schema discriminator: legacy fingerprint
+    evidence (no ``verifier``) keeps validating; new evidence with ``verifier``
+    must also carry the other three fields with the right types. This
+    enforces compat in both directions — old writers don't break, new
+    writers can't silently typo a field name and lose the coverage data.
+    """
+
+    def _write(self, tmp_path: Path, evidence: object) -> None:
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir(exist_ok=True)
+        (prawduct / ".test-evidence.json").write_text(json.dumps(evidence))
+
+    def _coverage_evidence(self) -> dict:
+        return _valid_evidence() | {
+            "verifier": "test-reference-verify (floor: symbol-grep)",
+            "tests_executed": ["tests/test_product_hook.py"],
+            "changes_referenced": ["tools/product-hook"],
+            "coverage_level": "referenced",
+        }
+
+    def test_legacy_fingerprint_only_still_valid(self, tmp_path: Path):
+        """Evidence without ``verifier`` validates as before (compat)."""
+        self._write(tmp_path, _valid_evidence())
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+    def test_full_coverage_evidence_accepted(self, tmp_path: Path):
+        self._write(tmp_path, self._coverage_evidence())
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+    def test_executed_level_accepted(self, tmp_path: Path):
+        """Both enum values for ``coverage_level`` are valid."""
+        evidence = self._coverage_evidence() | {"coverage_level": "executed"}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+    def test_unknown_coverage_level_rejected(self, tmp_path: Path):
+        evidence = self._coverage_evidence() | {"coverage_level": "partial"}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "coverage_level must be one of" in result.stderr
+        assert "'partial'" in result.stderr
+
+    def test_verifier_without_companion_fields_rejected(self, tmp_path: Path):
+        """Opting into the new schema requires the full set —
+        a typo like ``tests_ran`` for ``tests_executed`` is caught."""
+        evidence = self._coverage_evidence()
+        del evidence["tests_executed"]
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "missing required field(s)" in result.stderr
+        assert "tests_executed" in result.stderr
+
+    def test_changes_referenced_wrong_type_rejected(self, tmp_path: Path):
+        """Lists are required so the Critic can iterate them."""
+        evidence = self._coverage_evidence() | {"changes_referenced": "tools/product-hook"}
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 1
+        assert "changes_referenced must be list" in result.stderr
+
+    def test_empty_lists_accepted(self, tmp_path: Path):
+        """A clean run with no changes legitimately has empty lists —
+        and shape validation should accept that. Whether empty lists
+        constitute a finding is the Critic's call (Chunk 09), not the
+        schema's."""
+        evidence = self._coverage_evidence() | {
+            "tests_executed": [],
+            "changes_referenced": [],
+        }
+        self._write(tmp_path, evidence)
+
+        result = run_hook("validate-evidence", tmp_path, git_output="")
+
+        assert result.returncode == 0, result.stderr
+
+
 class TestValidateEvidenceSubcommand:
     """Exit-code and IO contract of the ``validate-evidence`` subcommand."""
 
@@ -2003,6 +2100,156 @@ class TestCheckCumulativeCriticSubcommand:
         result = run_hook("check-cumulative-critic", tmp_path, git_output="")
 
         assert result.returncode == 0, result.stderr
+
+
+class TestCheckPrDocOnlySubcommand:
+    """The `check-pr-doc-only` subcommand is the PR-boundary mirror of
+    the stop hook's `_session_changes_are_doc_only` exemption: when every
+    file in `merge-base...HEAD` is `.md`, `/pr create` may skip the
+    cumulative-Critic and PR-reviewer gates.
+
+    Exit 0 = PR diff is all `.md` (fast-path eligible).
+    Exit 1 = anything else (non-`.md` present, empty diff, no base
+    branch, or git failure). Fails closed — the `/pr` skill falls through
+    to the full review path on any exit 1.
+    """
+
+    def _run_check_with_real_git(
+        self, project_dir: Path
+    ) -> subprocess.CompletedProcess:
+        env = {
+            "HOME": str(project_dir),
+            "CLAUDE_PROJECT_DIR": str(project_dir),
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        return subprocess.run(
+            ["python3", str(HOOK_PATH), "check-pr-doc-only"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=20,
+        )
+
+    def _seed_repo_with_main(self, repo: Path) -> None:
+        """Init a repo with one commit on main as the base for diffs."""
+        _init_real_git_repo(repo)
+        (repo / "seed.md").write_text("seed\n")
+        subprocess.run(["git", "add", "seed.md"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+    def _branch_and_commit(self, repo: Path, files: dict[str, str]) -> None:
+        subprocess.run(
+            ["git", "checkout", "-q", "-b", "feature/test"], cwd=repo, check=True
+        )
+        for rel, body in files.items():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text(body)
+            subprocess.run(["git", "add", rel], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feature changes"], cwd=repo, check=True
+        )
+
+    def test_all_md_files_exits_zero(self, tmp_path: Path):
+        """A PR diff of only `.md` files satisfies the fast-path."""
+        self._seed_repo_with_main(tmp_path)
+        self._branch_and_commit(
+            tmp_path,
+            {
+                ".prawduct/backlog.md": "- New backlog item\n",
+                "docs/notes.md": "# Notes\n",
+            },
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "doc-only" in result.stdout.lower()
+
+    def test_mixed_md_and_code_exits_one(self, tmp_path: Path):
+        """A single non-`.md` file in the diff disqualifies the fast-path."""
+        self._seed_repo_with_main(tmp_path)
+        self._branch_and_commit(
+            tmp_path,
+            {
+                "docs/notes.md": "# Notes\n",
+                "src/app.py": "def f(): pass\n",
+            },
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "not-doc-only" in result.stderr.lower()
+        assert "src/app.py" in result.stderr
+
+    def test_code_only_exits_one(self, tmp_path: Path):
+        """A code-only PR diff disqualifies the fast-path."""
+        self._seed_repo_with_main(tmp_path)
+        self._branch_and_commit(
+            tmp_path,
+            {"src/app.py": "def f(): pass\n"},
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "not-doc-only" in result.stderr.lower()
+
+    def test_yaml_in_diff_disqualifies(self, tmp_path: Path):
+        """Non-`.md` governance files like `.yaml` are not docs — full review required."""
+        self._seed_repo_with_main(tmp_path)
+        self._branch_and_commit(
+            tmp_path,
+            {
+                ".prawduct/backlog.md": "- Item\n",
+                ".prawduct/project-state.yaml": "size: tiny\n",
+            },
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "project-state.yaml" in result.stderr
+
+    def test_empty_diff_exits_one(self, tmp_path: Path):
+        """No commits ahead of base means the fast-path is not applicable —
+        fail closed rather than silently passing (no diff != doc-only)."""
+        self._seed_repo_with_main(tmp_path)
+        subprocess.run(
+            ["git", "checkout", "-q", "-b", "feature/empty"], cwd=tmp_path, check=True
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "empty-diff" in result.stderr.lower()
+
+    def test_no_base_branch_exits_one(self, tmp_path: Path):
+        """When no base candidate (`origin/main`, `main`, `HEAD~1`) resolves,
+        the gate fails closed so `/pr` falls through to full review."""
+        # Init repo but never commit — HEAD~1 won't resolve, no main branch ref.
+        subprocess.run(
+            ["git", "init", "--quiet", "-b", "feature/x"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "config", "commit.gpgsign", "false"], cwd=tmp_path, check=True
+        )
+
+        result = self._run_check_with_real_git(tmp_path)
+
+        assert result.returncode == 1
+        assert "no-base" in result.stderr.lower()
 
 
 class TestParseBuildPlanChunkRefs:
@@ -3083,6 +3330,76 @@ class TestSessionBriefing:
 
         briefing = mod.assemble_session_briefing(tmp_path, [], advisories=[])
         assert "Advisories:" not in briefing
+
+    def test_briefing_shows_sync_pending_marker(self, tmp_path: Path):
+        """F5a — when sync skipped auto-commit, the marker surfaces in briefing."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+        (prawduct / ".sync-pending").write_text(json.dumps({
+            "reason": "branch 'main' is protected",
+            "blocked_by": ["branch 'main' is protected"],
+            "version": "1.3.17",
+            "ts": "2026-05-19T18:00:00Z",
+        }))
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        briefing = mod.assemble_session_briefing(tmp_path, [])
+        assert "Framework sync pending" in briefing
+        assert "branch 'main' is protected" in briefing
+        assert "v1.3.17" in briefing
+
+    def test_briefing_no_sync_pending_when_marker_absent(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        briefing = mod.assemble_session_briefing(tmp_path, [])
+        assert "Framework sync pending" not in briefing
+
+    def test_briefing_handles_corrupt_sync_pending(self, tmp_path: Path):
+        """Marker file with invalid JSON must not crash briefing assembly."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            'product_identity:\n  name: "MyApp"\n\n'
+            "work_in_progress:\n  description: null\n  size: null\n  type: null\n"
+            "\nbuild_state:\n  source_root: null\n  test_tracking:\n    test_count: 0\n"
+        )
+        (prawduct / ".sync-pending").write_text("not json{{")
+
+        import importlib.util
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader("product_hook", str(HOOK_PATH))
+        spec = importlib.util.spec_from_loader("product_hook", loader)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        briefing = mod.assemble_session_briefing(tmp_path, [])
+        # Fallback line points the user at the file rather than crashing.
+        assert "Framework sync pending" in briefing
+        assert "unreadable" in briefing
 
     def test_briefing_shows_work_in_progress(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
@@ -5001,4 +5318,348 @@ class TestBriefingFreshnessBlock:
         )
         assert "Place-once template advisories: 1 template(s)" in briefing
         assert "X drifted" in briefing
+
+
+# =============================================================================
+# v1.4 Chunk 09 (F4b) — verify-coverage subcommand
+# =============================================================================
+
+
+def _vc_git(cwd: Path, *args: str) -> None:
+    """Run a real git command in `cwd`. Mirrors the helper in
+    test_reference_verifier.py — verify-coverage runs `git diff` and
+    `git ls-files` against a live work tree, so mocking would not exercise
+    the real interaction."""
+    env = os.environ.copy()
+    env.setdefault("GIT_AUTHOR_NAME", "test")
+    env.setdefault("GIT_AUTHOR_EMAIL", "test@example.com")
+    env.setdefault("GIT_COMMITTER_NAME", "test")
+    env.setdefault("GIT_COMMITTER_EMAIL", "test@example.com")
+    subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+
+
+def _vc_run(repo: Path) -> subprocess.CompletedProcess:
+    """Invoke `product-hook verify-coverage` in `repo` with a real git on
+    PATH. CLAUDE_PROJECT_DIR overrides the cwd resolution so the hook
+    operates on the test repo instead of the parent project."""
+    env = os.environ.copy()
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    return subprocess.run(
+        ["python3", str(HOOK_PATH), "verify-coverage"],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+
+def _vc_write_evidence(repo: Path, fields: dict) -> None:
+    """Write a v1.4 F4a-shaped evidence file under .prawduct/."""
+    base = {
+        "timestamp": "2026-05-19T14:00:00Z",
+        "command": "python3 -m pytest -q",
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "duration_seconds": 1.0,
+    }
+    base.update(fields)
+    (repo / ".prawduct" / ".test-evidence.json").write_text(json.dumps(base))
+
+
+@pytest.fixture
+def vc_repo(tmp_path: Path) -> Path:
+    """Baseline repo mirroring a real product layout:
+      - `.gitignore` excludes per-session artifact files,
+      - `.prawduct/project-state.yaml` committed as a tracked baseline,
+      - `src/a.py` + `tests/test_a.py` committed.
+
+    Subsequent tests mutate `project-state.yaml` and add or modify files;
+    `.test-evidence.json` is always written but never shows in the diff
+    (gitignored), matching the real-world layout the check is designed
+    for."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _vc_git(repo, "init", "-b", "main")
+    (repo / ".prawduct").mkdir()
+    (repo / ".gitignore").write_text(
+        ".prawduct/.test-evidence.json\n"
+        ".prawduct/.critic-findings.json\n"
+    )
+    (repo / ".prawduct" / "project-state.yaml").write_text(
+        "# baseline state — coverage off\n"
+    )
+    (repo / "src").mkdir()
+    (repo / "src" / "a.py").write_text("def a_helper():\n    return 1\n")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_a.py").write_text(
+        "from src.a import a_helper\n\n"
+        "def test_a_helper():\n"
+        "    assert a_helper() == 1\n"
+    )
+    _vc_git(repo, "add", ".")
+    _vc_git(repo, "commit", "-m", "baseline")
+    return repo
+
+
+class TestVerifyCoverageSubcommand:
+    """`verify-coverage` is the Critic Goal-1 helper for v1.4 F4b. When
+    `coverage_required: true` in project-state.yaml, it cross-checks the
+    diff (uncommitted + untracked) against `.test-evidence.json`'s
+    `changes_referenced` list and emits per-file findings scaled to the
+    declared `coverage_level`. Off by default to preserve v1.3.x behavior."""
+
+    def test_skipped_when_coverage_required_false(self, vc_repo: Path):
+        """Default v1.4 state — explicit `coverage_required: false` — exits 0
+        with an explanatory message. The check is opt-in by design (the v1.4
+        compat strategy depends on this skip-by-default behavior; framework
+        sync flipping the flag would surprise downstream products)."""
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: false\n"
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "skipped" in result.stdout.lower()
+        assert "coverage_required" in result.stdout
+
+    def test_skipped_when_coverage_required_key_absent(self, vc_repo: Path):
+        """Missing `coverage_required` key behaves like `false` — opt-in
+        means no key = no enforcement."""
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "# no coverage_required key here\n"
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "skipped" in result.stdout.lower()
+
+    def test_indented_coverage_required_does_not_satisfy_flag(self, vc_repo: Path):
+        """A `coverage_required: true` line indented under another YAML key
+        is NOT a top-level setting. Mirrors the column-0 discipline of
+        `is_views_enabled` — a stray nested key must not silently turn
+        enforcement on for the whole project."""
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "some_section:\n  coverage_required: true\n"
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "skipped" in result.stdout.lower()
+
+    def test_missing_evidence_file_errors(self, vc_repo: Path):
+        """Opt-in but no evidence file → exit 1 with actionable message."""
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 1
+        assert ".test-evidence.json" in result.stderr
+        assert "missing" in result.stderr.lower()
+
+    def test_legacy_evidence_without_verifier_errors(self, vc_repo: Path):
+        """Opt-in but evidence is legacy fingerprint-only (no `verifier`
+        field) → exit 1 telling the user to run the verifier. The legacy
+        skip-on-no-verifier path is intentional for v1.4 dogfooding (no
+        breakage at chunk boundary 08→09 for products that opt in before
+        plugging in a verifier)."""
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_write_evidence(vc_repo, {})  # no F4a fields
+        result = _vc_run(vc_repo)
+        assert result.returncode == 1
+        assert "verifier" in result.stderr
+        assert "F4a" in result.stderr or "schema" in result.stderr.lower()
+
+    def test_invalid_evidence_schema_errors(self, vc_repo: Path):
+        """Verifier present but other F4a fields missing → schema validator
+        fires, exit 1. Guards against partial writes / typos in
+        product-supplied verifiers."""
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_write_evidence(vc_repo, {"verifier": "broken"})  # missing other fields
+        result = _vc_run(vc_repo)
+        assert result.returncode == 1
+        assert "schema" in result.stderr.lower() or "missing" in result.stderr.lower()
+
+    def test_all_changes_covered_exit_zero(self, vc_repo: Path):
+        """When every changed file appears in `changes_referenced`, exit 0.
+        Modifying both `src/a.py` and `project-state.yaml` puts both in the
+        diff; both must be listed for the check to pass."""
+        (vc_repo / "src" / "a.py").write_text(
+            "def a_helper():\n    return 2  # changed\n"
+        )
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_write_evidence(
+            vc_repo,
+            {
+                "verifier": "test-reference-verify (floor: symbol-grep)",
+                "coverage_level": "referenced",
+                "tests_executed": ["tests/test_a.py"],
+                "changes_referenced": [
+                    "src/a.py",
+                    ".prawduct/project-state.yaml",
+                ],
+            },
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "ok" in result.stdout.lower()
+        assert "referenced" in result.stdout
+
+    def test_missing_at_referenced_level_emits_floor_language(self, vc_repo: Path):
+        """A changed file not in `changes_referenced` at the floor level
+        produces BLOCKING-eligible stderr quoting the floor caveat — the
+        Critic must not present floor results as proof of execution."""
+        (vc_repo / "src" / "b.py").write_text("def b_helper():\n    return 1\n")
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_write_evidence(
+            vc_repo,
+            {
+                "verifier": "test-reference-verify (floor: symbol-grep)",
+                "coverage_level": "referenced",
+                "tests_executed": ["tests/test_a.py"],
+                "changes_referenced": [],  # b.py is NOT covered
+            },
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 1
+        assert "missing-coverage: src/b.py" in result.stderr
+        assert "coverage_level: referenced" in result.stderr
+        assert "floor check" in result.stderr
+        assert "does not prove execution" in result.stderr
+
+    def test_missing_at_executed_level_emits_executing_language(self, vc_repo: Path):
+        """Same setup, `coverage_level: executed` → stronger language. The
+        per-level wording is the chunk's whole point: the floor must not
+        sound like executed coverage, and a real coverage tool must not
+        be hedged the way the floor must be."""
+        (vc_repo / "src" / "b.py").write_text("def b_helper():\n    return 1\n")
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_write_evidence(
+            vc_repo,
+            {
+                "verifier": "coverage.py --branch",
+                "coverage_level": "executed",
+                "tests_executed": ["tests/test_a.py"],
+                "changes_referenced": [],
+            },
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 1
+        assert "missing-coverage: src/b.py" in result.stderr
+        assert "coverage_level: executed" in result.stderr
+        assert "has no executing test" in result.stderr
+        # Floor language MUST NOT appear at executed level — that would
+        # erase the distinction the chunk introduces.
+        assert "floor check" not in result.stderr
+
+    def test_multiple_missing_files_listed_individually(self, vc_repo: Path):
+        """One stderr line per missing file, so the Critic can quote each in
+        a separate finding (matches `verify-chunk-refs`' per-ref pattern)."""
+        (vc_repo / "src" / "b.py").write_text("def b():\n    return 1\n")
+        (vc_repo / "src" / "c.py").write_text("def c():\n    return 1\n")
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_write_evidence(
+            vc_repo,
+            {
+                "verifier": "test-reference-verify (floor: symbol-grep)",
+                "coverage_level": "referenced",
+                "tests_executed": ["tests/test_a.py"],
+                "changes_referenced": [],
+            },
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 1
+        assert "missing-coverage: src/b.py" in result.stderr
+        assert "missing-coverage: src/c.py" in result.stderr
+        missing_lines = [
+            line for line in result.stderr.splitlines()
+            if line.startswith("missing-coverage:")
+        ]
+        assert len(missing_lines) >= 2
+
+    def test_untracked_file_treated_as_missing(self, vc_repo: Path):
+        """Untracked files (not yet `git add`-ed) must be picked up — they
+        are precisely the silent-failure mode (new code with no test
+        reference) the gate exists to catch. Mirrors the verifier's
+        diff∪ls-files union."""
+        (vc_repo / "src" / "untracked.py").write_text("def x():\n    return 1\n")
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_write_evidence(
+            vc_repo,
+            {
+                "verifier": "test-reference-verify (floor: symbol-grep)",
+                "coverage_level": "referenced",
+                "tests_executed": ["tests/test_a.py"],
+                "changes_referenced": [],
+            },
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 1
+        assert "src/untracked.py" in result.stderr
+
+    def test_no_changes_exit_zero(self, vc_repo: Path):
+        """A clean working tree (no uncommitted diff, no untracked files
+        outside `.gitignore`) → exit 0 with `ok: 0 changed`. Enabling the
+        flag is itself a tracked-file change, so this test commits the
+        flag-flip first and then re-runs the check against the now-clean
+        tree."""
+        (vc_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_git(vc_repo, "add", ".prawduct/project-state.yaml")
+        _vc_git(vc_repo, "commit", "-m", "enable coverage_required")
+        _vc_write_evidence(
+            vc_repo,
+            {
+                "verifier": "test-reference-verify (floor: symbol-grep)",
+                "coverage_level": "referenced",
+                "tests_executed": [],
+                "changes_referenced": [],
+            },
+        )
+        result = _vc_run(vc_repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "ok" in result.stdout.lower()
+
+    def test_unresolvable_base_errors(self, tmp_path: Path):
+        """No git history (empty repo, no commits) → no diff base resolves;
+        verify-coverage exits 1 with a diagnostic. Fail-loud beats a green
+        report on a repo with nothing to compare against."""
+        repo = tmp_path / "empty"
+        repo.mkdir()
+        _vc_git(repo, "init", "-b", "main")
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+        )
+        _vc_write_evidence(
+            repo,
+            {
+                "verifier": "test-reference-verify (floor: symbol-grep)",
+                "coverage_level": "referenced",
+                "tests_executed": [],
+                "changes_referenced": [],
+            },
+        )
+        result = _vc_run(repo)
+        assert result.returncode == 1
+        assert "base" in result.stderr.lower()
 

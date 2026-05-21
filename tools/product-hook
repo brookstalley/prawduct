@@ -425,6 +425,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.session-start",
     ".prawduct/.subagent-briefing.md",
     ".prawduct/.gates-waived",
+    ".prawduct/.sync-pending",
     ".prawduct/reflections.md",
     ".prawduct/sync-manifest.json",
     ".prawduct/artifacts/build-plan.md",
@@ -505,8 +506,10 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
 
     Uses a "trust the cycle" model: evidence is current if it was written
     during this session (timestamp >= session start) and all tests passed.
-    No fingerprinting or content hashing — the build cycle (write code →
-    run tests → Critic reviews) is the trust boundary.
+    No tree-hashing or content fingerprinting (those mechanisms were
+    removed pre-v1.4 after chronic false positives from metadata churn) —
+    the build cycle (write code → run tests → Critic reviews) is the
+    trust boundary.
 
     Falls back to timestamp-only comparison when no session-start marker
     exists (e.g., running outside a governed session).
@@ -572,6 +575,20 @@ _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
     "command": (str,),
 }
 
+# v1.4 F4a — coverage-evidence fields. Presence of ``verifier`` is the
+# discriminator: legacy evidence without ``verifier`` validates exactly as
+# before (compat). When ``verifier`` IS present, the writer has opted into
+# the new schema and the other three fields become conditionally required —
+# so writer typos (``coverage`` vs. ``coverage_level``, ``tests_ran`` vs.
+# ``tests_executed``) fail loud instead of silently dropping coverage data.
+_EVIDENCE_COVERAGE_FIELDS: dict[str, tuple[type, ...]] = {
+    "verifier": (str,),
+    "tests_executed": (list,),
+    "changes_referenced": (list,),
+    "coverage_level": (str,),
+}
+_EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
+
 
 # Critic mode values persisted in .prawduct/.critic-findings.json's `mode` field.
 # Verbose strings are intentional: the JSON is read by humans during session
@@ -596,13 +613,26 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
     Examples this catches: ``ran_at`` instead of ``timestamp``; ``num_passed``
     instead of ``passed``; passed/failed/skipped emitted as strings.
 
+    v1.4 F4a: when ``verifier`` is present, the writer has opted into the
+    coverage-evidence schema and ``tests_executed`` / ``changes_referenced``
+    / ``coverage_level`` are also required. Legacy evidence (pre-F4a shape:
+    no ``verifier`` field — historically called "fingerprint" though the
+    tree-hash mechanism it referred to was removed pre-v1.4) is accepted
+    unchanged; v1.5 will drop the compat path (see Chunk 10's migration
+    NOTE — `prawduct-setup migrate --enable-coverage` surfaces the
+    deprecation).
+
     Returns ``(True, "")`` on success, ``(False, reason)`` on failure. Missing
     fields are reported before wrong-typed fields, so a single fix-it pass
     addresses the highest-priority violations first.
     """
+    required = dict(_EVIDENCE_REQUIRED_FIELDS)
+    if "verifier" in evidence:
+        required.update(_EVIDENCE_COVERAGE_FIELDS)
+
     missing: list[str] = []
     wrong_type: list[str] = []
-    for field, allowed_types in _EVIDENCE_REQUIRED_FIELDS.items():
+    for field, allowed_types in required.items():
         if field not in evidence:
             missing.append(field)
             continue
@@ -615,6 +645,19 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
         return False, f"evidence missing required field(s): {', '.join(sorted(missing))}"
     if wrong_type:
         return False, f"evidence schema violation: {'; '.join(wrong_type)}"
+
+    # Enum check for coverage_level — only when the coverage schema is in use
+    # AND the field's type is already known good (str). Bad-type errors are
+    # surfaced by the loop above; here we just refuse out-of-set values.
+    if "verifier" in evidence:
+        level = evidence.get("coverage_level")
+        if isinstance(level, str) and level not in _EVIDENCE_COVERAGE_LEVELS:
+            allowed = ", ".join(sorted(_EVIDENCE_COVERAGE_LEVELS))
+            return False, (
+                f"evidence schema violation: coverage_level must be one of "
+                f"{{{allowed}}}, got {level!r}"
+            )
+
     return True, ""
 
 
@@ -1324,6 +1367,28 @@ def assemble_session_briefing(
         for adv in advisories:
             msg = adv.get("message", "template drift detected")
             lines.append(f"  - {msg}")
+
+    # F5a sync-pending marker — surfaces when sync couldn't auto-commit
+    # framework drift because a precondition (WIP, protected branch,
+    # in-progress git op) blocked it. Surface so the user/Claude know there
+    # is uncommitted framework drift that should be resolved.
+    sync_pending_path = prawduct_dir / ".sync-pending"
+    if sync_pending_path.is_file():
+        try:
+            pending = json.loads(sync_pending_path.read_text())
+            reason = pending.get("reason", "unknown")
+            version = pending.get("version", "")
+            v_suffix = f" (v{version})" if version else ""
+            lines.append(
+                f"Framework sync pending{v_suffix}: {reason}. "
+                f"Resolve and commit `.prawduct/`/`CLAUDE.md`/etc. drift, "
+                f"or rerun sync once the blocker clears."
+            )
+        except (json.JSONDecodeError, OSError):
+            lines.append(
+                "Framework sync pending: marker file present but unreadable; "
+                "inspect `.prawduct/.sync-pending`."
+            )
 
     # CLAUDE.md size check
     claude_md_path = project_dir / "CLAUDE.md"
@@ -2395,20 +2460,33 @@ def cmd_stop(project_dir: Path) -> int:
                         pass
 
                 if has_pr:
-                    # Check for review evidence with content validation
-                    branch_file = current_branch.replace("/", "--") + ".json"
-                    evidence_path = pr_reviews_dir / branch_file
-                    pr_review_valid = False
-                    if evidence_path.is_file():
-                        try:
-                            data = json.loads(evidence_path.read_text())
-                            if isinstance(data.get("findings"), list) and data.get("summary"):
-                                pr_review_valid = True
-                        except (json.JSONDecodeError, OSError):
-                            pass
-                    if not pr_review_valid:
-                        pr_would_block = True
-                        pr_block_branch = current_branch
+                    # Symmetry with `/pr create` Step 1b: when the PR diff is
+                    # currently doc-only (merge-base...HEAD all .md), the
+                    # cumulative-Critic and PR-reviewer gates were legitimately
+                    # skipped at create-time and no evidence file was written.
+                    # Gate 3 would otherwise block session end with a misleading
+                    # "no review evidence" error for a PR that doesn't need one.
+                    # If a later session adds non-.md changes, this check returns
+                    # False and the gate fires as intended — matching the create-
+                    # flow contract.
+                    pr_is_doc_only, _ = _pr_diff_is_doc_only(project_dir)
+                    if pr_is_doc_only:
+                        pass  # PR diff is all .md — no evidence required
+                    else:
+                        # Check for review evidence with content validation
+                        branch_file = current_branch.replace("/", "--") + ".json"
+                        evidence_path = pr_reviews_dir / branch_file
+                        pr_review_valid = False
+                        if evidence_path.is_file():
+                            try:
+                                data = json.loads(evidence_path.read_text())
+                                if isinstance(data.get("findings"), list) and data.get("summary"):
+                                    pr_review_valid = True
+                            except (json.JSONDecodeError, OSError):
+                                pass
+                        if not pr_review_valid:
+                            pr_would_block = True
+                            pr_block_branch = current_branch
         except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
             pass
 
@@ -2777,6 +2855,174 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
     return 0
 
 
+# v1.4 F4b — coverage-required gate inputs.
+# Helper kept parallel to ``is_views_enabled`` in tools/lib/views.py: column-0
+# key scan, fail-closed default of False. Inline rather than imported to keep
+# the product-hook surface flat (no new lib dependency just for a 10-line
+# scanner). Same idiom = same drift discipline as views_enabled.
+def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
+    if not state_path.exists():
+        return False
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    needle = f"{key}:"
+    for raw in content.splitlines():
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        value = line.split(":", 1)[1].strip().lower()
+        return value == "true"
+    return False
+
+
+def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:
+    """Pick the git diff base for coverage verification. Mirrors
+    ``_resolve_base`` in ``tools/test-reference-verify`` so writer (verifier)
+    and reader (verify-coverage) examine the same set of changes. If the
+    bases diverge, every chunk's verify-coverage would emit spurious
+    missing-coverage findings on files outside the verifier's base.
+    """
+    for candidate in ("origin/main", "main", "HEAD~1"):
+        proc = subprocess.run(
+            ["git", "rev-parse", "--verify", candidate],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode == 0:
+            return candidate, candidate
+    return None, "no base candidate resolved (origin/main, main, HEAD~1 all absent)"
+
+
+def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
+    """Files changed between ``base`` and the working tree, union untracked.
+    Mirrors ``_changed_files`` in ``tools/test-reference-verify`` — same
+    union over ``git diff`` + ``git ls-files --others --exclude-standard``
+    so verify-coverage sees exactly the file set the verifier scored.
+    """
+    proc = subprocess.run(
+        ["git", "diff", "--name-only", base],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git diff failed: {proc.stderr.strip()}")
+    files = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+
+    proc2 = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc2.returncode == 0:
+        files.update(line.strip() for line in proc2.stdout.splitlines() if line.strip())
+    return sorted(files)
+
+
+def cmd_verify_coverage(project_dir: Path) -> int:
+    """Critic Goal-1 helper (v1.4 F4b): when ``coverage_required: true`` in
+    project-state.yaml, verify every changed file in the diff appears in
+    ``.test-evidence.json``'s ``changes_referenced`` list.
+
+    Exit codes:
+      0 — check passed, or skipped (``coverage_required: false`` — the v1.4
+          default; opt-in by design).
+      1 — at least one changed file is missing from ``changes_referenced``,
+          or a precondition failed (evidence missing/invalid, schema lacks
+          F4a fields, git base unresolved).
+
+    stderr lists each missing file with language scaled to the declared
+    ``coverage_level`` — ``referenced`` (floor) vs ``executed`` (real
+    coverage tool) — so the Critic can quote it directly in BLOCKING
+    findings without re-deriving the wording.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    state_path = prawduct_dir / "project-state.yaml"
+
+    if not _read_bool_yaml_key(state_path, "coverage_required"):
+        print("skipped: coverage_required is false (default in v1.4)")
+        return 0
+
+    evidence_path = prawduct_dir / ".test-evidence.json"
+    if not evidence_path.is_file():
+        print(
+            f"error: coverage_required=true but {evidence_path} is missing — "
+            "run the test suite + verifier first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        evidence = json.loads(evidence_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"error: cannot read evidence: {exc}", file=sys.stderr)
+        return 1
+
+    if "verifier" not in evidence:
+        print(
+            "error: coverage_required=true but evidence lacks F4a schema "
+            "(no `verifier` field) — emit coverage fields with "
+            "`tools/test-reference-verify` (or a stronger product-specific "
+            "verifier) before re-running.",
+            file=sys.stderr,
+        )
+        return 1
+
+    ok, reason = _validate_evidence_schema(evidence)
+    if not ok:
+        print(f"error: {reason}", file=sys.stderr)
+        return 1
+
+    coverage_level = evidence["coverage_level"]
+    referenced = set(evidence.get("changes_referenced", []))
+
+    base, base_reason = _coverage_resolve_base(project_dir)
+    if base is None:
+        print(f"error: cannot resolve diff base — {base_reason}", file=sys.stderr)
+        return 1
+
+    try:
+        changed = _coverage_changed_files(project_dir, base)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    missing = [f for f in changed if f not in referenced]
+    if not missing:
+        print(
+            f"ok: {len(changed)} changed file(s) covered "
+            f"(level: {coverage_level})"
+        )
+        return 0
+
+    # Severity wording is per the F4a spec — the floor (``referenced``)
+    # explicitly disclaims execution, the real-coverage level
+    # (``executed``) asserts it. Critic quotes these lines verbatim.
+    if coverage_level == "executed":
+        suffix = "has no executing test."
+    else:
+        suffix = (
+            "is not referenced by any executed test "
+            "(floor check — does not prove execution)."
+        )
+
+    for m in missing:
+        print(
+            f"missing-coverage: {m} (coverage_level: {coverage_level}) — {suffix}",
+            file=sys.stderr,
+        )
+    return 1
+
+
 def cmd_check_cumulative_critic(project_dir: Path) -> int:
     """Structural gate for `/pr create`: require a fresh cumulative-Critic record.
 
@@ -2887,9 +3133,197 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
 # =============================================================================
 
 
+def cmd_regen_views(project_dir: Path) -> int:
+    """Regenerate derived views from the change-log canonical store.
+
+    Three views are produced in one pass when `views_enabled: true`:
+
+      1. Build-plan `## Status` block — checkbox flips from `status=shipped` tags
+      2. Release-notes view — `.prawduct/release-notes.md` from `release=` tags
+      3. Scope-rollup view — `scope_rollups:` block in `project-state.yaml`
+         from `scope=` tags
+
+    No-op when `views_enabled: true` is absent (enabled by default in v1.4;
+    sync auto-enables for existing repos and `false` is the explicit opt-out).
+
+    Exit codes:
+      0 - success (views disabled, no changes needed, or regen applied cleanly)
+      2 - I/O or schema error (missing change-log or build-plan)
+    """
+    # Ensure tools/ is on sys.path so `from lib import views` resolves both
+    # when invoked as a script and when imported via SourceFileLoader in tests.
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    try:
+        enabled, results = views.plan_regen(prawduct_dir)
+    except FileNotFoundError as e:
+        msg = str(e)
+        if "change-log" in msg:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        elif "build-plan" in msg:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        else:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"ERROR reading view inputs: {e}", file=sys.stderr)
+        return 2
+
+    if not enabled:
+        print("Views disabled (set views_enabled: true in project-state.yaml).")
+        return 0
+
+    try:
+        views.apply_regen(prawduct_dir, results)
+    except OSError as e:
+        print(f"ERROR writing view output: {e}", file=sys.stderr)
+        return 2
+
+    for r in results:
+        print(r.summary)
+    return 0
+
+
+def cmd_check_operator_verification(project_dir: Path) -> int:
+    """Structural gate for `/pr create`: refuse open when queue has pending entries.
+
+    Mirrors :func:`cmd_check_cumulative_critic` semantics — exit 0 only
+    when the gate is satisfied, exit 1 with stderr describing the
+    blocker. The gate is only active when ``operator_verification_required:
+    true`` is set in ``project-state.yaml``; otherwise the command is a
+    no-op exit 0.
+    """
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+
+    result = ov.run_check_operator_verification(project_dir)
+    if not result["required"]:
+        return 0
+    if result["pending"] == 0:
+        print(result["message"])
+        return 0
+    print(result["message"], file=sys.stderr)
+    return 1
+
+
+def cmd_accept_operator_verification(
+    project_dir: Path, rationale: str | None
+) -> int:
+    """Flip all pending entries to ``accepted`` with the supplied rationale.
+
+    Invoked by ``/pr create --accept-pending-verification "rationale"``.
+    Refuses an empty or missing rationale — the work-log capture is the
+    whole point of the override.
+    """
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+
+    if rationale is None or not rationale.strip():
+        print(
+            "error: accept-operator-verification requires a non-empty "
+            "rationale argument — `/pr create --accept-pending-verification "
+            '"rationale"`. The override is recorded in operator-verification.md '
+            "as the work-log entry.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = ov.run_accept_pending(project_dir, rationale)
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    for action in result["actions"]:
+        print(action)
+    for note in result["notes"]:
+        print(f"  * {note}")
+    return 0
+
+
+def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
+    """Shared helper: is the PR diff (``merge-base...HEAD``) all ``.md``?
+
+    Returns ``(is_doc_only, status_message)``. ``is_doc_only`` is True only
+    when the diff is non-empty AND every file ends in ``.md``. The status
+    message names the specific reason for False (``no-base``, ``git-failed``,
+    ``empty-diff``, ``not-doc-only: <files>``) so both the CLI gate and the
+    stop-hook Gate 3 can surface actionable detail without re-implementing
+    the diff inspection. Base resolution mirrors ``_coverage_resolve_base``
+    so the helper sees the same diff surface as the cumulative-Critic flow.
+    """
+    base, base_note = _coverage_resolve_base(project_dir)
+    if base is None:
+        return False, f"no-base: {base_note}"
+
+    proc = subprocess.run(
+        ["git", "diff", "--name-only", f"{base}...HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return False, f"git-failed: git diff {base}...HEAD failed: {proc.stderr.strip()}"
+
+    files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if not files:
+        return False, f"empty-diff: no files changed in {base}...HEAD"
+
+    non_md = [f for f in files if not f.endswith(".md")]
+    if non_md:
+        sample = ", ".join(non_md[:3])
+        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
+        return False, f"not-doc-only: PR includes non-.md files: {sample}{more}"
+
+    return True, f"doc-only: {len(files)} file(s) in {base}...HEAD all .md"
+
+
+def cmd_check_pr_doc_only(project_dir: Path) -> int:
+    """Fast-path gate for `/pr create`: report whether the PR diff is doc-only.
+
+    Exit 0 when every file in ``merge-base...HEAD`` ends in ``.md`` and the
+    diff is non-empty — the `/pr` skill uses this to skip the cumulative-
+    Critic and PR-reviewer gates, mirroring the session-end stop-hook
+    behavior (`_session_changes_are_doc_only`) at the PR boundary. The
+    stop hook's PR-review evidence gate (Gate 3) consults the same helper
+    so a doc-only PR doesn't get blocked at session end for missing
+    evidence — symmetric behavior across both gates.
+
+    Exit 1 otherwise (any non-``.md`` file, empty diff, no resolvable base
+    branch, or git failure). Fails closed: when the gate cannot be evaluated,
+    fall through to the full review path rather than silently skipping it.
+    """
+    is_doc_only, status = _pr_diff_is_doc_only(project_dir)
+    if is_doc_only:
+        print(
+            f"{status} — cumulative-Critic and PR-reviewer gates may be skipped."
+        )
+        return 0
+    suffix = (
+        ". Doc-only fast-path is not applicable."
+        if status.startswith("empty-diff")
+        else ". Falling back to full review path."
+        if status.startswith(("no-base", "git-failed"))
+        else ". Full review required."
+    )
+    print(f"{status}{suffix}", file=sys.stderr)
+    return 1
+
+
 _USAGE = (
     "Usage: product-hook "
-    "{clear|stop|test-status|validate-evidence|check-cumulative-critic|verify-chunk-refs [chunk_id]}"
+    "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
+    "verify-chunk-refs [chunk_id]|verify-coverage|"
+    "check-operator-verification|accept-operator-verification <rationale>|"
+    "check-pr-doc-only|regen-views}"
 )
 
 
@@ -2914,6 +3348,17 @@ def main() -> int:
     elif command == "verify-chunk-refs":
         chunk_id = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_verify_chunk_refs(project_dir, chunk_id)
+    elif command == "verify-coverage":
+        return cmd_verify_coverage(project_dir)
+    elif command == "check-operator-verification":
+        return cmd_check_operator_verification(project_dir)
+    elif command == "accept-operator-verification":
+        rationale = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_accept_operator_verification(project_dir, rationale)
+    elif command == "check-pr-doc-only":
+        return cmd_check_pr_doc_only(project_dir)
+    elif command == "regen-views":
+        return cmd_regen_views(project_dir)
     else:
         print(_USAGE, file=sys.stderr)
         return 1

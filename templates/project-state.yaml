@@ -203,6 +203,53 @@ build_state:
   source_root: null           # Where source code lives (e.g., "src/")
 
 # =============================================================================
+# DERIVED VIEWS (enabled by default, v1.4+)
+# =============================================================================
+# When true (default), three derived views are regenerated from change-log.md
+# tagged entries (see that file for the tag format):
+#   * build-plan `## Status` block (checkboxes from `status=shipped` tags)
+#   * `.prawduct/release-notes.md` (from `release=` tags)
+#   * `scope_rollups:` block below (from `scope=` tags)
+# Run `python3 tools/product-hook regen-views` to apply, or
+# `python3 tools/prawduct-setup.py views <dir> --refresh` for ad-hoc regen.
+# Set to `false` to opt out — Status becomes hand-edited and the other views
+# are not produced.
+
+views_enabled: true
+
+# Scope rollups — derived view, populated by regen-views when views_enabled is
+# true. Lists chunks (and releases) shipped under each scope rollup tag.
+# Do not hand-edit — overwritten on next regen.
+scope_rollups: {}
+
+# =============================================================================
+# COVERAGE EVIDENCE (opt-in, v1.4+)
+# =============================================================================
+# When true, the Critic requires every changed file to appear in
+# `.test-evidence.json`'s `changes_referenced` list and scales severity
+# language to the declared `coverage_level` (`referenced` floor vs.
+# `executed` real). The reference verifier at `tools/test-reference-verify`
+# emits the floor; products with non-trivial coverage concerns should plug
+# in a stronger verifier. See build-governance.md "Coverage Evidence".
+# Default off in v1.4 — schema is checked but content is not enforced.
+
+coverage_required: false
+
+# =============================================================================
+# OPERATOR VERIFICATION (opt-in, v1.4+)
+# =============================================================================
+# When true, `/pr create` BLOCKS if `.prawduct/operator-verification.md`
+# has any entry with `**Status:** pending`. The queue records pre-merge
+# human-verification items for visual / live-integration changes that
+# automated tests can't fully cover. Drain via
+# `python3 tools/prawduct-setup.py verify <product_dir> <VRF-id>` or
+# override per-PR with `/pr create --accept-pending-verification "rationale"`.
+# Default off in v1.4 — opt-in via
+# `prawduct-setup migrate --enable-operator-verification`.
+
+operator_verification_required: false
+
+# =============================================================================
 # CHANGE LOG
 # =============================================================================
 # Change log is in .prawduct/change-log.md (separate file to reduce merge conflicts).

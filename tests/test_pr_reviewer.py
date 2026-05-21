@@ -429,6 +429,63 @@ class TestStopPrReviewGate:
         )
         assert result.returncode == 0
 
+    def test_stop_skips_pr_gate_when_pr_diff_is_doc_only(self, tmp_path: Path):
+        """Gate 3 skips when the PR diff (merge-base...HEAD) is all .md, even
+        when the session has uncommitted non-.md changes. Symmetric with the
+        `/pr create` Step 1b fast-path: a doc-only PR was legitimately opened
+        without review evidence; Gate 3 should not retroactively demand it.
+        """
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        # Session: uncommitted .py change → session_doc_only=False, Gate 3 enters
+        # PR diff: only .md committed → pr_doc_only=True, new skip applies
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" && "$2" == "--verify" && "$3" == "origin/main" ]]; then echo "abc123"; exit 0; fi',
+            'if [[ "$1" == "rev-parse" && "$2" == "--verify" ]]; then exit 1; fi',
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+            'if [[ "$1" == "diff" && "$2" == "--name-only" ]]; then echo ".prawduct/backlog.md"; echo "docs/notes.md"; exit 0; fi',
+        ])
+
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+
+        # Gate 3 should be skipped — no PR REVIEW blocker even though no
+        # evidence file exists, because the PR is currently doc-only.
+        assert "PR REVIEW" not in result.stderr
+
+    def test_stop_still_blocks_when_pr_diff_includes_code(self, tmp_path: Path):
+        """Confirms the doc-only skip is conditional, not unconditional:
+        Gate 3 still BLOCKS when the PR's diff has any non-.md file and
+        no evidence exists. Inverse of the previous test — guards against
+        a future refactor accidentally over-broadening the skip.
+        """
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" && "$2" == "--verify" && "$3" == "origin/main" ]]; then echo "abc123"; exit 0; fi',
+            'if [[ "$1" == "rev-parse" && "$2" == "--verify" ]]; then exit 1; fi',
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+            'if [[ "$1" == "diff" && "$2" == "--name-only" ]]; then echo "src/app.py"; echo "docs/notes.md"; exit 0; fi',
+        ])
+
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+
 
 # =============================================================================
 # Template content validation

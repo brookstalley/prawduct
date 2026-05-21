@@ -56,6 +56,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
   - No hardcoded secrets or credentials in source code → **BLOCKING**.
   - Auth/authz checks on new endpoints or state-changing operations → **WARNING** if missing.
   - Dependencies without known critical vulnerabilities → **WARNING**.
+- **Symbol coverage (v1.4 F4b):** run `python3 tools/product-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
 
 ### 2. Nothing Is Missing
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
@@ -68,6 +69,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
 - If `infrastructure_dependencies` is declared in project-state.yaml: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when (read source or probe before drafting handlers — see `methodology/planning.md`) → **WARNING** if missing.
+- **Operator verification (F10):** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ### 3. Nothing Is Unintended
 - No unlisted dependencies → **BLOCKING**.
@@ -83,6 +85,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - **README and top-level docs**: Actively read the project's README (and any top-level docs/) when features are added, removed, or renamed. README that describes removed features, contains wrong setup instructions, or omits significant new capabilities → **WARNING**. README with actively misleading instructions (wrong commands, deleted config references) → **BLOCKING**.
 - **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
+- **Derived views**: `views_enabled` ⇒ Status, `release-notes.md`, and `scope_rollups:` derive from change-log tags via `regen-views`. Tag is canonical; view↔tag mismatch → **WARNING** ("run regen-views"). Flag tags, not derived files.
 - **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING** ("CLAUDE.md project content is N lines — move architecture, config tables, and component inventories to docs/ or .prawduct/artifacts/"). Applies to the current changeset.
 - For framework changes: concept ripple check — renamed/removed terms still referenced in *active* files (not changelogs or archives) → **WARNING**.
 
