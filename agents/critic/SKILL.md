@@ -10,13 +10,13 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 ## When You Are Activated
 
-1. **Determine your mode** from `$ARGUMENTS` (see Modes below). Default: `final`.
-2. Read `.prawduct/project-state.yaml` for context.
-3. Assess the **scope and nature** of changes (use git diff or read changed files).
-4. Read relevant artifacts in `.prawduct/artifacts/`.
+1. Mode from `$ARGUMENTS` (see Modes). Default: `final`.
+2. Read `.prawduct/project-state.yaml`.
+3. Assess change scope/nature (git diff or read changed files).
+4. Read relevant `.prawduct/artifacts/`.
 5. Read `docs/principles.md` and `.prawduct/learnings.md` (`final` mode only).
-6. Decide what to check based on the signals below.
-7. Choose your review execution strategy (see Review Execution below).
+6. Decide checks from signals below.
+7. Pick execution strategy (see Review Execution).
 
 ## Modes
 
@@ -43,13 +43,13 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 1. Nothing Is Broken
-- **Do not run the test suite.** Read `.prawduct/.test-evidence.json` for test results — the builder records this during the Verify step. **Validate freshness via `python3 tools/product-hook test-status`** (exit 0 = current, 1 = stale): the helper checks that evidence was recorded during this session with all tests passing. If `test-status` reports `stale`, the saved evidence does not apply to the code under review → **WARNING**. Confirm all tests passed (failures → **BLOCKING**). If the file is missing, note it as a **WARNING** but continue the review — do not attempt to run tests yourself. Your job beyond checking evidence is to review the *quality and coverage* of tests through code analysis, not to re-execute them.
-- There is no "pre-existing" exception — for tests, for broad exceptions, for stale artifacts, for anything. If the Critic finds it, it's a finding regardless of when it was introduced.
-- Tests verify behavior, not implementation details.
-- Tests deleted or assertions weakened in this changeset without documented reason → **BLOCKING**. Test consolidation that legitimately reduces count is fine — verify the change-log entry explains it.
-- Changed or added behavior has corresponding test coverage (read the test files) → **BLOCKING** if untested.
-- Tests are well-structured: they test behavior not implementation, edge cases are covered, assertions are meaningful → **WARNING** if test quality is poor.
-- For code involving mathematical operations, data transformations, serialization round-trips, or complex input validation — consider whether property-based tests would strengthen coverage beyond example-based tests alone. If test-specifications call for property-based tests, verify they exist → **NOTE** if absent.
+- **Do not run tests.** Run `python3 tools/product-hook test-status`: exit 0 = current; stale/missing → **WARNING**. Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
+- No "pre-existing" exception — every finding is yours regardless of when introduced.
+- Tests verify behavior, not implementation.
+- Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
+- Changed/added behavior has test coverage → **BLOCKING** if untested.
+- Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
+- For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → **NOTE**.
 - **Security in changed code:**
   - Input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable vector.
   - No injection vectors: SQL, command injection, XSS, path traversal → **BLOCKING**.
@@ -63,7 +63,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
 - **Requirements Confidence field present** (`High | Medium | Low`, see `methodology/planning.md`). Missing → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
 - **Build-plan ref drift**: run `python3 tools/product-hook verify-chunk-refs` — non-zero exit → **BLOCKING** per missing path (plan names a file that doesn't exist).
-- **Behavioral choices**: workflow-affecting features should be configurable via `project-preferences.md` with a safe default — hardcoded when two paths would reasonably work → **WARNING**.
+- **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
@@ -79,10 +79,10 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 4. Everything Is Coherent
 - Artifacts are consistent with each other and with code.
-- **Bidirectional freshness**: Does code match artifacts? Do artifacts still describe the code? Check model fields, architecture components. Stale artifact → **WARNING**.
-- **Project preferences**: If `project-preferences.md` exists, code in changed files must follow the stated conventions (language idioms, naming, structure, dependencies). Preferences are the team's declared standards → **BLOCKING** if violated.
-- **Infrastructure coherence**: If project-state.yaml declares infrastructure dependencies, do code's infrastructure assumptions match? A declared Postgres dependency with only in-memory storage in code → **WARNING**. Mocked dependencies should be explicitly documented as mocked, not silently substituted.
-- **README and top-level docs**: Actively read the project's README (and any top-level docs/) when features are added, removed, or renamed. README that describes removed features, contains wrong setup instructions, or omits significant new capabilities → **WARNING**. README with actively misleading instructions (wrong commands, deleted config references) → **BLOCKING**.
+- **Bidirectional freshness**: code matches artifacts AND artifacts still describe code (model fields, architecture components). Stale artifact → **WARNING**.
+- **Project preferences**: `project-preferences.md` conventions (language, naming, structure, deps) must be followed → **BLOCKING** if violated.
+- **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
+- **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
 - **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
 - **Derived views**: `views_enabled` ⇒ Status, `release-notes.md`, and `scope_rollups:` derive from change-log tags via `regen-views`. Tag is canonical; view↔tag mismatch → **WARNING** ("run regen-views"). Flag tags, not derived files.
@@ -108,8 +108,8 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - **Coupling**: Changes in one module shouldn't force changes in unrelated modules. Watch for god objects/functions that concentrate too many responsibilities, and for modules that know too much about each other's internals. → **WARNING** if coupling is inappropriate.
 - **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** is a common variant: migration paths, fallbacks, or compatibility shims when there is no existing deployment to migrate. If nobody asked for backwards compatibility, it's unnecessary complexity → **WARNING**.
 - **Deduplication**: Duplicated logic that should be extracted. Copy-paste patterns across files. Near-identical implementations that vary only in superficial ways. → **WARNING** for meaningful duplication.
-- **Idiomatic language usage**: Code should follow its language's conventions (Pythonic Python, idiomatic Go, natural JS/TS). Non-idiomatic working code that ignores language best practices (e.g., `for i in range(len(items))` instead of `for item in items`) → **WARNING**. Check `project-preferences.md` for declared language conventions.
-- **Unmodeled state-based problems**: Some problems are inherently state-based — the system moves through a discrete set of conditions (phases, modes, lifecycle stages, UI views, connection status, workflow steps) and correctness depends on every part of the code agreeing which condition we're in. When such a problem is solved through interdependent booleans, scattered conditionals on order-of-events, or flag combinations rather than an explicit model, invalid combinations become reachable and transition rules live nowhere in particular. What must be explicit: the set of conditions, which transitions are valid, which are invalid and why, and a single unambiguous answer to "what condition are we in now" the rest of the code reads rather than reconstructs. How that's expressed (enum, class, reducer, state variable, type, schema) is an implementation choice — flag absence of the *model*, not absence of a specific mechanism. **BLOCKING** when the gap causes correctness or safety failures (invalid combos reachable, double-transitions possible, persisted state can diverge, error states silently misclassified). **WARNING** when 3+ interdependent state signals exist with no single source of truth and transition logic spans multiple call sites, even without a demonstrable bug. **NOTE** when borderline (two signals, localized logic) — recommend adding to `.prawduct/backlog.md`. When flagging, enumerate the conditions and transitions you observed.
+- **Idiomatic language usage**: Non-idiomatic code that ignores language best practices (e.g., `for i in range(len(items))` vs `for item in items`) → **WARNING**. Check `project-preferences.md` for declared conventions.
+- **Unmodeled state-based problems**: When correctness depends on multiple parts of the code agreeing which discrete condition the system is in (phase, mode, lifecycle stage, UI view, workflow step) but state is reconstructed from interdependent booleans / scattered order-of-events conditionals rather than a single-source-of-truth model. Mechanism (enum, class, reducer, schema, type) is implementation choice — flag absence of the *model*. **BLOCKING** when invalid combos are reachable, double-transitions possible, or persisted state can diverge. **WARNING** when 3+ interdependent state signals lack a SoT and transition logic spans multiple call sites. **NOTE** borderline (two signals, localized) — recommend backlog. Enumerate the conditions you observed.
 
 This goal applies proportionally — a 2-line helper doesn't need design review. Focus on patterns that will compound: a leaked abstraction others will depend on, coupling that will spread, complexity that will accumulate.
 
@@ -127,9 +127,9 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ## Severity Levels
 
-- **BLOCKING**: Must fix before proceeding. Broken tests, dropped requirements, security vulnerabilities, unlisted dependencies.
-- **WARNING**: Should fix. The Critic is confident this is a real issue: missing coverage, scope drift, stale artifacts, missing rationale, design problems, documentation drift.
-- **NOTE**: Genuinely ambiguous — the Critic sees something that might be an issue but isn't certain. NOTEs suggesting future work should recommend adding to `.prawduct/backlog.md` rather than acting on them now.
+- **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
+- **WARNING**: Should fix; Critic is confident (missing coverage, scope drift, stale artifacts, design problems).
+- **NOTE**: Genuinely ambiguous; recommend backlog.
 
 ## Review Execution
 
@@ -140,9 +140,9 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed).
 
-2. **Dispatch** three parallel review subagents via the Agent tool. Each receives the project directory, the changed-files list, and the signals summary. Use this prompt template, substituting `<NAME>` and `<GOALS>`:
+2. **Dispatch** three parallel review subagents via the Agent tool. Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
 
-   > "You are a Critic review subagent (`<NAME>` reviewer). Read `[critic instructions path]` for the goal definitions. Review ONLY <GOALS>. The project is at `[dir]`. Changed files: [list]. Signals: [summary]. Do NOT run any tests — review through code analysis only. Report findings using the Critic output format from that file."
+   > "Critic review subagent (`<NAME>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. NO tests — code analysis only. Report using the Critic output format."
 
    - **Correctness reviewer** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended).
    - **Design reviewer** — Goals 4 (Everything Is Coherent), 7 (The Design Is Sound).

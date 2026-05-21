@@ -256,8 +256,17 @@ class TestCriticSkill:
         # of the F4 protocol additions the Chunk 00 trim-pass explicitly
         # reserved budget for. If this test fails again, prefer trimming over
         # another bump.
+        #
+        # Lowered from 3325 → 3050 in v1.5 Chunk 00 (Critic proportionality
+        # release). 524-token trim across When-You-Are-Activated, Goal 1,
+        # Goal 4, Goal 7 ("Unmodeled state-based problems" reduced from
+        # ~325 → ~95 tokens), Severity Levels, and Coordinator dispatch
+        # prompt — compression only, no content removed. New ceiling reserves
+        # 250-token headroom for v1.5's mode-inference (Chunk 03), Type:
+        # trivial Goal 3 sub-check (Chunk 05), and verify-resolutions mode
+        # row (Chunk 02). Continue preferring trim over bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3325, f"SKILL.md is ~{tokens} tokens, should be <3325"
+        assert tokens < 3050, f"SKILL.md is ~{tokens} tokens, should be <3050"
 
 
 # =============================================================================
