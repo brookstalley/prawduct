@@ -2135,6 +2135,20 @@ def validate_critic_findings(findings_path: Path) -> bool:
             mode = data["mode"]
             if not isinstance(mode, str) or mode not in _CRITIC_MODE_VALUES:
                 return False
+        # v1.5 Chunk 01 — commit_reviewed / base_reviewed anchor the delta
+        # computation for the verify-resolutions mode (Chunk 02). Optional
+        # for back-compat with pre-v1.5 findings files (which simply cannot
+        # serve as a verify-resolutions baseline). When present, must be a
+        # NON-EMPTY string SHA or None — wrong types and empty strings are
+        # writer drift (empty string would silently anchor at no commit,
+        # breaking Chunk 02's delta computation), surfaced here.
+        for sha_field in ("commit_reviewed", "base_reviewed"):
+            if sha_field in data:
+                val = data[sha_field]
+                if val is None:
+                    continue
+                if not isinstance(val, str) or not val.strip():
+                    return False
         return True
     except Exception:  # prawduct:ok-broad-except — validation must not crash gate check
         return False

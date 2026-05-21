@@ -146,6 +146,8 @@ Write to `.prawduct/.critic-findings.json`:
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
   "duration_seconds": 180,
   "mode": "final (full review, ready for push)",
+  "commit_reviewed": "<git rev-parse HEAD at review time>",
+  "base_reviewed": null,
   "files_reviewed": ["src/app.py"],
   "findings": [
     {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "description"}
@@ -157,9 +159,12 @@ Write to `.prawduct/.critic-findings.json`:
 `mode` must be exactly one of:
 - `"chunk (lighter pass, not ready for push)"` — when invoked with the `chunk` short token.
 - `"final (full review, ready for push)"` — when invoked with the `final` short token, or when defaulting because no recognized token was passed.
+- `"cumulative (bundle review, ready for merge)"` — when invoked with the `cumulative` short token (v1.4 F2 — required by `/pr create`).
 
-The verbose string is required; the bare short token (`"chunk"` / `"final"`) is rejected by the hook validator.
+The verbose string is required; the bare short token (`"chunk"` / `"final"` / `"cumulative"`) is rejected by the hook validator.
 
 `duration_seconds`: your best estimate of wall-clock review time. Surfaced in session briefing to set expectations.
+
+`commit_reviewed` (v1.5 Chunk 01): record `git rev-parse HEAD` at review time. Anchors the delta computation that the `verify-resolutions` mode reads (Chunk 02) — without it, the next review can't tell which files have changed since this review's baseline. `base_reviewed`: in `cumulative` mode, record `git merge-base <base-branch> HEAD`; in other modes, `null`. Both fields are optional for back-compat with pre-v1.5 findings files; populate them whenever a SHA is resolvable. Wrong types (e.g., integer SHA) are rejected by the validator.
 
 Clean review: empty findings array, summary says "No issues found."

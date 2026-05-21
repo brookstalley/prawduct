@@ -1889,6 +1889,112 @@ class TestCriticModeGate:
         }))
         assert self.mod.validate_critic_findings(path) is False
 
+    # ---- v1.5 Chunk 01: commit_reviewed / base_reviewed anchor fields ----
+
+    def test_validate_critic_findings_accepts_commit_reviewed_sha(self, tmp_path: Path):
+        """v1.5 Chunk 01: commit_reviewed records HEAD SHA for verify-resolutions delta anchor."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_CHUNK,
+            "commit_reviewed": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_accepts_commit_reviewed_null(self, tmp_path: Path):
+        """Null is valid (e.g., pre-commit review with no SHA to record yet)."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "commit_reviewed": None,
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_accepts_base_reviewed_for_cumulative(self, tmp_path: Path):
+        """Cumulative mode records both HEAD and merge-base SHAs."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_CUMULATIVE,
+            "commit_reviewed": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+            "base_reviewed": "0f1e2d3c4b5a6978a7b6c5d4e3f2a1b0a9b8c7d6",
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_accepts_base_reviewed_null_for_chunk(self, tmp_path: Path):
+        """Non-cumulative modes record commit_reviewed but base_reviewed is null."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_CHUNK,
+            "commit_reviewed": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+            "base_reviewed": None,
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_accepts_no_commit_reviewed(self, tmp_path: Path):
+        """Pre-v1.5 findings (no commit_reviewed) remain valid for back-compat."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_FINAL,
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validate_critic_findings_rejects_non_string_commit_reviewed(self, tmp_path: Path):
+        """Integer SHA is a writer error — surface, don't silently accept."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "commit_reviewed": 12345,
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
+    def test_validate_critic_findings_rejects_non_string_base_reviewed(self, tmp_path: Path):
+        """Wrong-type base_reviewed is a writer error."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "base_reviewed": ["not", "a", "sha"],
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
+    def test_validate_critic_findings_rejects_empty_commit_reviewed(self, tmp_path: Path):
+        """Empty string would silently anchor verify-resolutions at no commit — reject."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "commit_reviewed": "",
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
+    def test_validate_critic_findings_rejects_whitespace_base_reviewed(self, tmp_path: Path):
+        """Whitespace-only SHA is the same silent-failure mode as empty — reject."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "No issues.",
+            "base_reviewed": "   ",
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
     # ---- Integration: cmd_stop surfaces the advisory NOTE ----
 
     def test_stop_hook_surfaces_advisory_when_all_chunks_complete_with_chunk_mode(

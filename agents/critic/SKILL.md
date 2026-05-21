@@ -183,6 +183,8 @@ If no findings: "No issues found. Changes are ready to proceed."
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
   "duration_seconds": 180,
   "mode": "final (full review, ready for push)",
+  "commit_reviewed": "<git rev-parse HEAD at review time>",
+  "base_reviewed": null,
   "files_reviewed": ["file1", "file2"],
   "findings": [
     {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description"}
@@ -191,7 +193,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. For a clean review, findings is empty and summary says "No issues found."
+`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `commit_reviewed` (v1.5): record `git rev-parse HEAD` at review time — anchors the delta computation that `verify-resolutions` mode reads. `base_reviewed`: in `cumulative` mode, record `git merge-base <base-branch> HEAD`; otherwise `null`. Both fields optional for back-compat; omit only when SHA isn't resolvable. For a clean review, findings is empty and summary says "No issues found."
 
 ## Review Cycle
 
