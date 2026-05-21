@@ -13,8 +13,9 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
 | **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk. |
 | **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (in addition to the per-chunk reviews above). |
+| **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Falls through to `chunk`/`final` when the anchor is missing or scope widens past the demotion threshold. |
 
-The stop hook enforces review for code changes when a build plan exists. It also surfaces an advisory WARNING when all chunks are marked `[x]` but the most recent review was `chunk` mode — run `/critic final` before pushing.
+The stop hook enforces review for code changes when a build plan exists. It also surfaces an advisory WARNING when all chunks are marked `[x]` but the most recent review ran Goals 1-3 only (`chunk` or `verify-resolutions` mode) — run `/critic final` before pushing.
 
 `/pr create` is gated by `python3 tools/product-hook check-cumulative-critic` — opening a PR without a fresh, blocking-free `cumulative` record fails the gate.
 
@@ -31,18 +32,18 @@ The build plan is authoritative. Each chunk declares `Critic mode: chunk | final
 
 ## Per-Mode Behavior
 
-| Aspect | `chunk` | `final` | `cumulative` |
-|---|---|---|---|
-| **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals |
-| **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Framework-Specific Checks (7-10); README/top-level docs scan | None | None |
-| **Scope** | Chunk's uncommitted diff (`git diff` + `git status` for new files) | Full session diff at end-of-cycle, OR uncommitted diff for non-chunked work | `git diff <base-branch>...HEAD` — the entire PR bundle, all commits on the branch since it diverged |
-| **Execution** | Always single-pass | Single pass for trivial/small; coordinator pattern for medium/large | Single pass for trivial/small; coordinator pattern for medium/large |
-| **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min |
-| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/pr create`). Catches cross-chunk integration cracks. |
+| Aspect | `chunk` | `final` | `cumulative` | `verify-resolutions` |
+|---|---|---|---|---|
+| **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals | 1, 2, 3 |
+| **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
+| **Scope** | Chunk's uncommitted diff (`git diff` + `git status` for new files) | Full session diff at end-of-cycle, OR uncommitted diff for non-chunked work | `git diff <base-branch>...HEAD` — the entire PR bundle, all commits on the branch since it diverged | Prior findings' `files_reviewed` ∪ files changed since `commit_reviewed` (see "Verify-resolutions scope and demotion" below) |
+| **Execution** | Always single-pass | Single pass for trivial/small; coordinator pattern for medium/large | Single pass for trivial/small; coordinator pattern for medium/large | Always single-pass |
+| **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
+| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings, to confirm the resolution without paying full-review latency. Demotes to `chunk` / `final` when prior findings lack `commit_reviewed`, hold no actionable findings, or scope widens past the threshold. |
 
 **Two-form rule for the `mode` value:**
-- **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument): the short token — `chunk`, `final`, or `cumulative`.
-- **Persisted-side** (in `.prawduct/.critic-findings.json`'s `mode` field, session briefings, gate WARNINGs): the verbose string — exactly `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, or `"cumulative (bundle review, ready for merge)"`.
+- **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument): the short token — `chunk`, `final`, `cumulative`, or `verify-resolutions`.
+- **Persisted-side** (in `.prawduct/.critic-findings.json`'s `mode` field, session briefings, gate WARNINGs): the verbose string — exactly `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, `"cumulative (bundle review, ready for merge)"`, or `"verify-resolutions (delta review, prior findings only)"`.
 
 Read short, write verbose. Verbose makes the JSON self-documenting in briefings — anyone reading the file sees what mode was used without consulting docs. The hook validator in `tools/product-hook` rejects bare short tokens in the persisted `mode` field.
 
@@ -71,6 +72,28 @@ When chunk type is `designer-handoff` and the Critic is invoked anyway, output a
 `/pr create` calls `python3 tools/product-hook check-cumulative-critic` and refuses to open the PR if the gate fails. The gate requires: cumulative-mode findings file present, schema-valid, recorded in the current session (mtime later than `.session-start`), and free of unresolved BLOCKING findings. WARNING and NOTE are advisory at the PR gate — they do not block, matching the PR reviewer's own severity contract.
 
 **Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes synchronously. Before invoking it, complete any prep work that doesn't depend on its findings: `/learnings` for next-chunk topics, draft the PR description, audit the backlog for items this branch resolves, capture deferred chunk-boundary reflections. This does NOT shorten the wait — it reorganizes work so the agent can integrate findings the moment Critic returns rather than spinning up fresh post-wait. See `methodology/building.md` for the full guidance.
+
+### Verify-resolutions scope and demotion
+
+`verify-resolutions` is the only mode whose scope is anchored to a *prior* review rather than the current working tree. It exists to cut re-review latency after a Critic round flags 1-2 BLOCKING findings and the builder fixes them — re-running `/critic chunk` or `/critic final` walks the full diff again at full latency for a localized change.
+
+**Scope computation.** Read the prior `.prawduct/.critic-findings.json`: scope = (prior `files_reviewed`) ∪ (files changed since prior `commit_reviewed` — `git diff --name-only <commit_reviewed>` plus `git ls-files --others --exclude-standard`). The Critic runs Goals 1-3 against this union — same goals as `chunk` mode, narrower surface. The canonical implementation is the `_compute_verify_resolutions_scope` helper in `tools/product-hook` — tests anchor on it, and a verify-resolutions findings file's `files_reviewed` must match what that helper would have returned at write time.
+
+**Demotion criteria** (return empty scope; fall back to `/critic chunk` or `/critic final`):
+
+| Trigger | Why it demotes |
+|---|---|
+| Prior findings file missing | Nothing to verify against. |
+| Prior findings lack `commit_reviewed` (pre-v1.5 record) | No anchor for the delta. |
+| `commit_reviewed` does not resolve in current repo | Rebase, force-push, or never on this branch — anchor unreliable. |
+| Prior findings have no BLOCKING/WARNING entries | A verify pass has nothing actionable to re-check. |
+| `len(files_since_commit) > 2 * len(prior_files_reviewed) + 5` | Scope widened beyond the prior surface — a partial review would mislead. |
+
+These are fail-closed: when the helper cannot anchor a delta, it refuses to compute one rather than silently shrinking the review (learnings: "Escape hatches in classification create silent failures").
+
+**Stop-hook gate behavior.** A `verify-resolutions` findings file clears the stop-hook Critic gate **only** when the current chunk diff is a subset of the findings' `files_reviewed`. If the builder adds work after the verify pass, those new files are out of scope, the gate refuses to clear, and the blocker names the specific out-of-scope files so the builder runs `/critic chunk` or `/critic final` next.
+
+**When NOT to use verify-resolutions.** Don't use it as the only review for a chunk's first pass — it's a re-review mode, not a first-look mode. Don't use it across a `git rebase` or force-push that rewrites `commit_reviewed` — the helper detects this and demotes, but choosing it expecting a fast pass costs you a wasted invocation. And don't use it after a long pause where the working tree drifted unrelated to the original findings — that's exactly the scope-widening case the demotion threshold catches.
 
 ## Per-Chunk Cycle
 

@@ -25,6 +25,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
 - **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/pr create`. See `review-cycle.md`.
+- **`verify-resolutions`** — Goals 1-3 against prior findings' `files_reviewed` ∪ files changed since `commit_reviewed`. Target 1-2 min. Demotes to `final` when prior findings lack the anchor, hold no BLOCKING/WARNING, or scope widens past `len(delta) > 2 * prior + 5`. See `review-cycle.md`.
 
 **Default:** missing/ambiguous → `final`. Never silently downgrade. The `mode` field in findings uses the verbose form (see Output Format).
 

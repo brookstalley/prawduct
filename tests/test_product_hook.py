@@ -1804,6 +1804,36 @@ class TestCriticModeGate:
         ok, _ = self.mod._critic_session_satisfies_gate(prawduct)
         assert ok is True
 
+    def test_multi_chunk_plan_all_complete_with_verify_resolutions_unsatisfied(
+        self, tmp_path: Path
+    ):
+        """v1.5 Chunk 02: verify-resolutions runs Goals 1-3 only, same as chunk
+        mode. Closing a plan with verify-resolutions must trigger the same
+        advisory — end-of-cycle synthesis (Goals 4-7 + Learnings + Backlog)
+        hasn't run."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=3, complete=3)
+        self._make_findings(
+            prawduct, mode=self.mod._CRITIC_MODE_VERIFY_RESOLUTIONS
+        )
+        ok, reason = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is False
+        assert "3 chunks complete" in reason
+        assert self.mod._CRITIC_MODE_VERIFY_RESOLUTIONS in reason
+        assert "/critic final" in reason
+
+    def test_multi_chunk_plan_all_complete_with_cumulative_satisfies(
+        self, tmp_path: Path
+    ):
+        """Cumulative runs all 7 goals — it satisfies end-of-cycle synthesis."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_plan(prawduct, total=3, complete=3)
+        self._make_findings(prawduct, mode=self.mod._CRITIC_MODE_CUMULATIVE)
+        ok, _ = self.mod._critic_session_satisfies_gate(prawduct)
+        assert ok is True
+
     # ---- validate_critic_findings (mode validation) ----
 
     def test_validate_critic_findings_accepts_verbose_chunk_mode(self, tmp_path: Path):
@@ -2040,6 +2070,454 @@ class TestCriticModeGate:
         # The verbose chunk string must not appear in stderr — that text is only
         # in the gate's reason, which only fires for unsatisfied gates.
         assert "lighter pass, not ready for push" not in result.stderr
+
+
+# =============================================================================
+# v1.5 Chunk 02 — verify-resolutions delta mode
+# =============================================================================
+
+
+class TestVerifyResolutionsMode:
+    """The fourth Critic mode: re-review against the prior pass's scope
+    instead of re-walking the full diff.
+
+    Validator: the verbose-string mode is accepted; the bare short token
+    is rejected (same two-form rule as chunk/final/cumulative).
+
+    Helper (`_compute_verify_resolutions_scope`): fail-closed when the
+    anchor is missing/unresolvable, when prior findings have no actionable
+    severity, or when the delta has widened beyond the demotion threshold.
+
+    Stop-hook gate: a verify-resolutions findings file clears the gate
+    only when the current chunk diff is a subset of the findings'
+    `files_reviewed`.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    # ---- validate_critic_findings: verbose verify-resolutions accepted ----
+
+    def test_validator_accepts_verbose_verify_resolutions_mode(self, tmp_path: Path):
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["tools/product-hook"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": self.mod._CRITIC_MODE_VERIFY_RESOLUTIONS,
+        }))
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_validator_rejects_bare_verify_resolutions_token(self, tmp_path: Path):
+        """The bare short token is the caller-side $ARGUMENTS form, not persistence."""
+        path = tmp_path / "findings.json"
+        path.write_text(json.dumps({
+            "files_reviewed": ["tools/product-hook"],
+            "findings": [],
+            "summary": "No issues.",
+            "mode": "verify-resolutions",
+        }))
+        assert self.mod.validate_critic_findings(path) is False
+
+    # ---- _compute_verify_resolutions_scope: fail-safe categories ----
+
+    def _commit(self, repo: Path, msg: str) -> str:
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", msg, "--quiet"], cwd=repo, check=True)
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        )
+        return proc.stdout.strip()
+
+    def _make_prior_findings(
+        self,
+        prawduct: Path,
+        *,
+        commit_reviewed: str | None,
+        files_reviewed: list[str] | None = None,
+        severity: str = "blocking",
+        include_finding: bool = True,
+    ) -> Path:
+        data: dict = {
+            "files_reviewed": files_reviewed or ["src/app.py"],
+            "findings": (
+                [{"goal": "Nothing Is Broken", "severity": severity, "summary": "x"}]
+                if include_finding else []
+            ),
+            "summary": "Prior review.",
+            "mode": self.mod._CRITIC_MODE_CHUNK,
+        }
+        if commit_reviewed is not None:
+            data["commit_reviewed"] = commit_reviewed
+        path = prawduct / ".critic-findings.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_scope_fails_when_findings_missing(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert scope == []
+        assert reason.startswith("no-findings:")
+
+    def test_scope_fails_when_findings_unreadable(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".critic-findings.json").write_text("{not valid json")
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert scope == []
+        assert reason.startswith("unreadable-findings:")
+
+    def test_scope_fails_when_commit_reviewed_absent(self, tmp_path: Path):
+        """Pre-v1.5 findings (no commit_reviewed key) cannot anchor a delta."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(prawduct, commit_reviewed=None)
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert scope == []
+        assert reason.startswith("no-commit-reviewed:")
+
+    def test_scope_fails_when_no_actionable_findings(self, tmp_path: Path):
+        """Empty findings list (clean review) has nothing to verify."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct, commit_reviewed="abc123", include_finding=False
+        )
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert scope == []
+        assert reason.startswith("no-actionable-findings:")
+
+    def test_scope_fails_when_only_note_findings(self, tmp_path: Path):
+        """NOTE-only findings are advisory — not actionable for verify-resolutions."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct, commit_reviewed="abc123", severity="note"
+        )
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert scope == []
+        assert reason.startswith("no-actionable-findings:")
+
+    def test_scope_fails_when_commit_reviewed_unresolvable(self, tmp_path: Path):
+        """Real-git: a SHA that isn't in the current repo demotes the helper."""
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "README.md").write_text("ignore\n")
+        self._commit(tmp_path, "initial")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # A SHA that's syntactically plausible but not in this repo's history
+        self._make_prior_findings(
+            prawduct, commit_reviewed="deadbeef" * 5, files_reviewed=["src/app.py"]
+        )
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert scope == []
+        assert reason.startswith("unresolved-commit:")
+
+    def test_scope_returns_union_when_prior_blocking_present(self, tmp_path: Path):
+        """Real-git: scope = prior files_reviewed ∪ files changed since commit_reviewed."""
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# v1\n")
+        prior_sha = self._commit(tmp_path, "v1")
+
+        # Modify src/app.py and add a new file after the prior review's commit
+        (tmp_path / "src" / "app.py").write_text("# v2\n")
+        (tmp_path / "src" / "other.py").write_text("# new\n")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct,
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/app.py", "tools/product-hook"],
+        )
+
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        # Prior surface: src/app.py + tools/product-hook
+        # Delta: src/app.py (modified) + src/other.py (untracked)
+        # Union: src/app.py, src/other.py, tools/product-hook
+        assert reason.startswith("ok:")
+        assert "src/app.py" in scope
+        assert "src/other.py" in scope
+        assert "tools/product-hook" in scope
+
+    def test_scope_demotes_when_widening_exceeds_threshold(self, tmp_path: Path):
+        """Demotion criterion: len(delta) > 2 * len(prior) + 5 → empty scope, demoted reason."""
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "anchor.txt").write_text("v1\n")
+        prior_sha = self._commit(tmp_path, "anchor")
+
+        # Prior surface: 1 file. Threshold: len(delta) > 2*1 + 5 = 7. Add 8 new files.
+        for i in range(8):
+            (tmp_path / f"new_{i}.py").write_text(f"# new {i}\n")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct, commit_reviewed=prior_sha, files_reviewed=["src/only.py"]
+        )
+
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert scope == []
+        assert reason.startswith("scope-widened:")
+        assert "2 * prior + 5" in reason
+
+    def test_scope_does_not_demote_at_threshold_boundary(self, tmp_path: Path):
+        """Boundary: len(delta) == 2 * len(prior) + 5 is NOT demoted (strict >).
+
+        Metadata files (``.prawduct/``, ``.claude/settings.json``, etc.) are
+        filtered out of delta_files BEFORE the threshold check (see Critic
+        finding from Chunk 02's review). So the test creates exactly 7
+        non-metadata new files; the ``.prawduct/.critic-findings.json``
+        scratch file does not count against the threshold.
+        """
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "anchor.txt").write_text("v1\n")
+        prior_sha = self._commit(tmp_path, "anchor")
+
+        # Prior surface: 1 file. Threshold: len(delta) > 7. Add exactly 7
+        # non-metadata new files. The findings file in .prawduct/ is metadata
+        # and is filtered before the threshold check.
+        for i in range(7):
+            (tmp_path / f"new_{i}.py").write_text(f"# new {i}\n")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct, commit_reviewed=prior_sha, files_reviewed=["src/only.py"]
+        )
+
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert reason.startswith("ok:"), (
+            f"delta=7 (7 non-metadata new files) with prior=1 should NOT "
+            f"demote (threshold is strict >, metadata filtered). got: {reason}"
+        )
+        # prior 1 + delta 7 (7 new code files; metadata findings file filtered)
+        assert len(scope) == 8
+
+    def test_scope_filters_metadata_from_delta(self, tmp_path: Path):
+        """Metadata files do NOT inflate delta_files against the threshold.
+
+        Without filtering, 8 metadata files + 1 code file with prior surface 1
+        would cross the threshold (delta=9 > 7) and demote. With filtering,
+        only the 1 code file counts.
+        """
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "anchor.txt").write_text("v1\n")
+        prior_sha = self._commit(tmp_path, "anchor")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct, commit_reviewed=prior_sha, files_reviewed=["src/only.py"]
+        )
+        # Many metadata files in .prawduct/ — should all be filtered.
+        for i in range(8):
+            (prawduct / f"scratch_{i}.json").write_text(f"{{\"i\": {i}}}\n")
+        # One legitimate code change.
+        (tmp_path / "src.py").write_text("# new\n")
+
+        scope, reason = self.mod._compute_verify_resolutions_scope(prawduct, tmp_path)
+        assert reason.startswith("ok:"), (
+            f"8 metadata files + 1 code file should NOT demote when "
+            f"metadata is filtered. got: {reason}"
+        )
+        # Scope should NOT include the .prawduct/scratch_*.json files.
+        for i in range(8):
+            assert f".prawduct/scratch_{i}.json" not in scope, (
+                f"metadata file leaked into scope: {scope}"
+            )
+        # But the code file is legitimately in scope.
+        assert "src.py" in scope
+
+    # ---- _verify_resolutions_gate_check ----
+
+    def _make_verify_resolutions_findings(
+        self,
+        prawduct: Path,
+        files_reviewed: list[str],
+    ) -> Path:
+        data = {
+            "files_reviewed": files_reviewed,
+            "findings": [],
+            "summary": "Verify resolutions clean.",
+            "mode": self.mod._CRITIC_MODE_VERIFY_RESOLUTIONS,
+            "commit_reviewed": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+            "base_reviewed": None,
+        }
+        path = prawduct / ".critic-findings.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_gate_check_passes_for_non_verify_resolutions_mode(self, tmp_path: Path):
+        """Other modes (chunk/final/cumulative) bypass the verify-resolutions
+        scope subcheck — the standard gate logic handles them."""
+        _init_real_git_repo(tmp_path)
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        findings = prawduct / ".critic-findings.json"
+        findings.write_text(json.dumps({
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "ok",
+            "mode": self.mod._CRITIC_MODE_CHUNK,
+        }))
+        in_scope, reason = self.mod._verify_resolutions_gate_check(
+            prawduct, tmp_path, findings
+        )
+        assert in_scope is True
+        assert reason == ""
+
+    def test_gate_check_passes_when_chunk_diff_in_scope(self, tmp_path: Path):
+        """Session diff ⊆ findings.files_reviewed → gate clears."""
+        _init_real_git_repo(tmp_path)
+        # Commit src/app.py and src/helper.py so subsequent modifications
+        # show up in `git status --porcelain` as file-level entries
+        # (untracked directories collapse to the dir path, which isn't
+        # the production scenario after a chunk's first review).
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# v1\n")
+        (tmp_path / "src" / "helper.py").write_text("# v1\n")
+        self._commit(tmp_path, "initial")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_verify_resolutions_findings(
+            prawduct, files_reviewed=["src/app.py", "src/helper.py"]
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        # Modify src/app.py — already tracked, so porcelain shows " M src/app.py"
+        (tmp_path / "src" / "app.py").write_text("# changed\n")
+
+        findings_path = prawduct / ".critic-findings.json"
+        in_scope, reason = self.mod._verify_resolutions_gate_check(
+            prawduct, tmp_path, findings_path
+        )
+        assert in_scope is True, f"expected in-scope; got: {reason}"
+
+    def test_gate_check_rejects_when_chunk_diff_out_of_scope(self, tmp_path: Path):
+        """A file outside findings.files_reviewed → gate stays blocked with named file."""
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# v1\n")
+        (tmp_path / "src" / "unrelated.py").write_text("# v1\n")
+        self._commit(tmp_path, "initial")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_verify_resolutions_findings(
+            prawduct, files_reviewed=["src/app.py"]
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        # Modify both files — only src/app.py is in scope
+        (tmp_path / "src" / "app.py").write_text("# changed\n")
+        (tmp_path / "src" / "unrelated.py").write_text("# also changed\n")
+
+        findings_path = prawduct / ".critic-findings.json"
+        in_scope, reason = self.mod._verify_resolutions_gate_check(
+            prawduct, tmp_path, findings_path
+        )
+        assert in_scope is False
+        assert "src/unrelated.py" in reason
+        assert "outside scope" in reason
+
+    def test_gate_check_ignores_metadata_paths(self, tmp_path: Path):
+        """Session changes to .prawduct/ metadata don't count against the scope
+        (the regular Critic gate also ignores these)."""
+        _init_real_git_repo(tmp_path)
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_verify_resolutions_findings(
+            prawduct, files_reviewed=["src/app.py"]
+        )
+        # Baseline is empty; session has touched a .prawduct/ metadata file
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / "scratch.md").write_text("notes\n")
+
+        findings_path = prawduct / ".critic-findings.json"
+        in_scope, reason = self.mod._verify_resolutions_gate_check(
+            prawduct, tmp_path, findings_path
+        )
+        # Even though the metadata file is "changed", it's not part of the
+        # chunk diff that needs to be in scope.
+        assert in_scope is True, f"metadata path should be ignored; got: {reason}"
+
+    def test_gate_check_fails_closed_on_unreadable_findings(self, tmp_path: Path):
+        """A corrupted findings file fails the scope check (does not silently pass)."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        findings = prawduct / ".critic-findings.json"
+        findings.write_text("not json {")
+        in_scope, reason = self.mod._verify_resolutions_gate_check(
+            prawduct, tmp_path, findings
+        )
+        assert in_scope is False
+        assert "unreadable" in reason
+
+    # ---- Stop-hook integration ----
+
+    def _setup_stop_hook_scenario(
+        self,
+        tmp_path: Path,
+        files_reviewed: list[str],
+    ) -> None:
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 1: in progress\n"
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Reflection: implemented the resolution for the prior Critic finding "
+            "and re-reviewed with verify-resolutions mode."
+        )
+        # Session baseline empty — every change counts
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct, offset_seconds=-60)
+        # Touch findings AFTER session start
+        time.sleep(0.05)
+        data = {
+            "files_reviewed": files_reviewed,
+            "findings": [],
+            "summary": "Verify resolutions clean.",
+            "mode": self.mod._CRITIC_MODE_VERIFY_RESOLUTIONS,
+            "commit_reviewed": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+        }
+        (prawduct / ".critic-findings.json").write_text(json.dumps(data))
+
+    def test_stop_hook_accepts_verify_resolutions_when_in_scope(self, tmp_path: Path):
+        """End-to-end: verify-resolutions findings + in-scope diff → gate clears."""
+        self._setup_stop_hook_scenario(tmp_path, files_reviewed=["src/app.py"])
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        # Critic gate must not block — fresh, in-scope verify-resolutions findings
+        # clear it. The reflection gate is satisfied; PR gate is no-op (branch=main).
+        assert "CRITIC REVIEW" not in result.stderr, (
+            f"verify-resolutions findings with in-scope diff should clear the gate. "
+            f"stderr was: {result.stderr}"
+        )
+
+    def test_stop_hook_rejects_verify_resolutions_when_out_of_scope(self, tmp_path: Path):
+        """End-to-end: verify-resolutions findings + out-of-scope diff → gate blocks
+        with a specific verify-resolutions message naming the offending file."""
+        self._setup_stop_hook_scenario(tmp_path, files_reviewed=["src/app.py"])
+
+        # Diff includes src/unrelated.py which is NOT in findings.files_reviewed
+        result = run_hook(
+            "stop", tmp_path, git_output=" M src/app.py\n M src/unrelated.py"
+        )
+
+        assert result.returncode == 2, (
+            f"expected blocking exit (2); got {result.returncode}. "
+            f"stderr: {result.stderr}"
+        )
+        assert "verify-resolutions" in result.stderr
+        assert "src/unrelated.py" in result.stderr
+        assert "outside scope" in result.stderr
 
 
 # =============================================================================

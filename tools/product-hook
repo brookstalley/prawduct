@@ -599,10 +599,21 @@ _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
 _CRITIC_MODE_FINAL = "final (full review, ready for push)"
 _CRITIC_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"
+# v1.5 Chunk 02 — verify-resolutions: delta review against prior findings'
+# scope. Cheaper than chunk/final for the common case of "Critic flagged 1-2
+# BLOCKING findings, builder fixed them, re-review pays full latency to
+# confirm the fix." Scope = prior files_reviewed ∪ files changed since
+# `commit_reviewed` (Chunk 01's anchor). Demotes to /critic final when scope
+# widens past `len(delta) > 2 * len(prior) + 5` or when prior findings lack
+# the anchor.
+_CRITIC_MODE_VERIFY_RESOLUTIONS = (
+    "verify-resolutions (delta review, prior findings only)"
+)
 _CRITIC_MODE_VALUES = frozenset({
     _CRITIC_MODE_CHUNK,
     _CRITIC_MODE_FINAL,
     _CRITIC_MODE_CUMULATIVE,
+    _CRITIC_MODE_VERIFY_RESOLUTIONS,
 })
 
 
@@ -2154,6 +2165,222 @@ def validate_critic_findings(findings_path: Path) -> bool:
         return False
 
 
+def _compute_verify_resolutions_scope(
+    prawduct_dir: Path, project_dir: Path
+) -> tuple[list[str], str]:
+    """Compute the file scope a ``/critic verify-resolutions`` pass should review.
+
+    Reads the *prior* ``.prawduct/.critic-findings.json`` (the record the
+    builder is about to re-verify) and returns the union of:
+
+      1. ``files_reviewed`` from the prior record — files the Critic already
+         examined — but only when actionable findings (BLOCKING or WARNING)
+         exist. NOTE-only and clean records have nothing to verify.
+      2. Files changed since ``commit_reviewed`` — anchor recorded in Chunk
+         01 — computed as ``git diff --name-only <commit_reviewed>`` plus
+         untracked files. Mirrors ``_coverage_changed_files``'s diff +
+         ls-files-others union so the verify pass sees the same shape the
+         cumulative-Critic flow does.
+
+    Returns ``(scope, reason)``. ``scope`` is sorted; ``reason`` is human-
+    readable. Successful computations return a non-empty scope and a reason
+    prefixed ``ok:``. All other cases return an empty scope and a categorized
+    reason so the caller (Critic agent or stop-hook gate) can fall safely
+    through to ``/critic chunk`` or ``/critic final``:
+
+      - ``no-findings:`` — prior findings file missing.
+      - ``unreadable-findings:`` — JSON parse or I/O failure.
+      - ``no-commit-reviewed:`` — anchor absent / null / empty. Pre-v1.5
+        records are valid for the schema but cannot serve as a verify
+        baseline; the helper fails closed.
+      - ``no-actionable-findings:`` — only NOTEs (or empty findings). Verify-
+        resolutions has nothing to re-check.
+      - ``invalid-files-reviewed:`` — schema-permitted but unusable
+        (non-list or empty list).
+      - ``unresolved-commit:`` — ``commit_reviewed`` does not resolve in
+        the current repo (rebase, force-push, or simply never on this
+        branch). Cannot compute a delta.
+      - ``git-diff-failed:`` — the diff invocation itself failed.
+      - ``scope-widened:`` — demotion criterion ``len(delta) > 2 * len(prior)
+        + 5`` tripped. The prior surface no longer covers what changed; a
+        partial review would mislead. Fall through to ``/critic final``.
+
+    Fail-closed throughout — when the helper cannot anchor a delta it
+    refuses to compute one rather than silently shrinking the review.
+    """
+    findings_path = prawduct_dir / ".critic-findings.json"
+    if not findings_path.is_file():
+        return [], (
+            "no-findings: .prawduct/.critic-findings.json is missing — "
+            "run /critic chunk or /critic final first"
+        )
+    try:
+        data = json.loads(findings_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return [], f"unreadable-findings: {exc}"
+
+    commit_reviewed = data.get("commit_reviewed")
+    if not isinstance(commit_reviewed, str) or not commit_reviewed.strip():
+        return [], (
+            "no-commit-reviewed: prior findings lack commit_reviewed — "
+            "cannot anchor delta. Run /critic chunk or /critic final."
+        )
+
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        return [], "invalid-findings: prior findings.findings is not a list"
+    actionable = [
+        f for f in findings
+        if isinstance(f, dict) and f.get("severity") in ("blocking", "warning")
+    ]
+    if not actionable:
+        return [], (
+            "no-actionable-findings: prior review had no blocking/warning "
+            "findings — verify-resolutions has nothing to verify. "
+            "Run /critic chunk or /critic final."
+        )
+
+    prior_files = data.get("files_reviewed")
+    if not isinstance(prior_files, list) or not prior_files:
+        return [], (
+            "invalid-files-reviewed: prior findings.files_reviewed is "
+            "missing or empty"
+        )
+    prior_files_set = {f for f in prior_files if isinstance(f, str) and f.strip()}
+
+    # rev-parse with the `^{commit}` peel rejects non-commit refs and SHAs
+    # that don't resolve. fail-closed: any non-0 → no delta computable.
+    proc = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{commit_reviewed}^{{commit}}"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if proc.returncode != 0:
+        return [], (
+            f"unresolved-commit: commit_reviewed {commit_reviewed[:12]} "
+            "does not resolve in the current repo — cannot compute delta. "
+            "Run /critic chunk or /critic final."
+        )
+
+    diff_proc = subprocess.run(
+        ["git", "diff", "--name-only", commit_reviewed],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if diff_proc.returncode != 0:
+        return [], f"git-diff-failed: {diff_proc.stderr.strip()}"
+    delta_files = {
+        line.strip() for line in diff_proc.stdout.splitlines() if line.strip()
+    }
+
+    ls_proc = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if ls_proc.returncode == 0:
+        delta_files.update(
+            line.strip() for line in ls_proc.stdout.splitlines() if line.strip()
+        )
+
+    # Filter metadata before threshold and scope union. The session-end
+    # gate already ignores ``_is_metadata_path`` files (``.prawduct/``,
+    # ``.claude/settings.json``, etc.) when computing the chunk diff;
+    # counting them here would inflate ``delta_files`` against the
+    # widening threshold and falsely demote a legitimate fix flow whose
+    # only delta beyond the prior surface is incidental state churn
+    # (the very ``.critic-findings.json`` the prior review wrote,
+    # ``.session-reflected``, ``.session-git-baseline``, etc.). Symmetric
+    # with ``_verify_resolutions_gate_check`` — both sides of "what
+    # counts as a chunk file" agree.
+    delta_files = {f for f in delta_files if not _is_metadata_path(f)}
+
+    # Demotion: when the delta has grown well past the prior review's
+    # surface, a verify pass would mislead — most of what changed wasn't
+    # part of the prior review's scope at all. Threshold mirrors the build
+    # plan (Chunk 02): linear factor 2 plus floor 5 so small priors don't
+    # demote on a single unrelated edit.
+    if len(delta_files) > 2 * len(prior_files_set) + 5:
+        return [], (
+            f"scope-widened: {len(delta_files)} files changed since "
+            f"commit_reviewed (prior surface {len(prior_files_set)} files; "
+            f"demotion threshold len(delta) > 2 * prior + 5). Fall through "
+            "to /critic chunk or /critic final."
+        )
+
+    scope = sorted(prior_files_set | delta_files)
+    return scope, (
+        f"ok: scope = {len(scope)} files "
+        f"(prior surface {len(prior_files_set)} + delta {len(delta_files)} "
+        f"since {commit_reviewed[:12]})"
+    )
+
+
+def _verify_resolutions_gate_check(
+    prawduct_dir: Path, project_dir: Path, findings_path: Path
+) -> tuple[bool, str]:
+    """Stop-hook gate helper: when the Critic findings file is in
+    ``verify-resolutions`` mode, accept only when the current chunk diff is
+    a subset of the verify pass's declared scope.
+
+    Returns ``(True, "")`` for any other mode — the standard gate logic
+    applies. For ``verify-resolutions``:
+
+      - ``(True, "")`` — current session-changed files (excluding metadata
+        paths the regular Critic gate also ignores) are all within the
+        findings' ``files_reviewed`` set.
+      - ``(False, reason)`` — at least one chunk-diff file is outside the
+        declared scope. The verify pass is stale relative to the current
+        diff; the gate keeps the block in place and surfaces the reason so
+        the builder runs ``/critic chunk`` or ``/critic final`` instead.
+
+    Fail-closed: a JSON read failure or schema gap returns ``(False, reason)``
+    rather than silently clearing the gate (see learnings: "Escape hatches
+    in classification create silent failures").
+    """
+    try:
+        data = json.loads(findings_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return False, (
+            f"verify-resolutions findings unreadable ({exc}). Run /critic "
+            "chunk or /critic final."
+        )
+
+    if data.get("mode") != _CRITIC_MODE_VERIFY_RESOLUTIONS:
+        return True, ""
+
+    files_reviewed = data.get("files_reviewed")
+    if not isinstance(files_reviewed, list):
+        return False, (
+            "verify-resolutions findings have no files_reviewed list. "
+            "Run /critic chunk or /critic final."
+        )
+    scope = {f for f in files_reviewed if isinstance(f, str) and f.strip()}
+
+    session_changed = {
+        f for f in _get_session_changed_files(project_dir)
+        if not _is_metadata_path(f)
+    }
+
+    out_of_scope = sorted(session_changed - scope)
+    if not out_of_scope:
+        return True, ""
+
+    sample = ", ".join(out_of_scope[:3])
+    more = f" (+{len(out_of_scope) - 3} more)" if len(out_of_scope) > 3 else ""
+    return False, (
+        f"verify-resolutions findings declare {len(scope)} file(s) in scope "
+        f"but the current chunk diff includes {len(out_of_scope)} file(s) "
+        f"outside scope ({sample}{more}). Run /critic chunk or /critic final."
+    )
+
+
 def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     """Count chunks in build-plan.md's Status section.
 
@@ -2197,24 +2424,34 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
         return 0, 0
 
 
+_CRITIC_MODE_GOALS_1_3_ONLY = frozenset({
+    _CRITIC_MODE_CHUNK,
+    _CRITIC_MODE_VERIFY_RESOLUTIONS,
+})
+
+
 def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
     """Check whether the latest Critic findings satisfy end-of-cycle synthesis.
 
     Returns ``(True, "")`` when the gate is satisfied, ``(False, reason)``
     otherwise. The gate is advisory: it fires when a multi-chunk build plan
-    has all chunks marked ``[x]`` but the most recent Critic review was
-    ``chunk`` mode — meaning end-of-cycle goals (Coherence, Design, Learnings
-    Cross-Check, Backlog Reconciliation, Framework-Specific Checks) were
-    skipped.
+    has all chunks marked ``[x]`` but the most recent Critic review ran
+    Goals 1-3 only — ``chunk`` and ``verify-resolutions`` modes both skip
+    end-of-cycle goals (Coherence, Design, Learnings Cross-Check, Backlog
+    Reconciliation, Framework-Specific Checks). v1.5 Chunk 02 extended the
+    case-4 trigger to verify-resolutions so a plan that closes with a delta
+    re-review doesn't silently bypass final-mode synthesis.
 
     Specific cases (in order):
     1. No build plan, or no chunks declared → satisfied (non-chunked work).
     2. Single-chunk plan → satisfied (the one Critic run is the final).
     3. Multi-chunk plan with incomplete chunks → satisfied (mid-cycle).
-    4. Multi-chunk plan, all chunks ``[x]``, latest mode is ``_CRITIC_MODE_CHUNK``
+    4. Multi-chunk plan, all chunks ``[x]``, latest mode is in
+       ``_CRITIC_MODE_GOALS_1_3_ONLY`` (chunk or verify-resolutions)
        → unsatisfied. Run ``/critic final`` for end-of-cycle synthesis.
     5. Multi-chunk plan, all chunks ``[x]``, latest mode is ``_CRITIC_MODE_FINAL``
-       (or absent — legacy records default to final) → satisfied.
+       (or absent — legacy records default to final), or ``_CRITIC_MODE_CUMULATIVE``
+       → satisfied (full goal set ran).
 
     Caller is expected to invoke this only after the existing critic-required
     blocker has cleared (i.e. findings exist and ``validate_critic_findings``
@@ -2236,10 +2473,10 @@ def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
     except (json.JSONDecodeError, OSError):
         return True, ""
     mode = data.get("mode", _CRITIC_MODE_FINAL)
-    if mode == _CRITIC_MODE_CHUNK:
+    if mode in _CRITIC_MODE_GOALS_1_3_ONLY:
         return False, (
             f"All {total} chunks complete; last Critic review was "
-            f"'{_CRITIC_MODE_CHUNK}'. Run /critic final for end-of-cycle "
+            f"'{mode}'. Run /critic final for end-of-cycle "
             "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
             "Reconciliation) before pushing."
         )
@@ -2405,6 +2642,14 @@ def cmd_stop(project_dir: Path) -> int:
                 )
 
     critic_would_block = False
+    # v1.5 Chunk 02: when the fresh, schema-valid findings file is in
+    # verify-resolutions mode, the gate must also confirm that the current
+    # chunk diff is a subset of the verify pass's declared scope. Out-of-
+    # scope means the builder added work after the verify pass — the
+    # findings are stale relative to the current diff. The reason string is
+    # surfaced verbatim in the blocker so the builder knows which files
+    # widened the scope.
+    verify_resolutions_block_reason = ""
     if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
         critic_would_block = True
         critic_findings = prawduct_dir / ".critic-findings.json"
@@ -2416,13 +2661,28 @@ def cmd_stop(project_dir: Path) -> int:
                     critic_findings.stat().st_mtime, tz=timezone.utc
                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
                 if findings_mtime > session_start and validate_critic_findings(critic_findings):
-                    critic_would_block = False
+                    in_scope, scope_reason = _verify_resolutions_gate_check(
+                        prawduct_dir, project_dir, critic_findings
+                    )
+                    if in_scope:
+                        critic_would_block = False
+                    else:
+                        verify_resolutions_block_reason = scope_reason
             except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
                 pass
 
     if critic_would_block:
         if "critic" in waivers:
             waiver_notes.append(f"critic: waived ({waivers['critic']})")
+        elif verify_resolutions_block_reason:
+            blockers.append(
+                "CRITIC REVIEW (verify-resolutions stale): "
+                f"{verify_resolutions_block_reason}\n"
+                "  Verify-resolutions findings clear the gate only when the current chunk\n"
+                "  diff is within the verify pass's declared scope. The chunk has grown\n"
+                "  beyond that surface, so the prior review's conclusions no longer cover\n"
+                "  what changed. Re-run with a wider mode before ending the session.\n"
+            )
         else:
             blockers.append(
                 "CRITIC REVIEW: The build plan includes Critic review in each chunk's \"Done when\" steps,\n"

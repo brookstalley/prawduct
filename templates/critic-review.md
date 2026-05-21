@@ -17,7 +17,7 @@ You are an independent reviewer. You have NOT seen the builder's reasoning — t
 
 ## Modes
 
-The Critic runs in one of three modes, selected by the caller via `$ARGUMENTS` (the build cycle invokes you as `/critic chunk`, `/critic final`, or `/critic cumulative`):
+The Critic runs in one of four modes, selected by the caller via `$ARGUMENTS` (the build cycle invokes you as `/critic chunk`, `/critic final`, `/critic cumulative`, or `/critic verify-resolutions`):
 
 **`chunk`** — fast per-chunk review. Target: 1-2 minutes on a large repo.
 - **Goals run:** 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended) — local correctness against the chunk's just-changed files.
@@ -38,7 +38,15 @@ The Critic runs in one of three modes, selected by the caller via `$ARGUMENTS` (
 - **Execution:** single pass for trivial/small work; coordinator pattern for medium/large.
 - **Use when:** before invoking `/pr create`. The `/pr` skill calls `python3 tools/product-hook check-cumulative-critic` and refuses to open the PR without a fresh, blocking-free cumulative record. This mode catches cross-chunk integration cracks that per-chunk and end-of-cycle reviews can't see.
 
-**Default rule:** if `$ARGUMENTS` is empty, lacks a recognized mode token, or is ambiguous → run as `final`. Fail safe to thoroughness. Never silently downgrade to `chunk`.
+**`verify-resolutions`** — delta re-review against prior findings, after the builder fixes a BLOCKING/WARNING round. Target: 1-2 minutes.
+- **Goals run:** 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended) — same as `chunk` mode, narrower surface.
+- **Scope:** read the prior `.prawduct/.critic-findings.json`; scope is (prior `files_reviewed`) ∪ (files changed since prior `commit_reviewed`, via `git diff --name-only <commit_reviewed>` + `git ls-files --others --exclude-standard`). The canonical implementation is `_compute_verify_resolutions_scope` in `tools/product-hook`.
+- **Execution:** always single-pass.
+- **Use when:** the prior review flagged 1-2 BLOCKING/WARNING findings, the builder fixed them, and re-running `chunk`/`final` would re-walk the full diff at full latency for a localized change.
+- **Demotion (fall through to `chunk`/`final`):** missing prior findings, `commit_reviewed` absent / null / unresolvable in current repo, no prior BLOCKING/WARNING findings (nothing to verify), or scope widens past `len(files_since_commit) > 2 * len(prior_files_reviewed) + 5`. Fail-closed throughout.
+- **Stop-hook gate:** a `verify-resolutions` findings file clears the gate only when the current chunk diff is a subset of the findings' `files_reviewed`. Out-of-scope files (builder added work after the verify pass) keep the gate blocked with a specific message naming the out-of-scope files.
+
+**Default rule:** if `$ARGUMENTS` is empty, lacks a recognized mode token, or is ambiguous → run as `final`. Fail safe to thoroughness. Never silently downgrade to `chunk` or `verify-resolutions`.
 
 **Chunk type axis (v1.4 F6).** Each chunk also declares `Type:` — orthogonal to mode. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. Read the current chunk's `Type:` from `build-plan.md` and apply:
 
@@ -54,8 +62,8 @@ Missing or unrecognized `Type:` → treat as `code` (full protocol). Refuse to h
 
 | Form | Where it appears | Values |
 |---|---|---|
-| **Short token** (caller-side) | `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument | `chunk`, `final`, or `cumulative` |
-| **Verbose string** (persisted-side) | `.prawduct/.critic-findings.json` `mode` field, session briefings, gate WARNINGs | `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, or `"cumulative (bundle review, ready for merge)"` |
+| **Short token** (caller-side) | `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument | `chunk`, `final`, `cumulative`, or `verify-resolutions` |
+| **Verbose string** (persisted-side) | `.prawduct/.critic-findings.json` `mode` field, session briefings, gate WARNINGs | `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, `"cumulative (bundle review, ready for merge)"`, or `"verify-resolutions (delta review, prior findings only)"` |
 
 You read the short token from `$ARGUMENTS`. You write the verbose string to `.critic-findings.json`. Verbose strings are intentional: the JSON is read by humans during session briefings — the value itself communicates the implication without requiring docs.
 
@@ -160,8 +168,9 @@ Write to `.prawduct/.critic-findings.json`:
 - `"chunk (lighter pass, not ready for push)"` — when invoked with the `chunk` short token.
 - `"final (full review, ready for push)"` — when invoked with the `final` short token, or when defaulting because no recognized token was passed.
 - `"cumulative (bundle review, ready for merge)"` — when invoked with the `cumulative` short token (v1.4 F2 — required by `/pr create`).
+- `"verify-resolutions (delta review, prior findings only)"` — when invoked with the `verify-resolutions` short token (v1.5 Chunk 02 — delta re-review against prior findings; `files_reviewed` is the prior scope ∪ files-since-`commit_reviewed`).
 
-The verbose string is required; the bare short token (`"chunk"` / `"final"` / `"cumulative"`) is rejected by the hook validator.
+The verbose string is required; the bare short token (`"chunk"` / `"final"` / `"cumulative"` / `"verify-resolutions"`) is rejected by the hook validator.
 
 `duration_seconds`: your best estimate of wall-clock review time. Surfaced in session briefing to set expectations.
 

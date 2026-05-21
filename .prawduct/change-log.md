@@ -3,6 +3,30 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-21: Chunk 02 — `/critic verify-resolutions` mode + stop-hook gate awareness
+
+<!-- prawduct: chunks=02 | status=shipped | scope=v1.5 -->
+
+**Why:** v1.5 thread C — the "Critic flagged 1-2 BLOCKING findings, builder fixed them, re-review pays full chunk-mode latency to confirm a one-line change" friction motivated this work (backlog entry 2026-05-20). Chunk 01 added the `commit_reviewed` anchor; this chunk lands the mode that uses it.
+
+**What:**
+
+1. **Fourth Critic mode `verify-resolutions`.** Goals 1-3 against the union of (prior `files_reviewed`) ∪ (files changed since prior `commit_reviewed`). Target wall-clock 1-2 min, same as `chunk`. The verbose persisted form is `"verify-resolutions (delta review, prior findings only)"`; bare token rejected by the schema validator.
+
+2. **`_compute_verify_resolutions_scope` helper.** Reads the prior findings file, extracts the anchor, runs `git diff --name-only <commit_reviewed>` + `git ls-files --others --exclude-standard`, filters `_is_metadata_path` from the delta (so incidental `.prawduct/` and other metadata churn doesn't inflate the threshold — symmetric with `_verify_resolutions_gate_check`), applies the widening demotion `len(delta) > 2 * prior + 5`, and returns the scope union. Fail-closed for missing findings, missing/unresolvable `commit_reviewed`, no actionable findings, or scope-widening — every demotion category returns `(empty_list, categorized_reason)` so callers fall through to `/critic chunk` or `/critic final`.
+
+3. **Stop-hook gate awareness.** A `verify-resolutions` findings file clears the Critic gate only when current chunk diff is a subset of the findings' `files_reviewed` (`_verify_resolutions_gate_check`). Out-of-scope chunk diff produces a specific BLOCKER message naming the out-of-scope files. Other modes (chunk/final/cumulative) bypass the subcheck — the standard gate logic applies.
+
+4. **End-of-cycle advisory extended.** `_critic_session_satisfies_gate` now treats both `_CRITIC_MODE_CHUNK` and `_CRITIC_MODE_VERIFY_RESOLUTIONS` as partial-coverage modes (`_CRITIC_MODE_GOALS_1_3_ONLY`). Closing a plan with verify-resolutions fires the same WARNING as closing with chunk — Goals 4-7 + Learnings Cross-Check + Backlog Reconciliation still need a `/critic final`.
+
+5. **Docs propagated across all four Critic surfaces.** `agents/critic/SKILL.md` Modes section (one line, ≤2918 tokens — well under the 3050 budget), `agents/critic/review-cycle.md` per-mode table (new column + new "Verify-resolutions scope and demotion" subsection with demotion-criteria table), `templates/critic-review.md` (full mode bullet with scope/demotion/gate behavior), `.prawduct/critic-review.md` (sync-propagated; manifest hash refreshed), `.claude/skills/critic/SKILL.md` (argument-hint + step 1 expansion).
+
+**Dogfood validation:** Chunk-mode Critic surfaced 2 WARNINGs (advisory-gate gap + metadata-filtering gap) and 1 NOTE (defense-in-depth, deferred to Chunk 03 per the NOTE's own recommendation). After fixing both warnings, `/critic verify-resolutions` against the same chunk completed in single-pass against the 7-file scope and confirmed both resolutions with 0 findings — the user-feedback motivation ("re-review at full latency for a one-line fix") empirically resolved on first use. First framework-side proof the mode delivers its claimed proportionality.
+
+**Test coverage:** 1316 passing (+21 over Chunk 01's 1295). New `TestVerifyResolutionsMode` class (20 tests) covers: validator accepts verbose form / rejects bare token, helper fail-safe modes (missing findings, unreadable JSON, missing `commit_reviewed`, no actionable findings, NOTE-only findings, unresolved commit, scope widening at threshold boundary, metadata filtering), gate-check (other modes bypass, in-scope passes, out-of-scope rejects with named file, metadata-path session changes ignored, fail-closed on unreadable findings), and end-to-end stop-hook integration (in-scope accept, out-of-scope reject with specific BLOCKER message). Extended `TestCriticModeGate` with the verify-resolutions advisory case and a cumulative-satisfies case.
+
+**Backlog:** N1 (expose `_compute_verify_resolutions_scope` as a CLI subcommand so the Critic agent's invocation path also enforces the widening threshold — currently the agent reimplements it from the SKILL.md prose) deferred to Chunk 03 per the NOTE's own recommendation.
+
 ## 2026-05-19: `/pr` doc-only fast-path
 
 <!-- prawduct: release=v1.4.0 | status=shipped | scope=v1.4 -->
