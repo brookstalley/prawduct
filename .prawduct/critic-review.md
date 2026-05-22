@@ -8,7 +8,7 @@ You are an independent reviewer. You have NOT seen the builder's reasoning — t
 
 ## Setup
 
-1. **Determine your mode** from `$ARGUMENTS` (see Modes below). Default: `final`.
+1. **Resolve your mode.** If `$ARGUMENTS` contains a recognized mode token (`chunk`, `final`, `cumulative`, `verify-resolutions`), use it and record `mode_chosen_by: "explicit-args"`. Otherwise (no args / empty / unrecognized), run `python3 tools/product-hook infer-critic-mode` — stdout is one line `<mode>|<rationale>` (v1.5 Chunk 03). Use the mode it returns and record the rationale verbatim as `mode_chosen_by`. Fall-through behavior when no rule fires: the helper returns `chunk` if an active build plan exists, `final` otherwise. The subcommand returns `final|fallback-no-tools-lib` in legacy product repos that haven't received the inference helper.
 2. Read `.prawduct/project-state.yaml` for context (current work, what exists)
 3. Assess scope and nature of changes (git diff or read changed files)
 4. Read relevant artifacts in `.prawduct/artifacts/`
@@ -154,6 +154,7 @@ Write to `.prawduct/.critic-findings.json`:
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
   "duration_seconds": 180,
   "mode": "final (full review, ready for push)",
+  "mode_chosen_by": "rule-3 final: last unchecked chunk of 4-chunk plan is in progress",
   "commit_reviewed": "<git rev-parse HEAD at review time>",
   "base_reviewed": null,
   "files_reviewed": ["src/app.py"],
@@ -175,5 +176,7 @@ The verbose string is required; the bare short token (`"chunk"` / `"final"` / `"
 `duration_seconds`: your best estimate of wall-clock review time. Surfaced in session briefing to set expectations.
 
 `commit_reviewed` (v1.5 Chunk 01): record `git rev-parse HEAD` at review time. Anchors the delta computation that the `verify-resolutions` mode reads (Chunk 02) — without it, the next review can't tell which files have changed since this review's baseline. `base_reviewed`: in `cumulative` mode, record `git merge-base <base-branch> HEAD`; in other modes, `null`. Both fields are optional for back-compat with pre-v1.5 findings files; populate them whenever a SHA is resolvable. Wrong types (e.g., integer SHA) are rejected by the validator.
+
+`mode_chosen_by` (v1.5 Chunk 03): the verbatim rationale from `python3 tools/product-hook infer-critic-mode`, or the literal string `"explicit-args"` when `$ARGUMENTS` overrode inference. Optional for back-compat with pre-v1.5 findings; populate whenever Step 1's resolve-mode protocol ran. The field is post-hoc introspection — when a Critic round picks the wrong mode, `mode_chosen_by` tells the builder which rule fired (so the inference rules can be tuned).
 
 Clean review: empty findings array, summary says "No issues found."

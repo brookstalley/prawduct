@@ -172,11 +172,37 @@ class TestCriticEntrySkillEnumeratesAllModes:
 
     def test_argument_hint_enumerates_all_modes(self, path: Path) -> None:
         content = path.read_text()
-        assert "argument-hint: chunk | final | cumulative" in content, (
-            f"{path.relative_to(REPO_ROOT)} has an `argument-hint` that does not "
-            "enumerate every recognized mode. Slash invocation drops modes the "
-            "hint doesn't advertise. Update to: `argument-hint: chunk | final | cumulative`."
+        # Locate the argument-hint line and assert every recognized mode
+        # appears in it. Substring matching on the full form (e.g.
+        # "argument-hint: chunk | final | cumulative") would over-pin the
+        # exact ordering / decoration — v1.5 Chunk 03 prefixed
+        # "(omit for inference) | " to advertise no-arg inference, which
+        # would break a strict match without changing the contract that
+        # every mode is enumerated. Per-token check preserves the contract.
+        hint_lines = [
+            line for line in content.splitlines()
+            if line.startswith("argument-hint:")
+        ]
+        assert len(hint_lines) == 1, (
+            f"{path.relative_to(REPO_ROOT)} must have exactly one "
+            f"`argument-hint:` line in frontmatter; found {len(hint_lines)}."
         )
+        hint = hint_lines[0]
+        # Framework Critic supports verify-resolutions (v1.5 Chunk 02);
+        # product entry template currently does not (Chunk 02 didn't
+        # propagate the fourth mode to templates/skill-critic.md — caught
+        # as a follow-up by Chunk 03). Per-file required set reflects what
+        # the file's caller actually accepts today.
+        if path == _FRAMEWORK_ENTRY_SKILL:
+            required = ("chunk", "final", "cumulative", "verify-resolutions")
+        else:
+            required = ("chunk", "final", "cumulative")
+        for mode in required:
+            assert mode in hint, (
+                f"{path.relative_to(REPO_ROOT)} `argument-hint` line "
+                f"({hint!r}) does not enumerate mode {mode!r}. Slash "
+                "invocation drops modes the hint doesn't advertise."
+            )
 
     def test_getting_started_recognizes_cumulative(self, path: Path) -> None:
         content = path.read_text()
@@ -287,11 +313,26 @@ class TestCriticSkillEntryPoints:
     )
     def test_argument_hint_in_frontmatter(self, path: Path) -> None:
         content = path.read_text()
-        assert "argument-hint: chunk | final" in content, (
-            f"{path.relative_to(REPO_ROOT)} is missing `argument-hint: chunk | final` "
-            "in frontmatter. Without it, slash-command users have no signal that "
-            "the Critic accepts a mode argument."
+        # Per-token check (parallel to TestCriticEntrySkillEnumeratesAllModes)
+        # rather than substring match — v1.5 Chunk 03 added "(omit for
+        # inference) | " as a prefix; the contract is still "argument-hint
+        # advertises chunk and final" but the exact form evolved.
+        hint_lines = [
+            line for line in content.splitlines()
+            if line.startswith("argument-hint:")
+        ]
+        assert len(hint_lines) == 1, (
+            f"{path.relative_to(REPO_ROOT)} must have exactly one "
+            f"`argument-hint:` line in frontmatter; found {len(hint_lines)}."
         )
+        hint = hint_lines[0]
+        for mode in ("chunk", "final"):
+            assert mode in hint, (
+                f"{path.relative_to(REPO_ROOT)} `argument-hint` line "
+                f"({hint!r}) does not advertise mode {mode!r}. Without "
+                "it, slash-command users have no signal that the Critic "
+                "accepts a mode argument."
+            )
 
     @pytest.mark.parametrize(
         "path",

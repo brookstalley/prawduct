@@ -2160,6 +2160,16 @@ def validate_critic_findings(findings_path: Path) -> bool:
                     continue
                 if not isinstance(val, str) or not val.strip():
                     return False
+        # v1.5 Chunk 03 — mode_chosen_by records which rule fired in the
+        # inference helper, or the literal "explicit-args" when the
+        # builder overrode inference. Optional for back-compat. When
+        # present, must be a non-empty string — empty strings and wrong
+        # types are writer drift (the field's whole purpose is post-hoc
+        # introspection of mode selection; empty defeats that).
+        if "mode_chosen_by" in data:
+            val = data["mode_chosen_by"]
+            if not isinstance(val, str) or not val.strip():
+                return False
         return True
     except Exception:  # prawduct:ok-broad-except — validation must not crash gate check
         return False
@@ -3592,12 +3602,46 @@ def cmd_check_pr_doc_only(project_dir: Path) -> int:
     return 1
 
 
+def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
+    """Print ``<mode>|<rationale>`` for the inferred ``/critic`` mode.
+
+    Thin wrapper around ``tools.lib.critic_mode.infer_mode`` (v1.5
+    Chunk 03). The subcommand exists so the Critic SKILL can call
+    inference without expanding its ``allowed-tools`` to ``Bash(python3
+    -c *)`` — keeping the structural "no arbitrary code execution"
+    constraint enforceable.
+
+    Output format: a single stdout line ``<mode>|<rationale>`` where
+    ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
+    ``cumulative`` / ``verify-resolutions``) and ``<rationale>`` is the
+    human-readable explanation suitable for both stdout reporting and
+    the ``mode_chosen_by`` field in ``.critic-findings.json``.
+
+    Fail-safe: when ``tools/lib`` is absent (product repos that
+    haven't yet received the lib propagation), returns ``final|
+    fallback-no-tools-lib`` so the Critic falls through to thorough
+    review rather than crashing. Same fail-safe direction as the
+    SKILL's "missing/unrecognized mode → final" rule.
+    """
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    try:
+        from lib import infer_mode  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print("final|fallback-no-tools-lib")
+        return 0
+    mode, rationale = infer_mode(project_dir, args)
+    print(f"{mode}|{rationale}")
+    return 0
+
+
 _USAGE = (
     "Usage: product-hook "
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
-    "check-pr-doc-only|regen-views}"
+    "check-pr-doc-only|regen-views|infer-critic-mode [args]}"
 )
 
 
@@ -3633,6 +3677,9 @@ def main() -> int:
         return cmd_check_pr_doc_only(project_dir)
     elif command == "regen-views":
         return cmd_regen_views(project_dir)
+    elif command == "infer-critic-mode":
+        args = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else None
+        return cmd_infer_critic_mode(project_dir, args)
     else:
         print(_USAGE, file=sys.stderr)
         return 1

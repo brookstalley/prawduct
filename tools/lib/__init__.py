@@ -93,6 +93,9 @@ from .audit_learnings_cmd import (  # noqa: F401
     run_sentinel,
 )
 
+# Critic mode inference (v1.5 Chunk 03 — no-arg /critic picks mode from state)
+from .critic_mode import infer_mode  # noqa: F401
+
 # Operator-verification queue (F10 — pre-merge human-verification gate)
 from .operator_verification import (  # noqa: F401
     VerificationEntry,

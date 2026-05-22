@@ -107,8 +107,18 @@ class TestBuildingMethodology:
         # v1.4 maintenance plan (methodology pipeline coverage); folding it
         # into "Update build plan Status" was rejected because the enqueue
         # action is conceptually separate from marking the chunk shipped.
+        #
+        # Bumped from 4400 → 4450 in v1.5 Chunk 03 (`/critic` no-arg mode
+        # inference). The Critic-review step gains the inference invocation
+        # contract — name the helper (`tools/product-hook infer-critic-mode`),
+        # the persisted field (`mode_chosen_by`), the override path, and the
+        # failure fallback (`final`). Trimmed to ~20-token delta over the
+        # original phrasing before bumping; further trimming would lose
+        # either the helper name or the override-reporting protocol that
+        # makes inference tunable. If this test fails again, prefer trimming
+        # over another bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4400, f"building.md is ~{tokens} tokens, should be <4400"
+        assert tokens < 4450, f"building.md is ~{tokens} tokens, should be <4450"
 
 
 # =============================================================================

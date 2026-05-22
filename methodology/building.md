@@ -84,7 +84,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
-**Critic review.** Read the chunk's `Critic mode:` and run `/critic chunk` or `/critic final` (default `final` if absent). The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
+**Critic review.** Run `/critic` (no args) — the SKILL infers mode from git + build-plan state via `tools/product-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 

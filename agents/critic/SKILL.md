@@ -10,7 +10,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 ## When You Are Activated
 
-1. Mode from `$ARGUMENTS` (see Modes). Default: `final`.
+1. Resolve mode. `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; `mode_chosen_by = "explicit-args"`. Else run `python3 tools/product-hook infer-critic-mode` — stdout `<mode>|<rationale>`; use both. Fall-through: `chunk` with active plan, `final` otherwise; subcommand returns `final|fallback-no-tools-lib` when `tools/lib` is absent.
 2. Read `.prawduct/project-state.yaml`.
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.
@@ -184,6 +184,7 @@ If no findings: "No issues found. Changes are ready to proceed."
   "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
   "duration_seconds": 180,
   "mode": "final (full review, ready for push)",
+  "mode_chosen_by": "rule-3 final: last unchecked chunk of 4-chunk plan is in progress",
   "commit_reviewed": "<git rev-parse HEAD at review time>",
   "base_reviewed": null,
   "files_reviewed": ["file1", "file2"],
@@ -194,7 +195,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `commit_reviewed` (v1.5): record `git rev-parse HEAD` at review time — anchors the delta computation that `verify-resolutions` mode reads. `base_reviewed`: in `cumulative` mode, record `git merge-base <base-branch> HEAD`; otherwise `null`. Both fields optional for back-compat; omit only when SHA isn't resolvable. For a clean review, findings is empty and summary says "No issues found."
+`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by` (v1.5 Chunk 03): `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `commit_reviewed` (v1.5): record `git rev-parse HEAD` at review time — anchors the delta computation that `verify-resolutions` mode reads. `base_reviewed`: in `cumulative` mode, record `git merge-base <base-branch> HEAD`; otherwise `null`. All three fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
 
 ## Review Cycle
 
