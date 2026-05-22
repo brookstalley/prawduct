@@ -208,7 +208,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        The third mode, `cumulative`, is invoked separately before `/pr create`
        (not a per-chunk mode — see Governance Checkpoints below).
        See `agents/critic/review-cycle.md` for full per-mode behavior. -->
-- **Type:** [optional — defaults to `code`. Allowed: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final`]
+- **Type:** [optional — defaults to `code`. Allowed: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`]
   <!-- The Type axis is orthogonal to Critic mode — mode controls how deep the
        review is; Type controls what kind of work is under review (v1.4 F6).
        Declare Type only when it deviates from `code` (minimal-declaration
@@ -229,9 +229,34 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
          signals that a `/critic cumulative` review against `merge-base...HEAD`
          is required in addition to the chunk's own `final` review (see Done-when
          step 4 below).
+       - `trivial`: semantically simple change whose risk is low *because the
+         author can name why* — not because LOC is small. **Structural bounds
+         (machine-enforced):** chunk diff has no edits under `agents/`,
+         `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file
+         deletions; no new files. Size is unbounded — an 80-LOC project-wide
+         rename can be trivial; a 5-line state-machine change cannot. **Requires
+         `**Trivial because:**` field** below; the rationale is the semantic
+         claim that Critic Goal 3 (rationale-vs-diff fit) validates. Over-
+         declaring is unsafe and BLOCKING: violating any bound OR omitting
+         rationale produces a named blocker, never a silent carveout.
 
        See `agents/critic/review-cycle.md` "Per-Chunk Type Protocol Selector"
        for the full per-type protocol matrix. -->
+- **Trivial because:** [required when `Type: trivial`; omit otherwise]
+  <!-- One or two sentences naming what makes this change semantically simple.
+       Strong rationale points at the structural property that bounds risk:
+         - "project-wide rename of FooBar to BazQux; no behavior change"
+         - "add type annotations to public API; no logic change"
+         - "appends two learning entries to .prawduct/learnings.md; no code,
+            no tests, no behavior"
+       Weak rationale to avoid (Critic Goal 3 will WARN/BLOCK):
+         - "small change", "easy fix", "quick update" — describes feeling,
+           not structure; can't be validated against the diff.
+       The Critic compares this claim to the actual diff in Chunk 05's
+       rationale-vs-diff fit check. Misfit (e.g., claims rename but diff
+       adds new function bodies) → BLOCKING for scope expansion. Empty
+       rationale → BLOCKING at the stop-hook (parser returns
+       `missing-rationale`). -->
 - **Visual change:** [optional — `yes` if the chunk produces a user-visible change that needs human verification before merge (UI screen, CLI output format, generated artifact appearance, live external integration). Otherwise omit.]
   <!-- When declared `yes`, append an entry to `.prawduct/operator-verification.md`
        at chunk-close describing what to verify and where. When

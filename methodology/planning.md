@@ -101,15 +101,24 @@ See `methodology/building.md` for the runtime behavior (how the build cycle read
 
 Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `agents/critic/review-cycle.md`.
 
-Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final`. Default is `code` — the fully-armed protocol — so a missing field is the safe option, not a carveout. Declare a non-default Type only when the chunk actually deviates.
+Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`. Default is `code` — the fully-armed protocol — so a missing field is the safe option, not a carveout. Declare a non-default Type only when the chunk actually deviates.
 
 - **`code`** — code or behavior changes. The default; you rarely need to write it explicitly.
 - **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage. Use when the chunk truly doesn't touch executable code.
 - **`cleanup`** — branch hygiene, file moves, dead-code removal. Critic tolerates a zero diff; structural-only review. Use when the chunk's value is the removal, not the new code.
 - **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped — Type: designer-handoff" and the stop-hook Critic gate also skips. **This is the only Type that bypasses Critic enforcement entirely — use deliberately.** Replaces the prior user-memory carveout with a framework-level rule.
 - **`cumulative-final`** — marker on the last chunk of a multi-chunk plan. Signals that a `/critic cumulative` review against `merge-base...HEAD` is required in addition to the chunk's own `final` review. The cumulative review is the `/pr create` gate (Principle 14 — Independent Review at the bundle level).
+- **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small. Two enforcement layers run at chunk close:
+  1. **File-set bounds (machine-enforced, hard):** chunk diff has no edits under `agents/`, `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file deletions; no new files. These are the catastrophic-blast-radius classes regardless of size — file-set is necessary but not sufficient.
+  2. **Required `**Trivial because:**` rationale (machine-enforced, hard):** the chunk must include a non-empty rationale field. Empty or absent → BLOCKING at the stop-hook. The rationale is the semantic claim; **Critic Goal 3** validates rationale-vs-diff fit (Chunk 05) — a strong rationale points at the structural property bounding risk, not at the author's feeling about the change.
 
-**Type vs. mode orthogonality.** A `Type: doc-only` chunk can still be `Critic mode: final` (full review of prose deliverables); a `Type: code` chunk can be `Critic mode: chunk` (lightweight Goals 1-3 review). The two fields answer different questions — declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review).
+  **Size is not a bound.** An 80-LOC project-wide rename can be trivial; a 5-line state-machine change cannot. Trivial is a judgment, not a LOC metric — the rationale captures the judgment.
+
+  **Over-declaration is unsafe and BLOCKING.** A chunk declared `Type: trivial` that violates either bound is treated as `code` AND the stop-hook emits a named blocker pointing at the specific violation (e.g., `agent-file-edited: agents/critic/SKILL.md`, `missing-rationale: ...`). The framework refuses silent carveouts — fix the violation or change the Type, never both quietly.
+
+  **Strong rationale examples:** `"project-wide rename of FooBar to BazQux; no behavior change"`; `"add type annotations to public API; no logic change"`; `"appends two learning entries to .prawduct/learnings.md; no code, no tests, no behavior"`. **Weak rationale to avoid:** `"small change"`, `"easy fix"`, `"quick update"` — these describe feeling, not structure, so the Critic can't validate fit against the diff.
+
+**Type vs. mode orthogonality.** A `Type: doc-only` chunk can still be `Critic mode: final` (full review of prose deliverables); a `Type: code` chunk can be `Critic mode: chunk` (lightweight Goals 1-3 review). The two fields answer different questions — declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review; `trivial` on a non-eligible chunk produces a named blocker).
 
 ### Foreign API Verification
 

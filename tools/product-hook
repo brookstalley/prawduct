@@ -2641,15 +2641,37 @@ def cmd_stop(project_dir: Path) -> int:
     # (code, doc-only, cleanup, cumulative-final) leave the gate behavior
     # unchanged — only Critic's *protocol* adjusts inside the agent.
     designer_handoff_skip = False
-    if has_changes and has_build_plan and not doc_only:
+    # v1.5 Chunk 04 — Type: trivial fileset + rationale enforcement. The
+    # checks fire BEFORE the Critic gate and emit BLOCKING for any
+    # violation, but the chunk is still treated as `code` for gate
+    # purposes (so the Critic gate still applies on top). Fail-closed:
+    # over-declaring `trivial` produces a named blocker pointing at the
+    # specific bound violated, never a silent carveout. The trivial
+    # check does NOT honor the doc-only skip — bounds like
+    # "no edits under agents/" matter even when the diff is empirically
+    # all-.md (the agents/ tree itself is pure prose). Doc-only only
+    # carves out the Critic protocol (which has no code to review); the
+    # trivial-declaration contract is independent.
+    trivial_block_reason = ""
+    if has_changes and has_build_plan:
         current_chunk_id = _current_chunk_id_from_status(prawduct_dir)
         if current_chunk_id is not None:
             chunk_type, _ = _parse_build_plan_chunk_type(prawduct_dir, current_chunk_id)
-            if chunk_type == "designer-handoff":
+            if chunk_type == "designer-handoff" and not doc_only:
                 designer_handoff_skip = True
                 waiver_notes.append(
                     f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff — v1.4 F6 carveout)"
                 )
+            elif chunk_type == "trivial":
+                fileset_ok, fileset_reason = _is_trivial_fileset_eligible(project_dir)
+                if not fileset_ok:
+                    trivial_block_reason = fileset_reason
+                else:
+                    _, rationale_error = _parse_build_plan_chunk_trivial_rationale(
+                        prawduct_dir, current_chunk_id
+                    )
+                    if rationale_error:
+                        trivial_block_reason = rationale_error
 
     critic_would_block = False
     # v1.5 Chunk 02: when the fresh, schema-valid findings file is in
@@ -2700,6 +2722,16 @@ def cmd_stop(project_dir: Path) -> int:
                 "  run `/critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
                 "  and records findings to .prawduct/.critic-findings.json\n"
             )
+
+    # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
+    # gate (not in place of it). The chunk is still treated as `code`
+    # for gate purposes; this block adds a separate BLOCKING if either
+    # the file-set bound or rationale presence failed.
+    if trivial_block_reason:
+        blockers.append(
+            f"TYPE: TRIVIAL — declared but {trivial_block_reason}.\n"
+            "  Either fix the violation or change Type to `code`.\n"
+        )
 
     # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed, which
     # already enforces this-session freshness on the findings file. So if we
@@ -2886,8 +2918,20 @@ _BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
 # Matches `- **Type:** <token>` or `**Type:** <token>` as a list item; trailing
 # parenthetical prose is allowed and ignored.
 _BUILD_PLAN_TYPE_RE = re.compile(r"^[\s\-\*]*\*\*Type:\*\*\s*([A-Za-z][\w\-]*)")
+# v1.5 Chunk 04 — `trivial` joins the allowed set. File-set bounds (no
+# edits under agents/, methodology/, templates/; no CLAUDE.md edit; no
+# test deletion; no new files) + required `**Trivial because:**`
+# rationale are enforced structurally; semantic-fit is Critic Goal 3 in
+# Chunk 05. Size is unbounded — trivial is a semantic claim, not a LOC
+# metric.
 _BUILD_PLAN_ALLOWED_TYPES = frozenset(
-    {"code", "doc-only", "cleanup", "designer-handoff", "cumulative-final"}
+    {"code", "doc-only", "cleanup", "designer-handoff", "cumulative-final", "trivial"}
+)
+# `**Trivial because:** <rationale>` — first line; continuation lines (no
+# list-item / heading prefix) are joined onto the rationale until the next
+# field. Empty after the colon → missing-rationale.
+_BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
+    r"^[\s\-\*]*\*\*Trivial because:\*\*\s*(.*)$"
 )
 
 
@@ -2998,7 +3042,7 @@ def _parse_build_plan_chunk_type(
     """Extract the `Type:` declaration from a chunk's build-plan section.
 
     Returns ``(chunk_type, error)``. ``chunk_type`` is one of
-    ``code | doc-only | cleanup | designer-handoff | cumulative-final``.
+    ``code | doc-only | cleanup | designer-handoff | cumulative-final | trivial``.
     Default (field absent) is ``code`` — fail-closed so a missing declaration
     runs the full Critic protocol rather than silently triggering a carveout
     (learnings: "escape hatches in classification create silent failures").
@@ -3058,6 +3102,179 @@ def _parse_build_plan_chunk_type(
         allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
         return None, f"unknown type: {declared!r} (allowed: {allowed})"
     return declared, None
+
+
+def _parse_build_plan_chunk_trivial_rationale(
+    prawduct_dir: Path, chunk_id: str
+) -> tuple[str | None, str | None]:
+    """Extract the ``**Trivial because:**`` rationale from a chunk's section.
+
+    Returns ``(rationale, error)``. Empty or absent field → ``(None,
+    "missing-rationale: Type: trivial requires non-empty **Trivial
+    because:** field")``. Multi-line rationale (continuation lines without
+    a list-item / heading prefix) is joined into a single string until the
+    next field.
+
+    Section discovery mirrors ``_parse_build_plan_chunk_type`` —
+    name-anchored on ``### Chunk <chunk_id>:`` with leading-zero
+    tolerance; fenced code blocks are skipped.
+    """
+    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    if not plan_path.is_file():
+        return None, f"missing build-plan: {plan_path}"
+    try:
+        content = plan_path.read_text()
+    except OSError as exc:
+        return None, f"unreadable build-plan: {exc}"
+
+    target = chunk_id.lstrip("0") or "0"
+
+    in_section = False
+    in_fence = False
+    section_found = False
+    capturing = False
+    rationale_lines: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("### Chunk "):
+            rest = stripped[len("### Chunk "):]
+            head = rest.split(":", 1)[0].strip()
+            head_norm = head.lstrip("0") or "0"
+            if in_section:
+                break  # hit sibling chunk
+            if head_norm == target:
+                in_section = True
+                section_found = True
+            continue
+        if not in_section:
+            continue
+        if stripped.startswith("## "):
+            break
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = _BUILD_PLAN_TRIVIAL_RATIONALE_RE.match(line)
+        if m:
+            capturing = True
+            first = m.group(1).strip()
+            if first:
+                rationale_lines.append(first)
+            continue
+        if capturing:
+            # Stop at the next list-item field, bolded label, or sub-heading.
+            if (
+                stripped.startswith("- **")
+                or stripped.startswith("* **")
+                or stripped.startswith("**")
+                or stripped.startswith("#")
+            ):
+                break
+            if stripped:
+                rationale_lines.append(stripped)
+
+    if not section_found:
+        return None, f"chunk {chunk_id!r} not found in build-plan"
+    if not capturing:
+        return None, (
+            "missing-rationale: Type: trivial requires non-empty "
+            "**Trivial because:** field"
+        )
+    rationale = " ".join(rationale_lines).strip()
+    if not rationale:
+        return None, (
+            "missing-rationale: Type: trivial requires non-empty "
+            "**Trivial because:** field"
+        )
+    return rationale, None
+
+
+def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
+    """Check the current session's diff against the ``Type: trivial``
+    file-set bounds. Returns ``(eligible, reason)``.
+
+    Bounds (catastrophic-blast-radius classes, regardless of size):
+    no edits under ``agents/``, ``methodology/``, or ``templates/``; no
+    edits to ``CLAUDE.md``; no test-file removals (porcelain ``D`` under
+    ``tests/`` OR rename whose source path is under ``tests/`` — a
+    ``git mv`` out of the test directory is semantically a deletion);
+    no newly-tracked files (porcelain ``A`` or ``??``).
+
+    Size is intentionally NOT a bound — trivial is a semantic judgment.
+    An 80-LOC project-wide rename can qualify; a 5-line state-machine
+    change cannot. The semantic claim lives in
+    ``**Trivial because:**``; Critic Goal 3 validates rationale-vs-diff
+    fit (Chunk 05).
+
+    Reason strings name the specific bound that failed for actionable
+    stop-hook messaging — e.g. ``"agent-file-edited: agents/critic/SKILL.md"``.
+    The first violating file wins (deterministic order: porcelain
+    output ordering); the user fixes one violation at a time.
+
+    Uses session-baseline filtering so pre-session dirt doesn't count
+    against the chunk (mirrors ``git_has_session_changes``).
+    """
+    output = git_status_output(project_dir)
+    if output is None:
+        # No git or git error — defer to other gates; treat as eligible
+        # so the trivial check doesn't fail the build when git itself is
+        # the problem.
+        return True, ""
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    baseline_path = prawduct_dir / ".session-git-baseline"
+    baseline_lines: set[str] = set()
+    if baseline_path.is_file():
+        try:
+            baseline_lines = set(baseline_path.read_text().splitlines())
+        except (UnicodeDecodeError, OSError):
+            pass
+
+    for line in output.splitlines():
+        if not line or line in baseline_lines:
+            continue
+        if len(line) < 4:
+            continue
+        status = line[:2]
+        raw = line[3:].strip()
+        src_path: str | None = None
+        if " -> " in raw:
+            src_raw, dst_raw = raw.split(" -> ", 1)
+            src_path = src_raw.strip()
+            if src_path.startswith('"') and src_path.endswith('"'):
+                src_path = src_path[1:-1]
+            path = dst_raw.strip()
+        else:
+            path = raw
+        if path.startswith('"') and path.endswith('"'):
+            path = path[1:-1]
+        if not path:
+            continue
+        if _is_metadata_path(path):
+            continue
+
+        # Catastrophic-class checks (path-based bounds).
+        if path == "CLAUDE.md":
+            return False, f"claude-md-edited: {path}"
+        if path.startswith("agents/"):
+            return False, f"agent-file-edited: {path}"
+        if path.startswith("methodology/"):
+            return False, f"methodology-edited: {path}"
+        if path.startswith("templates/"):
+            return False, f"template-edited: {path}"
+        if path.startswith("tests/") and "D" in status:
+            return False, f"test-file-deleted: {path}"
+        # Rename whose source was under tests/ is semantically a test
+        # removal — porcelain `R` keeps the source path on the LHS of
+        # " -> ", which we'd otherwise discard.
+        if src_path is not None and src_path.startswith("tests/"):
+            return False, f"test-file-deleted: {src_path} (renamed out)"
+        # Newly-tracked file: staged-add (X=='A') or untracked ('??').
+        if status[0] == "A" or status == "??":
+            return False, f"new-file: {path}"
+
+    return True, ""
 
 
 def _current_chunk_id_from_status(prawduct_dir: Path) -> str | None:

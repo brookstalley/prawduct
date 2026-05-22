@@ -3286,6 +3286,505 @@ class TestParseBuildPlanChunkType:
         assert chunk_type == "cleanup"
         assert error is None
 
+    def test_extracts_type_trivial(self, tmp_path: Path):
+        """v1.5 Chunk 04 — `trivial` joins the allowed set."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 04: Rename FooBar\n\n"
+            "- **Type:** trivial\n"
+            "- **Trivial because:** project-wide rename of FooBar to BazQux\n",
+        )
+        mod = _load_product_hook()
+        chunk_type, error = mod._parse_build_plan_chunk_type(prawduct, "04")
+        assert chunk_type == "trivial"
+        assert error is None
+
+
+# =============================================================================
+# Type: trivial — file-set bounds and rationale (v1.5 Chunk 04)
+# =============================================================================
+
+
+class TestTrivialFilesetBounds:
+    """`_is_trivial_fileset_eligible` enforces catastrophic-blast-radius bounds
+    on chunks declared `Type: trivial`. Bounds are path-based, not
+    size-based — file-set is necessary but not sufficient for a trivial
+    claim (semantic validation is Chunk 05's Critic Goal 3).
+
+    Bounds (any one violation → ineligible, named reason):
+      - No edits under `agents/`
+      - No edits under `methodology/`
+      - No edits under `templates/`
+      - No edits to `CLAUDE.md`
+      - No file deletions under `tests/`
+      - No new files anywhere (porcelain `A ` or `??`)
+
+    Tests monkeypatch `git_status_output` to feed deterministic porcelain
+    output. Session-baseline filtering and metadata-path filtering match
+    the conventions used by `git_has_session_changes`.
+    """
+
+    def test_clean_eligible_diff_passes(self, tmp_path: Path, monkeypatch):
+        """A diff with many modified files under `src/` (an eligible
+        location) passes regardless of count — size is not a bound. This
+        proves the helper makes no LOC computation."""
+        mod = _load_product_hook()
+        # 20 modified source files, none under bounded paths.
+        porcelain = "\n".join(
+            f" M src/module_{i:02d}.py" for i in range(20)
+        )
+        monkeypatch.setattr(mod, "git_status_output", lambda _project_dir: porcelain)
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is True, f"expected eligible, got reason={reason!r}"
+        assert reason == ""
+
+    def test_agent_file_edit_fails(self, tmp_path: Path, monkeypatch):
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod,
+            "git_status_output",
+            lambda _p: " M src/app.py\n M agents/critic/SKILL.md",
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "agent-file-edited" in reason
+        assert "agents/critic/SKILL.md" in reason
+
+    def test_methodology_edit_fails(self, tmp_path: Path, monkeypatch):
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod, "git_status_output", lambda _p: " M methodology/building.md"
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "methodology-edited" in reason
+        assert "methodology/building.md" in reason
+
+    def test_template_edit_fails(self, tmp_path: Path, monkeypatch):
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod, "git_status_output", lambda _p: " M templates/build-plan.md"
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "template-edited" in reason
+        assert "templates/build-plan.md" in reason
+
+    def test_claude_md_edit_fails(self, tmp_path: Path, monkeypatch):
+        mod = _load_product_hook()
+        monkeypatch.setattr(mod, "git_status_output", lambda _p: " M CLAUDE.md")
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "claude-md-edited" in reason
+
+    def test_test_file_deletion_fails(self, tmp_path: Path, monkeypatch):
+        """Deletion of any file under tests/ is catastrophic — tests are
+        contracts (Principle 1). `D ` porcelain status."""
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod, "git_status_output", lambda _p: " D tests/test_foo.py"
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "test-file-deleted" in reason
+        assert "tests/test_foo.py" in reason
+
+    def test_new_file_untracked_fails(self, tmp_path: Path, monkeypatch):
+        """A new untracked file (`??`) fails — trivial chunks may not add
+        new files (the surface they affect should already exist)."""
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod, "git_status_output", lambda _p: "?? src/new_module.py"
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "new-file" in reason
+        assert "src/new_module.py" in reason
+
+    def test_new_file_staged_add_fails(self, tmp_path: Path, monkeypatch):
+        """A staged-added file (`A `) also fails — same rule."""
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod, "git_status_output", lambda _p: "A  src/new_module.py"
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "new-file" in reason
+
+    def test_metadata_path_does_not_trigger_bounds(self, tmp_path: Path, monkeypatch):
+        """Framework metadata (.prawduct/, .claude/skills/, tools/product-hook)
+        is filtered before bounds-checking, so build-plan Status updates
+        don't trip the new-file or other bounds."""
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod,
+            "git_status_output",
+            lambda _p: (
+                " M .prawduct/artifacts/build-plan.md\n"
+                " M src/app.py"
+            ),
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is True, f"reason={reason!r}"
+
+    def test_baseline_filter_excludes_pre_session_dirt(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Files dirty at session start (in `.session-git-baseline`) are not
+        attributed to this chunk — they may not be trivial-eligible but
+        they're not the current chunk's responsibility."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Baseline shows agent file was already dirty; current chunk only
+        # modifies src/ on top.
+        (prawduct / ".session-git-baseline").write_text(
+            " M agents/critic/SKILL.md\n"
+        )
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod,
+            "git_status_output",
+            lambda _p: " M agents/critic/SKILL.md\n M src/app.py",
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is True, f"reason={reason!r}"
+
+    def test_no_git_returns_eligible(self, tmp_path: Path, monkeypatch):
+        """Git failure → fail-open eligible (other gates handle the no-git
+        case; the trivial check itself shouldn't fabricate a violation
+        from missing data)."""
+        mod = _load_product_hook()
+        monkeypatch.setattr(mod, "git_status_output", lambda _p: None)
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is True
+        assert reason == ""
+
+    def test_rename_to_agent_path_fails(self, tmp_path: Path, monkeypatch):
+        """`R<sp> old -> new` porcelain: the destination path is what
+        matters for bounds-checking."""
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod,
+            "git_status_output",
+            lambda _p: "R  src/old.md -> agents/critic/new.md",
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "agent-file-edited" in reason
+        assert "agents/critic/new.md" in reason
+
+    def test_rename_out_of_tests_fails(self, tmp_path: Path, monkeypatch):
+        """A `git mv tests/test_foo.py src/foo.py` removes the file from
+        the test directory — porcelain shows `R<sp> tests/x -> src/x`,
+        and the source path under tests/ counts as a test-file deletion
+        even though the porcelain status is `R`, not `D`. Closes the
+        gap where examining only the destination would bypass the
+        test-deletion bound."""
+        mod = _load_product_hook()
+        monkeypatch.setattr(
+            mod,
+            "git_status_output",
+            lambda _p: "R  tests/test_foo.py -> src/foo.py",
+        )
+        eligible, reason = mod._is_trivial_fileset_eligible(tmp_path)
+        assert eligible is False
+        assert "test-file-deleted" in reason
+        assert "tests/test_foo.py" in reason
+
+
+class TestTrivialRationalePresence:
+    """`_parse_build_plan_chunk_trivial_rationale` extracts the
+    `**Trivial because:**` field from a chunk's section. Empty or absent
+    → `missing-rationale` error so the stop-hook gate can refuse silent
+    over-declaration.
+    """
+
+    def _write_plan(self, prawduct: Path, body: str) -> Path:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        path = artifacts / "build-plan.md"
+        path.write_text(body)
+        return path
+
+    def test_extracts_single_line_rationale(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Rename\n\n"
+            "- **Type:** trivial\n"
+            "- **Trivial because:** project-wide rename of FooBar to BazQux; no behavior change\n",
+        )
+        mod = _load_product_hook()
+        rationale, error = mod._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01"
+        )
+        assert error is None
+        assert "FooBar" in rationale
+        assert "BazQux" in rationale
+
+    def test_missing_field_returns_missing_rationale(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: No rationale\n\n"
+            "- **Type:** trivial\n"
+            "- **Done when:** ...\n",
+        )
+        mod = _load_product_hook()
+        rationale, error = mod._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01"
+        )
+        assert rationale is None
+        assert error is not None
+        assert "missing-rationale" in error
+
+    def test_empty_field_returns_missing_rationale(self, tmp_path: Path):
+        """`**Trivial because:**` with nothing after the colon is
+        empty-rationale — same blocker as absent."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Empty\n\n"
+            "- **Type:** trivial\n"
+            "- **Trivial because:**\n"
+            "- **Done when:** ...\n",
+        )
+        mod = _load_product_hook()
+        rationale, error = mod._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01"
+        )
+        assert rationale is None
+        assert error is not None
+        assert "missing-rationale" in error
+
+    def test_whitespace_only_field_returns_missing_rationale(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Whitespace\n\n"
+            "- **Type:** trivial\n"
+            "- **Trivial because:**   \n"
+            "- **Done when:** ...\n",
+        )
+        mod = _load_product_hook()
+        rationale, error = mod._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01"
+        )
+        assert rationale is None
+        assert error is not None
+        assert "missing-rationale" in error
+
+    def test_multi_line_rationale_joined(self, tmp_path: Path):
+        """Continuation lines (no list-item / heading prefix) are joined
+        into the rationale until the next field."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Multi-line\n\n"
+            "- **Type:** trivial\n"
+            "- **Trivial because:** project-wide rename of FooBar to BazQux.\n"
+            "  No behavior change — every reference now points\n"
+            "  to the new symbol.\n"
+            "- **Done when:** ...\n",
+        )
+        mod = _load_product_hook()
+        rationale, error = mod._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01"
+        )
+        assert error is None
+        assert "FooBar" in rationale
+        assert "No behavior change" in rationale
+        assert "new symbol" in rationale
+
+    def test_excludes_sibling_rationale(self, tmp_path: Path):
+        """A `**Trivial because:**` in Chunk 02 must not bleed into
+        Chunk 01."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: First\n\n"
+            "- **Type:** trivial\n\n"
+            "### Chunk 02: Second\n\n"
+            "- **Type:** trivial\n"
+            "- **Trivial because:** added later\n",
+        )
+        mod = _load_product_hook()
+        rationale, error = mod._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01"
+        )
+        assert rationale is None
+        assert "missing-rationale" in (error or "")
+
+    def test_missing_chunk_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(
+            prawduct,
+            "# Build Plan\n\n## Build Chunks\n\n"
+            "### Chunk 01: Only one\n\n- **Type:** trivial\n- **Trivial because:** x\n",
+        )
+        mod = _load_product_hook()
+        rationale, error = mod._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "99"
+        )
+        assert rationale is None
+        assert error is not None
+        assert "99" in error or "not found" in error.lower()
+
+    def test_missing_build_plan_returns_error(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        mod = _load_product_hook()
+        rationale, error = mod._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01"
+        )
+        assert rationale is None
+        assert error is not None
+        assert "build-plan" in error.lower() or "missing" in error.lower()
+
+
+class TestTrivialStopHookGate:
+    """Stop-hook integration for `Type: trivial`: when declared, run both
+    file-set and rationale checks. Any failure → BLOCKING with the
+    specific reason. The chunk is treated as `code` for gate purposes
+    regardless (Critic gate still applies on top — `trivial` is NOT a
+    carveout).
+    """
+
+    def _write_plan(
+        self,
+        prawduct: Path,
+        *,
+        with_rationale: bool = True,
+        chunk_title: str = "Trivial rename",
+    ) -> None:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        rationale_line = (
+            "- **Trivial because:** project-wide rename of FooBar to BazQux; no behavior change\n"
+            if with_rationale
+            else ""
+        )
+        (artifacts / "build-plan.md").write_text(
+            f"# Build Plan\n\n## Status\n- [ ] Chunk 01: {chunk_title}\n\n"
+            "## Build Chunks\n\n"
+            f"### Chunk 01: {chunk_title}\n\n"
+            "- **Type:** trivial\n"
+            f"{rationale_line}"
+        )
+
+    def _make_findings(self, prawduct: Path) -> None:
+        """Write a fresh blocking-free findings file so the Critic gate
+        passes — isolates the trivial check from the Critic gate."""
+        mod = _load_product_hook()
+        (prawduct / ".critic-findings.json").write_text(
+            json.dumps(
+                {
+                    "files_reviewed": ["src/app.py"],
+                    "findings": [],
+                    "summary": "No issues found. Changes are ready to proceed.",
+                    "mode": mod._CRITIC_MODE_CHUNK,
+                }
+            )
+        )
+
+    def test_eligible_fileset_and_rationale_passes(self, tmp_path: Path):
+        """Eligible diff (only src/ edits) + non-empty rationale → no
+        trivial-related blocker."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(prawduct, with_rationale=True)
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented the rename across all callers; tests still pass."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "TYPE: TRIVIAL" not in result.stderr
+
+    def test_fileset_violation_blocks_with_specific_reason(self, tmp_path: Path):
+        """Trivial declared but diff edits agents/ → BLOCKING with
+        `agent-file-edited:` reason. The user must see the specific
+        bound that failed."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(prawduct, with_rationale=True)
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: claimed trivial but touched agent file by mistake; needs reclassification."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook(
+            "stop", tmp_path, git_output=" M agents/critic/SKILL.md"
+        )
+
+        assert result.returncode == 2
+        assert "TYPE: TRIVIAL" in result.stderr
+        assert "agent-file-edited" in result.stderr
+        assert "Either fix the violation or change Type to `code`" in result.stderr
+
+    def test_missing_rationale_blocks(self, tmp_path: Path):
+        """Trivial declared + eligible fileset but no rationale field →
+        BLOCKING with `missing-rationale`."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(prawduct, with_rationale=False)
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: forgot to add rationale field; needs to either add it or change Type."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "TYPE: TRIVIAL" in result.stderr
+        assert "missing-rationale" in result.stderr
+
+    def test_new_file_violation_blocks(self, tmp_path: Path):
+        """A new file (untracked `??`) violates the no-new-files bound."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(prawduct, with_rationale=True)
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: added a new helper file but declared trivial; gate should block."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output="?? src/new_helper.py")
+
+        assert result.returncode == 2
+        assert "TYPE: TRIVIAL" in result.stderr
+        assert "new-file" in result.stderr
+
+    def test_test_deletion_violation_blocks(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan(prawduct, with_rationale=True)
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: deleted a test file but declared trivial; gate should block per Principle 1."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" D tests/test_foo.py")
+
+        assert result.returncode == 2
+        assert "TYPE: TRIVIAL" in result.stderr
+        assert "test-file-deleted" in result.stderr
+
 
 # =============================================================================
 # Invalid command
