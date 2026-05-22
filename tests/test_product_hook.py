@@ -3787,6 +3787,470 @@ class TestTrivialStopHookGate:
 
 
 # =============================================================================
+# PR-boundary trivial fast-path (Chunk 05)
+# =============================================================================
+
+
+class TestPrDiffIsTrivial:
+    """`_pr_diff_is_trivial` walks every commit on ``merge-base...HEAD`` and
+    applies the Chunk 04 path-bound rules per commit. Returns ``(True, ...)``
+    only when every commit is fileset-eligible. The first non-eligible commit
+    short-circuits with a reason that names the SHA and the specific bound
+    that fired — mirroring ``_pr_diff_is_doc_only``'s shape at the PR boundary.
+
+    Size is intentionally NOT a bound — trivial is a semantic claim (rationale
+    validated per-chunk by the Critic). Many small commits or one large commit
+    are equally eligible as long as no commit touches catastrophic-blast-radius
+    paths.
+    """
+
+    def _seed_repo_with_main(self, repo: Path) -> None:
+        _init_real_git_repo(repo)
+        (repo / "seed.md").write_text("seed\n")
+        subprocess.run(["git", "add", "seed.md"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+    def _checkout_feature(self, repo: Path, branch: str = "feature/x") -> None:
+        subprocess.run(["git", "checkout", "-q", "-b", branch], cwd=repo, check=True)
+
+    def _commit(self, repo: Path, files: dict[str, str], msg: str) -> str:
+        for rel, body in files.items():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text(body)
+            subprocess.run(["git", "add", rel], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", msg], cwd=repo, check=True)
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return proc.stdout.strip()
+
+    def test_single_trivial_commit_passes(self, tmp_path: Path):
+        """A PR with one commit that only modifies src/ passes."""
+        self._seed_repo_with_main(tmp_path)
+        # Need a source file on main first so the modification doesn't read as
+        # an addition.
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# v1\n")
+        subprocess.run(["git", "add", "src/app.py"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed src"], cwd=tmp_path, check=True
+        )
+        self._checkout_feature(tmp_path)
+        self._commit(tmp_path, {"src/app.py": "# v2\n"}, "tweak")
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is True, reason
+        assert "trivial" in reason.lower()
+
+    def test_many_trivial_commits_pass_no_size_bound(self, tmp_path: Path):
+        """A PR with many trivial commits passes — size isn't a bound."""
+        self._seed_repo_with_main(tmp_path)
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
+        (tmp_path / "src").mkdir()
+        for i in range(5):
+            (tmp_path / "src" / f"mod_{i}.py").write_text(f"# v0 mod {i}\n")
+        subprocess.run(
+            ["git", "add", "src"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed src"], cwd=tmp_path, check=True
+        )
+        self._checkout_feature(tmp_path)
+        for i in range(5):
+            self._commit(
+                tmp_path,
+                {f"src/mod_{i}.py": f"# v1 mod {i}\n"},
+                f"tweak mod_{i}",
+            )
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is True, reason
+
+    def test_commit_touching_agents_fails(self, tmp_path: Path):
+        """A single commit that edits agents/ disqualifies the PR — even if
+        other commits are trivial. The reason names the SHA and the bound."""
+        self._seed_repo_with_main(tmp_path)
+        # Seed agents/foo.md on main so the feature commit reads as a modify.
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
+        (tmp_path / "agents").mkdir()
+        (tmp_path / "agents" / "foo.md").write_text("# v0\n")
+        subprocess.run(["git", "add", "agents/foo.md"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed agents"], cwd=tmp_path, check=True
+        )
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# v0\n")
+        subprocess.run(["git", "add", "src/app.py"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed src"], cwd=tmp_path, check=True
+        )
+        self._checkout_feature(tmp_path)
+        self._commit(tmp_path, {"src/app.py": "# v1\n"}, "trivial tweak")
+        bad_sha = self._commit(
+            tmp_path, {"agents/foo.md": "# v1\n"}, "edit agent doc"
+        )
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is False
+        assert "agent-file-edited" in reason
+        assert "agents/foo.md" in reason
+        assert bad_sha[:7] in reason
+
+    def test_commit_touching_methodology_fails(self, tmp_path: Path):
+        self._seed_repo_with_main(tmp_path)
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
+        (tmp_path / "methodology").mkdir()
+        (tmp_path / "methodology" / "x.md").write_text("# v0\n")
+        subprocess.run(
+            ["git", "add", "methodology/x.md"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed methodology"],
+            cwd=tmp_path,
+            check=True,
+        )
+        self._checkout_feature(tmp_path)
+        self._commit(tmp_path, {"methodology/x.md": "# v1\n"}, "edit methodology")
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is False
+        assert "methodology-edited" in reason
+
+    def test_commit_adding_new_file_fails(self, tmp_path: Path):
+        """Any newly-tracked file disqualifies the PR — same as Chunk 04's
+        ``new-file`` bound. The PR isn't refactoring an existing component."""
+        self._seed_repo_with_main(tmp_path)
+        self._checkout_feature(tmp_path)
+        self._commit(tmp_path, {"src/new.py": "# new module\n"}, "add module")
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is False
+        assert "new-file" in reason
+        assert "src/new.py" in reason
+
+    def test_commit_deleting_test_file_fails(self, tmp_path: Path):
+        self._seed_repo_with_main(tmp_path)
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_a.py").write_text("def test_a(): pass\n")
+        subprocess.run(["git", "add", "tests/test_a.py"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed tests"], cwd=tmp_path, check=True
+        )
+        self._checkout_feature(tmp_path)
+        subprocess.run(
+            ["git", "rm", "-q", "tests/test_a.py"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "drop test"], cwd=tmp_path, check=True
+        )
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is False
+        assert "test-file-deleted" in reason
+        assert "tests/test_a.py" in reason
+
+    def test_commit_renaming_test_out_fails(self, tmp_path: Path):
+        """Renaming a test file out of tests/ is semantically a deletion."""
+        self._seed_repo_with_main(tmp_path)
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_a.py").write_text("def test_a(): pass\n")
+        subprocess.run(["git", "add", "tests/test_a.py"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed tests"], cwd=tmp_path, check=True
+        )
+        self._checkout_feature(tmp_path)
+        (tmp_path / "src").mkdir()
+        subprocess.run(
+            ["git", "mv", "tests/test_a.py", "src/test_a.py"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "rename test out"],
+            cwd=tmp_path,
+            check=True,
+        )
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is False
+        assert "test-file-deleted" in reason
+        assert "renamed out" in reason
+
+    def test_empty_pr_fails_safe(self, tmp_path: Path):
+        """No commits ahead of base — fail closed, not silently pass."""
+        self._seed_repo_with_main(tmp_path)
+        self._checkout_feature(tmp_path)
+        # No commits added on feature branch.
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is False
+        assert "empty" in reason.lower()
+
+    def test_no_base_branch_fails_safe(self, tmp_path: Path):
+        """When no base candidate resolves, fall through to full review."""
+        subprocess.run(
+            ["git", "init", "--quiet", "-b", "feature/x"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "config", "commit.gpgsign", "false"],
+            cwd=tmp_path,
+            check=True,
+        )
+
+        mod = _load_product_hook()
+        eligible, reason = mod._pr_diff_is_trivial(tmp_path)
+
+        assert eligible is False
+        assert "no-base" in reason.lower()
+
+
+class TestCheckPrTrivialSubcommand:
+    """The `check-pr-trivial` subcommand is the PR-boundary mirror of
+    Chunk 04's `_is_trivial_fileset_eligible`: when every commit in
+    ``merge-base...HEAD`` clears the path bounds, `/pr create` may skip
+    the cumulative-Critic and PR-reviewer gates.
+
+    Exit 0 = PR is fast-path eligible.
+    Exit 1 = anything else. Fails closed — `/pr` falls through to full
+    review on any exit 1.
+    """
+
+    def _run(self, project_dir: Path) -> subprocess.CompletedProcess:
+        env = {
+            "HOME": str(project_dir),
+            "CLAUDE_PROJECT_DIR": str(project_dir),
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        return subprocess.run(
+            ["python3", str(HOOK_PATH), "check-pr-trivial"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=20,
+        )
+
+    def _seed_repo_with_main(self, repo: Path) -> None:
+        _init_real_git_repo(repo)
+        (repo / "seed.md").write_text("seed\n")
+        subprocess.run(["git", "add", "seed.md"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+    def test_trivial_pr_exits_zero(self, tmp_path: Path):
+        self._seed_repo_with_main(tmp_path)
+        # Seed src on main, modify on feature.
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# v0\n")
+        subprocess.run(["git", "add", "src/app.py"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed src"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "checkout", "-q", "-b", "feature/x"],
+            cwd=tmp_path,
+            check=True,
+        )
+        (tmp_path / "src" / "app.py").write_text("# v1\n")
+        subprocess.run(["git", "add", "src/app.py"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "tweak"], cwd=tmp_path, check=True
+        )
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "trivial" in result.stdout.lower()
+
+    def test_pr_with_agents_edit_exits_one(self, tmp_path: Path):
+        self._seed_repo_with_main(tmp_path)
+        (tmp_path / "agents").mkdir()
+        (tmp_path / "agents" / "foo.md").write_text("# v0\n")
+        subprocess.run(["git", "add", "agents/foo.md"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed agents"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "checkout", "-q", "-b", "feature/x"],
+            cwd=tmp_path,
+            check=True,
+        )
+        (tmp_path / "agents" / "foo.md").write_text("# v1\n")
+        subprocess.run(["git", "add", "agents/foo.md"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "tweak agent"],
+            cwd=tmp_path,
+            check=True,
+        )
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 1
+        assert "agent-file-edited" in result.stderr
+
+    def test_empty_pr_exits_one(self, tmp_path: Path):
+        self._seed_repo_with_main(tmp_path)
+        subprocess.run(
+            ["git", "checkout", "-q", "-b", "feature/empty"],
+            cwd=tmp_path,
+            check=True,
+        )
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 1
+        assert "empty" in result.stderr.lower()
+
+    def test_no_base_branch_exits_one(self, tmp_path: Path):
+        subprocess.run(
+            ["git", "init", "--quiet", "-b", "feature/x"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=tmp_path, check=True
+        )
+        subprocess.run(
+            ["git", "config", "commit.gpgsign", "false"],
+            cwd=tmp_path,
+            check=True,
+        )
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 1
+        assert "no-base" in result.stderr.lower()
+
+
+# =============================================================================
+# Type: trivial Critic protocol anchor presence (Chunk 05)
+# =============================================================================
+
+
+class TestRationaleVsDiffAnchors:
+    """Chunk 05 adds the `Type: trivial` row to the Per-Chunk Type Protocol
+    Selector matrix and the rationale-vs-diff fit sub-check to Goal 3 across
+    four instruction surfaces:
+
+    - `agents/critic/SKILL.md` (framework Critic)
+    - `agents/critic/review-cycle.md` (framework matrix)
+    - `templates/critic-review.md` (product Critic template)
+    - `templates/pr-review.md` (product PR-reviewer template — fast-path note)
+
+    These tests anchor the wording so a future edit that drops the trivial
+    row or the sub-check trips immediately. The rationale-vs-diff check is
+    implemented as Critic-prompt guidance, not a code helper, so prose
+    anchors are the contract.
+    """
+
+    REPO_ROOT = Path(__file__).resolve().parent.parent
+
+    def test_skill_md_goal_3_has_rationale_vs_diff_subcheck(self):
+        body = (self.REPO_ROOT / "agents" / "critic" / "SKILL.md").read_text()
+        assert "Rationale-vs-diff fit" in body
+        assert "Type: trivial" in body
+        anchor = body.index("Rationale-vs-diff fit")
+        subcheck = body[anchor : anchor + 1500]
+        # BLOCKING for scope mismatch — the rationale bounds the diff.
+        assert "BLOCKING" in subcheck
+        # WARNING for low-information rationale — empty claims can't be
+        # validated against the diff, only the claim itself can be faulted.
+        assert "low-information" in subcheck.lower() or "low information" in subcheck.lower()
+
+    def test_review_cycle_md_matrix_has_trivial_row(self):
+        body = (
+            self.REPO_ROOT / "agents" / "critic" / "review-cycle.md"
+        ).read_text()
+        # Row marker — must be a distinct row, not just a mention in prose.
+        assert "| `trivial` |" in body
+        # The row must mention rationale-vs-diff (Goal 3 sub-check) so the
+        # matrix and the goal definition stay consistent.
+        assert "rationale-vs-diff" in body.lower()
+
+    def test_critic_review_template_has_trivial_subcheck(self):
+        body = (self.REPO_ROOT / "templates" / "critic-review.md").read_text()
+        # Type list in the modes discussion mentions trivial explicitly.
+        assert "**`trivial`**" in body
+        # Goal 3 carries the rationale-vs-diff sub-check.
+        assert "Rationale-vs-diff fit" in body
+        assert "Type: trivial" in body
+        # Both severity contracts.
+        goal3_block = body[body.index("### 3. Nothing Is Unintended") :]
+        # cut at next ### heading
+        end = goal3_block.find("\n### ")
+        goal3 = goal3_block[:end] if end > 0 else goal3_block
+        assert "BLOCKING" in goal3
+        assert "WARNING" in goal3
+
+    def test_pr_review_template_notes_trivial_fast_path(self):
+        body = (self.REPO_ROOT / "templates" / "pr-review.md").read_text()
+        # Reviewer-side documentation of the trivial fast-path so a product
+        # reviewer invoked under it doesn't half-skip.
+        assert "trivial" in body.lower()
+        assert "fast-path" in body.lower()
+
+    def test_pr_skill_documents_trivial_fast_path(self):
+        body = (self.REPO_ROOT / ".claude" / "skills" / "pr" / "SKILL.md").read_text()
+        # Step 1c exists and uses check-pr-trivial.
+        assert "Step 1c" in body
+        assert "check-pr-trivial" in body
+        # The skill mentions per-chunk Critic Goal 3 as the judgment backstop —
+        # this is why size isn't a bound at the PR boundary.
+        assert "rationale" in body.lower() or "Goal 3" in body
+
+    def test_pr_reviewer_skill_documents_fast_paths(self):
+        body = (
+            self.REPO_ROOT / "agents" / "pr-reviewer" / "SKILL.md"
+        ).read_text()
+        # Reviewer documents both fast-paths so it knows when it's being
+        # skipped (and what to do if invoked anyway).
+        assert "doc-only" in body.lower()
+        assert "trivial" in body.lower()
+        assert "fast-path" in body.lower()
+
+
+# =============================================================================
 # Invalid command
 # =============================================================================
 

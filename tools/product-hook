@@ -2776,18 +2776,22 @@ def cmd_stop(project_dir: Path) -> int:
                         pass
 
                 if has_pr:
-                    # Symmetry with `/pr create` Step 1b: when the PR diff is
-                    # currently doc-only (merge-base...HEAD all .md), the
-                    # cumulative-Critic and PR-reviewer gates were legitimately
-                    # skipped at create-time and no evidence file was written.
-                    # Gate 3 would otherwise block session end with a misleading
-                    # "no review evidence" error for a PR that doesn't need one.
-                    # If a later session adds non-.md changes, this check returns
-                    # False and the gate fires as intended — matching the create-
-                    # flow contract.
+                    # Symmetry with `/pr create` Steps 1b/1c: when the PR diff
+                    # is doc-only (all .md) or trivial (every commit fileset-
+                    # eligible per Chunk 04 bounds), the cumulative-Critic and
+                    # PR-reviewer gates were legitimately skipped at create-
+                    # time and no evidence file was written. Gate 3 would
+                    # otherwise block session end with a misleading "no review
+                    # evidence" error for a PR that doesn't need one. If a
+                    # later session adds non-.md or fileset-violating commits,
+                    # both checks return False and the gate fires as intended
+                    # — matching the create-flow contract.
                     pr_is_doc_only, _ = _pr_diff_is_doc_only(project_dir)
-                    if pr_is_doc_only:
-                        pass  # PR diff is all .md — no evidence required
+                    pr_is_trivial, _ = (
+                        (False, "") if pr_is_doc_only else _pr_diff_is_trivial(project_dir)
+                    )
+                    if pr_is_doc_only or pr_is_trivial:
+                        pass  # Fast-path eligible — no evidence required
                     else:
                         # Check for review evidence with content validation
                         branch_file = current_branch.replace("/", "--") + ".json"
@@ -3190,6 +3194,43 @@ def _parse_build_plan_chunk_trivial_rationale(
     return rationale, None
 
 
+def _classify_trivial_change(
+    *,
+    path: str,
+    src_path: str | None,
+    is_addition: bool,
+    is_deletion: bool,
+) -> str | None:
+    """Single-file path-rule check for the ``Type: trivial`` file-set
+    bounds. Returns the violation reason or ``None`` when the change
+    is eligible. Shared by ``_is_trivial_fileset_eligible`` (Chunk 04 —
+    working-tree porcelain) and ``_pr_diff_is_trivial`` (Chunk 05 —
+    per-commit name-status diff). Centralizing the rule set prevents
+    the stop-hook gate and the PR-boundary gate from drifting apart
+    silently.
+
+    The caller translates its status format into the boolean inputs
+    (porcelain handles 2-char codes; name-status handles single-char).
+    Path bounds are catastrophic-blast-radius classes regardless of
+    size — size is intentionally not a bound.
+    """
+    if path == "CLAUDE.md":
+        return f"claude-md-edited: {path}"
+    if path.startswith("agents/"):
+        return f"agent-file-edited: {path}"
+    if path.startswith("methodology/"):
+        return f"methodology-edited: {path}"
+    if path.startswith("templates/"):
+        return f"template-edited: {path}"
+    if is_deletion and path.startswith("tests/"):
+        return f"test-file-deleted: {path}"
+    if src_path is not None and src_path.startswith("tests/"):
+        return f"test-file-deleted: {src_path} (renamed out)"
+    if is_addition:
+        return f"new-file: {path}"
+    return None
+
+
 def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
     """Check the current session's diff against the ``Type: trivial``
     file-set bounds. Returns ``(eligible, reason)``.
@@ -3214,6 +3255,11 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
 
     Uses session-baseline filtering so pre-session dirt doesn't count
     against the chunk (mirrors ``git_has_session_changes``).
+
+    Path-bound rules are delegated to ``_classify_trivial_change`` so
+    the PR-boundary helper (``_pr_diff_is_trivial``) applies an
+    identical rule set — same bounds checked at session-end and at
+    PR creation.
     """
     output = git_status_output(project_dir)
     if output is None:
@@ -3254,25 +3300,16 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
         if _is_metadata_path(path):
             continue
 
-        # Catastrophic-class checks (path-based bounds).
-        if path == "CLAUDE.md":
-            return False, f"claude-md-edited: {path}"
-        if path.startswith("agents/"):
-            return False, f"agent-file-edited: {path}"
-        if path.startswith("methodology/"):
-            return False, f"methodology-edited: {path}"
-        if path.startswith("templates/"):
-            return False, f"template-edited: {path}"
-        if path.startswith("tests/") and "D" in status:
-            return False, f"test-file-deleted: {path}"
-        # Rename whose source was under tests/ is semantically a test
-        # removal — porcelain `R` keeps the source path on the LHS of
-        # " -> ", which we'd otherwise discard.
-        if src_path is not None and src_path.startswith("tests/"):
-            return False, f"test-file-deleted: {src_path} (renamed out)"
-        # Newly-tracked file: staged-add (X=='A') or untracked ('??').
-        if status[0] == "A" or status == "??":
-            return False, f"new-file: {path}"
+        is_addition = status[0] == "A" or status == "??"
+        is_deletion = "D" in status
+        violation = _classify_trivial_change(
+            path=path,
+            src_path=src_path,
+            is_addition=is_addition,
+            is_deletion=is_deletion,
+        )
+        if violation is not None:
+            return False, violation
 
     return True, ""
 
@@ -3819,6 +3856,139 @@ def cmd_check_pr_doc_only(project_dir: Path) -> int:
     return 1
 
 
+def _pr_diff_is_trivial(project_dir: Path) -> tuple[bool, str]:
+    """Shared helper: is every commit on ``merge-base...HEAD`` fileset-
+    eligible per Chunk 04's ``Type: trivial`` path bounds?
+
+    Returns ``(is_trivial, status_message)``. ``is_trivial`` is True only
+    when at least one commit exists ahead of base AND every commit's
+    file changes satisfy ``_classify_trivial_change``. The first
+    violating commit short-circuits with a reason naming the SHA and
+    the specific bound (e.g.
+    ``"not-trivial: commit a1b2c3d agent-file-edited: agents/foo.md"``).
+
+    Mirrors ``_pr_diff_is_doc_only`` at the PR boundary — same base
+    resolution via ``_coverage_resolve_base``, same fail-closed posture
+    on missing base / git failure / empty diff. Does NOT re-validate
+    rationale fit; that's the per-chunk Critic's job at chunk-mode
+    review time. This helper trusts that every chunk's rationale was
+    Critic-passed and only checks the structural file-set bounds.
+
+    Per-commit (not cumulative) walk: a PR that adds an ``agents/``
+    file in commit 1 and removes it in commit 2 has an empty cumulative
+    diff but is NOT fast-path eligible — the commit 1 violation is
+    real signal that the work crossed a catastrophic-blast-radius
+    boundary at least once during the build.
+    """
+    base, base_note = _coverage_resolve_base(project_dir)
+    if base is None:
+        return False, f"no-base: {base_note}"
+
+    # `git log --name-status --format=%H` emits one commit SHA per line
+    # followed by one tab-separated <status>\t<path> (or
+    # <status>\t<src>\t<dst> for renames) line per changed file, with
+    # a blank line between commits. Reverse order is irrelevant — we
+    # short-circuit on first violation regardless.
+    proc = subprocess.run(
+        [
+            "git",
+            "log",
+            "--name-status",
+            "-M",  # enable rename detection so test-renamed-out-of-tests/ trips
+            "--format=%H",
+            f"{base}..HEAD",
+        ],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return False, f"git-failed: git log {base}..HEAD failed: {proc.stderr.strip()}"
+
+    lines = proc.stdout.splitlines()
+    if not any(line.strip() for line in lines):
+        return False, f"empty-diff: no commits ahead of {base}"
+
+    current_sha: str | None = None
+    commits_seen = 0
+    for raw in lines:
+        line = raw.rstrip()
+        if not line:
+            continue
+        # A bare 40-hex line is a commit header.
+        if len(line) == 40 and all(c in "0123456789abcdef" for c in line):
+            current_sha = line
+            commits_seen += 1
+            continue
+        # Otherwise it's a name-status entry for the current commit.
+        if current_sha is None:
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status = parts[0].strip()
+        if not status:
+            continue
+        # R<score> / C<score> rows are: <status>\t<src>\t<dst>
+        src_path: str | None = None
+        if status[0] in ("R", "C") and len(parts) >= 3:
+            src_path = parts[1].strip()
+            path = parts[2].strip()
+        else:
+            path = parts[-1].strip()
+        if not path or _is_metadata_path(path):
+            continue
+        is_addition = status == "A"
+        is_deletion = status == "D"
+        violation = _classify_trivial_change(
+            path=path,
+            src_path=src_path,
+            is_addition=is_addition,
+            is_deletion=is_deletion,
+        )
+        if violation is not None:
+            return False, f"not-trivial: commit {current_sha[:7]} {violation}"
+
+    return True, (
+        f"trivial: {commits_seen} commit(s) ahead of {base} all fileset-eligible"
+    )
+
+
+def cmd_check_pr_trivial(project_dir: Path) -> int:
+    """Fast-path gate for `/pr create`: report whether every commit in
+    ``merge-base...HEAD`` is fileset-eligible per Chunk 04's
+    ``Type: trivial`` path bounds.
+
+    Exit 0 when at least one commit exists ahead of base AND every
+    commit clears the bounds — the `/pr` skill skips the cumulative-
+    Critic and PR-reviewer gates in this case. This is the PR-boundary
+    parallel to the doc-only fast-path: same fail-closed shape, same
+    Gate-3 alignment at session end.
+
+    Exit 1 otherwise (any commit touches ``agents/``/``methodology/``/
+    ``templates/``/``CLAUDE.md``, adds a new file, removes a test
+    file, empty diff, no resolvable base, or git failure). Fails
+    closed: when the gate cannot be evaluated, fall through to the
+    full review path rather than silently skipping it.
+    """
+    is_trivial, status = _pr_diff_is_trivial(project_dir)
+    if is_trivial:
+        print(
+            f"{status} — cumulative-Critic and PR-reviewer gates may be skipped."
+        )
+        return 0
+    suffix = (
+        ". Trivial fast-path is not applicable."
+        if status.startswith("empty-diff")
+        else ". Falling back to full review path."
+        if status.startswith(("no-base", "git-failed"))
+        else ". Full review required."
+    )
+    print(f"{status}{suffix}", file=sys.stderr)
+    return 1
+
+
 def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     """Print ``<mode>|<rationale>`` for the inferred ``/critic`` mode.
 
@@ -3858,7 +4028,7 @@ _USAGE = (
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
-    "check-pr-doc-only|regen-views|infer-critic-mode [args]}"
+    "check-pr-doc-only|check-pr-trivial|regen-views|infer-critic-mode [args]}"
 )
 
 
@@ -3892,6 +4062,8 @@ def main() -> int:
         return cmd_accept_operator_verification(project_dir, rationale)
     elif command == "check-pr-doc-only":
         return cmd_check_pr_doc_only(project_dir)
+    elif command == "check-pr-trivial":
+        return cmd_check_pr_trivial(project_dir)
     elif command == "regen-views":
         return cmd_regen_views(project_dir)
     elif command == "infer-critic-mode":

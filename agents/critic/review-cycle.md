@@ -57,6 +57,7 @@ Default `Type:` is `code` — fail-closed. A missing or unrecognized `Type:` is 
 |---|---|---|---|---|---|---|
 | `code` (default) | Code or behavior changes | full | full | full | required | fires |
 | `doc-only` | Methodology / template / prose-only edits | prose & numeric counts only | requirement coverage of prose deliverables | scope discipline | skipped (no test evidence required) | fires unless session is empirically doc-only too (file-extension based) |
+| `trivial` | Small-blast-radius code change (rename, type annotations, mechanical edit) within Chunk 04 file-set bounds | full | full | full + **rationale-vs-diff fit** sub-check (see Goal 3 in SKILL.md) | required | fires (file-set bounds + `**Trivial because:**` rationale enforced structurally) |
 | `cleanup` | Branch hygiene, file moves, dead-code removal | structural-only (no broken refs) | requirement coverage | scope discipline; tolerate zero diff | skipped | fires |
 | `designer-handoff` | Visual / token / design-asset handoff to a human designer | skipped | skipped | skipped | skipped | **skipped** (formalized carveout — previously a user-memory rule) |
 | `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — triggers `/critic cumulative` in addition to the chunk's own `final` review | — | — | — | fires |

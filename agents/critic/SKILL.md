@@ -77,6 +77,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - No undocumented architectural decisions → **BLOCKING**.
 - No extra functionality beyond what was planned → **WARNING**.
 - No broad exception handling without logging/re-raising → **WARNING**. Catches marked with `# prawduct:ok-broad-except` are reviewed-but-verifiable: check that they log with context and are at genuine system boundaries. The marker means "intentional," not "exempt."
+- **Rationale-vs-diff fit (`Type: trivial` only)**: compare `**Trivial because:**` claim vs diff. Mismatch (claim "rename" but diff adds defs; "type annotations" but control flow changes; "logging" but behavior shifts) → **BLOCKING** (scope expansion). Low-information rationale ("small change", "easy fix") → **WARNING** (no testable claim). Examples in `methodology/planning.md`.
 
 ### 4. Everything Is Coherent
 - Artifacts are consistent with each other and with code.
