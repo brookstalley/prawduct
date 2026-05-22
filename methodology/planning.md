@@ -82,20 +82,22 @@ When confidence is Medium or Low, the plan also lists *what would raise it*. Don
 
 ### Critic Mode Per Chunk
 
-Every chunk in a build plan declares `Critic mode: chunk | final`. The mode controls how heavy the per-chunk review is — this is what makes Critic review proportional rather than re-paying full-review cost on every chunk.
+`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is so the cycle doesn't re-pay full-review cost on every chunk. Four modes are available: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `agents/critic/SKILL.md`). Declare `Critic mode:` explicitly only when the plan needs to override what inference would pick — e.g., forcing `final` on an early chunk that lands an architectural keystone (see the override examples below).
 
-**Heuristic when authoring a build plan:**
-- **Single-chunk plan** → `final`. The one Critic run is also the end-of-cycle synthesis.
-- **Multi-chunk plan** → first N-1 chunks `chunk`, last chunk `final`. Each per-chunk review covers Goals 1-3 against just that chunk's diff (target 1-2 min); the final chunk's review covers all 7 goals plus Learnings Cross-Check, Backlog Reconciliation, and Framework-Specific Checks against the full session diff (target 4-10 min).
-- **Trivial chunks** (typo-level edits buried inside a larger plan) → waive Critic entirely via `.gates-waived`.
+**Heuristic — what inference will pick, and when to override:**
+- **Single-chunk plan** → inference picks `final` (no prior committed chunks). No declaration needed.
+- **Multi-chunk plan** → inference picks `chunk` for non-final chunks (prior chunks committed, more chunks pending) and `final` for the last chunk. No declaration needed for the common case.
+- **Override forward to `final`** on an early chunk that lands an architectural keystone whose coherence matters before later chunks build on it — Goals 4-7 + cross-checks pay off here even mid-plan.
+- **Override forward to `cumulative`** on the last chunk of a multi-chunk plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the Type triggers a cumulative pass on top of the chunk's `final` review; the explicit `Critic mode:` field is not required for this case).
+- **Trivial chunks** (typo-level edits buried inside a larger plan) → waive Critic entirely via `.gates-waived`. For bounded mechanical code changes, prefer `Type: trivial` over the waiver (see Choosing a Chunk Type below).
 
 **Why this layering:** the per-chunk goals (Nothing Is Broken, Missing, Unintended) catch the high-frequency failures — fix-by-fudging, dropped requirements, broad exceptions — and they're cheap to run because they scope to local changes. The final-chunk goals (Coherence, Decisions, Understood, Design, plus the cross-checks) need the full diff to do their job — coherence is across files, design is a system-wide property — so they belong at the end of the cycle, not on every chunk.
 
-**Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk has been committed, so the working-tree diff is just the current chunk's changes. Plans that batch-commit at the end break the assumption — if you need that, declare every chunk `final` (squash-at-end with full-review-per-chunk is heavy but safe; squash-at-end with `chunk`-mode is wrong because the diff scope is unbounded).
+**Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk has been committed, so the working-tree diff is just the current chunk's changes. Plans that batch-commit at the end break the assumption — if you need that, override every chunk to `final` (squash-at-end with full-review-per-chunk is heavy but safe; squash-at-end with `chunk`-mode is wrong because the diff scope is unbounded).
 
-**Fail-safe default:** if `Critic mode:` is absent from a chunk, the build cycle treats it as `final`. Don't omit the field expecting the default — declare it. The Critic itself, if invoked without a recognized mode token in `$ARGUMENTS`, also defaults to `final`. Both layers fail safe to thoroughness.
+**Fail-safe defaults.** If `Critic mode:` is absent and inference cannot make a confident call, both the build cycle and the Critic itself default to `final`. Both layers fail safe to thoroughness — but rely on inference rather than omitting the field as a shortcut to `final`. If you want `final`, let inference pick it for the last chunk or declare it explicitly when overriding earlier.
 
-See `methodology/building.md` for the runtime behavior (how the build cycle reads the mode and invokes `/critic`) and `agents/critic/review-cycle.md` for the per-mode behavior table.
+See `methodology/building.md` for the runtime behavior (how `/critic` infers mode and accepts overrides) and `agents/critic/review-cycle.md` for the per-mode behavior table.
 
 ### Choosing a Chunk Type
 

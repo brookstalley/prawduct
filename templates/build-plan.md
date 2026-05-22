@@ -174,7 +174,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   - What artifacts to read (which specs govern this chunk)
   - What tests to write (mapped from test-specifications)
   - Acceptance criteria (concrete, verifiable)
-  - Critic mode (`chunk` for fast per-chunk review; `final` for end-of-cycle synthesis)
+  - Critic mode (optional — `/critic` infers from git + plan state; declare only to override)
   - Dependencies (which chunks must complete first)
   - Done-when steps (acceptance + Critic + commit — use the standard list)
 -->
@@ -198,16 +198,32 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        or extends (e.g., "adds unit tests for scoring logic, integration test for
        DB persistence, extends E2E test for full score flow"). -->
 - **Acceptance criteria:** [Concrete checks — "npm test passes", "page renders scores", etc.]
-- **Critic mode:** [pick one: `chunk` or `final`]
-  <!-- Replace the bracketed placeholder with the single chosen value, not both.
-       Heuristic: first N-1 chunks of a multi-chunk plan use `chunk` (fast review,
-       Goals 1-3 only, target 1-2 min). Last chunk uses `final` (full review, all
-       7 goals, target 4-10 min). Single-chunk plans use `final`. Trivial chunks
-       (typo-level edits inside a larger plan) waive Critic via `.gates-waived`.
-       Missing field → builder treats as `final` (fail-safe to thoroughness).
-       The third mode, `cumulative`, is invoked separately before `/pr create`
-       (not a per-chunk mode — see Governance Checkpoints below).
+- **Critic mode:** [optional — omit and let `/critic` infer, or pick one to override: `chunk` | `final` | `cumulative` | `verify-resolutions`]
+  <!-- The field is OPTIONAL. At runtime `/critic` (no args) infers the mode from
+       git state + build-plan position via `tools/product-hook infer-critic-mode`
+       and records `mode_chosen_by` as the helper's verbatim rationale string
+       (e.g., "rule-3 final: ..."), or as the literal string `"explicit-args"`
+       when a slash-command argument overrode inference. Inference
+       picks `chunk` for non-final chunks of a multi-chunk plan and `final` for
+       the last chunk — the common case needs no declaration. Declare `Critic
+       mode:` explicitly only when you need to override inference (e.g., forcing
+       `final` on an early keystone chunk, or `cumulative` when batching).
+       Trivial chunks (typo-level edits inside a larger plan) waive Critic
+       entirely via `.gates-waived`.
+
+       Four modes:
+       - `chunk` (Goals 1-3, target 1-2 min) — fast per-chunk review.
+       - `final` (all 7 goals + cross-checks, target 4-10 min) — end-of-cycle
+         synthesis. Default if inference fails or the field is absent.
+       - `cumulative` (all 7 goals against `merge-base...HEAD`, target 4-10 min) —
+         the `/pr create` gate; can also be triggered by declaring
+         `Type: cumulative-final` on the last chunk.
+       - `verify-resolutions` (Goals 1-3 against prior review's scope, target
+         1-2 min) — re-review mode after fixing prior BLOCKING/WARNING findings.
+
+       Missing field → inference. Unrecognized override → `final` (fail-safe).
        See `agents/critic/review-cycle.md` for full per-mode behavior. -->
+
 - **Type:** [optional — defaults to `code`. Allowed: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`]
   <!-- The Type axis is orthogonal to Critic mode — mode controls how deep the
        review is; Type controls what kind of work is under review (v1.4 F6).

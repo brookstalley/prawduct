@@ -21,14 +21,14 @@ The stop hook enforces review for code changes when a build plan exists. It also
 
 ## Mode Selection
 
-The build plan is authoritative. Each chunk declares `Critic mode: chunk | final` (see `templates/build-plan.md`). The build cycle reads the field and invokes `/critic chunk` or `/critic final` accordingly.
+Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical caller is `/critic` (no args) — the SKILL invokes `python3 tools/product-hook infer-critic-mode` to pick the mode from git + build-plan state and records `mode_chosen_by` as the verbatim rationale string the helper returns (e.g., `"rule-3 final: last unchecked chunk of 4-chunk plan is in progress"`), or as the literal string `"explicit-args"` when `$ARGUMENTS` overrode inference. The build plan's `Critic mode:` field is the **build-plan-level override**; an explicit slash-command argument (`/critic chunk` etc.) is the **per-invocation override** on top of that. See `methodology/planning.md` "Critic Mode Per Chunk" for the heuristic of when an explicit declaration is worth the override.
 
-**Heuristic when authoring a build plan:**
-- Single-chunk plan → `final`.
-- Multi-chunk plan → first N-1 chunks `chunk`, last chunk `final`.
-- Trivial chunks (typo-level edits buried inside a larger plan) → waive entirely.
+**Heuristic when authoring a build plan** (mostly matches what inference will pick — declare `Critic mode:` only to override):
+- Single-chunk plan → `final` (inference picks this; no declaration needed).
+- Multi-chunk plan → first N-1 chunks `chunk`, last chunk `final` (inference picks this; no declaration needed).
+- Trivial chunks (typo-level edits buried inside a larger plan) → waive entirely via `.gates-waived`.
 
-**Fail-safe default:** if the field is absent, the build cycle treats the chunk as `final`. Do not omit the field expecting the default — declare it. If the Critic itself is invoked without `$ARGUMENTS` or with an unrecognized mode, it runs `final`.
+**Fail-safe default:** if inference cannot anchor a confident pick and the build plan's `Critic mode:` field is absent, the build cycle treats the chunk as `final`. If the Critic itself is invoked with an unrecognized mode argument, it also runs `final`. Both layers fail safe to thoroughness.
 
 ## Per-Mode Behavior
 

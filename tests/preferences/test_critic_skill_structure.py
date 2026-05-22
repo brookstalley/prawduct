@@ -188,15 +188,11 @@ class TestCriticEntrySkillEnumeratesAllModes:
             f"`argument-hint:` line in frontmatter; found {len(hint_lines)}."
         )
         hint = hint_lines[0]
-        # Framework Critic supports verify-resolutions (v1.5 Chunk 02);
-        # product entry template currently does not (Chunk 02 didn't
-        # propagate the fourth mode to templates/skill-critic.md — caught
-        # as a follow-up by Chunk 03). Per-file required set reflects what
-        # the file's caller actually accepts today.
-        if path == _FRAMEWORK_ENTRY_SKILL:
-            required = ("chunk", "final", "cumulative", "verify-resolutions")
-        else:
-            required = ("chunk", "final", "cumulative")
+        # Both framework and product entry template must enumerate all four
+        # modes (v1.5 Chunk 06 propagated `verify-resolutions` into
+        # `templates/skill-critic.md`, closing the Chunk 02 gap that the
+        # per-file required-set carve-out was tracking).
+        required = ("chunk", "final", "cumulative", "verify-resolutions")
         for mode in required:
             assert mode in hint, (
                 f"{path.relative_to(REPO_ROOT)} `argument-hint` line "
