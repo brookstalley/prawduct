@@ -3,7 +3,7 @@ description: Independent Critic review — quality governance for code changes
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
+allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Bash(python3 tools/product-hook compute-verify-resolutions-scope), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---
 

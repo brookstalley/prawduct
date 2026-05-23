@@ -3,6 +3,22 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-23: v1.5.1 Chunk 03 — Expose `compute-verify-resolutions-scope` as CLI subcommand
+
+<!-- prawduct: chunks=03 | status=shipped | scope=v1.5.1 -->
+
+**Why:** Defense-in-depth gap surfaced by v1.5 Chunk 02 NOTE. The widening-threshold demotion logic lived inside the stop-hook helper `_compute_verify_resolutions_scope`; the Critic agent computed verify-resolutions scope from SKILL.md prose. If the agent misapplied the prose, it would write a findings file with a wrong `files_reviewed` set and the gate's subset check would accept it (gate enforces only subset, not widening). Two independent computations of the same rule is a drift waiting to happen.
+
+**What:** New `tools/product-hook compute-verify-resolutions-scope` subcommand — a thin CLI wrapper around the canonical `_compute_verify_resolutions_scope` helper. Output format: stdout = newline-separated file paths (the scope union); stderr = one reason line. Exit codes: 0 = scope computed (use the files); 1 = cannot compute (missing prior findings, no `commit_reviewed`, unresolved commit, no actionable findings, git failure, invalid files_reviewed); 2 = scope widened past `len(delta) > 2 * len(prior) + 5`. Fail-safe direction: any exit ≠ 0 → Critic falls back to `/critic chunk` or `/critic final`.
+
+Critic SKILL surfaces updated to call the subcommand instead of computing scope from prose: `agents/critic/review-cycle.md` (canonical), `templates/critic-review.md`, `.prawduct/critic-review.md`. Both Critic skill `allowed-tools` frontmatters (`.claude/skills/critic/SKILL.md`, `templates/skill-critic.md`) gain the narrow permission `Bash(python3 tools/product-hook compute-verify-resolutions-scope)` — exact subcommand string, no wildcard, preserving the v1.5.1 Chunk 02 deny-list discipline.
+
+**Tests:** new `TestComputeVerifyResolutionsScopeSubcommand` in `tests/test_product_hook.py` (+6). Covers each exit path (0/1/2 across four reason categories) plus a parity test asserting subcommand stdout matches the helper's return value exactly — guards against the two paths drifting on every future change. Full suite 1433/1433.
+
+**Critic:** chunk-mode → 0 BLOCKING / 0 WARNING / 0 NOTE. Clean first pass.
+
+**Backlog:** closes "Expose `_compute_verify_resolutions_scope` as a CLI subcommand for the Critic agent" (2026-05-21).
+
 ## 2026-05-23: v1.5.1 Chunk 02 — Critic `allowed-tools` deny-list (block pytest)
 
 <!-- prawduct: chunks=02 | status=shipped | scope=v1.5.1 -->
