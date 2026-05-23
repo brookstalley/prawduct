@@ -10,6 +10,14 @@
 ---
 artifact: build-plan
 version: 2
+# Optional. When set to a non-null string (and `views_enabled: true` in
+# project-state.yaml), `regen-views` filters change-log entries to this
+# scope when flipping Status checkboxes — prevents cross-version chunk-ID
+# collisions (e.g., v1.4's `chunks=05 | scope=v1.4 | status=shipped`
+# flipping v1.5's chunk 05). Omit / set to `null` for single-version
+# products (legacy unfiltered union); set to a scope tag like `v1.5.1`
+# for multi-version products that reuse chunk numbering across releases.
+scope: null
 depends_on:
   - artifact: product-brief
   - artifact: data-model

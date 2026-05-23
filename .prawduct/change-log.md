@@ -3,6 +3,22 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-23: v1.5.1 Chunk 01 — `regen-views` scope-aware Status flipping
+
+<!-- prawduct: chunks=01 | status=shipped | scope=v1.5.1 -->
+
+**Why:** Active v1.5 bug. `collect_shipped_chunks` unioned every `chunks=` tag across all change-log entries, ignoring `scope=`. v1.4 chunks 05/06/07 share IDs with v1.5 chunks 02/05/06/07; every `regen-views` run would re-flip the wrong checkboxes, so v1.5 chunks were marked `[x]` by hand with an HTML-comment warning telling builders not to run regen. First Tier-1 item in the v1.5.1 backlog-followups plan.
+
+**What:** Three new helpers in `tools/lib/views.py`. (1) `_parse_build_plan_frontmatter_scope(content)` reads `scope:` from a build-plan's YAML frontmatter, tolerating the production shape (leading HTML comment block before the opening `---`) and treating YAML null literals (`null`/`NULL`/`~`/empty) as absent. (2) `_detect_active_scope(build_plan_content, change_log_content=None)` resolves the active scope: frontmatter wins; otherwise the most-recent change-log entry's `scope=` tag; otherwise None (fail-safe). (3) `collect_shipped_chunks(entries, scope=None)` filters by scope when set, preserves legacy unfiltered union when None. `build_status_view` calls `_detect_active_scope` and threads the result through.
+
+**Backward compatibility:** Products without `scope:` frontmatter and change-logs without `scope=` tags get the legacy unfiltered union — zero behavior change. `templates/build-plan.md` ships `scope: null` as the documented "opt-out" form (parser returns None).
+
+**Tests:** +20 covering `TestCollectShippedChunks` scope cases (+3), `TestParseBuildPlanFrontmatterScope` (+12, including 4 HTML-comment-then-frontmatter fixtures that mirror every real build-plan), `TestDetectActiveScope` (+4), `TestRegenViewsScopeFilter` (+5, including the production shape and the "scoped plan with no matching entries yet" no-op case). Full suite 1423/1423 passing.
+
+**Dogfood:** Running `regen-views` against this very v1.5.1 plan after Chunk 01 lands correctly leaves all v1.5.1 chunks `[ ]` (no v1.5.1-scoped entries yet other than this one); v1.4 and v1.5.0 entries no longer bleed through.
+
+**Critic:** chunk-mode initial review → 3 BLOCKING (HTML-comment-skip parser bug; YAML null literal handling; `verify-chunk-refs` failed on `tools/lib/views.py:116` ref). All three resolved + plan deliverable text patched to match the shipped signature. verify-resolutions re-review → 0 BLOCKING, 1 WARNING (doc-drift only); WARNING also patched. Backlog item "`regen-views` doesn't filter by `scope=`" (2026-05-21) resolved.
+
 ## 2026-05-22: v1.5.0 — Critic proportionality (release)
 
 <!-- prawduct: chunks=00,01,02,03,04,05,06,07 | release=v1.5.0 | status=shipped | scope=v1.5 -->

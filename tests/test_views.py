@@ -171,6 +171,156 @@ class TestCollectShippedChunks:
         ]
         assert views.collect_shipped_chunks(entries) == set()
 
+    def test_scope_filter_includes_only_matching(self):
+        entries = [
+            views.ChangeLogEntry(
+                title="v1.4 chunk 05",
+                tags={"chunks": ["05"], "status": "shipped", "scope": "v1.4"},
+            ),
+            views.ChangeLogEntry(
+                title="v1.5 chunk 02",
+                tags={"chunks": ["02"], "status": "shipped", "scope": "v1.5"},
+            ),
+            views.ChangeLogEntry(
+                title="v1.5 chunk 05",
+                tags={"chunks": ["05"], "status": "shipped", "scope": "v1.5"},
+            ),
+        ]
+        assert views.collect_shipped_chunks(entries, scope="v1.5") == {"02", "05"}
+        assert views.collect_shipped_chunks(entries, scope="v1.4") == {"05"}
+
+    def test_scope_none_preserves_legacy_unfiltered_union(self):
+        entries = [
+            views.ChangeLogEntry(
+                title="v1.4 chunk 05",
+                tags={"chunks": ["05"], "status": "shipped", "scope": "v1.4"},
+            ),
+            views.ChangeLogEntry(
+                title="v1.5 chunk 05",
+                tags={"chunks": ["05"], "status": "shipped", "scope": "v1.5"},
+            ),
+        ]
+        assert views.collect_shipped_chunks(entries, scope=None) == {"05"}
+        assert views.collect_shipped_chunks(entries) == {"05"}  # default
+
+    def test_scope_filter_excludes_untagged_entries(self):
+        entries = [
+            views.ChangeLogEntry(
+                title="untagged",
+                tags={"chunks": ["00"], "status": "shipped"},  # no scope=
+            ),
+            views.ChangeLogEntry(
+                title="v1.5 chunk 01",
+                tags={"chunks": ["01"], "status": "shipped", "scope": "v1.5"},
+            ),
+        ]
+        assert views.collect_shipped_chunks(entries, scope="v1.5") == {"01"}
+
+
+class TestParseBuildPlanFrontmatterScope:
+    def test_scope_field_present(self):
+        content = (
+            "---\n"
+            "artifact: build-plan\n"
+            "scope: v1.5\n"
+            "version: 2\n"
+            "---\n"
+            "## Status\n"
+        )
+        assert views._parse_build_plan_frontmatter_scope(content) == "v1.5"
+
+    def test_scope_field_quoted(self):
+        content = '---\nscope: "v1.5.1"\n---\n'
+        assert views._parse_build_plan_frontmatter_scope(content) == "v1.5.1"
+
+    def test_scope_field_null_or_empty_returns_none(self):
+        # YAML null literals are the documented "omitted" form
+        assert views._parse_build_plan_frontmatter_scope("---\nscope: null\n---\n") is None
+        assert views._parse_build_plan_frontmatter_scope("---\nscope: NULL\n---\n") is None
+        assert views._parse_build_plan_frontmatter_scope("---\nscope: ~\n---\n") is None
+        # Empty value is treated as absent
+        assert views._parse_build_plan_frontmatter_scope("---\nscope:\n---\n") is None
+        assert views._parse_build_plan_frontmatter_scope("---\nscope: \n---\n") is None
+
+    def test_scope_field_with_inline_comment(self):
+        content = "---\nscope: v1.5  # active version\n---\n"
+        assert views._parse_build_plan_frontmatter_scope(content) == "v1.5"
+
+    def test_no_frontmatter_returns_none(self):
+        assert views._parse_build_plan_frontmatter_scope("# Plan\nNo frontmatter.\n") is None
+
+    def test_frontmatter_without_scope_returns_none(self):
+        content = "---\nartifact: build-plan\nversion: 2\n---\n"
+        assert views._parse_build_plan_frontmatter_scope(content) is None
+
+    def test_scope_after_closing_frontmatter_marker_ignored(self):
+        """A `scope:` line outside the frontmatter is not the frontmatter scope."""
+        content = "---\nartifact: build-plan\n---\n## Notes\nscope: shouldnotmatch\n"
+        assert views._parse_build_plan_frontmatter_scope(content) is None
+
+    def test_indented_scope_ignored(self):
+        """Only column-0 `scope:` counts; nested keys don't."""
+        content = "---\ndepends_on:\n  scope: nested-not-frontmatter\n---\n"
+        assert views._parse_build_plan_frontmatter_scope(content) is None
+
+    def test_leading_html_comment_tolerated(self):
+        """Every real build-plan starts with an HTML comment header; the
+        parser must skip it before the opening ``---``."""
+        content = (
+            "<!-- Build Plan: v1.5.1\n"
+            "     Tier: 1 (Source of Truth)\n"
+            "-->\n"
+            "---\n"
+            "artifact: build-plan\n"
+            "scope: v1.5.1\n"
+            "---\n"
+            "## Status\n"
+        )
+        assert views._parse_build_plan_frontmatter_scope(content) == "v1.5.1"
+
+    def test_leading_single_line_html_comment_tolerated(self):
+        content = "<!-- one-liner -->\n---\nscope: v2\n---\n"
+        assert views._parse_build_plan_frontmatter_scope(content) == "v2"
+
+    def test_leading_blank_lines_before_comment_tolerated(self):
+        content = "\n\n<!-- header -->\n\n---\nscope: v3\n---\n"
+        assert views._parse_build_plan_frontmatter_scope(content) == "v3"
+
+    def test_html_comment_without_frontmatter_returns_none(self):
+        """Comment header but no frontmatter at all → None."""
+        content = "<!-- header -->\n# Plan\nNo frontmatter.\n"
+        assert views._parse_build_plan_frontmatter_scope(content) is None
+
+
+class TestDetectActiveScope:
+    def test_frontmatter_wins_over_inference(self):
+        build_plan = "---\nscope: v1.5\n---\n## Status\n"
+        change_log = (
+            "## 2026-05-22: latest\n"
+            "<!-- prawduct: chunks=00 | status=shipped | scope=v1.4 -->\n"
+        )
+        assert views._detect_active_scope(build_plan, change_log) == "v1.5"
+
+    def test_infers_from_most_recent_change_log_entry(self):
+        build_plan = "---\nartifact: build-plan\n---\n## Status\n"
+        change_log = (
+            "## 2026-05-22: newer\n"
+            "<!-- prawduct: chunks=00 | status=shipped | scope=v1.5 -->\n"
+            "\n"
+            "## 2026-05-01: older\n"
+            "<!-- prawduct: chunks=00 | status=shipped | scope=v1.4 -->\n"
+        )
+        assert views._detect_active_scope(build_plan, change_log) == "v1.5"
+
+    def test_returns_none_when_no_signal(self):
+        build_plan = "---\nartifact: build-plan\n---\n## Status\n"
+        change_log = "## 2026-05-22: untagged\nNo prawduct tag line.\n"
+        assert views._detect_active_scope(build_plan, change_log) is None
+
+    def test_returns_none_when_change_log_not_provided(self):
+        build_plan = "---\nartifact: build-plan\n---\n## Status\n"
+        assert views._detect_active_scope(build_plan, None) is None
+
 
 class TestExtractStatusSection:
     def test_finds_section(self):
@@ -287,6 +437,128 @@ class TestBuildStatusView:
         new, changes = self._scenario(change_log="## X\n", build_plan="# No status\n")
         assert new is None
         assert changes == []
+
+
+class TestRegenViewsScopeFilter:
+    """End-to-end: build-plan frontmatter `scope:` filters change-log entries.
+
+    Regression coverage for the v1.5 chunk-numbering collision: v1.4's
+    `chunks=05 | scope=v1.4 | status=shipped` must NOT flip v1.5's chunk 05.
+    """
+
+    def test_scoped_plan_ignores_other_scope_entries(self):
+        change_log = (
+            "## 2026-05-22: v1.5 chunk 01 shipped\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=v1.5 -->\n"
+            "\n"
+            "## 2026-05-19: v1.4 chunk 14 shipped (claims chunks 05,06,07,14)\n"
+            "<!-- prawduct: chunks=05,06,07,14 | status=shipped | scope=v1.4 -->\n"
+        )
+        build_plan = (
+            "---\n"
+            "artifact: build-plan\n"
+            "scope: v1.5\n"
+            "version: 2\n"
+            "---\n"
+            "## Status\n"
+            "- [ ] Chunk 01: A\n"
+            "- [ ] Chunk 05: B\n"  # would flip [x] under legacy unfiltered union
+            "- [ ] Chunk 06: C\n"  # same
+            "- [ ] Chunk 07: D\n"  # same
+            "## End\n"
+        )
+        new, changes = views.build_status_view(change_log, build_plan)
+        assert new is not None
+        assert "- [x] Chunk 01: A" in new
+        assert "- [ ] Chunk 05: B" in new  # NOT flipped — v1.4's claim ignored
+        assert "- [ ] Chunk 06: C" in new
+        assert "- [ ] Chunk 07: D" in new
+        assert {c[0] for c in changes} == {"01"}
+
+    def test_unscoped_plan_falls_back_to_legacy_behavior(self):
+        """Plan without `scope:` and change-log without `scope=` tags →
+        unfiltered union (legacy behavior preserved)."""
+        change_log = (
+            "## 2026-05-22: rel\n"
+            "<!-- prawduct: chunks=00,01 | status=shipped -->\n"
+        )
+        build_plan = "## Status\n- [ ] Chunk 00: A\n- [ ] Chunk 01: B\n## End\n"
+        new, changes = views.build_status_view(change_log, build_plan)
+        assert new is not None
+        assert "- [x] Chunk 00: A" in new
+        assert "- [x] Chunk 01: B" in new
+
+    def test_production_shape_html_comment_then_frontmatter(self):
+        """End-to-end with the exact shape every real build-plan uses: leading
+        HTML comment block, then ``---`` frontmatter with ``scope:``. Guards
+        against the parser silently failing on production files (which is what
+        the v1 implementation did)."""
+        change_log = (
+            "## 2026-05-22: v1.5.1 chunk 01 shipped\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=v1.5.1 -->\n"
+            "\n"
+            "## 2026-05-19: v1.4 historical\n"
+            "<!-- prawduct: chunks=01,05 | status=shipped | scope=v1.4 -->\n"
+        )
+        build_plan = (
+            "<!-- Build Plan: Prawduct v1.5.1\n"
+            "     Tier: 1 (Source of Truth)\n"
+            "-->\n"
+            "---\n"
+            "artifact: build-plan\n"
+            "version: 2\n"
+            "scope: v1.5.1\n"
+            "---\n"
+            "\n"
+            "## Status\n"
+            "- [ ] Chunk 01: A\n"
+            "- [ ] Chunk 05: B\n"  # v1.4's chunks=05 must NOT flip this
+            "## End\n"
+        )
+        new, changes = views.build_status_view(change_log, build_plan)
+        assert new is not None
+        assert "- [x] Chunk 01: A" in new
+        assert "- [ ] Chunk 05: B" in new
+        assert {c[0] for c in changes} == {"01"}
+
+    def test_scoped_plan_with_no_matching_entries_leaves_all_unshipped(self):
+        """Plan declares ``scope: v1.5.1`` but no v1.5.1 entries shipped yet —
+        the situation when Chunk 01 first lands. All checkboxes stay ``[ ]``;
+        v1.5/v1.4 entries do not bleed through."""
+        change_log = (
+            "## 2026-05-22: v1.5.0 final\n"
+            "<!-- prawduct: chunks=01,02,03 | status=shipped | scope=v1.5 -->\n"
+        )
+        build_plan = (
+            "<!-- header -->\n"
+            "---\n"
+            "scope: v1.5.1\n"
+            "---\n"
+            "## Status\n"
+            "- [ ] Chunk 01: A\n"
+            "- [ ] Chunk 02: B\n"
+            "- [ ] Chunk 03: C\n"
+            "## End\n"
+        )
+        new, changes = views.build_status_view(change_log, build_plan)
+        assert new is None
+        assert changes == []
+
+    def test_inferred_scope_filters_when_frontmatter_absent(self):
+        """Plan without frontmatter but change-log carries `scope=` tags →
+        infer scope from most-recent tagged entry and filter accordingly."""
+        change_log = (
+            "## 2026-05-22: latest, v1.5\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=v1.5 -->\n"
+            "\n"
+            "## 2026-05-19: older, v1.4\n"
+            "<!-- prawduct: chunks=05 | status=shipped | scope=v1.4 -->\n"
+        )
+        build_plan = "## Status\n- [ ] Chunk 01: A\n- [ ] Chunk 05: B\n## End\n"
+        new, changes = views.build_status_view(change_log, build_plan)
+        assert new is not None
+        assert "- [x] Chunk 01: A" in new
+        assert "- [ ] Chunk 05: B" in new  # v1.4's chunk-05 ignored via inference
 
 
 class TestIsViewsEnabled:
