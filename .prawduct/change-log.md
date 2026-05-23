@@ -3,6 +3,24 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-23: v1.5.1 Chunk 04 — Three bundled backlog follow-ups
+
+<!-- prawduct: chunks=04 | status=shipped | scope=v1.5.1 -->
+
+**Why:** Three independent surgical fixes bundled to amortize the per-chunk Critic-pass overhead. Each was filed in the backlog and is too small for its own chunk.
+
+**(a) Surface chunk-Type parse errors (backlog 2026-05-18):** `cmd_stop` previously discarded the `error` tuple element from `_parse_build_plan_chunk_type` (`chunk_type, _ = ...`). A typo'd `Type: code-only` (instead of `code`) was silently rejected by the parser; the author never saw the "unknown type: ..." message. Fix: capture the error and, when it begins with `unknown type:`, append `chunk-type-parse-error: ...` to `waiver_notes` (visible at session-end and in the next briefing). Restricted to `unknown type:` only — `chunk not found` / `missing build-plan` errors indicate fixture-shape issues, not user-actionable typos.
+
+**(b) `_classify_trivial_change` metadata symmetry (backlog 2026-05-22):** Pre-fix, `_is_metadata_path` was applied only to `path` (rename dst) in both `_is_trivial_fileset_eligible` and `_pr_diff_is_trivial` callers. A rename FROM a metadata path went through the classifier with the metadata src untouched. Practically unreachable (metadata paths are gitignored — git rarely produces such renames) but the asymmetry was real. Fix: moved the metadata check INTO `_classify_trivial_change` — returns `None` when EITHER `path` or `src_path` is a metadata path. Both gates now handle metadata uniformly; callers dropped their dst-only filter.
+
+**(c) Harden gitignore-drift test (backlog 2026-05-19):** `test_managed_paths_committed_wip_excluded` previously wrote `.gitignore` from the current `GITIGNORE_ENTRIES` set in the fixture, so `update_gitignore` found nothing to add and the test never exercised the gitignore-mutation path. The next chunk to add a new ignore entry would trigger `.gitignore` mutation and break the assertion. Fix: fixture now writes a deliberately-stale `.gitignore` (omits the first GITIGNORE_ENTRIES line), and the allowed-set in the assertion explicitly includes `.gitignore`. Sanity assertions verify the omitted entry was re-added.
+
+**Tests:** new `TestChunkTypeParseErrorSurfaces` (+2), new `TestClassifyTrivialChangeMetadataSymmetry` (+5), `test_managed_paths_committed_wip_excluded` rewritten in-place. Full suite 1440/1440.
+
+**Critic:** chunk-mode → 1 BLOCKING (build-plan refs trip verify-chunk-refs: line-numbered backticked paths like `tools/product-hook:2321`), 1 WARNING (Critic sandbox didn't block pytest invocation despite v1.5.1 Chunk 02's deny patterns — out-of-scope for Chunk 04; filed to backlog). BLOCKING fixed by rewriting the offending references; verify-resolutions re-review → 0/0/0 clean.
+
+**Backlog:** closes (a) "Surface chunk-Type parse errors to the user" (2026-05-18), (b) "`_pr_diff_is_trivial` applies `_is_metadata_path` to dst path only — rename src skipped" (2026-05-22), (c) "Harden `test_managed_paths_committed_wip_excluded`" (2026-05-19). Adds new entry: "v1.5.1 Chunk 02's `!Bash(pytest*)` deny patterns ... do NOT structurally block pytest invocation" (2026-05-23).
+
 ## 2026-05-23: v1.5.1 Chunk 03 — Expose `compute-verify-resolutions-scope` as CLI subcommand
 
 <!-- prawduct: chunks=03 | status=shipped | scope=v1.5.1 -->

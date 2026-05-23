@@ -3990,6 +3990,169 @@ class TestTrivialStopHookGate:
 
 
 # =============================================================================
+# v1.5.1 Chunk 04(a) — Type: parse errors surface as waiver_notes
+# =============================================================================
+
+
+class TestChunkTypeParseErrorSurfaces:
+    """When `_parse_build_plan_chunk_type` returns an error string (typo'd
+    Type value, etc.), the stop-hook must surface it in `waiver_notes`.
+    Pre-fix the error was silently discarded so the author never saw the
+    parser's "unknown type: ..." message.
+
+    The chunk still runs as `code` (parser fail-closed) — surfacing the
+    error doesn't change gate semantics; it just makes the typo visible.
+    """
+
+    def _write_plan_with_type(self, prawduct: Path, type_value: str) -> None:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Test\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Test\n\n"
+            f"- **Type:** {type_value}\n"
+        )
+
+    def _make_findings(self, prawduct: Path) -> None:
+        """Fresh blocking-free findings so the Critic gate is satisfied —
+        isolates the parse-error surface from the Critic gate."""
+        mod = _load_product_hook()
+        (prawduct / ".critic-findings.json").write_text(
+            json.dumps(
+                {
+                    "files_reviewed": ["src/app.py"],
+                    "findings": [],
+                    "summary": "No issues found. Changes are ready to proceed.",
+                    "mode": mod._CRITIC_MODE_CHUNK,
+                }
+            )
+        )
+
+    def test_typoed_type_surfaces_in_waiver_notes(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan_with_type(prawduct, "code-only")  # typo of "code"
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: code change with a typo'd Type value; parse error should surface."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        # Chunk runs as code (parser default) → Critic gate handled by
+        # the fresh findings file; no BLOCKING. But waiver_notes carries
+        # the parse error.
+        assert "GATE WAIVERS" in result.stderr
+        assert "chunk-type-parse-error" in result.stderr
+        assert "code-only" in result.stderr
+
+    def test_absent_type_produces_no_parse_error(self, tmp_path: Path):
+        """Missing field → parser returns (`code`, None). No waiver_notes
+        entry for parse error."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Test\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Test\n\n"
+            "- **Description:** something\n"
+            # No Type: field.
+        )
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: code change without a Type field; should default to code."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert "chunk-type-parse-error" not in result.stderr
+
+
+# =============================================================================
+# v1.5.1 Chunk 04(b) — _classify_trivial_change symmetric metadata handling
+# =============================================================================
+
+
+class TestClassifyTrivialChangeMetadataSymmetry:
+    """`_classify_trivial_change` must treat metadata paths uniformly
+    whether they appear as the change's `path` (rename dst / single-file)
+    or `src_path` (rename src). Pre-fix, callers checked `_is_metadata_path`
+    only on dst; a rename FROM a metadata path (or TO one) was handled
+    asymmetrically by the two trivial gates (stop-hook vs PR-boundary).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    def test_rename_from_tests_to_metadata_path_classifies_as_metadata(self):
+        """The plan's acceptance case: rename tests/foo.py → .prawduct/x.json.
+        Pre-fix: depends on caller (stop-hook caller's dst metadata-skip
+        bypassed classifier; PR-boundary likewise). Post-fix: classifier
+        returns None (metadata) for both directions — symmetric."""
+        result = self.mod._classify_trivial_change(
+            path=".prawduct/metadata.json",
+            src_path="tests/foo.py",
+            is_addition=False,
+            is_deletion=False,
+        )
+        assert result is None, (
+            f"rename to metadata path should classify as metadata (None); got {result!r}"
+        )
+
+    def test_rename_from_metadata_path_to_normal_classifies_as_metadata(self):
+        """Inverse direction: rename .prawduct/x.json → src/y.json.
+        Pre-fix the src wasn't checked — classifier might have flagged
+        based on dst rules. Post-fix: src metadata triggers None return."""
+        result = self.mod._classify_trivial_change(
+            path="src/y.py",
+            src_path=".prawduct/old.json",
+            is_addition=False,
+            is_deletion=False,
+        )
+        assert result is None
+
+    def test_simple_metadata_path_classifies_as_metadata(self):
+        """Single-file edit of a metadata path → None (skip)."""
+        result = self.mod._classify_trivial_change(
+            path=".prawduct/.critic-findings.json",
+            src_path=None,
+            is_addition=False,
+            is_deletion=False,
+        )
+        assert result is None
+
+    def test_normal_rename_still_classified_normally(self):
+        """Regression guard: a normal rename src/old → src/new must still
+        be classified normally (not as metadata)."""
+        result = self.mod._classify_trivial_change(
+            path="src/new.py",
+            src_path="src/old.py",
+            is_addition=False,
+            is_deletion=False,
+        )
+        # Neither path is metadata, neither path is in agents/methodology/
+        # templates/CLAUDE.md, neither is a test deletion — eligible.
+        assert result is None
+
+    def test_normal_new_file_still_flagged(self):
+        """Regression guard: classifier still catches new-file violation."""
+        result = self.mod._classify_trivial_change(
+            path="src/brand_new.py",
+            src_path=None,
+            is_addition=True,
+            is_deletion=False,
+        )
+        assert result is not None
+        assert "new-file" in result
+
+
+# =============================================================================
 # PR-boundary trivial fast-path (Chunk 05)
 # =============================================================================
 

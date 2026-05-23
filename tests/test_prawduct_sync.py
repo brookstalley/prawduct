@@ -4214,8 +4214,24 @@ class TestAutoCommitSafety:
     def test_managed_paths_committed_wip_excluded(self, tmp_path: Path):
         """When committing, the auto-commit must NOT pull in WIP — but if WIP
         is present we don't auto-commit at all. This test pins the contract by
-        verifying that on success, the committed paths are framework-managed."""
+        verifying that on success, the committed paths are framework-managed.
+
+        v1.5.1 Chunk 04(c) — the fixture writes a deliberately-stale
+        ``.gitignore`` (omits the first GITIGNORE_ENTRIES line) so the next
+        sync's ``update_gitignore`` step actually mutates ``.gitignore`` and
+        that mutation lands in the auto-commit. Without the staleness, the
+        sync finds nothing to add and ``.gitignore`` never shows up in the
+        diff — the test silently stops exercising the gitignore-update path
+        the moment a new entry is appended to ``GITIGNORE_ENTRIES``.
+        """
         fix = _AutoCommitFixture(tmp_path)
+        # Overwrite the fixture's already-current .gitignore with a stale
+        # version missing one current entry — forces update_gitignore to
+        # mutate it during the upcoming sync.
+        stale_entries = list(GITIGNORE_ENTRIES)
+        assert len(stale_entries) >= 1, "GITIGNORE_ENTRIES is empty — fixture invariant broken"
+        omitted = stale_entries.pop(0)
+        (fix.product / ".gitignore").write_text("\n".join(stale_entries) + "\n")
         fix.init_git(branch="feature/work")
         fix.sync()
         # Inspect last commit's diff.
@@ -4226,9 +4242,21 @@ class TestAutoCommitSafety:
             check=True,
         )
         changed = [p for p in result.stdout.splitlines() if p]
-        managed = set(MANAGED_FILES.keys()) | {".prawduct/sync-manifest.json"}
+        # .gitignore is in the allowed-set because update_gitignore is a
+        # framework-owned mutation, not user WIP. Without listing it
+        # explicitly, the post-fix sync would fail this assertion.
+        managed = set(MANAGED_FILES.keys()) | {".prawduct/sync-manifest.json", ".gitignore"}
         for p in changed:
             assert p in managed or p.startswith(".prawduct/"), (
                 f"non-managed path {p} in auto-commit"
             )
+        # Sanity: confirm we actually exercised the gitignore-update path.
+        assert ".gitignore" in changed, (
+            f"sync should have re-added omitted entry {omitted!r} to .gitignore; "
+            f"diff was {changed!r}"
+        )
+        gitignore_after = (fix.product / ".gitignore").read_text()
+        assert omitted in gitignore_after, (
+            f"update_gitignore should have re-added {omitted!r}"
+        )
 
