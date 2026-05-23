@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v1.5.2
+
+**Entry:** 2026-05-23: v1.5.2 — Stop-hook waiver discoverability (release)
+
+**Chunks shipped:** 01
+
+**Scope:** v1.5.2
+
+See `.prawduct/change-log.md` for full details.
+
 ## v1.5.1
 
 **Entry:** 2026-05-23: v1.5.1 — Backlog follow-ups (release)
