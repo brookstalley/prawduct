@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v1.5.0
+
+**Entry:** 2026-05-22: v1.5.0 — Critic proportionality (release)
+
+**Chunks shipped:** 00, 01, 02, 03, 04, 05, 06, 07
+
+**Scope:** v1.5
+
+See `.prawduct/change-log.md` for full details.
+
 ## v1.4.0
 
 **Entry:** 2026-05-19: `/pr` doc-only fast-path

@@ -13,6 +13,8 @@ The Critic ensures work quality per-chunk. The cumulative-mode Critic (`/critic 
 5. Read `.prawduct/learnings.md` for project-specific patterns.
 6. Review against the goals below.
 
+**You may be skipped.** Two PR-boundary fast-paths in `/pr create` skip this reviewer when the cumulative pass would add no signal: doc-only (every file in `merge-base...HEAD` is `.md`) and trivial-code (every commit is fileset-eligible per the `Type: trivial` path bounds — no `agents/`/`methodology/`/`templates/`/`CLAUDE.md` edits, no test deletions, no new files; per-chunk Critic Goal 3 rationale-vs-diff review is the judgment backstop). If `/pr create` invoked you anyway under one of these fast-paths, run the full review — the fast-path is a caller-side optimization, not a reviewer-side waiver. Fail closed in both directions.
+
 ## Review Goals
 
 Your goals, in priority order:

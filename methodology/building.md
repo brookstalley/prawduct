@@ -84,7 +84,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
-**Critic review.** Read the chunk's `Critic mode:` and run `/critic chunk` or `/critic final` (default `final` if absent). The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
+**Critic review.** Run `/critic` (no args) — the SKILL infers mode from git + build-plan state via `tools/product-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 
@@ -207,12 +207,14 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 
 ### Modes
 
-Each chunk declares `Critic mode:` in the build plan; the build cycle passes it to `/critic` via `$ARGUMENTS`.
+`/critic` (no args) infers from git + build-plan state via `tools/product-hook infer-critic-mode`; `Critic mode:` in the plan and an explicit slash arg are successive overrides. Four modes:
 
-- **`chunk`** — Goals 1-3 only against the chunk's uncommitted diff. Single-pass. Target 1-2 min.
-- **`final`** — all 7 goals + cross-checks + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
+- **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
+- **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.
+- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Gates `/pr create`.
+- **`verify-resolutions`** — Goals 1-3 against (prior `files_reviewed` ∪ files since `commit_reviewed`); re-review after fixing prior findings.
 
-Missing/unrecognized mode → `final`. See `agents/critic/review-cycle.md` for the per-mode table and `agents/critic/SKILL.md` (framework) or `.prawduct/critic-review.md` (products) for goal definitions.
+Inference failure or unrecognized mode → `final`. See `agents/critic/review-cycle.md` (per-mode table) and `.prawduct/critic-review.md` (goals).
 
 **The Critic takes time.** Reviews take 1-5 minutes; don't check on it. While it reviews, do your own deep scrub — re-read changes for completeness, correctness, DRY, encapsulation, test coverage, UX, and docs. Self-review often pre-resolves findings.
 

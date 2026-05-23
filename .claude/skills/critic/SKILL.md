@@ -3,8 +3,8 @@ description: Independent Critic review — quality governance for framework chan
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Write, Agent
-argument-hint: chunk | final | cumulative
+allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Write, Agent
+argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---
 
 <!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only. -->
@@ -25,10 +25,10 @@ When using the coordinator pattern (medium/large reviews), tell each subagent: "
 
 ## Getting Started
 
-1. **Read mode from `$ARGUMENTS`.** If it contains `chunk`, run `chunk` mode (fast, goals 1-3 only). If `final`, run `final` mode (full review including framework-specific checks 7-10). If `cumulative`, run `cumulative` mode (all 7 goals, scope = `git diff $(git merge-base <base-branch> HEAD)...HEAD`, base typically `main` — see `agents/critic/review-cycle.md`). If empty, missing, or unrecognized, default to `final` — fail safe to thoroughness. Never silently downgrade to `chunk`.
+1. **Resolve mode.** If `$ARGUMENTS` contains a recognized mode token (`chunk`, `final`, `cumulative`, or `verify-resolutions`), use it and record `mode_chosen_by: "explicit-args"` in your findings file. Otherwise (no args / empty / unrecognized), run `python3 tools/product-hook infer-critic-mode` — stdout is one line `<mode>|<rationale>` (v1.5 Chunk 03). Use the mode it returns and record the rationale verbatim as `mode_chosen_by`. Inference precedence is `verify-resolutions > cumulative > final > chunk` (see `tools/lib/critic_mode.py` for the full rule set). Fall-through behavior when no rule fires: the helper returns `chunk` if an active build plan exists (the intended mid-plan default), `final` otherwise (fail-safe to thoroughness — no plan means no chunk to scope against). The subcommand itself can only fail by returning `final|fallback-no-tools-lib` when `tools/lib` is missing (legacy product repos that haven't received the inference helper). Never silently downgrade — always record the helper's verbatim rationale. Per-mode behavior: `chunk` = goals 1-3 against uncommitted diff. `final` = all 7 goals plus framework-specific checks 7-10. `cumulative` = all 7 goals against `git diff $(git merge-base <base-branch> HEAD)...HEAD`. `verify-resolutions` = goals 1-3 against prior `files_reviewed` ∪ files-since-`commit_reviewed`, demoting to `final` when the anchor is missing, scope widens past `len(delta) > 2 * prior + 5`, or prior findings hold no BLOCKING/WARNING (see "Verify-resolutions scope and demotion" in `agents/critic/review-cycle.md`).
 2. Read `agents/critic/SKILL.md` for the full review protocol — including the per-mode goal scoping and the two-form rule for the `mode` value (short token in / verbose string out).
 3. Read `.prawduct/project-state.yaml` for project context
 4. Read `.prawduct/.test-evidence.json` for test results, then run `python3 tools/product-hook test-status` to validate evidence is from this session (exit 1 = stale, raise as a WARNING in your review)
-5. Assess changes via `git diff` and reading changed files (use the merge-base diff for `cumulative` — see `agents/critic/review-cycle.md`)
-6. Execute the review following the protocol (including framework-specific checks in `final` and `cumulative` modes)
-7. Write findings to `.prawduct/.critic-findings.json` with the `mode` field set to the verbose string for your mode: `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, or `"cumulative (bundle review, ready for merge)"`.
+5. Assess changes via `git diff` and reading changed files (use the merge-base diff for `cumulative`; for `verify-resolutions`, scope = prior findings' surface ∪ files-since-`commit_reviewed` — see `agents/critic/review-cycle.md`)
+6. Execute the review following the protocol (including framework-specific checks in `final` and `cumulative` modes; goals 1-3 only for `verify-resolutions`)
+7. Write findings to `.prawduct/.critic-findings.json` with the `mode` field set to the verbose string for your mode: `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, `"cumulative (bundle review, ready for merge)"`, or `"verify-resolutions (delta review, prior findings only)"`. Also include `mode_chosen_by` — the verbatim rationale from `infer-critic-mode`, or the literal string `"explicit-args"` when `$ARGUMENTS` overrode inference. For `verify-resolutions`, `files_reviewed` must be the computed scope union.
