@@ -2521,6 +2521,209 @@ class TestVerifyResolutionsMode:
 
 
 # =============================================================================
+# compute-verify-resolutions-scope subcommand (v1.5.1 Chunk 03)
+# =============================================================================
+
+
+class TestComputeVerifyResolutionsScopeSubcommand:
+    """CLI wrapper around `_compute_verify_resolutions_scope`. Exposes the
+    canonical scope helper so the Critic SKILL can call it directly instead
+    of reimplementing the widening-threshold logic from prose. Defense-in-
+    depth: drift between agent-side and stop-hook-side computations is no
+    longer possible.
+
+    Exit codes:
+      0 - scope computed; stdout lists files; stderr reason starts ``ok:``.
+      1 - cannot compute (no findings, no commit_reviewed, unresolved
+          commit, no actionable findings, etc.) — Critic falls back to
+          chunk/final mode.
+      2 - scope-widened (delta > 2 * prior + 5) — Critic falls back to
+          final mode.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    def _run(self, project_dir: Path) -> subprocess.CompletedProcess:
+        # HOME points OUTSIDE project_dir so Python's xcode-shipped
+        # `__pycache__`/Library cache writes don't leak into the test repo
+        # as untracked files (which would inflate the widening-threshold
+        # delta count and falsely demote with "scope-widened: 50 files").
+        fake_home = project_dir.parent / f"{project_dir.name}-home"
+        fake_home.mkdir(exist_ok=True)
+        env = {
+            "HOME": str(fake_home),
+            "CLAUDE_PROJECT_DIR": str(project_dir),
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        return subprocess.run(
+            ["python3", str(HOOK_PATH), "compute-verify-resolutions-scope"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(project_dir),
+            timeout=20,
+        )
+
+    def _commit(self, repo: Path, msg: str) -> str:
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", msg, "--quiet"], cwd=repo, check=True)
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        )
+        return proc.stdout.strip()
+
+    def _make_prior_findings(
+        self,
+        prawduct: Path,
+        *,
+        commit_reviewed: str | None,
+        files_reviewed: list[str] | None = None,
+        severity: str = "blocking",
+        include_finding: bool = True,
+    ) -> Path:
+        data: dict = {
+            "files_reviewed": files_reviewed or ["src/app.py"],
+            "findings": (
+                [{"goal": "Nothing Is Broken", "severity": severity, "summary": "x"}]
+                if include_finding else []
+            ),
+            "summary": "Prior review.",
+            "mode": self.mod._CRITIC_MODE_CHUNK,
+        }
+        if commit_reviewed is not None:
+            data["commit_reviewed"] = commit_reviewed
+        path = prawduct / ".critic-findings.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_exit_zero_when_scope_computed(self, tmp_path: Path):
+        """ok: stdout lists files, exit 0, stderr starts with ``ok:``."""
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# v1\n")
+        prior_sha = self._commit(tmp_path, "v1")
+        (tmp_path / "src" / "app.py").write_text("# v2\n")
+        (tmp_path / "src" / "other.py").write_text("# new\n")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct,
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/app.py", "tools/product-hook"],
+        )
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert result.stderr.strip().startswith("ok:")
+        stdout_files = [f for f in result.stdout.splitlines() if f.strip()]
+        assert "src/app.py" in stdout_files
+        assert "src/other.py" in stdout_files
+        assert "tools/product-hook" in stdout_files
+
+    def test_exit_one_when_no_findings(self, tmp_path: Path):
+        """No prior findings file → exit 1, stderr names the reason."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 1
+        assert "no-findings:" in result.stderr
+        assert result.stdout == ""
+
+    def test_exit_one_when_no_commit_reviewed(self, tmp_path: Path):
+        """Pre-v1.5 findings (no anchor) → exit 1."""
+        _init_real_git_repo(tmp_path)
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(prawduct, commit_reviewed=None)
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 1
+        assert "no-commit-reviewed:" in result.stderr
+
+    def test_exit_one_when_no_actionable_findings(self, tmp_path: Path):
+        """Empty findings (clean review) → exit 1; nothing to verify."""
+        _init_real_git_repo(tmp_path)
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct, commit_reviewed="abc123" * 7, include_finding=False
+        )
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 1
+        assert "no-actionable-findings:" in result.stderr
+
+    def test_exit_two_when_scope_widens_past_threshold(self, tmp_path: Path):
+        """Demotion: len(delta) > 2*len(prior) + 5 → exit 2."""
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "anchor.txt").write_text("v1\n")
+        prior_sha = self._commit(tmp_path, "anchor")
+        # Prior surface 1; threshold 7. Add 8 new non-metadata files.
+        for i in range(8):
+            (tmp_path / f"new_{i}.py").write_text(f"# new {i}\n")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct, commit_reviewed=prior_sha, files_reviewed=["src/only.py"]
+        )
+
+        result = self._run(tmp_path)
+
+        assert result.returncode == 2
+        assert "scope-widened:" in result.stderr
+        assert "2 * prior + 5" in result.stderr
+
+    def test_subcommand_output_matches_helper(self, tmp_path: Path):
+        """Parity: subcommand stdout list equals the helper's return value.
+
+        Guards against the two paths drifting — the whole point of exposing
+        the helper as a subcommand is that both sides agree by construction.
+        """
+        _init_real_git_repo(tmp_path)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "a.py").write_text("v1\n")
+        (tmp_path / "src" / "b.py").write_text("v1\n")
+        prior_sha = self._commit(tmp_path, "v1")
+        (tmp_path / "src" / "a.py").write_text("v2\n")
+        (tmp_path / "src" / "c.py").write_text("new\n")
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._make_prior_findings(
+            prawduct,
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/a.py", "src/b.py"],
+        )
+
+        # Direct helper call
+        helper_scope, helper_reason = self.mod._compute_verify_resolutions_scope(
+            prawduct, tmp_path
+        )
+
+        # Subcommand call
+        result = self._run(tmp_path)
+        cli_scope = [f for f in result.stdout.splitlines() if f.strip()]
+
+        assert result.returncode == 0
+        assert cli_scope == helper_scope, (
+            f"subcommand stdout drift: cli={cli_scope!r} helper={helper_scope!r}"
+        )
+        assert result.stderr.strip() == helper_reason
+
+
+# =============================================================================
 # check-cumulative-critic subcommand (v1.4 F2 — PR gate)
 # =============================================================================
 
@@ -3784,6 +3987,169 @@ class TestTrivialStopHookGate:
         assert result.returncode == 2
         assert "TYPE: TRIVIAL" in result.stderr
         assert "test-file-deleted" in result.stderr
+
+
+# =============================================================================
+# v1.5.1 Chunk 04(a) — Type: parse errors surface as waiver_notes
+# =============================================================================
+
+
+class TestChunkTypeParseErrorSurfaces:
+    """When `_parse_build_plan_chunk_type` returns an error string (typo'd
+    Type value, etc.), the stop-hook must surface it in `waiver_notes`.
+    Pre-fix the error was silently discarded so the author never saw the
+    parser's "unknown type: ..." message.
+
+    The chunk still runs as `code` (parser fail-closed) — surfacing the
+    error doesn't change gate semantics; it just makes the typo visible.
+    """
+
+    def _write_plan_with_type(self, prawduct: Path, type_value: str) -> None:
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Test\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Test\n\n"
+            f"- **Type:** {type_value}\n"
+        )
+
+    def _make_findings(self, prawduct: Path) -> None:
+        """Fresh blocking-free findings so the Critic gate is satisfied —
+        isolates the parse-error surface from the Critic gate."""
+        mod = _load_product_hook()
+        (prawduct / ".critic-findings.json").write_text(
+            json.dumps(
+                {
+                    "files_reviewed": ["src/app.py"],
+                    "findings": [],
+                    "summary": "No issues found. Changes are ready to proceed.",
+                    "mode": mod._CRITIC_MODE_CHUNK,
+                }
+            )
+        )
+
+    def test_typoed_type_surfaces_in_waiver_notes(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        self._write_plan_with_type(prawduct, "code-only")  # typo of "code"
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: code change with a typo'd Type value; parse error should surface."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        # Chunk runs as code (parser default) → Critic gate handled by
+        # the fresh findings file; no BLOCKING. But waiver_notes carries
+        # the parse error.
+        assert "GATE WAIVERS" in result.stderr
+        assert "chunk-type-parse-error" in result.stderr
+        assert "code-only" in result.stderr
+
+    def test_absent_type_produces_no_parse_error(self, tmp_path: Path):
+        """Missing field → parser returns (`code`, None). No waiver_notes
+        entry for parse error."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Test\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: Test\n\n"
+            "- **Description:** something\n"
+            # No Type: field.
+        )
+        self._make_findings(prawduct)
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: code change without a Type field; should default to code."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert "chunk-type-parse-error" not in result.stderr
+
+
+# =============================================================================
+# v1.5.1 Chunk 04(b) — _classify_trivial_change symmetric metadata handling
+# =============================================================================
+
+
+class TestClassifyTrivialChangeMetadataSymmetry:
+    """`_classify_trivial_change` must treat metadata paths uniformly
+    whether they appear as the change's `path` (rename dst / single-file)
+    or `src_path` (rename src). Pre-fix, callers checked `_is_metadata_path`
+    only on dst; a rename FROM a metadata path (or TO one) was handled
+    asymmetrically by the two trivial gates (stop-hook vs PR-boundary).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    def test_rename_from_tests_to_metadata_path_classifies_as_metadata(self):
+        """The plan's acceptance case: rename tests/foo.py → .prawduct/x.json.
+        Pre-fix: depends on caller (stop-hook caller's dst metadata-skip
+        bypassed classifier; PR-boundary likewise). Post-fix: classifier
+        returns None (metadata) for both directions — symmetric."""
+        result = self.mod._classify_trivial_change(
+            path=".prawduct/metadata.json",
+            src_path="tests/foo.py",
+            is_addition=False,
+            is_deletion=False,
+        )
+        assert result is None, (
+            f"rename to metadata path should classify as metadata (None); got {result!r}"
+        )
+
+    def test_rename_from_metadata_path_to_normal_classifies_as_metadata(self):
+        """Inverse direction: rename .prawduct/x.json → src/y.json.
+        Pre-fix the src wasn't checked — classifier might have flagged
+        based on dst rules. Post-fix: src metadata triggers None return."""
+        result = self.mod._classify_trivial_change(
+            path="src/y.py",
+            src_path=".prawduct/old.json",
+            is_addition=False,
+            is_deletion=False,
+        )
+        assert result is None
+
+    def test_simple_metadata_path_classifies_as_metadata(self):
+        """Single-file edit of a metadata path → None (skip)."""
+        result = self.mod._classify_trivial_change(
+            path=".prawduct/.critic-findings.json",
+            src_path=None,
+            is_addition=False,
+            is_deletion=False,
+        )
+        assert result is None
+
+    def test_normal_rename_still_classified_normally(self):
+        """Regression guard: a normal rename src/old → src/new must still
+        be classified normally (not as metadata)."""
+        result = self.mod._classify_trivial_change(
+            path="src/new.py",
+            src_path="src/old.py",
+            is_addition=False,
+            is_deletion=False,
+        )
+        # Neither path is metadata, neither path is in agents/methodology/
+        # templates/CLAUDE.md, neither is a test deletion — eligible.
+        assert result is None
+
+    def test_normal_new_file_still_flagged(self):
+        """Regression guard: classifier still catches new-file violation."""
+        result = self.mod._classify_trivial_change(
+            path="src/brand_new.py",
+            src_path=None,
+            is_addition=True,
+            is_deletion=False,
+        )
+        assert result is not None
+        assert "new-file" in result
 
 
 # =============================================================================

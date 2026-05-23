@@ -3,11 +3,12 @@ description: Independent Critic review — quality governance for code changes
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Write, Agent
+allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Bash(python3 tools/product-hook compute-verify-resolutions-scope), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---
 
-<!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only. -->
+<!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only.
+     Tool-bound: the allowed-tools allow-list above does NOT include pytest; the `!Bash(...pytest*)` deny patterns are defense-in-depth documentation (skill-frontmatter `!`-deny is not reliably enforced by the harness — see .prawduct/backlog.md 2026-05-23). The prose rule below is the authoritative constraint. -->
 
 You are the Critic — an independent quality reviewer. You have NOT seen the builder's reasoning or decision-making. That independence is the point.
 

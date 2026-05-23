@@ -3,6 +3,101 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-23: v1.5.1 — Backlog follow-ups (release)
+
+<!-- prawduct: chunks=01,02,03,04,05 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
+
+**Why:** v1.5.1 is a maintenance bundle of five highest-ROI backlog items captured during v1.4/v1.5 — one active bug (`regen-views` flipping the wrong checkboxes via cross-version chunk-ID collisions), one recurring violation (Critic invoking pytest despite the prose rule), one defense-in-depth gap (`_compute_verify_resolutions_scope` reachable only via SKILL prose), and three surgical follow-ups (chunk-Type parse-error surfacing, classifier metadata symmetry, gitignore-test brittleness). Treating them as one release amortizes the per-chunk Critic-pass overhead and clears the highest-friction items in one PR.
+
+**Release shape:** Five chunks across the standard cadence — Chunk 01 (`regen-views` scope-aware Status flipping), 02 (Critic `allowed-tools` deny-list — block pytest invocation), 03 (expose `compute-verify-resolutions-scope` as CLI subcommand), 04 (three bundled follow-ups: parse-error surfacing, classifier metadata symmetry, gitignore-test hardening), 05 (this entry — version bump, change-log, regen-views dogfood, PR creation).
+
+**Backward compatibility:** Zero regression risk for products that don't opt into the new scope tagging — Chunk 01's `_detect_active_scope` returns None and `collect_shipped_chunks` falls through to the legacy unfiltered union. The new `compute-verify-resolutions-scope` subcommand is additive; the Critic SKILL surfaces have been updated to call it but legacy product repos without the helper get the existing prose fallback. The Critic `allowed-tools` deny patterns are additive in skill frontmatter (preserves existing legitimate Bash allowances). Chunk 04 changes are surface-level fixes — the trivial classifier's metadata symmetry is observable only on the unreachable rename-from-metadata edge case.
+
+**Test coverage:** 1440 passing total at v1.5.1. +41 over v1.5.0's 1399. Per-chunk additions (git-measured `def test_` adds): Chunk 01 +24 (`TestParseBuildPlanFrontmatterScope` +12 incl. HTML-comment-then-frontmatter fixtures, `TestDetectActiveScope` +4, `TestRegenViewsScopeFilter` +5 incl. production-shape + scoped-plan-with-no-matching-entries cases, `TestCollectShippedChunks` +3 scope cases), Chunk 02 +4 (`TestCriticSkillDenyPatterns`), Chunk 03 +6 (`TestComputeVerifyResolutionsScopeSubcommand`), Chunk 04 +7 (`TestChunkTypeParseErrorSurfaces` +2, `TestClassifyTrivialChangeMetadataSymmetry` +5, plus one rewrite-in-place that doesn't change count). Sum = 41, matches git-measured delta from `d2b8af4`..HEAD. Cumulative review confirmed via verify-resolutions on every chunk after fixes — every prior BLOCKING/WARNING explicitly addressed.
+
+**Dogfood:** Chunk 01's fix is dogfooded by this very release — `regen-views` against the v1.5.1 plan correctly flips exactly chunks 01-04 to `[x]` and leaves v1.5.0 and v1.4 entries untouched (proved by the per-chunk regen results: each chunk's commit flipped exactly its own checkbox).
+
+**Critic-resolution audit:**
+- **Chunk 01:** chunk-mode → 3 BLOCKING (HTML-comment-skip parser bug; YAML null literal handling; `verify-chunk-refs` failed on `tools/lib/views.py:116` ref) + 2 WARNING (test-fixture parity; plan-vs-implementation divergence). All fixed inline. verify-resolutions re-review → 0 BLOCKING, 1 WARNING (doc-drift in plan deliverables vs shipped signature); patched.
+- **Chunk 02:** chunk-mode → 1 WARNING (token-budget trim dropped "NO builds" from agents/critic/SKILL.md). Fixed inline. verify-resolutions re-review → 0/0/0 clean. **Known limitation:** the four `!Bash(pytest*)` deny patterns added to skill `allowed-tools` are NOT structurally enforced by Claude Code (confirmed by Chunk 04's Critic invoking pytest successfully). The prose remains, the patterns serve as documentation, and the existing allow-list IS restrictive. Filed to backlog as a v1.5.1 follow-up — fix-shape involves project-level `permissions.deny` or harness-side enforcement.
+- **Chunk 03:** chunk-mode → 0 BLOCKING / 0 WARNING / 0 NOTE. Clean first pass.
+- **Chunk 04:** chunk-mode → 1 BLOCKING (build-plan refs trip verify-chunk-refs on line-numbered backticked tokens) + 1 WARNING (Critic ran pytest despite Chunk 02's deny patterns — the smoking gun for the Chunk 02 limitation above). BLOCKING fixed; WARNING filed to backlog. verify-resolutions re-review → 0/0/0 clean.
+
+**Backlog items closed:** "`regen-views` doesn't filter by `scope=`" (2026-05-21), "Tighten Critic's tool restriction — block pytest invocation" (2026-05-19, partial — see Chunk 02 known limitation), "Expose `_compute_verify_resolutions_scope` as a CLI subcommand" (2026-05-21), "`_pr_diff_is_trivial` rename src skipped" (2026-05-22), "Surface chunk-Type parse errors to the user" (2026-05-18), "Harden `test_managed_paths_committed_wip_excluded`" (2026-05-19). Adds one new backlog entry: "v1.5.1 Chunk 02's deny patterns do NOT structurally block pytest invocation" (2026-05-23) — superseding the v1.5.0 "structurally enforced" expectation.
+
+**Known follow-ups (deferred to v1.5.2 or later):**
+- The structural enforcement of pytest deny-patterns (see Chunk 02 note above). Most likely fix: project-level `permissions.deny` scoped to the Critic skill's invocation context, or a wrapper tool. Needs harness-side experimentation.
+- The HOME-leak test pattern (`_run` in `TestComputeVerifyResolutionsScopeSubcommand`) where setting HOME=tmp_path causes Python's xcode-shipped `.pyc` cache to write to `$HOME/Library/Caches/com.apple.python/...` and inflate `git ls-files --others`. The fix used in Chunk 03 (HOME outside project_dir) should be propagated to other tests if they set HOME identically.
+- Older v1.5 follow-ups carried forward (`base_reviewed` not validated by cumulative gate; metadata-prefix duplication anchor test; banner-line version coupling; cumulative inference mid-build via per-HEAD records; slash-arg override consistency in Critic SKILL).
+
+## 2026-05-23: v1.5.1 Chunk 04 — Three bundled backlog follow-ups
+
+<!-- prawduct: chunks=04 | status=shipped | scope=v1.5.1 -->
+
+**Why:** Three independent surgical fixes bundled to amortize the per-chunk Critic-pass overhead. Each was filed in the backlog and is too small for its own chunk.
+
+**(a) Surface chunk-Type parse errors (backlog 2026-05-18):** `cmd_stop` previously discarded the `error` tuple element from `_parse_build_plan_chunk_type` (`chunk_type, _ = ...`). A typo'd `Type: code-only` (instead of `code`) was silently rejected by the parser; the author never saw the "unknown type: ..." message. Fix: capture the error and, when it begins with `unknown type:`, append `chunk-type-parse-error: ...` to `waiver_notes` (visible at session-end and in the next briefing). Restricted to `unknown type:` only — `chunk not found` / `missing build-plan` errors indicate fixture-shape issues, not user-actionable typos.
+
+**(b) `_classify_trivial_change` metadata symmetry (backlog 2026-05-22):** Pre-fix, `_is_metadata_path` was applied only to `path` (rename dst) in both `_is_trivial_fileset_eligible` and `_pr_diff_is_trivial` callers. A rename FROM a metadata path went through the classifier with the metadata src untouched. Practically unreachable (metadata paths are gitignored — git rarely produces such renames) but the asymmetry was real. Fix: moved the metadata check INTO `_classify_trivial_change` — returns `None` when EITHER `path` or `src_path` is a metadata path. Both gates now handle metadata uniformly; callers dropped their dst-only filter.
+
+**(c) Harden gitignore-drift test (backlog 2026-05-19):** `test_managed_paths_committed_wip_excluded` previously wrote `.gitignore` from the current `GITIGNORE_ENTRIES` set in the fixture, so `update_gitignore` found nothing to add and the test never exercised the gitignore-mutation path. The next chunk to add a new ignore entry would trigger `.gitignore` mutation and break the assertion. Fix: fixture now writes a deliberately-stale `.gitignore` (omits the first GITIGNORE_ENTRIES line), and the allowed-set in the assertion explicitly includes `.gitignore`. Sanity assertions verify the omitted entry was re-added.
+
+**Tests:** new `TestChunkTypeParseErrorSurfaces` (+2), new `TestClassifyTrivialChangeMetadataSymmetry` (+5), `test_managed_paths_committed_wip_excluded` rewritten in-place. Full suite 1440/1440.
+
+**Critic:** chunk-mode → 1 BLOCKING (build-plan refs trip verify-chunk-refs: line-numbered backticked paths like `tools/product-hook:2321`), 1 WARNING (Critic sandbox didn't block pytest invocation despite v1.5.1 Chunk 02's deny patterns — out-of-scope for Chunk 04; filed to backlog). BLOCKING fixed by rewriting the offending references; verify-resolutions re-review → 0/0/0 clean.
+
+**Backlog:** closes (a) "Surface chunk-Type parse errors to the user" (2026-05-18), (b) "`_pr_diff_is_trivial` applies `_is_metadata_path` to dst path only — rename src skipped" (2026-05-22), (c) "Harden `test_managed_paths_committed_wip_excluded`" (2026-05-19). Adds new entry: "v1.5.1 Chunk 02's `!Bash(pytest*)` deny patterns ... do NOT structurally block pytest invocation" (2026-05-23).
+
+## 2026-05-23: v1.5.1 Chunk 03 — Expose `compute-verify-resolutions-scope` as CLI subcommand
+
+<!-- prawduct: chunks=03 | status=shipped | scope=v1.5.1 -->
+
+**Why:** Defense-in-depth gap surfaced by v1.5 Chunk 02 NOTE. The widening-threshold demotion logic lived inside the stop-hook helper `_compute_verify_resolutions_scope`; the Critic agent computed verify-resolutions scope from SKILL.md prose. If the agent misapplied the prose, it would write a findings file with a wrong `files_reviewed` set and the gate's subset check would accept it (gate enforces only subset, not widening). Two independent computations of the same rule is a drift waiting to happen.
+
+**What:** New `tools/product-hook compute-verify-resolutions-scope` subcommand — a thin CLI wrapper around the canonical `_compute_verify_resolutions_scope` helper. Output format: stdout = newline-separated file paths (the scope union); stderr = one reason line. Exit codes: 0 = scope computed (use the files); 1 = cannot compute (missing prior findings, no `commit_reviewed`, unresolved commit, no actionable findings, git failure, invalid files_reviewed); 2 = scope widened past `len(delta) > 2 * len(prior) + 5`. Fail-safe direction: any exit ≠ 0 → Critic falls back to `/critic chunk` or `/critic final`.
+
+Critic SKILL surfaces updated to call the subcommand instead of computing scope from prose: `agents/critic/review-cycle.md` (canonical), `templates/critic-review.md`, `.prawduct/critic-review.md`. Both Critic skill `allowed-tools` frontmatters (`.claude/skills/critic/SKILL.md`, `templates/skill-critic.md`) gain the narrow permission `Bash(python3 tools/product-hook compute-verify-resolutions-scope)` — exact subcommand string, no wildcard, preserving the v1.5.1 Chunk 02 deny-list discipline.
+
+**Tests:** new `TestComputeVerifyResolutionsScopeSubcommand` in `tests/test_product_hook.py` (+6). Covers each exit path (0/1/2 across four reason categories) plus a parity test asserting subcommand stdout matches the helper's return value exactly — guards against the two paths drifting on every future change. Full suite 1433/1433.
+
+**Critic:** chunk-mode → 0 BLOCKING / 0 WARNING / 0 NOTE. Clean first pass.
+
+**Backlog:** closes "Expose `_compute_verify_resolutions_scope` as a CLI subcommand for the Critic agent" (2026-05-21).
+
+## 2026-05-23: v1.5.1 Chunk 02 — Critic `allowed-tools` deny-list (block pytest)
+
+<!-- prawduct: chunks=02 | status=shipped | scope=v1.5.1 -->
+
+**Why:** Recurring violation of memory rule `feedback_critic_no_test_execution.md` ("Critic should not run tests"). Wave 2 cumulative-Critic invoked pytest despite the prose. Root cause: with `permissions.allow` `Bash(python3:*)` at the project level (settings.local.json), the prose-only restriction is unenforceable.
+
+**What:** Added four `!Bash(...pytest...)` deny patterns to `allowed-tools` in both Critic skill surfaces (`.claude/skills/critic/SKILL.md` for the framework's own Critic, `templates/skill-critic.md` for product-distributed skills). Patterns: `!Bash(pytest*)`, `!Bash(python -m pytest*)`, `!Bash(python3 -m pytest*)`, `!Bash(* python -m pytest*)`. Prose stays in all five Critic surfaces (`agents/critic/SKILL.md`, `templates/critic-review.md`, `.prawduct/critic-review.md`, plus the two skills above) as defense-in-depth.
+
+**Audit (per plan):** Catalogued current Critic Bash patterns — `Bash(git *)`, `Bash(wc *)`, `Bash(python3 tools/product-hook test-status)`, `Bash(python3 tools/product-hook verify-chunk-refs *)`, `Bash(python3 tools/product-hook infer-critic-mode *)`. None match pytest patterns — deny additions cause zero legitimate-use regression.
+
+**Tests:** new `tests/test_critic_skill_metadata.py` (+4). Asserts all four deny patterns present in both surfaces, existing legitimate tools preserved, framework/template deny-sets equivalent (catches drift). Total suite: 1427/1427 passing.
+
+**Memory:** updated `feedback_critic_no_test_execution.md` with "Structurally enforced as of v1.5.1" + the four deny patterns inline.
+
+**Critic:** chunk-mode → 0 BLOCKING, 1 WARNING (dropped "NO builds" from agents/critic/SKILL.md token-budget trim). Fixed inline. verify-resolutions re-review → clean.
+
+**Backlog:** closes "Tighten Critic's tool restriction — block pytest invocation" (2026-05-19).
+
+## 2026-05-23: v1.5.1 Chunk 01 — `regen-views` scope-aware Status flipping
+
+<!-- prawduct: chunks=01 | status=shipped | scope=v1.5.1 -->
+
+**Why:** Active v1.5 bug. `collect_shipped_chunks` unioned every `chunks=` tag across all change-log entries, ignoring `scope=`. v1.4 chunks 05/06/07 share IDs with v1.5 chunks 02/05/06/07; every `regen-views` run would re-flip the wrong checkboxes, so v1.5 chunks were marked `[x]` by hand with an HTML-comment warning telling builders not to run regen. First Tier-1 item in the v1.5.1 backlog-followups plan.
+
+**What:** Three new helpers in `tools/lib/views.py`. (1) `_parse_build_plan_frontmatter_scope(content)` reads `scope:` from a build-plan's YAML frontmatter, tolerating the production shape (leading HTML comment block before the opening `---`) and treating YAML null literals (`null`/`NULL`/`~`/empty) as absent. (2) `_detect_active_scope(build_plan_content, change_log_content=None)` resolves the active scope: frontmatter wins; otherwise the most-recent change-log entry's `scope=` tag; otherwise None (fail-safe). (3) `collect_shipped_chunks(entries, scope=None)` filters by scope when set, preserves legacy unfiltered union when None. `build_status_view` calls `_detect_active_scope` and threads the result through.
+
+**Backward compatibility:** Products without `scope:` frontmatter and change-logs without `scope=` tags get the legacy unfiltered union — zero behavior change. `templates/build-plan.md` ships `scope: null` as the documented "opt-out" form (parser returns None).
+
+**Tests:** +20 covering `TestCollectShippedChunks` scope cases (+3), `TestParseBuildPlanFrontmatterScope` (+12, including 4 HTML-comment-then-frontmatter fixtures that mirror every real build-plan), `TestDetectActiveScope` (+4), `TestRegenViewsScopeFilter` (+5, including the production shape and the "scoped plan with no matching entries yet" no-op case). Full suite 1423/1423 passing.
+
+**Dogfood:** Running `regen-views` against this very v1.5.1 plan after Chunk 01 lands correctly leaves all v1.5.1 chunks `[ ]` (no v1.5.1-scoped entries yet other than this one); v1.4 and v1.5.0 entries no longer bleed through.
+
+**Critic:** chunk-mode initial review → 3 BLOCKING (HTML-comment-skip parser bug; YAML null literal handling; `verify-chunk-refs` failed on `tools/lib/views.py:116` ref). All three resolved + plan deliverable text patched to match the shipped signature. verify-resolutions re-review → 0 BLOCKING, 1 WARNING (doc-drift only); WARNING also patched. Backlog item "`regen-views` doesn't filter by `scope=`" (2026-05-21) resolved.
+
 ## 2026-05-22: v1.5.0 — Critic proportionality (release)
 
 <!-- prawduct: chunks=00,01,02,03,04,05,06,07 | release=v1.5.0 | status=shipped | scope=v1.5 -->
