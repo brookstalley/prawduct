@@ -4,6 +4,14 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ---
 
+## Test subprocesses: HOME=tmp_path leaks Python's pyc cache into the test repo
+
+When a test invokes a Python subprocess via `subprocess.run(env={"HOME": str(project_dir), ...}, cwd=str(project_dir))`, Python's xcode-shipped interpreter writes `.pyc` cache files to `$HOME/Library/Caches/com.apple.python/...`. If `$HOME == cwd == git repo root`, `git ls-files --others --exclude-standard` then returns ~50 untracked cache files, inflating diff counts and triggering scope-widening / status-pollution failures in helpers that use it. Fix: set `HOME` to a directory OUTSIDE the test's git repo (e.g., `project_dir.parent / f"{project_dir.name}-home"`). Discovered v1.5.1 Chunk 03 (TestComputeVerifyResolutionsScopeSubcommand). Relates to Structural Awareness (#21).
+
+## "Structurally enforced" requires verifying the harness actually enforces it
+
+When claiming a constraint is "structurally enforced" by a config/sandbox/permission system, verify the enforcement before claiming it in change-logs or memory rules. The v1.5.1 Chunk 02 `!Bash(pytest*)` deny patterns added to skill `allowed-tools` were claimed structural but the Critic ran pytest unimpeded one chunk later — the harness allows `Bash(python3:*)` at project level which overrides skill-level `!`-deny. The prose claim "structurally enforced" survived only until the next chunk's Critic. Negative-path probe (write a test that asserts the constraint blocks the forbidden invocation) before claiming. Discovered v1.5.1 Chunk 04 Critic. Relates to Honest Confidence (#5) and Validate Before Propagating (#15).
+
 ## Session-end signals must come AFTER handoff
 
 When signaling session completion ("Ready for next session", "Session is complete"), do the handoff FIRST — commit, update build plan Status, write reflection, capture backlog. Because users interpret completion signals as "handoff is done" and act on them immediately.
