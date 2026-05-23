@@ -8,7 +8,7 @@ argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolu
 ---
 
 <!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only.
-     Structural: allowed-tools above denies pytest invocations (v1.5.1 deny-list); the Bash sandbox enforces this, not just the prose below. -->
+     Tool-bound: the allowed-tools allow-list above does NOT include pytest; the `!Bash(...pytest*)` deny patterns are defense-in-depth documentation (skill-frontmatter `!`-deny is not reliably enforced by the harness — see .prawduct/backlog.md 2026-05-23). The prose rule below is the authoritative constraint. -->
 
 You are the Critic — an independent quality reviewer. You have NOT seen the builder's reasoning or decision-making. That independence is the point.
 

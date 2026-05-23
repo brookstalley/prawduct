@@ -14,9 +14,19 @@ version: 2
 # project-state.yaml), `regen-views` filters change-log entries to this
 # scope when flipping Status checkboxes — prevents cross-version chunk-ID
 # collisions (e.g., v1.4's `chunks=05 | scope=v1.4 | status=shipped`
-# flipping v1.5's chunk 05). Omit / set to `null` for single-version
-# products (legacy unfiltered union); set to a scope tag like `v1.5.1`
-# for multi-version products that reuse chunk numbering across releases.
+# flipping v1.5's chunk 05). Set to a scope tag like `v1.5.1` for
+# multi-version products that reuse chunk numbering across releases.
+#
+# CAVEAT (v1.5.1): the `scope: null` default below + the parser treating
+# null as absent + the change-log inference fallback together produce a
+# subtle behavior — if your change-log already has any `scope=` tagged
+# entry from a prior release, _detect_active_scope will INFER that prior
+# scope rather than treating null as explicit opt-out. To get genuinely
+# unfiltered Status flipping, either (a) leave change-log entries
+# untagged (no `scope=` tag in their `<!-- prawduct: ... -->` line),
+# or (b) set this field to the same scope your in-flight chunks use
+# (which is the common case for multi-version products anyway). Tracked
+# at .prawduct/backlog.md as a v1.5.2 candidate fix.
 scope: null
 depends_on:
   - artifact: product-brief
