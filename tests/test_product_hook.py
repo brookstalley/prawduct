@@ -911,6 +911,132 @@ class TestGatesWaived:
         assert not (prawduct / ".gates-waived").exists()
 
 
+class TestBlockerMessagesNameWaiverEscapeHatch:
+    """v1.5.2 — Stop-hook blockers must name the `.gates-waived` escape hatch
+    in their stderr text. Pre-fix, the waiver mechanism existed (and was
+    documented in build-governance.md) but was never surfaced in the
+    blocker output itself, so agents whose chunk was mis-typed could re-fire
+    the gate indefinitely without discovering the override. Reported as a
+    user-impacting infinite-loop bug on 2026-05-23 (hallucinote `.amxd`
+    authoring during a chunk typed `code` that was actually a designer-
+    handoff phase).
+
+    Each blocker is tested independently because the waiver-key noun in the
+    snippet (`reflection` / `critic` / `pr`) is blocker-specific — a single
+    parametrized test would lose that specificity.
+    """
+
+    def test_reflection_blocker_names_gates_waived(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-git-baseline").write_text("")
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "REFLECTION" in result.stderr
+        # The waiver-key MUST be named (so the agent can copy-paste the
+        # exact JSON shape) and the file path MUST be named (so the agent
+        # knows where to write).
+        assert ".gates-waived" in result.stderr
+        assert '"reflection"' in result.stderr
+        # Reference back to build-governance.md so the agent knows where
+        # the full guidance lives if the inline snippet is unclear.
+        assert "build-governance.md" in result.stderr
+
+    def test_critic_blocker_names_gates_waived_and_designer_handoff(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented changes and verified all tests pass correctly."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "CRITIC REVIEW" in result.stderr
+        assert ".gates-waived" in result.stderr
+        assert '"critic"' in result.stderr
+        # The CRITIC blocker also names the Type: designer-handoff alternative —
+        # which is a *structural* fix (changes the chunk type in the build plan)
+        # vs. the waiver (a session-scoped declaration). Both are needed because
+        # they fit different cases.
+        assert "designer-handoff" in result.stderr.lower()
+        assert "build-governance.md" in result.stderr
+
+    def test_verify_resolutions_stale_blocker_names_gates_waived(self, tmp_path: Path):
+        """The verify-resolutions stale variant of the CRITIC blocker (fires
+        when prior verify-resolutions findings exist but the chunk diff has
+        grown past the verify pass's declared scope) must also surface the
+        waiver escape hatch."""
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 1: in progress\n"
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Reflection: implemented the resolution for the prior Critic finding "
+            "and re-reviewed with verify-resolutions mode."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct, offset_seconds=-60)
+        # Verify-resolutions findings scoped to src/app.py only — but the
+        # diff also touches src/unrelated.py, so the verify-resolutions
+        # stale path fires.
+        time.sleep(0.05)
+        data = {
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+            "summary": "Verify resolutions clean.",
+            "mode": "verify-resolutions (delta review, prior findings only)",
+            "commit_reviewed": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+        }
+        (prawduct / ".critic-findings.json").write_text(json.dumps(data))
+
+        result = run_hook(
+            "stop", tmp_path, git_output=" M src/app.py\n M src/unrelated.py"
+        )
+
+        assert result.returncode == 2
+        # The verify-resolutions stale variant of the CRITIC blocker says
+        # "CRITIC REVIEW (verify-resolutions stale): ..." — distinguish from
+        # the default CRITIC blocker (which has no parenthetical).
+        assert "verify-resolutions stale" in result.stderr
+        assert ".gates-waived" in result.stderr
+        assert '"critic"' in result.stderr
+        assert "build-governance.md" in result.stderr
+
+    def test_pr_review_blocker_names_gates_waived(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented changes and verified all tests pass correctly."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        make_session_start(prawduct)
+
+        result = run_hook(
+            "stop",
+            tmp_path,
+            git_output=" M src/app.py",
+            git_branch="feature/foo",
+            gh_pr_list_json='[{"number": 42}]',
+        )
+
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+        assert ".gates-waived" in result.stderr
+        assert '"pr"' in result.stderr
+        assert "build-governance.md" in result.stderr
+
+
 # =============================================================================
 # Defensive untrack of session files at session start
 # =============================================================================
