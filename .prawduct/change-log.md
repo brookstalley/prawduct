@@ -3,6 +3,25 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-23: v1.5.2 — Stop-hook waiver discoverability (release)
+
+<!-- prawduct: chunks=01 | release=v1.5.2 | status=shipped | scope=v1.5.2 -->
+
+**Why:** User-reported infinite-loop pathology in hallucinote on 2026-05-23. Pathology: a build-plan chunk typed `code` (default) but actually in a designer-handoff phase (human-only Max-for-Live `.amxd` authoring) hit the CRITIC REVIEW gate every session end — build plan active + code changes + no fresh Critic findings — with no path to satisfy the gate (Critic legitimately couldn't review without GO/NO-GO). The `.gates-waived` escape hatch existed in build-governance.md but was never named in the blocker text itself; agents without prior knowledge of it edited/retried repeatedly, burning tokens. User flagged it as "a major prawduct bug if an error in build plans can cause an infinite token-eating loop for agents."
+
+**Release shape:** One chunk — surface `.gates-waived` in four stop-hook blocker stderr messages (REFLECTION, CRITIC REVIEW default, CRITIC REVIEW verify-resolutions-stale, PR REVIEW). Each blocker now appends a tight "Escape hatch:" snippet naming the file path, the per-gate JSON shape (`{"reflection"|"critic"|"pr": "reason"}`), the trigger condition (e.g., "chunk is in a designer-handoff phase, blocked by an external dependency, or the GO/NO-GO is not yet verifiable"), and a back-link to `build-governance.md` "Gate Waivers". The CRITIC REVIEW default blocker additionally names the *structural* alternative (`Type: designer-handoff` in the build plan) for chunks where Critic is fundamentally unsatisfiable by design — that's the permanent fix; the waiver is the session-scoped escape.
+
+**Backward compatibility:** Zero behavior change. All gates fire on the same triggers and clear on the same conditions as v1.5.1. The waiver mechanism, the JSON schema, and the auto-clear-at-session-start lifecycle are unchanged — this release surfaces what was already implemented. No template or skill changes — purely a stop-hook stderr-text addition.
+
+**Test coverage:** 1444 passing (1440 → 1444). New regression test class `TestBlockerMessagesNameWaiverEscapeHatch` with 4 tests pinning `.gates-waived`, the per-blocker waiver-key (`"reflection"` / `"critic"` / `"pr"`), and the `build-governance.md` back-link in each blocker's stderr. The verify-resolutions-stale test also pins the parenthetical "(verify-resolutions stale)" distinguishing it from the default CRITIC variant. Suite duration 156.65s; no other tests touched.
+
+**Critic-resolution audit:**
+- **Chunk 01:** chunk-mode → 1 BLOCKING (build-plan ref drift — `## Chunk 01:` (h2) breaks `verify-chunk-refs` which requires `### Chunk NN:` (h3); also `_parse_build_plan_chunk_type` would silently fall through to `code` default) + 1 NOTE (PR REVIEW blocker added during build but not named in the plan — scope expansion). BLOCKING fixed by promoting both build-plan files' chunk heading to h3 and removing a backticked `.prawduct/.gates-waived` ref the verifier mistook for a code-deliverable. NOTE resolved by updating both plan files to name all 4 blockers in Description / Deliverables / Done-when / Acceptance Criteria with the explicit rationale. verify-resolutions re-review → 0/0/0 clean.
+
+**Out of scope (deferred to future release):** A *structural* loop-detection counter that escalates after N re-fires of the same blocker with no progress. Discoverability is the high-ROI piece — once the agent reads "you can declare a waiver if this gate cannot be satisfied this session," the loop ends. The counter is defense in depth for agents that still ignore the escape hatch; needs design pass on per-fire signature, threshold, and escalate-vs-downgrade choice. Filed in backlog "Active — next up" alongside the original pathology entry.
+
+**Backlog items closed:** "Stop-hook blockers do not surface the `.gates-waived` escape hatch — agents can infinite-loop on a mis-typed chunk" (2026-05-23, partial — discoverability fix shipped; loop-detection counter deferred).
+
 ## 2026-05-23: v1.5.1 — Backlog follow-ups (release)
 
 <!-- prawduct: chunks=01,02,03,04,05 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
