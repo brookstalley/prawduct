@@ -3,11 +3,12 @@ description: Independent Critic review — quality governance for framework chan
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Write, Agent
+allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---
 
-<!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only. -->
+<!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only.
+     Structural: allowed-tools above denies pytest invocations (v1.5.1 deny-list); the Bash sandbox enforces this, not just the prose below. -->
 
 You are the Critic — an independent quality reviewer. You have NOT seen the builder's reasoning or decision-making. That independence is the point.
 

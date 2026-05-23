@@ -3,6 +3,24 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-05-23: v1.5.1 Chunk 02 — Critic `allowed-tools` deny-list (block pytest)
+
+<!-- prawduct: chunks=02 | status=shipped | scope=v1.5.1 -->
+
+**Why:** Recurring violation of memory rule `feedback_critic_no_test_execution.md` ("Critic should not run tests"). Wave 2 cumulative-Critic invoked pytest despite the prose. Root cause: with `permissions.allow` `Bash(python3:*)` at the project level (settings.local.json), the prose-only restriction is unenforceable.
+
+**What:** Added four `!Bash(...pytest...)` deny patterns to `allowed-tools` in both Critic skill surfaces (`.claude/skills/critic/SKILL.md` for the framework's own Critic, `templates/skill-critic.md` for product-distributed skills). Patterns: `!Bash(pytest*)`, `!Bash(python -m pytest*)`, `!Bash(python3 -m pytest*)`, `!Bash(* python -m pytest*)`. Prose stays in all five Critic surfaces (`agents/critic/SKILL.md`, `templates/critic-review.md`, `.prawduct/critic-review.md`, plus the two skills above) as defense-in-depth.
+
+**Audit (per plan):** Catalogued current Critic Bash patterns — `Bash(git *)`, `Bash(wc *)`, `Bash(python3 tools/product-hook test-status)`, `Bash(python3 tools/product-hook verify-chunk-refs *)`, `Bash(python3 tools/product-hook infer-critic-mode *)`. None match pytest patterns — deny additions cause zero legitimate-use regression.
+
+**Tests:** new `tests/test_critic_skill_metadata.py` (+4). Asserts all four deny patterns present in both surfaces, existing legitimate tools preserved, framework/template deny-sets equivalent (catches drift). Total suite: 1427/1427 passing.
+
+**Memory:** updated `feedback_critic_no_test_execution.md` with "Structurally enforced as of v1.5.1" + the four deny patterns inline.
+
+**Critic:** chunk-mode → 0 BLOCKING, 1 WARNING (dropped "NO builds" from agents/critic/SKILL.md token-budget trim). Fixed inline. verify-resolutions re-review → clean.
+
+**Backlog:** closes "Tighten Critic's tool restriction — block pytest invocation" (2026-05-19).
+
 ## 2026-05-23: v1.5.1 Chunk 01 — `regen-views` scope-aware Status flipping
 
 <!-- prawduct: chunks=01 | status=shipped | scope=v1.5.1 -->
