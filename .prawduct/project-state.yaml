@@ -436,7 +436,7 @@ views_enabled: true
 # `.prawduct/` so the build-plan tooling (regen-views, infer-critic-mode, the
 # stop-hook gate) finds a scope-named plan instead of the conventional
 # artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
-active_build_plan: artifacts/v1.7.0-backlog-feature-plan.md
+active_build_plan:
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
