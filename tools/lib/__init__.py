@@ -67,6 +67,23 @@ from .migrate_cmd import (  # noqa: F401
     upgrade_manifest_strategy,
 )
 
+# Post-sync advisory infrastructure (v1.6.0 Phase 1 — store + registry + diff)
+from .advisory_store import (  # noqa: F401
+    AdvisoryCandidate,
+    Codebase,
+    ProjectState,
+    clear_registry,
+    compute_id,
+    load_project_state,
+    make_codebase,
+    read_store,
+    reconcile,
+    register_probe,
+    run_all_probes,
+    run_sync_advisories,
+    write_store,
+)
+
 # Sync operations
 from .sync_cmd import (  # noqa: F401
     _HISTORICAL_RENDER_DEPTH_CAP,

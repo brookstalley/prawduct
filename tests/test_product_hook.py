@@ -7702,3 +7702,121 @@ class TestVerifyCoverageSubcommand:
         assert result.returncode == 1
         assert "base" in result.stderr.lower()
 
+
+
+class TestSessionBriefingAdvisories:
+    """The ADVISORIES (post-sync) briefing section (v1.6.0 Phase 1).
+
+    Calls assemble_session_briefing directly (via the imported hook module) with
+    a seeded `.advisories.json`, so the render — priority ordering, 5-item cap,
+    empty-state suppression, and "Resolved since last session" — is tested
+    without depending on the sync/try_sync path.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    def _active(self, aid, *, priority="info", triggered_at="2026-05-01T00:00:00Z",
+                feature="synthetic", summary="A thing to consider.",
+                action="/prawduct-advisory list"):
+        return {
+            "id": aid, "feature": feature, "type": "synthetic-condition",
+            "probe_version": 1, "triggered_at": triggered_at,
+            "trigger_summary": summary, "recommended_action": action,
+            "priority": priority, "state": "active",
+        }
+
+    def _write_store(self, prawduct: Path, advisories: list[dict]) -> None:
+        (prawduct / ".advisories.json").write_text(
+            json.dumps({"schema_version": 1, "advisories": advisories})
+        )
+
+    def test_active_renders_with_action(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._write_store(prawduct, [self._active("synthetic-synthetic-condition-v1-aaa111")])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES (post-sync, 1 active):" in out
+        assert "[synthetic] A thing to consider." in out
+        assert "→ Run /prawduct-advisory list" in out
+
+    def test_empty_active_omits_section(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._write_store(prawduct, [])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES" not in out
+
+    def test_no_store_file_omits_section(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES" not in out
+
+    def test_truncates_over_five(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        advs = [self._active(f"synthetic-synthetic-condition-v1-{i:06d}",
+                             triggered_at=f"2026-05-0{i}T00:00:00Z") for i in range(1, 8)]
+        self._write_store(prawduct, advs)
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES (post-sync, 7 active):" in out
+        assert "... and 2 more (run /prawduct-advisory list)" in out
+
+    def test_priority_ordering(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        advs = [
+            self._active("a-info", priority="info", summary="INFO-item"),
+            self._active("b-urgent", priority="urgent", summary="URGENT-item"),
+            self._active("c-warn", priority="warn", summary="WARN-item"),
+        ]
+        self._write_store(prawduct, advs)
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        # urgent → warn → info
+        assert out.index("URGENT-item") < out.index("WARN-item") < out.index("INFO-item")
+
+    def test_newest_first_within_priority(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        advs = [
+            self._active("older", triggered_at="2026-05-01T00:00:00Z", summary="OLDER-item"),
+            self._active("newer", triggered_at="2026-05-10T00:00:00Z", summary="NEWER-item"),
+        ]
+        self._write_store(prawduct, advs)
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert out.index("NEWER-item") < out.index("OLDER-item")
+
+    def test_resolved_since_last_session(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        session_start = make_session_start(prawduct, offset_seconds=-60)
+        # One active + one resolved after this session's start stamp.
+        resolved = {"id": "r1", "state": "resolved", "resolved_at": session_start,
+                    "resolved_by": "sync"}
+        self._write_store(prawduct, [self._active("a1"), resolved])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "Resolved since last session: 1" in out
+
+    def test_resolved_only_renders_minimal_section(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        session_start = make_session_start(prawduct, offset_seconds=-60)
+        resolved = {"id": "r1", "state": "resolved", "resolved_at": session_start,
+                    "resolved_by": "sync"}
+        self._write_store(prawduct, [resolved])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES (post-sync):" in out
+        assert "Resolved since last session: 1" in out
+
+    def test_old_resolved_not_counted(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        # Resolved long before this session → not "since last session".
+        resolved = {"id": "r1", "state": "resolved", "resolved_at": "2020-01-01T00:00:00Z",
+                    "resolved_by": "sync"}
+        self._write_store(prawduct, [resolved])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES" not in out

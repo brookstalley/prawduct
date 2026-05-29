@@ -4260,3 +4260,63 @@ class TestAutoCommitSafety:
             f"update_gitignore should have re-added {omitted!r}"
         )
 
+
+
+class TestRunSyncAdvisoryStep:
+    """run_sync wires the post-sync advisory probe step (v1.6.0 Phase 1).
+
+    Proves the integration end-to-end through the real run_sync: with a
+    synthetic probe registered, a sync writes the advisory to the per-clone
+    nag log, and the template-drift `advisories` return key stays a distinct
+    concept. The production roster is empty, so without a registered probe a
+    sync produces an empty store (verified in the no-op test).
+    """
+
+    _adv = _mod._lib_advisory_store
+
+    @pytest.fixture(autouse=True)
+    def _clean_registry(self):
+        self._adv.clear_registry()
+        yield
+        self._adv.clear_registry()
+
+    def _synthetic_probe(self, state, codebase):
+        if state.get("synthetic_resolved") is True:
+            return []
+        if not codebase.has_files_matching("SYNTHETIC_TRIGGER"):
+            return []
+        return [
+            self._adv.AdvisoryCandidate(
+                type="synthetic-condition",
+                evidence=("SYNTHETIC_TRIGGER present",),
+                trigger_summary="Synthetic trigger present and not yet resolved.",
+                recommended_action="/prawduct-advisory list",
+            )
+        ]
+
+    def test_empty_roster_writes_empty_store(self, tmp_path: Path):
+        helper = TestRunSync()
+        fw = helper._setup_framework(tmp_path)
+        product = helper._setup_product(tmp_path, fw)
+        result = run_sync(str(product), framework_dir=str(fw))
+        # The template-drift advisories key is independent of the new store.
+        assert "advisories" in result
+        store = self._adv.read_store(product)
+        assert store["advisories"] == []
+
+    def test_synthetic_probe_writes_advisory(self, tmp_path: Path):
+        helper = TestRunSync()
+        fw = helper._setup_framework(tmp_path)
+        product = helper._setup_product(tmp_path, fw)
+        (product / "SYNTHETIC_TRIGGER").write_text("x")
+        self._adv.register_probe("synthetic", "synthetic-condition", 1, self._synthetic_probe)
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        store = self._adv.read_store(product)
+        assert len(store["advisories"]) == 1
+        adv = store["advisories"][0]
+        assert adv["state"] == "active"
+        assert adv["feature"] == "synthetic"
+        # The store landed at the gitignored nag-log path.
+        assert (product / ".prawduct" / ".advisories.json").is_file()

@@ -42,6 +42,7 @@ if _tools_dir not in sys.path:
 import lib.core as _lib_core  # noqa: F401
 import lib.sync_cmd as _lib_sync_cmd  # noqa: F401
 import lib.migrate_cmd as _lib_migrate_cmd  # noqa: F401
+import lib.advisory_store as _lib_advisory_store  # noqa: F401
 
 from lib import (  # noqa: F401
     BLOCK_BEGIN,
