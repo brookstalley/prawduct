@@ -49,7 +49,33 @@ Tabular view: `ID · title · effort · impact · area · status`. **Default fil
 ### update PFX-XXXX <field=value> [...]
 Change metadata or body of one item. Common: `status=promoted|shipped|dropped` (moves the item to the matching section — `promoted`→`## Promoted`, `shipped`/`dropped`→`## Archive`), `area=`, `effort=`, `reviewed=`. On `status=shipped`, accept an optional `closed-by=<change-log tag or chunk id>` and write it into the **metadata bar** as `closed-by: <ref>` (not the body) for traceability. Always set `reviewed:` to today on any touch. Confirm the item exists first; if the ID isn't found, say so and suggest `/backlog find`.
 
-### pick / migrate
-Documented in their own sections below (added in later chunks). If invoked before they exist here, say the subcommand isn't available yet.
+### pick [filters / free-text]
+Return **1–3 ranked candidates** with a one-line rationale each — the answer to "what should I work on right now?" Most invocations carry context; the bare call is the fallback.
+
+**Parse the request (you are the parser — no rigid grammar).** Map the user's words to three optional filters:
+- **area** — any tag the project uses (`sync`, `critic`, `stop-hook`, …).
+- **budget** — how much time, mapped to `effort`: `15m`/`30m`/`under an hour`/`quick` → prefer `S`; `a couple hours`/`this afternoon` → `S`–`M`; `half-day`/`big` → up to `L`.
+- **type** — `quick-win` (high `impact`, low `effort`), `warmup` (low-stakes, context-loading — small/legacy/cleanup items), `focus` (larger items, `effort: L`, needs uninterrupted attention).
+
+Accept flag form for machine callers (`--area=sync --budget=30m --type=quick-win`) and prose for humans (`pick stop-hook stuff under an hour`, `something I can do in 15 minutes`, `a warmup task`, `anything sync-related`).
+
+**Confirm-back ceiling (Q3).** If the query carries constraints beyond area/budget/type, or your interpretation is uncertain, echo the filter you parsed and ask before running — e.g. *"I read this as: area=stop-hook, budget≈1h. Continue, or refine?"* Don't silently guess on ambiguous input.
+
+**Ranking.**
+1. **Exclude** `status: promoted` (already in flight) and archived items by default.
+2. **Apply** the parsed filters as the candidate pool. If filters empty too small a pool, widen and say so.
+3. **Score** each candidate: `impact / effort` (map `S=1, M=2, L=3`; missing → treat as `2`, i.e. unknown-middle), nudged up by recency (newer `added`/`reviewed` ranks slightly higher) and **down** for untagged/legacy items (no metadata bar). This is a deliberately simple heuristic — don't over-engineer it before there's usage data to tune it.
+4. **Return** the top 1–3 as `[ID] title` + a one-line *why* (e.g. *"high-impact sync fix, ~2h, no dependencies"*).
+
+**Build-plan-aware (Q6) — the primary mid-work case.** Before ranking, read `active_build_plan` from `.prawduct/project-state.yaml`. If it points to a plan, read that plan and infer its scope/area focus (its `scope:` tag, chunk areas, the files it touches). Then **prioritize open items whose `area:` or subject overlaps the active plan**, framed as *"related to what you're working on"* — knocking out an adjacent item while the context is loaded is the highest-value pick. Show overlapping candidates first; if fewer than the requested count, fill from the general ranking. `--standalone` disables this and deliberately suggests context-switch work instead. If no plan is active, skip straight to the general ranking.
+
+**Worked examples** (parsed filter → behavior):
+- `pick stop-hook stuff under an hour` → `{area: stop-hook, budget: S–M}` → open stop-hook items, effort S/M, top 2–3 by score.
+- `pick a warmup task` → `{type: warmup}` → small/legacy/cleanup items, low stakes, recency-weighted.
+- `pick` (bare, plan active) → no filters → build-plan-overlapping open items first, then general `impact/effort` ranking.
+- `pick something quick and high-impact` → `{type: quick-win}` → high-impact + low-effort items.
+
+### migrate
+Documented in its own section below (lands with the `legacy-backlog-format` probe in a later chunk). If invoked before then, report that the backlog appears legacy and summarize what migration would do, but don't rewrite the file yet.
 
 $ARGUMENTS
