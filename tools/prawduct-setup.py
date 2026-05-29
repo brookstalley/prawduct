@@ -48,6 +48,8 @@ import lib.advisory_cmd as _lib_advisory_cmd  # noqa: F401
 from lib import (  # noqa: F401
     BLOCK_BEGIN,
     BLOCK_END,
+    BUILD_PLAN_POINTER_KEY,
+    DEFAULT_BUILD_PLAN_REL,
     FILE_RENAMES,
     FRAMEWORK_DIR,
     GITIGNORE_ENTRIES,
@@ -55,6 +57,8 @@ from lib import (  # noqa: F401
     PRAWDUCT_VERSION,
     SKILL_PLACEMENTS,
     TEMPLATES_DIR,
+    read_str_yaml_key,
+    resolve_build_plan_path,
     V1_GITIGNORE_ENTRIES,
     V1_SESSION_FILES,
     V3_GITIGNORE_ENTRIES,

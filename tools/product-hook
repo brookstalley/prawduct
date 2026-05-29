@@ -34,6 +34,44 @@ def get_prawduct_dir(project_dir: Path) -> Path:
     return project_dir / ".prawduct"
 
 
+# --- Active build-plan resolution (inline mirror of tools/lib/core.py) ---
+# product-hook is standalone in product repos and cannot import tools/lib, so
+# the resolver is duplicated here. Kept in sync with
+# core.resolve_build_plan_path / core.read_str_yaml_key by a parity test
+# (same discipline as the GITIGNORE_ENTRIES / _SESSION_GITIGNORED_PATHS mirror).
+_BUILD_PLAN_POINTER_KEY = "active_build_plan"
+_DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
+
+
+def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
+    """Value of a top-level (column-0) ``key: value`` scalar, or None."""
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    needle = f"{key}:"
+    for raw in content.splitlines():
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        value = line.split(":", 1)[1].strip().strip("\"'")
+        return value or None
+    return None
+
+
+def _resolve_build_plan_path(prawduct_dir: Path) -> Path:
+    """Resolve the active build plan via the ``active_build_plan:`` pointer
+    (relative to ``.prawduct/``); fall back to ``artifacts/build-plan.md`` when
+    unset, so repos without the pointer are unchanged. May not exist — callers
+    treat a missing plan as no active build plan."""
+    pointer = _read_str_yaml_key(prawduct_dir / "project-state.yaml", _BUILD_PLAN_POINTER_KEY)
+    if pointer:
+        return prawduct_dir / pointer
+    return prawduct_dir / _DEFAULT_BUILD_PLAN_REL
+
+
 # =============================================================================
 # Sync trigger (best-effort on session start)
 # =============================================================================
@@ -884,7 +922,8 @@ def staleness_scan(project_dir: Path) -> list[str]:
             pass
 
     # 4. Stale build plan detection — check Status section first, fall back to WIP
-    build_plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    build_plan_path = _resolve_build_plan_path(prawduct_dir)
+    build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
     if build_plan_path.is_file():
         try:
             status = _parse_build_plan_status(prawduct_dir)
@@ -893,7 +932,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
             elif status.get("_has_status_items"):
                 # All items checked — work complete
                 findings.append(
-                    "build plan: .prawduct/artifacts/build-plan.md has all chunks complete — "
+                    f"build plan: {build_plan_label} has all chunks complete — "
                     "if work is done, delete the plan"
                 )
             else:
@@ -902,7 +941,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
                 wip = _parse_wip(prawduct_dir, branch=current_branch)
                 if not wip.get("description"):
                     findings.append(
-                        "build plan: .prawduct/artifacts/build-plan.md exists but no active work — "
+                        f"build plan: {build_plan_label} exists but no active work — "
                         "if work is complete, delete the plan"
                     )
         except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
@@ -1104,7 +1143,7 @@ def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
     description, size, type, current_chunk, context, governance_level.
     Returns empty dict if no build plan or no Status section.
     """
-    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    plan_path = _resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return {}
     try:
@@ -2485,7 +2524,7 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     section, or has no chunk items. Mirrors the parsing rules in
     ``_parse_build_plan_status`` (skip HTML comments; exit on next ``## ``).
     """
-    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    plan_path = _resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return 0, 0
     try:
@@ -3100,7 +3139,7 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     see Chunk 02 plan-vs-execution divergence (commit message).
     """
     result: dict = {"file_paths": [], "error": None}
-    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    plan_path = _resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         result["error"] = f"missing build-plan: {plan_path}"
         return result
@@ -3183,7 +3222,7 @@ def _parse_build_plan_chunk_type(
     on ``### Chunk <chunk_id>:`` with leading-zero tolerance; fenced code
     blocks are skipped.
     """
-    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    plan_path = _resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:
@@ -3249,7 +3288,7 @@ def _parse_build_plan_chunk_trivial_rationale(
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero
     tolerance; fenced code blocks are skipped.
     """
-    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    plan_path = _resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:

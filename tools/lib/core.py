@@ -214,6 +214,58 @@ def ensure_dir(path: Path) -> bool:
     return True
 
 
+# Optional project-state pointer naming the active build plan (relative to the
+# `.prawduct/` dir). When unset, tooling uses the conventional default below, so
+# repos that don't set it keep their existing behavior.
+BUILD_PLAN_POINTER_KEY = "active_build_plan"
+DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
+
+
+def read_str_yaml_key(state_path: Path, key: str) -> str | None:
+    """Value of a top-level (column-0) ``key: value`` scalar, or None.
+
+    Mirrors the column-0 idiom used by ``is_views_enabled`` and product-hook's
+    ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
+    missing/unreadable file or absent key. Surrounding quotes and inline ``#``
+    comments are stripped; an empty value reads as None.
+    """
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    needle = f"{key}:"
+    for raw in content.splitlines():
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        value = line.split(":", 1)[1].strip().strip("\"'")
+        return value or None
+    return None
+
+
+def resolve_build_plan_path(prawduct_dir: Path) -> Path:
+    """Resolve the active build-plan path (supports standard + scope-named plans).
+
+    Reads an optional ``active_build_plan:`` pointer (a path relative to the
+    ``.prawduct/`` dir) from ``project-state.yaml``; when set, that file is the
+    active plan, letting a project name its plan by scope
+    (``artifacts/v1.6.0-foo-plan.md``). When the pointer is absent, falls back to
+    the conventional ``artifacts/build-plan.md`` — so repos that don't set it
+    behave exactly as before. The returned path may not exist; callers treat a
+    missing plan as "no active build plan."
+
+    Kept in sync with the inline mirror in ``tools/product-hook``
+    (``_resolve_build_plan_path``), which cannot import this module in product
+    repos — a parity test pins the two together.
+    """
+    pointer = read_str_yaml_key(prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY)
+    if pointer:
+        return prawduct_dir / pointer
+    return prawduct_dir / DEFAULT_BUILD_PLAN_REL
+
+
 def compute_hash(path: Path) -> str | None:
     """Compute SHA-256 hex digest of a file's contents. Returns None if file missing."""
     if not path.is_file():

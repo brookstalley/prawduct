@@ -428,6 +428,12 @@ build_state:
 
 views_enabled: true
 
+# Active build plan (optional). Names the in-progress plan file relative to
+# `.prawduct/` so the build-plan tooling (regen-views, infer-critic-mode, the
+# stop-hook gate) finds a scope-named plan instead of the conventional
+# artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
+active_build_plan: artifacts/v1.6.0-advisory-infrastructure-plan.md
+
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
 # =============================================================================
@@ -487,3 +493,6 @@ scope_rollups:
   v1.5.2:
     chunks: ["01"]
     releases: ["v1.5.2"]
+  v1.6.0:
+    chunks: ["01", "02", "03", "04", "05", "06", "07"]
+    releases: ["v1.6.0"]

@@ -504,6 +504,33 @@ class TestRule3Final:
         assert mode == "final"
         assert rationale.startswith("rule-4 final:")
 
+    def test_reads_scope_named_plan_via_active_build_plan_pointer(self, tmp_path: Path):
+        """v1.6.0 Chunk 06: with `active_build_plan:` set and no build-plan.md,
+        inference reads the scope-named plan's chunk count. The N-1-done +
+        uncommitted scenario fires rule-3 ("last unchecked chunk"); without the
+        pointer, the absent plan would instead fall through to rule-4."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True, exist_ok=True)
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/v1.6.0-foo-plan.md\n"
+        )
+        (prawduct / "artifacts" / "v1.6.0-foo-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n"
+            "- [x] Chunk 1\n- [x] Chunk 2\n- [x] Chunk 3\n- [ ] Chunk 4\n"
+        )
+        # No build-plan.md exists — only the pointed-to scope-named plan.
+        assert not (prawduct / "artifacts" / "build-plan.md").exists()
+
+        _write(tmp_path, "src/final.py", "# last chunk work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "final"
+        assert "last unchecked chunk" in rationale
+
 
 # ---------------------------------------------------------------------------
 # Rule 4 — chunk (default)

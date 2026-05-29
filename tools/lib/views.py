@@ -30,6 +30,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .core import resolve_build_plan_path
+
 
 TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
 H2_RE = re.compile(r"^##\s+(.+?)\s*$")
@@ -519,7 +521,10 @@ def plan_regen(prawduct_dir: Path) -> tuple[bool, list[ViewRegenResult]]:
         return False, []
 
     change_log_path = prawduct_dir / "change-log.md"
-    build_plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    # Resolve the active plan via the optional `active_build_plan:` pointer
+    # (supports scope-named plans); falls back to artifacts/build-plan.md.
+    build_plan_path = resolve_build_plan_path(prawduct_dir)
+    build_plan_rel = build_plan_path.relative_to(prawduct_dir).as_posix()
     release_notes_path = prawduct_dir / "release-notes.md"
     if not change_log_path.exists():
         raise FileNotFoundError(f"change-log not found at {change_log_path}")
@@ -540,7 +545,7 @@ def plan_regen(prawduct_dir: Path) -> tuple[bool, list[ViewRegenResult]]:
                 name="status",
                 action="noop",
                 summary="Status: up to date",
-                path_relative="artifacts/build-plan.md",
+                path_relative=build_plan_rel,
             )
         )
     else:
@@ -560,7 +565,7 @@ def plan_regen(prawduct_dir: Path) -> tuple[bool, list[ViewRegenResult]]:
                     + "; ".join(parts)
                 ),
                 new_content=status_new,
-                path_relative="artifacts/build-plan.md",
+                path_relative=build_plan_rel,
             )
         )
 
