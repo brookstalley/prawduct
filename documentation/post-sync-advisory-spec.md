@@ -1,6 +1,6 @@
 # Post-Sync Advisory Infrastructure — Spec
 
-**Status:** v0.2 (2026-05-28) — **Phase 1 built and shipped in framework v1.6.0** (2026-05-29). The storage, lifecycle, schema, session-briefing integration, sync integration, and the `/prawduct-advisory` CLI are complete and tested end-to-end via a synthetic probe. Per §13 the production probe roster is empty, so v1.6.0 is a no-op infrastructure ship — no user-visible advisories until Phase 2 (backlog) and Phase 3 (prompts) register their probes.
+**Status:** v0.2 (2026-05-28) — **Phase 1 built and shipped in framework v1.6.0** (2026-05-29); **Phase 2 (backlog) lean core shipped in v1.7.0** (2026-05-29). Phase 1: storage, lifecycle, schema, session-briefing integration, sync integration, and the `/prawduct-advisory` CLI, tested end-to-end via a synthetic probe. Phase 2: the first **production** probe — `legacy-backlog-format` (§8.2) — is now registered against the infrastructure (the mechanism carries a real signal), with the other three backlog probes deferred on proportionality grounds (see `documentation/backlog-system-requirements.md`). Phase 3 (prompts) probes remain unbuilt — no prompt-strategy advisories yet.
 **Changes from v0.1:** Q1-Q4 resolved per user feedback. Unified command renamed `/advisory` → `/prawduct-advisory` to reflect that advisories are framework infrastructure (the `prawduct-` prefix marks framework-level commands; user-project commands like `/backlog` and `/llm-strategy` do not carry it). Explicit separation of `project-state.yaml` (committed, shared) and `.advisories.json` (gitignored, per-clone). Probe versioning + supersession. Resolution-condition concept. Compact retention form for non-active entries.
 **Scope:** Shared infrastructure used by the backlog and prompts features to surface migration signals to the user after a sync, without forcing setup or blocking work. This spec describes the storage, lifecycle, schema, session-briefing format, and dismissal mechanism.
 **Out of scope:** Per-feature probe logic (lives in each feature's own build plan), build plan for this infrastructure (separate deliverable).
@@ -442,8 +442,8 @@ Some probes might find dozens of file:line citations (e.g., "hard-coded model ID
 
 This spec is a *precondition* for both feature build plans. The recommended build order:
 
-1. **Phase 1**: Build this advisory infrastructure (schema, storage, lifecycle, CLI, sync integration, session-briefing integration). Ship as a framework version bump (e.g., v1.6.0) with no user-visible advisories yet (probe roster is empty).
-2. **Phase 2**: Build the backlog feature (which adds backlog probes against §8.2). User-visible advisories begin surfacing.
+1. **Phase 1** ✓ *(shipped v1.6.0)*: Build this advisory infrastructure (schema, storage, lifecycle, CLI, sync integration, session-briefing integration). Shipped as a framework version bump (v1.6.0) with no user-visible advisories yet (probe roster empty).
+2. **Phase 2** ✓ *(lean core shipped v1.7.0)*: Build the backlog feature (which adds backlog probes against §8.2). Lean core registered the first production probe (`legacy-backlog-format`); user-visible advisories begin surfacing. The remaining three §8.2 probes are deferred (proportionality) until a real product needs them.
 3. **Phase 3**: Build the prompt-management feature (which adds prompt-management probes against §8.1). Adds the prompt-strategy and related advisories.
 
 This staging ensures each feature's build plan can assume the advisory mechanism exists, while keeping the first ship as a no-op infrastructure release that's easy to roll back if issues surface.

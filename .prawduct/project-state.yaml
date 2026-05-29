@@ -3,6 +3,10 @@
 # The framework IS a product in iteration phase. This file tracks its own
 # state using the same structure it prescribes for user products.
 
+# Backlog format version. v2 = structured items (ID + metadata bar). Consulted
+# by the legacy-backlog-format post-sync advisory probe.
+backlog_format_version: 2
+
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
