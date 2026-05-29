@@ -3,6 +3,10 @@
 # The framework IS a product in iteration phase. This file tracks its own
 # state using the same structure it prescribes for user products.
 
+# Backlog format version. v2 = structured items (ID + metadata bar). Consulted
+# by the legacy-backlog-format post-sync advisory probe.
+backlog_format_version: 2
+
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
@@ -432,7 +436,7 @@ views_enabled: true
 # `.prawduct/` so the build-plan tooling (regen-views, infer-critic-mode, the
 # stop-hook gate) finds a scope-named plan instead of the conventional
 # artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
-active_build_plan: artifacts/v1.6.0-advisory-infrastructure-plan.md
+active_build_plan: artifacts/v1.7.0-backlog-feature-plan.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -496,3 +500,6 @@ scope_rollups:
   v1.6.0:
     chunks: ["01", "02", "03", "04", "05", "06", "07"]
     releases: ["v1.6.0"]
+  v1.7.0:
+    chunks: ["01", "02", "03", "04"]
+    releases: ["v1.7.0"]

@@ -346,6 +346,7 @@ class TestRunInit:
         assert (tmp_path / ".claude" / "skills" / "pr" / "SKILL.md").is_file()
         assert (tmp_path / ".claude" / "skills" / "janitor" / "SKILL.md").is_file()
         assert (tmp_path / ".claude" / "skills" / "critic" / "SKILL.md").is_file()
+        assert (tmp_path / ".claude" / "skills" / "backlog" / "SKILL.md").is_file()
         assert len(result["actions"]) > 0
 
     def test_idempotent_second_run(self, tmp_path: Path):

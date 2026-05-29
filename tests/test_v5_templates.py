@@ -260,6 +260,51 @@ class TestProjectStateV5Fields:
         assert "{{PRODUCT_NAME}}" in raw
         assert "staleness" in raw.lower() or "health check" in raw.lower()
 
+    def test_backlog_resolution_fields_documented(self, raw: str):
+        """v1.7 backlog resolution-condition fields are documented (commented,
+        unset by default — absent means legacy/unmigrated)."""
+        for field in ["backlog_format_version", "backlog_prefixes",
+                      "backlog_external_imports", "backlog_last_groomed_at"]:
+            assert field in raw, f"backlog field '{field}' not documented in template"
+        # Shipped commented (default = unset = legacy), so YAML must not load them.
+        loaded = yaml.safe_load(raw)
+        assert "backlog_format_version" not in loaded
+
+
+# =============================================================================
+# backlog.md — Structured format (v1.7+)
+# =============================================================================
+
+
+class TestBacklogTemplate:
+    """Verify the v1.7 structured-backlog place-once template."""
+
+    @pytest.fixture
+    def raw(self) -> str:
+        return read_template("backlog.md")
+
+    def test_three_sections(self, raw: str):
+        """Open / Promoted / Archive sections in order."""
+        i_open = raw.index("## Open")
+        i_promoted = raw.index("## Promoted")
+        i_archive = raw.index("## Archive")
+        assert i_open < i_promoted < i_archive
+
+    def test_title_and_placeholder(self, raw: str):
+        """Backlog title carries the product-name placeholder."""
+        assert "# Backlog — {{PRODUCT_NAME}}" in raw
+        assert "Backlog" in raw  # /backlog validate check
+
+    def test_id_and_metadata_spec(self, raw: str):
+        """Item-shape spec documents the [PFX-XXXX] id and metadata bar fields."""
+        assert "[PFX-XXXX]" in raw
+        for field in ["effort:", "impact:", "area:", "source:", "added:", "status:"]:
+            assert field in raw, f"metadata field '{field}' not documented"
+
+    def test_legacy_items_remain_valid(self, raw: str):
+        """Template states legacy (unmetadata'd) items stay valid — D5."""
+        assert "Legacy items" in raw or "legacy" in raw.lower()
+
 
 # =============================================================================
 # critic-review.md — Goal-Based Structure

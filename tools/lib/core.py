@@ -84,6 +84,11 @@ MANAGED_FILES = {
         "strategy": "template",
         "description": "/prawduct-advisory skill — Manage post-sync advisories (list, show, dismiss, undismiss, resolve)",
     },
+    ".claude/skills/backlog/SKILL.md": {
+        "template": ".claude/skills/backlog/SKILL.md",
+        "strategy": "template",
+        "description": "/backlog skill — Structured backlog management (pick, add, find, list, update, migrate)",
+    },
     ".claude/skills/critic/SKILL.md": {
         "template": "templates/skill-critic.md",
         "strategy": "template",
@@ -132,6 +137,7 @@ SKILL_PLACEMENTS: list[tuple[str, Path]] = [
     ("prawduct-doctor", FRAMEWORK_DIR / ".claude" / "skills" / "prawduct-doctor" / "SKILL.md"),
     ("learnings", FRAMEWORK_DIR / ".claude" / "skills" / "learnings" / "SKILL.md"),
     ("prawduct-advisory", FRAMEWORK_DIR / ".claude" / "skills" / "prawduct-advisory" / "SKILL.md"),
+    ("backlog", FRAMEWORK_DIR / ".claude" / "skills" / "backlog" / "SKILL.md"),
     ("critic", TEMPLATES_DIR / "skill-critic.md"),
 ]
 

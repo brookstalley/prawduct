@@ -164,6 +164,8 @@ my-product/
 │   │   ├── pr/SKILL.md         # /pr skill for PR lifecycle
 │   │   ├── janitor/SKILL.md    # /janitor skill for periodic codebase maintenance
 │   │   ├── learnings/SKILL.md  # /learnings skill for context-efficient knowledge lookup
+│   │   ├── prawduct-advisory/SKILL.md  # /prawduct-advisory — post-sync advisory management
+│   │   ├── backlog/SKILL.md    # /backlog skill for structured backlog management
 │   │   └── prawduct-doctor/SKILL.md  # /prawduct-doctor for setup and health checks
 │   └── settings.json           # Hook config + banner pointing to tools/product-hook
 └── src/                        # Product source code
