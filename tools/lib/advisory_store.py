@@ -19,11 +19,12 @@ documented in learnings) — and the CLI lands in ``advisory_cmd.py`` per the
 keying, deterministic candidates, evidence-hash id) are preserved.
 
 **Phase 1 scope.** The store, registry, id-hash, ProjectState/Codebase
-wrappers, and the sync diff covering ``active``/``resolved`` states (Ch 01),
-sticky dismissal (Ch 02), and probe-version supersession (Ch 03). The remaining
-chunk adds retention/compaction/schema migration (Ch 04). The production probe roster is
-**empty** — nothing is registered at import time — so a real sync produces an
-empty store and no briefing section (no-op infrastructure ship).
+wrappers, the sync diff covering ``active``/``resolved`` states (Ch 01),
+sticky dismissal (Ch 02), probe-version supersession (Ch 03), and
+retention/compaction/schema-migration (Ch 04). The CLI surface
+(``advisory_cmd.py``) lands in Ch 05. The production probe roster is **empty**
+— nothing is registered at import time — so a real sync produces an empty store
+and no briefing section (no-op infrastructure ship).
 
 Conventions (project-preferences): functions are return-value based — they
 return dicts/values and never raise within tool internals; disk reads/writes
@@ -37,12 +38,12 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Iterable
 
 # Schema version of the on-disk store. Incremented only on breaking changes;
-# read-tolerance / forward-migration lands in Chunk 04 (spec A7).
+# read-tolerance / forward-migration is implemented by ``_migrate_store`` (A7).
 SCHEMA_VERSION = 1
 
 # Relative location of the per-clone nag log (gitignored).
@@ -52,6 +53,17 @@ ADVISORY_STORE_REL = ".prawduct/.advisories.json"
 # briefing stays scannable; the full list is reconstructible on demand via
 # ``/prawduct-advisory show <id>`` (Chunk 05).
 EVIDENCE_CAP = 5
+
+# Retention policy (spec §3.4, Q4) — applied at sync-persist time by
+# :func:`apply_retention`. Resolved entries are kept for reporting then GC'd;
+# dismissed entries are kept forever (the dismissal is the load-bearing fact).
+# The caps are *soft*: bound the store so it can't grow without limit in a
+# long-running project. The active cap is a defensive guard — a real project
+# never approaches 100 simultaneous live advisories (Phase 1 ships zero probes).
+RESOLVED_TTL_DAYS = 30
+ACTIVE_CAP = 100
+RESOLVED_CAP = 50
+DISMISSED_CAP = 200
 
 # Priority vocabulary and briefing ordering (spec §3.3, §5.1).
 VALID_PRIORITIES = ("info", "warn", "urgent")
@@ -250,8 +262,30 @@ def _empty_store() -> dict:
     return {"schema_version": SCHEMA_VERSION, "advisories": []}
 
 
+def _migrate_store(data: dict) -> dict:
+    """Forward-migrate an on-disk store to the current schema (spec A7).
+
+    A lower or absent ``schema_version`` is normalized up to ``SCHEMA_VERSION``
+    in place — at v1 there are no field renames, so migration is a relabel;
+    future breaking versions add per-version transforms here keyed on the
+    starting ``version``. A *higher* version (a store written by a newer
+    prawduct) is read as-is rather than crashing — unknown fields round-trip
+    untouched. Either way the read never raises (return-value convention).
+    """
+    version = data.get("schema_version")
+    if not isinstance(version, int):
+        version = 0  # absent / garbage → treat as pre-v1
+    if version < SCHEMA_VERSION:
+        data["schema_version"] = SCHEMA_VERSION
+    return data
+
+
 def read_store(product_dir) -> dict:
-    """Read the nag log. Missing/unreadable/malformed → empty default (no raise)."""
+    """Read the nag log. Missing/unreadable/malformed → empty default (no raise).
+
+    A lower/absent ``schema_version`` is migrated forward on read (spec A7);
+    the migrated version persists on the next :func:`write_store`.
+    """
     path = _store_path(product_dir)
     if not path.is_file():
         return _empty_store()
@@ -261,8 +295,7 @@ def read_store(product_dir) -> dict:
         return _empty_store()
     if not isinstance(data, dict) or not isinstance(data.get("advisories"), list):
         return _empty_store()
-    data.setdefault("schema_version", SCHEMA_VERSION)
-    return data
+    return _migrate_store(data)
 
 
 def write_store(product_dir, store: dict) -> dict:
@@ -389,8 +422,11 @@ def _supersession_targets(
 def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str | None = None, sync_version: str = "") -> dict:
     """Diff fresh probe candidates against the existing store (spec §4.2, §2.8).
 
-    Phase 1 handles ``active``, ``resolved``, ``dismissed``, and probe-version
-    supersession; compaction/GC of non-active entries lands in Chunk 04:
+    Decides advisory *states* — ``active``, ``resolved``, ``dismissed``, and
+    probe-version supersession. The complementary question of *what form to
+    keep non-active entries in* (compaction, TTL GC, soft caps) belongs to the
+    sync-persist pass :func:`apply_retention`, kept separate so this function
+    stays a clean state-diff. The six cases:
 
       - id in candidates, not in store        → new ``active`` advisory
       - id in candidates, ``active`` in store  → no-op (idempotent; ``triggered_at`` unchanged)
@@ -400,7 +436,8 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
         the same ``(feature, type)`` → ``resolved`` / ``resolved_by: probe-update`` /
         ``superseded_by: <new-id>`` (spec §2.8, A8)
       - id ``active`` in store, not in candidates and not superseded → ``resolved`` / ``resolved_by: sync``
-      - non-active in store, not in candidates → kept as-is (GC is Chunk 04)
+      - non-active in store, not in candidates → kept as-is (compaction/GC is
+        a separate sync-persist pass, :func:`apply_retention`)
 
     A ``dismissed`` advisory whose probe bumps version is *not* superseded: its
     dismissal is the load-bearing per-clone fact (kept), and the new id is a
@@ -462,7 +499,7 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
                 resolved["resolved_by"] = "sync"
             result.append(resolved)
         else:
-            result.append(advisory)  # already non-active — leave for Chunk 04 GC
+            result.append(advisory)  # already non-active — compaction/GC happens in apply_retention
 
     for advisory_id, cand in cand_by_id.items():
         if advisory_id not in seen:
@@ -471,12 +508,102 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
     return {"schema_version": SCHEMA_VERSION, "advisories": result}
 
 
+# =============================================================================
+# Retention: compaction, TTL garbage-collection, soft caps (spec §3.4, Q4) — Chunk 04
+# =============================================================================
+
+
+def _parse_iso(ts) -> datetime | None:
+    """Parse a ``%Y-%m-%dT%H:%M:%SZ`` stamp to an aware UTC datetime, or None."""
+    if not isinstance(ts, str) or not ts:
+        return None
+    try:
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _compact_advisory(advisory: dict) -> dict:
+    """Shrink a non-active advisory to the load-bearing fields (spec §3.4).
+
+    Active entries are returned untouched (full payload kept while live).
+    Resolved → ``id``/``state``/``resolved_at``/``resolved_by`` (+ ``superseded_by``
+    when set). Dismissed → ``id``/``state``/``dismissed_at``/``dismissed_reason``.
+    Idempotent: compacting an already-compact entry yields the same dict.
+    """
+    state = advisory.get("state")
+    if state == "resolved":
+        compact = {
+            "id": advisory.get("id"),
+            "state": "resolved",
+            "resolved_at": advisory.get("resolved_at"),
+            "resolved_by": advisory.get("resolved_by"),
+        }
+        if advisory.get("superseded_by"):
+            compact["superseded_by"] = advisory["superseded_by"]
+        return compact
+    if state == "dismissed":
+        return {
+            "id": advisory.get("id"),
+            "state": "dismissed",
+            "dismissed_at": advisory.get("dismissed_at"),
+            "dismissed_reason": advisory.get("dismissed_reason"),
+        }
+    return advisory  # active (or unrecognized) — leave full payload intact
+
+
+def _resolved_expired(advisory: dict, now_dt: datetime | None) -> bool:
+    """True if a resolved advisory is older than the 30-day TTL (spec §3.4).
+
+    Unparseable/absent ``resolved_at`` or ``now`` → not expired (keep it; a
+    missing timestamp must never silently delete an entry)."""
+    if advisory.get("state") != "resolved":
+        return False
+    resolved_dt = _parse_iso(advisory.get("resolved_at"))
+    if resolved_dt is None or now_dt is None:
+        return False
+    return (now_dt - resolved_dt) > timedelta(days=RESOLVED_TTL_DAYS)
+
+
+def _over_cap_ids(advisories: list[dict], state: str, ts_field: str, cap: int) -> set[str]:
+    """Ids of the oldest entries in ``state`` beyond ``cap`` (by ``ts_field``).
+
+    Entries with a missing/empty timestamp sort oldest and are dropped first."""
+    entries = [a for a in advisories if a.get("state") == state]
+    if len(entries) <= cap:
+        return set()
+    newest_first = sorted(entries, key=lambda a: a.get(ts_field) or "", reverse=True)
+    return {a.get("id") for a in newest_first[cap:]}
+
+
+def apply_retention(store: dict, *, now: str | None = None) -> dict:
+    """Compact non-active entries, GC expired resolved, and apply soft caps.
+
+    The sync-persist hygiene pass (spec §3.4, Q4), kept separate from
+    :func:`reconcile` (which is a pure state-diff): reconcile decides *states*,
+    retention decides *what to keep and in what form*. Pure — does not touch
+    disk. Order within each state band is preserved; only over-cap and expired
+    entries are removed. Idempotent.
+    """
+    now = now or _utcnow_iso()
+    now_dt = _parse_iso(now)
+    compacted = [_compact_advisory(a) for a in store.get("advisories", []) if isinstance(a, dict)]
+    kept = [a for a in compacted if not _resolved_expired(a, now_dt)]
+    drop: set[str] = set()
+    drop |= _over_cap_ids(kept, "active", "triggered_at", ACTIVE_CAP)
+    drop |= _over_cap_ids(kept, "resolved", "resolved_at", RESOLVED_CAP)
+    drop |= _over_cap_ids(kept, "dismissed", "dismissed_at", DISMISSED_CAP)
+    final = [a for a in kept if a.get("id") not in drop]
+    return {"schema_version": SCHEMA_VERSION, "advisories": final}
+
+
 def run_sync_advisories(product_dir, *, now: str | None = None, sync_version: str = "") -> dict:
-    """Sync entry point: run probes, diff against the store, persist.
+    """Sync entry point: run probes, diff against the store, retain, persist.
 
     Loads the answer store + codebase, runs the (empty in Phase 1) probe
-    roster, reconciles, and writes the nag log. Returns a summary dict. Never
-    raises — the underlying reads/writes/probes all degrade safely.
+    roster, reconciles, applies retention (compaction / TTL GC / soft caps),
+    and writes the nag log. Returns a summary dict. Never raises — the
+    underlying reads/writes/probes all degrade safely.
     """
     product = Path(product_dir)
     now = now or _utcnow_iso()
@@ -484,7 +611,8 @@ def run_sync_advisories(product_dir, *, now: str | None = None, sync_version: st
     codebase = make_codebase(product)
     candidates = run_all_probes(state, codebase)
     store = read_store(product)
-    new_store = reconcile(store, candidates, now=now, sync_version=sync_version)
+    reconciled = reconcile(store, candidates, now=now, sync_version=sync_version)
+    new_store = apply_retention(reconciled, now=now)
     write_result = write_store(product, new_store)
     advisories = new_store["advisories"]
     active = [a for a in advisories if a.get("state") == "active"]
@@ -509,9 +637,10 @@ def dismiss(product_dir, advisory_id: str, reason: str | None = None, *, now: st
     """Mark an advisory ``dismissed`` (sticky — it won't re-trigger; spec §2.4).
 
     The dismissal lives only in the per-clone nag log, never in the shared
-    ``project-state.yaml`` (spec §3.5). Phase 1 keeps the full payload on a
-    dismissed entry; compaction to the load-bearing dismissal fact lands in
-    Chunk 04. Returns ``{status: "ok"|"not_found"}``.
+    ``project-state.yaml`` (spec §3.5). ``dismiss`` writes the full payload
+    (cheap, between syncs); the next sync's :func:`apply_retention` shrinks it
+    to the load-bearing dismissal fact (spec §3.4). Returns
+    ``{status: "ok"|"not_found"}``.
     """
     now = now or _utcnow_iso()
     store = read_store(product_dir)

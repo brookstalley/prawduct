@@ -29,6 +29,7 @@ _adv = _mod._lib_advisory_store
 AdvisoryCandidate = _adv.AdvisoryCandidate
 Codebase = _adv.Codebase
 ProjectState = _adv.ProjectState
+apply_retention = _adv.apply_retention
 clear_registry = _adv.clear_registry
 compute_id = _adv.compute_id
 dismiss = _adv.dismiss
@@ -43,6 +44,10 @@ run_sync_advisories = _adv.run_sync_advisories
 write_store = _adv.write_store
 EVIDENCE_CAP = _adv.EVIDENCE_CAP
 SCHEMA_VERSION = _adv.SCHEMA_VERSION
+RESOLVED_TTL_DAYS = _adv.RESOLVED_TTL_DAYS
+ACTIVE_CAP = _adv.ACTIVE_CAP
+RESOLVED_CAP = _adv.RESOLVED_CAP
+DISMISSED_CAP = _adv.DISMISSED_CAP
 
 
 @pytest.fixture(autouse=True)
@@ -391,6 +396,20 @@ class TestRunSyncAdvisories:
         assert adv["state"] == "resolved"
         assert adv["resolved_by"] == "sync"
 
+    def test_sync_compacts_resolved_entry(self, tmp_path: Path):
+        """The sync-persist retention pass shrinks an auto-resolved advisory to
+        compact form on disk (Chunk 04 / spec §3.4)."""
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / "SYNTHETIC_TRIGGER").write_text("x")
+        register_probe("synthetic", "synthetic-condition", 1, self._trigger_probe)
+        run_sync_advisories(tmp_path, now="2026-05-29T00:00:00Z", sync_version="v1.6.0")
+        # Answer the question → probe stops firing → advisory resolves & compacts.
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text("synthetic_resolved: true\n")
+        run_sync_advisories(tmp_path, now="2026-06-01T00:00:00Z", sync_version="v1.6.0")
+        entry = read_store(tmp_path)["advisories"][0]
+        assert entry["state"] == "resolved"
+        assert set(entry) == {"id", "state", "resolved_at", "resolved_by"}
+
 
 # ---------------------------------------------------------------------------
 # Dismissal lifecycle (Chunk 02)
@@ -452,3 +471,220 @@ class TestDismissal:
 
     def test_undismiss_not_found(self, tmp_path: Path):
         assert undismiss(tmp_path, "no-such-id")["status"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# Retention: compaction, TTL GC, soft caps (Chunk 04, spec §3.4 / Q4)
+# ---------------------------------------------------------------------------
+
+
+def _full_resolved(aid, resolved_at, *, resolved_by="sync", superseded_by=None):
+    """A resolved advisory carrying the full (pre-compaction) payload."""
+    return {
+        "id": aid,
+        "feature": "synthetic",
+        "type": "synthetic-condition",
+        "probe_version": 1,
+        "triggered_at": "2026-01-01T00:00:00Z",
+        "triggered_by_sync_version": "v1.6.0",
+        "trigger_summary": "full payload still present",
+        "evidence": ["sig-1", "sig-2"],
+        "recommended_action": "/prawduct-advisory list",
+        "alternative_actions": [],
+        "priority": "info",
+        "state": "resolved",
+        "superseded_by": superseded_by,
+        "dismissed_at": None,
+        "dismissed_reason": None,
+        "resolved_at": resolved_at,
+        "resolved_by": resolved_by,
+    }
+
+
+def _full_dismissed(aid, dismissed_at, reason="not relevant"):
+    """A dismissed advisory carrying the full (pre-compaction) payload."""
+    return {
+        "id": aid,
+        "feature": "synthetic",
+        "type": "synthetic-condition",
+        "probe_version": 1,
+        "triggered_at": "2026-01-01T00:00:00Z",
+        "triggered_by_sync_version": "v1.6.0",
+        "trigger_summary": "full payload still present",
+        "evidence": ["sig-1"],
+        "recommended_action": "/prawduct-advisory list",
+        "alternative_actions": [],
+        "priority": "info",
+        "state": "dismissed",
+        "superseded_by": None,
+        "dismissed_at": dismissed_at,
+        "dismissed_reason": reason,
+        "resolved_at": None,
+        "resolved_by": None,
+    }
+
+
+def _ordered_ts(i):
+    """Unique, lexicographically-increasing ISO stamps for cap tests
+    (month 1-12, day 1-28 — both within valid ranges for i up to ~300)."""
+    return f"2026-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}T00:00:00Z"
+
+
+class TestRetention:
+    def test_resolved_compacted_to_minimal_form(self):
+        store = {"schema_version": 1, "advisories": [_full_resolved("r1", "2026-06-20T00:00:00Z")]}
+        entry = apply_retention(store, now="2026-06-30T00:00:00Z")["advisories"][0]
+        assert set(entry) == {"id", "state", "resolved_at", "resolved_by"}
+        assert entry["resolved_by"] == "sync"
+        assert entry["resolved_at"] == "2026-06-20T00:00:00Z"
+
+    def test_resolved_probe_update_keeps_superseded_by(self):
+        store = {
+            "schema_version": 1,
+            "advisories": [_full_resolved("r1", "2026-06-20T00:00:00Z", resolved_by="probe-update", superseded_by="r2")],
+        }
+        entry = apply_retention(store, now="2026-06-30T00:00:00Z")["advisories"][0]
+        assert set(entry) == {"id", "state", "resolved_at", "resolved_by", "superseded_by"}
+        assert entry["superseded_by"] == "r2"
+
+    def test_dismissed_compacted_to_minimal_form(self):
+        store = {"schema_version": 1, "advisories": [_full_dismissed("d1", "2026-06-20T00:00:00Z", "irrelevant")]}
+        entry = apply_retention(store, now="2026-06-30T00:00:00Z")["advisories"][0]
+        assert set(entry) == {"id", "state", "dismissed_at", "dismissed_reason"}
+        assert entry["dismissed_reason"] == "irrelevant"
+
+    def test_active_payload_untouched(self):
+        active = reconcile({"schema_version": 1, "advisories": []}, [_candidate()], now="2026-06-20T00:00:00Z")
+        out = apply_retention(active, now="2026-06-30T00:00:00Z")
+        # Active entries keep the full payload byte-for-byte.
+        assert out["advisories"][0] == active["advisories"][0]
+
+    def test_resolved_ttl_gc_removes_old_keeps_young(self):
+        store = {
+            "schema_version": 1,
+            "advisories": [
+                _full_resolved("old", "2026-05-15T00:00:00Z"),    # 46 days → expired
+                _full_resolved("young", "2026-06-20T00:00:00Z"),  # 10 days → kept
+            ],
+        }
+        out = apply_retention(store, now="2026-06-30T00:00:00Z")
+        assert [a["id"] for a in out["advisories"]] == ["young"]
+
+    def test_resolved_ttl_boundary_kept(self):
+        # Exactly 30 days old → not strictly past the TTL → kept.
+        store = {"schema_version": 1, "advisories": [_full_resolved("edge", "2026-05-31T00:00:00Z")]}
+        out = apply_retention(store, now="2026-06-30T00:00:00Z")
+        assert [a["id"] for a in out["advisories"]] == ["edge"]
+
+    def test_resolved_with_unparseable_timestamp_kept(self):
+        # A missing/garbled resolved_at must never silently delete an entry.
+        store = {"schema_version": 1, "advisories": [_full_resolved("r1", None)]}
+        out = apply_retention(store, now="2026-06-30T00:00:00Z")
+        assert [a["id"] for a in out["advisories"]] == ["r1"]
+
+    def test_dismissed_kept_forever(self):
+        store = {"schema_version": 1, "advisories": [_full_dismissed("d1", "2020-01-01T00:00:00Z")]}
+        out = apply_retention(store, now="2026-06-30T00:00:00Z")
+        assert [a["id"] for a in out["advisories"]] == ["d1"]
+
+    def test_resolved_soft_cap_keeps_newest(self):
+        advs = [_full_resolved(f"r{i:02d}", f"2026-06-29T00:{i:02d}:00Z") for i in range(RESOLVED_CAP + 10)]
+        out = apply_retention({"schema_version": 1, "advisories": advs}, now="2026-06-30T00:00:00Z")
+        kept = [a["id"] for a in out["advisories"]]
+        assert len(kept) == RESOLVED_CAP
+        assert "r00" not in kept  # oldest dropped
+        assert f"r{RESOLVED_CAP + 9:02d}" in kept  # newest kept
+
+    def test_dismissed_soft_cap_keeps_newest(self):
+        advs = [_full_dismissed(f"d{i:03d}", _ordered_ts(i)) for i in range(DISMISSED_CAP + 5)]
+        out = apply_retention({"schema_version": 1, "advisories": advs}, now="2026-12-31T00:00:00Z")
+        kept = {a["id"] for a in out["advisories"]}
+        assert len(kept) == DISMISSED_CAP
+        for i in range(5):
+            assert f"d{i:03d}" not in kept  # 5 oldest dropped
+        assert f"d{DISMISSED_CAP + 4:03d}" in kept
+
+    def test_active_soft_cap_keeps_newest(self):
+        advs = [{"id": f"a{i:03d}", "state": "active", "triggered_at": _ordered_ts(i)} for i in range(ACTIVE_CAP + 5)]
+        out = apply_retention({"schema_version": 1, "advisories": advs}, now="2026-12-31T00:00:00Z")
+        kept = {a["id"] for a in out["advisories"]}
+        assert len(kept) == ACTIVE_CAP
+        assert "a000" not in kept
+
+    def test_order_preserved_within_bounds(self):
+        store = {
+            "schema_version": 1,
+            "advisories": [
+                {"id": "a1", "state": "active", "triggered_at": "2026-06-20T00:00:00Z"},
+                _full_resolved("r1", "2026-06-20T00:00:00Z"),
+                _full_dismissed("d1", "2026-06-20T00:00:00Z"),
+            ],
+        }
+        out = apply_retention(store, now="2026-06-25T00:00:00Z")
+        assert [a["id"] for a in out["advisories"]] == ["a1", "r1", "d1"]
+
+    def test_idempotent(self):
+        store = {
+            "schema_version": 1,
+            "advisories": [
+                _full_resolved("r1", "2026-06-20T00:00:00Z", resolved_by="probe-update", superseded_by="r2"),
+                _full_dismissed("d1", "2026-06-20T00:00:00Z"),
+            ],
+        }
+        once = apply_retention(store, now="2026-06-25T00:00:00Z")
+        twice = apply_retention(once, now="2026-06-25T00:00:00Z")
+        assert once == twice
+
+    def test_stays_within_all_caps(self):
+        # Resolved stamps stay within the 30-day TTL of `now` so the cap (not the
+        # GC) is what bounds them; (day, hour) pairs keep them unique & ordered.
+        advs = (
+            [{"id": f"a{i:03d}", "state": "active", "triggered_at": _ordered_ts(i)} for i in range(ACTIVE_CAP + 20)]
+            + [_full_resolved(f"r{i:03d}", f"2026-12-{(i % 28) + 1:02d}T{i // 28:02d}:00:00Z") for i in range(RESOLVED_CAP + 20)]
+            + [_full_dismissed(f"d{i:03d}", _ordered_ts(i)) for i in range(DISMISSED_CAP + 20)]
+        )
+        out = apply_retention({"schema_version": 1, "advisories": advs}, now="2026-12-31T23:00:00Z")
+        by_state: dict[str, int] = {}
+        for a in out["advisories"]:
+            by_state[a["state"]] = by_state.get(a["state"], 0) + 1
+        assert by_state["active"] <= ACTIVE_CAP
+        assert by_state["resolved"] <= RESOLVED_CAP
+        assert by_state["dismissed"] <= DISMISSED_CAP
+
+
+# ---------------------------------------------------------------------------
+# Schema-version read-tolerance / forward migration (Chunk 04, spec A7)
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaMigration:
+    def _write_raw(self, tmp_path: Path, payload: dict):
+        (tmp_path / ".prawduct").mkdir(exist_ok=True)
+        (tmp_path / ".prawduct" / ".advisories.json").write_text(json.dumps(payload))
+
+    def test_v0_store_migrates_forward(self, tmp_path: Path):
+        self._write_raw(tmp_path, {"schema_version": 0, "advisories": [{"id": "x", "state": "active"}]})
+        store = read_store(tmp_path)
+        assert store["schema_version"] == SCHEMA_VERSION
+        assert store["advisories"] == [{"id": "x", "state": "active"}]  # data preserved
+
+    def test_absent_schema_version_migrates(self, tmp_path: Path):
+        self._write_raw(tmp_path, {"advisories": []})
+        assert read_store(tmp_path)["schema_version"] == SCHEMA_VERSION
+
+    def test_garbage_schema_version_migrates(self, tmp_path: Path):
+        self._write_raw(tmp_path, {"schema_version": "not-an-int", "advisories": []})
+        assert read_store(tmp_path)["schema_version"] == SCHEMA_VERSION
+
+    def test_higher_schema_version_read_not_crashed(self, tmp_path: Path):
+        # A store written by a newer prawduct reads as-is — unknown fields round-trip.
+        self._write_raw(tmp_path, {"schema_version": 99, "advisories": [{"id": "y", "state": "active", "future_field": 1}]})
+        store = read_store(tmp_path)
+        assert store["schema_version"] == 99
+        assert store["advisories"][0]["future_field"] == 1
+
+    def test_migrated_version_persists_on_write(self, tmp_path: Path):
+        self._write_raw(tmp_path, {"schema_version": 0, "advisories": []})
+        write_store(tmp_path, read_store(tmp_path))
+        raw = json.loads((tmp_path / ".prawduct" / ".advisories.json").read_text())
+        assert raw["schema_version"] == SCHEMA_VERSION
