@@ -18,10 +18,10 @@ documented in learnings) — and the CLI lands in ``advisory_cmd.py`` per the
 ``*_cmd.py`` convention. The spec's *semantics* (registry, ``(feature, type)``
 keying, deterministic candidates, evidence-hash id) are preserved.
 
-**Phase 1 scope (this chunk).** The store, registry, id-hash, ProjectState/
-Codebase wrappers, and the sync diff for ``active``/``resolved`` states. Later
-chunks add dismissal (Ch 02), probe-version supersession (Ch 03), and
-retention/compaction/schema migration (Ch 04). The production probe roster is
+**Phase 1 scope.** The store, registry, id-hash, ProjectState/Codebase
+wrappers, and the sync diff covering ``active``/``resolved`` states (Ch 01),
+sticky dismissal (Ch 02), and probe-version supersession (Ch 03). The remaining
+chunk adds retention/compaction/schema migration (Ch 04). The production probe roster is
 **empty** — nothing is registered at import time — so a real sync produces an
 empty store and no briefing section (no-op infrastructure ship).
 
@@ -362,17 +362,51 @@ def _new_advisory(candidate: AdvisoryCandidate, *, advisory_id: str, now: str, s
     }
 
 
+def _supersession_targets(
+    cand_by_id: dict[str, AdvisoryCandidate], existing_ids: set[str]
+) -> dict[tuple[str, str], tuple[int, str]]:
+    """Map ``(feature, type)`` → ``(version, id)`` of the highest-version *new*
+    candidate for that tuple (spec §2.8, Q1).
+
+    Only candidates whose id is absent from the store count as supersession
+    *sources* — an id already present is an idempotent re-fire, not a probe
+    refinement. When a probe-version bump fires, the bumped candidate carries a
+    new id (version is in the hash), so the prior active advisory for the same
+    ``(feature, type)`` drops out of the candidate set and is superseded *by*
+    this entry rather than plainly resolved.
+    """
+    targets: dict[tuple[str, str], tuple[int, str]] = {}
+    for advisory_id, cand in cand_by_id.items():
+        if advisory_id in existing_ids:
+            continue
+        key = (cand.feature, cand.type)
+        prev = targets.get(key)
+        if prev is None or cand.probe_version > prev[0]:
+            targets[key] = (cand.probe_version, advisory_id)
+    return targets
+
+
 def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str | None = None, sync_version: str = "") -> dict:
-    """Diff fresh probe candidates against the existing store (spec §4.2).
+    """Diff fresh probe candidates against the existing store (spec §4.2, §2.8).
 
-    Phase 1 handles ``active`` and ``resolved`` only — dismissal (Ch 02),
-    supersession (Ch 03), and compaction (Ch 04) extend this:
+    Phase 1 handles ``active``, ``resolved``, ``dismissed``, and probe-version
+    supersession; compaction/GC of non-active entries lands in Chunk 04:
 
-      - id in candidates, not in store      → new ``active`` advisory
-      - id in candidates, ``active`` in store → no-op (idempotent; ``triggered_at`` unchanged)
+      - id in candidates, not in store        → new ``active`` advisory
+      - id in candidates, ``active`` in store  → no-op (idempotent; ``triggered_at`` unchanged)
       - id in candidates, ``resolved`` in store → re-activate (the answer was un-set)
-      - id ``active`` in store, not in candidates → ``resolved`` / ``resolved_by: sync``
+      - id in candidates, ``dismissed`` in store → kept dismissed (sticky, A4)
+      - id ``active`` in store, superseded by a higher-version new candidate for
+        the same ``(feature, type)`` → ``resolved`` / ``resolved_by: probe-update`` /
+        ``superseded_by: <new-id>`` (spec §2.8, A8)
+      - id ``active`` in store, not in candidates and not superseded → ``resolved`` / ``resolved_by: sync``
       - non-active in store, not in candidates → kept as-is (GC is Chunk 04)
+
+    A ``dismissed`` advisory whose probe bumps version is *not* superseded: its
+    dismissal is the load-bearing per-clone fact (kept), and the new id is a
+    distinct condition that surfaces as a fresh ``active`` advisory — the user
+    dismissed the old probe's finding, so a materially-refined probe gets a new
+    chance to nag (recorded in the change-log / A8 test).
 
     Pure function — does not touch disk. Existing-entry order is preserved and
     new advisories append, for a deterministic store.
@@ -382,6 +416,9 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
     for cand in candidates:
         advisory_id = compute_id(cand.feature, cand.type, cand.probe_version, cand.evidence)
         cand_by_id[advisory_id] = cand
+
+    existing_ids = {a.get("id") for a in store.get("advisories", [])}
+    supersedes = _supersession_targets(cand_by_id, existing_ids)
 
     result: list[dict] = []
     seen: set[str] = set()
@@ -408,15 +445,24 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
                 )
             else:
                 result.append(advisory)  # active → idempotent no-op
-        else:
-            if state == "active":
-                resolved = dict(advisory)
-                resolved["state"] = "resolved"
-                resolved["resolved_at"] = now
-                resolved["resolved_by"] = "sync"
-                result.append(resolved)
+        elif state == "active":
+            target = supersedes.get((advisory.get("feature"), advisory.get("type")))
+            resolved = dict(advisory)
+            resolved["state"] = "resolved"
+            resolved["resolved_at"] = now
+            if target is not None and target[0] > (advisory.get("probe_version") or 0):
+                # Probe-version bump: link old → new instead of a plain resolve.
+                resolved["resolved_by"] = "probe-update"
+                resolved["superseded_by"] = target[1]
             else:
-                result.append(advisory)  # already non-active — leave for Chunk 04 GC
+                # Plain resolution — the probe stopped firing (resolution fact
+                # landed). The strict ``>`` also routes a version *downgrade*
+                # here (versions are monotonic per spec §3.3, so this is a
+                # defensive default, not an expected path).
+                resolved["resolved_by"] = "sync"
+            result.append(resolved)
+        else:
+            result.append(advisory)  # already non-active — leave for Chunk 04 GC
 
     for advisory_id, cand in cand_by_id.items():
         if advisory_id not in seen:

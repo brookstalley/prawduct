@@ -287,6 +287,68 @@ class TestReconcile:
 
 
 # ---------------------------------------------------------------------------
+# Probe versioning & supersession (Chunk 03, spec §2.8 / A8)
+# ---------------------------------------------------------------------------
+
+
+class TestSupersession:
+    def test_version_bump_supersedes_old_active(self):
+        """A8: bumping probe_version retires the old advisory with
+        resolved_by=probe-update + superseded_by, and surfaces the new one active."""
+        v1 = reconcile({"schema_version": 1, "advisories": []}, [_candidate(probe_version=1)], now="2026-05-29T00:00:00Z")
+        old_id = v1["advisories"][0]["id"]
+
+        bumped = reconcile(v1, [_candidate(probe_version=2)], now="2026-05-30T00:00:00Z")
+        advs = {a["id"]: a for a in bumped["advisories"]}
+
+        old = advs[old_id]
+        assert old["state"] == "resolved"
+        assert old["resolved_by"] == "probe-update"
+        assert old["resolved_at"] == "2026-05-30T00:00:00Z"
+        new_id = old["superseded_by"]
+        assert new_id is not None and new_id != old_id
+
+        new = advs[new_id]
+        assert new["state"] == "active"
+        assert new["probe_version"] == 2
+        # One current (active) + one retired (resolved) — no duplicate active.
+        assert len(bumped["advisories"]) == 2
+
+    def test_supersession_stable_on_resync(self):
+        """Re-syncing at v2 does not re-resolve the retired entry or duplicate the new one."""
+        v1 = reconcile({"schema_version": 1, "advisories": []}, [_candidate(probe_version=1)], now="2026-05-29T00:00:00Z")
+        v2 = reconcile(v1, [_candidate(probe_version=2)], now="2026-05-30T00:00:00Z")
+        again = reconcile(v2, [_candidate(probe_version=2)], now="2026-05-31T00:00:00Z")
+        assert sorted(a["state"] for a in again["advisories"]) == ["active", "resolved"]
+        retired = [a for a in again["advisories"] if a["state"] == "resolved"][0]
+        # The probe-update linkage is preserved — sync does not overwrite it.
+        assert retired["resolved_by"] == "probe-update"
+
+    def test_dismissed_v1_not_superseded_by_v2(self, tmp_path: Path):
+        """A dismissed v1 stays dismissed (sticky, A4); v2 is a distinct condition
+        that surfaces as a fresh active advisory — the user dismissed the old
+        probe's finding, so a materially-refined probe gets a new chance to nag."""
+        v1 = reconcile({"schema_version": 1, "advisories": []}, [_candidate(probe_version=1)], now="2026-05-29T00:00:00Z")
+        write_store(tmp_path, v1)
+        old_id = v1["advisories"][0]["id"]
+        dismiss(tmp_path, old_id, now="2026-05-29T01:00:00Z")
+
+        bumped = reconcile(read_store(tmp_path), [_candidate(probe_version=2)], now="2026-05-30T00:00:00Z")
+        advs = {a["id"]: a for a in bumped["advisories"]}
+
+        # Dismissed v1 untouched — never superseded, no resolved fields written.
+        old = advs[old_id]
+        assert old["state"] == "dismissed"
+        assert old["superseded_by"] is None
+        assert old["resolved_by"] is None
+
+        # v2 is a new, distinct active advisory.
+        new = [a for a in bumped["advisories"] if a["id"] != old_id][0]
+        assert new["state"] == "active"
+        assert new["probe_version"] == 2
+
+
+# ---------------------------------------------------------------------------
 # run_sync_advisories (orchestration end-to-end)
 # ---------------------------------------------------------------------------
 
