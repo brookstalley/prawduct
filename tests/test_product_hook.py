@@ -7820,3 +7820,37 @@ class TestSessionBriefingAdvisories:
         self._write_store(prawduct, [resolved])
         out = self.mod.assemble_session_briefing(tmp_path, [])
         assert "ADVISORIES" not in out
+
+
+class TestSessionBriefingDismissed:
+    """The "Dismissed since last session" briefing line (v1.6.0 Chunk 02)."""
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    def _write_store(self, prawduct: Path, advisories: list[dict]) -> None:
+        (prawduct / ".advisories.json").write_text(
+            json.dumps({"schema_version": 1, "advisories": advisories})
+        )
+
+    def test_dismissed_since_last_session(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        session_start = make_session_start(prawduct, offset_seconds=-60)
+        dismissed = {"id": "d1", "state": "dismissed", "dismissed_at": session_start,
+                     "dismissed_reason": "nope"}
+        self._write_store(prawduct, [dismissed])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "Dismissed since last session: 1" in out
+        assert "/prawduct-advisory list --state=dismissed" in out
+
+    def test_old_dismissal_not_counted(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        dismissed = {"id": "d1", "state": "dismissed", "dismissed_at": "2020-01-01T00:00:00Z"}
+        self._write_store(prawduct, [dismissed])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        # Old dismissal is the load-bearing fact but not "since last session".
+        assert "ADVISORIES" not in out

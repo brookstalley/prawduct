@@ -74,6 +74,7 @@ from .advisory_store import (  # noqa: F401
     ProjectState,
     clear_registry,
     compute_id,
+    dismiss,
     load_project_state,
     make_codebase,
     read_store,
@@ -81,6 +82,7 @@ from .advisory_store import (  # noqa: F401
     register_probe,
     run_all_probes,
     run_sync_advisories,
+    undismiss,
     write_store,
 )
 

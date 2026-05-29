@@ -390,7 +390,12 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
         seen.add(advisory_id)
         state = advisory.get("state")
         if advisory_id in cand_by_id:
-            if state == "resolved":
+            if state == "dismissed":
+                # Sticky dismissal (spec §2.4, A4): a dismissed id never
+                # re-triggers, even though its probe still fires. Kept as-is;
+                # only undismiss() returns it to active.
+                result.append(advisory)
+            elif state == "resolved":
                 # The probe fires again — the resolution fact was removed. Return
                 # to active, preserving the original first-seen metadata.
                 result.append(
@@ -447,3 +452,55 @@ def run_sync_advisories(product_dir, *, now: str | None = None, sync_version: st
         "active": len(active),
         "newly_resolved": newly_resolved,
     }
+
+
+# =============================================================================
+# Dismissal lifecycle (spec §2.4, §6.1) — Chunk 02
+# =============================================================================
+
+
+def dismiss(product_dir, advisory_id: str, reason: str | None = None, *, now: str | None = None) -> dict:
+    """Mark an advisory ``dismissed`` (sticky — it won't re-trigger; spec §2.4).
+
+    The dismissal lives only in the per-clone nag log, never in the shared
+    ``project-state.yaml`` (spec §3.5). Phase 1 keeps the full payload on a
+    dismissed entry; compaction to the load-bearing dismissal fact lands in
+    Chunk 04. Returns ``{status: "ok"|"not_found"}``.
+    """
+    now = now or _utcnow_iso()
+    store = read_store(product_dir)
+    found = False
+    for advisory in store.get("advisories", []):
+        if advisory.get("id") == advisory_id:
+            advisory["state"] = "dismissed"
+            advisory["dismissed_at"] = now
+            advisory["dismissed_reason"] = reason
+            advisory["resolved_at"] = None
+            advisory["resolved_by"] = None
+            found = True
+            break
+    if not found:
+        return {"status": "not_found", "id": advisory_id}
+    write_store(product_dir, store)
+    return {"status": "ok", "id": advisory_id}
+
+
+def undismiss(product_dir, advisory_id: str) -> dict:
+    """Clear a dismissal — the advisory returns to ``active`` (spec §6.1).
+
+    The next sync reconciles it: if the probe still fires it stays active; if
+    not, it auto-resolves. Returns ``{status: "ok"|"not_found"}``.
+    """
+    store = read_store(product_dir)
+    found = False
+    for advisory in store.get("advisories", []):
+        if advisory.get("id") == advisory_id:
+            advisory["state"] = "active"
+            advisory["dismissed_at"] = None
+            advisory["dismissed_reason"] = None
+            found = True
+            break
+    if not found:
+        return {"status": "not_found", "id": advisory_id}
+    write_store(product_dir, store)
+    return {"status": "ok", "id": advisory_id}

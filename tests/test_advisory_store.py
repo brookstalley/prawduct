@@ -31,6 +31,8 @@ Codebase = _adv.Codebase
 ProjectState = _adv.ProjectState
 clear_registry = _adv.clear_registry
 compute_id = _adv.compute_id
+dismiss = _adv.dismiss
+undismiss = _adv.undismiss
 load_project_state = _adv.load_project_state
 make_codebase = _adv.make_codebase
 read_store = _adv.read_store
@@ -326,3 +328,65 @@ class TestRunSyncAdvisories:
         adv = read_store(tmp_path)["advisories"][0]
         assert adv["state"] == "resolved"
         assert adv["resolved_by"] == "sync"
+
+
+# ---------------------------------------------------------------------------
+# Dismissal lifecycle (Chunk 02)
+# ---------------------------------------------------------------------------
+
+
+class TestDismissal:
+    def _seed_active(self, tmp_path: Path):
+        store = reconcile(
+            {"schema_version": 1, "advisories": []},
+            [_candidate(evidence=("e",))],
+            now="2026-05-29T00:00:00Z",
+        )
+        write_store(tmp_path, store)
+        return store["advisories"][0]["id"]
+
+    def test_dismiss_sets_fields(self, tmp_path: Path):
+        aid = self._seed_active(tmp_path)
+        result = dismiss(tmp_path, aid, reason="not relevant", now="2026-05-29T01:00:00Z")
+        assert result["status"] == "ok"
+        adv = read_store(tmp_path)["advisories"][0]
+        assert adv["state"] == "dismissed"
+        assert adv["dismissed_at"] == "2026-05-29T01:00:00Z"
+        assert adv["dismissed_reason"] == "not relevant"
+
+    def test_dismiss_reason_optional(self, tmp_path: Path):
+        aid = self._seed_active(tmp_path)
+        dismiss(tmp_path, aid)
+        assert read_store(tmp_path)["advisories"][0]["dismissed_reason"] is None
+
+    def test_dismiss_not_found(self, tmp_path: Path):
+        self._seed_active(tmp_path)
+        assert dismiss(tmp_path, "no-such-id")["status"] == "not_found"
+
+    def test_dismissal_is_sticky_across_sync(self, tmp_path: Path):
+        """A4: a dismissed advisory does not re-surface even if the trigger persists."""
+        aid = self._seed_active(tmp_path)
+        dismiss(tmp_path, aid, now="2026-05-29T01:00:00Z")
+        # Re-sync with the candidate STILL firing.
+        store = reconcile(
+            read_store(tmp_path),
+            [_candidate(evidence=("e",))],
+            now="2026-05-30T00:00:00Z",
+        )
+        adv = store["advisories"][0]
+        assert adv["state"] == "dismissed"
+
+    def test_undismiss_returns_to_active(self, tmp_path: Path):
+        aid = self._seed_active(tmp_path)
+        dismiss(tmp_path, aid, now="2026-05-29T01:00:00Z")
+        result = undismiss(tmp_path, aid)
+        assert result["status"] == "ok"
+        adv = read_store(tmp_path)["advisories"][0]
+        assert adv["state"] == "active"
+        assert adv["dismissed_at"] is None
+        # And a subsequent sync with the probe still firing keeps it active.
+        store = reconcile(read_store(tmp_path), [_candidate(evidence=("e",))], now="2026-06-01T00:00:00Z")
+        assert store["advisories"][0]["state"] == "active"
+
+    def test_undismiss_not_found(self, tmp_path: Path):
+        assert undismiss(tmp_path, "no-such-id")["status"] == "not_found"
