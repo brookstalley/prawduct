@@ -288,6 +288,7 @@ class TestCreateManifest:
             ".claude/skills/prawduct-doctor/SKILL.md",
             ".claude/skills/learnings/SKILL.md",
             ".claude/skills/prawduct-advisory/SKILL.md",
+            ".claude/skills/backlog/SKILL.md",
             ".claude/skills/critic/SKILL.md",
             "tools/product-hook",
             ".claude/settings.json",

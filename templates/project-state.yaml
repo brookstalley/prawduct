@@ -250,6 +250,33 @@ coverage_required: false
 operator_verification_required: false
 
 # =============================================================================
+# BACKLOG (structured backlog resolution conditions, v1.7+)
+# =============================================================================
+# The shared "answer store" (committed) that backlog sync probes consult to
+# know whether a migration nudge is still needed. The per-clone nag log lives
+# in .prawduct/.advisories.json; these committed facts auto-resolve a
+# teammate's advisory on next sync (see post-sync-advisory-spec.md §3.5, §7.1).
+#
+#   backlog_format_version  — set to 2 once `/backlog migrate` has converted
+#                             items to the [PFX-XXXX] structured format. Unset
+#                             (or absent) means legacy/unmigrated; the
+#                             `legacy-backlog-format` probe may nudge.
+#   backlog_prefixes        — OPTIONAL declared prefix vocabulary for /backlog
+#                             validation (e.g. [STH, CRT, SYN]). Emergent by
+#                             default; declare only if you want validation.
+#
+# Reserved for deferred backlog probes (v1.7 ships only legacy-backlog-format):
+#   backlog_external_imports — list of external backlog files already audited
+#                              via `/backlog import` (resolves external-detected).
+#   backlog_last_groomed_at  — ISO-8601 of the last /backlog list|pick (resolves
+#                              overdue-grooming).
+
+# backlog_format_version:
+# backlog_prefixes: []
+# backlog_external_imports: []
+# backlog_last_groomed_at:
+
+# =============================================================================
 # CHANGE LOG
 # =============================================================================
 # Change log is in .prawduct/change-log.md (separate file to reduce merge conflicts).
