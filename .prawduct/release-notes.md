@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v1.7.0
+
+**Entry:** 2026-05-29: v1.7.0 — Backlog system (Phase 2 lean core): structured `/backlog` skill + first production advisory probe (release)
+
+**Chunks shipped:** 01, 02, 03, 04
+
+**Scope:** v1.7.0
+
+See `.prawduct/change-log.md` for full details.
+
 ## v1.6.0
 
 **Entry:** 2026-05-29: v1.6.0 — Post-sync advisory infrastructure (Phase 1) + configurable build-plan path (release)
