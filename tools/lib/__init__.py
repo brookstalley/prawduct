@@ -80,10 +80,20 @@ from .advisory_store import (  # noqa: F401
     read_store,
     reconcile,
     register_probe,
+    resolve,
     run_all_probes,
     run_sync_advisories,
     undismiss,
     write_store,
+)
+
+# Post-sync advisory management CLI (v1.6.0 Chunk 05 — /prawduct-advisory)
+from .advisory_cmd import (  # noqa: F401
+    dismiss_advisory,
+    list_advisories,
+    resolve_advisory,
+    show_advisory,
+    undismiss_advisory,
 )
 
 # Sync operations

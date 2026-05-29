@@ -480,6 +480,19 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
                         sync_version=advisory.get("triggered_by_sync_version") or sync_version,
                     )
                 )
+            elif not advisory.get("triggered_at"):
+                # A compacted entry that was undismissed (Chunk 05): undismiss
+                # flips state→active on the compact stub, but compaction had
+                # already dropped feature/evidence/trigger_summary/action. The
+                # probe still fires, so rehydrate the full advisory from the
+                # fresh candidate (fresh triggered_at — it resurfaces as a new
+                # occurrence). Without this it would render in the briefing with
+                # a blank summary and no action indefinitely. A normal active
+                # entry always carries triggered_at, so this never disturbs the
+                # idempotent path below.
+                result.append(
+                    _new_advisory(cand_by_id[advisory_id], advisory_id=advisory_id, now=now, sync_version=sync_version)
+                )
             else:
                 result.append(advisory)  # active → idempotent no-op
         elif state == "active":
@@ -629,8 +642,26 @@ def run_sync_advisories(product_dir, *, now: str | None = None, sync_version: st
 
 
 # =============================================================================
-# Dismissal lifecycle (spec §2.4, §6.1) — Chunk 02
+# Dismissal lifecycle (spec §2.4, §6.1) — Chunk 02; resolve added Chunk 05
 # =============================================================================
+
+
+def _mutate_advisory(product_dir, advisory_id: str, apply: Callable[[dict], None]) -> dict:
+    """Read the store, run ``apply(advisory)`` on the entry matching
+    ``advisory_id``, and write back. Returns ``{status: "ok"|"not_found", id}``.
+
+    The shared read-scan-mutate-write skeleton behind :func:`dismiss`,
+    :func:`undismiss`, and :func:`resolve` — each verb supplies only its field
+    mutation. The store is written only when the id is found; a miss is a no-op
+    write. Never raises (the underlying read/write degrade safely).
+    """
+    store = read_store(product_dir)
+    for advisory in store.get("advisories", []):
+        if advisory.get("id") == advisory_id:
+            apply(advisory)
+            write_store(product_dir, store)
+            return {"status": "ok", "id": advisory_id}
+    return {"status": "not_found", "id": advisory_id}
 
 
 def dismiss(product_dir, advisory_id: str, reason: str | None = None, *, now: str | None = None) -> dict:
@@ -643,39 +674,53 @@ def dismiss(product_dir, advisory_id: str, reason: str | None = None, *, now: st
     ``{status: "ok"|"not_found"}``.
     """
     now = now or _utcnow_iso()
-    store = read_store(product_dir)
-    found = False
-    for advisory in store.get("advisories", []):
-        if advisory.get("id") == advisory_id:
-            advisory["state"] = "dismissed"
-            advisory["dismissed_at"] = now
-            advisory["dismissed_reason"] = reason
-            advisory["resolved_at"] = None
-            advisory["resolved_by"] = None
-            found = True
-            break
-    if not found:
-        return {"status": "not_found", "id": advisory_id}
-    write_store(product_dir, store)
-    return {"status": "ok", "id": advisory_id}
+
+    def _apply(advisory: dict) -> None:
+        advisory["state"] = "dismissed"
+        advisory["dismissed_at"] = now
+        advisory["dismissed_reason"] = reason
+        advisory["resolved_at"] = None
+        advisory["resolved_by"] = None
+
+    return _mutate_advisory(product_dir, advisory_id, _apply)
 
 
 def undismiss(product_dir, advisory_id: str) -> dict:
     """Clear a dismissal — the advisory returns to ``active`` (spec §6.1).
 
-    The next sync reconciles it: if the probe still fires it stays active; if
-    not, it auto-resolves. Returns ``{status: "ok"|"not_found"}``.
+    The next sync reconciles it: if the probe still fires it stays active (and
+    :func:`reconcile` rehydrates the entry should compaction have shrunk it; see
+    the ``triggered_at`` branch there); if not, it auto-resolves. Returns
+    ``{status: "ok"|"not_found"}``.
     """
-    store = read_store(product_dir)
-    found = False
-    for advisory in store.get("advisories", []):
-        if advisory.get("id") == advisory_id:
-            advisory["state"] = "active"
-            advisory["dismissed_at"] = None
-            advisory["dismissed_reason"] = None
-            found = True
-            break
-    if not found:
-        return {"status": "not_found", "id": advisory_id}
-    write_store(product_dir, store)
-    return {"status": "ok", "id": advisory_id}
+
+    def _apply(advisory: dict) -> None:
+        advisory["state"] = "active"
+        advisory["dismissed_at"] = None
+        advisory["dismissed_reason"] = None
+
+    return _mutate_advisory(product_dir, advisory_id, _apply)
+
+
+def resolve(product_dir, advisory_id: str, *, resolved_by: str = "action", now: str | None = None) -> dict:
+    """Mark an advisory ``resolved`` immediately (action-driven, spec §4.3, Q3).
+
+    The action-resolution path: when the user runs a ``recommended_action`` the
+    action's success can clear the advisory now, without waiting for the next
+    sync's probe re-run. ``resolved_by`` defaults to ``"action"`` to distinguish
+    it from sync-driven (``"sync"``) and supersession (``"probe-update"``)
+    resolutions. Note the authoritative resolution path remains the
+    ``project-state.yaml`` fact + probe re-run (spec Q3); this is the immediate-
+    feedback shortcut. The next sync's :func:`apply_retention` shrinks the entry
+    to compact form. Returns ``{status: "ok"|"not_found"}``.
+    """
+    now = now or _utcnow_iso()
+
+    def _apply(advisory: dict) -> None:
+        advisory["state"] = "resolved"
+        advisory["resolved_at"] = now
+        advisory["resolved_by"] = resolved_by
+        advisory["dismissed_at"] = None
+        advisory["dismissed_reason"] = None
+
+    return _mutate_advisory(product_dir, advisory_id, _apply)

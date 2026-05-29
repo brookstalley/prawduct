@@ -1439,7 +1439,7 @@ class TestV4ToV5FullEndToEnd:
         run_sync(str(v4), str(FRAMEWORK_DIR), no_pull=True)
 
         # New v5 skills should be backfilled
-        for skill_name in ("pr", "janitor", "prawduct-doctor", "learnings", "critic"):
+        for skill_name in ("pr", "janitor", "prawduct-doctor", "learnings", "prawduct-advisory", "critic"):
             skill = v4 / ".claude" / "skills" / skill_name / "SKILL.md"
             assert skill.is_file(), f"Missing skill: {skill_name}"
 

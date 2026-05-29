@@ -7854,3 +7854,81 @@ class TestSessionBriefingDismissed:
         out = self.mod.assemble_session_briefing(tmp_path, [])
         # Old dismissal is the load-bearing fact but not "since last session".
         assert "ADVISORIES" not in out
+
+
+class TestAdvisoryDispatch:
+    """The `product-hook advisory <subcmd>` dispatch (Chunk 05).
+
+    Exercises the wiring the unit-level `advisory_cmd.run` tests can't reach:
+    main()'s `advisory` branch, `sys.argv[2:]` slicing, and the exit-code
+    contract — invoked end-to-end via subprocess (mirroring how
+    `infer-critic-mode` is dispatch-tested)."""
+
+    def _run(self, project_dir: Path, *argv: str) -> subprocess.CompletedProcess:
+        env = {
+            "HOME": str(project_dir),
+            "CLAUDE_PROJECT_DIR": str(project_dir),
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        }
+        return subprocess.run(
+            ["python3", str(HOOK_PATH), "advisory", *argv],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=15,
+        )
+
+    def _seed(self, project_dir: Path) -> None:
+        prawduct = project_dir / ".prawduct"
+        prawduct.mkdir(parents=True, exist_ok=True)
+        store = {
+            "schema_version": 1,
+            "advisories": [
+                {
+                    "id": "backlog-legacy-format-v1-abc123",
+                    "feature": "backlog",
+                    "type": "legacy-format",
+                    "probe_version": 1,
+                    "triggered_at": "2026-05-01T00:00:00Z",
+                    "triggered_by_sync_version": "",
+                    "trigger_summary": "43 legacy items.",
+                    "evidence": ["x"],
+                    "recommended_action": "/backlog migrate",
+                    "alternative_actions": [],
+                    "priority": "warn",
+                    "state": "active",
+                    "superseded_by": None,
+                    "dismissed_at": None,
+                    "dismissed_reason": None,
+                    "resolved_at": None,
+                    "resolved_by": None,
+                }
+            ],
+        }
+        (prawduct / ".advisories.json").write_text(json.dumps(store) + "\n")
+
+    def test_list_dispatch(self, tmp_path: Path):
+        self._seed(tmp_path)
+        result = self._run(tmp_path, "list")
+        assert result.returncode == 0
+        assert "backlog-legacy-format-v1-abc123" in result.stdout
+
+    def test_dismiss_dispatch_mutates_store(self, tmp_path: Path):
+        self._seed(tmp_path)
+        result = self._run(tmp_path, "dismiss", "backlog-legacy-format-v1-abc123", "--reason", "later")
+        assert result.returncode == 0
+        store = json.loads((tmp_path / ".prawduct" / ".advisories.json").read_text())
+        assert store["advisories"][0]["state"] == "dismissed"
+        assert store["advisories"][0]["dismissed_reason"] == "later"
+
+    def test_unknown_subcommand_exits_1(self, tmp_path: Path):
+        self._seed(tmp_path)
+        result = self._run(tmp_path, "frobnicate")
+        assert result.returncode == 1
+        assert "Usage" in result.stderr
+
+    def test_bare_advisory_is_usage_error(self, tmp_path: Path):
+        self._seed(tmp_path)
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+        assert "Usage" in result.stderr

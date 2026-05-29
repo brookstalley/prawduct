@@ -79,6 +79,11 @@ MANAGED_FILES = {
         "strategy": "template",
         "description": "/learnings skill — Look up project learnings and preferences relevant to your current task",
     },
+    ".claude/skills/prawduct-advisory/SKILL.md": {
+        "template": ".claude/skills/prawduct-advisory/SKILL.md",
+        "strategy": "template",
+        "description": "/prawduct-advisory skill — Manage post-sync advisories (list, show, dismiss, undismiss, resolve)",
+    },
     ".claude/skills/critic/SKILL.md": {
         "template": "templates/skill-critic.md",
         "strategy": "template",
@@ -126,6 +131,7 @@ SKILL_PLACEMENTS: list[tuple[str, Path]] = [
     ("janitor", FRAMEWORK_DIR / ".claude" / "skills" / "janitor" / "SKILL.md"),
     ("prawduct-doctor", FRAMEWORK_DIR / ".claude" / "skills" / "prawduct-doctor" / "SKILL.md"),
     ("learnings", FRAMEWORK_DIR / ".claude" / "skills" / "learnings" / "SKILL.md"),
+    ("prawduct-advisory", FRAMEWORK_DIR / ".claude" / "skills" / "prawduct-advisory" / "SKILL.md"),
     ("critic", TEMPLATES_DIR / "skill-critic.md"),
 ]
 

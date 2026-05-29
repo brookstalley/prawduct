@@ -4210,13 +4210,37 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     return 0
 
 
+def cmd_advisory(project_dir: Path, argv: list[str]) -> int:
+    """Dispatch the ``/prawduct-advisory`` management CLI (spec §6, Chunk 05).
+
+    Thin wrapper around ``tools.lib.advisory_cmd.run`` — the subcommand exists so
+    the skill's ``allowed-tools`` can be scoped to ``Bash(python3 tools/product-hook
+    advisory*)`` instead of arbitrary code execution, mirroring the
+    ``infer-critic-mode`` pattern. ``argv`` is ``sys.argv[2:]`` (everything after
+    ``advisory``).
+
+    Fail-safe: when ``tools/lib`` is absent (a product repo that has not yet
+    received the lib propagation), print a clear message and return 1 rather than
+    crashing — the advisory CLI is informational, never a gate.
+    """
+    tools_dir = str(Path(__file__).resolve().parent)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    try:
+        from lib import advisory_cmd  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print("advisory CLI unavailable (tools/lib not present in this repo)", file=sys.stderr)
+        return 1
+    return advisory_cmd.run(project_dir, argv)
+
+
 _USAGE = (
     "Usage: product-hook "
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "check-pr-doc-only|check-pr-trivial|regen-views|infer-critic-mode [args]|"
-    "compute-verify-resolutions-scope}"
+    "compute-verify-resolutions-scope|advisory <subcmd> [args]}"
 )
 
 
@@ -4259,6 +4283,8 @@ def main() -> int:
         return cmd_infer_critic_mode(project_dir, args)
     elif command == "compute-verify-resolutions-scope":
         return cmd_compute_verify_resolutions_scope(project_dir)
+    elif command == "advisory":
+        return cmd_advisory(project_dir, sys.argv[2:])
     else:
         print(_USAGE, file=sys.stderr)
         return 1
