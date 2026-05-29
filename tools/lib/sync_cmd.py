@@ -36,6 +36,7 @@ from .core import (
     untrack_gitignored_files,
     update_gitignore,
 )
+from .advisory_store import run_sync_advisories
 from .migrate_cmd import (
     enable_v1_4_views,
     migrate_backlog,
@@ -1105,6 +1106,21 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 "last_changed_date": last_change.get("date", ""),
                 "last_changed_subject": last_change.get("subject", ""),
             })
+
+    # Post-sync migration advisories (v1.6.0 Phase 1). Distinct from the
+    # template-drift `advisories` collected above — these come from the probe
+    # registry (empty in Phase 1, so this is a no-op) and land in the per-clone
+    # nag log `.prawduct/.advisories.json`. run_sync_advisories is return-value
+    # based and degrades safely; the broad guard is belt-and-suspenders so a
+    # future feature's faulty probe can never block a sync.
+    try:
+        run_sync_advisories(
+            product,
+            now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            sync_version=PRAWDUCT_VERSION,
+        )
+    except Exception as exc:  # prawduct:ok-broad-except — advisory probes must never block sync
+        notes.append(f"Advisory probe step skipped: {exc}")
 
     # Ensure gitignore stays current
     gi_result = update_gitignore(product)

@@ -48,6 +48,8 @@ import json
 import subprocess
 from pathlib import Path
 
+from .core import resolve_build_plan_path
+
 # Verbose-string mode constants — used to recognize prior findings'
 # ``mode`` field. Must stay in lockstep with ``tools/product-hook``'s
 # ``_CRITIC_MODE_*`` constants. (Persisted form is verbose; caller-side
@@ -375,13 +377,14 @@ def _git_head_sha(project_dir: Path) -> str:
 
 
 def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
-    """Count chunks in ``build-plan.md``'s Status section.
+    """Count chunks in the active build plan's Status section.
 
-    Mirrors ``tools/product-hook``'s ``_count_build_plan_chunks`` —
-    duplicated to keep this module's import surface to stdlib only.
+    Mirrors ``tools/product-hook``'s ``_count_build_plan_chunks``. Resolves the
+    plan via the ``active_build_plan:`` pointer (falls back to
+    ``artifacts/build-plan.md``), so scope-named plans are counted too.
     Returns ``(total, complete)``; ``(0, 0)`` if plan/Status absent.
     """
-    plan_path = prawduct_dir / "artifacts" / "build-plan.md"
+    plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return 0, 0
     try:

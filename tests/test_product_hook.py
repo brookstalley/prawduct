@@ -7702,3 +7702,233 @@ class TestVerifyCoverageSubcommand:
         assert result.returncode == 1
         assert "base" in result.stderr.lower()
 
+
+
+class TestSessionBriefingAdvisories:
+    """The ADVISORIES (post-sync) briefing section (v1.6.0 Phase 1).
+
+    Calls assemble_session_briefing directly (via the imported hook module) with
+    a seeded `.advisories.json`, so the render — priority ordering, 5-item cap,
+    empty-state suppression, and "Resolved since last session" — is tested
+    without depending on the sync/try_sync path.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    def _active(self, aid, *, priority="info", triggered_at="2026-05-01T00:00:00Z",
+                feature="synthetic", summary="A thing to consider.",
+                action="/prawduct-advisory list"):
+        return {
+            "id": aid, "feature": feature, "type": "synthetic-condition",
+            "probe_version": 1, "triggered_at": triggered_at,
+            "trigger_summary": summary, "recommended_action": action,
+            "priority": priority, "state": "active",
+        }
+
+    def _write_store(self, prawduct: Path, advisories: list[dict]) -> None:
+        (prawduct / ".advisories.json").write_text(
+            json.dumps({"schema_version": 1, "advisories": advisories})
+        )
+
+    def test_active_renders_with_action(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._write_store(prawduct, [self._active("synthetic-synthetic-condition-v1-aaa111")])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES (post-sync, 1 active):" in out
+        assert "[synthetic] A thing to consider." in out
+        assert "→ Run /prawduct-advisory list" in out
+
+    def test_empty_active_omits_section(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._write_store(prawduct, [])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES" not in out
+
+    def test_no_store_file_omits_section(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES" not in out
+
+    def test_truncates_over_five(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        advs = [self._active(f"synthetic-synthetic-condition-v1-{i:06d}",
+                             triggered_at=f"2026-05-0{i}T00:00:00Z") for i in range(1, 8)]
+        self._write_store(prawduct, advs)
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES (post-sync, 7 active):" in out
+        assert "... and 2 more (run /prawduct-advisory list)" in out
+
+    def test_priority_ordering(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        advs = [
+            self._active("a-info", priority="info", summary="INFO-item"),
+            self._active("b-urgent", priority="urgent", summary="URGENT-item"),
+            self._active("c-warn", priority="warn", summary="WARN-item"),
+        ]
+        self._write_store(prawduct, advs)
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        # urgent → warn → info
+        assert out.index("URGENT-item") < out.index("WARN-item") < out.index("INFO-item")
+
+    def test_newest_first_within_priority(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        advs = [
+            self._active("older", triggered_at="2026-05-01T00:00:00Z", summary="OLDER-item"),
+            self._active("newer", triggered_at="2026-05-10T00:00:00Z", summary="NEWER-item"),
+        ]
+        self._write_store(prawduct, advs)
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert out.index("NEWER-item") < out.index("OLDER-item")
+
+    def test_resolved_since_last_session(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        session_start = make_session_start(prawduct, offset_seconds=-60)
+        # One active + one resolved after this session's start stamp.
+        resolved = {"id": "r1", "state": "resolved", "resolved_at": session_start,
+                    "resolved_by": "sync"}
+        self._write_store(prawduct, [self._active("a1"), resolved])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "Resolved since last session: 1" in out
+
+    def test_resolved_only_renders_minimal_section(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        session_start = make_session_start(prawduct, offset_seconds=-60)
+        resolved = {"id": "r1", "state": "resolved", "resolved_at": session_start,
+                    "resolved_by": "sync"}
+        self._write_store(prawduct, [resolved])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES (post-sync):" in out
+        assert "Resolved since last session: 1" in out
+
+    def test_old_resolved_not_counted(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        # Resolved long before this session → not "since last session".
+        resolved = {"id": "r1", "state": "resolved", "resolved_at": "2020-01-01T00:00:00Z",
+                    "resolved_by": "sync"}
+        self._write_store(prawduct, [resolved])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "ADVISORIES" not in out
+
+
+class TestSessionBriefingDismissed:
+    """The "Dismissed since last session" briefing line (v1.6.0 Chunk 02)."""
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        self.mod = _load_product_hook()
+
+    def _write_store(self, prawduct: Path, advisories: list[dict]) -> None:
+        (prawduct / ".advisories.json").write_text(
+            json.dumps({"schema_version": 1, "advisories": advisories})
+        )
+
+    def test_dismissed_since_last_session(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        session_start = make_session_start(prawduct, offset_seconds=-60)
+        dismissed = {"id": "d1", "state": "dismissed", "dismissed_at": session_start,
+                     "dismissed_reason": "nope"}
+        self._write_store(prawduct, [dismissed])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        assert "Dismissed since last session: 1" in out
+        assert "/prawduct-advisory list --state=dismissed" in out
+
+    def test_old_dismissal_not_counted(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        make_session_start(prawduct, offset_seconds=-60)
+        dismissed = {"id": "d1", "state": "dismissed", "dismissed_at": "2020-01-01T00:00:00Z"}
+        self._write_store(prawduct, [dismissed])
+        out = self.mod.assemble_session_briefing(tmp_path, [])
+        # Old dismissal is the load-bearing fact but not "since last session".
+        assert "ADVISORIES" not in out
+
+
+class TestAdvisoryDispatch:
+    """The `product-hook advisory <subcmd>` dispatch (Chunk 05).
+
+    Exercises the wiring the unit-level `advisory_cmd.run` tests can't reach:
+    main()'s `advisory` branch, `sys.argv[2:]` slicing, and the exit-code
+    contract — invoked end-to-end via subprocess (mirroring how
+    `infer-critic-mode` is dispatch-tested)."""
+
+    def _run(self, project_dir: Path, *argv: str) -> subprocess.CompletedProcess:
+        env = {
+            "HOME": str(project_dir),
+            "CLAUDE_PROJECT_DIR": str(project_dir),
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        }
+        return subprocess.run(
+            ["python3", str(HOOK_PATH), "advisory", *argv],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=15,
+        )
+
+    def _seed(self, project_dir: Path) -> None:
+        prawduct = project_dir / ".prawduct"
+        prawduct.mkdir(parents=True, exist_ok=True)
+        store = {
+            "schema_version": 1,
+            "advisories": [
+                {
+                    "id": "backlog-legacy-format-v1-abc123",
+                    "feature": "backlog",
+                    "type": "legacy-format",
+                    "probe_version": 1,
+                    "triggered_at": "2026-05-01T00:00:00Z",
+                    "triggered_by_sync_version": "",
+                    "trigger_summary": "43 legacy items.",
+                    "evidence": ["x"],
+                    "recommended_action": "/backlog migrate",
+                    "alternative_actions": [],
+                    "priority": "warn",
+                    "state": "active",
+                    "superseded_by": None,
+                    "dismissed_at": None,
+                    "dismissed_reason": None,
+                    "resolved_at": None,
+                    "resolved_by": None,
+                }
+            ],
+        }
+        (prawduct / ".advisories.json").write_text(json.dumps(store) + "\n")
+
+    def test_list_dispatch(self, tmp_path: Path):
+        self._seed(tmp_path)
+        result = self._run(tmp_path, "list")
+        assert result.returncode == 0
+        assert "backlog-legacy-format-v1-abc123" in result.stdout
+
+    def test_dismiss_dispatch_mutates_store(self, tmp_path: Path):
+        self._seed(tmp_path)
+        result = self._run(tmp_path, "dismiss", "backlog-legacy-format-v1-abc123", "--reason", "later")
+        assert result.returncode == 0
+        store = json.loads((tmp_path / ".prawduct" / ".advisories.json").read_text())
+        assert store["advisories"][0]["state"] == "dismissed"
+        assert store["advisories"][0]["dismissed_reason"] == "later"
+
+    def test_unknown_subcommand_exits_1(self, tmp_path: Path):
+        self._seed(tmp_path)
+        result = self._run(tmp_path, "frobnicate")
+        assert result.returncode == 1
+        assert "Usage" in result.stderr
+
+    def test_bare_advisory_is_usage_error(self, tmp_path: Path):
+        self._seed(tmp_path)
+        result = self._run(tmp_path)
+        assert result.returncode == 1
+        assert "Usage" in result.stderr

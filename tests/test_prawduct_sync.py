@@ -287,6 +287,7 @@ class TestCreateManifest:
             ".claude/skills/janitor/SKILL.md",
             ".claude/skills/prawduct-doctor/SKILL.md",
             ".claude/skills/learnings/SKILL.md",
+            ".claude/skills/prawduct-advisory/SKILL.md",
             ".claude/skills/critic/SKILL.md",
             "tools/product-hook",
             ".claude/settings.json",
@@ -714,6 +715,42 @@ class TestRunSync:
         result = run_sync(str(product))
         assert result["synced"] is False
         assert result["reason"] == "invalid manifest JSON"
+
+    def test_noop_ship_empty_production_roster(self, tmp_path: Path):
+        """Phase 1 no-op ship (spec §13, A1/A2/A5): a real sync with the empty
+        production probe roster writes an empty advisory store and the next
+        briefing emits no ADVISORIES section.
+
+        This exercises the true production path — `run_sync` calls
+        `run_sync_advisories` against the module's import-time registry, which
+        registers no probe. Unlike the synthetic-probe unit tests, nothing is
+        registered here, so a passing assertion proves the shipped roster is
+        empty."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+
+        # A real sync runs the advisory step regardless of whether any managed
+        # file changed (the step sits before run_sync's final return). reason is
+        # the benign "no updates needed", never an error.
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["reason"] in ("ok", "no updates needed")
+
+        # Store written, but no advisories produced (empty roster).
+        store = _mod._lib_advisory_store.read_store(str(product))
+        assert store["advisories"] == []
+
+        # Briefing omits the section entirely (A5) — load product-hook and
+        # render. The hook is an extensionless shebang script, so it needs an
+        # explicit SourceFileLoader (mirrors test_product_hook._load_product_hook).
+        import importlib.machinery
+
+        hook_path = Path(__file__).resolve().parent.parent / "tools" / "product-hook"
+        hook_loader = importlib.machinery.SourceFileLoader("product_hook_noop", str(hook_path))
+        hook_spec = importlib.util.spec_from_loader("product_hook_noop", hook_loader)
+        hook_mod = importlib.util.module_from_spec(hook_spec)
+        hook_loader.exec_module(hook_mod)
+        briefing = hook_mod.assemble_session_briefing(product, [])
+        assert "ADVISORIES" not in briefing
 
     def test_framework_not_found_skips(self, tmp_path: Path):
         product = tmp_path / "product"
@@ -4260,3 +4297,63 @@ class TestAutoCommitSafety:
             f"update_gitignore should have re-added {omitted!r}"
         )
 
+
+
+class TestRunSyncAdvisoryStep:
+    """run_sync wires the post-sync advisory probe step (v1.6.0 Phase 1).
+
+    Proves the integration end-to-end through the real run_sync: with a
+    synthetic probe registered, a sync writes the advisory to the per-clone
+    nag log, and the template-drift `advisories` return key stays a distinct
+    concept. The production roster is empty, so without a registered probe a
+    sync produces an empty store (verified in the no-op test).
+    """
+
+    _adv = _mod._lib_advisory_store
+
+    @pytest.fixture(autouse=True)
+    def _clean_registry(self):
+        self._adv.clear_registry()
+        yield
+        self._adv.clear_registry()
+
+    def _synthetic_probe(self, state, codebase):
+        if state.get("synthetic_resolved") is True:
+            return []
+        if not codebase.has_files_matching("SYNTHETIC_TRIGGER"):
+            return []
+        return [
+            self._adv.AdvisoryCandidate(
+                type="synthetic-condition",
+                evidence=("SYNTHETIC_TRIGGER present",),
+                trigger_summary="Synthetic trigger present and not yet resolved.",
+                recommended_action="/prawduct-advisory list",
+            )
+        ]
+
+    def test_empty_roster_writes_empty_store(self, tmp_path: Path):
+        helper = TestRunSync()
+        fw = helper._setup_framework(tmp_path)
+        product = helper._setup_product(tmp_path, fw)
+        result = run_sync(str(product), framework_dir=str(fw))
+        # The template-drift advisories key is independent of the new store.
+        assert "advisories" in result
+        store = self._adv.read_store(product)
+        assert store["advisories"] == []
+
+    def test_synthetic_probe_writes_advisory(self, tmp_path: Path):
+        helper = TestRunSync()
+        fw = helper._setup_framework(tmp_path)
+        product = helper._setup_product(tmp_path, fw)
+        (product / "SYNTHETIC_TRIGGER").write_text("x")
+        self._adv.register_probe("synthetic", "synthetic-condition", 1, self._synthetic_probe)
+
+        run_sync(str(product), framework_dir=str(fw))
+
+        store = self._adv.read_store(product)
+        assert len(store["advisories"]) == 1
+        adv = store["advisories"][0]
+        assert adv["state"] == "active"
+        assert adv["feature"] == "synthetic"
+        # The store landed at the gitignored nag-log path.
+        assert (product / ".prawduct" / ".advisories.json").is_file()

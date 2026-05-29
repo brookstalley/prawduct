@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v1.6.0
+
+**Entry:** 2026-05-29: v1.6.0 — Post-sync advisory infrastructure (Phase 1) + configurable build-plan path (release)
+
+**Chunks shipped:** 01, 02, 03, 04, 05, 06, 07
+
+**Scope:** v1.6.0
+
+See `.prawduct/change-log.md` for full details.
+
 ## v1.5.2
 
 **Entry:** 2026-05-23: v1.5.2 — Stop-hook waiver discoverability (release)

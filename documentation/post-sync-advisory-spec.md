@@ -1,6 +1,6 @@
 # Post-Sync Advisory Infrastructure — Spec
 
-**Status:** Draft v0.2 (2026-05-28)
+**Status:** v0.2 (2026-05-28) — **Phase 1 built and shipped in framework v1.6.0** (2026-05-29). The storage, lifecycle, schema, session-briefing integration, sync integration, and the `/prawduct-advisory` CLI are complete and tested end-to-end via a synthetic probe. Per §13 the production probe roster is empty, so v1.6.0 is a no-op infrastructure ship — no user-visible advisories until Phase 2 (backlog) and Phase 3 (prompts) register their probes.
 **Changes from v0.1:** Q1-Q4 resolved per user feedback. Unified command renamed `/advisory` → `/prawduct-advisory` to reflect that advisories are framework infrastructure (the `prawduct-` prefix marks framework-level commands; user-project commands like `/backlog` and `/llm-strategy` do not carry it). Explicit separation of `project-state.yaml` (committed, shared) and `.advisories.json` (gitignored, per-clone). Probe versioning + supersession. Resolution-condition concept. Compact retention form for non-active entries.
 **Scope:** Shared infrastructure used by the backlog and prompts features to surface migration signals to the user after a sync, without forcing setup or blocking work. This spec describes the storage, lifecycle, schema, session-briefing format, and dismissal mechanism.
 **Out of scope:** Per-feature probe logic (lives in each feature's own build plan), build plan for this infrastructure (separate deliverable).

@@ -913,6 +913,34 @@ class TestPlanRegen:
         with pytest.raises(FileNotFoundError):
             views.plan_regen(prawduct_dir)
 
+    def test_active_build_plan_pointer_targets_scope_named_plan(self, tmp_path: Path):
+        """With `active_build_plan:` set, regen resolves and flips the scope-named
+        plan — not a phantom build-plan.md (v1.6.0 Chunk 06)."""
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text(
+            "views_enabled: true\n"
+            "active_build_plan: artifacts/v1.6.0-foo-plan.md\n"
+        )
+        (prawduct_dir / "change-log.md").write_text(
+            "## 2026-05-29: rel\n"
+            "<!-- prawduct: chunks=01 | release=v1.6.0 | status=shipped | scope=v1.6.0 -->\n"
+        )
+        # Scope-named plan with matching frontmatter scope; no build-plan.md exists.
+        (prawduct_dir / "artifacts" / "v1.6.0-foo-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: v1.6.0\n---\n\n## Status\n- [ ] Chunk 01: A\n"
+        )
+        enabled, results = views.plan_regen(prawduct_dir)
+        assert enabled is True
+        status = next(r for r in results if r.name == "status")
+        assert status.path_relative == "artifacts/v1.6.0-foo-plan.md"
+        assert status.action == "write"
+        views.apply_regen(prawduct_dir, results)
+        flipped = (prawduct_dir / "artifacts" / "v1.6.0-foo-plan.md").read_text()
+        assert "- [x] Chunk 01: A" in flipped
+        # No phantom build-plan.md was created.
+        assert not (prawduct_dir / "artifacts" / "build-plan.md").exists()
+
 
 class TestApplyRegen:
     def test_writes_files_for_non_noop_results(self, tmp_path: Path):
