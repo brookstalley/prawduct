@@ -717,16 +717,18 @@ class TestRunSync:
         assert result["synced"] is False
         assert result["reason"] == "invalid manifest JSON"
 
-    def test_noop_ship_empty_production_roster(self, tmp_path: Path):
-        """Phase 1 no-op ship (spec §13, A1/A2/A5): a real sync with the empty
-        production probe roster writes an empty advisory store and the next
-        briefing emits no ADVISORIES section.
+    def test_backlog_probe_silent_without_legacy_backlog(self, tmp_path: Path):
+        """The v1.7.0 production roster contains the `legacy-backlog-format`
+        probe (Phase 1's empty-roster no-op ship is now historical). On a
+        product with no `.prawduct/backlog.md`, the probe stays silent, so a
+        real sync still writes an empty advisory store and the next briefing
+        emits no ADVISORIES section (spec A5 — no "0 active" noise).
 
-        This exercises the true production path — `run_sync` calls
-        `run_sync_advisories` against the module's import-time registry, which
-        registers no probe. Unlike the synthetic-probe unit tests, nothing is
-        registered here, so a passing assertion proves the shipped roster is
-        empty."""
+        This exercises the true production path — `run_sync` →
+        `run_sync_advisories`, which calls `register_backlog_probes()` then
+        `run_all_probes`. The empty store here is the probe correctly NOT
+        firing, not an empty roster (see the positive trigger/resolve test
+        below)."""
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
 
@@ -736,7 +738,8 @@ class TestRunSync:
         result = run_sync(str(product), framework_dir=str(fw))
         assert result["reason"] in ("ok", "no updates needed")
 
-        # Store written, but no advisories produced (empty roster).
+        # Store written, but no advisories — the backlog probe is silent with
+        # no backlog file present.
         store = _mod._lib_advisory_store.read_store(str(product))
         assert store["advisories"] == []
 
@@ -752,6 +755,37 @@ class TestRunSync:
         hook_loader.exec_module(hook_mod)
         briefing = hook_mod.assemble_session_briefing(product, [])
         assert "ADVISORIES" not in briefing
+
+    def test_legacy_backlog_triggers_then_resolves_on_migration(self, tmp_path: Path):
+        """End-to-end: a product with a legacy backlog (>5 items, none
+        structured) gets a `feature: backlog` advisory on sync; recording
+        `backlog_format_version: 2` in project-state.yaml + re-syncing
+        auto-resolves it (resolution condition reads the shared answer store)."""
+        fw = self._setup_framework(tmp_path)
+        product = self._setup_product(tmp_path, fw)
+        legacy = "# Backlog\n\n## Queue\n\n" + "".join(
+            f"- **legacy item {i}** (reflection) body\n" for i in range(6)
+        )
+        (product / ".prawduct" / "backlog.md").write_text(legacy)
+
+        run_sync(str(product), framework_dir=str(fw))
+        store = _mod._lib_advisory_store.read_store(str(product))
+        active = [a for a in store["advisories"] if a.get("state") == "active"]
+        assert len(active) == 1
+        adv = active[0]
+        assert adv["feature"] == "backlog"
+        assert adv["type"] == "legacy-backlog-format"
+        assert adv["recommended_action"] == "/backlog migrate"
+
+        # Migration writes the resolution fact; re-sync auto-resolves.
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_format_version: 2\n"
+        )
+        run_sync(str(product), framework_dir=str(fw))
+        store2 = _mod._lib_advisory_store.read_store(str(product))
+        assert [a for a in store2["advisories"] if a.get("state") == "active"] == []
+        resolved = [a for a in store2["advisories"] if a.get("state") == "resolved"]
+        assert any(a["id"] == adv["id"] and a.get("resolved_by") == "sync" for a in resolved)
 
     def test_framework_not_found_skips(self, tmp_path: Path):
         product = tmp_path / "product"
@@ -4306,8 +4340,11 @@ class TestRunSyncAdvisoryStep:
     Proves the integration end-to-end through the real run_sync: with a
     synthetic probe registered, a sync writes the advisory to the per-clone
     nag log, and the template-drift `advisories` return key stays a distinct
-    concept. The production roster is empty, so without a registered probe a
-    sync produces an empty store (verified in the no-op test).
+    concept. As of v1.7.0 the production roster contains the backlog probe,
+    but it stays silent on these fixtures (no legacy backlog file), so the
+    store is empty unless a probe is explicitly triggered (the backlog probe's
+    own trigger/resolve path is covered by
+    TestRunSync.test_legacy_backlog_triggers_then_resolves_on_migration).
     """
 
     _adv = _mod._lib_advisory_store
@@ -4332,7 +4369,9 @@ class TestRunSyncAdvisoryStep:
             )
         ]
 
-    def test_empty_roster_writes_empty_store(self, tmp_path: Path):
+    def test_no_triggered_probe_writes_empty_store(self, tmp_path: Path):
+        # No synthetic probe registered and no legacy backlog file → the only
+        # production probe (backlog) is silent, so the store stays empty.
         helper = TestRunSync()
         fw = helper._setup_framework(tmp_path)
         product = helper._setup_product(tmp_path, fw)

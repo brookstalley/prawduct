@@ -622,6 +622,16 @@ def run_sync_advisories(product_dir, *, now: str | None = None, sync_version: st
     now = now or _utcnow_iso()
     state = load_project_state(product)
     codebase = make_codebase(product)
+    # Load feature probes before running the roster. Lazy import (avoids a
+    # circular import — backlog_probes imports from this module) and idempotent
+    # registration (survives clear_registry between syncs). Defensive: a faulty
+    # probe module must not break the advisory step.
+    try:
+        from . import backlog_probes  # noqa: PLC0415 — feature-probe registration point
+
+        backlog_probes.register_backlog_probes()
+    except Exception:  # prawduct:ok-broad-except — probe registration must never block sync
+        pass
     candidates = run_all_probes(state, codebase)
     store = read_store(product)
     reconciled = reconcile(store, candidates, now=now, sync_version=sync_version)
