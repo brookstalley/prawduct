@@ -503,3 +503,6 @@ scope_rollups:
   v1.7.0:
     chunks: ["01", "02", "03", "04"]
     releases: ["v1.7.0"]
+  v1.8.0:
+    chunks: ["A", "B", "C", "D", "E"]
+    releases: ["v1.8.0"]
