@@ -730,9 +730,10 @@ class TestJanitorSkillTemplateCurrency:
 
 
 class TestProductClaudeFreshnessSection:
-    """The Framework Freshness section ensures agents report the three drift
-    dimensions (version / commit / template) independently rather than
-    synthesizing them into a single 'on/off latest' answer."""
+    """The Framework Freshness section reflects the collapsed briefing (v1.8.0
+    governance-tax diet): a healthy repo shows NO freshness output, and drift
+    surfaces as concise one-line signals across the three axes (version / commit
+    / template) — not a multi-line table to be reported dimension-by-dimension."""
 
     @pytest.fixture
     def template(self) -> str:
@@ -742,15 +743,16 @@ class TestProductClaudeFreshnessSection:
         assert "Framework Freshness" in template
 
     def test_names_three_drift_dimensions(self, template: str):
-        # Must give the agent vocabulary for each independent dimension
+        # Must still give the agent vocabulary for each drift axis
         section_idx = template.index("Framework Freshness")
         section = template[section_idx:section_idx + 1000]
         assert "version" in section.lower()
         assert "commit" in section.lower()
         assert "template" in section.lower()
 
-    def test_warns_against_synthesizing(self, template: str):
-        # The whole point of the section: don't collapse three signals into one
+    def test_says_healthy_repo_is_silent(self, template: str):
+        # The new contract: an up-to-date repo emits no freshness output, so the
+        # agent shouldn't expect (or fabricate) a freshness block every session.
         section_idx = template.index("Framework Freshness")
-        section = template[section_idx:section_idx + 1000]
-        assert "synthesize" in section.lower() or "on/off" in section.lower()
+        section = template[section_idx:section_idx + 1000].lower()
+        assert "no" in section and ("healthy" in section or "current" in section)

@@ -3,7 +3,7 @@ description: Shadow Critic review — experimental twin of /critic for A/B compa
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Write, Agent
+allowed-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git branch --show-current), Bash(git for-each-ref *), Bash(wc *), Bash(python3 tools/product-hook test-status), Write, Agent
 ---
 
 <!-- Role: Independent quality reviewer (shadow variant). NO test execution, NO builds. Code analysis only.

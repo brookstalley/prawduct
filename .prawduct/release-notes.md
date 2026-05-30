@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v1.8.0
+
+**Entry:** 2026-05-30: v1.8.0 — Governance-tax reduction: pure benefit, almost no tax (release)
+
+**Chunks shipped:** A, B, C, D, E
+
+**Scope:** v1.8.0
+
+See `.prawduct/change-log.md` for full details.
+
 ## v1.7.0
 
 **Entry:** 2026-05-29: v1.7.0 — Backlog system (Phase 2 lean core): structured `/backlog` skill + first production advisory probe (release)

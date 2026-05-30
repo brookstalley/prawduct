@@ -2184,8 +2184,17 @@ class TestRunSyncPlaceOnce:
         pot = manifest.get("place_once_templates", {})
         assert ".prawduct/artifacts/project-preferences.md" in pot
 
-    def test_preserves_existing_hash_tracking(self, tmp_path: Path):
-        """Sync does not overwrite existing place_once_templates entries."""
+    def test_drift_refreshes_hash_but_not_the_file(self, tmp_path: Path):
+        """When a place-once template drifts, sync surfaces the advisory ONCE
+        and refreshes the stored tracking hash so it stops re-firing — but it
+        NEVER overwrites the user's place-once file.
+
+        Contract change (governance-tax reduction): previously the tracking hash
+        was frozen forever, so the drift advisory re-fired every single session
+        with no dismiss path — the single largest advisory tax. It now fires once
+        per template change (place-once = "surface the change once, then it's
+        yours"). The user's file remains framework-hands-off.
+        """
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
 
@@ -2197,21 +2206,25 @@ class TestRunSyncPlaceOnce:
         original_hash = manifest["place_once_templates"][
             ".prawduct/artifacts/project-preferences.md"
         ]["template_hash"]
+        prefs_file = product / ".prawduct" / "artifacts" / "project-preferences.md"
+        file_before = prefs_file.read_text()
 
         # Update the template in the framework
         (fw / "templates" / "project-preferences.md").write_text(
             "# Updated Preferences\n\n## New Section\n"
         )
 
-        # Run sync again — hash should NOT be updated (preserves original)
+        # Sync again — drift surfaced, tracking hash refreshed to current.
         run_sync(str(product), framework_dir=str(fw))
         manifest = json.loads(
             (product / ".prawduct" / "sync-manifest.json").read_text()
         )
-        preserved_hash = manifest["place_once_templates"][
+        refreshed_hash = manifest["place_once_templates"][
             ".prawduct/artifacts/project-preferences.md"
         ]["template_hash"]
-        assert preserved_hash == original_hash
+        assert refreshed_hash != original_hash  # hash now tracks the new template
+        # The user's place-once file is untouched (framework never overwrites it).
+        assert prefs_file.read_text() == file_before
 
     def test_template_hash_is_deterministic(self, tmp_path: Path):
         """Same template content produces the same hash."""
@@ -2276,8 +2289,15 @@ class TestRunSyncTemplateDrift(TestRunSyncPlaceOnce):
         assert "project-preferences.md" in advisories[0]["file"]
         assert "/janitor" in advisories[0]["message"]
 
-    def test_advisory_persists_across_syncs(self, tmp_path: Path):
-        """Advisory keeps firing until template hash is updated (by janitor)."""
+    def test_advisory_fires_once_then_resolves(self, tmp_path: Path):
+        """A template-drift advisory fires exactly ONCE per template change, then
+        self-resolves — it does not re-nag every session.
+
+        Contract change (governance-tax reduction): the old behavior re-fired the
+        advisory on every sync until a janitor run updated the hash, which made it
+        the single largest advisory tax (no dismiss, fires forever). Sync now
+        refreshes the stored hash after surfacing the drift once.
+        """
         fw = self._setup_framework(tmp_path)
         product = self._setup_product(tmp_path, fw)
 
@@ -2286,13 +2306,13 @@ class TestRunSyncTemplateDrift(TestRunSyncPlaceOnce):
         # Update template
         (fw / "templates" / "project-preferences.md").write_text("# V2\n")
 
-        # Advisory on second sync
+        # Advisory fires on the first sync that sees the change.
         result1 = run_sync(str(product), framework_dir=str(fw))
         assert len(result1.get("advisories", [])) == 1
 
-        # Advisory persists on third sync (hash not updated)
+        # ...and does NOT fire again — the hash was refreshed, drift resolved.
         result2 = run_sync(str(product), framework_dir=str(fw))
-        assert len(result2.get("advisories", [])) == 1
+        assert result2.get("advisories", []) == []
 
     def test_no_advisory_for_freshly_bootstrapped(self, tmp_path: Path):
         """No advisory for entries just bootstrapped in this sync."""
@@ -2855,6 +2875,30 @@ class TestSyncRecordsFrameworkCommit(TestRunSyncPlaceOnce):
 
         manifest = json.loads((product / ".prawduct" / "sync-manifest.json").read_text())
         assert not manifest.get("framework_commit")
+
+    def test_freshness_refreshed_on_noop_sync(self, tmp_path: Path):
+        """Fix (happy-path silence): freshness markers refresh on EVERY successful
+        sync, even a no-op. Otherwise a repo byte-identical to the framework keeps
+        reporting a phantom 'N commits behind' because last_sync / framework_commit
+        were frozen at the last sync that happened to change a file."""
+        fw = self._setup_framework(tmp_path)
+        sha = _git_init_with_initial_commit(fw)
+        product = self._setup_product(tmp_path, fw)
+        run_sync(str(product), framework_dir=str(fw))  # bring fully current
+
+        # Simulate the phantom-delta state: stale markers on an up-to-date repo.
+        mpath = product / ".prawduct" / "sync-manifest.json"
+        m = json.loads(mpath.read_text())
+        m.pop("framework_commit", None)
+        m["last_sync"] = "2020-01-01T00:00:00Z"
+        mpath.write_text(json.dumps(m))
+
+        # A genuine no-op sync must STILL refresh the freshness markers.
+        result = run_sync(str(product), framework_dir=str(fw))
+        assert result["synced"] is False  # nothing changed on disk
+        m2 = json.loads(mpath.read_text())
+        assert m2["framework_commit"] == sha
+        assert m2["last_sync"] != "2020-01-01T00:00:00Z"
 
 
 class TestAdvisoryEnrichment(TestRunSyncPlaceOnce):
