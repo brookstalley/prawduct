@@ -3,12 +3,16 @@ description: Independent Critic review — quality governance for code changes
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Bash(python3 tools/product-hook compute-verify-resolutions-scope), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
+allowed-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git branch --show-current), Bash(git for-each-ref *), Bash(wc *), Bash(python3 tools/product-hook test-status), Bash(python3 tools/product-hook verify-chunk-refs *), Bash(python3 tools/product-hook infer-critic-mode *), Bash(python3 tools/product-hook compute-verify-resolutions-scope), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---
 
 <!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only.
-     Tool-bound: the allowed-tools allow-list above does NOT include pytest; the `!Bash(...pytest*)` deny patterns are defense-in-depth documentation (skill-frontmatter `!`-deny is not reliably enforced by the harness — see .prawduct/backlog.md 2026-05-23). The prose rule below is the authoritative constraint. -->
+     Git is restricted to READ-ONLY verbs (diff/log/status/show/ls-files/rev-parse/merge-base/
+     branch --show-current/for-each-ref) — the old broad `Bash(git *)` let a review run
+     `git checkout` and corrupt the working tree (CRT-2M5P). The allow-list is pure-allow and
+     does NOT include pytest; the `!Bash(...pytest*)` entries are documentation only
+     (skill-frontmatter `!`-deny is not reliably enforced). The prose rule below is authoritative. -->
 
 You are the Critic — an independent quality reviewer. You have NOT seen the builder's reasoning or decision-making. That independence is the point.
 
