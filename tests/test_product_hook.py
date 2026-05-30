@@ -4917,9 +4917,11 @@ class TestStalenessNoState:
 
 
 class TestComputedTestCount:
-    """Test count is now computed and shown in briefing (not tracked in YAML)."""
+    """The per-session 'Tests: ~N' briefing line was cut (governance-tax diet):
+    a raw count nobody acts on at session start; the canonical count lives in
+    .test-evidence.json."""
 
-    def test_briefing_shows_computed_test_count(self, tmp_path: Path):
+    def test_briefing_omits_test_count_even_with_tests(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(
@@ -4935,18 +4937,6 @@ class TestComputedTestCount:
         result = run_hook("clear", tmp_path)
 
         assert result.returncode == 0
-        assert "Tests: ~8" in result.stdout
-
-    def test_briefing_no_count_when_no_tests(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "project-state.yaml").write_text(
-            'product_identity:\n  name: "TestApp"\n\n'
-            "build_state:\n  source_root: null\n"
-        )
-
-        result = run_hook("clear", tmp_path)
-
         assert "Tests:" not in result.stdout
 
 
@@ -5346,7 +5336,7 @@ class TestSessionBriefing:
             }
         ]
         briefing = mod.assemble_session_briefing(tmp_path, [], advisories=advisories)
-        assert "Place-once template advisories:" in briefing
+        assert "Template update(s) since setup:" in briefing
         assert "project-preferences.md" in briefing
         assert "/janitor" in briefing
 
@@ -5489,23 +5479,6 @@ class TestSessionBriefing:
         assert "Stale:" in result.stdout
         assert "utils" in result.stdout
 
-    def test_briefing_shows_computed_count_with_tests(self, tmp_path: Path):
-        """Briefing shows computed test count when tests exist."""
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "project-state.yaml").write_text(
-            'product_identity:\n  name: "MyApp"\n\n'
-            "build_state:\n  source_root: null\n"
-        )
-        tests_dir = tmp_path / "tests"
-        tests_dir.mkdir()
-        (tests_dir / "test_app.py").write_text(
-            "\n".join(f"def test_case_{i}():\n    pass\n" for i in range(20))
-        )
-
-        result = run_hook("clear", tmp_path)
-
-        assert "Tests: ~20" in result.stdout
 
     def test_briefing_shows_current_chunk(self, tmp_path: Path):
         """Session briefing shows current_chunk from WIP."""
@@ -5610,8 +5583,10 @@ class TestSessionBriefing:
         assert "Learnings" in result.stdout
         assert "3 rules" in result.stdout
 
-    def test_briefing_shows_topic_index(self, tmp_path: Path):
-        """Session briefing shows section headers as topic index."""
+    def test_briefing_learnings_count_only_no_topic_index(self, tmp_path: Path):
+        """Learnings line is a count + pointer — the section-header topic index
+        was collapsed away (governance-tax diet: it re-printed unchanged every
+        session). /learnings is the lookup path."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(
@@ -5630,10 +5605,11 @@ class TestSessionBriefing:
 
         result = run_hook("clear", tmp_path)
 
-        assert "3 rules" in result.stdout
-        assert "Testing" in result.stdout
-        assert "Architecture" in result.stdout
-        assert "|" in result.stdout  # Topics joined with pipe
+        assert "Learnings (3 rules)" in result.stdout
+        assert "/learnings" in result.stdout
+        # Topic names are no longer surfaced.
+        assert "Testing" not in result.stdout
+        assert "Architecture" not in result.stdout
 
     def test_briefing_flat_learnings_no_headers(self, tmp_path: Path):
         """Falls back gracefully when learnings have no section headers."""
@@ -5655,8 +5631,9 @@ class TestSessionBriefing:
         assert "3 rules" in result.stdout
         assert "read .prawduct/learnings.md" in result.stdout
 
-    def test_briefing_excludes_resolved_topics(self, tmp_path: Path):
-        """Topics with (RESOLVED) in the header are excluded from index."""
+    def test_briefing_learnings_no_topic_leak(self, tmp_path: Path):
+        """No topic header (active or resolved) leaks into the briefing now that
+        the topic index is collapsed — only the count + pointer appear."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(
@@ -5674,7 +5651,8 @@ class TestSessionBriefing:
 
         result = run_hook("clear", tmp_path)
 
-        assert "Active Topic" in result.stdout
+        assert "Learnings (" in result.stdout
+        assert "Active Topic" not in result.stdout
         assert "RESOLVED" not in result.stdout
 
     def test_briefing_no_update_nudge_for_test_count(self, tmp_path: Path):
@@ -5691,8 +5669,9 @@ class TestSessionBriefing:
         assert "if you add or remove tests" not in result.stdout
         assert "update this before session end" not in result.stdout
 
-    def test_briefing_shows_critic_duration(self, tmp_path: Path):
-        """Briefing should show last Critic review duration."""
+    def test_briefing_omits_critic_duration_quip(self, tmp_path: Path):
+        """The 'Last Critic review took … grumpier' line was cut (diet): a past
+        review's duration is not actionable at session start."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(
@@ -5709,8 +5688,8 @@ class TestSessionBriefing:
 
         result = run_hook("clear", tmp_path)
 
-        assert "3m15s" in result.stdout
-        assert "grumpier" in result.stdout.lower()
+        assert "grumpier" not in result.stdout.lower()
+        assert "Last Critic review" not in result.stdout
 
     def test_briefing_no_critic_duration_when_missing(self, tmp_path: Path):
         """Briefing should not show duration if findings have no duration_seconds."""
@@ -5788,8 +5767,13 @@ class TestSessionBriefing:
         estimated_tokens = int(word_count * 1.3)
         assert estimated_tokens < 400, f"Briefing ~{estimated_tokens} tokens, exceeds 400: {briefing_text}"
 
-    def test_briefing_shows_backlog_count_and_items(self, tmp_path: Path):
-        """Session briefing includes backlog count AND items inline."""
+    def test_briefing_shows_backlog_count_not_items(self, tmp_path: Path):
+        """Session briefing shows the backlog COUNT only — not a per-item dump.
+
+        Diet change (governance-tax reduction): dumping up to 5 arbitrary items
+        every session was the briefing's largest token sink with no per-session
+        action value. /backlog is the triage path.
+        """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(
@@ -5802,9 +5786,11 @@ class TestSessionBriefing:
         )
 
         result = run_hook("clear", tmp_path)
-        assert "Backlog: 2 pending items" in result.stdout
-        assert "Add caching" in result.stdout
-        assert "Support dark mode" in result.stdout
+        assert "Backlog: 2 pending" in result.stdout
+        assert "/backlog" in result.stdout
+        # Items are NOT dumped inline anymore.
+        assert "Add caching" not in result.stdout
+        assert "Support dark mode" not in result.stdout
 
     def test_briefing_no_backlog_when_empty(self, tmp_path: Path):
         """No backlog line when file exists but has no items."""
@@ -5857,25 +5843,16 @@ class TestSessionBriefing:
         result = run_hook("clear", tmp_path)
         assert "Backlog: 1 pending" in result.stdout
 
-    def test_briefing_truncates_long_backlog_items(self, tmp_path: Path):
-        """Long backlog items are truncated to keep briefing concise."""
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "project-state.yaml").write_text(
-            "product_identity:\n  name: TestApp\n"
-        )
-        long_item = "x" * 150
-        (prawduct / "backlog.md").write_text(
-            f"# Backlog\n\n- {long_item}\n"
-        )
+    # (Removed test_briefing_truncates_long_backlog_items: items are no longer
+    # rendered inline, so there is nothing to truncate. Coverage for "items are
+    # not dumped" lives in test_briefing_shows_backlog_count_not_items.)
 
-        result = run_hook("clear", tmp_path)
-        assert "..." in result.stdout
-        # Should be truncated, not the full 150 chars
-        assert long_item not in result.stdout
+    def test_briefing_backlog_count_only_no_item_dump(self, tmp_path: Path):
+        """Large backlog: a single count line, no per-item dump, no '… and N more'.
 
-    def test_briefing_caps_backlog_at_five(self, tmp_path: Path):
-        """Only first 5 backlog items shown, rest summarized."""
+        Diet change: previously capped at 5 items + an '… and N more' line; now
+        the count alone, with /backlog for triage.
+        """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(
@@ -5887,11 +5864,9 @@ class TestSessionBriefing:
         )
 
         result = run_hook("clear", tmp_path)
-        assert "Backlog: 7 pending items" in result.stdout
-        assert "Item 0" in result.stdout
-        assert "Item 4" in result.stdout
-        assert "Item 5" not in result.stdout
-        assert "... and 2 more" in result.stdout
+        assert "Backlog: 7 pending" in result.stdout
+        assert "Item 0" not in result.stdout
+        assert "more" not in result.stdout.split("Backlog: 7 pending", 1)[1].split("\n", 1)[0]
 
     def test_briefing_excludes_nested_and_strikethrough(self, tmp_path: Path):
         """Nested sub-items and strikethrough items are not counted."""
@@ -6639,7 +6614,8 @@ class TestLearningsBriefingFormat:
 
         assert "Learnings" in result.stdout
         assert "2 rules" in result.stdout
-        assert "Pydantic v2" in result.stdout
+        # Topic index is no longer dumped (diet) — count + pointer only.
+        assert "Pydantic v2" not in result.stdout
 
     def test_counts_when_always_never_if_format(self, tmp_path: Path):
         """Counts rules in original 'When/Always/Never/If' format."""
@@ -6661,7 +6637,7 @@ class TestLearningsBriefingFormat:
         assert "2 rules" in result.stdout
 
     def test_counts_mixed_formats(self, tmp_path: Path):
-        """Counts rules from both formats and shows topic index."""
+        """Counts rules from both formats (topic index collapsed away — diet)."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(
@@ -6682,8 +6658,9 @@ class TestLearningsBriefingFormat:
 
         assert "Learnings" in result.stdout
         assert "3 rules" in result.stdout
-        assert "Testing" in result.stdout
-        assert "Architecture" in result.stdout
+        # Topic names are no longer surfaced in the briefing (count + pointer only).
+        assert "Testing" not in result.stdout
+        assert "Architecture" not in result.stdout
 
 
 # =============================================================================
@@ -7229,8 +7206,10 @@ class TestComputeFrameworkFreshness:
 
 
 class TestBriefingFreshnessBlock:
-    """The structured 'Framework freshness:' block in the session briefing —
-    surfaces only when there's actual drift to reason about."""
+    """Framework freshness in the session briefing — collapsed to a single
+    'Framework drift:' line for the commit delta, surfaced only on real drift.
+    Version drift is owned by _check_framework_version (separate code path) and
+    raw SHAs/dates are no longer dumped here (governance-tax diet)."""
 
     def test_no_block_when_in_sync(self, tmp_path: Path):
         _basic_project_state(tmp_path / ".prawduct")
@@ -7245,7 +7224,8 @@ class TestBriefingFreshnessBlock:
             "commits_behind": 0,
         }
         briefing = mod.assemble_session_briefing(tmp_path, [], freshness=freshness, advisories=[])
-        assert "Framework freshness:" not in briefing
+        assert "Framework drift:" not in briefing
+        assert "Template update" not in briefing
 
     def test_block_shown_when_commits_behind(self, tmp_path: Path):
         _basic_project_state(tmp_path / ".prawduct")
@@ -7260,14 +7240,15 @@ class TestBriefingFreshnessBlock:
             "commits_behind": 1,
         }
         briefing = mod.assemble_session_briefing(tmp_path, [], freshness=freshness, advisories=[])
-        assert "Framework freshness:" in briefing
-        assert "5885600" in briefing
-        assert "bc44003" in briefing
-        assert "1 commit(s) since sync" in briefing
-        # Versions match — no version-delta line
-        assert "Version delta" not in briefing
+        # Collapsed to one line; raw SHAs/dates no longer dumped.
+        assert "Framework drift: 1 commit(s) since last sync" in briefing
+        assert "5885600" not in briefing
+        assert "Framework freshness:" not in briefing
 
-    def test_block_shows_version_delta_when_versions_differ(self, tmp_path: Path):
+    def test_commit_delta_line_independent_of_version(self, tmp_path: Path):
+        """The freshness block reports the COMMIT delta only; version drift is
+        owned by _check_framework_version (a separate path), so the briefing
+        assembler does not render a version-delta line."""
         _basic_project_state(tmp_path / ".prawduct")
         mod = _load_hook_module()
         freshness = {
@@ -7280,22 +7261,12 @@ class TestBriefingFreshnessBlock:
             "commits_behind": 5,
         }
         briefing = mod.assemble_session_briefing(tmp_path, [], freshness=freshness, advisories=[])
-        assert "Version delta" in briefing
-        assert "v1.3.10" in briefing
-        assert "v1.3.11" in briefing
+        assert "Framework drift: 5 commit(s) since last sync" in briefing
+        assert "Version delta" not in briefing
 
-    def test_block_renders_place_once_advisories_with_commit_info(self, tmp_path: Path):
+    def test_block_renders_template_drift_one_line(self, tmp_path: Path):
         _basic_project_state(tmp_path / ".prawduct")
         mod = _load_hook_module()
-        freshness = {
-            "framework_head": "5885600",
-            "framework_head_date": "2026-05-01",
-            "framework_version": "1.3.10",
-            "last_sync_date": "2026-04-23",
-            "last_sync_version": "1.3.10",
-            "last_sync_commit": "bc44003",
-            "commits_behind": 1,
-        }
         advisories = [
             {
                 "type": "template_drift",
@@ -7308,16 +7279,16 @@ class TestBriefingFreshnessBlock:
             }
         ]
         briefing = mod.assemble_session_briefing(
-            tmp_path, [], freshness=freshness, advisories=advisories
+            tmp_path, [], freshness=None, advisories=advisories
         )
-        assert "Place-once template advisories: 1" in briefing
-        assert "project-preferences.md" in briefing
-        assert "5885600" in briefing
-        assert "Preference enforcement framework" in briefing
+        # One line naming the file + the review path; no commit/subject table.
+        assert "Template update(s) since setup: project-preferences.md" in briefing
+        assert "/janitor scope=templates" in briefing
+        assert "Preference enforcement framework" not in briefing
 
-    def test_legacy_manifest_shows_unknown_commit_delta(self, tmp_path: Path):
-        """When manifest predates commit tracking, the block still renders
-        for advisories but the commit delta is reported as unknown."""
+    def test_legacy_manifest_no_commit_delta_line(self, tmp_path: Path):
+        """Manifest predates commit tracking (commits_behind None): no drift
+        line is emitted (nothing actionable), but template advisories still do."""
         _basic_project_state(tmp_path / ".prawduct")
         mod = _load_hook_module()
         freshness = {
@@ -7343,20 +7314,18 @@ class TestBriefingFreshnessBlock:
         briefing = mod.assemble_session_briefing(
             tmp_path, [], freshness=freshness, advisories=advisories
         )
-        assert "Framework freshness:" in briefing
-        assert "manifest predates commit tracking" in briefing
+        assert "Framework drift:" not in briefing
+        assert "Template update(s) since setup: project-preferences.md" in briefing
 
-    def test_falls_back_when_freshness_is_none_but_advisories_present(self, tmp_path: Path):
-        """Backward-compat path: when freshness can't be computed but advisories
-        exist, render the simple advisory list rather than dropping it."""
+    def test_advisories_render_when_freshness_is_none(self, tmp_path: Path):
+        """Advisories render independently of freshness (no fw access needed)."""
         _basic_project_state(tmp_path / ".prawduct")
         mod = _load_hook_module()
         advisories = [{"file": "X", "message": "X drifted"}]
         briefing = mod.assemble_session_briefing(
             tmp_path, [], advisories=advisories, freshness=None
         )
-        assert "Place-once template advisories: 1 template(s)" in briefing
-        assert "X drifted" in briefing
+        assert "Template update(s) since setup: X" in briefing
 
 
 # =============================================================================
