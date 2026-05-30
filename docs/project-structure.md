@@ -94,6 +94,7 @@ my-product/
 │   ├── .test-evidence.json            # Test evidence for Critic (gitignored)
 │   └── .critic-findings.json          # Critic review evidence (checked by stop hook)
 ├── tools/
+│   ├── lib/                           # product-hook runtime library (synced to products; regen-views, operator-verification, advisories)
 │   └── product-hook                   # Session governance (Python: reflection + Critic gate + sync + v4→v5 auto-migration)
 ├── tests/
 │   └── conftest.py                    # Auto-grouping for parallel test execution (pytest-xdist)

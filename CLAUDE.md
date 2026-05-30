@@ -155,6 +155,7 @@ my-product/
 │   ├── .session-handoff.md     # Auto-generated context from previous session (gitignored)
 │   └── .critic-findings.json   # Critic review evidence (gitignored, checked by stop hook)
 ├── tools/
+│   ├── lib/                    # product-hook runtime library (synced; regen-views, operator-verification, advisories)
 │   └── product-hook            # Session governance (Python: reflection + Critic gate + sync)
 ├── tests/
 │   └── conftest.py             # Test configuration (place-once)
