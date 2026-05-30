@@ -85,6 +85,13 @@ Before ending a work cycle, verify two things:
 
 **Deferred work**: Were any items identified as out-of-scope during this work cycle? Add them to `.prawduct/backlog.md` with a source marker: `(builder)` for work you identified, `(critic)` for Critic NOTEs that warrant future investigation, `(reflection)` for ideas surfaced during reflection. One bullet per item with enough context to be actionable later. These items are surfaced in the next session's briefing and triaged during `/janitor` runs.
 
+**Earn the backlog entry — don't let it inflate.** The backlog is for work with a *real, near-term consumer*, not a graveyard for every observation. Before filing, apply this bar:
+- **File it** when the item has a user-facing payoff or a concrete pending need (a bug a product hits, a feature someone is waiting on, a refactor blocking other work).
+- **Do NOT file** pure internal-ceremony items — proposals to make the review stricter, doc-prose tightening, "validate against more datapoints first," or speculative checks with no current consumer. Capture these as a *reflection* (the narrative) or a *learning* (a standing rule), not as a pickable backlog item. A NOTE you correctly judged out-of-scope *because there's no consumer yet* belongs in a spec/proposal appendix, not the pickable `## Open` section.
+- **Cross-product lessons** (something learned in product A while working on the framework, or vice versa) belong to *that product's* backlog or a methodology-research note — not this repo's pickable backlog.
+
+Rationale: a NOTE auto-filed into the pickable backlog turns a one-time review observation into a perpetual every-session line. Unbounded filing is how a backlog drifts from a working set into a 50-item self-portrait of the tooling reviewing itself.
+
 **Work cycle boundary**: Is the current work complete and the next task independent? If so, complete handoff and *affirmatively* tell the user `/clear` is safe — do not leave them guessing. Before signaling: (1) persist any pending requirements, decisions, or plans to artifacts, (2) update the build plan Status section in `.prawduct/artifacts/build-plan.md` — mark completed chunks and update the Context line — so the next session's briefing and handoff file surface the task, (3) then say explicitly that governance is complete and `/clear` is safe, noting what was persisted. Never signal safety if any governance step was skipped or failed. See `methodology/building.md` "Session Scope Discipline" for the full protocol.
 
 ### Step 7: Methodology Check

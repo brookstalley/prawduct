@@ -116,7 +116,7 @@ Error handling present → **WARNING** if missing. Logging appropriate → **WAR
 
 - **BLOCKING**: Must fix. Broken tests, dropped requirements, security vulnerabilities, unlisted dependencies.
 - **WARNING**: Should fix. The Critic is confident this is a real issue: missing coverage, scope drift, stale artifacts, missing rationale, design problems, documentation drift.
-- **NOTE**: Genuinely ambiguous — the Critic sees something that might be an issue but isn't certain. The builder should evaluate. Do not use NOTE for things you're confident about; if you're sure something should change, it's at least a WARNING. NOTEs that suggest future work should recommend the builder add them to `.prawduct/backlog.md` rather than acting on them in the current work cycle.
+- **NOTE**: Genuinely ambiguous — the Critic sees something that might be an issue but isn't certain. The builder should evaluate. Do not use NOTE for things you're confident about; if you're sure something should change, it's at least a WARNING. NOTEs that suggest future work *with a real, near-term consumer* should recommend the builder add them to `.prawduct/backlog.md`. **Do not recommend filing pure internal-ceremony work** — proposals to make the review itself stricter, doc-prose tightening, or speculative checks with no current consumer. Those belong in a reflection or a proposal appendix, not the pickable backlog: an auto-filed NOTE becomes a perpetual every-session briefing line, and unbounded filing is how a backlog inflates into a self-portrait of the tooling reviewing itself. When in doubt, the bar is "would a product owner with 30 free minutes want to pick this?" — if not, reflect it, don't file it.
 
 ## Review Execution
 

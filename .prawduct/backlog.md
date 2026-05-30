@@ -179,11 +179,6 @@
 
   When a data structure or state machine's correctness depends on what happens on the NEXT invocation (accumulator, coordinator, cursor, stateful retry), tests that only check post-state miss multi-hop bugs. Discodon has repeatedly shipped bugs caught only by the next cycle (Apr 8 accumulator, Apr 15 V0.5-7a timestamp collision under prune). Evidence: discodon/reflections.md §2026-04-08 "What I'd do differently". Candidate: add a bullet to methodology/building.md §Test Discipline — "When tested behavior depends on subsequent invocations (next cycle, next call, next prune), exercise at least one additional step beyond the immediate post-state." Broadly applicable; no detection heuristic needed. (reflection)
 
-- **[SYN-2K9N]** Template drift advisory dismiss/acknowledge mechanism
-  `effort: M · impact: M · area: sync · source: critic · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
-
-  Currently advisories persist until the janitor updates the stored template hash. If a product reviews an advisory and decides the new template content is not applicable, there's no way to dismiss it — the advisory nags every session. Consider adding a `dismissed_advisories` list to the sync manifest, or a `/janitor dismiss` flow that updates the hash without incorporating the template changes. Note: the v1.6.0 post-sync advisory infrastructure + `/prawduct-advisory dismiss` may already cover this — verify before building. (critic)
-
 - **[CRT-5N3F]** Critic false positives from fork-context limits
   `effort: L · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
 
@@ -279,6 +274,11 @@
 _None._
 
 ## Archive
+
+- **[SYN-2K9N]** Template drift advisory dismiss/acknowledge mechanism
+  `effort: M · impact: M · area: sync · source: critic · added: 2026-04-16 · status: shipped · closed-by: reduce-governance-tax Chunk B · reviewed: 2026-05-30`
+
+  **Resolved** by the template-drift fire-once fix (Chunk B of the governance-tax reduction): a drift advisory now surfaces exactly once per template change, then sync refreshes the stored template hash so it self-resolves — directly fixing the "nags every session" pathology. This is a cleaner fix than the proposed `dismissed_advisories` list / `/janitor dismiss` flow: place-once files are user-owned ("surface the change once, then it's yours"), so auto-resolving after one surfacing matches the semantics without new dismiss machinery. The user's place-once file is never overwritten. (critic)
 
 - **[BLD-9R3K]** `infer-critic-mode` does not detect a build plan living in `.prawduct/artifacts/`
   `effort: M · impact: M · area: build-plan · source: critic · added: 2026-05-29 · status: shipped · closed-by: v1.6.0 Chunk 06 · reviewed: 2026-05-29`
