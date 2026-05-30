@@ -146,18 +146,24 @@ def try_sync(
                         print("  (banner will show new version next session)")
 
                 if actions and not quiet:
-                    is_bootstrap = any("Bootstrapped" in a for a in actions)
+                    non_bootstrap = [a for a in actions if "Bootstrapped" not in a]
+                    is_bootstrap = len(non_bootstrap) != len(actions)
 
-                    # Header (skip if we already printed upgrade banner)
+                    # Collapse the per-file action dump to a single count line —
+                    # a routine sync (or the tools/lib self-heal, which touches
+                    # ~14 files) should not wallpaper the briefing with "+ New: …"
+                    # lines. The manifest records exactly what changed; re-read
+                    # prompts and gitignore fixes still surface as notes below.
                     if is_bootstrap:
-                        print("PRAWDUCT SYNC: First framework sync for this repo")
-                    elif not upgrade_info:
-                        print("PRAWDUCT SYNC: Framework updated")
-
-                    # List changes
-                    for action in actions:
-                        if "Bootstrapped" not in action:  # Already shown in header
-                            print(f"  + {action}")
+                        print("PRAWDUCT SYNC: first framework sync for this repo")
+                    if non_bootstrap:
+                        n = len(non_bootstrap)
+                        if upgrade_info or is_bootstrap:
+                            print(f"  ({n} framework file(s) updated)")
+                        else:
+                            print(f"PRAWDUCT SYNC: {n} framework file(s) updated")
+                    # Notes carry the genuinely actionable bits (re-read X,
+                    # un-ignored a path to git add) — keep them.
                     for note in notes:
                         print(f"  * {note}")
             except json.JSONDecodeError:

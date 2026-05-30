@@ -1110,6 +1110,16 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
                 "last_changed_date": last_change.get("date", ""),
                 "last_changed_subject": last_change.get("subject", ""),
             })
+            # Fire ONCE per template change, not every session forever. Refresh
+            # the stored hash to current so the next sync sees no drift. Place-
+            # once files are user-owned ("surface the change once, then it's
+            # yours"); re-nagging indefinitely with no dismiss path was pure tax.
+            live_entry = pot.get(rel_path)
+            if live_entry is not None:
+                live_entry["template_hash"] = current_hash
+                live_entry["last_surfaced_at"] = datetime.now(timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
 
     # Post-sync migration advisories (v1.6.0 Phase 1). Distinct from the
     # template-drift `advisories` collected above — these come from the probe
@@ -1141,21 +1151,21 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
     for path in untracked:
         actions.append(f"Untracked {path} (removed from git index, file kept locally)")
 
-    # Update manifest when files changed or place-once tracking was bootstrapped
-    pot_bootstrapped = "place_once_templates" in manifest and manifest[
-        "place_once_templates"
-    ] != manifest_snapshot_pot
-    if actions or pot_bootstrapped:
-        manifest["files"] = updated_files
-        manifest["framework_version"] = PRAWDUCT_VERSION
-        # Record the framework commit at sync time so freshness checks can
-        # compute commits-behind precisely. Older manifests without this field
-        # will populate it on next sync.
-        fw_commit = _get_framework_head_commit(fw_dir)
-        if fw_commit:
-            manifest["framework_commit"] = fw_commit
-        manifest["last_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    # Always refresh freshness markers on a successful sync — even when no
+    # files changed. Otherwise a repo that is byte-identical to the framework
+    # keeps reporting a phantom "N commit(s) behind" in every session briefing,
+    # because last_sync / framework_commit were frozen at the last sync that
+    # happened to change a file. Refreshing them every sync makes a healthy,
+    # up-to-date repo report "in sync" and emit zero freshness noise — the
+    # whole point of the happy-path-silence work. (The manifest is gitignored,
+    # so rewriting it every session creates no git churn.)
+    manifest["files"] = updated_files
+    manifest["framework_version"] = PRAWDUCT_VERSION
+    fw_commit = _get_framework_head_commit(fw_dir)
+    if fw_commit:
+        manifest["framework_commit"] = fw_commit
+    manifest["last_sync"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
     # F5a: after all framework-managed mutations land on disk and the
     # manifest is updated, attempt the single marker commit. Quarantines
