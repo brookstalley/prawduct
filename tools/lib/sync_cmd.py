@@ -28,6 +28,7 @@ from .core import (
     _try_pull_framework,
     compute_block_hash,
     compute_hash,
+    effective_managed_files,
     extract_block,
     infer_product_name,
     load_json,
@@ -210,7 +211,7 @@ def _bootstrap_manifest(product: Path, fw_dir: Path) -> dict:
     product_name = infer_product_name(product) or product.name
 
     file_hashes: dict[str, str | None] = {}
-    for rel_path, config in MANAGED_FILES.items():
+    for rel_path, config in effective_managed_files(fw_dir).items():
         strategy = config.get("strategy", "template")
         file_path = product / rel_path
 
@@ -825,8 +826,11 @@ def run_sync(product_dir: str, framework_dir: str | None = None, *, no_pull: boo
         apply_renames(product, manifest, actions)
 
     # Backfill: add any managed files missing from the manifest (added after init)
-    # Also repair stale config (e.g., old template paths from renamed entries)
-    for rel_path, config in MANAGED_FILES.items():
+    # Also repair stale config (e.g., old template paths from renamed entries).
+    # effective_managed_files() expands MANAGED_DIRS (tools/lib) from the
+    # framework, so existing synced repos self-heal: the lib package lands as
+    # `New:` entries on the next sync without any per-product migration.
+    for rel_path, config in effective_managed_files(fw_dir).items():
         if rel_path not in files:
             files[rel_path] = dict(config)
             files[rel_path]["generated_hash"] = None  # Forces creation on first sync

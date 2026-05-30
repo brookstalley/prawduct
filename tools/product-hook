@@ -447,6 +447,22 @@ def git_has_code_changes(project_dir: Path) -> bool:
     return bool(git_has_session_changes(project_dir))
 
 
+def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
+    """True if ``f`` is Prawduct framework infrastructure shipped into a product
+    repo (``tools/product-hook`` or ``tools/lib/*``), not the product's own code.
+
+    Used by the "has product code?" heuristic so that sync-delivered tooling
+    doesn't make a freshly-initialized empty repo look like it contains source.
+    Deliberately NOT used by the compliance canary's source detection: in the
+    framework repo itself these paths ARE the source under test.
+    """
+    try:
+        rel = f.relative_to(project_dir).as_posix()
+    except ValueError:
+        return False
+    return rel == "tools/product-hook" or rel.startswith("tools/lib/")
+
+
 # Canonical list of session files that should be gitignored, never tracked.
 # Mirrors GITIGNORE_ENTRIES in tools/lib/core.py — kept duplicated here because
 # product-hook is intentionally standalone and ships into product repos that
@@ -2176,7 +2192,10 @@ def cmd_clear(project_dir: Path) -> int:
             pass
 
     if prefs_missing or prefs_unfilled:
-        # Only warn if there's source code (not a brand-new project)
+        # Only warn if there's source code (not a brand-new project). Framework
+        # tooling (tools/product-hook, tools/lib/*.py) is infrastructure shipped
+        # by sync, NOT the product's own code — counting it would fire this
+        # CRITICAL on a freshly-initialized empty repo.
         has_code = any(
             f.suffix in (".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt", ".c", ".cpp", ".h")
             for f in project_dir.rglob("*")
@@ -2184,6 +2203,7 @@ def cmd_clear(project_dir: Path) -> int:
             and ".prawduct" not in f.parts
             and "node_modules" not in f.parts
             and f.name != "conftest.py"
+            and not _is_framework_tooling(f, project_dir)
         )
         if has_code:
             print(
@@ -3874,7 +3894,18 @@ def cmd_regen_views(project_dir: Path) -> int:
     tools_dir = str(Path(__file__).resolve().parent)
     if tools_dir not in sys.path:
         sys.path.insert(0, tools_dir)
-    from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
+    try:
+        from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
+    except ImportError:
+        # Old repo that predates tools/lib propagation — degrade gracefully
+        # rather than crash. Views derivation is a convenience; Status can be
+        # updated by hand until the next framework sync ships tools/lib.
+        print(
+            "NOTE: regen-views needs tools/lib (not present in this repo). "
+            "Run a framework sync to install it; Status not auto-regenerated.",
+            file=sys.stderr,
+        )
+        return 0
 
     prawduct_dir = get_prawduct_dir(project_dir)
     try:
@@ -3919,7 +3950,18 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
     tools_dir = str(Path(__file__).resolve().parent)
     if tools_dir not in sys.path:
         sys.path.insert(0, tools_dir)
-    from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+    try:
+        from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+    except ImportError:
+        # Fail OPEN: this gate cannot evaluate a queue it can't load. In a repo
+        # that predates tools/lib, operator-verification isn't active anyway, so
+        # blocking /pr here would be a false positive. Surface a note, allow.
+        print(
+            "NOTE: check-operator-verification needs tools/lib (not present); "
+            "gate skipped. Run a framework sync to install it.",
+            file=sys.stderr,
+        )
+        return 0
 
     result = ov.run_check_operator_verification(project_dir)
     if not result["required"]:
@@ -3943,7 +3985,17 @@ def cmd_accept_operator_verification(
     tools_dir = str(Path(__file__).resolve().parent)
     if tools_dir not in sys.path:
         sys.path.insert(0, tools_dir)
-    from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+    try:
+        from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+    except ImportError:
+        # Honest failure: this command mutates the queue, so it must not claim
+        # success when its machinery is absent. Tell the user to sync.
+        print(
+            "error: accept-operator-verification needs tools/lib (not present "
+            "in this repo). Run a framework sync to install it.",
+            file=sys.stderr,
+        )
+        return 1
 
     if rationale is None or not rationale.strip():
         print(

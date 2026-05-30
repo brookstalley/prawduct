@@ -106,6 +106,47 @@ MANAGED_FILES = {
     },
 }
 
+# Managed directories: every matching file is synced like an always_update
+# managed file, enumerated dynamically from the framework so new modules ship
+# automatically without editing MANAGED_FILES. product-hook imports tools/lib
+# at runtime (regen-views, operator-verification, advisories), so product repos
+# MUST carry it — listing the package statically would re-introduce the
+# ModuleNotFoundError class of bug every time a module is added.
+MANAGED_DIRS: dict[str, dict] = {
+    "tools/lib": {
+        "glob": "*.py",
+        "strategy": "always_update",
+        "description": "product-hook runtime library (regen-views, operator-verification, advisories)",
+    },
+}
+
+
+def effective_managed_files(framework_dir: Path) -> dict[str, dict]:
+    """MANAGED_FILES plus every file under MANAGED_DIRS, enumerated from the
+    framework directory.
+
+    Managed-directory files are framework-owned (``always_update``), so they
+    propagate to product repos on every sync and pick up newly-added modules
+    without a code change here. Enumeration keys off ``framework_dir`` — when a
+    caller passes an empty/fake framework dir (unit tests), no managed-dir files
+    are added, preserving the static MANAGED_FILES set.
+    """
+    result: dict[str, dict] = dict(MANAGED_FILES)
+    for dir_rel, dir_config in MANAGED_DIRS.items():
+        src_dir = framework_dir / dir_rel
+        if not src_dir.is_dir():
+            continue
+        for path in sorted(src_dir.glob(dir_config.get("glob", "*"))):
+            if path.is_file():
+                rel = f"{dir_rel}/{path.name}"
+                result[rel] = {
+                    "source": rel,
+                    "strategy": dir_config.get("strategy", "always_update"),
+                    "description": dir_config.get("description", ""),
+                }
+    return result
+
+
 # Place-once files: created if missing, never overwritten. Template hashes
 # are tracked in manifest["place_once_templates"] for drift detection.
 # Shared between init_cmd.py and sync_cmd.py.
@@ -465,7 +506,7 @@ def create_manifest(
     """
     files: dict[str, dict] = {}
 
-    for rel_path, config in MANAGED_FILES.items():
+    for rel_path, config in effective_managed_files(framework_dir).items():
         entry = dict(config)
         entry["generated_hash"] = file_hashes.get(rel_path)
         files[rel_path] = entry
