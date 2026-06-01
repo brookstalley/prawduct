@@ -7,7 +7,7 @@ The Critic ensures work quality per-chunk. The cumulative-mode Critic (`/critic 
 ## When You Are Activated
 
 1. Read `.prawduct/project-state.yaml` for context (current work description, work size/type).
-2. Read the full diff from base branch: `git diff <base>...HEAD`
+2. Resolve the base branch with `prawduct-hook resolve-base` (it honors a configured `base_branch:` in `project-state.yaml` — gitflow `develop` — falling back to `main`; the **same base the PR/coverage gates use**, so the reviewer and gates never diff different ranges). Then read the full diff from that base: `git diff <base>...HEAD`. Record it as `base` in your evidence.
 3. Read the commit log: `git log --oneline <base>..HEAD`
 4. Read relevant artifacts in `.prawduct/artifacts/` (especially any spec or build plan for the current work).
 5. Read `.prawduct/learnings.md` for project-specific patterns.
@@ -40,7 +40,7 @@ The Critic may have caught these per-chunk. You catch what slipped through or em
 - Test assertions are meaningful (not just "doesn't throw")
 - No test coverage regressions
 
-**Do not run the test suite yourself.** Read `.prawduct/.test-evidence.json` and validate freshness via `python3 tools/product-hook test-status` (exit 0 = current, 1 = stale). If `test-status` reports `stale` or evidence is missing → **WARNING** ("test evidence does not cover the changeset I'm reviewing").
+**Do not run the test suite yourself.** Read `.prawduct/.test-evidence.json` and validate freshness via `prawduct-hook test-status` (exit 0 = current, 1 = stale). If `test-status` reports `stale` or evidence is missing → **WARNING** ("test evidence does not cover the changeset I'm reviewing").
 
 ### 3. Right Scope and Granularity
 **Severity: WARNING**

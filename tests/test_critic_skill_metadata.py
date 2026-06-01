@@ -25,10 +25,17 @@ CRITIC_SKILL_SURFACES = [
     REPO_ROOT / ".claude" / "skills" / "critic" / "SKILL.md",
     REPO_ROOT / "templates" / "skill-critic.md",
     # The plugin-distributed Critic skill (v2.0.0): the governance surface that
-    # runs for plugin-consuming repos. Its frontmatter is byte-identical to the
-    # framework skill's (Chunk 3/4) and must satisfy the same structural blocks.
+    # runs for plugin-consuming repos. It must satisfy the SAME structural
+    # safety blocks (pure-allow deny set, read-only git) as the framework skill.
+    # Chunk 5 deliberately repoints its runtime-hook invocations from
+    # `python3 tools/product-hook …` to the bundled `prawduct-hook …` (on the
+    # Bash PATH), so its frontmatter is no longer byte-identical — the safety
+    # set is, the invocation prefix is not.
     REPO_ROOT / "skills" / "critic" / "SKILL.md",
 ]
+
+# The plugin Critic surface (distribution-specific invocation prefix).
+_PLUGIN_CRITIC_SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"
 
 # The shadow Critic twin must obey the same read-only-git constraint (CRT-2M5P)
 # even though it carries no deny patterns and doesn't gate session end.
@@ -82,21 +89,29 @@ class TestCriticSkillDenyPatterns:
             )
 
     def test_existing_legitimate_tools_preserved(self):
-        """The deny additions must not accidentally drop existing allows."""
-        legitimate_prefixes = [
-            "Read",
-            "Glob",
-            "Grep",
-            "Bash(wc *)",
+        """The deny additions must not accidentally drop existing allows.
+
+        Common tools are checked on every surface; the runtime-hook invocation
+        prefix is distribution-specific — file-sync surfaces call
+        `python3 tools/product-hook …`, the plugin surface calls the bundled
+        `prawduct-hook …` (Chunk 5 repoint)."""
+        common = ["Read", "Glob", "Grep", "Bash(wc *)", "Write", "Agent"]
+        legacy_hook_tools = [
             "Bash(python3 tools/product-hook test-status)",
             "Bash(python3 tools/product-hook verify-chunk-refs *)",
             "Bash(python3 tools/product-hook infer-critic-mode *)",
-            "Write",
-            "Agent",
+        ]
+        plugin_hook_tools = [
+            "Bash(prawduct-hook test-status)",
+            "Bash(prawduct-hook verify-chunk-refs *)",
+            "Bash(prawduct-hook infer-critic-mode *)",
         ]
         for surface in CRITIC_SKILL_SURFACES:
             allowed = _extract_allowed_tools(surface.read_text())
-            for tool in legitimate_prefixes:
+            expected = common + (
+                plugin_hook_tools if surface == _PLUGIN_CRITIC_SKILL else legacy_hook_tools
+            )
+            for tool in expected:
                 assert tool in allowed, (
                     f"{surface.relative_to(REPO_ROOT)} dropped legitimate "
                     f"tool `{tool}` from allowed-tools"

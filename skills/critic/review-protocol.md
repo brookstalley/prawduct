@@ -10,7 +10,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 ## When You Are Activated
 
-1. Resolve mode. `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; `mode_chosen_by = "explicit-args"`. Else run `python3 tools/product-hook infer-critic-mode` — stdout `<mode>|<rationale>`; use both. Fall-through: `chunk` with active plan, `final` otherwise; subcommand returns `final|fallback-no-tools-lib` when `tools/lib` is absent.
+1. Resolve mode. `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; `mode_chosen_by = "explicit-args"`. Else run `prawduct-hook infer-critic-mode` — stdout `<mode>|<rationale>`; use both. Fall-through: `chunk` with active plan, `final` otherwise; subcommand returns `final|fallback-no-tools-lib` when `tools/lib` is absent.
 2. Read `.prawduct/project-state.yaml`.
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.
@@ -44,7 +44,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 1. Nothing Is Broken
-- **Do not run tests.** Run `python3 tools/product-hook test-status`: exit 0 = current; stale/missing → **WARNING**. Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
+- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING**. Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
 - No "pre-existing" exception — every finding is yours regardless of when introduced.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
@@ -57,13 +57,13 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
   - No hardcoded secrets or credentials in source code → **BLOCKING**.
   - Auth/authz checks on new endpoints or state-changing operations → **WARNING** if missing.
   - Dependencies without known critical vulnerabilities → **WARNING**.
-- **Symbol coverage (v1.4 F4b):** run `python3 tools/product-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
+- **Symbol coverage (v1.4 F4b):** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
 
 ### 2. Nothing Is Missing
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
 - **Requirements Confidence field present** (`High | Medium | Low`, see `methodology/planning.md`). Missing → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
-- **Build-plan ref drift**: run `python3 tools/product-hook verify-chunk-refs` — non-zero exit → **BLOCKING** per missing path (plan names a file that doesn't exist).
+- **Build-plan ref drift**: run `prawduct-hook verify-chunk-refs` — non-zero exit → **BLOCKING** per missing path (plan names a file that doesn't exist).
 - **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
@@ -196,7 +196,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by` (v1.5 Chunk 03): `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `commit_reviewed` (v1.5): record `git rev-parse HEAD` at review time — anchors the delta computation that `verify-resolutions` mode reads. `base_reviewed`: in `cumulative` mode, record `git merge-base <base-branch> HEAD`; otherwise `null`. All three fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
+`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by` (v1.5 Chunk 03): `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `commit_reviewed` (v1.5): record `git rev-parse HEAD` at review time — anchors the delta computation that `verify-resolutions` mode reads. `base_reviewed`: in `cumulative` mode, record the `git merge-base <base> HEAD` you reviewed against (with `<base>` from `prawduct-hook resolve-base`); otherwise `null`. All three fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
 
 ## Review Cycle
 
