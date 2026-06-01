@@ -3,6 +3,24 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-01: Bugfix — phantom "rebase in progress" from stale `.git/REBASE_HEAD`
+
+<!-- prawduct: type=bugfix | status=merged -->
+
+**Reported by:** Hallucinote (downstream product repo), 2026-05-30 — "where is this rebase thing coming from? Seems like prawduct is misleading us every single time."
+
+**Symptom:** `_git_op_in_progress()` (`tools/lib/sync_cmd.py`) reported a "rebase in progress" when no rebase existed. This is *persistent governance noise*: it misled every session briefing and could silently suppress a legitimate framework auto-sync (a non-empty return is a hard auto-commit precondition). Because the detected op is cached into `.prawduct/.sync-pending` and the briefing replays that string verbatim each session, the phantom was sticky until manually cleared.
+
+**Root cause:** `REBASE_HEAD` was in the marker-file list, but — unlike `MERGE_HEAD` / `CHERRY_PICK_HEAD` / `REVERT_HEAD`, which git removes when the op ends or aborts — **git leaves `.git/REBASE_HEAD` behind after a rebase completes**, overwriting it only on the next rebase. Its presence is not an in-progress signal. The authoritative test (the `rebase-merge` / `rebase-apply` directory check, which is what `git status` uses) was already present and correct.
+
+**Fix (one line + comment):** removed the `("REBASE_HEAD", "rebase")` marker. Real rebases are still detected via the directory check, so no behavior is lost. Because the auto-commit step recomputes blockers fresh on every sync run and `.sync-pending` is cleared/overwritten each run, the fix is **self-healing** — existing affected repos clear the stale marker on their next sync, no manual intervention. (The report's secondary suggestion — re-evaluating cached blockers at briefing time — is therefore unnecessary for this bug and was left unimplemented per scope discipline; noted as a future robustness candidate.)
+
+**Why tests missed it:** `test_rebase_in_progress_blocks_commit` simulates a rebase with the `rebase-merge` *directory*, so it passed via the correct branch and never exercised the `REBASE_HEAD` *file* branch — the buggy line was effectively untested.
+
+**Test coverage:** 1605 passing (+8). New `TestGitOpInProgress` exercises the corrected function directly (clean repo, stale `REBASE_HEAD` → no op, real `rebase-merge`/`rebase-apply` dirs → rebase, and `MERGE_HEAD`/`CHERRY_PICK_HEAD`/`REVERT_HEAD` still detected), plus `test_stale_rebase_head_does_not_block_commit` proving auto-commit proceeds with a stale ref present. `test_rebase_in_progress_blocks_commit` still passes, confirming real rebases remain blocked.
+
+**Backward compatibility:** Strictly a correctness fix to detection logic; no contract change. Affects every version that ships `_git_op_in_progress`.
+
 ## 2026-05-30: v1.8.0 — Governance-tax reduction: pure benefit, almost no tax (release)
 
 <!-- prawduct: chunks=A,B,C,D,E | release=v1.8.0 | status=shipped | scope=v1.8.0 -->
