@@ -73,7 +73,7 @@ First, compute the evidence file path: take the current branch name, replace eve
 
 Create the `.prawduct/.pr-reviews/` directory if it doesn't exist.
 
-Tell the reviewer agent: "You are the PR reviewer. Read `.prawduct/pr-review.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to the exact path: `.prawduct/.pr-reviews/[computed-filename]` — use this path exactly as given, do not compute your own filename."
+Tell the reviewer agent: "You are the PR reviewer. Read `${CLAUDE_SKILL_DIR}/review-protocol.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to the exact path: `.prawduct/.pr-reviews/[computed-filename]` — use this path exactly as given, do not compute your own filename."
 
 **Pass the exact full path — do not ask the reviewer to compute the filename.** The reviewer's own instructions reinforce this: "Write to the exact file path provided by the caller."
 
@@ -123,7 +123,7 @@ PR review evidence is stored in `.prawduct/.pr-reviews/<branch-name>.json` (with
 ## Important
 
 - The PR reviewer runs as a **separate agent** — it must have independent context
-- The reviewer reads `.prawduct/pr-review.md` for its instructions
+- The reviewer reads `${CLAUDE_SKILL_DIR}/review-protocol.md` for its instructions
 - Run the full test suite before creating a PR — but check `python3 tools/product-hook test-status` first; skip the run if it reports `current`
 - **Doc-only fast-path (Step 1b):** when `check-pr-doc-only` reports the entire `merge-base...HEAD` diff is `.md`, the cumulative-Critic and PR-reviewer gates are skipped. The gate fails closed — any error in evaluation falls through to the full review path. Mirrors the stop hook's `_session_changes_are_doc_only` exemption at the PR boundary.
 - **Trivial-code fast-path (Step 1c):** when `check-pr-trivial` reports every commit on `merge-base...HEAD` is fileset-eligible per the `Type: trivial` path bounds (no `agents/`/`methodology/`/`templates/`/`CLAUDE.md` edits, no test deletions, no new files), the cumulative-Critic and PR-reviewer gates are skipped. Per-chunk Critic rationale-vs-diff review is the judgment backstop; the cumulative pass would add no signal when each chunk already cleared its own gate. Fails closed.

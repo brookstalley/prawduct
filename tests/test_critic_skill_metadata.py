@@ -9,8 +9,8 @@ CRT-8H3D). The `!Bash(...pytest*)` deny entries are kept as belt-and-suspenders
 documentation and still asserted present, but skill-frontmatter `!`-deny is not
 reliably honored by the harness, so they are not the mechanism. Git is likewise
 restricted to read-only verbs so a review can't mutate the tree (CRT-2M5P).
-Drift in either the framework-owned skill or the product-distribution template
-fails loud.
+Drift in the framework-owned skill, the product-distribution template, or the
+plugin-distributed skill (v2.0.0) fails loud.
 """
 
 from __future__ import annotations
@@ -24,6 +24,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CRITIC_SKILL_SURFACES = [
     REPO_ROOT / ".claude" / "skills" / "critic" / "SKILL.md",
     REPO_ROOT / "templates" / "skill-critic.md",
+    # The plugin-distributed Critic skill (v2.0.0): the governance surface that
+    # runs for plugin-consuming repos. Its frontmatter is byte-identical to the
+    # framework skill's (Chunk 3/4) and must satisfy the same structural blocks.
+    REPO_ROOT / "skills" / "critic" / "SKILL.md",
 ]
 
 # The shadow Critic twin must obey the same read-only-git constraint (CRT-2M5P)
@@ -65,6 +69,15 @@ class TestCriticSkillDenyPatterns:
         for pat in REQUIRED_DENY_PATTERNS:
             assert pat in allowed, (
                 f"templates/skill-critic.md is missing deny pattern `{pat}` "
+                f"in allowed-tools"
+            )
+
+    def test_plugin_skill_has_all_deny_patterns(self):
+        content = CRITIC_SKILL_SURFACES[2].read_text()
+        allowed = _extract_allowed_tools(content)
+        for pat in REQUIRED_DENY_PATTERNS:
+            assert pat in allowed, (
+                f"plugin skills/critic/SKILL.md is missing deny pattern `{pat}` "
                 f"in allowed-tools"
             )
 
@@ -143,14 +156,19 @@ class TestCriticSkillDenyPatterns:
                         f"structurally blocked by the allow-list"
                     )
 
-    def test_both_surfaces_have_equivalent_deny_sets(self):
-        """Drift between framework dogfood and product template = bug."""
-        framework = _extract_allowed_tools(CRITIC_SKILL_SURFACES[0].read_text())
-        template = _extract_allowed_tools(CRITIC_SKILL_SURFACES[1].read_text())
-        framework_denies = set(re.findall(r"!Bash\([^)]+\)", framework))
-        template_denies = set(re.findall(r"!Bash\([^)]+\)", template))
-        assert framework_denies == template_denies, (
-            f"deny-set drift: framework has {framework_denies - template_denies} "
-            f"that template lacks; template has {template_denies - framework_denies} "
-            f"that framework lacks"
+    def test_all_surfaces_have_equivalent_deny_sets(self):
+        """Drift between any Critic surface (framework dogfood, product template,
+        plugin distribution) and the framework skill = bug."""
+        framework_path = CRITIC_SKILL_SURFACES[0]
+        framework_denies = set(
+            re.findall(r"!Bash\([^)]+\)", _extract_allowed_tools(framework_path.read_text()))
         )
+        for surface in CRITIC_SKILL_SURFACES[1:]:
+            surface_denies = set(
+                re.findall(r"!Bash\([^)]+\)", _extract_allowed_tools(surface.read_text()))
+            )
+            assert surface_denies == framework_denies, (
+                f"deny-set drift: {surface.relative_to(REPO_ROOT)} has "
+                f"{surface_denies - framework_denies} that the framework skill lacks; "
+                f"framework has {framework_denies - surface_denies} that it lacks"
+            )
