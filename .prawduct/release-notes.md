@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v1.8.1
+
+**Entry:** 2026-06-01: v1.8.1 — Bugfix: phantom "rebase in progress" from stale `.git/REBASE_HEAD` (release)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v1.8.0
 
 **Entry:** 2026-05-30: v1.8.0 — Governance-tax reduction: pure benefit, almost no tax (release)

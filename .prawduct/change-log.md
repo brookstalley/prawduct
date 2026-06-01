@@ -3,9 +3,9 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-06-01: Bugfix — phantom "rebase in progress" from stale `.git/REBASE_HEAD`
+## 2026-06-01: v1.8.1 — Bugfix: phantom "rebase in progress" from stale `.git/REBASE_HEAD` (release)
 
-<!-- prawduct: type=bugfix | status=merged -->
+<!-- prawduct: type=bugfix | release=v1.8.1 | status=shipped -->
 
 **Reported by:** Hallucinote (downstream product repo), 2026-05-30 — "where is this rebase thing coming from? Seems like prawduct is misleading us every single time."
 
