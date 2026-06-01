@@ -35,6 +35,7 @@ _try_pull_framework = _mod._try_pull_framework
 _try_auto_commit = _mod._lib_sync_cmd._try_auto_commit
 _read_sync_config = _mod._lib_sync_cmd._read_sync_config
 _branch_is_protected = _mod._lib_sync_cmd._branch_is_protected
+_git_op_in_progress = _mod._lib_sync_cmd._git_op_in_progress
 _DEFAULT_PROTECTED_BRANCHES = _mod._lib_sync_cmd._DEFAULT_PROTECTED_BRANCHES
 PRAWDUCT_VERSION = _mod.PRAWDUCT_VERSION
 _match_historical_render = _mod._match_historical_render
@@ -4123,6 +4124,52 @@ class _AutoCommitFixture:
         )
 
 
+class TestGitOpInProgress:
+    """`_git_op_in_progress` separates real in-progress ops from leftover refs."""
+
+    @staticmethod
+    def _git_repo(base: Path) -> Path:
+        product = base / "repo"
+        (product / ".git").mkdir(parents=True)
+        return product
+
+    def test_clean_repo_reports_no_op(self, tmp_path: Path):
+        assert _git_op_in_progress(self._git_repo(tmp_path)) == ""
+
+    def test_stale_rebase_head_file_is_not_in_progress(self, tmp_path: Path):
+        # git does NOT remove .git/REBASE_HEAD when a rebase ends — it lingers
+        # until the next rebase overwrites it. Its presence alone is therefore
+        # not an in-progress signal (the bug: a phantom "rebase in progress").
+        product = self._git_repo(tmp_path)
+        (product / ".git" / "REBASE_HEAD").write_text("abc123\n")
+        assert _git_op_in_progress(product) == ""
+
+    @pytest.mark.parametrize("dirname", ["rebase-merge", "rebase-apply"])
+    def test_real_rebase_directory_is_in_progress(self, tmp_path: Path, dirname: str):
+        # The rebase-merge / rebase-apply directories are git's own
+        # authoritative markers — a real rebase must still be detected.
+        product = self._git_repo(tmp_path)
+        (product / ".git" / dirname).mkdir()
+        assert _git_op_in_progress(product) == "rebase"
+
+    @pytest.mark.parametrize(
+        "filename,op",
+        [
+            ("MERGE_HEAD", "merge"),
+            ("CHERRY_PICK_HEAD", "cherry-pick"),
+            ("REVERT_HEAD", "revert"),
+        ],
+    )
+    def test_other_marker_files_still_detected(
+        self, tmp_path: Path, filename: str, op: str
+    ):
+        # Unlike REBASE_HEAD, git removes these refs when the op ends/aborts,
+        # so they remain valid in-progress signals.
+        product = self._git_repo(tmp_path)
+        (product / ".git" / filename).write_text("abc123\n")
+        assert _git_op_in_progress(product) == op
+
+
 class TestAutoCommitHappyPath:
     """Clean feature branch + framework-managed drift → single marker commit."""
 
@@ -4224,6 +4271,27 @@ class TestAutoCommitPreconditions:
         subjects = _git_log_subjects(fix.product)
         assert not subjects[0].startswith("chore(sync):")
         assert any("rebase in progress" in n for n in result["notes"])
+
+    def test_stale_rebase_head_does_not_block_commit(self, tmp_path: Path):
+        """A leftover .git/REBASE_HEAD (git does not remove it when a rebase
+        ends) must NOT be read as an active rebase. Only rebase-merge /
+        rebase-apply directories indicate one. Regression for the phantom
+        "rebase in progress" that blocked auto-sync and stuck in the briefing."""
+        fix = _AutoCommitFixture(tmp_path)
+        fix.init_git(branch="feature/work")
+        # The stale ref a completed rebase leaves behind — with no
+        # rebase-merge/ or rebase-apply/ directory, there is no active rebase.
+        (fix.product / ".git" / "REBASE_HEAD").write_text("abc123\n")
+
+        result = fix.sync()
+
+        # Clean feature branch + framework drift → auto-commit must proceed,
+        # and the phantom rebase note must not appear.
+        assert not any(
+            "rebase in progress" in n for n in result["notes"]
+        ), result["notes"]
+        subjects = _git_log_subjects(fix.product)
+        assert subjects[0].startswith("chore(sync): prawduct v"), subjects
 
     def test_merge_in_progress_blocks_commit(self, tmp_path: Path):
         fix = _AutoCommitFixture(tmp_path)
