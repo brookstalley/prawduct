@@ -474,7 +474,7 @@ class TestCriticSkillPBT:
 
     @pytest.fixture
     def skill(self) -> str:
-        return (FRAMEWORK_DIR / "agents" / "critic" / "SKILL.md").read_text()
+        return (FRAMEWORK_DIR / "skills" / "critic" / "review-protocol.md").read_text()
 
     def test_pbt_in_goal1(self, skill: str):
         """Framework Critic Goal 1 includes property-based testing check."""
@@ -522,11 +522,11 @@ class TestCrossTemplateConsistency:
         """All synced governance files mention property-based testing."""
         build_gov = read_template("build-governance.md").lower()
         critic = read_template("critic-review.md").lower()
-        critic_skill = (FRAMEWORK_DIR / "agents" / "critic" / "SKILL.md").read_text().lower()
+        critic_skill = (FRAMEWORK_DIR / "skills" / "critic" / "review-protocol.md").read_text().lower()
         for name, content in [
             ("build-governance.md", build_gov),
             ("critic-review.md", critic),
-            ("agents/critic/SKILL.md", critic_skill),
+            ("skills/critic/review-protocol.md", critic_skill),
         ]:
             assert "property-based" in content, f"{name} missing PBT guidance"
 

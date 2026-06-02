@@ -1,19 +1,26 @@
 """
 prawduct plugin lib — governance subset of the framework's tools/lib.
 
-v2.0.0 plugin distribution (Chunk 5): the plugin ships only the *governance*
-modules the runtime hook (`bin/prawduct-hook`) needs — critic-mode inference,
-operator-verification, derived views, and the post-sync advisory CLI/store.
-The file-sync transport modules (`sync_cmd`, `migrate_cmd`, `init_cmd`,
-`validate_cmd`, `views_cmd`, `audit_learnings_cmd`) are deliberately NOT
+v2.0.0 plugin distribution: the plugin ships only the *governance* modules the
+runtime hook (`bin/prawduct-hook`) needs — critic-mode inference,
+operator-verification, derived views, the post-sync advisory CLI/store, and the
+learnings-lifecycle audit. The file-sync *transport* modules (`sync_cmd`,
+`migrate_cmd`, `init_cmd`, `validate_cmd`, `views_cmd`) are deliberately NOT
 bundled: the plugin is dev-time governance, not a sync engine (design §2, §7;
 build-plan Chunk 5 "Exclude sync-only machinery from the plugin runtime").
 
-The seven bundled modules (core, critic_mode, operator_verification, views,
-advisory_cmd, advisory_store, backlog_probes) are byte-identical copies of
-their `tools/lib/` counterparts — a parity test locks them so they cannot
-drift during Phase-1 coexistence (same discipline as the Chunk 4 protocol
-copies). When file-sync is removed (Chunk 13), the duplication collapses.
+Parity (Chunk 5 + Chunk 13): seven modules — `core`, `critic_mode`, `views`,
+`advisory_cmd`, `advisory_store`, `backlog_probes`, `audit_learnings_cmd` — are
+byte-identical copies of their `tools/lib/` counterparts, locked by a parity
+test so they cannot drift during Phase-1 coexistence. `audit_learnings_cmd`
+joined this set in Chunk 13 (it is pure governance — stdlib-only, operates on
+the consumer's own `learnings.md`, zero sync coupling — and was mis-grouped with
+the transport modules in Chunk 5). `operator_verification` is bundled but
+**intentionally diverged** from `tools/lib/` (its user-facing hints name the
+plugin-native enable / `prawduct-hook verify-operator-verification` path, not
+the frozen 1.x `prawduct-setup` path), so it is excluded from the byte-parity
+lock. When file-sync is fully removed (backlog `MIG-M4-REMOVE`, post-2.0.0), the
+remaining duplication collapses.
 """
 
 # Core utilities and constants (governance dependency — critic_mode/views import it)
@@ -87,6 +94,10 @@ from .advisory_cmd import (  # noqa: F401
 
 # Critic mode inference (no-arg /critic picks mode from state)
 from .critic_mode import infer_mode  # noqa: F401
+
+# Learnings-lifecycle audit (/prawduct:doctor Audit-Learnings flow) — pure
+# governance over the consumer's own learnings.md; plugin-native, no sync.
+from .audit_learnings_cmd import run_audit_learnings  # noqa: F401
 
 # Operator-verification queue (pre-merge human-verification gate)
 from .operator_verification import (  # noqa: F401

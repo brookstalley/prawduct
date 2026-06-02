@@ -4679,7 +4679,7 @@ class TestRationaleVsDiffAnchors:
     REPO_ROOT = Path(__file__).resolve().parent.parent
 
     def test_skill_md_goal_3_has_rationale_vs_diff_subcheck(self):
-        body = (self.REPO_ROOT / "agents" / "critic" / "SKILL.md").read_text()
+        body = (self.REPO_ROOT / "skills" / "critic" / "review-protocol.md").read_text()
         assert "Rationale-vs-diff fit" in body
         assert "Type: trivial" in body
         anchor = body.index("Rationale-vs-diff fit")
@@ -4692,7 +4692,7 @@ class TestRationaleVsDiffAnchors:
 
     def test_review_cycle_md_matrix_has_trivial_row(self):
         body = (
-            self.REPO_ROOT / "agents" / "critic" / "review-cycle.md"
+            self.REPO_ROOT / "skills" / "critic" / "review-cycle.md"
         ).read_text()
         # Row marker — must be a distinct row, not just a mention in prose.
         assert "| `trivial` |" in body
@@ -4733,7 +4733,7 @@ class TestRationaleVsDiffAnchors:
 
     def test_pr_reviewer_skill_documents_fast_paths(self):
         body = (
-            self.REPO_ROOT / "agents" / "pr-reviewer" / "SKILL.md"
+            self.REPO_ROOT / "skills" / "pr" / "review-protocol.md"
         ).read_text()
         # Reviewer documents both fast-paths so it knows when it's being
         # skipped (and what to do if invoked anyway).

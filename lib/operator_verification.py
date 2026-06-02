@@ -6,10 +6,10 @@ section whose first non-blank body line carries ``**Status:**
 pending | verified | accepted``.
 
 The queue is gated by ``operator_verification_required: true`` in
-``project-state.yaml``. When the flag is on, ``/pr create`` blocks if any
-entry's status is ``pending``; the user drains entries via
-``prawduct-setup verify <dir> <ID>``, or overrides for the current PR via
-``/pr create --accept-pending-verification "rationale"``.
+``project-state.yaml``. When the flag is on, ``/prawduct:pr create`` blocks if
+any entry's status is ``pending``; the user drains entries via
+``prawduct-hook verify-operator-verification <ID>``, or overrides for the
+current PR via ``/prawduct:pr create --accept-pending-verification "rationale"``.
 
 The schema is read-first / append-only by design: this module exposes a
 parser, in-memory mutators, and a round-tripping serializer. Mutators
@@ -252,8 +252,8 @@ def _write_queue(
 
 
 # =============================================================================
-# Runners — shape matches ``run_migrate_*`` so JSON-mode callers see the same
-# dict layout across prawduct-setup subcommands.
+# Runners — JSON-mode callers (the ``prawduct-hook`` subcommands, the
+# ``/prawduct:doctor`` and ``/prawduct:pr`` skills) see a consistent dict shape.
 # =============================================================================
 
 
@@ -307,8 +307,8 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
             f"blocking: {len(pending)} pending operator-verification "
             f"entr{'y' if len(pending) == 1 else 'ies'} "
             f"({first.vrf_id}{', ...' if len(pending) > 1 else ''}). "
-            f"Drain via `python3 tools/prawduct-setup.py verify {product_path} <ID>` "
-            "or override with `/pr create --accept-pending-verification \"rationale\"`."
+            f"Drain via `prawduct-hook verify-operator-verification <ID>` "
+            "or override with `/prawduct:pr create --accept-pending-verification \"rationale\"`."
         ),
     }
 
@@ -340,8 +340,9 @@ def run_verify_entry(
         return {
             "error": (
                 f"No operator-verification queue at {queue_path}. "
-                "Run `prawduct-setup migrate --enable-operator-verification` "
-                "to enable the gate (creates the queue from template)."
+                "Enable the gate by setting `operator_verification_required: true` in "
+                "`.prawduct/project-state.yaml` (see `/prawduct:doctor`); the queue is "
+                "populated as visual / live-integration chunks enqueue entries."
             )
         }
 

@@ -30,9 +30,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # AND the named section that defines them. The section name varies: the Critic
 # skill files name it `## Modes`; the per-chunk lifecycle file names it
 # `## Mode Selection` (it references the modes rather than defining them).
-_FRAMEWORK_SKILL = REPO_ROOT / "agents" / "critic" / "SKILL.md"
+_FRAMEWORK_SKILL = REPO_ROOT / "skills" / "critic" / "review-protocol.md"
 _PRODUCT_TEMPLATE = REPO_ROOT / "templates" / "critic-review.md"
-_REVIEW_CYCLE = REPO_ROOT / "agents" / "critic" / "review-cycle.md"
+_REVIEW_CYCLE = REPO_ROOT / "skills" / "critic" / "review-cycle.md"
 
 # Critic entry-point skills — these are the actual files Claude Code loads when
 # the user types `/critic <mode>`. They must enumerate every recognized mode
@@ -41,7 +41,7 @@ _REVIEW_CYCLE = REPO_ROOT / "agents" / "critic" / "review-cycle.md"
 # drift produced an end-to-end-unusable feature (cumulative invocation silently
 # downgraded to final, then the new gate rejected the resulting record). The
 # Critic caught it; this test pins it so the next mode addition can't repeat.
-_FRAMEWORK_ENTRY_SKILL = REPO_ROOT / ".claude" / "skills" / "critic" / "SKILL.md"
+_FRAMEWORK_ENTRY_SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"
 _PRODUCT_ENTRY_SKILL_TEMPLATE = REPO_ROOT / "templates" / "skill-critic.md"
 
 
@@ -291,7 +291,7 @@ class TestProportionalCriticMethodology:
 class TestCriticSkillEntryPoints:
     """Slash-command entry points expose the mode argument.
 
-    Both the framework `.claude/skills/critic/SKILL.md` and the product
+    Both the plugin `skills/critic/SKILL.md` and the product
     `templates/skill-critic.md` must:
     1. Declare `argument-hint: chunk | final` in frontmatter so the user sees
        valid options on tab-completion.
@@ -302,7 +302,7 @@ class TestCriticSkillEntryPoints:
     @pytest.mark.parametrize(
         "path",
         [
-            REPO_ROOT / ".claude" / "skills" / "critic" / "SKILL.md",
+            REPO_ROOT / "skills" / "critic" / "SKILL.md",
             REPO_ROOT / "templates" / "skill-critic.md",
         ],
         ids=["framework_entry", "product_entry"],
@@ -333,7 +333,7 @@ class TestCriticSkillEntryPoints:
     @pytest.mark.parametrize(
         "path",
         [
-            REPO_ROOT / ".claude" / "skills" / "critic" / "SKILL.md",
+            REPO_ROOT / "skills" / "critic" / "SKILL.md",
             REPO_ROOT / "templates" / "skill-critic.md",
         ],
         ids=["framework_entry", "product_entry"],

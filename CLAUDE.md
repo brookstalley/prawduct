@@ -100,7 +100,7 @@ The Critic skill runs with `context: fork` (separate context) and restricted `al
 
 After review, the Critic records findings to `.prawduct/.critic-findings.json`. Fix any blocking findings before proceeding to the next chunk. After resolving findings, reflect: what did the Critic surface that you missed? Capture learnings immediately — Critic reviews are the richest source of methodology insights.
 
-For product repos, the Critic skill reads `.prawduct/critic-review.md`. For framework changes, it reads `agents/critic/SKILL.md`.
+The Critic's review protocol (goals, severity, coordinator pattern) is bundled with the plugin at `skills/critic/review-protocol.md`.
 
 ## PR Review — Release Readiness
 
@@ -108,7 +108,7 @@ For product repos, the Critic skill reads `.prawduct/critic-review.md`. For fram
 
 If the user asks to "PR this", "create a PR", "push this up", or anything PR-related — use `/pr`.
 
-For product repos, the reviewer reads `.prawduct/pr-review.md`. For framework changes, it reads `agents/pr-reviewer/SKILL.md`.
+The PR reviewer's protocol is bundled with the plugin at `skills/pr/review-protocol.md`.
 
 ## The Learning Loop
 
@@ -128,7 +128,7 @@ Session-end becomes a quick synthesis scan, not a from-scratch write. Read `meth
 
 - `docs/principles.md` — Full principles with rationale and review perspectives
 - `.prawduct/learnings.md` — Accumulated project wisdom (looked up via `/learnings [topic]` or read directly when needed)
-- `agents/critic/SKILL.md` — Independent quality review instructions (invoked via `/critic` skill)
+- `skills/critic/review-protocol.md` — Independent quality review instructions (the Critic skill's bundled protocol)
 - `templates/` — Artifact templates for structured output
 - `.prawduct/cross-cutting-concerns.md` — Cross-cutting concerns registry (pipeline coverage matrix)
 - `.prawduct/project-state.yaml` — Source of truth for project state

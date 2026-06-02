@@ -39,16 +39,24 @@ PLUGIN_LIB = ROOT / "lib"
 FRAMEWORK_LIB = ROOT / "tools" / "lib"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 
-# The governance subset bundled into the plugin (design §11, Chunk 5).
+# The governance subset bundled into the plugin (design §11, Chunk 5) and
+# locked byte-for-byte against tools/lib/. `audit_learnings_cmd` joined this set
+# in Chunk 13 — it is pure governance (stdlib-only, operates on the consumer's
+# own learnings.md, no sync coupling), mis-grouped with the transport in Chunk 5.
 GOVERNANCE_MODULES = (
     "core",
     "critic_mode",
-    "operator_verification",
     "views",
     "advisory_cmd",
     "advisory_store",
     "backlog_probes",
+    "audit_learnings_cmd",
 )
+# Bundled but INTENTIONALLY diverged from tools/lib/ (Chunk 13): the plugin copy
+# carries plugin-native user-facing hints (`prawduct-hook` / project-state flag),
+# while tools/lib/ stays frozen on the 1.x `prawduct-setup` path. Excluded from
+# the byte-parity lock; a dedicated test asserts the divergence is the intended one.
+DIVERGED_MODULES = ("operator_verification",)
 # The file-sync transport explicitly NOT bundled into the plugin runtime.
 EXCLUDED_MODULES = (
     "sync_cmd",
@@ -56,7 +64,6 @@ EXCLUDED_MODULES = (
     "init_cmd",
     "validate_cmd",
     "views_cmd",
-    "audit_learnings_cmd",
 )
 
 
@@ -81,6 +88,30 @@ class TestPluginLibParity:
         assert not (PLUGIN_LIB / f"{module}.py").exists(), (
             f"lib/{module}.py is file-sync transport — the plugin runtime must "
             "NOT bundle sync-only machinery (build-plan Chunk 5)."
+        )
+
+    @pytest.mark.parametrize("module", DIVERGED_MODULES)
+    def test_diverged_module_is_bundled_and_plugin_native(self, module):
+        # operator_verification is bundled (the gate runs plugin-native) but its
+        # user-facing hints diverge from the frozen 1.x copy (Chunk 13).
+        plugin_path = PLUGIN_LIB / f"{module}.py"
+        assert plugin_path.exists(), f"lib/{module}.py must be bundled (the gate runs plugin-native)"
+        plugin_src = plugin_path.read_text()
+        framework_src = (FRAMEWORK_LIB / f"{module}.py").read_text()
+        assert plugin_src != framework_src, (
+            f"lib/{module}.py is expected to diverge from tools/lib/{module}.py "
+            "(Chunk 13 plugin-native hints); if you re-synced them, the divergence was lost."
+        )
+        # The plugin copy names the plugin-native paths, never the frozen file-sync ones.
+        assert "prawduct-hook verify-operator-verification" in plugin_src
+        assert "prawduct-setup" not in plugin_src, (
+            "the plugin operator_verification hints must not name the legacy "
+            "`prawduct-setup` file-sync path (Chunk 13 repoint)"
+        )
+        # The frozen 1.x copy is untouched — still on the legacy path.
+        assert "prawduct-setup" in framework_src, (
+            "tools/lib/operator_verification.py must stay frozen on the 1.x path "
+            "(owner directive: no 1.x edits)"
         )
 
     def test_init_imports_no_excluded_module(self):
@@ -650,3 +681,79 @@ class TestVerifyOperatorVerificationSubcommand:
         result = _run_in(repo, "bogus-subcommand")
         assert result.returncode == 1
         assert "verify-operator-verification" in result.stderr
+
+
+class TestAuditLearningsSubcommand:
+    """`prawduct-hook audit-learnings [--apply] [--json]` (Chunk 13) is the
+    plugin-native replacement for the legacy `prawduct-setup.py audit-learnings`
+    path, gone in a migrated consumer. It operates purely on the consumer's own
+    `.prawduct/learnings.md`; `/prawduct:doctor`'s Audit-Learnings flow invokes
+    it with --json. (Entries here carry NO `sentinel=` so no pytest subprocess
+    runs — the runner only shells out for retirement-candidate sentinels.)
+    """
+
+    def _seed(self, tmp_path: Path, learnings: str | None) -> Path:
+        repo = tmp_path / "consumer"
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir(parents=True)
+        if learnings is not None:
+            (prawduct / "learnings.md").write_text(learnings)
+        return repo
+
+    def test_promotion_candidate_surfaced_json(self, tmp_path):
+        repo = self._seed(
+            tmp_path,
+            "# Learnings\n\n## A confirmed rule\n"
+            "<!-- prawduct-learning: confirmations=2; created=2026-01-01 -->\n\nBody.\n",
+        )
+        result = _run_in(repo, "audit-learnings", "--json")
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data["applied"] is False
+        assert [p["title"] for p in data["promotions"]] == ["A confirmed rule"]
+
+    def test_stale_flag_surfaced_json(self, tmp_path):
+        repo = self._seed(
+            tmp_path,
+            "# Learnings\n\n## An old unconfirmed rule\n"
+            "<!-- prawduct-learning: confirmations=1; created=2020-01-01 -->\n\nBody.\n",
+        )
+        result = _run_in(repo, "audit-learnings", "--json")
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert [s["title"] for s in data["stale_flags"]] == ["An old unconfirmed rule"]
+
+    def test_missing_learnings_is_clean_empty_not_error(self, tmp_path):
+        # A .prawduct/ with no learnings.md is a clean empty result, not an error.
+        repo = self._seed(tmp_path, None)
+        result = _run_in(repo, "audit-learnings", "--json")
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data["promotions"] == [] and data["retirements"] == []
+        assert "error" not in data
+
+    def test_non_prawduct_dir_errors(self, tmp_path):
+        repo = tmp_path / "bare"
+        repo.mkdir()
+        result = _run_in(repo, "audit-learnings", "--json")
+        assert result.returncode == 1
+        data = json.loads(result.stdout)
+        assert "error" in data
+
+    def test_human_summary_without_json(self, tmp_path):
+        repo = self._seed(
+            tmp_path,
+            "# Learnings\n\n## A confirmed rule\n"
+            "<!-- prawduct-learning: confirmations=2; created=2026-01-01 -->\n\nBody.\n",
+        )
+        result = _run_in(repo, "audit-learnings")
+        assert result.returncode == 0, result.stderr
+        assert "promotion candidate" in result.stdout
+        assert "A confirmed rule" in result.stdout
+
+    def test_subcommand_listed_in_usage(self, tmp_path):
+        repo = tmp_path / "r"
+        repo.mkdir()
+        result = _run_in(repo, "bogus-subcommand")
+        assert result.returncode == 1
+        assert "audit-learnings" in result.stderr

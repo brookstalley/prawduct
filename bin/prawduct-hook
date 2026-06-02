@@ -4243,6 +4243,67 @@ def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
     return migrate_plugin.run(project_dir, argv)
 
 
+def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
+    """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
+
+    Plugin-native port of the legacy file-sync ``audit-learnings`` path (gone in
+    a migrated consumer — there is no framework checkout). Walks the
+    consumer's OWN ``learnings.md``, classifying entries as promotion /
+    retirement / stale candidates, and with ``--apply`` moves sentinel-passing
+    entries to ``learnings-detail.md``'s historical section. Invoked by
+    ``/prawduct:doctor``'s Audit-Learnings flow (``--json``). ``argv`` is
+    ``sys.argv[2:]`` (``--apply``, ``--json``); read-only by default.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import run_audit_learnings  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "error: audit-learnings could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = run_audit_learnings(str(project_dir), apply=apply)
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+        return 1 if "error" in result else 0
+
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    promotions = result["promotions"]
+    retirements = result["retirements"]
+    stale = result["stale_flags"]
+    errors = result["errors"]
+    print(
+        f"audit-learnings ({'applied' if result['applied'] else 'dry-run'}): "
+        f"{len(promotions)} promotion candidate(s), {len(retirements)} retirement "
+        f"candidate(s), {len(stale)} stale flag(s), {len(errors)} error(s)."
+    )
+    for p in promotions:
+        print(f"  promote: {p['title']} (confirmations={p['confirmations']})")
+    for r in retirements:
+        state = "retired" if r.get("applied") else ("ready" if r.get("passed") else "blocked")
+        print(f"  retire[{state}]: {r['title']} (sentinel={r['sentinel']})")
+    for s in stale:
+        print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
+    for e in errors:
+        print(f"  error: {e['title']}: {e['error']}")
+    return 0
+
+
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
@@ -4251,7 +4312,7 @@ _USAGE = (
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-pr-trivial|regen-views|infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
-    "migrate-plugin [--apply] [--json]}"
+    "migrate-plugin [--apply] [--json]|audit-learnings [--apply] [--json]}"
 )
 
 
@@ -4303,6 +4364,8 @@ def main() -> int:
         return cmd_advisory(project_dir, sys.argv[2:])
     elif command == "migrate-plugin":
         return cmd_migrate_plugin(project_dir, sys.argv[2:])
+    elif command == "audit-learnings":
+        return cmd_audit_learnings(project_dir, sys.argv[2:])
     else:
         print(_USAGE, file=sys.stderr)
         return 1

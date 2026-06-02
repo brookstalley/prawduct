@@ -529,7 +529,7 @@ class TestPrReviewTemplateContent:
 
     def test_agent_skill_matches_template_goals(self):
         """The full SKILL.md and condensed template should have the same goals."""
-        skill = (FRAMEWORK_DIR / "agents" / "pr-reviewer" / "SKILL.md").read_text()
+        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
 
         goals = [
@@ -548,14 +548,14 @@ class TestPrReviewTemplateContent:
     def test_pr_review_references_learnings(self):
         """PR reviewer must read learnings.md during setup."""
         template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-        skill = (FRAMEWORK_DIR / "agents" / "pr-reviewer" / "SKILL.md").read_text()
+        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         assert "learnings.md" in template
         assert "learnings.md" in skill
 
     def test_pr_review_has_learnings_crosscheck(self):
         """PR reviewer must have a Learnings Cross-Check section."""
         template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-        skill = (FRAMEWORK_DIR / "agents" / "pr-reviewer" / "SKILL.md").read_text()
+        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         assert "Learnings Cross-Check" in template
         assert "Learnings Cross-Check" in skill
 

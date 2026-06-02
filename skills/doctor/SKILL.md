@@ -1,93 +1,73 @@
 ---
 description: Product repo setup, health check, and repair
-argument-hint: "[target-path] [--name NAME]"
+argument-hint: "[target-path]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(python3 *), Bash(prawduct-hook verify-operator-verification *), Read, Glob
+allowed-tools: Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook audit-learnings *), Read, Glob
 ---
 
-You are managing prawduct product repo setup and health. Detect the current context and take the appropriate action.
+You are managing prawduct product-repo health under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Every flow operates on the consumer's own repo: there is no framework checkout to call back to.
 
 ## Context Detection
 
-1. Check if an explicit target path was provided as an argument
-2. Check if the current directory has `.prawduct/` (is a product repo)
-3. Check if `tools/prawduct-setup.py` exists locally (framework repo)
+1. If an explicit target path was provided as an argument → **Onboard** that target.
+2. Else if the current directory has `.prawduct/` (is a product repo) → **Health Check**, and route to Enable-Gate / Verify / Audit-Learnings on explicit request.
+3. Else → ask the user what they want to do.
 
-Then route:
-
-| Context | Action |
+| Request | Action |
 |---|---|
-| Explicit target path provided | **Onboard**: set up the target as a product repo |
-| Current dir is a product repo (has `.prawduct/`) | **Health check**: validate and offer repair. If health is good, mention available per-feature migrations (`migrate --enable-coverage`, `migrate --enable-settings-layout`, `migrate --enable-operator-verification`) when relevant. |
-| User asks "enable coverage" / "turn on F4" / "stamp settings layout" / "run migrate-settings" / "enable operator verification" / "turn on F10" / similar | **Migrate**: see Migrate Flow below |
-| User asks to "verify VRF-NN" / "drain operator verification" / "mark verified" | **Verify**: see Verify Flow below |
-| User asks "audit learnings" / "retire structurally-enforced learnings" / "check lifecycle metadata" / similar | **Audit Learnings**: see Audit Learnings Flow below |
-| Current dir is the framework repo (has `tools/prawduct-setup.py`) and no target | Ask what the user wants to do |
+| Explicit target path provided | **Onboard**: see Onboard Flow |
+| Current dir is a product repo (has `.prawduct/`) | **Health Check**: see Health Check Flow |
+| "enable coverage" / "turn on F4" / "enable operator verification" / "turn on F10" / similar | **Enable a gate**: see Enable-Gate Flow |
+| "verify VRF-NN" / "drain operator verification" / "mark verified" | **Verify**: see Verify Flow |
+| "audit learnings" / "retire structurally-enforced learnings" / "check lifecycle metadata" / similar | **Audit Learnings**: see Audit-Learnings Flow |
 
 ## Onboard Flow (target path provided)
 
-1. Confirm the target directory and product name with the user
-2. Run: `python3 tools/prawduct-setup.py setup <target> --name "<name>" --json`
-   - If running from a product repo, resolve the framework path first:
-     check `.prawduct/sync-manifest.json` for `framework_source`, or use `PRAWDUCT_FRAMEWORK_DIR`, or try `../prawduct`
-3. Parse the JSON result and report what was done
-4. Tell the user: **"Open `<target>` in a new Claude Code session for governance to activate. Hooks and the session briefing won't fire until then."**
+Onboarding under the plugin model is **install + migrate**, not a setup script.
+
+1. Confirm the target directory with the user.
+2. Have them commit the install *reference* (project scope) in the target's `.claude/settings.json` — this is the only prawduct content the repo commits, and it never drifts:
+   ```json
+   {
+     "extraKnownMarketplaces": { "prawduct": { "source": { "source": "github", "repo": "brookstalley/prawduct", "ref": "main" }, "autoUpdate": true } },
+     "enabledPlugins": { "prawduct@prawduct": true }
+   }
+   ```
+   On first trusted open, Claude Code prompts each developer to install the marketplace + plugin (one-time, skippable).
+3. If the target still has committed file-sync framework files (a legacy `tools/product-hook`, a framework `.claude/skills/critic/`, a `.prawduct/sync-manifest.json`), have them run **`/prawduct:migrate`** in the target: it commits the install reference, strips the committed framework files, drops the legacy hook wiring, and records `distribution: plugin` — one reversible commit.
+4. Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
 
 ## Health Check Flow (current dir is a product repo)
 
-1. Resolve the framework path from `.prawduct/sync-manifest.json` `framework_source`, or `PRAWDUCT_FRAMEWORK_DIR` env var, or sibling `../prawduct`
-2. Run: `python3 <framework>/tools/prawduct-setup.py validate "$CLAUDE_PROJECT_DIR" --json`
-3. Parse the JSON result and present findings:
-   - **healthy**: "All checks pass. Your prawduct setup is healthy."
-   - **degraded**: List warnings, explain implications, offer fixes
-   - **broken**: List failures, recommend repair
-4. If `needs_restart` is true: **"Restart Claude Code to pick up updated settings/CLAUDE.md."**
-5. If framework is unreachable: advise setting `PRAWDUCT_FRAMEWORK_DIR` or cloning framework as `../prawduct`
-6. If repair needed: offer to run `python3 <framework>/tools/prawduct-setup.py setup "$CLAUDE_PROJECT_DIR" --json`
+Plugin-native — read the consumer's OWN `.prawduct/` and `.claude/` with Read / Glob; there is no framework path to resolve and nothing to sync. Check:
 
-## Migrate Flow (per-feature v1.4 opt-ins)
+1. **Install reference** — `.claude/settings.json` has `enabledPlugins["prawduct@prawduct"]: true` and an `extraKnownMarketplaces.prawduct` source pinned `ref: "main"`. (Missing → contributors won't get governance on clone.)
+2. **Distribution recorded** — `project-state.yaml` has `distribution: plugin`. (Absent → a legacy file-sync hook may still be governing; recommend `/prawduct:migrate`.)
+3. **No stale file-sync residue** — no committed `tools/product-hook`, `tools/lib/`, framework `.claude/skills/critic/`, or `.prawduct/sync-manifest.json`. (Present → migration is incomplete; recommend `/prawduct:migrate`.)
+4. **Static governance anchor** — `CLAUDE.md` contains the `PRAWDUCT:ANCHOR` marker (the thin governed-by-plugin anchor a migrated repo keeps).
+5. **Core state present** — `.prawduct/` has `project-state.yaml`, `learnings.md`, `backlog.md`, `change-log.md`, and `artifacts/`.
 
-The `migrate` subcommand surfaces v1.4 features that require explicit user intent. Two flags exist; each requires its own invocation (the subcommand rejects multiple flags in one call).
+Classify and report:
+- **healthy**: install reference + `distribution: plugin` + no residue + core state present → "Your prawduct plugin setup is healthy."
+- **degraded**: governance works but something is off (missing anchor, a missing non-critical file) — list each with its implication and the fix.
+- **broken**: no install reference, or file-sync residue still committed — recommend `/prawduct:migrate` (or installing the plugin first).
 
-### `--enable-coverage` (F4 — symbol-coverage enforcement)
+## Enable-Gate Flow (coverage F4 / operator-verification F10)
 
-Workflow commitment: once enabled, the Critic's Goal 1 BLOCKS on changed files missing from `.test-evidence.json`'s `changes_referenced`. Use when the user asks to "enable coverage", "turn on F4", "switch to executed coverage", or similar.
+Plugin-native — enabling a gate is a `project-state.yaml` flag flip (no migrate subcommand, no sync). This skill **reads and guides**; it does not edit `project-state.yaml`. Read the current value first, confirm intent (surface the BLOCKING consequence), then present the exact one-line edit for the user (or the main session) to apply.
 
-1. Resolve the framework path the same way as Health Check (manifest `framework_source`, env, sibling).
-2. Confirm intent with the user — surface the BLOCKING consequence.
-3. Run: `python3 <framework>/tools/prawduct-setup.py migrate --enable-coverage "$CLAUDE_PROJECT_DIR" --json`
-4. Relay both `actions` (file mutations) and `notes` (deprecation + next-step guidance). The "next-PR consequence" note is the most important.
-5. If notes mention legacy evidence shape, point the user at `python3 tools/test-reference-verify --merge-into .prawduct/.test-evidence.json` (Python floor) or stronger language-native tools for `coverage_level: executed`.
+### Coverage (F4 — symbol-coverage enforcement)
+Set `coverage_required: true` in `.prawduct/project-state.yaml`. **Consequence:** the Critic's Goal 1 then BLOCKS on any changed file missing from `.test-evidence.json`'s `changes_referenced`. (`/prawduct:building` "Coverage Evidence" explains the evidence shape; `tools/test-reference-verify` is the Python symbol floor — stronger language-native tools give `coverage_level: executed`.)
 
-### `--enable-settings-layout` (F5 — canonical settings.json)
+### Operator verification (F10 — pre-merge human-verification gate)
+Set `operator_verification_required: true` in `.prawduct/project-state.yaml`; entries accumulate in `.prawduct/operator-verification.md` as visual / live-integration chunks enqueue them. **Consequence:** `/prawduct:pr create` then BLOCKS while any entry's status is `pending`; the per-PR override is `/prawduct:pr create --accept-pending-verification "rationale"` (rationale recorded back into each entry).
 
-Mostly a signal operation: stamps `v1_4_settings_migrated: true` in the manifest as the explicit user opt-in for the canonical minimal `.claude/settings.json` layout. For products already on the minimal shape (single-line `python3 product-hook <event>` dispatches), the file mutation is a no-op; for older repos with v1/v3 markers, it runs an aggressive cleanup pass. v1.4.1's Critic surfaces a NOTE on products lacking this flag — running migrate now silences that NOTE in advance. Use when the user asks to "stamp settings layout", "run migrate-settings", "opt into the new settings", or similar.
-
-1. Resolve the framework path the same way as Health Check.
-2. Confirm intent — note this is mostly a no-op for products that have synced regularly, but the flag is the v1.4.1 NOTE quieting signal.
-3. Run: `python3 <framework>/tools/prawduct-setup.py migrate --enable-settings-layout "$CLAUDE_PROJECT_DIR" --json`
-4. Relay `actions` and `notes`. The "already on the canonical minimal layout" note is the common case and confirms the no-op outcome.
-
-### `--enable-operator-verification` (F10 — pre-merge human-verification gate)
-
-Enables the `/prawduct:pr create` BLOCKING gate that reads `.prawduct/operator-verification.md`. While the gate is on, any entry with `**Status:** pending` blocks PR creation; the queue is the work-log for visual / live-integration changes that automated tests can't fully cover. Per-PR override available via `/prawduct:pr create --accept-pending-verification "rationale"` (rationale is recorded back into each entry). Use when the user asks to "enable operator verification", "turn on F10", "enable visual gate", or similar.
-
-1. Resolve the framework path the same way as Health Check.
-2. Confirm intent — emphasize the BLOCKING consequence: every future PR will block on pending entries, and the override requires a non-empty rationale.
-3. Run: `python3 <framework>/tools/prawduct-setup.py migrate --enable-operator-verification "$CLAUDE_PROJECT_DIR" --json`
-4. Relay `actions` (file mutations) and `notes` (the next-PR consequence). The migration places `.prawduct/operator-verification.md` from template if absent.
-
-### `--force` (all three migrations)
-
-Re-runs the migration even when the manifest tracks it as complete. Use cases:
-- `--enable-coverage --force`: re-surface evidence-shape NOTEs after wiring up a verifier.
-- `--enable-settings-layout --force`: re-normalize settings.json after a hand-edit.
-- `--enable-operator-verification --force`: re-place the queue template if missing.
+(There is no `--enable-settings-layout` in the plugin world — "settings layout" was a file-sync `.claude/settings.json` normalization; under the plugin the only settings concern is the committed install reference, which Health Check validates.)
 
 ## Verify Flow (drain operator-verification queue)
 
-Drains a single pending entry in `.prawduct/operator-verification.md` after the human-verification step is genuinely complete. Plugin-native — operates only on the repo's own `.prawduct/`, no framework checkout needed.
+Drains a single pending entry in `.prawduct/operator-verification.md` after the human-verification step is genuinely complete. Plugin-native — operates only on the repo's own `.prawduct/`.
 
 1. Confirm the user has actually performed the verification described in the entry's `**Verify:**` checklist — `verify` is a deliberate user action, not a session-time auto-flip.
 2. Run: `prawduct-hook verify-operator-verification <VRF-id>`
@@ -95,9 +75,9 @@ Drains a single pending entry in `.prawduct/operator-verification.md` after the 
 
 Refuses to verify an `accepted` entry — `accepted` means the gate was overridden via `--accept-pending-verification`; flipping to verified would erase the override rationale. Edit the file by hand if the verification is now genuine.
 
-## Audit Learnings Flow (lifecycle metadata triage)
+## Audit-Learnings Flow (lifecycle metadata triage)
 
-The `audit-learnings` subcommand walks `.prawduct/learnings.md`, reads the optional per-entry metadata comment, and reports promotion candidates (advisory), retirement candidates (sentinel-protected), and stale single-confirmation entries (>90 days old).
+Plugin-native — `prawduct-hook audit-learnings` walks the repo's own `.prawduct/learnings.md`, reads the optional per-entry metadata comment, and reports promotion candidates (advisory), retirement candidates (sentinel-protected), and stale single-confirmation entries (>90 days old).
 
 The metadata comment is a single line placed immediately after each `## Title`:
 
@@ -112,17 +92,15 @@ All three fields are optional. An entry without the comment is treated as "activ
 
 Use when the user asks to "audit learnings", "retire structurally-enforced learnings", "check lifecycle metadata", or similar.
 
-1. Resolve the framework path the same way as Health Check.
-2. Run: `python3 <framework>/tools/prawduct-setup.py audit-learnings "$CLAUDE_PROJECT_DIR" --json`
-3. Relay each list — surface promotion candidates as advisory ("the rule has been confirmed twice — consider whether it belongs in `learnings.md` or can move to historical detail"), retirement candidates pending `--apply` ("the declared sentinel passes; running with `--apply` moves the entry to `learnings-detail.md`"), stale flags ("the entry is over 90 days old with no second confirmation — has the rule held up?"), and errors (failing sentinels, malformed dates).
-4. If the user confirms intent to retire, re-run with `--apply`: `python3 <framework>/tools/prawduct-setup.py audit-learnings "$CLAUDE_PROJECT_DIR" --apply --json`. The `--apply` invocation mutates two files: `.prawduct/learnings.md` (entry removed) and `.prawduct/learnings-detail.md` (entry appended under the "Historical (structurally enforced)" section).
+1. Run: `prawduct-hook audit-learnings --json`
+2. Relay each list — surface promotion candidates as advisory ("the rule has been confirmed twice — consider whether it belongs in `learnings.md` or can move to historical detail"), retirement candidates pending `--apply` ("the declared sentinel passes; running with `--apply` moves the entry to `learnings-detail.md`"), stale flags ("the entry is over 90 days old with no second confirmation — has the rule held up?"), and errors (failing sentinels, malformed dates).
+3. If the user confirms intent to retire, re-run with `--apply`: `prawduct-hook audit-learnings --apply --json`. The `--apply` invocation mutates two files: `.prawduct/learnings.md` (entry removed) and `.prawduct/learnings-detail.md` (entry appended under the "Historical (structurally enforced)" section).
 
 The audit is read-only by default. Promotion is always advisory — `learnings.md` doesn't have a sectioned active/promoted split; the count just surfaces in the report. Retirement is the only mutation, and only when `--apply` is passed AND the sentinel passes.
 
 ## Important Notes
 
-- The `setup` subcommand auto-detects repo state (new, v1/v3/v4/v5) and routes to the correct action
-- Setup is idempotent — running it twice produces no changes on the second run
-- The `migrate` subcommand is one-shot per feature (tracked in `sync-manifest.json`) and idempotent without `--force`
-- Hooks and governance only activate in the target's own Claude Code session, not the current one
-- The `validate` subcommand makes no changes — it's read-only
+- Onboarding is **install the plugin + `/prawduct:migrate`** — there is no `setup` script in the plugin model.
+- Health Check and Audit-Learnings decide from the consumer's OWN `.prawduct/` — no framework checkout, no sync.
+- Enabling a gate is a `project-state.yaml` flag flip; the BLOCKING consequence is immediate on the next relevant gate (governance is modeled as CI — see `/prawduct:methodology`).
+- Hooks and governance activate in the target's own Claude Code session, not the current one.
