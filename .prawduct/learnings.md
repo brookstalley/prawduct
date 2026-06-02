@@ -4,6 +4,10 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ---
 
+## A `--plugin-dir` read-block is a dev-flag artifact, not a self-containment bug — pair it with `--add-dir`
+
+When testing a Claude Code plugin's self-containment via `--plugin-dir <path-outside-the-project>`, a skill reading its OWN bundled file (`${CLAUDE_SKILL_DIR}/../../methodology/X.md`) is blocked by the session's working-dir read sandbox — which looks exactly like a self-containment defect ("the skill can't read its methodology"). It isn't: the path resolves correctly into the plugin, but the plugin tree sits outside the project dir, so tool reads there are sandboxed. Pass `--add-dir <plugin-path>` alongside `--plugin-dir` and the read succeeds; a real *marketplace* install grants plugin-tree reads automatically (the plugin is discovered from a config root already in scope), so `--add-dir` is a dev-flag-only need. Do NOT "fix" the skill's paths in response to a `--plugin-dir`-only failure. Verified v2.0.0 Chunk 12 (claude-code-guide + empirical A/B: `/prawduct:building` returned the plugin's H1 from a hallucinote-2 cwd with no `methodology/`, but only once `--add-dir` was added). Relates to Honest Confidence (#5) and Validate Before Propagating (#15).
+
 ## Test subprocesses: HOME=tmp_path leaks Python's pyc cache into the test repo
 
 When a test invokes a Python subprocess via `subprocess.run(env={"HOME": str(project_dir), ...}, cwd=str(project_dir))`, Python's xcode-shipped interpreter writes `.pyc` cache files to `$HOME/Library/Caches/com.apple.python/...`. If `$HOME == cwd == git repo root`, `git ls-files --others --exclude-standard` then returns ~50 untracked cache files, inflating diff counts and triggering scope-widening / status-pollution failures in helpers that use it. Fix: set `HOME` to a directory OUTSIDE the test's git repo (e.g., `project_dir.parent / f"{project_dir.name}-home"`). Discovered v1.5.1 Chunk 03 (TestComputeVerifyResolutionsScopeSubcommand). Relates to Structural Awareness (#21).
