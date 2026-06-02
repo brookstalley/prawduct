@@ -60,7 +60,12 @@ because the framework is no longer in your tree at all.
      ```
    - **Developer path (available today):** clone the prawduct repo and launch Claude Code with
      `claude --plugin-dir /path/to/prawduct` from your product repo. This loads the plugin for
-     the session without a marketplace.
+     the session without a marketplace. `--plugin-dir` alone is enough for `/prawduct:migrate`
+     and `/prawduct:doctor` (neither reads bundled plugin files). If you continue into
+     development work in the same session, also pass `--add-dir /path/to/prawduct` (the same
+     path) so methodology-reading skills like `/prawduct:building` and `/prawduct:critic` can
+     load their bundled guides from the out-of-tree plugin — without it they sandbox-fail. A
+     real marketplace install needs neither flag.
 2. **A clean working tree.** The cutover lands as one reviewable commit, so commit or stash any
    in-progress work first.
 

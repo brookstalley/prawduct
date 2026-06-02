@@ -37,16 +37,21 @@ to move an existing v1 file-sync repo onto the plugin.)
 ### Install the plugin
 
 > **Marketplace status:** the public marketplace install is the final step of the v2
-> rollout and is being finalized. Until it lands, load the plugin with the developer flag:
-> clone this repo and launch Claude Code with `claude --plugin-dir /path/to/prawduct` from
-> your product repo. Once the marketplace is published, the committed install reference below
-> activates automatically on first trusted open.
+> rollout and is being finalized. Until it lands, load the plugin with developer flags:
+> clone this repo and launch Claude Code with
+> `claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct` from your product repo.
+> The `--add-dir` points at the *same* path and lets methodology-reading skills
+> (`/prawduct:building`, `/prawduct:critic`, `/prawduct:planning`) load their bundled guides from
+> the out-of-tree plugin — without it they sandbox-fail. `/prawduct:doctor` and `/prawduct:migrate`
+> work with `--plugin-dir` alone, but `--add-dir` is harmless to always include. Once the
+> marketplace is published, the committed install reference below activates automatically on
+> first trusted open and neither flag is needed.
 
 ### Start a new product
 
 ```bash
 mkdir ~/my-product && cd ~/my-product && git init
-claude --plugin-dir /path/to/prawduct
+claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct
 > /prawduct:doctor .
 ```
 
@@ -62,7 +67,7 @@ framework files in your tree. Then describe what you want to build:
 
 ```bash
 cd ~/existing-repo
-claude --plugin-dir /path/to/prawduct
+claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct
 > /prawduct:doctor .
 ```
 
