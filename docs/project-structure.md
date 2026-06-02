@@ -13,7 +13,7 @@ prawduct/
 │   # ── Plugin (v2.0 distribution — the primary surface) ──
 ├── .claude-plugin/
 │   ├── plugin.json                    # name: prawduct, version (mirrors VERSION)
-│   └── marketplace.json               # single-plugin marketplace entry (pinned ref: main)
+│   └── marketplace.json               # single-plugin marketplace entry (pinned ref: main) — lands in Chunk 2 (marketplace publish, pending)
 ├── hooks/hooks.json                   # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
 ├── skills/                            # framework skills → /prawduct:* (critic, pr, doctor, migrate, building, discovery, …)
 │   ├── critic/                        # bundled Critic protocol (context:fork skill — review-protocol.md, review-cycle.md, framework-checks.md)

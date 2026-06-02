@@ -236,7 +236,7 @@ Prawduct *is* the plugin (and its own git-backed marketplace):
 prawduct/
 ├── .claude-plugin/
 │   ├── plugin.json             # name: prawduct, version (mirrors VERSION)
-│   └── marketplace.json        # single-plugin marketplace entry (pinned ref: main)
+│   └── marketplace.json        # single-plugin marketplace entry (pinned ref: main) — lands in Chunk 2 (marketplace publish, pending)
 ├── hooks/hooks.json            # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
 ├── skills/                     # framework skills → /prawduct:* (critic, pr, doctor, migrate, building, …)
 ├── bin/prawduct-hook           # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
