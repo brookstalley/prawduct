@@ -387,7 +387,8 @@ def test_anchor_is_version_free(repo: Path):
     # migrated CLAUDE.md would originate from the framework-authored anchor.
     run_migrate(repo, "--apply")
     text = (repo / "CLAUDE.md").read_text()
-    assert "1.8.1" not in text, "the current framework version must not be baked in"
+    current_version = (Path(__file__).resolve().parents[1] / "VERSION").read_text().strip()
+    assert current_version not in text, "the current framework version must not be baked in"
     assert re.search(r"\bv?\d+\.\d+", text) is None, "anchor must not embed a version number"
 
 

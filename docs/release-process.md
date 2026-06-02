@@ -24,11 +24,37 @@ update cache key**: if you promote a commit to `main` without bumping `version`,
 sees the same string and keeps the cached copy — **a release that forgets the version bump does
 not ship.** Always bump `version` (and the `VERSION` file it mirrors) as part of the release.
 
-> **One empirical unknown (Chunk 2 spike).** Whether `autoUpdate` on `ref: "main"` re-resolves
-> to *main's HEAD* or only to the *latest tag* is undocumented. Both are fine under this model
-> (main HEAD == latest release), but Chunk 2 confirms it empirically and records the result here.
-> Documented fallback if the version-cache-key gate proves insufficient: pin the marketplace
-> entry to `ref: "vX.Y.Z"` per release instead of `ref: "main"`.
+> **Spike results (Chunk 2, empirically confirmed 2026-06-02 on a throwaway public plugin+marketplace repo).**
+> The model holds — no fallback needed:
+> - **`version` is the cache key — confirmed.** A commit pushed to `main` that changed plugin
+>   content but kept `version` the same did **not** ship (`plugin update` reported "already at the
+>   latest version"; the cached copy was untouched). Bumping `version` shipped on the next update.
+>   *A release that forgets the version bump does not ship.*
+> - **Resolution tracks the branch HEAD, not the latest tag — confirmed.** Every version bump
+>   shipped from an **untagged** `main` HEAD. Tags are irrelevant to a branch-pinned marketplace,
+>   so the `ref: "vX.Y.Z"` tag-pin fallback is **not** required (it remains available if a future
+>   Claude Code release changes this).
+> - **`ref: "main"` must be pinned explicitly — confirmed footgun.** A marketplace added without a
+>   `ref` (e.g. `claude plugin marketplace add <repo>`, or an `extraKnownMarketplaces` source with
+>   no `ref`) records no ref and **follows the repo's default branch**. The committed install
+>   reference pins `ref: "main"` precisely to avoid this — keep it.
+> - **`develop` is isolated — confirmed.** A *higher* version pushed to `develop` was never consumed
+>   by a `main`-pinned consumer.
+> - **autoUpdate stages, then applies on restart.** At session start `autoUpdate` re-resolves `main`
+>   and downloads a newer `version` into the plugin cache, but the *active* copy flips on the next
+>   start (or an explicit `claude plugin update`). The version-delta banner makes the applied version
+>   visible. (Initial install is active immediately — no lag on first open.)
+> - **First flag-free open needs an interactive marketplace-trust approval.** A new marketplace can't
+>   be trusted headlessly, so a consumer's first `claude` open (without `--plugin-dir`) prompts to
+>   trust the prawduct marketplace, then installs. Expected Claude Code security behavior.
+>
+> **Install-correctness finding — the marketplace entry's plugin `source` must be `"./"`, not a
+> `{ "source": "github", … }` object.** For prawduct's single-repo plugin+marketplace, the `github`
+> source form makes Claude Code **re-clone the repo over SSH** (`git@github.com:…`) to fetch the
+> plugin — which fails with "Permission denied (publickey)" on any machine without SSH keys (i.e.
+> most HTTPS/`gh`-auth users), *even for a public repo*. A relative `"source": "./"` reuses the
+> marketplace's own (HTTPS) checkout — one clone, no SSH dependency — and inherits the marketplace's
+> pinned `ref`. `marketplace.json` therefore uses `"./"`.
 
 ## Release checklist (`develop` → `main`)
 

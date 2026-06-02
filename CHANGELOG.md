@@ -10,12 +10,8 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## Unreleased
-
-- **v2.0.0 (in progress): plugin distribution.** Prawduct ships as a Claude Code
-  plugin instead of files synced into each repo. Consuming repos commit **zero**
-  framework files and get always-latest governance via marketplace auto-update —
-  no stash/pop/merge papercuts. Mutable state stays in each repo's `.prawduct/`.
+## v2.0.0
+Plugin distribution: Prawduct ships as a Claude Code plugin instead of files synced into each repo. Consuming repos commit **zero** framework files and get always-latest governance via marketplace auto-update — no stash/pop/merge papercuts. Mutable state stays in each repo's `.prawduct/`. Existing v1 file-sync repos keep working and migrate when ready (`/prawduct:migrate`).
 
 ## v1.8.1
 Bugfix: phantom "rebase in progress" from a stale `.git/REBASE_HEAD` marker.
