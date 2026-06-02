@@ -1807,6 +1807,42 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     return warnings
 
 
+def _legacy_filesync_present(project_dir: Path) -> str | None:
+    """Detect leftover *committed* legacy file-sync framework files in a repo now
+    governed by the plugin — the signal to nudge ``/prawduct:migrate`` (design §7;
+    build-plan Chunk 8). Returns a short human-readable reason, or None when the
+    repo is clean (already migrated, or never a file-sync repo).
+
+    Best-effort and conservative: any missing file or parse error → None (no
+    nudge). The plugin GOVERNS regardless — the chosen precedence is *plugin
+    governs, legacy yields* (the legacy committed hook detects the plugin and
+    stands down). This only decides whether to TELL the user to clean up.
+
+    Either committed signal suffices:
+      * a committed ``tools/product-hook`` still wired into ``.claude/settings.json``
+        hooks (the legacy SessionStart/Stop command), or
+      * a ``.prawduct/sync-manifest.json`` whose ``files`` map is non-empty.
+    """
+    if (project_dir / "tools" / "product-hook").is_file():
+        try:
+            raw = (project_dir / ".claude" / "settings.json").read_text(encoding="utf-8")
+            data = json.loads(raw)
+            if "product-hook" in raw and isinstance(data, dict) and data.get("hooks"):
+                return "committed tools/product-hook wired in .claude/settings.json"
+        except (OSError, json.JSONDecodeError):
+            pass
+    try:
+        data = json.loads(
+            (project_dir / ".prawduct" / "sync-manifest.json").read_text(encoding="utf-8")
+        )
+        files = data.get("files") if isinstance(data, dict) else None
+        if isinstance(files, dict) and files:
+            return ".prawduct/sync-manifest.json lists managed framework files"
+    except (OSError, json.JSONDecodeError):
+        pass
+    return None
+
+
 def cmd_clear(project_dir: Path) -> int:
     """Reset session state and render the session briefing (plugin runtime: no sync)."""
     prawduct_dir = get_prawduct_dir(project_dir)
@@ -1951,6 +1987,20 @@ def cmd_clear(project_dir: Path) -> int:
             generate_subagent_briefing(project_dir)
         except Exception as e:  # prawduct:ok-broad-except — briefing must never block session start
             print(f"NOTE: Subagent briefing generation failed: {e}", file=sys.stderr)
+
+    # Coexistence nudge (design §7 / Chunk 8): the plugin GOVERNS, but if legacy
+    # file-sync framework files are still committed, tell the agent to migrate so
+    # the committed framework drift goes away. Best-effort; never blocks start.
+    try:
+        reason = _legacy_filesync_present(project_dir)
+        if reason:
+            print(
+                "NOTE: legacy file-sync framework files are still committed "
+                f"({reason}). The Prawduct plugin is governing this session; run "
+                "/prawduct:migrate to remove the committed framework files."
+            )
+    except Exception:  # prawduct:ok-broad-except — coexistence nudge must never block session start
+        pass
 
     return 0
 

@@ -539,3 +539,61 @@ class TestGitflowBaseResolution:
         r = _run_in(gitflow_repo, "resolve-base")
         assert r.returncode == 1
         assert "nonexistent-branch" in r.stderr
+
+
+class TestPluginCoexistenceNudge:
+    """v2.0.0 Chunk 8 — coexistence nudge. Chosen precedence is *plugin governs,
+    legacy yields*: the plugin keeps governing even while legacy file-sync
+    framework files are still committed, but its SessionStart briefing nudges
+    ``/prawduct:migrate`` so the committed framework drift gets cleaned up.
+    """
+
+    def test_clear_nudges_when_legacy_hook_committed(self, tmp_path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
+        # A committed legacy hook still wired into settings.json.
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "product-hook").write_text("#!/usr/bin/env python3\n")
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "settings.json").write_text(
+            json.dumps(
+                {"hooks": {"Stop": [{"hooks": [{"command": 'python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" stop'}]}]}}
+            )
+        )
+
+        result = run_plugin_hook("clear", tmp_path, git_status=" M src/app.py")
+
+        assert result.returncode == 0, result.stderr
+        assert "/prawduct:migrate" in result.stdout
+        assert "still committed" in result.stdout
+        # Plugin GOVERNS regardless — session markers are still written.
+        assert (prawduct / ".session-start").is_file()
+        assert (prawduct / ".session-git-baseline").is_file()
+
+    def test_clear_nudges_when_sync_manifest_has_managed_files(self, tmp_path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "sync-manifest.json").write_text(
+            json.dumps({"framework_version": "1.8.1", "files": {"tools/product-hook": "abc123"}})
+        )
+
+        result = run_plugin_hook("clear", tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "/prawduct:migrate" in result.stdout
+
+    def test_clear_no_nudge_when_repo_is_clean(self, tmp_path):
+        # Migrated / never-file-sync repo: no committed hook, manifest without a
+        # files map -> no nudge.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
+
+        result = run_plugin_hook("clear", tmp_path, git_status=" M src/app.py")
+
+        assert result.returncode == 0, result.stderr
+        assert "still committed" not in result.stdout
+        assert "/prawduct:migrate" not in result.stdout
+        # Plugin governs normally.
+        assert (prawduct / ".session-start").is_file()

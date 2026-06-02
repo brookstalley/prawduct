@@ -72,6 +72,44 @@ def _resolve_build_plan_path(prawduct_dir: Path) -> Path:
     return prawduct_dir / _DEFAULT_BUILD_PLAN_REL
 
 
+def _plugin_governance_active(project_dir: Path) -> bool:
+    """True when the Prawduct *plugin* is governing this repo — in which case this
+    legacy committed file-sync hook stands down, so exactly one governance path
+    runs (design §7 mutual stand-down; v2.0.0 build-plan Chunk 8).
+
+    CONSERVATIVE BY CONSTRUCTION. Returns True only on a clear, committed signal
+    that the plugin is active; ANY ambiguity, missing file, or parse error returns
+    False. A pure file-sync repo (no plugin) therefore behaves EXACTLY as before —
+    the legacy hook keeps governing. The asymmetry is deliberate: a false positive
+    would silently skip ALL governance, while a false negative merely double-fires
+    during the coexistence window (a known, harmless transition artifact). Chosen
+    precedence: plugin governs, legacy yields (build-plan Chunk 8 owner decision).
+
+    Either committed, repo-local signal suffices:
+      * ``.claude/settings.json`` or ``.claude/settings.local.json`` has a truthy
+        ``prawduct@…`` key under ``enabledPlugins`` — the committed install
+        reference by which a consumer enables the plugin (design §8); or
+      * ``project-state.yaml`` records ``distribution: plugin`` — the marker
+        written by ``/prawduct:migrate`` (build-plan Chunk 9).
+    """
+    for name in ("settings.json", "settings.local.json"):
+        try:
+            data = json.loads((project_dir / ".claude" / name).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        enabled = data.get("enabledPlugins") if isinstance(data, dict) else None
+        if isinstance(enabled, dict):
+            for key, val in enabled.items():
+                if val and isinstance(key, str) and key.split("@", 1)[0] == "prawduct":
+                    return True
+    return (
+        _read_str_yaml_key(
+            get_prawduct_dir(project_dir) / "project-state.yaml", "distribution"
+        )
+        == "plugin"
+    )
+
+
 # =============================================================================
 # Sync trigger (best-effort on session start)
 # =============================================================================
@@ -1984,6 +2022,16 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
 
 def cmd_clear(project_dir: Path) -> int:
     """Reset session state and trigger sync."""
+    # Mutual stand-down (design §7 / Chunk 8): when the Prawduct *plugin* governs
+    # this repo, the legacy committed hook yields so exactly one governance path
+    # runs. The plugin's SessionStart hook renders the banner + briefing; here we
+    # print a one-line migrate nudge and do nothing else (no sync, no briefing).
+    if _plugin_governance_active(project_dir):
+        print(
+            "PRAWDUCT: plugin governance active — legacy file-sync hook standing "
+            "down. Run /prawduct:migrate to remove the committed framework files."
+        )
+        return 0
     prawduct_dir = get_prawduct_dir(project_dir)
 
     # Check previous session's governance gates (warn, never block)
@@ -2560,6 +2608,12 @@ def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
 
 def cmd_stop(project_dir: Path) -> int:
     """Check governance gates before session end."""
+    # Mutual stand-down (design §7 / Chunk 8): when the plugin governs, its Stop
+    # hook runs the Critic/reflection gate. The legacy hook yields so the gate
+    # fires exactly once (no double /critic). Silent: Stop output is user-facing
+    # and a per-session duplicate of the clear notice would be noise.
+    if _plugin_governance_active(project_dir):
+        return 0
     prawduct_dir = get_prawduct_dir(project_dir)
 
     # Skip if no .prawduct directory
