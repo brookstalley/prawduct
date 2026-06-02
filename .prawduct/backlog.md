@@ -288,6 +288,11 @@
 
   The `/critic` skill ignores the build plan's per-chunk `**Critic mode:**` field, and Skill-tool args don't thread to its `$ARGUMENTS`, so a plan-mandated `final` override silently runs as inferred `chunk` mode. Discovered in v2.0.0 Chunk 9 (a destructive cutover whose plan overrode the mode to `final`): the independent Critic ran clean goals 1-3 twice but goals 4-7 were never run by the agent (`mode_chosen_by: rule-4`, not `explicit-args`). The methodology already says the per-chunk `Critic mode:` should be a "successive override," but the skill doesn't read it and the Skill-tool args never reach the forked skill, so the override is inert. Fix-shape: (a) have the `/critic` skill read the active build plan's per-chunk `**Critic mode:**` field as an override (matching the methodology's "successive override" intent), and/or (b) fix Skill-tool args reaching the forked skill's `$ARGUMENTS`. Type: process/governance. Priority: medium. Filed from v2.0.0 Chunk 9 reflection on 2026-06-01. (reflection)
 
+- **[PR-7Q3M]** Condition PR-skill merge-flow step 7 (build-plan deletion) on whether the develop-merge is itself the release
+  `effort: M · impact: M · area: pr · source: user · added: 2026-06-02 · status: open · related: BLD-3X9M`
+
+  Under the v2.0.0 gitflow batched-release model, release-bound work merges feature→develop ahead of the develop→main release, where release-checklist step 4 runs `regen-views` ON the build plan to flip its Status checkboxes. Deleting the plan (and clearing `active_build_plan`) at develop-merge time leaves the release nothing to regenerate. The PR skill's merge-flow step 7 ("delete the build plan after merge") currently assumes the old develop-merge=release model. Fix: branch step 7 — develop-merge that ships now → delete; develop-merge ahead of a batched develop→main release → retain plan + `active_build_plan` pointer until the release flips the change-log to shipped. Discovered v2.0.0 PR #49. See `learnings.md` "Release-bound work merged feature→develop under gitflow" and `docs/release-process.md`. (user)
+
 ## Promoted
 
 _None._
