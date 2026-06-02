@@ -325,6 +325,47 @@ class TestPluginStopGate:
         assert result.returncode == 0, (result.stdout, result.stderr)
 
 
+class TestStopGateAttribution:
+    """Design §5a: a blocking message names the version + gate that caused it,
+    so a surprise block is always traceable to the update, never mysterious."""
+
+    PLUGIN_VERSION = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
+
+    def test_critic_block_names_version_and_gate(self, tmp_path):
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 1\n"
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented the chunk and verified all tests pass cleanly."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        _make_session_start(prawduct)
+        result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "gate: critic-review" in result.stderr
+        assert f"prawduct v{self.PLUGIN_VERSION}" in result.stderr
+
+    def test_reflection_block_names_gate(self, tmp_path):
+        # Critic satisfied (fresh blocking-free findings) but reflection missing
+        # -> only the reflection gate blocks, and it carries its own attribution.
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 1\n"
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        _make_session_start(prawduct)
+        (prawduct / ".critic-findings.json").write_text(json.dumps({
+            "findings": [], "files_reviewed": ["src/app.py"], "summary": "No issues found.",
+        }))
+        result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "REFLECTION" in result.stderr
+        assert "gate: reflection" in result.stderr
+
+
 class TestPluginSubcommandsResolveViaLib:
     def _repo(self, tmp_path) -> Path:
         prawduct = tmp_path / ".prawduct"

@@ -24,6 +24,10 @@ When you intentionally change a documented behavior and an existing test fails b
 
 When you change behavior that a synced/templated/documented artifact describes — a briefing format, what files ship to product repos, a CLI's output — grep for every place that describes it, not just the code that implements it. The v1.8.0 cumulative Critic caught two misses in one bundle: the product CLAUDE.md template still described the pre-diet briefing, and the product-layout diagrams still omitted the now-shipped `tools/lib/`. Same blind spot both times: changed the behavior, missed the descriptions. The independent cumulative review is the fresh-eyes pass that catches doc-vs-behavior drift the builder is blind to. Relates to Living Documentation (#3) and Independent Review (#14).
 
+## A decision reversed mid-chunk leaves stale rationale in prose you just wrote
+
+When you reverse a design decision partway through a chunk, the code follows the new decision (it's what you're actively editing) but comments and docstrings you authored *under the old decision* keep asserting it — and they feel trustworthy precisely because you wrote them minutes ago. Before handing to the Critic, re-grep your OWN new comments/docstrings for the abandoned rationale. v2.0.0 Chunk 7: the banner docstring claimed the version marker was gitignored "via `GITIGNORE_ENTRIES` in `lib/core.py`" — written while leaning toward adding it there; the decision then flipped to gitignore-in-this-repo-only + defer-to-Chunk-9, the code followed, the docstring lied until the Critic flagged it. Distinct from "update every artifact that describes a behavior change" (#3): the trigger here is a *reversal within one work cycle*, and the stale prose is your own fresh code-adjacent text. Relates to Living Documentation (#3) and Reasoned Decisions (#4).
+
 ## Session-end signals must come AFTER handoff
 
 When signaling session completion ("Ready for next session", "Session is complete"), do the handoff FIRST — commit, update build plan Status, write reflection, capture backlog. Because users interpret completion signals as "handoff is done" and act on them immediately.

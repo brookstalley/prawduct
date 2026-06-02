@@ -63,6 +63,55 @@ def _plugin_root() -> str:
     return str(Path(__file__).resolve().parent.parent)
 
 
+# --- New-gate attribution (design §5a) -----------------------------------
+# A blocking message names the version + gate that caused it, so a surprise
+# block (e.g. a gate a recent plugin update introduced) is always traceable to
+# the update, never mysterious. The plugin version comes from the bundled
+# plugin.json; the gate's human name comes from the bundled hooks/gates.json.
+# Both reads are best-effort: attribution is a courtesy on top of the block, so
+# a missing/corrupt manifest or registry degrades to a bare gate label, never a
+# crash or a swallowed blocker. The banner (hooks/banner.py) reads the same
+# registry to ANNOUNCE a gate on the bump that introduces it.
+
+
+def _plugin_manifest_version() -> str | None:
+    """The plugin's semver from the bundled manifest, or None if unreadable."""
+    try:
+        manifest = Path(_plugin_root()) / ".claude-plugin" / "plugin.json"
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        version = data.get("version")
+        return str(version) if version else None
+    except Exception:  # prawduct:ok-broad-except — attribution is best-effort; a block must never crash on it
+        return None
+
+
+def _load_gate_registry() -> dict[str, dict]:
+    """Map gate-id -> {name, since, summary} from the bundled registry. Empty
+    on any failure (attribution then falls back to the bare gate id)."""
+    try:
+        path = Path(_plugin_root()) / "hooks" / "gates.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        gates = data.get("gates", [])
+        return {g["id"]: g for g in gates if isinstance(g, dict) and g.get("id")}
+    except Exception:  # prawduct:ok-broad-except — attribution is best-effort; a block must never crash on it
+        return {}
+
+
+def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | None) -> str:
+    """A one-line attribution prefix for a blocking message: names the current
+    plugin version and the gate. Flags ``NEW`` when the gate was introduced by
+    the current version (``since`` == current) — the §5a "this block is from
+    your latest update" signal. Degrades gracefully when data is missing."""
+    gate = registry.get(gate_id, {})
+    name = gate.get("name", gate_id)
+    ver_part = f"prawduct v{version} · " if version else "prawduct "
+    new_part = ""
+    since = str(gate.get("since", ""))
+    if version and since and since == version:
+        new_part = f" · NEW this release (v{since})"
+    return f"[{ver_part}gate: {name}{new_part}]"
+
+
 # --- Active build-plan resolution (inline mirror of tools/lib/core.py) ---
 # product-hook is standalone in product repos and cannot import tools/lib, so
 # the resolver is duplicated here. Kept in sync with
@@ -2349,6 +2398,17 @@ def cmd_stop(project_dir: Path) -> int:
     blockers: list[str] = []
     canary_findings: list[str] = []
 
+    # New-gate attribution (design §5a): load the plugin version + gate registry
+    # once, then prefix every blocker with "[prawduct vX · gate: <name>]" so a
+    # surprise block is traceable to the version (and flagged NEW when a recent
+    # update introduced the gate). Loaded best-effort — `_attributed` degrades to
+    # a bare gate label if the manifest/registry is unreadable.
+    _plugin_ver = _plugin_manifest_version()
+    _gate_registry = _load_gate_registry()
+
+    def _attributed(gate_id: str, body: str) -> str:
+        return f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}"
+
     # v5: Compliance canary (informational)
     try:
         canary_findings = compliance_canary(project_dir)
@@ -2404,7 +2464,7 @@ def cmd_stop(project_dir: Path) -> int:
         if "reflection" in waivers:
             waiver_notes.append(f"reflection: waived ({waivers['reflection']})")
         else:
-            blockers.append(
+            blockers.append(_attributed("reflection",
                 "REFLECTION: Files were modified but no session reflection was captured.\n"
                 "  Append your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
                 "  happened: what changed, what surprised you, what the methodology helped or hindered.\n"
@@ -2424,7 +2484,7 @@ def cmd_stop(project_dir: Path) -> int:
                 "    echo '{\"reflection\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
                 "  .prawduct/build-governance.md \"Gate Waivers\" for when this is appropriate.\n"
-            )
+            ))
     elif (
         has_changes
         and not reflection_sufficient
@@ -2527,7 +2587,7 @@ def cmd_stop(project_dir: Path) -> int:
         if "critic" in waivers:
             waiver_notes.append(f"critic: waived ({waivers['critic']})")
         elif verify_resolutions_block_reason:
-            blockers.append(
+            blockers.append(_attributed("critic",
                 "CRITIC REVIEW (verify-resolutions stale): "
                 f"{verify_resolutions_block_reason}\n"
                 "  Verify-resolutions findings clear the gate only when the current chunk\n"
@@ -2541,9 +2601,9 @@ def cmd_stop(project_dir: Path) -> int:
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
                 "  .prawduct/build-governance.md \"Gate Waivers\" for when this is appropriate.\n"
-            )
+            ))
         else:
-            blockers.append(
+            blockers.append(_attributed("critic",
                 "CRITIC REVIEW: The build plan includes Critic review in each chunk's \"Done when\" steps,\n"
                 "  but no Critic findings were recorded this session. If you have completed a chunk,\n"
                 "  run `/critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
@@ -2557,17 +2617,17 @@ def cmd_stop(project_dir: Path) -> int:
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
                 "  .prawduct/build-governance.md \"Gate Waivers\" for when this is appropriate.\n"
-            )
+            ))
 
     # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
     # gate (not in place of it). The chunk is still treated as `code`
     # for gate purposes; this block adds a separate BLOCKING if either
     # the file-set bound or rationale presence failed.
     if trivial_block_reason:
-        blockers.append(
+        blockers.append(_attributed("trivial",
             f"TYPE: TRIVIAL — declared but {trivial_block_reason}.\n"
             "  Either fix the violation or change Type to `code`.\n"
-        )
+        ))
 
     # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed, which
     # already enforces this-session freshness on the findings file. So if we
@@ -2650,7 +2710,7 @@ def cmd_stop(project_dir: Path) -> int:
         if "pr" in waivers:
             waiver_notes.append(f"pr: waived ({waivers['pr']})")
         else:
-            blockers.append(
+            blockers.append(_attributed("pr",
                 f"PR REVIEW: PR exists for branch '{pr_block_branch}' but no valid review evidence found.\n"
                 "  Run /pr to invoke the PR reviewer before merging.\n"
                 "  The reviewer writes evidence to .prawduct/.pr-reviews/<branch>.json\n"
@@ -2662,7 +2722,7 @@ def cmd_stop(project_dir: Path) -> int:
                 "  Empty reasons are rejected; the file auto-clears next session. PR review is\n"
                 "  the release-readiness gate — waive only when merge will not happen this\n"
                 "  session. See .prawduct/build-governance.md \"Gate Waivers\".\n"
-            )
+            ))
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
     # Waivers are auto-cleared at next session start so they never carry forward.
