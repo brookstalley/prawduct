@@ -332,7 +332,10 @@ class TestMethodologyConsistency:
 
     def test_cross_references(self):
         """Key cross-references between methodology files."""
-        assert "critic-review.md" in self.building
+        # building.md points readers to the Critic protocol — now the plugin's
+        # bundled skills/critic/review-protocol.md (was .prawduct/critic-review.md
+        # under file-sync; repointed in the v2.0.0 Chunk-14 docs sweep).
+        assert "review-protocol.md" in self.building
         assert ".subagent-briefing.md" in self.building
         assert "boundary-patterns.md" in self.critic
         assert "project-preferences.md" in self.critic

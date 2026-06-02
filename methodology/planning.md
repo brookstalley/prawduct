@@ -82,7 +82,7 @@ When confidence is Medium or Low, the plan also lists *what would raise it*. Don
 
 ### Critic Mode Per Chunk
 
-`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is so the cycle doesn't re-pay full-review cost on every chunk. Four modes are available: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `agents/critic/SKILL.md`). Declare `Critic mode:` explicitly only when the plan needs to override what inference would pick — e.g., forcing `final` on an early chunk that lands an architectural keystone (see the override examples below).
+`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is so the cycle doesn't re-pay full-review cost on every chunk. Four modes are available: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `skills/critic/review-protocol.md`). Declare `Critic mode:` explicitly only when the plan needs to override what inference would pick — e.g., forcing `final` on an early chunk that lands an architectural keystone (see the override examples below).
 
 **Heuristic — what inference will pick, and when to override:**
 - **Single-chunk plan** → inference picks `final` (no prior committed chunks). No declaration needed.
@@ -97,11 +97,11 @@ When confidence is Medium or Low, the plan also lists *what would raise it*. Don
 
 **Fail-safe defaults.** If `Critic mode:` is absent and inference cannot make a confident call, both the build cycle and the Critic itself default to `final`. Both layers fail safe to thoroughness — but rely on inference rather than omitting the field as a shortcut to `final`. If you want `final`, let inference pick it for the last chunk or declare it explicitly when overriding earlier.
 
-See `methodology/building.md` for the runtime behavior (how `/critic` infers mode and accepts overrides) and `agents/critic/review-cycle.md` for the per-mode behavior table.
+See `methodology/building.md` for the runtime behavior (how `/critic` infers mode and accepts overrides) and `skills/critic/review-cycle.md` for the per-mode behavior table.
 
 ### Choosing a Chunk Type
 
-Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `agents/critic/review-cycle.md`.
+Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `skills/critic/review-cycle.md`.
 
 Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`. Default is `code` — the fully-armed protocol — so a missing field is the safe option, not a carveout. Declare a non-default Type only when the chunk actually deviates.
 

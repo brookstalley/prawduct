@@ -1,37 +1,45 @@
 # Framework Repository Structure
 
-The framework repo layout:
+Prawduct v2 *is* a Claude Code plugin (and its own git-backed marketplace). The repo
+also carries the **frozen v1 file-sync engine** (under `tools/`) as a sibling service for
+un-migrated external repos, removed post-2.0 once all local repos migrate. The layout:
 
 ```
 prawduct/
-├── CLAUDE.md                          # Primary instruction surface: 23 principles + methodology pointers
+├── CLAUDE.md                          # Framework operating instructions (principles + methodology pointers)
 ├── README.md                          # Human-facing project overview
-├── methodology/                       # Narrative guides (essays, not checklists)
+├── VERSION                            # semver (mirrored by .claude-plugin/plugin.json)
+│
+│   # ── Plugin (v2.0 distribution — the primary surface) ──
+├── .claude-plugin/
+│   ├── plugin.json                    # name: prawduct, version (mirrors VERSION)
+│   └── marketplace.json               # single-plugin marketplace entry (pinned ref: main)
+├── hooks/hooks.json                   # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
+├── skills/                            # framework skills → /prawduct:* (critic, pr, doctor, migrate, building, discovery, …)
+│   ├── critic/                        # bundled Critic protocol (context:fork skill — review-protocol.md, review-cycle.md, framework-checks.md)
+│   └── pr/                            # bundled PR-reviewer protocol (review-protocol.md)
+├── bin/prawduct-hook                  # plugin runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
+├── lib/                               # plugin governance + scaffolding/migration (init_product, migrate_plugin, core, views, critic_mode, advisory, …)
+├── methodology/                       # Narrative guides (bundled; read via ${CLAUDE_PLUGIN_ROOT})
 │   ├── discovery.md                   # How to explore a problem space
 │   ├── planning.md                    # How to design artifacts and decompose into chunks
-│   ├── building.md                    # How to build with quality, including Critic review cycle
-│   └── reflection.md                  # The learning loop
-├── agents/                            # Independent review agents
-│   ├── README.md                      # Agent architecture overview
-│   ├── critic/                        # Independent review agent (invoked via /critic skill)
-│   │   ├── SKILL.md                   # Full Critic instructions
-│   │   ├── framework-checks.md        # Framework-specific checks (7-10)
-│   │   └── review-cycle.md            # Review lifecycle and output format
-│   └── pr-reviewer/                   # Release readiness reviewer (invoked via /pr skill)
-│       └── SKILL.md                   # PR review goals and merge criteria
+│   ├── building.md                    # How to build with quality, including the Critic review cycle
+│   ├── reflection.md                  # The learning loop
+│   └── session-digest.md             # SessionStart additionalContext digest
+│
+│   # ── Frozen v1 file-sync engine (sibling service for un-migrated repos; removed post-2.0) ──
 ├── tools/
-│   ├── product-hook                   # Hook script: session clear + stop (framework and products)
-│   ├── prawduct-setup.py              # Thin CLI: setup, sync, validate (delegates to lib/)
-│   ├── prawduct-init.py               # Backward-compat shim → prawduct-setup.py setup
-│   ├── prawduct-migrate.py            # Backward-compat shim → prawduct-setup.py setup
-│   ├── prawduct-sync.py              # Backward-compat shim → prawduct-setup.py sync
-│   └── lib/                           # Core implementation modules
-│       ├── __init__.py                # Re-exports for backward compat
-│       ├── core.py                    # Shared helpers, MANAGED_FILES, template strategies
-│       ├── init_cmd.py                # Setup/init command implementation
-│       ├── migrate_cmd.py             # Migration command implementation
-│       ├── sync_cmd.py                # Sync command implementation
-│       └── validate_cmd.py            # Validate command implementation
+│   ├── product-hook                   # legacy session hook (frozen; stands down when the plugin governs)
+│   ├── prawduct-setup.py              # legacy CLI: setup, sync, validate (delegates to lib/)
+│   ├── prawduct-init.py               # backward-compat shim → prawduct-setup.py setup
+│   ├── prawduct-migrate.py            # backward-compat shim → prawduct-setup.py setup
+│   ├── prawduct-sync.py              # backward-compat shim → prawduct-setup.py sync
+│   └── lib/                           # legacy file-sync implementation modules
+│       ├── core.py                    # MANAGED_FILES/SKILL_PLACEMENTS, template strategies
+│       ├── init_cmd.py                # file-sync setup/init
+│       ├── migrate_cmd.py             # file-sync per-feature migration
+│       ├── sync_cmd.py                # file-sync sync
+│       └── validate_cmd.py            # file-sync validate
 ├── templates/                         # Templates for product repos
 │   ├── product-claude.md              # Self-contained CLAUDE.md for products (v3 core)
 │   ├── critic-review.md              # Condensed Critic instructions for products (v3 core)
@@ -62,49 +70,37 @@ prawduct/
 │   └── examples/                      # Observability strategy examples (API service, event-driven)
 ├── .prawduct/                         # Framework's own prawduct state
 │   ├── project-state.yaml             # Source of truth for framework iteration
-│   ├── learnings.md                   # Accumulated wisdom (surfaced via /learnings skill)
+│   ├── learnings.md                   # Accumulated wisdom (surfaced via /prawduct:learnings)
 │   ├── learnings-detail.md            # Full learning context and history
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   └── archive/                       # Archived development history
 │       └── working-notes/             # Design notes from v1-v3 era (Feb 2026)
 └── .claude/
-    └── settings.json                  # 2 hooks: SessionStart (clear) + Stop (reflection + Critic gate)
+    └── settings.json                  # {} — this repo is governed by its own plugin (hooks/hooks.json); the legacy hook wiring was removed at the Chunk-13 cutover
 ```
 
-## Product repos (generated by prawduct)
+## Product repos (plugin-governed)
+
+A v2 product repo commits only its own state plus a small install reference — no framework files. Governance comes from the plugin.
 
 ```
 my-product/
-├── CLAUDE.md                          # Self-contained: principles, methodology, Critic instructions
+├── CLAUDE.md                          # product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
 ├── .prawduct/
-│   ├── project-state.yaml             # Product state (classification, decisions, health_check)
-│   ├── learnings.md                   # Active rules, surfaced via /learnings skill
-│   ├── learnings-detail.md            # Full learning context and history
-│   ├── backlog.md                     # Deferred work items (out-of-scope captures)
-│   ├── build-governance.md            # Build governance reference (read before coding)
-│   ├── critic-review.md               # Goal-based Critic instructions for this product
-│   ├── pr-review.md                   # PR reviewer instructions for this product
-│   ├── sync-manifest.json             # Tracks framework sync state (format_version 2)
-│   ├── artifacts/                     # Generated specifications
-│   │   ├── boundary-patterns.md       # Contract surfaces between components
-│   │   └── project-preferences.md     # Developer preferences (language, testing, style)
-│   ├── .subagent-briefing.md          # Generated briefing for delegated agents
-│   ├── .session-handoff.md            # Auto-generated context from previous session (read at session start)
+│   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)
+│   ├── learnings.md                   # active rules, surfaced via /prawduct:learnings
+│   ├── learnings-detail.md            # full learning context and history
+│   ├── backlog.md                     # deferred work items (out-of-scope captures)
+│   ├── change-log.md                  # change log
+│   ├── artifacts/                     # generated specifications
+│   │   ├── boundary-patterns.md       # contract surfaces between components
+│   │   └── project-preferences.md     # developer preferences (language, testing, style)
 │   ├── .pr-reviews/                   # PR review evidence (gitignored)
-│   ├── .test-evidence.json            # Test evidence for Critic (gitignored)
-│   └── .critic-findings.json          # Critic review evidence (checked by stop hook)
-├── tools/
-│   ├── lib/                           # product-hook runtime library (synced to products; regen-views, operator-verification, advisories)
-│   └── product-hook                   # Session governance (Python: reflection + Critic gate + sync + v4→v5 auto-migration)
-├── tests/
-│   └── conftest.py                    # Auto-grouping for parallel test execution (pytest-xdist)
+│   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
+│   └── .critic-findings.json          # Critic review evidence (gitignored, checked by the Stop hook)
 ├── .claude/
-│   ├── skills/
-│   │   ├── pr/SKILL.md                # /pr — PR lifecycle management
-│   │   ├── critic/SKILL.md            # /critic — Independent Critic review (tool-restricted)
-│   │   ├── janitor/SKILL.md           # /janitor — Periodic codebase maintenance
-│   │   ├── learnings/SKILL.md         # /learnings — Context-efficient knowledge lookup
-│   │   └── prawduct-doctor/SKILL.md   # /prawduct-doctor — Health check and repair
-│   └── settings.json                  # Hook config + banner pointing to tools/product-hook
-└── src/                               # Product source code
+│   └── settings.json                  # the committed install reference (marketplace + enabled plugin)
+└── src/                               # product source code (+ the product's own skills, MCP servers, configs)
 ```
+
+Governance — `/prawduct:*` skills, the SessionStart + Stop hooks, methodology, and the Critic/PR protocols — comes from the **plugin**, not the repo. (A v1 file-sync repo carries committed framework files until it runs `/prawduct:migrate`.)
