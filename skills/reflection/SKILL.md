@@ -1,5 +1,5 @@
 ---
-description: The Prawduct reflection protocol — read at work boundaries and before session end: assess what happened, root-cause failures, capture learnings, and close the learning loop. Invoke after a chunk completes, after fixing a bug or recovering from an error, or before /clear.
+description: "The Prawduct reflection protocol — read at work boundaries and before session end: assess what happened, root-cause failures, capture learnings, and close the learning loop. Invoke after a chunk completes, after fixing a bug or recovering from an error, or before /clear."
 user-invocable: true
 disable-model-invocation: false
 ---

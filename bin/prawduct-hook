@@ -3834,6 +3834,56 @@ def cmd_accept_operator_verification(
     return 0
 
 
+def cmd_verify_operator_verification(
+    project_dir: Path, vrf_id: str | None
+) -> int:
+    """Drain a single pending operator-verification entry to ``verified``.
+
+    The plugin-native replacement for the legacy file-sync ``verify`` path,
+    invoked by ``/prawduct:pr`` (Step 2b) and ``/prawduct:doctor`` (Verify
+    Flow) after the human-verification step is genuinely complete. A migrated
+    consumer has no framework checkout, so the old ``tools/`` setup script is
+    gone — this subcommand operates only on the consumer's own
+    ``.prawduct/operator-verification.md`` via the bundled lib. Like its
+    ``accept`` sibling it mutates the queue, so it fails honestly (exit 1)
+    rather than claiming success when its machinery is absent.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "error: verify-operator-verification could not import the plugin "
+            "lib/ from ${CLAUDE_PLUGIN_ROOT}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if vrf_id is None or not vrf_id.strip():
+        print(
+            "error: verify-operator-verification requires a VRF id argument — "
+            "`prawduct-hook verify-operator-verification <VRF-NNN>`. Complete "
+            "the entry's human-verification step first; this flips its status "
+            "to verified in operator-verification.md.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = ov.run_verify_entry(project_dir, vrf_id.strip())
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    print(f"{result['vrf_id']}: {result['previous_status']} → {result['status']}")
+    for action in result["actions"]:
+        print(action)
+    for note in result["notes"]:
+        print(f"  * {note}")
+    return 0
+
+
 def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     """Shared helper: is the PR diff (``merge-base...HEAD``) all ``.md``?
 
@@ -4198,6 +4248,7 @@ _USAGE = (
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
+    "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-pr-trivial|regen-views|infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
     "migrate-plugin [--apply] [--json]}"
@@ -4232,6 +4283,9 @@ def main() -> int:
     elif command == "accept-operator-verification":
         rationale = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_accept_operator_verification(project_dir, rationale)
+    elif command == "verify-operator-verification":
+        vrf_id = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_verify_operator_verification(project_dir, vrf_id)
     elif command == "check-pr-doc-only":
         return cmd_check_pr_doc_only(project_dir)
     elif command == "check-pr-trivial":

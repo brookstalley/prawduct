@@ -19,12 +19,14 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_MANIFEST = ROOT / ".claude-plugin" / "plugin.json"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 BANNER = ROOT / "hooks" / "banner.py"
 PING_SKILL = ROOT / "skills" / "ping" / "SKILL.md"
+ALL_SKILLS = sorted((ROOT / "skills").glob("*/SKILL.md"))
 
 
 def _env_without_plugin_root(**overrides):
@@ -119,3 +121,34 @@ class TestPingSkill:
         assert text.startswith("---"), "SKILL.md must open with YAML frontmatter"
         front = text.split("---", 2)[1]
         assert "description:" in front, "plugin skill requires a description"
+
+
+class TestAllPluginSkillFrontmatter:
+    """Every plugin skill must carry *parseable* YAML frontmatter with a
+    non-empty description — the loader silently drops ALL fields when the
+    frontmatter fails to parse, so a skill with a broken header loads
+    unusable. Regression guard for the Chunk-6 defect (discovery / planning /
+    reflection had an unquoted ``: `` colon-space in the description scalar,
+    which YAML reads as a nested mapping → parse error → empty metadata). It
+    was invisible to the suite and only surfaced via ``claude plugin
+    validate`` during the Chunk-11 dogfood; this test makes the loader's own
+    parse a CI invariant.
+    """
+
+    def test_skills_directory_is_populated(self):
+        names = {p.parent.name for p in ALL_SKILLS}
+        # The three skills the Chunk-6 bug broke must be in scope of this guard.
+        assert {"discovery", "planning", "reflection"} <= names
+
+    @pytest.mark.parametrize("skill", ALL_SKILLS, ids=lambda p: p.parent.name)
+    def test_frontmatter_parses_with_nonempty_description(self, skill):
+        text = skill.read_text(encoding="utf-8")
+        assert text.startswith("---"), f"{skill} must open with YAML frontmatter"
+        parts = text.split("---", 2)
+        assert len(parts) >= 3, f"{skill} frontmatter is not closed with ---"
+        front = yaml.safe_load(parts[1])  # raises on the colon-space bug
+        assert isinstance(front, dict), f"{skill} frontmatter is not a YAML mapping"
+        desc = front.get("description")
+        assert isinstance(desc, str) and desc.strip(), (
+            f"{skill} frontmatter must declare a non-empty description"
+        )

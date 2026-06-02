@@ -3,7 +3,7 @@ description: Product repo setup, health check, and repair
 argument-hint: "[target-path] [--name NAME]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(python3 *), Read, Glob
+allowed-tools: Bash(python3 *), Bash(prawduct-hook verify-operator-verification *), Read, Glob
 ---
 
 You are managing prawduct product repo setup and health. Detect the current context and take the appropriate action.
@@ -87,12 +87,11 @@ Re-runs the migration even when the manifest tracks it as complete. Use cases:
 
 ## Verify Flow (drain operator-verification queue)
 
-Drains a single pending entry in `.prawduct/operator-verification.md` after the human-verification step is genuinely complete.
+Drains a single pending entry in `.prawduct/operator-verification.md` after the human-verification step is genuinely complete. Plugin-native — operates only on the repo's own `.prawduct/`, no framework checkout needed.
 
-1. Resolve the framework path the same way as Health Check.
-2. Confirm the user has actually performed the verification described in the entry's `**Verify:**` checklist — `verify` is a deliberate user action, not a session-time auto-flip.
-3. Run: `python3 <framework>/tools/prawduct-setup.py verify "$CLAUDE_PROJECT_DIR" <VRF-id> --json`
-4. Relay `previous_status` → `status` ("pending → verified") and the action line. If the entry was already verified, the command is a no-op and surfaces a note.
+1. Confirm the user has actually performed the verification described in the entry's `**Verify:**` checklist — `verify` is a deliberate user action, not a session-time auto-flip.
+2. Run: `prawduct-hook verify-operator-verification <VRF-id>`
+3. Relay the `previous_status → status` line ("pending → verified") and the action line. If the entry was already verified, the command is a no-op and surfaces a note.
 
 Refuses to verify an `accepted` entry — `accepted` means the gate was overridden via `--accept-pending-verification`; flipping to verified would erase the override rationale. Edit the file by hand if the verification is now genuine.
 

@@ -1,5 +1,5 @@
 ---
-description: The Prawduct discovery method — read before discovery work: detecting structural characteristics, calibrating question depth to risk, surfacing prior art / operational costs / accessibility, and capturing to project-state.yaml. Invoke when starting a new product, filling unfilled project-state sections, or scoping requirements.
+description: "The Prawduct discovery method — read before discovery work: detecting structural characteristics, calibrating question depth to risk, surfacing prior art / operational costs / accessibility, and capturing to project-state.yaml. Invoke when starting a new product, filling unfilled project-state sections, or scoping requirements."
 user-invocable: true
 disable-model-invocation: false
 ---

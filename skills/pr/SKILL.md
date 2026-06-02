@@ -3,7 +3,7 @@ description: PR lifecycle management — create, update, merge, or check status 
 argument-hint: "[create|update|merge|status]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(gh *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook check-pr-trivial), Bash(prawduct-hook resolve-base), Read, Write, Agent
+allowed-tools: Bash(gh *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook check-pr-trivial), Bash(prawduct-hook resolve-base), Read, Write, Agent
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -59,7 +59,7 @@ While `/prawduct:critic cumulative` runs (~4-10 min), do prep that doesn't depen
 
 When pending entries exist, two paths:
 
-1. **Verify the items** (preferred): for each pending `VRF-NNN`, complete the human-verification step described in the entry, then run `python3 tools/prawduct-setup.py verify <project_dir> <VRF-NNN>` to flip its status. Re-run the gate.
+1. **Verify the items** (preferred): for each pending `VRF-NNN`, complete the human-verification step described in the entry, then run `prawduct-hook verify-operator-verification <VRF-NNN>` to flip its status. Re-run the gate.
 2. **Override for this PR**: if the user explicitly passes `--accept-pending-verification "rationale"` in `$ARGUMENTS`, run `prawduct-hook accept-operator-verification "<rationale>"`. This flips every pending entry to `accepted` and records the rationale into each entry — the queue file is the work-log. The override is per-PR; future PRs will block again if new pending entries appear.
 
 If the user did NOT supply the override flag and pending entries exist, **STOP**: do not proceed to Step 3 until either path above is taken. Present the stderr message and the two options to the user.
@@ -128,6 +128,6 @@ PR review evidence is stored in `.prawduct/.pr-reviews/<branch-name>.json` (with
 - **Doc-only fast-path (Step 1b):** when `check-pr-doc-only` reports the entire `merge-base...HEAD` diff is `.md`, the cumulative-Critic and PR-reviewer gates are skipped. The gate fails closed — any error in evaluation falls through to the full review path. Mirrors the stop hook's `_session_changes_are_doc_only` exemption at the PR boundary.
 - **Trivial-code fast-path (Step 1c):** when `check-pr-trivial` reports every commit on `merge-base...HEAD` is fileset-eligible per the `Type: trivial` path bounds (no `agents/`/`methodology/`/`templates/`/`CLAUDE.md` edits, no test deletions, no new files), the cumulative-Critic and PR-reviewer gates are skipped. Per-chunk Critic rationale-vs-diff review is the judgment backstop; the cumulative pass would add no signal when each chunk already cleared its own gate. Fails closed.
 - **Run `prawduct-hook check-cumulative-critic` before creating a PR** — this gate refuses to open a PR without a fresh, blocking-free `cumulative`-mode Critic record (see Step 2). The cumulative review (`merge-base...HEAD`) catches cross-chunk integration cracks per-chunk reviews can't see.
-- **Run `prawduct-hook check-operator-verification`** — when `operator_verification_required: true`, the gate refuses to open a PR if `.prawduct/operator-verification.md` has any pending entries. Drain via `python3 tools/prawduct-setup.py verify <dir> <VRF-id>` or override per-PR with `--accept-pending-verification "rationale"` (see Step 2b).
+- **Run `prawduct-hook check-operator-verification`** — when `operator_verification_required: true`, the gate refuses to open a PR if `.prawduct/operator-verification.md` has any pending entries. Drain via `prawduct-hook verify-operator-verification <VRF-id>` or override per-PR with `--accept-pending-verification "rationale"` (see Step 2b).
 - Include review findings summary in the PR description
 - **Never run `gh pr create` without a valid evidence file on disk**

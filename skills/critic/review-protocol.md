@@ -14,7 +14,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 2. Read `.prawduct/project-state.yaml`.
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.
-5. Read `docs/principles.md` and `.prawduct/learnings.md` (`final` mode only).
+5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` (bundled with the plugin) and `.prawduct/learnings.md` (the product's own) — `final` mode only.
 6. Decide checks from signals below.
 7. Pick execution strategy (see Review Execution).
 

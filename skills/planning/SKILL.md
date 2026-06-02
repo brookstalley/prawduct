@@ -1,5 +1,5 @@
 ---
-description: The Prawduct planning method — read before designing artifacts or a build plan: which artifacts to generate (scaled to risk), dependency order, the thin-vertical-slice first chunk, and per-chunk Critic-mode design. Invoke when planning a feature, designing specifications, or writing a build plan.
+description: "The Prawduct planning method — read before designing artifacts or a build plan: which artifacts to generate (scaled to risk), dependency order, the thin-vertical-slice first chunk, and per-chunk Critic-mode design. Invoke when planning a feature, designing specifications, or writing a build plan."
 user-invocable: true
 disable-model-invocation: false
 ---

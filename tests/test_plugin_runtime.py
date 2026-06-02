@@ -597,3 +597,56 @@ class TestPluginCoexistenceNudge:
         assert "/prawduct:migrate" not in result.stdout
         # Plugin governs normally.
         assert (prawduct / ".session-start").is_file()
+
+
+class TestVerifyOperatorVerificationSubcommand:
+    """`prawduct-hook verify-operator-verification <VRF-id>` (Chunk 11) is the
+    plugin-native replacement for the legacy `prawduct-setup.py verify` path,
+    which no longer exists in a migrated consumer. It flips one pending entry
+    to verified, operating only on the consumer's own
+    .prawduct/operator-verification.md — the /prawduct:pr and /prawduct:doctor
+    skills invoke it.
+    """
+
+    def _seed(self, tmp_path: Path, body: str) -> Path:
+        repo = tmp_path / "consumer"
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir(parents=True)
+        (prawduct / "operator-verification.md").write_text(body)
+        return repo
+
+    def test_flips_pending_to_verified(self, tmp_path):
+        repo = self._seed(tmp_path, "## VRF-001 — a\n**Status:** pending\n")
+        result = _run_in(repo, "verify-operator-verification", "VRF-001")
+        assert result.returncode == 0, result.stderr
+        assert "VRF-001" in result.stdout
+        assert "pending" in result.stdout and "verified" in result.stdout
+        queue = (repo / ".prawduct" / "operator-verification.md").read_text()
+        assert "**Status:** verified" in queue
+
+    def test_missing_id_errors_and_leaves_queue_untouched(self, tmp_path):
+        repo = self._seed(tmp_path, "## VRF-001 — a\n**Status:** pending\n")
+        result = _run_in(repo, "verify-operator-verification")
+        assert result.returncode == 1
+        assert "requires a VRF id" in result.stderr
+        queue = (repo / ".prawduct" / "operator-verification.md").read_text()
+        assert "**Status:** pending" in queue
+
+    def test_unknown_id_errors(self, tmp_path):
+        repo = self._seed(tmp_path, "## VRF-001 — a\n**Status:** pending\n")
+        result = _run_in(repo, "verify-operator-verification", "VRF-999")
+        assert result.returncode == 1
+        assert "VRF-999" in result.stderr
+
+    def test_accepted_entry_refuses_verify(self, tmp_path):
+        repo = self._seed(tmp_path, "## VRF-001 — a\n**Status:** accepted\n")
+        result = _run_in(repo, "verify-operator-verification", "VRF-001")
+        assert result.returncode == 1
+        assert "accepted" in result.stderr.lower()
+
+    def test_subcommand_listed_in_usage(self, tmp_path):
+        repo = tmp_path / "r"
+        repo.mkdir()
+        result = _run_in(repo, "bogus-subcommand")
+        assert result.returncode == 1
+        assert "verify-operator-verification" in result.stderr
