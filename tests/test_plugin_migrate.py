@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -347,6 +348,84 @@ def test_marker_gitignored(repo: Path):
     assert ".prawduct/.prawduct-version" in gi
     # Pre-existing entries preserved.
     assert "__pycache__/" in gi
+
+
+# =============================================================================
+# Chunk 10 — thin static CLAUDE.md anchor (design §4)
+# =============================================================================
+
+
+def test_anchor_inserted_in_place_of_block(repo: Path):
+    # Stripping the heavy block leaves the thin static anchor behind, in place.
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    # The block is gone; the anchor (with its own distinct marker) is present.
+    assert "PRAWDUCT:BEGIN" not in text and "PRAWDUCT:END" not in text
+    assert "PRAWDUCT:ANCHOR" in text
+    # The few hardest rules + the plugin pointer (design §4).
+    assert "/prawduct:building" in text          # read the build cycle before code
+    assert "governed by **Prawduct**" in text    # this repo is plugin-governed
+    assert "Stop hook" in text and "session end" in text  # enforcement at session end
+    # CLAUDE.md is reported as an edit.
+    result = run_migrate(repo)  # already migrated now → dry run is a no-op
+    assert result["already_migrated"] is True
+
+
+def test_anchor_sits_between_product_content(repo: Path):
+    # Document shape preserved: product title → governance anchor → product body.
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    i_title = text.index("# CLAUDE.md — MyProduct")
+    i_anchor = text.index("PRAWDUCT:ANCHOR")
+    i_product = text.index("Don't touch this product instruction.")
+    assert i_title < i_anchor < i_product, "anchor must land where the block was"
+
+
+def test_anchor_is_version_free(repo: Path):
+    # The anchor carries NO version (the banner injects it at runtime, §4). The
+    # fixture's product content is version-free, so any version-like token in the
+    # migrated CLAUDE.md would originate from the framework-authored anchor.
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    assert "1.8.1" not in text, "the current framework version must not be baked in"
+    assert re.search(r"\bv?\d+\.\d+", text) is None, "anchor must not embed a version number"
+
+
+def test_anchor_not_duplicated_on_reapply(repo: Path):
+    # Anchor insertion is idempotent independent of the already_migrated guard:
+    # if the distribution marker is absent (partial/reverted state) migrate runs
+    # the full apply again, and the anchor must NOT be inserted twice.
+    run_migrate(repo, "--apply")
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_text("".join(
+        ln + "\n" for ln in state.read_text().splitlines()
+        if "distribution: plugin" not in ln
+    ))
+    first = (repo / "CLAUDE.md").read_text()
+
+    result = run_migrate(repo, "--apply")  # already_migrated is now False again
+    assert result["already_migrated"] is False
+    assert "CLAUDE.md" not in result["edited"], "anchor already present → not re-edited"
+    text = (repo / "CLAUDE.md").read_text()
+    assert text == first, "re-apply must not mutate an already-anchored CLAUDE.md"
+    assert text.count("PRAWDUCT:ANCHOR") == 1
+    assert text.count("## Governance (Prawduct)") == 1
+
+
+def test_dry_run_lists_claude_edit_when_anchor_missing(tmp_path: Path):
+    # A repo whose CLAUDE.md has neither a block nor the anchor: the dry-run plan
+    # still lists CLAUDE.md as an edit (the anchor must be inserted), and apply
+    # appends the anchor while preserving the existing content.
+    root = make_filesync_repo(tmp_path / "noblock")
+    (root / "CLAUDE.md").write_text("# CLAUDE.md — NoBlock\n\n## Only product content\n")
+
+    plan = run_migrate(root)
+    assert "CLAUDE.md" in plan["edited"]
+
+    run_migrate(root, "--apply")
+    text = (root / "CLAUDE.md").read_text()
+    assert "PRAWDUCT:ANCHOR" in text
+    assert "## Only product content" in text  # pre-existing content kept
 
 
 # =============================================================================

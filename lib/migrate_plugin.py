@@ -59,6 +59,47 @@ SYNC_MANIFEST = ".prawduct/sync-manifest.json"
 # never deleted.
 _EDIT_IN_PLACE = frozenset({"CLAUDE.md", ".claude/settings.json"})
 
+# --- Thin static CLAUDE.md governance anchor (Chunk 10, design §4) -----------
+# The heavy PRAWDUCT block leaves the repo with the plugin; in its place migrate
+# inserts this small, **static, version-free** anchor — the few hardest rules
+# plus a pointer to the plugin. It is a stable contract (it changes rarely, NOT
+# with every methodology revision) and carries NO version number — the active
+# version is injected at runtime by the SessionStart banner. The single sentinel
+# marker (deliberately NOT the BEGIN/END block markers, so `extract_block` never
+# treats the anchor as a strippable block) makes anchor insertion idempotent and
+# future re-anchoring detectable.
+ANCHOR_SENTINEL = "PRAWDUCT:ANCHOR"
+ANCHOR_MARKER = (
+    "<!-- PRAWDUCT:ANCHOR — static governance pointer managed by the prawduct "
+    "plugin. Keep it small and version-free: principles, methodology, and the "
+    "active version live in the plugin and are injected at session start. -->"
+)
+STATIC_ANCHOR = f"""{ANCHOR_MARKER}
+
+## Governance (Prawduct)
+
+This repo is governed by **Prawduct**, installed as a Claude Code plugin — not as
+committed framework files. The principles, methodology, Critic protocol, and PR
+review live in the plugin and are read on demand (run `/prawduct:methodology`);
+they are intentionally not copied into this repo.
+
+**Before writing any code, STOP and read the build cycle: `/prawduct:building`.**
+Skipping it is the #1 governance failure.
+
+The hardest rules (everything else is in the plugin):
+
+- **Tests are contracts** — fix the code, never weaken a test.
+- **No "pre-existing" exception** — fix what you find, or flag why you can't.
+- **Never silently drop a requirement** — say so explicitly.
+- **Run `/prawduct:critic` after medium+ work** — never write Critic findings
+  yourself; the independence is the value.
+
+**Enforcement is structural:** the plugin's Stop hook runs at session end and
+**blocks** if code changed against an active build plan with no Critic findings.
+The session-start banner shows the active version and what changed — this anchor
+stays version-free.
+"""
+
 
 # =============================================================================
 # Registry-derived plan
@@ -112,13 +153,19 @@ def already_migrated(project_dir: Path) -> bool:
     return core.read_str_yaml_key(state, DISTRIBUTION_KEY) == DISTRIBUTION_VALUE
 
 
-def claude_block_present(project_dir: Path) -> bool:
-    """True when ``CLAUDE.md`` carries a ``PRAWDUCT:BEGIN/END`` block to strip."""
+def claude_anchor_pending(project_dir: Path) -> bool:
+    """True when migrate would change ``CLAUDE.md``.
+
+    Either a ``PRAWDUCT:BEGIN/END`` block is present (to strip), or the static
+    anchor is not yet present (to insert) — including when the file is absent
+    (migrate would create it carrying the anchor). Drives the dry-run edit plan.
+    """
     path = Path(project_dir) / "CLAUDE.md"
     if not path.is_file():
-        return False
-    block, _, _ = core.extract_block(path.read_text(encoding="utf-8"))
-    return block is not None
+        return True
+    content = path.read_text(encoding="utf-8")
+    block, _, _ = core.extract_block(content)
+    return block is not None or ANCHOR_SENTINEL not in content
 
 
 # =============================================================================
@@ -214,29 +261,42 @@ def _drop_generator_comments(text: str) -> str:
     )
 
 
-def strip_claude_block(project_dir: Path) -> bool:
-    """Remove the ``PRAWDUCT:BEGIN/END`` governance block (and the framework
-    generator comments that bracket it) from ``CLAUDE.md``, leaving the product's
-    own content intact. Chunk 10 inserts the thin static anchor; Chunk 9 only
-    removes the heavy block.
+def apply_claude_anchor(project_dir: Path) -> bool:
+    """Strip the heavy ``PRAWDUCT:BEGIN/END`` governance block (and the framework
+    generator comments that bracket it) and ensure the thin static governance
+    anchor (§4) is present in ``CLAUDE.md``.
+
+    The anchor replaces the block **in place** — between the product's own content
+    above and below — so the document keeps its shape (title → governance →
+    product instructions). Idempotent: when the anchor is already present and no
+    block remains, this is a no-op (so a re-run never duplicates the anchor).
+    Returns True iff the file changed.
     """
     path = Path(project_dir) / "CLAUDE.md"
+    anchor = STATIC_ANCHOR.strip()
+
     if not path.is_file():
-        return False
-    content = path.read_text(encoding="utf-8")
-    block, before, after = core.extract_block(content)
-    if block is None:
-        return False
-    head = _drop_generator_comments(before).rstrip("\n")
-    tail = _drop_generator_comments(after).lstrip("\n")
-    if head and tail:
-        new = f"{head}\n\n{tail}"
-    elif tail:
-        new = tail
+        # Defensive: a file-sync repo always carries CLAUDE.md, but if it is
+        # absent the migrated repo must still carry the governance anchor.
+        path.write_text(f"# CLAUDE.md\n\n{anchor}\n", encoding="utf-8")
+        return True
+
+    original = path.read_text(encoding="utf-8")
+    block, before, after = core.extract_block(original)
+
+    if block is not None:
+        head = _drop_generator_comments(before).rstrip("\n")
+        tail = _drop_generator_comments(after).strip("\n")
+        pieces = [p for p in (head, anchor, tail) if p]
+        new = "\n\n".join(pieces) + "\n"
+    elif ANCHOR_SENTINEL in original:
+        return False  # already-migrated CLAUDE.md: anchor present, no block
     else:
-        new = f"{head}\n"
-    if not new.endswith("\n"):
-        new += "\n"
+        base = original.rstrip("\n")
+        new = f"{base}\n\n{anchor}\n" if base else f"{anchor}\n"
+
+    if new == original:
+        return False
     path.write_text(new, encoding="utf-8")
     return True
 
@@ -355,7 +415,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     # Edit predictions (used for the dry-run plan; the apply path recomputes the
     # real change set so a no-op edit is not over-reported).
     planned_edits: list[str] = []
-    if claude_block_present(project_dir):
+    if claude_anchor_pending(project_dir):
         planned_edits.append("CLAUDE.md")
     planned_edits.append(".claude/settings.json")
     if core.read_str_yaml_key(
@@ -395,7 +455,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
                 result["notes"].append(f"left {rel} in place (not empty)")
 
     edited: list[str] = []
-    if strip_claude_block(project_dir):
+    if apply_claude_anchor(project_dir):
         edited.append("CLAUDE.md")
     if transform_settings(project_dir):
         edited.append(".claude/settings.json")
