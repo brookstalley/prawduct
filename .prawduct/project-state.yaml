@@ -3,6 +3,13 @@
 # The framework IS a product in iteration phase. This file tracks its own
 # state using the same structure it prescribes for user products.
 
+# Product identity — read by the SessionStart briefing for the project name.
+# This repo's state is hand-written and predated the `product_identity` block the
+# templates/project-state.yaml scaffold provides; without it the briefing printed
+# "Project: Unknown" for the framework itself (Chunk 14).
+product_identity:
+  name: "Prawduct"
+
 # Backlog format version. v2 = structured items (ID + metadata bar). Consulted
 # by the legacy-backlog-format post-sync advisory probe.
 backlog_format_version: 2

@@ -4243,6 +4243,34 @@ def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
     return migrate_plugin.run(project_dir, argv)
 
 
+def cmd_init_product(argv: list[str]) -> int:
+    """Scaffold a NEW plugin-governed product repo (``/prawduct:doctor`` Onboard).
+
+    Thin wrapper around the plugin-native ``lib.init_product.run``. Unlike the other
+    subcommands it operates on a TARGET path passed in ``argv`` (the new repo),
+    not the current project dir — onboarding creates a repo elsewhere. ``argv`` is
+    ``sys.argv[2:]`` (``<target> --name "<name>" [--apply] [--json]``); defaults to
+    a safe dry run. The scaffold creates only product-owned state + the install
+    reference (design §3) — never any file-sync machinery.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import init_product  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "init-product unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return init_product.run(argv)
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -4312,7 +4340,8 @@ _USAGE = (
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-pr-trivial|regen-views|infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
-    "migrate-plugin [--apply] [--json]|audit-learnings [--apply] [--json]}"
+    "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
+    "audit-learnings [--apply] [--json]}"
 )
 
 
@@ -4364,6 +4393,8 @@ def main() -> int:
         return cmd_advisory(project_dir, sys.argv[2:])
     elif command == "migrate-plugin":
         return cmd_migrate_plugin(project_dir, sys.argv[2:])
+    elif command == "init-product":
+        return cmd_init_product(sys.argv[2:])
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
     else:

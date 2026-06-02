@@ -3,7 +3,7 @@ description: Product repo setup, health check, and repair
 argument-hint: "[target-path]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook audit-learnings *), Read, Glob
+allowed-tools: Bash(prawduct-hook init-product *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook audit-learnings *), Read, Glob
 ---
 
 You are managing prawduct product-repo health under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Every flow operates on the consumer's own repo: there is no framework checkout to call back to.
@@ -24,19 +24,32 @@ You are managing prawduct product-repo health under the **plugin** distribution 
 
 ## Onboard Flow (target path provided)
 
-Onboarding under the plugin model is **install + migrate**, not a setup script.
+Onboarding under the plugin model is plugin-native — there is no file-sync setup script. Pick the shape by inspecting the target:
 
-1. Confirm the target directory with the user.
-2. Have them commit the install *reference* (project scope) in the target's `.claude/settings.json` — this is the only prawduct content the repo commits, and it never drifts:
-   ```json
-   {
-     "extraKnownMarketplaces": { "prawduct": { "source": { "source": "github", "repo": "brookstalley/prawduct", "ref": "main" }, "autoUpdate": true } },
-     "enabledPlugins": { "prawduct@prawduct": true }
-   }
-   ```
-   On first trusted open, Claude Code prompts each developer to install the marketplace + plugin (one-time, skippable).
-3. If the target still has committed file-sync framework files (a legacy `tools/product-hook`, a framework `.claude/skills/critic/`, a `.prawduct/sync-manifest.json`), have them run **`/prawduct:migrate`** in the target: it commits the install reference, strips the committed framework files, drops the legacy hook wiring, and records `distribution: plugin` — one reversible commit.
-4. Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
+### A. Brand-new product (no `.prawduct/` yet) → **scaffold it**
+
+`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, learnings.md, backlog.md, change-log.md, artifacts/), the thin static CLAUDE.md anchor, and the committed install reference — and **none** of the file-sync machinery (no `tools/`, no committed skills, no sync-manifest).
+
+1. Confirm the target directory with the user (it should be a git repo).
+2. **Dry-run** the scaffold and present the plan: `prawduct-hook init-product <target> --name "<Product Name>" --json` (no `--apply`). Surface that it creates only product-owned state + the install reference.
+3. **Confirm**, then apply: `prawduct-hook init-product <target> --name "<Product Name>" --apply`.
+4. Tell the user to commit the result.
+
+### B. Existing file-sync repo (committed `tools/product-hook`, framework `.claude/skills/`, `.prawduct/sync-manifest.json`) → **migrate it**
+
+Have them run **`/prawduct:migrate`** in the target: it commits the install reference, strips the committed framework files, drops the legacy hook wiring, and records `distribution: plugin` — one reversible commit.
+
+### Either way
+
+- The committed install *reference* (project scope) in `.claude/settings.json` is the only prawduct content the repo commits, and it never drifts — `init-product` writes it for new repos, `/prawduct:migrate` for existing ones:
+  ```json
+  {
+    "extraKnownMarketplaces": { "prawduct": { "source": { "source": "github", "repo": "brookstalley/prawduct", "ref": "main" }, "autoUpdate": true } },
+    "enabledPlugins": { "prawduct@prawduct": true }
+  }
+  ```
+  On first trusted open, Claude Code prompts each developer to install the marketplace + plugin (one-time, skippable).
+- Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
 
 ## Health Check Flow (current dir is a product repo)
 
@@ -100,7 +113,7 @@ The audit is read-only by default. Promotion is always advisory — `learnings.m
 
 ## Important Notes
 
-- Onboarding is **install the plugin + `/prawduct:migrate`** — there is no `setup` script in the plugin model.
+- Onboarding is plugin-native: **`prawduct-hook init-product`** scaffolds a brand-new repo (product-owned state + install reference, no framework files); **`/prawduct:migrate`** converts an existing file-sync repo. There is no file-sync `setup` script in the plugin model.
 - Health Check and Audit-Learnings decide from the consumer's OWN `.prawduct/` — no framework checkout, no sync.
 - Enabling a gate is a `project-state.yaml` flag flip; the BLOCKING consequence is immediate on the next relevant gate (governance is modeled as CI — see `/prawduct:methodology`).
 - Hooks and governance activate in the target's own Claude Code session, not the current one.
