@@ -1,0 +1,12 @@
+{
+  "name": "prawduct",
+  "version": "1.8.1",
+  "description": "Prawduct — turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. Dev-time governance plugin: ships immutable read-only code; all mutable state lives in each repo's .prawduct/.",
+  "author": {
+    "name": "Brooks Talley",
+    "email": "brooks@tangentry.com"
+  },
+  "homepage": "https://github.com/brookstalley/prawduct",
+  "repository": "https://github.com/brookstalley/prawduct",
+  "license": "MIT"
+}

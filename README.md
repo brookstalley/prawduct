@@ -11,7 +11,7 @@ Prawduct is a product development framework for [Claude Code](https://docs.anthr
 - [Working with Prawduct](#working-with-prawduct)
 - [Q&A](#qa)
 - [Testing Prawduct](#testing-prawduct)
-- [Generated Product Repo Structure](#generated-product-repo-structure)
+- [Product Repo Structure](#product-repo-structure)
 - [Framework Layout](#framework-layout)
 - [Architecture](#architecture)
 - [Recent Changes](#recent-changes)
@@ -27,32 +27,47 @@ Claude Code is fantastic at writing code, but without discipline it makes assump
 ### Prerequisites
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- Python 3
+- Python 3 (the plugin's governance hooks are Python, zero external dependencies)
 - git
 
-Clone the framework repo first:
+Prawduct v2 is distributed as a **Claude Code plugin**. A product repo commits only a
+small install *reference* — never framework files. (See [MIGRATION](documentation/MIGRATION.md)
+to move an existing v1 file-sync repo onto the plugin.)
 
-```bash
-git clone https://github.com/brookstalley/prawduct
-```
+### Install the plugin
+
+> **Marketplace status:** the public marketplace install is the final step of the v2
+> rollout and is being finalized. Until it lands, load the plugin with the developer flag:
+> clone this repo and launch Claude Code with `claude --plugin-dir /path/to/prawduct` from
+> your product repo. Once the marketplace is published, the committed install reference below
+> activates automatically on first trusted open.
 
 ### Start a new product
 
 ```bash
-python3 prawduct/tools/prawduct-setup.py setup ~/my-product --name "My Product"
-cd ~/my-product
-claude
+mkdir ~/my-product && cd ~/my-product && git init
+claude --plugin-dir /path/to/prawduct
+> /prawduct:doctor .
+```
+
+`/prawduct:doctor` (Onboard) scaffolds the product-owned state — `.prawduct/`, a thin
+governance anchor in `CLAUDE.md`, and the committed install reference — with **zero**
+framework files in your tree. Then describe what you want to build:
+
+```
 > I want to build a meal planning app for families with dietary restrictions
 ```
 
 ### Add Prawduct to an existing repo
 
 ```bash
-python3 prawduct/tools/prawduct-setup.py setup ~/existing-repo --name "My Existing Project"
 cd ~/existing-repo
-claude
-> I want to add a REST API for third-party integrations
+claude --plugin-dir /path/to/prawduct
+> /prawduct:doctor .
 ```
+
+For a brand-new `.prawduct/`, doctor scaffolds it; for a repo that still carries v1
+file-sync framework files, it routes you to `/prawduct:migrate` (one reversible commit).
 
 Prawduct will ask the obvious questions and also the non-obvious questions before getting started. It analyzes existing code (if any) to infer project conventions (language, test framework, code style) and records them for future reference.
 
@@ -91,15 +106,17 @@ The Critic runs as a Claude Code skill with `context: fork` (separate context) a
 
 All projects suffer drift over time. Each individual review can be executed perfectly, but accumulation over time means cruft appears, old code is not updated to new architectural patterns, tests go stale, documentation goes stale, Git accumulates dead branches, etc. The janitor skill is focused on periodic repo maintenance to catch these kinds of issues that are next to impossible for humans or LLMs to be perfect at during day-to-day work.
 
-### Self-contained product repos
+### Zero committed framework files
 
-Generated product repos carry everything they need: own CLAUDE.md, own hooks, own Critic instructions, own learning history. There is no runtime dependency on the Prawduct framework. Products work identically whether the framework repo exists or not.
+A product repo commits only its own state plus a small install *reference* — no framework code. Governance comes from the plugin, which lives out-of-tree in the Claude Code plugin cache. The product's own `.prawduct/` state (learnings, backlog, decisions, artifacts) stays in the repo and is fully portable.
 
 This means:
-- Products are portable and shareable
-- The framework is a generator, not a runtime dependency
-- Each product can evolve independently
-- Framework updates propagate via automatic, edit-preserving sync (requires having the framework cloned to a sibling dir)
+- Product repos stay clean — framework updates never show up in your diffs (the v1 stash/pop/merge papercut is eliminated)
+- The framework version is a clear signal, shown in the session banner — not buried in synced files
+- Each product keeps its own learning history and evolves independently
+- Updates arrive via the marketplace with **zero repo diff**
+
+(Existing v1 repos that committed framework files keep working and migrate when ready — see [MIGRATION](documentation/MIGRATION.md).)
 
 ### Proportional rigor
 
@@ -107,43 +124,34 @@ The framework detects structural characteristics (human interface, API, backgrou
 
 ### Closed learning loop
 
-Learnings are captured during development and surfaced on demand via the `/learnings` skill, which reads the knowledge files in a forked context and returns only what's relevant to the task at hand. A two-tier system separates concise standing rules (`learnings.md`) from full root cause / debugging detail (`learnings-detail.md`). Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
+Learnings are captured during development and surfaced on demand via the `/prawduct:learnings` skill, which reads the knowledge files in a forked context and returns only what's relevant to the task at hand. A two-tier system separates concise standing rules (`learnings.md`) from full root cause / debugging detail (`learnings-detail.md`). Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
 
 ## Working with Prawduct
 
-### Update product repos after framework changes
+### Update product repos
 
-Product repos sync automatically at session start via the product-hook. To sync manually:
+Updates arrive through the plugin marketplace: with `autoUpdate`, Claude Code re-resolves the latest release at session start — **zero changes to your repo**. The session banner shows the active version and, on a bump, what changed and which governance gates are newly active. There is no sync step and no framework files to reconcile.
 
-```bash
-python3 prawduct/tools/prawduct-setup.py sync ~/my-product
+(v1 file-sync repos still in transition: the legacy `prawduct-setup.py sync` path keeps working until you migrate — see [MIGRATION](documentation/MIGRATION.md).)
+
+### Health-check a product repo
+
+From within a product repo:
+
+```
+> /prawduct:doctor
 ```
 
-For whole-file templates (e.g. `.prawduct/critic-review.md`, `.prawduct/build-governance.md`), sync classifies each stale file:
-
-- **Stale-clean** (file content matches a historical framework template render — common after framework upgrades when `sync-manifest.json` is gitignored): auto-resolves on the next sync, reported as `Auto-resolved {file} (stale-clean from {short_sha})`. No `--force` needed.
-- **Local edit** (file matches no historical render — a real user customization): sync skips with a message. Use `--force` to accept the new template version:
-
-```bash
-python3 prawduct/tools/prawduct-setup.py sync ~/my-product --force
-```
-
-For files with `<!-- PRAWDUCT:BEGIN -->` / `<!-- PRAWDUCT:END -->` markers (e.g. `CLAUDE.md`), content **inside** the markers is framework-owned and overwritten on every sync — `--force` is not required. Put your customization **outside** the markers (before or after); sync preserves that content verbatim.
-
-### Health check a product repo
-
-```bash
-python3 prawduct/tools/prawduct-setup.py validate ~/my-product
-```
-
-Or from within a product repo, use `/prawduct-doctor` to check health and offer repair.
+It validates the committed install reference, confirms the repo is on the plugin, flags any stale file-sync residue, and checks core `.prawduct/` state — with the fix for each issue.
 
 ### Develop the framework itself
 
 ```bash
 cd prawduct
-claude
+claude --plugin-dir .
 ```
+
+This repo is governed by its own plugin — it dogfoods itself. See [docs/release-process.md](docs/release-process.md) for the gitflow release model and the release checklist.
 
 ## Q&A
 
@@ -161,11 +169,11 @@ A: As much or as little as you want. Prawduct is designed to interview you durin
 
 Q: **How do I remove Prawduct from a project?**
 
-A: Easily done: 1) Delete .prawduct/ , 2) remove Claude Code hooks that reference Prawduct from .claude/settings.json, 3) remove Prawduct language from CLAUDE.md (there are begin/end markers to make this easy)
+A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference (`extraKnownMarketplaces.prawduct` + the `enabledPlugins` entry) from `.claude/settings.json`, 3) remove the `PRAWDUCT:ANCHOR` block from CLAUDE.md. (A v1 file-sync repo that hasn't migrated also has committed framework files to delete — or just `git revert` the migration commit to go back.)
 
 ## Testing Prawduct
 
-Unit tests cover all hooks and setup tooling (750 tests):
+Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance — plus the frozen file-sync engine kept for un-migrated repos (1804 tests):
 
 ```bash
 cd prawduct
@@ -195,53 +203,51 @@ claude
 
 The coordinating Claude spawns a second session that does the work without seeing the full scenario file, relays scripted answers, then scores against the rubric. Takes 3–15 minutes depending on scenario.
 
-## Generated Product Repo Structure
+## Product Repo Structure
+
+A v2 product repo commits only its own state plus the install reference — no framework files. Governance (skills, hooks, methodology, Critic/PR protocols) comes from the plugin.
 
 ```
 my-product/
-├── CLAUDE.md                    # 23 principles + methodology (synced from framework)
+├── CLAUDE.md                    # your product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
 ├── .prawduct/
-│   ├── project-state.yaml      # Product definition, work tracking, build plan
-│   ├── learnings.md            # Active rules, read by /learnings skill
-│   ├── learnings-detail.md     # Full learning context and history
-│   ├── backlog.md              # Deferred work items (out-of-scope captures)
-│   ├── build-governance.md     # Build governance reference (read before coding)
-│   ├── critic-review.md        # Goal-based Critic instructions for this product
-│   ├── pr-review.md            # PR reviewer instructions for this product
-│   ├── sync-manifest.json      # Tracks framework sync state
-│   ├── artifacts/              # Specifications generated during planning
-│   │   ├── boundary-patterns.md  # Contract surfaces between components
-│   │   └── project-preferences.md # Developer preferences (language, testing, style)
-│   ├── .subagent-briefing.md   # Generated briefing for delegated agents
-│   ├── .pr-reviews/            # PR review evidence (checked by stop hook)
-│   └── .critic-findings.json   # Critic review evidence (checked by stop hook)
-├── tools/
-│   └── product-hook            # Session governance (Python, zero dependencies)
+│   ├── project-state.yaml       # product definition, work tracking, build plan
+│   ├── learnings.md             # active rules (read by /prawduct:learnings)
+│   ├── learnings-detail.md      # full learning context and history
+│   ├── backlog.md               # deferred work items (out-of-scope captures)
+│   ├── change-log.md            # change log
+│   ├── artifacts/               # specifications generated during planning
+│   │   ├── project-preferences.md  # developer preferences (language, testing, style)
+│   │   └── boundary-patterns.md    # contract surfaces between components
+│   ├── .pr-reviews/             # PR review evidence (gitignored; checked by the Stop hook)
+│   └── .critic-findings.json    # Critic review evidence (gitignored; checked by the Stop hook)
 ├── .claude/
-│   ├── skills/
-│   │   ├── pr/SKILL.md              # /pr — PR lifecycle management
-│   │   ├── critic/SKILL.md          # /critic — Independent Critic review (tool-restricted)
-│   │   ├── janitor/SKILL.md         # /janitor — Periodic codebase maintenance
-│   │   ├── learnings/SKILL.md       # /learnings — Context-efficient knowledge lookup
-│   │   └── prawduct-doctor/SKILL.md  # /prawduct-doctor — Health check and repair
-│   └── settings.json           # Hook configuration
-└── src/                        # Your product code
+│   └── settings.json            # the committed install reference (marketplace + enabled plugin)
+└── src/, tests/, …              # your product code, your own skills, MCP servers, configs
 ```
+
+No `tools/product-hook`, no `tools/lib/`, no committed `.claude/skills/*`, no `sync-manifest.json` — those live in the plugin, out of your tree.
 
 ## Framework Layout
 
+Prawduct *is* the plugin (and its own git-backed marketplace):
+
 ```
 prawduct/
-├── CLAUDE.md                   # 23 principles + methodology pointers
-├── methodology/                # Narrative guides: discovery, planning, building, reflection
-├── agents/critic/              # Independent per-chunk review agent
-├── agents/pr-reviewer/         # Independent PR release-readiness reviewer
-├── tools/                      # prawduct-setup.py (unified setup/sync/validate), product-hook
-├── templates/                  # Artifact templates for generated products
-├── tests/                      # Framework tests (pytest) and evaluation scenarios
-├── docs/                       # Full principles with rationale, project structure
-└── .prawduct/                  # Framework's own state, learnings, artifacts
+├── .claude-plugin/
+│   ├── plugin.json             # name: prawduct, version (mirrors VERSION)
+│   └── marketplace.json        # single-plugin marketplace entry (pinned ref: main) — lands in Chunk 2 (marketplace publish, pending)
+├── hooks/hooks.json            # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
+├── skills/                     # framework skills → /prawduct:* (critic, pr, doctor, migrate, building, …)
+├── bin/prawduct-hook           # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
+├── lib/                        # governance + scaffolding/migration modules (init_product, migrate_plugin, …)
+├── methodology/ docs/ templates/  # bundled; read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
+├── tests/                      # framework tests (pytest) and evaluation scenarios
+├── VERSION
+└── .prawduct/                  # the framework's own state — it dogfoods its own plugin
 ```
+
+During the v1→v2 transition this repo also carries the **frozen file-sync sibling service** — `tools/` (`prawduct-setup.py`, `product-hook`, `lib/`) and the `templates/skill-*.md` sources — which still serves un-migrated external repos. It is removed once all local repos have migrated (post-2.0).
 
 ## Architecture
 
@@ -257,29 +263,16 @@ See [`docs/principles.md`](docs/principles.md) for the full principles with rati
 
 ## Recent Changes
 
-### 1.3.1 (2026-04-01)
-- fix: Embed Critic review as a "Done when" step in build plan chunks — Claude follows the plan instead of relying on behavioral instructions that degrade under context pressure
-- fix: Stop hook blocker message now references the build plan, not a standalone governance rule
+Full history is in [CHANGELOG.md](CHANGELOG.md). Highlights:
 
-### 1.3.0 (2026-03-30)
-- refactor: Extracted `tools/lib/` modules (core, init, migrate, sync, validate) from monolithic setup script
-- feature: Framework version tracking — sync records `framework_version` in manifest; session start warns if `../prawduct` is stale relative to last sync
-- feature: Reflection gate is now advisory (not blocking) when no build plan is active — exploratory/Q&A sessions no longer require mandatory reflection
-- feature: Comprehensive test coverage for all user onboarding journeys (750 tests)
-- fix: V4_GITIGNORE_ENTRIES now matches GITIGNORE_ENTRIES (adds `.session-handoff.md`, `.test-evidence.json`, `.pr-reviews/`)
-- fix: Critic changelog scope — only checks entries from current changeset, not historical entries
-- fix: Gitignore hygiene — sync removes managed files from .gitignore if incorrectly added
-- fix: Deprecation warnings when migrating v1/v3/partial repos
-
-### Pre-1.3.0
-- Critic is a Claude Code skill with structural tool restrictions (`allowed-tools` prevents test/build execution; `context: fork` preserves independence)
-- Test evidence mechanism — builder records results; Critic reads evidence instead of re-running suites
-- Critic Goal 7 "The Design Is Sound" — encapsulation, coupling, simplification, deduplication
-- Security checks in Critic Goal 1 — injection, hardcoded secrets, input validation (BLOCKING)
-- Critic coordinator pattern — medium/large reviews spawn parallel subagents
-- PR reviewer agent and `/pr` skill — independent release-readiness review
-- Work-scaled governance — depth scales with work size and type instead of rigid phases
-- Session handoff, compliance canary, `--force` flag for sync, doc-only reflection skip
+### 2.0.0 — Plugin distribution (in progress)
+- Prawduct ships as a **Claude Code plugin** — product repos commit zero framework files, just a small install reference; updates arrive with zero repo diff
+- `/prawduct:*` namespaced skills; governance via the plugin's SessionStart (banner + briefing + guidance digest) and Stop (Critic + reflection gates) hooks
+- **Version-delta banner** (shows what changed + newly-active gates on update); marketplace `autoUpdate` for always-latest
+- **`/prawduct:migrate`** — one-command, reversible v1 file-sync → plugin cutover (see [MIGRATION](documentation/MIGRATION.md))
+- Plugin-native new-product scaffolding via `/prawduct:doctor`
+- Gitflow release model (see [docs/release-process.md](docs/release-process.md))
+- Backward compatible: existing v1 file-sync repos keep working via a frozen sibling engine until they migrate
 
 ## License
 

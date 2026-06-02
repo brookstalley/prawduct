@@ -4679,7 +4679,7 @@ class TestRationaleVsDiffAnchors:
     REPO_ROOT = Path(__file__).resolve().parent.parent
 
     def test_skill_md_goal_3_has_rationale_vs_diff_subcheck(self):
-        body = (self.REPO_ROOT / "agents" / "critic" / "SKILL.md").read_text()
+        body = (self.REPO_ROOT / "skills" / "critic" / "review-protocol.md").read_text()
         assert "Rationale-vs-diff fit" in body
         assert "Type: trivial" in body
         anchor = body.index("Rationale-vs-diff fit")
@@ -4692,7 +4692,7 @@ class TestRationaleVsDiffAnchors:
 
     def test_review_cycle_md_matrix_has_trivial_row(self):
         body = (
-            self.REPO_ROOT / "agents" / "critic" / "review-cycle.md"
+            self.REPO_ROOT / "skills" / "critic" / "review-cycle.md"
         ).read_text()
         # Row marker — must be a distinct row, not just a mention in prose.
         assert "| `trivial` |" in body
@@ -4723,7 +4723,7 @@ class TestRationaleVsDiffAnchors:
         assert "fast-path" in body.lower()
 
     def test_pr_skill_documents_trivial_fast_path(self):
-        body = (self.REPO_ROOT / ".claude" / "skills" / "pr" / "SKILL.md").read_text()
+        body = (self.REPO_ROOT / "templates" / "skill-pr.md").read_text()
         # Step 1c exists and uses check-pr-trivial.
         assert "Step 1c" in body
         assert "check-pr-trivial" in body
@@ -4733,7 +4733,7 @@ class TestRationaleVsDiffAnchors:
 
     def test_pr_reviewer_skill_documents_fast_paths(self):
         body = (
-            self.REPO_ROOT / "agents" / "pr-reviewer" / "SKILL.md"
+            self.REPO_ROOT / "skills" / "pr" / "review-protocol.md"
         ).read_text()
         # Reviewer documents both fast-paths so it knows when it's being
         # skipped (and what to do if invoked anyway).
@@ -7901,3 +7901,126 @@ class TestAdvisoryDispatch:
         result = self._run(tmp_path)
         assert result.returncode == 1
         assert "Usage" in result.stderr
+
+
+class TestPluginMutualStandDown:
+    """v2.0.0 Chunk 8 — mutual stand-down. When the Prawduct *plugin* governs a
+    repo, this legacy committed file-sync hook must yield so exactly one
+    governance path runs (design §7; chosen precedence: plugin governs, legacy
+    yields). Detection is conservative: a pure file-sync repo (no plugin signal)
+    behaves EXACTLY as before.
+    """
+
+    def _enable_plugin(self, project_dir: Path, *, local: bool = False) -> None:
+        claude = project_dir / ".claude"
+        claude.mkdir(exist_ok=True)
+        name = "settings.local.json" if local else "settings.json"
+        (claude / name).write_text(json.dumps({"enabledPlugins": {"prawduct@prawduct": True}}))
+
+    # --- clear stands down -------------------------------------------------
+    def test_clear_stands_down_when_plugin_enabled(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._enable_plugin(tmp_path)
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "standing down" in result.stdout
+        assert "/prawduct:migrate" in result.stdout
+        # Stood down BEFORE doing any normal clear work — no session start written.
+        assert not (prawduct / ".session-start").exists()
+
+    def test_clear_stands_down_via_settings_local(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        self._enable_plugin(tmp_path, local=True)
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "standing down" in result.stdout
+        assert not (prawduct / ".session-start").exists()
+
+    def test_clear_stands_down_via_distribution_marker(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("distribution: plugin\n")
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "standing down" in result.stdout
+        assert not (prawduct / ".session-start").exists()
+
+    # --- backward compat: no plugin => govern exactly as before ------------
+    def test_clear_governs_normally_without_plugin(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "standing down" not in result.stdout
+        # Normal clear work happened — session start timestamp written.
+        assert (prawduct / ".session-start").exists()
+
+    def test_clear_governs_when_plugin_key_falsey(self, tmp_path: Path):
+        # enabledPlugins present but the prawduct entry is false -> NOT active.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "settings.json").write_text(
+            json.dumps({"enabledPlugins": {"prawduct@prawduct": False}})
+        )
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "standing down" not in result.stdout
+        assert (prawduct / ".session-start").exists()
+
+    def test_clear_governs_when_settings_malformed(self, tmp_path: Path):
+        # Conservative: an unparseable settings.json must NOT be read as "plugin
+        # active" — that would silently skip all legacy governance.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "settings.json").write_text("{ this is not json")
+
+        result = run_hook("clear", tmp_path)
+
+        assert result.returncode == 0
+        assert "standing down" not in result.stdout
+        assert (prawduct / ".session-start").exists()
+
+    # --- stop stands down (gate fires exactly once, via the plugin) --------
+    def test_stop_stands_down_when_plugin_enabled(self, tmp_path: Path):
+        # Same setup that WOULD block (active plan + session change + no
+        # reflection) — but with the plugin active, the legacy gate yields.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-git-baseline").write_text("")
+        self._enable_plugin(tmp_path)
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 0
+        assert "REFLECTION" not in result.stderr
+
+    def test_stop_blocks_normally_without_plugin(self, tmp_path: Path):
+        # Backward-compat contrast: identical blocking setup, no plugin -> blocks.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-git-baseline").write_text("")
+
+        result = run_hook("stop", tmp_path, git_output=" M src/app.py")
+
+        assert result.returncode == 2
+        assert "REFLECTION" in result.stderr

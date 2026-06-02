@@ -160,7 +160,7 @@ class TestOtherMethodology:
 class TestCriticSkill:
     @pytest.fixture(autouse=True)
     def load(self):
-        self.content = read_file("agents/critic/SKILL.md")
+        self.content = read_file("skills/critic/review-protocol.md")
 
     def test_signals_and_work_scaling(self):
         """Has signals section and work size/type guidance."""
@@ -271,12 +271,18 @@ class TestCriticSkill:
         # release). 524-token trim across When-You-Are-Activated, Goal 1,
         # Goal 4, Goal 7 ("Unmodeled state-based problems" reduced from
         # ~325 → ~95 tokens), Severity Levels, and Coordinator dispatch
-        # prompt — compression only, no content removed. New ceiling reserves
-        # 250-token headroom for v1.5's mode-inference (Chunk 03), Type:
-        # trivial Goal 3 sub-check (Chunk 05), and verify-resolutions mode
-        # row (Chunk 02). Continue preferring trim over bump.
+        # prompt — compression only, no content removed.
+        #
+        # Raised 3050 → 3120 in v2.0.0 Chunk 13: this now measures the plugin's
+        # `skills/critic/review-protocol.md` (the canonical Critic protocol; the
+        # legacy `agents/critic/SKILL.md` was removed when this repo cut over to
+        # the plugin). Its content is identical to the old file; the ~12-token
+        # delta is purely longer plugin-native path strings (`prawduct-hook` vs
+        # `tools/product-hook`, `${CLAUDE_SKILL_DIR}/../../docs/principles.md` vs
+        # `docs/principles.md`) — a one-time structural cost, not content bloat.
+        # ~50-token headroom retained. Continue preferring trim over bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3050, f"SKILL.md is ~{tokens} tokens, should be <3050"
+        assert tokens < 3120, f"review-protocol.md is ~{tokens} tokens, should be <3120"
 
 
 # =============================================================================
@@ -286,7 +292,7 @@ class TestCriticSkill:
 
 class TestReviewCycle:
     def test_structure(self):
-        content = read_file("agents/critic/review-cycle.md")
+        content = read_file("skills/critic/review-cycle.md")
         for level in ["Trivial", "Small", "Medium", "Large"]:
             assert level in content
         assert "goal-based" in content.lower() or "Goal" in content
@@ -322,11 +328,14 @@ class TestMethodologyConsistency:
     def load(self):
         self.building = read_file("methodology/building.md")
         self.reflection = read_file("methodology/reflection.md")
-        self.critic = read_file("agents/critic/SKILL.md")
+        self.critic = read_file("skills/critic/review-protocol.md")
 
     def test_cross_references(self):
         """Key cross-references between methodology files."""
-        assert "critic-review.md" in self.building
+        # building.md points readers to the Critic protocol — now the plugin's
+        # bundled skills/critic/review-protocol.md (was .prawduct/critic-review.md
+        # under file-sync; repointed in the v2.0.0 Chunk-14 docs sweep).
+        assert "review-protocol.md" in self.building
         assert ".subagent-briefing.md" in self.building
         assert "boundary-patterns.md" in self.critic
         assert "project-preferences.md" in self.critic

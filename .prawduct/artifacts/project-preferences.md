@@ -14,7 +14,7 @@ Developer preferences for how code is written in this project. Captured during d
 - **Formatting**: No formatter configured — follow existing style (4-space indent, ~100 char lines)
 - **Linting**: No linter configured
 - **Type annotations**: Used throughout — function signatures use `str | None`, `list[str]`, `dict[str, str]` style (PEP 604)
-- **Imports**: `from __future__ import annotations` at top of every implementation file in `tools/` and `tests/` (backward-compat shims and `tests/conftest.py` excepted); grouped by stdlib / third-party / local
+- **Imports**: `from __future__ import annotations` at top of every implementation file in `tools/`, `tests/`, and `hooks/` (the v2.0.0 plugin's bundled hook scripts) (backward-compat shims and `tests/conftest.py` excepted); grouped by stdlib / third-party / local
 
 ## Testing
 
