@@ -543,7 +543,7 @@ class TestLearningsSkillTemplate:
 
     @pytest.fixture
     def template(self) -> str:
-        return (FRAMEWORK_DIR / ".claude" / "skills" / "learnings" / "SKILL.md").read_text()
+        return (FRAMEWORK_DIR / "templates" / "skill-learnings.md").read_text()
 
     def test_frontmatter_and_references(self, template: str):
         """Has required frontmatter and references all knowledge files."""
@@ -682,7 +682,7 @@ class TestJanitorSkillTemplateCurrency:
 
     @pytest.fixture
     def skill(self) -> str:
-        return (FRAMEWORK_DIR / ".claude" / "skills" / "janitor" / "SKILL.md").read_text()
+        return (FRAMEWORK_DIR / "templates" / "skill-janitor.md").read_text()
 
     def test_template_currency_theme_exists(self, skill: str):
         """Template Currency investigation theme present."""

@@ -158,7 +158,7 @@ class TestInitManifestPrEntries:
         assert ".claude/skills/pr/SKILL.md" in manifest["files"]
         entry = manifest["files"][".claude/skills/pr/SKILL.md"]
         assert entry["strategy"] == "template"
-        assert entry["template"] == ".claude/skills/pr/SKILL.md"
+        assert entry["template"] == "templates/skill-pr.md"
         assert entry["generated_hash"] is not None
 
 
@@ -269,7 +269,7 @@ class TestCreateManifestPrEntries:
         manifest = create_manifest(tmp_path, FRAMEWORK_DIR, "Test", file_hashes)
 
         assert ".claude/skills/pr/SKILL.md" in manifest["files"]
-        assert manifest["files"][".claude/skills/pr/SKILL.md"]["template"] == ".claude/skills/pr/SKILL.md"
+        assert manifest["files"][".claude/skills/pr/SKILL.md"]["template"] == "templates/skill-pr.md"
 
 
 # =============================================================================
@@ -506,7 +506,7 @@ class TestPrReviewTemplateContent:
 
     def test_pr_command_template_has_all_flows(self):
         """The /pr command template should cover all 4 flows."""
-        content = (FRAMEWORK_DIR / ".claude" / "skills" / "pr" / "SKILL.md").read_text()
+        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
         assert "Create Flow" in content
         assert "Update Flow" in content
         assert "Merge Flow" in content
@@ -514,7 +514,7 @@ class TestPrReviewTemplateContent:
 
     def test_pr_command_template_has_review_gate(self):
         """The /pr command template must enforce review before PR creation."""
-        content = (FRAMEWORK_DIR / ".claude" / "skills" / "pr" / "SKILL.md").read_text()
+        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
         # Must contain hard gate language, not just numbered steps
         assert "MANDATORY" in content
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
@@ -522,7 +522,7 @@ class TestPrReviewTemplateContent:
 
     def test_framework_pr_command_has_review_gate(self):
         """The framework /pr command must enforce review before PR creation."""
-        content = (FRAMEWORK_DIR / ".claude" / "skills" / "pr" / "SKILL.md").read_text()
+        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
         assert "MANDATORY" in content
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
         assert "evidence file" in content

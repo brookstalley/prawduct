@@ -757,3 +757,32 @@ class TestAuditLearningsSubcommand:
         result = _run_in(repo, "bogus-subcommand")
         assert result.returncode == 1
         assert "audit-learnings" in result.stderr
+
+
+class TestNoBareSkillShadowing:
+    """Chunk 14: the six file-sync skill sources were relocated from
+    `.claude/skills/<name>/SKILL.md` to `templates/skill-<name>.md` so they no
+    longer double-load as bare `/<name>` skills when this repo runs on its own
+    plugin (a bare copy would shadow the plugin's `/prawduct:<name>` with a frozen
+    file-sync version). The synced product *destination*
+    `.claude/skills/<name>/SKILL.md` is unchanged — only the framework source moved,
+    proven byte-identical by the sync-render diff; these guard the structure so a
+    future edit can't silently re-introduce the shadow.
+    """
+
+    RELOCATED = ("pr", "janitor", "learnings", "backlog", "prawduct-advisory", "prawduct-doctor")
+
+    @pytest.mark.parametrize("name", RELOCATED)
+    def test_source_lives_in_templates(self, name):
+        assert (ROOT / "templates" / f"skill-{name}.md").is_file(), (
+            f"file-sync source for {name} must live at templates/skill-{name}.md "
+            "(Chunk 14 relocation)"
+        )
+
+    @pytest.mark.parametrize("name", RELOCATED)
+    def test_no_shadowing_bare_skill_dir(self, name):
+        assert not (ROOT / ".claude" / "skills" / name).exists(), (
+            f".claude/skills/{name}/ re-introduced — a bare /{name} skill would "
+            f"shadow the plugin's /prawduct:{name} with a stale file-sync copy "
+            "(Chunk 14 relocation)"
+        )

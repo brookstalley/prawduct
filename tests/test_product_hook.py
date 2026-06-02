@@ -4723,7 +4723,7 @@ class TestRationaleVsDiffAnchors:
         assert "fast-path" in body.lower()
 
     def test_pr_skill_documents_trivial_fast_path(self):
-        body = (self.REPO_ROOT / ".claude" / "skills" / "pr" / "SKILL.md").read_text()
+        body = (self.REPO_ROOT / "templates" / "skill-pr.md").read_text()
         # Step 1c exists and uses check-pr-trivial.
         assert "Step 1c" in body
         assert "check-pr-trivial" in body
