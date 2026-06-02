@@ -7,11 +7,10 @@ file-sync model to the v2.0 plugin model with a single, reversible command.
 If you are starting a **new** product, you don't need this — install the plugin and go.
 This guide is only about moving an existing file-sync repo onto the plugin.
 
-> **Status (read first).** The plugin install path depends on the prawduct **marketplace**
-> being published, which is the final step of the v2.0 rollout and is still pending. Until
-> then you can migrate today using the `--plugin-dir` developer path (below). The cutover
-> mechanics (`/prawduct:migrate`) are complete and tested; only the marketplace publish is
-> outstanding. This note will be removed once the marketplace is live.
+> **Status.** The prawduct marketplace is **live as of v2.0.0**, and the cutover
+> (`/prawduct:migrate`) is complete and tested. The committed install reference below activates
+> the plugin on first trusted open — no developer flags needed. (`--plugin-dir` remains the path
+> for *hacking on the framework itself*.)
 
 ## Why migrate
 
@@ -46,10 +45,10 @@ because the framework is no longer in your tree at all.
 ## Prerequisites
 
 1. **Install the prawduct plugin.**
-   - **Marketplace (target path, once published):** add the prawduct marketplace and enable
-     the plugin — Claude Code prompts you on first trusted open. The install reference the
-     cutover commits to `.claude/settings.json` is what makes this automatic for every
-     developer who clones your repo:
+   - **Marketplace (recommended):** add the prawduct marketplace and enable the plugin — Claude
+     Code prompts you on first trusted open. The install reference the cutover commits to
+     `.claude/settings.json` is what makes this automatic for every developer who clones your
+     repo:
      ```jsonc
      {
        "extraKnownMarketplaces": {
@@ -58,8 +57,8 @@ because the framework is no longer in your tree at all.
        "enabledPlugins": { "prawduct@prawduct": true }
      }
      ```
-   - **Developer path (available today):** clone the prawduct repo and launch Claude Code with
-     `claude --plugin-dir /path/to/prawduct` from your product repo. This loads the plugin for
+   - **Developer path (for hacking on the framework):** clone the prawduct repo and launch Claude
+     Code with `claude --plugin-dir /path/to/prawduct` from your product repo. This loads the plugin for
      the session without a marketplace. `--plugin-dir` alone is enough for `/prawduct:migrate`
      and `/prawduct:doctor` (neither reads bundled plugin files). If you continue into
      development work in the same session, also pass `--add-dir /path/to/prawduct` (the same

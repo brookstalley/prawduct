@@ -36,22 +36,29 @@ to move an existing v1 file-sync repo onto the plugin.)
 
 ### Install the plugin
 
-> **Marketplace status:** the public marketplace install is the final step of the v2
-> rollout and is being finalized. Until it lands, load the plugin with developer flags:
-> clone this repo and launch Claude Code with
-> `claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct` from your product repo.
-> The `--add-dir` points at the *same* path and lets methodology-reading skills
-> (`/prawduct:building`, `/prawduct:critic`, `/prawduct:planning`) load their bundled guides from
-> the out-of-tree plugin — without it they sandbox-fail. `/prawduct:doctor` and `/prawduct:migrate`
-> work with `--plugin-dir` alone, but `--add-dir` is harmless to always include. Once the
-> marketplace is published, the committed install reference below activates automatically on
-> first trusted open and neither flag is needed.
+Prawduct is published as a Claude Code plugin from its own marketplace (this repo, pinned to
+`main`). Add the marketplace and install the plugin:
+
+```bash
+claude plugin marketplace add brookstalley/prawduct
+claude plugin install prawduct@prawduct
+```
+
+The `/prawduct:*` skills and governance are then available in your sessions. To onboard a repo
+so it self-governs for everyone who clones it, run `/prawduct:doctor` (below) — it commits a
+small install reference (marketplace + enabled plugin); no framework files land in your tree.
+
+> **Developing the framework itself?** Load your working copy instead of the released plugin
+> with `claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct` — the `--add-dir`
+> (same path) lets methodology-reading skills (`/prawduct:building`, `/prawduct:critic`,
+> `/prawduct:planning`) load their bundled guides from the out-of-tree plugin. See
+> [Develop the framework itself](#develop-the-framework-itself).
 
 ### Start a new product
 
 ```bash
 mkdir ~/my-product && cd ~/my-product && git init
-claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct
+claude
 > /prawduct:doctor .
 ```
 
@@ -67,7 +74,7 @@ framework files in your tree. Then describe what you want to build:
 
 ```bash
 cd ~/existing-repo
-claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct
+claude
 > /prawduct:doctor .
 ```
 
@@ -241,7 +248,7 @@ Prawduct *is* the plugin (and its own git-backed marketplace):
 prawduct/
 ├── .claude-plugin/
 │   ├── plugin.json             # name: prawduct, version (mirrors VERSION)
-│   └── marketplace.json        # single-plugin marketplace entry (pinned ref: main) — lands in Chunk 2 (marketplace publish, pending)
+│   └── marketplace.json        # single-plugin marketplace entry (plugin source "./", consumers pin ref: main)
 ├── hooks/hooks.json            # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
 ├── skills/                     # framework skills → /prawduct:* (critic, pr, doctor, migrate, building, …)
 ├── bin/prawduct-hook           # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
