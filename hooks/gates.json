@@ -1,0 +1,29 @@
+{
+  "_comment": "Gate registry for new-gate attribution (design §5a). Read by the version-delta banner (hooks/banner.py) to ANNOUNCE a gate as new when its `since` falls in the (last_seen, current] range a repo crosses, and by the Stop hook (bin/prawduct-hook cmd_stop) to ATTRIBUTE a blocking message to the version + gate that caused it. `since` is the plugin version that introduced the gate; foundational gates that predate semver versioning carry `1.0.0`. This file ships inside the plugin, so adding a gate (and its attribution) creates no diff in any consuming repo. Release process: when a release adds an enforcing gate, append it here with `since` = that release's version, so the banner announces it on the bump and blocking messages flag it NEW.",
+  "gates": [
+    {
+      "id": "reflection",
+      "name": "reflection",
+      "since": "1.0.0",
+      "summary": "a session reflection must be captured before session end"
+    },
+    {
+      "id": "critic",
+      "name": "critic-review",
+      "since": "1.0.0",
+      "summary": "Critic review is required for each chunk built against a plan"
+    },
+    {
+      "id": "pr",
+      "name": "pr-review",
+      "since": "1.0.0",
+      "summary": "PR review evidence is required before a PR merges"
+    },
+    {
+      "id": "trivial",
+      "name": "trivial-declaration",
+      "since": "1.5.0",
+      "summary": "Type: trivial chunks must satisfy the fileset + rationale bounds"
+    }
+  ]
+}

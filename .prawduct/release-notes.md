@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.0
+
+**Entry:** 2026-06-02: v2.0.0 — Plugin distribution: file-sync → Claude Code plugin (shipped)
+
+**Chunks shipped:** 1, 10, 11, 12, 13, 14, 2, 3, 4, 5, 6, 7, 8, 9
+
+**Scope:** v2.0.0
+
+See `.prawduct/change-log.md` for full details.
+
 ## v1.8.1
 
 **Entry:** 2026-06-01: v1.8.1 — Bugfix: phantom "rebase in progress" from stale `.git/REBASE_HEAD` (release)

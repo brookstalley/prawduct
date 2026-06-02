@@ -3,6 +3,27 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-02: v2.0.0 — Plugin distribution: file-sync → Claude Code plugin (shipped)
+
+<!-- prawduct: chunks=1,2,3,4,5,6,7,8,9,10,11,12,13,14 | release=v2.0.0 | status=shipped | scope=v2.0.0 -->
+
+**Why:** Committing framework files into every consuming repo caused perpetual stash/pop/merge papercuts, silently-drifting governance files, and no clean version signal. v2.0.0 moves distribution from file-sync to a **Claude Code plugin**: consuming repos commit zero framework files (only a small install reference), get always-latest governance via the marketplace, and never fold framework drift into their own commits — while existing file-sync repos keep working until they explicitly migrate.
+
+**What shipped (Chunks 1–14):**
+- Installable plugin — `.claude-plugin/plugin.json`, `hooks/hooks.json` (SessionStart banner + briefing + guidance digest; Stop Critic + reflection gates), `bin/prawduct-hook` + `lib/` runtime reading/writing only `${CLAUDE_PROJECT_DIR}/.prawduct/`.
+- Framework skills → `/prawduct:*` (critic, pr, janitor, learnings, backlog, advisory, doctor, migrate, methodology + building/discovery/planning/reflection). Critic + PR review protocols bundled as self-contained `context:fork` skills with the read-only-git / no-pytest restriction preserved (CI-pinned).
+- Version-delta banner + attributed gates (a block names the version + gate); gitflow release model (`ref: "main"`, `version` as the update cache-key).
+- Coexistence — plugin governs, the legacy file-sync hook yields (Chunk 8). `/prawduct:migrate`: one reversible commit cutover, proven byte-airtight on a real consumer (hallucinote, 468/491 files unchanged). Thin static CLAUDE.md anchor.
+- Ship-blocker fixed (Chunk 5): gitflow base-branch resolution for the PR/coverage gates + reviewer (honors `base_branch: develop`).
+- Dogfood — this repo runs on its own plugin (Chunk 11); real-consumer + parallel-worktree self-containment proofs (Chunk 12).
+- Chunk 13 removed file-sync from THIS repo's active path; Chunk 14 relocated the 6 file-sync skill sources out of the load path (byte-identical sync preserved), added **plugin-native new-product scaffolding** (`prawduct-hook init-product` via `/prawduct:doctor`), the consumer `documentation/MIGRATION.md`, `docs/release-process.md`, and swept README/CLAUDE.md/methodology/docs plugin-first.
+
+**Backward compatibility:** existing v1 file-sync product repos are byte-for-byte unaffected — the file-sync engine (`tools/`, the `templates/skill-*` sources, the shims) is frozen and kept as a live sibling service until all local repos migrate (milestone M4, backlog `MIG-M4-REMOVE`). Un-migrated repos `sync` exactly as before.
+
+**Chunk 2 (this release — marketplace published):** `.claude-plugin/marketplace.json` (plugin `source: "./"`) lets a consumer install `prawduct@prawduct` from `github:brookstalley/prawduct@main`. The `autoUpdate` release-surface spike (throwaway public repo, 2026-06-02) confirmed the model empirically: `version` is the update cache-key (a non-bumped `main` push does **not** ship), resolution tracks `main` HEAD (not tags), `develop` is isolated, and the plugin `source` must be `"./"` — a `{ "source": "github", … }` object SSH-fails for HTTPS/`gh`-auth users even on a public repo. First flag-free open prompts once to trust the marketplace. Full results in `docs/release-process.md`.
+
+**Tests:** 1804 passing.
+
 ## 2026-06-01: v1.8.1 — Bugfix: phantom "rebase in progress" from stale `.git/REBASE_HEAD` (release)
 
 <!-- prawduct: type=bugfix | release=v1.8.1 | status=shipped -->

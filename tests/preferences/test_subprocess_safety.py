@@ -25,7 +25,7 @@ SUBPROCESS_FUNCS = frozenset({"run", "check_output", "check_call", "call", "Pope
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in ("tools", "tests"):
+    for root in ("tools", "tests", "hooks"):
         for path in (REPO_ROOT / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue

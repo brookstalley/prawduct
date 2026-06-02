@@ -77,14 +77,14 @@ Add observability alongside features, not after. If the observability strategy c
 
 **Verify.** Two layers:
 
-- *Code:* Run the full suite. First check `python3 tools/product-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. After running tests, write `.prawduct/.test-evidence.json` with the timestamp and results.
+- *Code:* Run the full suite. First check `prawduct-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. After running tests, write `.prawduct/.test-evidence.json` with the timestamp and results.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
-**Critic review.** Run `/critic` (no args) — the SKILL infers mode from git + build-plan state via `tools/product-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
+**Critic review.** Run `/critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 
@@ -152,7 +152,7 @@ Subagent delegation is especially valuable when:
 **How to delegate:** Spawn a subagent and give it:
 - The chunk spec and referenced artifacts
 - The project directory path
-- **"Read `.prawduct/build-governance.md` for the build cycle, then `.prawduct/.subagent-briefing.md` for project conventions and learnings."**
+- **"Read the build cycle via `/prawduct:building`, then `.prawduct/.subagent-briefing.md` for project conventions and learnings."**
 - Instructions to run the full test suite before and after implementation
 
 **Parallel chunks:** When multiple chunks have no dependency between them, build them in parallel using separate subagents. Each subagent gets its own chunk spec. The main agent coordinates: launch all independent chunks, wait for results, run the combined test suite, then proceed with Critic review. Merge conflicts between parallel chunks are the main agent's responsibility.
@@ -207,14 +207,14 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 
 ### Modes
 
-`/critic` (no args) infers from git + build-plan state via `tools/product-hook infer-critic-mode`; `Critic mode:` in the plan and an explicit slash arg are successive overrides. Four modes:
+`/critic` (no args) infers from git + build-plan state via `prawduct-hook infer-critic-mode`; `Critic mode:` in the plan and an explicit slash arg are successive overrides. Four modes:
 
 - **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
 - **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.
 - **`cumulative`** — all 7 goals against `merge-base...HEAD`. Gates `/pr create`.
 - **`verify-resolutions`** — Goals 1-3 against (prior `files_reviewed` ∪ files since `commit_reviewed`); re-review after fixing prior findings.
 
-Inference failure or unrecognized mode → `final`. See `agents/critic/review-cycle.md` (per-mode table) and `.prawduct/critic-review.md` (goals).
+Inference failure or unrecognized mode → `final`. See `skills/critic/review-cycle.md` (per-mode table) and `skills/critic/review-protocol.md` (goals).
 
 **The Critic takes time.** Reviews take 1-5 minutes; don't check on it. While it reviews, do your own deep scrub — re-read changes for completeness, correctness, DRY, encapsulation, test coverage, UX, and docs. Self-review often pre-resolves findings.
 
@@ -230,7 +230,7 @@ Use `/pr` for the full PR lifecycle. It invokes the PR reviewer agent for indepe
 
 **Cumulative-Critic gate.** `/pr create` calls `product-hook check-cumulative-critic` and refuses to open a PR without a fresh, blocking-free `cumulative` record. Cumulative diffs `merge-base...HEAD` — the full PR bundle — catching cross-chunk integration cracks per-chunk reviews miss. Run `/critic cumulative` first; while it runs (~4-10 min), do prep that doesn't depend on findings (`/learnings`, draft PR description, audit backlog, capture deferred reflections). This reorganizes wait time — it doesn't shorten it.
 
-See `agents/pr-reviewer/SKILL.md` (framework) or `.prawduct/pr-review.md` (products) for review criteria. After merge, `/pr` cleans up the build plan. Without `/pr`, do it manually.
+See the plugin's bundled `skills/pr/review-protocol.md` for review criteria. After merge, `/pr` cleans up the build plan. Without `/pr`, do it manually.
 
 ## Exception Handling
 

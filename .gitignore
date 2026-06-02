@@ -21,3 +21,8 @@ __pycache__/
 
 # Prawduct session files
 .prawduct/.advisories.json
+
+# Prawduct plugin (v2.0): per-repo last-seen version marker for the version-delta
+# banner (hooks/banner.py). Mutable per-repo state — gitignored so a plugin
+# version bump never produces a tracked-file diff (the core no-noise guarantee).
+.prawduct/.prawduct-version

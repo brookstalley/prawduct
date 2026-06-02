@@ -1,8 +1,9 @@
 """Project-preferences enforcement: `from __future__ import annotations`.
 
 Enforces the Imports preference in `.prawduct/artifacts/project-preferences.md`:
-every implementation file in `tools/` and `tests/` must begin with
-`from __future__ import annotations` (after the module docstring, if any).
+every implementation file in `tools/`, `tests/`, and `hooks/` (the v2.0.0
+plugin's bundled hook scripts) must begin with `from __future__ import
+annotations` (after the module docstring, if any).
 
 Exceptions, by design:
 - `__init__.py` files (typically re-export modules)
@@ -25,7 +26,7 @@ EXPLICIT_EXCEPTIONS = {
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in ("tools", "tests"):
+    for root in ("tools", "tests", "hooks"):
         for path in (REPO_ROOT / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue

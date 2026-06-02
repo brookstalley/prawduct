@@ -3,9 +3,26 @@
 # The framework IS a product in iteration phase. This file tracks its own
 # state using the same structure it prescribes for user products.
 
+# Product identity — read by the SessionStart briefing for the project name.
+# This repo's state is hand-written and predated the `product_identity` block the
+# templates/project-state.yaml scaffold provides; without it the briefing printed
+# "Project: Unknown" for the framework itself (Chunk 14).
+product_identity:
+  name: "Prawduct"
+
 # Backlog format version. v2 = structured items (ID + metadata bar). Consulted
 # by the legacy-backlog-format post-sync advisory probe.
 backlog_format_version: 2
+
+# Distribution model. `plugin` = this repo is governed by the Prawduct plugin
+# (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
+# own plugin. Effects: (1) the frozen legacy `tools/product-hook` detects this
+# and stands down (Chunk 8 mutual stand-down), so its SessionStart/Stop hooks
+# yield even if still wired; (2) governance runs via the plugin — load it with
+# `claude --plugin-dir .` until the marketplace install reference lands (Chunk 2).
+# The file-sync engine in `tools/` + `templates/` is KEPT, frozen, as the live
+# service for un-migrated external repos (removed at milestone M4, MIG-M4-REMOVE).
+distribution: plugin
 
 # =============================================================================
 # DEPENDENCY GRAPH
@@ -506,3 +523,6 @@ scope_rollups:
   v1.8.0:
     chunks: ["A", "B", "C", "D", "E"]
     releases: ["v1.8.0"]
+  v2.0.0:
+    chunks: ["1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"]
+    releases: ["v2.0.0"]

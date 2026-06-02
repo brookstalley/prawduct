@@ -1228,8 +1228,7 @@ class TestRunSync:
 
         # Add a new template to the framework (simulating a new managed file)
         (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review v1")
-        (fw / ".claude" / "skills" / "pr").mkdir(parents=True, exist_ok=True)
-        (fw / ".claude" / "skills" / "pr" / "SKILL.md").write_text("# PR skill for {{PRODUCT_NAME}}")
+        (fw / "templates" / "skill-pr.md").write_text("# PR skill for {{PRODUCT_NAME}}")
 
         # Remove pr-review and skills/pr from the manifest (simulating old product)
         manifest_path = product / ".prawduct" / "sync-manifest.json"
@@ -1256,8 +1255,7 @@ class TestRunSync:
         product = self._setup_product(tmp_path, fw)
 
         (fw / "templates" / "pr-review.md").write_text("# {{PRODUCT_NAME}} PR Review v1")
-        (fw / ".claude" / "skills" / "pr").mkdir(parents=True, exist_ok=True)
-        (fw / ".claude" / "skills" / "pr" / "SKILL.md").write_text("# PR skill for {{PRODUCT_NAME}}")
+        (fw / "templates" / "skill-pr.md").write_text("# PR skill for {{PRODUCT_NAME}}")
 
         # Remove from manifest
         manifest_path = product / ".prawduct" / "sync-manifest.json"
