@@ -4166,13 +4166,41 @@ def cmd_resolve_base(project_dir: Path) -> int:
     return 0
 
 
+def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
+    """Dispatch the file-sync → plugin cutover (``/prawduct:migrate``, Chunk 9).
+
+    Thin wrapper around the plugin-native ``lib.migrate_plugin.run`` — the
+    subcommand exists so the skill's ``allowed-tools`` can be scoped to
+    ``Bash(prawduct-hook migrate-plugin*)`` instead of arbitrary code execution,
+    mirroring the ``advisory``/``infer-critic-mode`` pattern. ``argv`` is
+    ``sys.argv[2:]`` (``--apply`` / ``--json``); defaults to a safe dry run.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import migrate_plugin  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "migrate unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return migrate_plugin.run(project_dir, argv)
+
+
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "check-pr-doc-only|check-pr-trivial|regen-views|infer-critic-mode [args]|"
-    "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]}"
+    "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
+    "migrate-plugin [--apply] [--json]}"
 )
 
 
@@ -4219,6 +4247,8 @@ def main() -> int:
         return cmd_resolve_base(project_dir)
     elif command == "advisory":
         return cmd_advisory(project_dir, sys.argv[2:])
+    elif command == "migrate-plugin":
+        return cmd_migrate_plugin(project_dir, sys.argv[2:])
     else:
         print(_USAGE, file=sys.stderr)
         return 1
