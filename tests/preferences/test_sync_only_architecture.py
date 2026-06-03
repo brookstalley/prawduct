@@ -4,7 +4,7 @@ Enforces the Async preference in `.prawduct/artifacts/project-preferences.md`:
 prawduct's CLI tools are sync throughout — no `async def`, no `import asyncio`.
 
 This is an AST recursive walk: every node in every implementation file under
-`tools/`, `tests/`, `hooks/`, and `lib/` (plus the extensionless plugin runtime
+`tests/`, `hooks/`, and `lib/` (plus the extensionless plugin runtime
 `bin/prawduct-hook`) is checked, not just top-level statements. Catches asyncio
 creep anywhere — nested functions, conditional imports, etc. The `lib/` and
 `bin/` roots are the v2.0.0 plugin runtime (build-plan Chunk 5); the invariant
@@ -21,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in ("tools", "tests", "hooks", "lib"):
+    for root in ("tests", "hooks", "lib"):
         for path in (REPO_ROOT / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue

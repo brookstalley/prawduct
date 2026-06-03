@@ -1,8 +1,6 @@
-"""Tests for tools/lib/advisory_store.py — post-sync advisory infrastructure.
+"""Tests for lib/advisory_store.py — advisory infrastructure (store + registry).
 
-Loads prawduct-setup.py via importlib (hyphenated filename) and reaches the
-advisory module through the `_lib_advisory_store` submodule alias, mirroring the
-`_lib_sync_cmd` access pattern used in test_prawduct_sync.py.
+Imports the advisory module directly from the plugin's `lib/`.
 
 Covers Chunk 01 (spine): store I/O, id-hash, ProjectState/Codebase loaders, the
 probe registry, the active/resolved reconcile diff, and the run_sync_advisories
@@ -12,19 +10,17 @@ are tested in their own chunks.
 
 from __future__ import annotations
 
-import importlib.util
+import sys
 import json
 from pathlib import Path
 
 import pytest
 
-# Load prawduct-setup.py via importlib
-_TOOL_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
-_spec = importlib.util.spec_from_file_location("prawduct_setup", _TOOL_PATH)
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-_adv = _mod._lib_advisory_store
+from lib import advisory_store as _adv  # noqa: E402
 
 AdvisoryCandidate = _adv.AdvisoryCandidate
 Codebase = _adv.Codebase

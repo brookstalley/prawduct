@@ -2,7 +2,7 @@
 
 The PR reviewer assesses whether a changeset is ready to merge. It is invoked as a **separate agent** (via Claude Code's Task tool), providing genuinely independent review — the agent hasn't seen the builder's reasoning or decision-making.
 
-The Critic ensures work quality per-chunk. The cumulative-mode Critic (`/critic cumulative`, gated structurally before `/pr create`) reviews the full PR bundle (`merge-base...HEAD`) for cross-chunk integration cracks. The PR reviewer (you) then assesses whether the whole changeset is ready to ship — a different lens (release readiness, narrative, scope) from the Critic's correctness focus. All three layers complement each other.
+The Critic ensures work quality per-chunk. The cumulative-mode Critic (`/prawduct:critic cumulative`, gated structurally before `/prawduct:pr create`) reviews the full PR bundle (`merge-base...HEAD`) for cross-chunk integration cracks. The PR reviewer (you) then assesses whether the whole changeset is ready to ship — a different lens (release readiness, narrative, scope) from the Critic's correctness focus. All three layers complement each other.
 
 ## When You Are Activated
 
@@ -13,7 +13,7 @@ The Critic ensures work quality per-chunk. The cumulative-mode Critic (`/critic 
 5. Read `.prawduct/learnings.md` for project-specific patterns.
 6. Review against the goals below.
 
-**You may be skipped.** Two PR-boundary fast-paths in `/pr create` skip this reviewer when the cumulative pass would add no signal: doc-only (every file in `merge-base...HEAD` is `.md`) and trivial-code (every commit is fileset-eligible per the `Type: trivial` path bounds — no `agents/`/`methodology/`/`templates/`/`CLAUDE.md` edits, no test deletions, no new files; per-chunk Critic Goal 3 rationale-vs-diff review is the judgment backstop). If `/pr create` invoked you anyway under one of these fast-paths, run the full review — the fast-path is a caller-side optimization, not a reviewer-side waiver. Fail closed in both directions.
+**You may be skipped.** Two PR-boundary fast-paths in `/prawduct:pr create` skip this reviewer when the cumulative pass would add no signal: doc-only (every file in `merge-base...HEAD` is `.md`) and trivial-code (every commit is fileset-eligible per the `Type: trivial` path bounds — no `agents/`/`methodology/`/`templates/`/`CLAUDE.md` edits, no test deletions, no new files; per-chunk Critic Goal 3 rationale-vs-diff review is the judgment backstop). If `/prawduct:pr create` invoked you anyway under one of these fast-paths, run the full review — the fast-path is a caller-side optimization, not a reviewer-side waiver. Fail closed in both directions.
 
 ## Review Goals
 
@@ -74,7 +74,7 @@ The Critic may have caught these per-chunk. You catch what slipped through or em
 - No unintended file changes (lock files, IDE configs, unrelated formatting)
 - No TODOs or placeholders left in shipped code
 - No secrets or credentials
-- **Derived views** (when `views_enabled: true` in `project-state.yaml`): build-plan `## Status` checkboxes, `.prawduct/release-notes.md`, and the `scope_rollups:` block in `project-state.yaml` are all derived from change-log.md tags via `product-hook regen-views`. The canonical source is the change-log tag line. If any view diff has no matching change-log tag-line edit (Status flip with no `status=shipped` tag, release-notes section with no `release=` tag, scope_rollups update with no `scope=` tag), regen wasn't run or the tag is missing → **WARNING**. Don't review derived files as hand-curated content.
+- **Derived views** (when `views_enabled: true` in `project-state.yaml`): build-plan `## Status` checkboxes, `.prawduct/release-notes.md`, and the `scope_rollups:` block in `project-state.yaml` are all derived from change-log.md tags via `prawduct-hook regen-views`. The canonical source is the change-log tag line. If any view diff has no matching change-log tag-line edit (Status flip with no `status=shipped` tag, release-notes section with no `release=` tag, scope_rollups update with no `scope=` tag), regen wasn't run or the tag is missing → **WARNING**. Don't review derived files as hand-curated content.
 
 ### 7. Proportionality
 **Severity: NOTE**
@@ -151,11 +151,11 @@ After PR creation, update `pr_number` in the evidence file. After merge, delete 
 
 | Dimension | Critic (`chunk`/`final`) | Critic (`cumulative`) | PR Reviewer |
 |---|---|---|---|
-| **When** | After each build chunk / end-of-cycle | Before PR creation (`/pr create` gate) | Before PR creation |
+| **When** | After each build chunk / end-of-cycle | Before PR creation (`/prawduct:pr create` gate) | Before PR creation |
 | **Scope** | One chunk's diff / end-of-cycle diff | `merge-base...HEAD` (full PR bundle) | Full PR diff (all chunks) |
 | **Perspective** | Is the work good? | Do the chunks compose into a sound whole? | Is this ready to merge? |
 | **Key concerns** | Spec compliance, tests, coherence | Cross-chunk integration cracks | Bugs, scope, narrative, simplification |
-| **Enforcement** | BLOCKING (stop hook) | BLOCKING (`product-hook check-cumulative-critic`) | BLOCKING (stop hook gate) |
+| **Enforcement** | BLOCKING (stop hook) | BLOCKING (`prawduct-hook check-cumulative-critic`) | BLOCKING (stop hook gate) |
 | **Independence** | Separate agent (Task tool) | Separate agent (Task tool) | Separate agent (Task tool) |
 
 ## Extending This Skill

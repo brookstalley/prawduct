@@ -1,204 +1,37 @@
-"""Tests for v5 template content, structure, and constraints.
+"""Tests for the surviving template content + the plugin skills that the retired
+file-sync mirror-templates used to validate.
 
-Validates that v5 templates meet the requirements:
-- product-claude.md: <2,800 tokens, critical rules at top, all C1-C4 represented
-- project-state.yaml: v5 fields present, v4 fields preserved
-- critic-review.md: goal-based structure, signal-driven scope
-- boundary-patterns.md: template structure correct
+After M4 Chunk 4 retired the file-sync product templates (``product-claude.md``,
+``critic-review.md``, ``build-governance.md``, the ``skill-*.md``, ``conftest.py``),
+the content those mirror-tests guarded is now checked against its plugin
+source-of-truth elsewhere:
+  - methodology content (principles, governance model, critic goals/severity/PBT)
+    → ``test_v5_methodology.py`` (``TestBuildingMethodology`` / ``TestCriticSkill`` /
+    ``TestMethodologyPBT``) plus the always-injected session digest
+    (``test_plugin_methodology_digest.py``);
+  - ``skills/learnings/SKILL.md`` and ``skills/critic/review-protocol.md`` → retargeted
+    in this file.
+
+What remains here validates the place-once / planning templates that
+``init_product`` still renders or that planning authors scaffold from
+(project-state.yaml, backlog.md, boundary-patterns.md, test-specifications.md,
+project-preferences.md).
 """
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
 import pytest
 import yaml
 
-TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
-
-# Import setup module for block constants
-_SETUP_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
-_setup_spec = importlib.util.spec_from_file_location("prawduct_setup", _SETUP_PATH)
-_setup_mod = importlib.util.module_from_spec(_setup_spec)
-_setup_spec.loader.exec_module(_setup_mod)
-BLOCK_BEGIN = _setup_mod.BLOCK_BEGIN
-BLOCK_END = _setup_mod.BLOCK_END
+FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
+TEMPLATES_DIR = FRAMEWORK_DIR / "templates"
 
 
 def read_template(name: str) -> str:
     """Read a template file and return its content."""
     return (TEMPLATES_DIR / name).read_text()
-
-
-def estimate_tokens(text: str) -> int:
-    """Estimate token count using word-count heuristic."""
-    words = len(text.split())
-    return int(words * 1.3)
-
-
-# =============================================================================
-# product-claude.md — Structure and Token Budget
-# =============================================================================
-
-
-class TestProductClaudeStructure:
-    """Verify structural requirements and token budget of the v5 CLAUDE.md template."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        return read_template("product-claude.md")
-
-    def test_block_markers(self, template: str):
-        """PRAWDUCT:BEGIN and END markers exist in correct order."""
-        assert BLOCK_BEGIN in template
-        assert BLOCK_END in template
-        assert template.index(BLOCK_BEGIN) < template.index(BLOCK_END)
-
-    def test_user_content_areas(self, template: str):
-        """User content space before BEGIN; nothing after END."""
-        assert "Add project-specific instructions" in template[:template.index(BLOCK_BEGIN)]
-        after = template[template.index(BLOCK_END) + len(BLOCK_END):].strip()
-        assert len(after) == 0, f"Unexpected content after PRAWDUCT:END: {after[:100]}"
-
-    def test_product_name_placeholder(self, template: str):
-        assert "{{PRODUCT_NAME}}" in template
-
-    def test_token_budget(self, template: str):
-        """Prawduct block <3,050 tokens; total template <3,650 tokens.
-
-        Budget bumped from 2,800 to 2,900 on 2026-05-01 to accommodate the
-        Framework Freshness section (~50 tokens) added with the structured
-        freshness briefing block.
-
-        Bumped from 2,900 to 3,050 in v1.3.15 (Requirements Precede Code)
-        to accommodate the "Before Building: Requirements Clarity" section
-        (~110 tokens after aggressive trimming) — the runtime trigger for
-        Principle 6 in product repos. The section is the every-session-read
-        expression of the new principle; trimming further loses the
-        actionable structure.
-
-        Further increases should be deliberate — the budget exists to keep
-        the every-session-read content compact.
-        """
-        begin_idx = template.index(BLOCK_BEGIN)
-        end_idx = template.index(BLOCK_END) + len(BLOCK_END)
-        block_tokens = estimate_tokens(template[begin_idx:end_idx])
-        total_tokens = estimate_tokens(template)
-        assert block_tokens <= 3050, f"Block is ~{block_tokens} tokens, budget is 3,050"
-        assert total_tokens <= 3650, f"Total is ~{total_tokens} tokens, budget is 3,650"
-
-
-# =============================================================================
-# product-claude.md — Content Requirements (C1-C4)
-# =============================================================================
-
-
-class TestProductClaudeCriticalRules:
-    """Critical rules section must exist before principles with all required rules."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        return read_template("product-claude.md")
-
-    def test_critical_rules_before_principles(self, template: str):
-        assert "## Critical Rules" in template
-        assert "## Principles" in template
-        assert template.index("## Critical Rules") < template.index("## Principles")
-
-    def test_all_critical_rules_present(self, template: str):
-        """All critical rules must appear in the Critical Rules section."""
-        rules_section = template[
-            template.index("## Critical Rules"):template.index("## Principles")
-        ].lower()
-        assert "never weaken" in rules_section
-        assert "silently drop" in rules_section
-        assert "alongside" in rules_section
-        assert "investigate" in rules_section
-        assert "boundar" in rules_section
-        assert "update artifacts" in rules_section
-        assert "critic" in rules_section
-        # Exception handling (swallow or except)
-        assert "swallow" in rules_section or "except" in rules_section
-
-
-class TestProductClaudeGovernance:
-    """Verify work-scaled governance (C1), investigated changes (C3), active context (C4)."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        return read_template("product-claude.md")
-
-    def test_governance_model(self, template: str):
-        """Work-scaled governance with size/type levels, no v4 phase references."""
-        lower = template.lower()
-        assert "## Governance Model" in template
-        assert "no phases" in lower or "there are no phases" in lower
-        for level in ["trivial", "small", "medium", "large"]:
-            assert level in lower
-        for wtype in ["feature", "bugfix", "refactor", "hotfix"]:
-            assert wtype in lower
-        assert "current_phase" not in template
-
-    def test_investigated_changes(self, template: str):
-        """Research subagent, boundary patterns, lock-in references."""
-        lower = template.lower()
-        assert "research subagent" in lower or "research sub" in lower
-        assert "boundary-patterns" in template
-        assert "lock-in" in lower
-
-    def test_active_context(self, template: str):
-        """Learning lifecycle, session briefing, subagent briefing, /learnings skill."""
-        lower = template.lower()
-        assert "active rules" in lower
-        assert "learnings-detail" in lower
-        assert "session briefing" in lower
-        assert ".subagent-briefing.md" in template
-        assert "/learnings" in template
-
-    def test_critic_section(self, template: str):
-        """Critic instructions with goal-based scope and compact instructions."""
-        assert "## The Critic" in template
-        assert "/critic" in template
-        critic_section = template[template.index("## The Critic"):]
-        assert "goal" in critic_section.lower() or "signal" in critic_section.lower()
-        assert "## Compact Instructions" in template
-
-
-class TestProductClaudePrinciples:
-    """All 23 principles must be present."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        return read_template("product-claude.md")
-
-    @pytest.mark.parametrize("num,name", [
-        (1, "Tests Are Contracts"),
-        (2, "Complete Delivery"),
-        (3, "Living Documentation"),
-        (4, "Reasoned Decisions"),
-        (5, "Honest Confidence"),
-        (6, "Requirements Precede Code"),
-        (7, "Bring Expertise"),
-        (8, "Accessibility From the Start"),
-        (9, "Visible Costs"),
-        (10, "Clean Deployment"),
-        (11, "Proportional Effort"),
-        (12, "Scope Discipline"),
-        (13, "Coherent Artifacts"),
-        (14, "Independent Review"),
-        (15, "Validate Before Propagating"),
-        (16, "Root Cause Discipline"),
-        (17, "Automatic Reflection"),
-        (18, "Close the Learning Loop"),
-        (19, "Evolving Principles"),
-        (20, "Infer, Confirm, Proceed"),
-        (21, "Structural Awareness"),
-        (22, "Governance Is Structural"),
-        (23, "Challenge Gently, Defer Gracefully"),
-    ])
-    def test_principle_present(self, template: str, num: int, name: str):
-        assert name in template, f"Principle {num} ({name}) missing from template"
 
 
 # =============================================================================
@@ -307,101 +140,6 @@ class TestBacklogTemplate:
 
 
 # =============================================================================
-# critic-review.md — Goal-Based Structure
-# =============================================================================
-
-
-class TestCriticReviewGoalBased:
-    """Verify critic-review.md uses goal-based scope, not fixed checklist."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        return read_template("critic-review.md")
-
-    def test_goal_based_structure(self, template: str):
-        """Uses goals instead of numbered checks; signals section present."""
-        assert "## Review Goals" in template or "## Goals" in template
-        assert "### Spec Compliance\n" not in template
-        assert "signal" in template.lower()
-        assert "### Signals" in template
-
-    def test_all_goals_present(self, template: str):
-        """All seven review goals present."""
-        lower = template.lower()
-        assert "nothing is broken" in lower
-        assert "nothing is missing" in lower
-        assert "nothing is unintended" in lower
-        assert "coherent" in lower or "coherence" in lower
-        assert "deliberate" in lower or "rationale" in lower
-        assert "design is sound" in lower
-
-    def test_work_scaling(self, template: str):
-        """Work size and type guidance present."""
-        lower = template.lower()
-        for level in ["trivial", "medium", "large"]:
-            assert level in lower
-        for wtype in ["feature", "bugfix", "refactor"]:
-            assert wtype in lower
-
-    def test_severity_levels(self, template: str):
-        """BLOCKING/WARNING/NOTE with correct semantics."""
-        assert "BLOCKING" in template
-        assert "WARNING" in template
-        assert "NOTE" in template
-        for line in template.split("\n"):
-            if line.startswith("- **NOTE**"):
-                assert "ambiguous" in line.lower() or "unsure" in line.lower() or "genuinely" in line.lower()
-                break
-
-    def test_references_and_output(self, template: str):
-        """References findings JSON, boundary patterns, project preferences, learnings."""
-        assert ".critic-findings.json" in template
-        assert "boundary" in template.lower() or "contract" in template.lower()
-        assert "independent" in template.lower()
-        assert "learnings.md" in template
-        assert "Learnings Cross-Check" in template
-        assert "Backlog Reconciliation" in template
-
-    def test_quality_checks(self, template: str):
-        """Security, documentation drift, design details, coordinator pattern present."""
-        lower = template.lower()
-        assert "injection" in lower
-        assert "secret" in lower or "credential" in lower
-        assert "documentation drift" in lower
-        assert "encapsulation" in lower
-        assert "coupling" in lower
-        assert "coordinator" in lower
-        assert "bidirectional" in lower
-        assert "readme" in lower
-
-    def test_project_preferences_blocking(self, template: str):
-        """Project preferences violations should be BLOCKING."""
-        for line in template.split("\n"):
-            if "project-preferences" in line.lower() and "blocking" in line.lower():
-                break
-        else:
-            pytest.fail("project-preferences compliance should be BLOCKING")
-
-    def test_changelog_scope(self, template: str):
-        assert "changelog" in template.lower()
-
-    def test_property_based_testing_note(self, template: str):
-        """Goal 1 includes a NOTE-level check for property-based testing."""
-        lower = template.lower()
-        assert "property-based" in lower
-        # It should be NOTE severity (advisory, not requirement)
-        # Find the PBT sentence and verify it's in Goal 1 context
-        goal1_start = template.index("### 1.")
-        goal2_start = template.index("### 2.")
-        goal1_section = template[goal1_start:goal2_start].lower()
-        assert "property-based" in goal1_section
-        # NOTE should appear after the last PBT mention (severity comes at end of sentence)
-        last_pbt = goal1_section.rfind("property-based")
-        after_last_pbt = goal1_section[last_pbt:]
-        assert "note" in after_last_pbt[:200]
-
-
-# =============================================================================
 # boundary-patterns.md — Template Structure
 # =============================================================================
 
@@ -436,41 +174,12 @@ class TestBoundaryPatternsTemplate:
 
 
 # =============================================================================
-# Cross-Template Consistency
+# Critic skill — PBT check (plugin source-of-truth)
 # =============================================================================
 
 
-class TestBuildGovernancePBT:
-    """Verify build-governance.md includes property-based testing guidance."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        return read_template("build-governance.md")
-
-    def test_pbt_in_test_discipline(self, template: str):
-        """Build governance mentions PBT in the test-writing step."""
-        lower = template.lower()
-        assert "property-based" in lower
-        # Should be in the "Write tests" step context, not in rules or session end
-        test_step_line = [
-            line for line in template.split("\n")
-            if "Write tests alongside code" in line
-        ]
-        assert len(test_step_line) == 1
-        assert "property-based" in test_step_line[0].lower()
-
-    def test_pbt_references_test_specifications(self, template: str):
-        """PBT guidance points to test-specifications for details."""
-        for line in template.split("\n"):
-            if "property-based" in line.lower():
-                assert "test-specifications" in line.lower()
-                break
-        else:
-            pytest.fail("PBT guidance line not found")
-
-
 class TestCriticSkillPBT:
-    """Verify framework Critic SKILL.md includes PBT check."""
+    """Verify framework Critic review-protocol includes PBT check."""
 
     @pytest.fixture
     def skill(self) -> str:
@@ -491,75 +200,36 @@ class TestCriticSkillPBT:
                 break
 
 
-class TestCrossTemplateConsistency:
-    """Verify templates reference each other correctly."""
-
-    def test_claude_references(self):
-        """CLAUDE.md references all required artifacts and skills."""
-        template = read_template("product-claude.md")
-        assert "/critic" in template or "critic-review.md" in template
-        assert "boundary-patterns" in template
-        assert ".subagent-briefing.md" in template
-        assert "learnings-detail" in template
-        assert "project-preferences" in template
-        assert "/learnings" in template
-
-    def test_claude_is_self_contained(self):
-        """Product CLAUDE.md must NOT reference framework methodology files."""
-        template = read_template("product-claude.md")
-        for f in ["methodology/discovery.md", "methodology/planning.md",
-                   "methodology/building.md", "methodology/reflection.md"]:
-            assert f not in template
-
-    def test_critic_references(self):
-        """critic-review.md references required artifacts."""
-        template = read_template("critic-review.md")
-        assert "boundary-patterns" in template
-        assert "project-preferences" in template
-        assert ".critic-findings.json" in template
-
-    def test_pbt_consistency_across_synced_templates(self):
-        """All synced governance files mention property-based testing."""
-        build_gov = read_template("build-governance.md").lower()
-        critic = read_template("critic-review.md").lower()
-        critic_skill = (FRAMEWORK_DIR / "skills" / "critic" / "review-protocol.md").read_text().lower()
-        for name, content in [
-            ("build-governance.md", build_gov),
-            ("critic-review.md", critic),
-            ("skills/critic/review-protocol.md", critic_skill),
-        ]:
-            assert "property-based" in content, f"{name} missing PBT guidance"
-
-
 # =============================================================================
-# learnings skill — Template Structure
+# /learnings skill — Structure (plugin source-of-truth)
 # =============================================================================
 
-FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
 
+class TestLearningsSkill:
+    """Verify the plugin /learnings skill has required structure.
 
-class TestLearningsSkillTemplate:
-    """Verify /learnings skill has required structure."""
+    Retargeted from the retired file-sync `templates/skill-learnings.md` to the
+    plugin's `skills/learnings/SKILL.md` (M4 Chunk 4)."""
 
     @pytest.fixture
-    def template(self) -> str:
-        return (FRAMEWORK_DIR / "templates" / "skill-learnings.md").read_text()
+    def skill(self) -> str:
+        return (FRAMEWORK_DIR / "skills" / "learnings" / "SKILL.md").read_text()
 
-    def test_frontmatter_and_references(self, template: str):
+    def test_frontmatter_and_references(self, skill: str):
         """Has required frontmatter and references all knowledge files."""
-        assert "description:" in template
-        assert "argument-hint:" in template
-        assert "disable-model-invocation:" in template
-        assert "learnings.md" in template
-        assert "learnings-detail.md" in template
-        assert "project-preferences.md" in template
+        assert "description:" in skill
+        assert "argument-hint:" in skill
+        assert "disable-model-invocation:" in skill
+        assert "learnings.md" in skill
+        assert "learnings-detail.md" in skill
+        assert "project-preferences.md" in skill
 
-    def test_behavior(self, template: str):
+    def test_behavior(self, skill: str):
         """Has subagent instructions, no-args mode, read-only, token budget."""
-        assert "subagent" in template.lower() or "Agent tool" in template
-        assert "no topic" in template.lower() or "no topic was provided" in template.lower()
-        assert "read-only" in template.lower()
-        assert "500 tokens" in template
+        assert "subagent" in skill.lower() or "Agent tool" in skill
+        assert "no topic" in skill.lower() or "no topic was provided" in skill.lower()
+        assert "read-only" in skill.lower()
+        assert "500 tokens" in skill
 
 
 # =============================================================================
@@ -632,127 +302,3 @@ class TestProjectPreferencesPBT:
                 lower = line.lower()
                 assert "hypothesis" in lower or "proptest" in lower
                 break
-
-
-class TestConftestPBT:
-    """Verify conftest.py template includes hypothesis configuration block."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        return read_template("conftest.py")
-
-    def test_hypothesis_block_present(self, template: str):
-        """Hypothesis configuration block exists in conftest template."""
-        assert "hypothesis" in template.lower()
-
-    def test_hypothesis_block_is_commented(self, template: str):
-        """Hypothesis configuration is commented out (not active by default)."""
-        # Find the hypothesis section and verify lines are commented
-        lines = template.split("\n")
-        in_hypothesis = False
-        hypothesis_lines = []
-        for line in lines:
-            if "property-based testing" in line.lower() and line.strip().startswith("#"):
-                in_hypothesis = True
-            elif in_hypothesis and line.strip() == "":
-                # Allow blank lines in the block
-                continue
-            elif in_hypothesis:
-                if not line.strip().startswith("#") and line.strip():
-                    in_hypothesis = False
-                else:
-                    hypothesis_lines.append(line)
-        assert len(hypothesis_lines) > 0, "No commented hypothesis config found"
-
-    def test_hypothesis_profiles(self, template: str):
-        """Hypothesis block includes ci and dev profiles."""
-        lower = template.lower()
-        assert "ci" in lower
-        assert "dev" in lower
-        assert "register_profile" in template
-
-
-# =============================================================================
-# Janitor Skill — Template Currency and Framework Health
-# =============================================================================
-
-
-class TestJanitorSkillTemplateCurrency:
-    """Verify janitor skill has Template Currency theme and supporting changes."""
-
-    @pytest.fixture
-    def skill(self) -> str:
-        return (FRAMEWORK_DIR / "templates" / "skill-janitor.md").read_text()
-
-    def test_template_currency_theme_exists(self, skill: str):
-        """Template Currency investigation theme present."""
-        assert "### Template Currency" in skill
-
-    def test_template_currency_between_artifact_fitness_and_test_fitness(self, skill: str):
-        """Template Currency positioned after Artifact Fitness, before Test Fitness."""
-        artifact_pos = skill.index("### Artifact Fitness")
-        template_pos = skill.index("### Template Currency")
-        test_pos = skill.index("### Test Fitness")
-        assert artifact_pos < template_pos < test_pos
-
-    def test_template_currency_mentions_key_artifacts(self, skill: str):
-        """Theme mentions the main place-once artifacts to compare."""
-        tc_start = skill.index("### Template Currency")
-        tc_end = skill.index("### Test Fitness")
-        tc_section = skill[tc_start:tc_end]
-        assert "test-specifications" in tc_section
-        assert "project-preferences" in tc_section
-        assert "conftest.py" in tc_section
-
-    def test_templates_scope_shorthand(self, skill: str):
-        """'templates' is listed as a theme shorthand for scope."""
-        assert "templates" in skill.lower().split("theme shorthand for scope:")[1].split("\n")[0]
-
-    def test_framework_health_precheck_in_step1(self, skill: str):
-        """Step 1 includes framework health pre-check."""
-        step1_start = skill.index("### Step 1: Orient")
-        step2_start = skill.index("### Step 2: Survey")
-        step1 = skill[step1_start:step2_start]
-        assert "sync-manifest.json" in step1
-        assert "/prawduct-doctor" in step1
-
-    def test_hash_update_in_step7(self, skill: str):
-        """Step 7 includes guidance to update template hashes after review."""
-        step7_start = skill.index("### Step 7: Close")
-        step7 = skill[step7_start:]
-        assert "place_once_templates" in step7
-        assert "template_hash" in step7 or "template hash" in step7
-
-
-# =============================================================================
-# product-claude.md — Framework Freshness section (anti-conflation guidance)
-# =============================================================================
-
-
-class TestProductClaudeFreshnessSection:
-    """The Framework Freshness section reflects the collapsed briefing (v1.8.0
-    governance-tax diet): a healthy repo shows NO freshness output, and drift
-    surfaces as concise one-line signals across the three axes (version / commit
-    / template) — not a multi-line table to be reported dimension-by-dimension."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        return read_template("product-claude.md")
-
-    def test_section_present(self, template: str):
-        assert "Framework Freshness" in template
-
-    def test_names_three_drift_dimensions(self, template: str):
-        # Must still give the agent vocabulary for each drift axis
-        section_idx = template.index("Framework Freshness")
-        section = template[section_idx:section_idx + 1000]
-        assert "version" in section.lower()
-        assert "commit" in section.lower()
-        assert "template" in section.lower()
-
-    def test_says_healthy_repo_is_silent(self, template: str):
-        # The new contract: an up-to-date repo emits no freshness output, so the
-        # agent shouldn't expect (or fabricate) a freshness block every session.
-        section_idx = template.index("Framework Freshness")
-        section = template[section_idx:section_idx + 1000].lower()
-        assert "no" in section and ("healthy" in section or "current" in section)

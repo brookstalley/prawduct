@@ -144,7 +144,7 @@ Learnings are captured during development and surfaced on demand via the `/prawd
 
 Updates arrive through the plugin marketplace: with `autoUpdate`, Claude Code re-resolves the latest release at session start — **zero changes to your repo**. The session banner shows the active version and, on a bump, what changed and which governance gates are newly active. There is no sync step and no framework files to reconcile.
 
-(v1 file-sync repos still in transition: the legacy `prawduct-setup.py sync` path keeps working until you migrate — see [MIGRATION](documentation/MIGRATION.md).)
+(v1 file-sync repos not yet migrated keep running on their last-synced framework copy until you move them onto the plugin with `/prawduct:migrate` — see [MIGRATION](documentation/MIGRATION.md).)
 
 ### Health-check a product repo
 
@@ -185,7 +185,7 @@ A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference
 
 ## Testing Prawduct
 
-Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance — plus the frozen file-sync engine kept for un-migrated repos (1804 tests):
+Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance (615 tests):
 
 ```bash
 cd prawduct
@@ -259,8 +259,6 @@ prawduct/
 └── .prawduct/                  # the framework's own state — it dogfoods its own plugin
 ```
 
-During the v1→v2 transition this repo also carries the **frozen file-sync sibling service** — `tools/` (`prawduct-setup.py`, `product-hook`, `lib/`) and the `templates/skill-*.md` sources — which still serves un-migrated external repos. It is removed once all local repos have migrated (post-2.0).
-
 ## Architecture
 
 Three layers:
@@ -284,7 +282,7 @@ Full history is in [CHANGELOG.md](CHANGELOG.md). Highlights:
 - **`/prawduct:migrate`** — one-command, reversible v1 file-sync → plugin cutover (see [MIGRATION](documentation/MIGRATION.md))
 - Plugin-native new-product scaffolding via `/prawduct:doctor`
 - Gitflow release model (see [docs/release-process.md](docs/release-process.md))
-- Backward compatible: existing v1 file-sync repos keep working via a frozen sibling engine until they migrate
+- Backward compatible: existing v1 file-sync repos migrate onto the plugin via `/prawduct:migrate` (one reversible, revertable commit)
 
 ## License
 

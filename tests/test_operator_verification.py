@@ -11,15 +11,10 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TOOLS_DIR = REPO_ROOT / "tools"
-if str(TOOLS_DIR) not in sys.path:
-    sys.path.insert(0, str(TOOLS_DIR))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from lib import operator_verification as ov  # noqa: E402
-from lib.migrate_cmd import (  # noqa: E402
-    enable_v1_4_operator_verification,
-    run_migrate_operator_verification,
-)
 
 
 # =============================================================================
@@ -469,193 +464,32 @@ class TestRunAcceptPending:
 
 
 # =============================================================================
-# enable_v1_4_operator_verification (migrate flow)
+# prawduct-hook check-operator-verification / accept-operator-verification
+# (subprocess so we exercise the plugin-runtime dispatch wiring)
 # =============================================================================
 
 
-class TestEnableV1_4OperatorVerification:
-    def test_one_shot_short_circuits(self, tmp_path: Path):
-        product = tmp_path / "p"
-        (product / ".prawduct").mkdir(parents=True)
-        (product / ".prawduct" / "project-state.yaml").write_text(
-            "operator_verification_required: false\n"
-        )
-        manifest = {"v1_4_operator_verification_enabled": True}
-        actions, notes = enable_v1_4_operator_verification(
-            product, manifest, force=False
-        )
-        assert actions == []
-        assert notes == []
-        # Flag still set; YAML untouched.
-        text = (product / ".prawduct" / "project-state.yaml").read_text()
-        assert "operator_verification_required: false" in text
+class TestPrawductHookOperatorVerification:
+    """Subprocess-level coverage of the plugin runtime's dispatch wiring.
 
-    def test_flips_existing_false_key(self, tmp_path: Path):
-        product = tmp_path / "p"
-        (product / ".prawduct").mkdir(parents=True)
-        (product / ".prawduct" / "project-state.yaml").write_text(
-            "operator_verification_required: false\n"
-        )
-        manifest: dict = {}
-        actions, notes = enable_v1_4_operator_verification(product, manifest)
-        assert any("Flipped" in a for a in actions)
-        assert manifest["v1_4_operator_verification_enabled"] is True
-        text = (product / ".prawduct" / "project-state.yaml").read_text()
-        assert "operator_verification_required: true" in text
-
-    def test_appends_block_when_key_absent(self, tmp_path: Path):
-        product = tmp_path / "p"
-        (product / ".prawduct").mkdir(parents=True)
-        (product / ".prawduct" / "project-state.yaml").write_text(
-            "other_field: 1\n"
-        )
-        manifest: dict = {}
-        actions, notes = enable_v1_4_operator_verification(product, manifest)
-        assert any("Added operator_verification_required" in a for a in actions)
-        text = (product / ".prawduct" / "project-state.yaml").read_text()
-        assert "operator_verification_required: true" in text
-
-    def test_places_queue_template_if_absent(self, tmp_path: Path):
-        product = tmp_path / "p"
-        (product / ".prawduct").mkdir(parents=True)
-        (product / ".prawduct" / "project-state.yaml").write_text(
-            "operator_verification_required: false\n"
-        )
-        manifest: dict = {}
-        actions, _ = enable_v1_4_operator_verification(product, manifest)
-        assert (product / ".prawduct" / "operator-verification.md").is_file()
-        assert any("Placed" in a for a in actions)
-
-    def test_existing_queue_not_overwritten(self, tmp_path: Path):
-        product = tmp_path / "p"
-        (product / ".prawduct").mkdir(parents=True)
-        (product / ".prawduct" / "project-state.yaml").write_text(
-            "operator_verification_required: false\n"
-        )
-        # User-authored content must survive migration.
-        existing_queue = (
-            "# Queue\n\n## VRF-001 — pre-existing\n**Status:** pending\n"
-        )
-        (product / ".prawduct" / "operator-verification.md").write_text(
-            existing_queue
-        )
-        manifest: dict = {}
-        enable_v1_4_operator_verification(product, manifest)
-        queue = (
-            product / ".prawduct" / "operator-verification.md"
-        ).read_text()
-        assert queue == existing_queue
-
-    def test_already_on_no_actions(self, tmp_path: Path):
-        product = tmp_path / "p"
-        (product / ".prawduct").mkdir(parents=True)
-        (product / ".prawduct" / "project-state.yaml").write_text(
-            "operator_verification_required: true\n"
-        )
-        # Queue file already present so we don't trigger the place step.
-        (product / ".prawduct" / "operator-verification.md").write_text(
-            "# Queue\n"
-        )
-        manifest: dict = {}
-        actions, notes = enable_v1_4_operator_verification(product, manifest)
-        assert actions == []
-        assert manifest["v1_4_operator_verification_enabled"] is True
-        assert any("already true" in n for n in notes)
-
-    def test_inline_comment_tolerated(self, tmp_path: Path):
-        # Detector/mutator must agree on inline-comment forms (Chunk 10
-        # asymmetry lesson reapplied).
-        product = tmp_path / "p"
-        (product / ".prawduct").mkdir(parents=True)
-        (product / ".prawduct" / "project-state.yaml").write_text(
-            "operator_verification_required: false  # opt-in\n"
-        )
-        manifest: dict = {}
-        actions, _ = enable_v1_4_operator_verification(product, manifest)
-        assert any("Flipped" in a for a in actions)
-        text = (product / ".prawduct" / "project-state.yaml").read_text()
-        assert "operator_verification_required: true" in text
-        assert "# opt-in" in text  # inline comment preserved
-
-
-# =============================================================================
-# run_migrate_operator_verification (runner)
-# =============================================================================
-
-
-class TestRunMigrateOperatorVerification:
-    def test_no_prawduct_dir_errors(self, tmp_path: Path):
-        result = run_migrate_operator_verification(str(tmp_path / "nope"))
-        assert "error" in result
-
-    def test_missing_manifest_errors(self, tmp_path: Path):
-        product = tmp_path / "p"
-        (product / ".prawduct").mkdir(parents=True)
-        (product / ".prawduct" / "project-state.yaml").write_text("")
-        result = run_migrate_operator_verification(str(product))
-        assert "error" in result
-        assert "sync-manifest.json" in result["error"]
-
-    def test_happy_path_persists_manifest(self, tmp_path: Path):
-        product = tmp_path / "p"
-        prawduct = product / ".prawduct"
-        prawduct.mkdir(parents=True)
-        (prawduct / "project-state.yaml").write_text(
-            "operator_verification_required: false\n"
-        )
-        (prawduct / "sync-manifest.json").write_text("{}\n")
-
-        result = run_migrate_operator_verification(str(product))
-        assert "error" not in result
-        assert result["enabled"] is True
-        manifest = json.loads(
-            (prawduct / "sync-manifest.json").read_text()
-        )
-        assert manifest["v1_4_operator_verification_enabled"] is True
-
-    def test_result_shape_stable(self, tmp_path: Path):
-        product = tmp_path / "p"
-        prawduct = product / ".prawduct"
-        prawduct.mkdir(parents=True)
-        (prawduct / "project-state.yaml").write_text(
-            "operator_verification_required: false\n"
-        )
-        (prawduct / "sync-manifest.json").write_text("{}\n")
-
-        result = run_migrate_operator_verification(str(product))
-        for key in (
-            "product_dir",
-            "enabled",
-            "force",
-            "actions",
-            "notes",
-        ):
-            assert key in result
-
-
-# =============================================================================
-# product-hook check-operator-verification / accept-operator-verification
-# (subprocess so we exercise the dispatch wiring)
-# =============================================================================
-
-
-class TestProductHookCommands:
-    """Subprocess-level coverage of the product-hook dispatch wiring.
-
-    Kept intentionally minimal — three subprocess tests verify the new
+    Kept intentionally minimal — three subprocess tests verify the
     commands are reachable and exit-code semantics are correct. Branch
     coverage of the underlying logic lives in the in-process
     Test* classes above.
     """
 
     def _hook(self, project_dir: Path, *args: str) -> subprocess.CompletedProcess:
-        cmd = [sys.executable, str(TOOLS_DIR / "product-hook"), *args]
+        cmd = [sys.executable, str(REPO_ROOT / "bin" / "prawduct-hook"), *args]
         return subprocess.run(
             cmd,
             cwd=project_dir,
             capture_output=True,
             text=True,
-            env={"CLAUDE_PROJECT_DIR": str(project_dir), "PATH": "/usr/bin:/bin"},
+            env={
+                "CLAUDE_PROJECT_DIR": str(project_dir),
+                "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT),
+                "PATH": "/usr/bin:/bin",
+            },
         )
 
     def test_check_dispatch_returns_0_when_gate_off(self, tmp_path: Path):
@@ -683,67 +517,3 @@ class TestProductHookCommands:
         assert "rationale" in cp.stderr.lower()
 
 
-# =============================================================================
-# prawduct-setup CLI (subprocess)
-# =============================================================================
-
-
-class TestPrawductSetupCLI:
-    """Subprocess-level coverage of the prawduct-setup CLI dispatch wiring.
-
-    Two subprocess tests verify the new ``--enable-operator-verification``
-    migrate flag and the new ``verify`` subcommand are reachable. Branch
-    coverage of the underlying logic lives in the in-process Test*
-    classes above.
-    """
-
-    def _setup(self, *args: str) -> subprocess.CompletedProcess:
-        cmd = [
-            sys.executable,
-            str(TOOLS_DIR / "prawduct-setup.py"),
-            *args,
-        ]
-        return subprocess.run(cmd, capture_output=True, text=True)
-
-    def test_migrate_dispatch_enable_operator_verification(self, tmp_path: Path):
-        product = tmp_path / "p"
-        prawduct = product / ".prawduct"
-        prawduct.mkdir(parents=True)
-        (prawduct / "project-state.yaml").write_text(
-            "operator_verification_required: false\n"
-        )
-        (prawduct / "sync-manifest.json").write_text("{}\n")
-
-        cp = self._setup(
-            "migrate",
-            "--enable-operator-verification",
-            str(product),
-            "--json",
-        )
-        assert cp.returncode == 0, cp.stderr
-        data = json.loads(cp.stdout)
-        assert data["enabled"] is True
-        assert "actions" in data
-        assert "notes" in data
-
-    def test_verify_dispatch_drains_entry(self, tmp_path: Path):
-        product = tmp_path / "p"
-        prawduct = product / ".prawduct"
-        prawduct.mkdir(parents=True)
-        (prawduct / "project-state.yaml").write_text(
-            "operator_verification_required: true\n"
-        )
-        (prawduct / "operator-verification.md").write_text(
-            "## VRF-001 — sample\n**Status:** pending\n"
-        )
-
-        cp = self._setup(
-            "verify",
-            str(product),
-            "VRF-001",
-            "--json",
-        )
-        assert cp.returncode == 0, cp.stderr
-        data = json.loads(cp.stdout)
-        assert data["status"] == "verified"
-        assert data["previous_status"] == "pending"

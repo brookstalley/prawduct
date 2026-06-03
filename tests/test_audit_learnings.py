@@ -1,4 +1,4 @@
-"""Tests for `tools/lib/audit_learnings.py` and the `audit-learnings` CLI.
+"""Tests for `lib/audit_learnings_cmd.py` and the `bin/prawduct-hook audit-learnings` CLI.
 
 Covers the F9 learnings lifecycle sentinel tracker: metadata parsing,
 file segmentation, audit classification (promotion / retirement / stale /
@@ -18,16 +18,20 @@ from pathlib import Path
 
 import pytest
 
-_TOOL_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
-_spec = importlib.util.spec_from_file_location("prawduct_setup_audit", _TOOL_PATH)
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
+import sys  # noqa: E402
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from lib import audit_learnings_cmd as _mod  # noqa: E402
 
 parse_learning_metadata = _mod.parse_learning_metadata
 parse_learnings_file = _mod.parse_learnings_file
 audit_learnings = _mod.audit_learnings
 run_audit_learnings = _mod.run_audit_learnings
 run_sentinel = _mod.run_sentinel
+_HOOK_PATH = _REPO_ROOT / "bin" / "prawduct-hook"
 
 
 # =============================================================================
@@ -541,7 +545,7 @@ class TestRunSentinel:
 
 
 # =============================================================================
-# CLI end-to-end — `python3 tools/prawduct-setup.py audit-learnings`
+# CLI end-to-end — `python3 bin/prawduct-hook audit-learnings`
 # =============================================================================
 
 
@@ -553,7 +557,7 @@ class TestAuditLearningsCLI:
     def test_json_output_contains_expected_keys(self, tmp_path: Path):
         (tmp_path / ".prawduct").mkdir()
         result = subprocess.run(
-            ["python3", str(_TOOL_PATH), "audit-learnings", str(tmp_path), "--json"],
+            ["python3", str(_HOOK_PATH), "audit-learnings", str(tmp_path), "--json"],
             capture_output=True,
             text=True,
         )
@@ -563,27 +567,7 @@ class TestAuditLearningsCLI:
             "product_dir", "applied", "promotions",
             "retirements", "stale_flags", "errors",
         }
-
-    def test_human_output_on_empty(self, tmp_path: Path):
-        """The human-readable mode emits status to stderr (matching the
-        other prawduct-setup subcommands — see `log()` in core.py)."""
-        (tmp_path / ".prawduct").mkdir()
-        result = subprocess.run(
-            ["python3", str(_TOOL_PATH), "audit-learnings", str(tmp_path)],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0
-        assert "Learnings audit" in result.stderr
-
-    def test_no_prawduct_exits_one(self, tmp_path: Path):
-        """Structural error → non-zero exit so callers in shell pipelines
-        can branch on it."""
-        # tmp_path has no .prawduct/ at all.
-        result = subprocess.run(
-            ["python3", str(_TOOL_PATH), "audit-learnings", str(tmp_path)],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 1
-        assert "Error" in result.stderr
+        # NOTE: the plugin runtime's `audit-learnings` CLI contract (stdout
+        # stream, exit codes, missing-learnings handling, usage) is covered by
+        # tests/test_plugin_runtime.py::TestAuditLearningsSubcommand — the
+        # engine's stderr/exit-1 contract retired with tools/prawduct-setup.py.

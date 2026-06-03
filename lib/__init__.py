@@ -1,29 +1,19 @@
 """
-prawduct plugin lib — governance subset of the framework's tools/lib.
+prawduct plugin lib — the dev-time governance library the runtime hook uses.
 
-v2.0.0 plugin distribution: the plugin ships only the *governance* modules the
-runtime hook (`bin/prawduct-hook`) needs — critic-mode inference,
-operator-verification, derived views, the post-sync advisory CLI/store, and the
-learnings-lifecycle audit. The file-sync *transport* modules (`sync_cmd`,
-`migrate_cmd`, `init_cmd`, `validate_cmd`, `views_cmd`) are deliberately NOT
-bundled: the plugin is dev-time governance, not a sync engine (design §2, §7;
-build-plan Chunk 5 "Exclude sync-only machinery from the plugin runtime").
+The plugin ships only *governance* modules `bin/prawduct-hook` needs —
+critic-mode inference, operator-verification, derived views, the advisory
+CLI/store, the learnings-lifecycle audit — plus the plugin-native onboarding
+(`init_product`) and file-sync→plugin migration (`migrate_plugin`). The plugin
+is dev-time governance, not a sync engine (design §2, §7).
 
-Parity (Chunk 5 + Chunk 13): six modules — `core`, `critic_mode`, `views`,
-`advisory_cmd`, `advisory_store`, `audit_learnings_cmd` — are byte-identical
-copies of their `tools/lib/` counterparts, locked by a parity test so they
-cannot drift during Phase-1 coexistence. `audit_learnings_cmd` joined this set
-in Chunk 13 (it is pure governance — stdlib-only, operates on the consumer's own
-`learnings.md`, zero sync coupling — and was mis-grouped with the transport
-modules in Chunk 5). Two modules are bundled but **intentionally diverged** from
-`tools/lib/` — their user-facing hints name plugin-native paths, so they are
-excluded from the byte-parity lock: `operator_verification` (the plugin-native
-enable / `prawduct-hook verify-operator-verification` path, not the frozen 1.x
-`prawduct-setup` path) and `backlog_probes` (the legacy-backlog-format advisory
-names the plugin-namespaced `/prawduct:backlog migrate`, while the file-sync copy
-keeps the bare `/backlog migrate` skill — a v2.0.2 follow-up to the Chunk 13
-namespace sweep, which had missed this probe). When file-sync is fully removed
-(backlog `MIG-M4-REMOVE`, post-2.0.0), the remaining duplication collapses.
+History: through v2.0.x several of these modules were byte-identical copies of a
+frozen `tools/lib/` (the file-sync engine), kept in lockstep by a parity test
+during the file-sync→plugin transition. The file-sync engine was retired in M4
+(`MIG-M4-REMOVE`); `lib/` is now the sole copy and the parity scaffolding is
+gone. `migrate_plugin` still references the `tools/` + `tools/lib/` paths a
+*consuming* repo carries — those are the file-sync residue it removes during a
+repo's migration onto the plugin, not framework code.
 """
 
 # Core utilities and constants (governance dependency — critic_mode/views import it)
@@ -32,38 +22,18 @@ from .core import (  # noqa: F401
     BLOCK_END,
     BUILD_PLAN_POINTER_KEY,
     DEFAULT_BUILD_PLAN_REL,
-    FILE_RENAMES,
     FRAMEWORK_DIR,
     GITIGNORE_ENTRIES,
     MANAGED_FILES,
     PRAWDUCT_VERSION,
-    SKILL_PLACEMENTS,
     TEMPLATES_DIR,
     resolve_build_plan_path,
     read_str_yaml_key,
-    V1_GITIGNORE_ENTRIES,
-    V1_SESSION_FILES,
-    V3_GITIGNORE_ENTRIES,
-    V4_GITIGNORE_ENTRIES,
-    _resolve_framework_dir,
-    _try_pull_framework,
-    compute_block_hash,
-    compute_hash,
-    copy_hook,
-    create_manifest,
-    detect_version,
-    ensure_dir,
     extract_block,
-    infer_product_name,
-    load_json,
     log,
-    merge_settings,
     render_template,
-    replace_settings,
-    untrack_gitignored_files,
     update_gitignore,
     write_template,
-    write_template_overwrite,
 )
 
 # Post-sync advisory infrastructure (store + registry + diff)

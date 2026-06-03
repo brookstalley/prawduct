@@ -54,7 +54,7 @@ If any can't be answered, requirements aren't clear enough (Principle 6 — Requ
 
 There is no "pre-existing" exception (tests, broad exceptions, stale artifacts, anything). If you encounter a problem, fix it or flag it with a reason it can't be fixed now. "Pre-existing" is an escape hatch that permanently degrades quality. Every session starts clean.
 
-**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently. Validate that files, modules, and components referenced in the chunk plan still exist — plans go stale when the codebase evolves (module renames, component deletions, API changes). A quick check before starting saves significant rework. Also run `/learnings [this chunk's focus]` to check for relevant project rules and preferences before coding.
+**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently. Validate that files, modules, and components referenced in the chunk plan still exist — plans go stale when the codebase evolves (module renames, component deletions, API changes). A quick check before starting saves significant rework. Also run `/prawduct:learnings [this chunk's focus]` to check for relevant project rules and preferences before coding.
 
 **Persist plans immediately.** When scope evolves during a work cycle — new chunks emerge, the plan changes, gaps are discovered — write the updated plan to `build-plan.md` immediately. Conversation context is ephemeral; artifacts persist. A plan that exists only in conversation will be lost on compaction or session end. This is the most common way knowledge is lost across sessions.
 
@@ -84,13 +84,13 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
-**Critic review.** Run `/critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
+**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/prawduct:critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 
-**Operator verification (F10).** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/pr create` blocks on pending entries when `operator_verification_required: true`.
+**Operator verification (F10).** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/prawduct:pr create` blocks on pending entries when `operator_verification_required: true`.
 
 **Verify artifacts are current.** Confirm artifacts reflect the code. The Critic checks bidirectional freshness. CLAUDE.md is an instruction file, not an artifact — the Critic warns when its project content exceeds ~150 lines.
 
@@ -189,7 +189,7 @@ Tests are the most important artifact you produce during building. They're contr
 
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively — proportionality applies to strategies too.
 
-**Idiomatic tooling, honest coverage.** Use language-native incremental/cached runners to skip re-runs when nothing changed. The framework asserts the *contract* (every change appears in `.test-evidence.json`'s `changes_referenced`), not a specific verifier. `tools/test-reference-verify` is a **floor**: symbol-grep catches untested new code but cannot prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`; the Critic's `verify-coverage` scales finding language accordingly.
+**Idiomatic tooling, honest coverage.** Use language-native incremental/cached runners to skip re-runs when nothing changed. The framework asserts the *contract* (every change appears in `.test-evidence.json`'s `changes_referenced`), not a specific verifier. `bin/test-reference-verify` is a **floor**: symbol-grep catches untested new code but cannot prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`; the Critic's `verify-coverage` scales finding language accordingly.
 
 ## The Critic
 
@@ -207,11 +207,11 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 
 ### Modes
 
-`/critic` (no args) infers from git + build-plan state via `prawduct-hook infer-critic-mode`; `Critic mode:` in the plan and an explicit slash arg are successive overrides. Four modes:
+`/prawduct:critic` (no args) infers from git + build-plan state via `prawduct-hook infer-critic-mode`; `Critic mode:` in the plan and an explicit slash arg are successive overrides. Four modes:
 
 - **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
 - **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.
-- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Gates `/pr create`.
+- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Gates `/prawduct:pr create`.
 - **`verify-resolutions`** — Goals 1-3 against (prior `files_reviewed` ∪ files since `commit_reviewed`); re-review after fixing prior findings.
 
 Inference failure or unrecognized mode → `final`. See `skills/critic/review-cycle.md` (per-mode table) and `skills/critic/review-protocol.md` (goals).
@@ -224,13 +224,13 @@ Inference failure or unrecognized mode → `final`. See `skills/critic/review-cy
 
 ## Creating Pull Requests
 
-**Default: wait for the user to ask.** Do not create PRs proactively. Only use `/pr` when the user explicitly requests it ("PR this", "create a PR", "push this up", "open a PR"). If `project-preferences.md` sets `PR creation: automatic`, you may create PRs after Critic review passes without being asked.
+**Default: wait for the user to ask.** Do not create PRs proactively. Only use `/prawduct:pr` when the user explicitly requests it ("PR this", "create a PR", "push this up", "open a PR"). If `project-preferences.md` sets `PR creation: automatic`, you may create PRs after Critic review passes without being asked.
 
-Use `/pr` for the full PR lifecycle. It invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
+Use `/prawduct:pr` for the full PR lifecycle. It invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/prawduct:pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
 
-**Cumulative-Critic gate.** `/pr create` calls `product-hook check-cumulative-critic` and refuses to open a PR without a fresh, blocking-free `cumulative` record. Cumulative diffs `merge-base...HEAD` — the full PR bundle — catching cross-chunk integration cracks per-chunk reviews miss. Run `/critic cumulative` first; while it runs (~4-10 min), do prep that doesn't depend on findings (`/learnings`, draft PR description, audit backlog, capture deferred reflections). This reorganizes wait time — it doesn't shorten it.
+**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open a PR without a fresh, blocking-free `cumulative` record. Cumulative diffs `merge-base...HEAD` — the full PR bundle — catching cross-chunk integration cracks per-chunk reviews miss. Run `/prawduct:critic cumulative` first; while it runs (~4-10 min), do prep that doesn't depend on findings (`/prawduct:learnings`, draft PR description, audit backlog, capture deferred reflections). This reorganizes wait time — it doesn't shorten it.
 
-See the plugin's bundled `skills/pr/review-protocol.md` for review criteria. After merge, `/pr` cleans up the build plan. Without `/pr`, do it manually.
+See the plugin's bundled `skills/pr/review-protocol.md` for review criteria. After merge, `/prawduct:pr` cleans up the build plan. Without `/prawduct:pr`, do it manually.
 
 ## Exception Handling
 
@@ -271,4 +271,4 @@ Broad catches that swallow errors without logging (`except Exception: pass`, emp
 
 **Opinionated defaults without configuration**: Shipping a workflow-affecting feature with one hardcoded behavior. If it could reasonably work two ways, make it a `project-preferences.md` preference with a safe default.
 
-**Skipping `final` mode**: chunk-mode skips Coherence, Design, Learnings Cross-Check, and Backlog Reconciliation. After all chunks are `[x]`, run `/critic final` — the stop hook WARNs otherwise.
+**Skipping `final` mode**: chunk-mode skips Coherence, Design, Learnings Cross-Check, and Backlog Reconciliation. After all chunks are `[x]`, run `/prawduct:critic final` — the stop hook WARNs otherwise.

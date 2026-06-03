@@ -1,8 +1,7 @@
-"""Tests for tools/lib/advisory_cmd.py — the /prawduct-advisory management CLI.
+"""Tests for lib/advisory_cmd.py — the /prawduct:advisory management CLI.
 
-Loads prawduct-setup.py via importlib (hyphenated filename) and reaches the CLI
-module through the `_lib_advisory_cmd` submodule alias (mirroring the
-`_lib_advisory_store` pattern in test_advisory_store.py).
+Imports the CLI module (and its advisory_store dependency) directly from the
+plugin's `lib/`.
 
 Covers Chunk 05: the five subcommands (list/show/dismiss/undismiss/resolve), the
 Q5 evidence-reconstruction-on-show path, action-driven resolve, and the argv
@@ -11,18 +10,17 @@ dispatcher (`run`) including flag parsing and fail-closed exit codes.
 
 from __future__ import annotations
 
-import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
 
-_TOOL_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
-_spec = importlib.util.spec_from_file_location("prawduct_setup", _TOOL_PATH)
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-_cmd = _mod._lib_advisory_cmd
-_adv = _mod._lib_advisory_store
+from lib import advisory_cmd as _cmd  # noqa: E402
+from lib import advisory_store as _adv  # noqa: E402
 
 AdvisoryCandidate = _adv.AdvisoryCandidate
 EVIDENCE_CAP = _adv.EVIDENCE_CAP

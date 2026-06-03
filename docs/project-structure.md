@@ -1,8 +1,8 @@
 # Framework Repository Structure
 
-Prawduct v2 *is* a Claude Code plugin (and its own git-backed marketplace). The repo
-also carries the **frozen v1 file-sync engine** (under `tools/`) as a sibling service for
-un-migrated external repos, removed post-2.0 once all local repos migrate. The layout:
+Prawduct v2 *is* a Claude Code plugin (and its own git-backed marketplace). The file-sync
+engine the v1 distribution shipped (the `tools/` tree) was retired in M4 — governance now
+lives entirely in the plugin (`bin/`, `lib/`, `skills/`, `methodology/`, `hooks/`). The layout:
 
 ```
 prawduct/
@@ -26,24 +26,7 @@ prawduct/
 │   ├── building.md                    # How to build with quality, including the Critic review cycle
 │   ├── reflection.md                  # The learning loop
 │   └── session-digest.md             # SessionStart additionalContext digest
-│
-│   # ── Frozen v1 file-sync engine (sibling service for un-migrated repos; removed post-2.0) ──
-├── tools/
-│   ├── product-hook                   # legacy session hook (frozen; stands down when the plugin governs)
-│   ├── prawduct-setup.py              # legacy CLI: setup, sync, validate (delegates to lib/)
-│   ├── prawduct-init.py               # backward-compat shim → prawduct-setup.py setup
-│   ├── prawduct-migrate.py            # backward-compat shim → prawduct-setup.py setup
-│   ├── prawduct-sync.py              # backward-compat shim → prawduct-setup.py sync
-│   └── lib/                           # legacy file-sync implementation modules
-│       ├── core.py                    # MANAGED_FILES/SKILL_PLACEMENTS, template strategies
-│       ├── init_cmd.py                # file-sync setup/init
-│       ├── migrate_cmd.py             # file-sync per-feature migration
-│       ├── sync_cmd.py                # file-sync sync
-│       └── validate_cmd.py            # file-sync validate
-├── templates/                         # Templates for product repos
-│   ├── product-claude.md              # Self-contained CLAUDE.md for products (v3 core)
-│   ├── critic-review.md              # Condensed Critic instructions for products (v3 core)
-│   ├── product-settings.json          # .claude/settings.json template for products
+├── templates/                         # Place-once + planning artifact templates for product repos
 │   ├── project-state.yaml             # Product state template (health_check, build_state)
 │   ├── boundary-patterns.md           # Contract surfaces between components
 │   ├── build-plan.md, product-brief.md, ...  # Artifact templates
@@ -51,19 +34,25 @@ prawduct/
 │   └── unattended-operation/          # runs_unattended templates
 ├── pyproject.toml                        # Minimal pytest configuration
 ├── tests/
-│   ├── test_prawduct_init.py             # Tests for init functionality (prawduct-setup.py)
-│   ├── test_prawduct_migrate.py          # Tests for migration + v5 migration (prawduct-setup.py)
-│   ├── test_prawduct_sync.py             # Tests for sync functionality (prawduct-setup.py)
-│   ├── test_prawduct_validate.py         # Tests for validation functionality (prawduct-setup.py)
-│   ├── test_product_hook.py              # All product-hook tests (governance, briefing, canary, handoff)
-│   ├── test_integration_lifecycle.py     # End-to-end lifecycle tests
-│   ├── test_preferences_lifecycle.py     # Project preferences lifecycle tests
-│   ├── test_v5_methodology.py           # Methodology and Critic content tests
-│   ├── test_v5_templates.py             # Template structure and consistency tests
-│   ├── test_product_compat.py           # Product repo compatibility tests
-│   ├── test_coverage_gaps.py            # User journey and edge case coverage tests
-│   ├── test_pr_reviewer.py              # PR reviewer agent tests
-│   └── scenarios/                     # 8 test scenarios for framework validation
+│   ├── test_plugin_runtime.py            # Plugin hook runtime (briefing, gates, canary, handoff)
+│   ├── test_plugin_init.py               # init-product scaffolding (plugin-native)
+│   ├── test_plugin_migrate.py            # /prawduct:migrate file-sync → plugin cutover
+│   ├── test_plugin_manifest.py           # plugin.json / marketplace.json / hooks wiring
+│   ├── test_plugin_methodology_digest.py # SessionStart digest + methodology reader skills
+│   ├── test_plugin_version_banner.py     # version-delta SessionStart banner
+│   ├── test_critic_mode_inference.py     # /critic mode inference
+│   ├── test_critic_skill_metadata.py     # Critic skill tool restrictions (no test execution)
+│   ├── test_build_plan_resolution.py     # active-build-plan resolver (lib ↔ hook parity)
+│   ├── test_views.py                     # derived views (regen-views)
+│   ├── test_operator_verification.py     # operator-verification queue + gate
+│   ├── test_advisory_store.py, test_advisory_cmd.py  # post-sync advisories
+│   ├── test_audit_learnings.py           # learnings-lifecycle audit
+│   ├── test_reference_verifier.py        # coverage floor verifier
+│   ├── test_pr_reviewer.py               # PR review gate + protocol
+│   ├── test_v5_methodology.py            # Methodology + Critic skill content
+│   ├── test_v5_templates.py              # Surviving template + plugin-skill content
+│   ├── preferences/                      # Architecture/style preference tests
+│   └── scenarios/                        # Framework-validation scenarios
 ├── docs/
 │   ├── principles.md                  # Full 23 principles with rationale
 │   ├── project-structure.md           # This file
