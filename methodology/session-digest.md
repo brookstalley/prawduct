@@ -24,6 +24,9 @@ bugfix → root cause + regression test; refactor → behavior preservation; …
 - **Catch specific exceptions.** Mark a genuinely necessary broad catch
   `# prawduct:ok-broad-except — reason`; never swallow errors silently.
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
+- **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
+  "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in
+  `project-preferences.md`.
 
 ## Principles (apply with judgment, not mechanically)
 

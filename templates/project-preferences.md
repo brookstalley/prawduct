@@ -43,6 +43,7 @@ Developer preferences for how code is written in this project. Captured during d
 - **Protected branches**: main, develop (branches that should not receive direct commits unless branching is "direct")
 - **PR creation**: wait_for_user (default: wait_for_user — only create PRs when explicitly asked; set to "automatic" to create PRs after Critic review passes)
 - **PR merge**: wait_for_user (default: wait_for_user — present the PR for user review before merging; set to "automatic" to merge after CI passes and review is clean)
+- **Commit attribution**: none (default: none — no `Co-Authored-By`, `Signed-off-by`, or "Generated with …" trailers on commits or PR bodies; set to "co-authored" to add a Claude `Co-Authored-By` trailer)
 
 ---
 

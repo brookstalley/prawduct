@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v2.0.1
+Default to **no commit/PR attribution trailers** (`Co-Authored-By`, `Signed-off-by`, "Generated with …"). Opt in per repo via `project-preferences.md` (`Commit attribution: none → co-authored`). The default is carried by the always-injected session digest, so it reaches every governed repo — including migrated ones whose only governance surface is the thin anchor.
+
 ## v2.0.0
 Plugin distribution: Prawduct ships as a Claude Code plugin instead of files synced into each repo. Consuming repos commit **zero** framework files and get always-latest governance via marketplace auto-update — no stash/pop/merge papercuts. Mutable state stays in each repo's `.prawduct/`. Existing v1 file-sync repos keep working and migrate when ready (`/prawduct:migrate`).
 

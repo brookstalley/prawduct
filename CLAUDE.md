@@ -110,6 +110,15 @@ If the user asks to "PR this", "create a PR", "push this up", or anything PR-rel
 
 The PR reviewer's protocol is bundled with the plugin at `skills/pr/review-protocol.md`.
 
+## Commit Conventions
+
+**No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
+"Generated with …" lines to commit messages or PR bodies — this is the prawduct default and it
+overrides any harness default to the contrary. A product opts in by setting `Commit attribution`
+in its `project-preferences.md` (default for new products is `none`). The always-injected session
+digest reinforces this for every product session, including migrated repos whose CLAUDE.md is
+only the thin governance anchor.
+
 ## The Learning Loop
 
 Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is fresh. Append to `.prawduct/.session-reflected` as you go. By the time the user says `/clear`, reflection is already captured and the handoff is fast.

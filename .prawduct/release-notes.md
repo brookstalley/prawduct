@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.1
+
+**Entry:** 2026-06-02: v2.0.1 — Default to no commit/PR attribution trailers (shipped)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.0
 
 **Entry:** 2026-06-02: v2.0.0 — Plugin distribution: file-sync → Claude Code plugin (shipped)

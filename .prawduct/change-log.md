@@ -3,6 +3,22 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-02: v2.0.1 — Default to no commit/PR attribution trailers (shipped)
+
+<!-- prawduct: type=feature | release=v2.0.1 | status=shipped -->
+
+**Why:** Prawduct had no attribution guidance at all — the `Co-Authored-By` trailer came purely from the Claude Code harness default. This establishes the prawduct default of NO attribution trailers (`Co-Authored-By` / `Signed-off-by` / "Generated with …"), opt-in per repo.
+
+**What shipped:**
+- Default carried by the always-injected session digest (`methodology/session-digest.md`) — the sole surface an already-onboarded repo re-reads, so it reaches migrated repos (thin-anchor CLAUDE.md + place-once `project-preferences.md` that is never regenerated).
+- `Commit attribution: none` opt-in toggle in the project-preferences template (set `co-authored` to add the Claude trailer); reinforced in `/prawduct:pr` and this repo's CLAUDE.md.
+- New `TestCommitAttributionDefault` contract; durable learning captured.
+- Also: `base_branch: develop` set in this repo's `project-state.yaml` so its own gitflow PR/coverage/cumulative-Critic/reviewer gates scope to develop instead of falling back to main (the knob shipped in v2.0.0 Chunk 5 but was never configured on the framework's own repo — surfaced while opening PR #50).
+
+**Versioning:** patch bump (2.0.0 → 2.0.1). The bump is the marketplace update-cache key (an unbumped `main` push does not ship); kept at patch to avoid version inflation for a small additive default.
+
+**Tests:** 1806 passing.
+
 ## 2026-06-02: v2.0.0 — Plugin distribution: file-sync → Claude Code plugin (shipped)
 
 <!-- prawduct: chunks=1,2,3,4,5,6,7,8,9,10,11,12,13,14 | release=v2.0.0 | status=shipped | scope=v2.0.0 -->

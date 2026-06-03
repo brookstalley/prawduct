@@ -196,3 +196,30 @@ class TestReaderSkills:
         for phase in PHASES:
             assert f"methodology/{phase}.md" in text, f"index must route to {phase}"
         assert "docs/principles.md" in text, "index must route to the principles"
+
+
+class TestCommitAttributionDefault:
+    """The framework default is NO commit/PR attribution trailers, opt-in via
+    ``project-preferences.md`` (``Commit attribution``). The carrier is the
+    always-injected session digest — it reaches every product session including
+    migrated repos, whose CLAUDE.md is only the thin anchor and whose
+    place-once ``project-preferences.md`` is never regenerated, making the digest
+    their SOLE carrier. The every-session product-claude block is deliberately
+    budget-bound (see TestProductClaudeStructure.test_token_budget), so the rule
+    is intentionally NOT duplicated there. Tolerant substring checks, not verbatim
+    prose.
+    """
+
+    PROJECT_PREFS = ROOT / "templates" / "project-preferences.md"
+
+    def test_digest_carries_no_attribution_default(self):
+        digest = DIGEST_SRC.read_text(encoding="utf-8")
+        assert "Co-Authored-By" in digest, "digest must name the trailer it suppresses"
+        assert "Commit attribution" in digest, "digest must point at the opt-in preference"
+
+    def test_project_preferences_defines_opt_in_toggle(self):
+        lines = self.PROJECT_PREFS.read_text(encoding="utf-8").splitlines()
+        toggle = next((ln for ln in lines if "Commit attribution" in ln), None)
+        assert toggle is not None, "Workflow section must define the Commit attribution toggle"
+        assert "none" in toggle, "the documented default must be none"
+        assert "co-authored" in toggle, "the toggle must document the opt-in value"
