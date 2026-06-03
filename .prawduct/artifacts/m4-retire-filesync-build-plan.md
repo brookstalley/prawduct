@@ -45,6 +45,21 @@ Full rationale + verified safety facts: `~/.claude/plans/lucky-plotting-kahn.md`
 - **Chunk 3 — Strip in-plugin pre-2.0 guards.** Remove `_legacy_filesync_present` coexistence
   nudge, `fallback-no-tools-lib` path, pre-v1.4 evidence acceptance; remove
   `legacy_backlog_format_probe` + its tests; remove `TestPluginCoexistenceNudge`.
+  **Scope expansion (discovered 2026-06-03 during impl):** three further pre-2.0 coexistence
+  stubs in the SAME "strip in-plugin guards" category, fed only by cmd_clear's inert
+  `upgrade_info, sync_advisories, freshness = None, [], None` (line 1966) and passed to
+  `assemble_session_briefing` solely to mirror the legacy file-sync briefing signature — the
+  `upgrade_info` "Framework: upgraded" line, the `advisories` template-drift line, and the
+  `freshness` commit-delta line. All three are unreachable in the plugin runtime and have **zero
+  test coverage** (no test passes a non-None value), so they are dead code. Removed with their
+  params. No later chunk claims runtime coexistence stubs (Chunk 5 is docs/residue), so deferring
+  would orphan them. Also folded in (consequences of the named changes): the `legacy_backlog_format_probe`
+  e2e coverage in `test_plugin_runtime.py::TestPluginClearBriefing` (the fires/no-fire pair +
+  `_write_legacy_backlog` helper) and the `fallback-no-tools-lib` references in the critic skill
+  prose (`SKILL.md` §1, `review-protocol.md` step 1). `infer-critic-mode` ImportError now mirrors
+  the sibling `cmd_advisory` (clear incomplete-install message → exit 1; the skill's existing
+  "inference failure → final" fail-safe absorbs it). Added a `validate-evidence` regression test
+  asserting no-`verifier` evidence is now rejected (encodes the back-compat removal).
   *Done when:* full pytest green, briefing no longer nudges migrate, `/prawduct:critic chunk` clean.
 
 - **Chunk 4 — Remove file-sync-only templates + reconcile registry/tests.** Delete the 7
@@ -63,17 +78,21 @@ Full rationale + verified safety facts: `~/.claude/plans/lucky-plotting-kahn.md`
 ## Status
 - [x] Chunk 1 — DOC-4B2W namespace sweep (49 invocations namespaced; TestPluginDocsNamespacing added; Critic chunk clean; 1817 green)
 - [x] Chunk 2 — Retire the file-sync engine (deleted tools/ + 10 engine tests + parity machinery; repointed 11 governance-module tests to lib/+bin; relocated test-reference-verify→bin/; Critic chunk PASS; 714 green)
-- [ ] Chunk 3 — Strip in-plugin pre-2.0 guards
+- [x] Chunk 3 — Strip in-plugin pre-2.0 guards (removed `_legacy_filesync_present` nudge, `fallback-no-tools-lib` path, pre-v1.4 evidence acceptance, `legacy_backlog_format_probe` module+registration+tests, `TestPluginCoexistenceNudge`; folded in the 3 inert sync-stub briefing params; Critic chunk PASS, 0 findings; 700 green)
 - [ ] Chunk 4 — Remove file-sync-only templates
 - [ ] Chunk 5 — Clean this-repo residue + docs
 
 ## Context
-Chunks 1-2 committed on `feat/retire-filesync-engine-m4`. The file-sync engine is gone; the plugin
-runs standalone (714 green, smoke clean). Test count dropped 1817→714 (engine tests removed —
-expected). **Next: Chunk 3** — strip the in-plugin pre-2.0 guards: `_legacy_filesync_present`
-coexistence nudge + its call in cmd_clear, the `fallback-no-tools-lib` path in infer-critic-mode,
-the pre-v1.4 evidence-schema acceptance, the `legacy_backlog_format_probe` (+ test_backlog_probes),
-and `TestPluginCoexistenceNudge`. Note for Chunk 4: lib/core.py still carries sync-only constants
-(MANAGED_FILES `template:` fields, SKILL_PLACEMENTS, FILE_RENAMES, merge_settings) that lib/__init__.py
-re-exports — slim there; and the `tools/lib` references in lib/core.py:111/116 + migrate_plugin are
-migrate's consumer-removal targets (keep, but reword core.py:111's sync-era rationale in Chunk 4).
+Chunks 1-3 committed on `feat/retire-filesync-engine-m4`. The file-sync engine is gone and the
+in-plugin pre-2.0 guards are stripped; the plugin runs standalone (700 green, clear+stop smoke clean,
+evidence validates against the tightened F4a-always schema). Test count 714→700 (removed 11 backlog-probe
++ 3 coexistence + 2 legacy-backlog e2e; added 2 evidence-schema regression tests). **Next: Chunk 4** —
+remove file-sync-only templates + reconcile registry/tests: delete the 7 `skill-*.md` + governance
+templates (`product-claude`, `critic-review`, `pr-review`, `build-governance`, `product-settings.json`,
+`conftest.py`); slim `lib/core.py` (keep MANAGED_FILES paths migrate needs, drop sync-only
+fields/constants — `template:` fields, SKILL_PLACEMENTS, FILE_RENAMES, merge_settings — that
+lib/__init__.py re-exports); rework `TestNoBareSkillShadowing` + `test_v5_templates.py`. The `tools/lib`
+references in lib/core.py:111/116 + migrate_plugin are migrate's consumer-removal targets (keep, but
+reword core.py:111's sync-era rationale). Residual `fallback-no-tools-lib` strings linger only in
+file-sync-era `templates/` + `.prawduct/critic-review.md` — Chunk 4/5 targets (Critic-confirmed
+out-of-scope for Chunk 3).

@@ -10,7 +10,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 ## When You Are Activated
 
-1. Resolve mode. `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; `mode_chosen_by = "explicit-args"`. Else run `prawduct-hook infer-critic-mode` — stdout `<mode>|<rationale>`; use both. Fall-through: `chunk` with active plan, `final` otherwise; subcommand returns `final|fallback-no-tools-lib` when `tools/lib` is absent.
+1. Resolve mode. `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; `mode_chosen_by = "explicit-args"`. Else run `prawduct-hook infer-critic-mode` — stdout `<mode>|<rationale>`; use both. Fall-through: `chunk` with active plan, `final` otherwise; a non-zero exit (incomplete plugin install) → default to `final`.
 2. Read `.prawduct/project-state.yaml`.
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.

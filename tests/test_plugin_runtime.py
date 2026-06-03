@@ -196,53 +196,6 @@ class TestPluginClearBriefing:
         assert "PRAWDUCT SYNC" not in result.stdout
         assert "framework file(s) updated" not in result.stdout
 
-    def _write_legacy_backlog(self, prawduct: Path, n: int = 7) -> None:
-        """A backlog with `n` legacy items (no [PFX-XXXX] ids) — above the
-        probe's >5 floor, none structured → the legacy-backlog-format probe
-        fires unless backlog_format_version: 2 is recorded."""
-        items = "\n".join(f"- Legacy item {i} that needs an id" for i in range(n))
-        (prawduct / "backlog.md").write_text(f"# Backlog\n\n## Open\n{items}\n")
-
-    def test_clear_fires_legacy_backlog_advisory(self, tmp_path):
-        # Root-cause regression (advisory probes never ran in the plugin runtime
-        # because evaluation was coupled to the now-excised sync step). A plugin
-        # repo with a legacy backlog and no recorded migration must surface the
-        # `legacy-backlog-format` nudge in the briefing AND persist it to the
-        # advisory store, exactly as the file-sync runtime did at sync time.
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "project-state.yaml").write_text("# state, no backlog_format_version\n")
-        self._write_legacy_backlog(prawduct)
-        result = run_plugin_hook("clear", tmp_path)
-        assert result.returncode == 0, result.stderr
-        # Surfaced in the briefing the agent sees (stdout).
-        assert "ADVISORIES" in result.stdout
-        assert "[backlog]" in result.stdout
-        # Plugin runtime renders the namespaced skill — the bare `/backlog migrate`
-        # form does not resolve in a plugin repo's command namespace.
-        assert "/prawduct:backlog migrate" in result.stdout
-        # BOTH advisory-output skill names are plugin-namespaced (ADV-3K7Q): the
-        # recommended action AND the dismiss hint. The hyphenated `/prawduct-advisory`
-        # form is the frozen file-sync skill name and must not leak into a plugin repo.
-        assert "/prawduct:advisory dismiss" in result.stdout
-        assert "/prawduct-advisory" not in result.stdout
-        # Persisted so the dismiss/resolve lifecycle has a record to act on.
-        store = json.loads((prawduct / ".advisories.json").read_text())
-        active = [a for a in store["advisories"] if a.get("state") == "active"]
-        assert any(a.get("type") == "legacy-backlog-format" for a in active), store
-
-    def test_clear_no_advisory_when_backlog_migrated(self, tmp_path):
-        # Resolution side: backlog_format_version: 2 is the "done" fact, so the
-        # probe stays silent even with legacy-shaped items present.
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
-        self._write_legacy_backlog(prawduct)
-        result = run_plugin_hook("clear", tmp_path)
-        assert result.returncode == 0, result.stderr
-        assert "legacy-backlog-format" not in result.stdout
-        assert "/prawduct:backlog migrate" not in result.stdout
-
     def test_clear_briefing_namespaces_status_hints(self, tmp_path):
         # ADV-3K7Q (whole-briefing coherence): the plugin clear briefing's status
         # lines — backlog triage and learnings lookup — must name the
@@ -251,8 +204,8 @@ class TestPluginClearBriefing:
         # kept the bare forms was retired in M4.)
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
-        # Migrated backlog (format v2) so the legacy advisory stays silent and we
-        # isolate the status-line hints; two structured items → the count line fires.
+        # A structured backlog (two items) so the count line fires and we isolate
+        # the status-line hints.
         (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
         (prawduct / "backlog.md").write_text(
             "# Backlog\n\n## Open\n- [ABC-0001] a pending item\n- [ABC-0002] another\n"
@@ -464,10 +417,13 @@ class TestPluginSubcommandsResolveViaLib:
     def test_infer_critic_mode(self, tmp_path):
         self._repo(tmp_path)
         result = run_plugin_hook("infer-critic-mode", tmp_path)
+        # Resolves through the bundled lib/ (exit 0, a real `<mode>|<rationale>`).
+        # The pre-2.0 `final|fallback-no-tools-lib` degradation was removed in M4 —
+        # a failed import now exits non-zero, so a clean run proves lib resolved.
         assert result.returncode == 0, result.stderr
-        # `<mode>|<rationale>` — and NOT the missing-lib fallback.
-        assert "|" in result.stdout
-        assert "fallback-no-tools-lib" not in result.stdout
+        mode, sep, _rationale = result.stdout.strip().partition("|")
+        assert sep == "|", result.stdout
+        assert mode in {"chunk", "final", "cumulative", "verify-resolutions"}, result.stdout
 
     def test_advisory_list(self, tmp_path):
         # `advisory` takes a subcommand; invoke `advisory list` via argv. Proves
@@ -483,6 +439,50 @@ class TestPluginSubcommandsResolveViaLib:
         )
         assert result.returncode == 0, result.stderr
         assert "advisory CLI unavailable" not in (result.stdout + result.stderr)
+
+
+class TestValidateEvidenceSchema:
+    """`prawduct-hook validate-evidence` requires the full F4a coverage schema.
+
+    The pre-v1.4 compat path that accepted ``verifier``-less "legacy" evidence
+    was removed in M4 (file-sync retirement): the plugin runtime always emits
+    the F4a fields (directly, or via ``test-reference-verify --merge-into``), so
+    no remaining writer produces the legacy shape.
+    """
+
+    _COMPLETE = {
+        "timestamp": "2026-06-03T12:00:00Z",
+        "passed": 10, "failed": 0, "skipped": 0,
+        "duration_seconds": 1, "command": "pytest",
+        "verifier": "test-reference-verify (floor: symbol-grep)",
+        "tests_executed": ["tests/test_x.py"],
+        "changes_referenced": ["lib/x.py"],
+        "coverage_level": "referenced",
+    }
+
+    def _write_evidence(self, tmp_path: Path, evidence: dict) -> Path:
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir(exist_ok=True)
+        (prawduct / ".test-evidence.json").write_text(json.dumps(evidence))
+        return tmp_path
+
+    def test_complete_f4a_evidence_accepted(self, tmp_path):
+        repo = self._write_evidence(tmp_path, self._COMPLETE)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 0, result.stderr
+        assert "valid" in result.stdout
+
+    def test_legacy_no_verifier_evidence_rejected(self, tmp_path):
+        # The pre-v1.4 "legacy" shape: the 6 base fields, no F4a coverage fields.
+        legacy = {k: self._COMPLETE[k] for k in (
+            "timestamp", "passed", "failed", "skipped", "duration_seconds", "command",
+        )}
+        repo = self._write_evidence(tmp_path, legacy)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 1, result.stdout
+        # Names the now-required F4a fields so the writer bug is obvious.
+        assert "verifier" in result.stderr
+        assert "coverage_level" in result.stderr
 
 
 class TestWriteIsolationInvariant:
@@ -627,64 +627,6 @@ class TestGitflowBaseResolution:
         r = _run_in(gitflow_repo, "resolve-base")
         assert r.returncode == 1
         assert "nonexistent-branch" in r.stderr
-
-
-class TestPluginCoexistenceNudge:
-    """v2.0.0 Chunk 8 — coexistence nudge. Chosen precedence is *plugin governs,
-    legacy yields*: the plugin keeps governing even while legacy file-sync
-    framework files are still committed, but its SessionStart briefing nudges
-    ``/prawduct:migrate`` so the committed framework drift gets cleaned up.
-    """
-
-    def test_clear_nudges_when_legacy_hook_committed(self, tmp_path):
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
-        # A committed legacy hook still wired into settings.json.
-        (tmp_path / "tools").mkdir()
-        (tmp_path / "tools" / "product-hook").write_text("#!/usr/bin/env python3\n")
-        (tmp_path / ".claude").mkdir()
-        (tmp_path / ".claude" / "settings.json").write_text(
-            json.dumps(
-                {"hooks": {"Stop": [{"hooks": [{"command": 'python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" stop'}]}]}}
-            )
-        )
-
-        result = run_plugin_hook("clear", tmp_path, git_status=" M src/app.py")
-
-        assert result.returncode == 0, result.stderr
-        assert "/prawduct:migrate" in result.stdout
-        assert "still committed" in result.stdout
-        # Plugin GOVERNS regardless — session markers are still written.
-        assert (prawduct / ".session-start").is_file()
-        assert (prawduct / ".session-git-baseline").is_file()
-
-    def test_clear_nudges_when_sync_manifest_has_managed_files(self, tmp_path):
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "sync-manifest.json").write_text(
-            json.dumps({"framework_version": "1.8.1", "files": {"tools/product-hook": "abc123"}})
-        )
-
-        result = run_plugin_hook("clear", tmp_path)
-
-        assert result.returncode == 0, result.stderr
-        assert "/prawduct:migrate" in result.stdout
-
-    def test_clear_no_nudge_when_repo_is_clean(self, tmp_path):
-        # Migrated / never-file-sync repo: no committed hook, manifest without a
-        # files map -> no nudge.
-        prawduct = tmp_path / ".prawduct"
-        prawduct.mkdir()
-        (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
-
-        result = run_plugin_hook("clear", tmp_path, git_status=" M src/app.py")
-
-        assert result.returncode == 0, result.stderr
-        assert "still committed" not in result.stdout
-        assert "/prawduct:migrate" not in result.stdout
-        # Plugin governs normally.
-        assert (prawduct / ".session-start").is_file()
 
 
 class TestVerifyOperatorVerificationSubcommand:
