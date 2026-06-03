@@ -130,4 +130,5 @@ PR review evidence is stored in `.prawduct/.pr-reviews/<branch-name>.json` (with
 - **Run `prawduct-hook check-cumulative-critic` before creating a PR** — this gate refuses to open a PR without a fresh, blocking-free `cumulative`-mode Critic record (see Step 2). The cumulative review (`merge-base...HEAD`) catches cross-chunk integration cracks per-chunk reviews can't see.
 - **Run `prawduct-hook check-operator-verification`** — when `operator_verification_required: true`, the gate refuses to open a PR if `.prawduct/operator-verification.md` has any pending entries. Drain via `prawduct-hook verify-operator-verification <VRF-id>` or override per-PR with `--accept-pending-verification "rationale"` (see Step 2b).
 - Include review findings summary in the PR description
+- **No attribution trailers by default** — do not add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to commit messages or the PR body unless `project-preferences.md` sets `Commit attribution` to opt in
 - **Never run `gh pr create` without a valid evidence file on disk**
