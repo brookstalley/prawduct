@@ -62,12 +62,18 @@ Full rationale + verified safety facts: `~/.claude/plans/lucky-plotting-kahn.md`
 
 ## Status
 - [x] Chunk 1 — DOC-4B2W namespace sweep (49 invocations namespaced; TestPluginDocsNamespacing added; Critic chunk clean; 1817 green)
-- [ ] Chunk 2 — Retire the file-sync engine
+- [x] Chunk 2 — Retire the file-sync engine (deleted tools/ + 10 engine tests + parity machinery; repointed 11 governance-module tests to lib/+bin; relocated test-reference-verify→bin/; Critic chunk PASS; 714 green)
 - [ ] Chunk 3 — Strip in-plugin pre-2.0 guards
 - [ ] Chunk 4 — Remove file-sync-only templates
 - [ ] Chunk 5 — Clean this-repo residue + docs
 
 ## Context
-Chunk 1 committed on `feat/retire-filesync-engine-m4` (1817 passed). Next: **Chunk 2** — the big
-engine deletion (`tools/` + 10 engine test files + prune TestPluginLibParity + relocate
-test-reference-verify→bin/). Source and its tests must land in the same commit to keep the suite green.
+Chunks 1-2 committed on `feat/retire-filesync-engine-m4`. The file-sync engine is gone; the plugin
+runs standalone (714 green, smoke clean). Test count dropped 1817→714 (engine tests removed —
+expected). **Next: Chunk 3** — strip the in-plugin pre-2.0 guards: `_legacy_filesync_present`
+coexistence nudge + its call in cmd_clear, the `fallback-no-tools-lib` path in infer-critic-mode,
+the pre-v1.4 evidence-schema acceptance, the `legacy_backlog_format_probe` (+ test_backlog_probes),
+and `TestPluginCoexistenceNudge`. Note for Chunk 4: lib/core.py still carries sync-only constants
+(MANAGED_FILES `template:` fields, SKILL_PLACEMENTS, FILE_RENAMES, merge_settings) that lib/__init__.py
+re-exports — slim there; and the `tools/lib` references in lib/core.py:111/116 + migrate_plugin are
+migrate's consumer-removal targets (keep, but reword core.py:111's sync-era rationale in Chunk 4).

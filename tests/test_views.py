@@ -1,7 +1,7 @@
-"""Tests for tools/lib/views.py + product-hook `regen-views` subcommand.
+"""Tests for lib/views.py + the plugin runtime's `regen-views` subcommand.
 
 The views module derives the build-plan `## Status` block from change-log
-tagged entries. The product-hook subcommand is a thin wrapper that reads
+tagged entries. The prawduct-hook subcommand is a thin wrapper that reads
 project-state.yaml for the `views_enabled` opt-in, runs the builder, and
 writes back to build-plan.md.
 """
@@ -16,13 +16,13 @@ from pathlib import Path
 
 import pytest
 
-_TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
-if str(_TOOLS_DIR) not in sys.path:
-    sys.path.insert(0, str(_TOOLS_DIR))
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from lib import views  # noqa: E402
 
-HOOK_PATH = Path(__file__).resolve().parent.parent / "tools" / "product-hook"
+HOOK_PATH = _REPO_ROOT / "bin" / "prawduct-hook"
 
 
 # =============================================================================
@@ -978,56 +978,6 @@ class TestApplyRegen:
         assert not (prawduct_dir / "release-notes.md").exists()
 
 
-class TestRunViewsCommand:
-    def test_direct_dry_run(self, tmp_path: Path):
-        from lib.views_cmd import run_views_command
-        product = tmp_path / "product"
-        prawduct_dir = product / ".prawduct"
-        (prawduct_dir / "artifacts").mkdir(parents=True)
-        (prawduct_dir / "project-state.yaml").write_text("views_enabled: true\n")
-        (prawduct_dir / "change-log.md").write_text(
-            "## 2026-05-18: rel\n"
-            "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
-        )
-        (prawduct_dir / "artifacts" / "build-plan.md").write_text(
-            "## Status\n- [ ] Chunk 00: A\n"
-        )
-        result = run_views_command(str(product), refresh=False)
-        assert result["enabled"] is True
-        assert result["refresh"] is False
-        # Dry-run leaves files alone.
-        assert not (prawduct_dir / "release-notes.md").exists()
-        names = [v["name"] for v in result["views"]]
-        assert names == ["status", "release-notes", "scope-rollups"]
-
-    def test_direct_refresh_writes(self, tmp_path: Path):
-        from lib.views_cmd import run_views_command
-        product = tmp_path / "product"
-        prawduct_dir = product / ".prawduct"
-        (prawduct_dir / "artifacts").mkdir(parents=True)
-        (prawduct_dir / "project-state.yaml").write_text("views_enabled: true\n")
-        (prawduct_dir / "change-log.md").write_text(
-            "## 2026-05-18: rel\n"
-            "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
-        )
-        (prawduct_dir / "artifacts" / "build-plan.md").write_text(
-            "## Status\n- [ ] Chunk 00: A\n"
-        )
-        result = run_views_command(str(product), refresh=True)
-        assert "error" not in result
-        # Files written.
-        assert (prawduct_dir / "release-notes.md").exists()
-        assert "- [x] Chunk 00: A" in (prawduct_dir / "artifacts" / "build-plan.md").read_text()
-
-    def test_direct_not_a_prawduct_dir(self, tmp_path: Path):
-        from lib.views_cmd import run_views_command
-        empty = tmp_path / "empty"
-        empty.mkdir()
-        result = run_views_command(str(empty), refresh=False)
-        assert "error" in result
-        assert "no .prawduct" in result["error"].lower() or "not a prawduct" in result["error"].lower()
-
-
 # =============================================================================
 # Integration tests — product-hook regen-views subcommand
 # =============================================================================
@@ -1229,109 +1179,3 @@ class TestRegenViewsAllThree:
         assert (product / ".prawduct" / "artifacts" / "build-plan.md").read_text() == plan_after_first
         # And output reflects no work done.
         assert "up to date" in second.stdout.lower() or "no changes" in second.stdout.lower()
-
-
-# =============================================================================
-# Integration tests — prawduct-setup.py `views` subcommand (/prawduct-doctor)
-# =============================================================================
-
-
-SETUP_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
-
-
-def _run_doctor_views(
-    product_dir: Path, *, refresh: bool = False, json_mode: bool = False
-) -> subprocess.CompletedProcess:
-    args = ["python3", str(SETUP_PATH), "views", str(product_dir)]
-    if refresh:
-        args.append("--refresh")
-    if json_mode:
-        args.append("--json")
-    return subprocess.run(args, capture_output=True, text=True, timeout=20)
-
-
-class TestDoctorViewsSubcommand:
-    def test_dry_run_reports_planned_actions_without_writing(self, tmp_path: Path):
-        product = _make_product_repo(
-            tmp_path,
-            views_enabled=True,
-            change_log=(
-                "## 2026-05-18: rel\n"
-                "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
-            ),
-            build_plan="## Status\n- [ ] Chunk 00: A\n",
-        )
-        result = _run_doctor_views(product)
-        assert result.returncode == 0, result.stderr
-        # Dry-run should NOT write any files.
-        assert (
-            "- [ ] Chunk 00: A"
-            in (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
-        )
-        assert not (product / ".prawduct" / "release-notes.md").exists()
-        # Human-readable output goes to stderr (matches sync/validate pattern).
-        out = result.stderr.lower()
-        assert "status" in out
-        assert "release notes" in out
-        assert "scope" in out
-        assert "--refresh" in out
-
-    def test_refresh_writes_all_views(self, tmp_path: Path):
-        product = _make_product_repo(
-            tmp_path,
-            views_enabled=True,
-            change_log=(
-                "## 2026-05-18: rel\n"
-                "<!-- prawduct: chunks=00,01 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
-            ),
-            build_plan="## Status\n- [ ] Chunk 00: A\n- [ ] Chunk 01: B\n",
-        )
-        result = _run_doctor_views(product, refresh=True)
-        assert result.returncode == 0, result.stderr
-        # All three views written.
-        plan = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
-        assert "- [x] Chunk 00: A" in plan
-        assert (product / ".prawduct" / "release-notes.md").exists()
-        state = (product / ".prawduct" / "project-state.yaml").read_text()
-        assert "scope_rollups:" in state
-
-    def test_views_disabled_reports_clearly(self, tmp_path: Path):
-        product = _make_product_repo(
-            tmp_path,
-            views_enabled=False,
-            change_log="## x\n<!-- prawduct: chunks=00 | status=shipped -->\n",
-            build_plan="## Status\n- [ ] Chunk 00: A\n",
-        )
-        result = _run_doctor_views(product)
-        assert result.returncode == 0
-        assert "disabled" in result.stderr.lower()
-
-    def test_json_output_shape(self, tmp_path: Path):
-        product = _make_product_repo(
-            tmp_path,
-            views_enabled=True,
-            change_log=(
-                "## 2026-05-18: rel\n"
-                "<!-- prawduct: chunks=00 | release=v1.3.17 | status=shipped | scope=v1.4 -->\n"
-            ),
-            build_plan="## Status\n- [x] Chunk 00: A\n",
-        )
-        result = _run_doctor_views(product, json_mode=True)
-        assert result.returncode == 0, result.stderr
-        import json as _json
-        payload = _json.loads(result.stdout)
-        assert payload["enabled"] is True
-        assert payload["refresh"] is False
-        names = [v["name"] for v in payload["views"]]
-        assert names == ["status", "release-notes", "scope-rollups"]
-        for view in payload["views"]:
-            assert view["action"] in ("noop", "write", "create")
-            assert isinstance(view["summary"], str) and view["summary"]
-
-    def test_not_a_prawduct_product_returns_error(self, tmp_path: Path):
-        empty = tmp_path / "empty"
-        empty.mkdir()
-        result = _run_doctor_views(empty)
-        assert result.returncode != 0
-        err = result.stderr.lower()
-        assert "not a prawduct" in err or "no .prawduct" in err

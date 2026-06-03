@@ -1,26 +1,24 @@
-"""Tests for tools/lib/backlog_probes.py — the legacy-backlog-format probe.
+"""Tests for lib/backlog_probes.py — the legacy-backlog-format probe.
 
-Loads prawduct-setup.py via importlib and reaches the probe module through the
-`_lib_backlog_probes` alias (mirrors test_advisory_store.py's `_lib_advisory_store`
-pattern). Covers v1.7.0 Chunk 03: the content-scan helper, the probe's trigger and
+Imports the probe module (and its advisory_store dependency) directly from the
+plugin's `lib/`. Covers v1.7.0 Chunk 03: the content-scan helper, the probe's trigger and
 resolution conditions, idempotency (stable id across incidental count changes),
 the >5-item / none-structured floor, and that registration is idempotent.
 """
 
 from __future__ import annotations
 
-import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
 
-_TOOL_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
-_spec = importlib.util.spec_from_file_location("prawduct_setup", _TOOL_PATH)
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-_bp = _mod._lib_backlog_probes
-_adv = _mod._lib_advisory_store
+from lib import backlog_probes as _bp  # noqa: E402
+from lib import advisory_store as _adv  # noqa: E402
 
 count_backlog_items = _bp.count_backlog_items
 legacy_backlog_format_probe = _bp.legacy_backlog_format_probe
@@ -105,7 +103,7 @@ class TestLegacyBacklogFormatProbe:
         assert len(cands) == 1
         c = cands[0]
         assert c.type == "legacy-backlog-format"
-        assert c.recommended_action == "/backlog migrate"
+        assert c.recommended_action == "/prawduct:backlog migrate"
         assert "6 backlog items" in c.trigger_summary
         # Legacy headings surface as supporting (stable) evidence.
         assert any("legacy section headings" in e for e in c.evidence)

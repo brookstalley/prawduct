@@ -17,13 +17,13 @@ import yaml
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
-# Import setup module for block constants
-_SETUP_PATH = Path(__file__).resolve().parent.parent / "tools" / "prawduct-setup.py"
-_setup_spec = importlib.util.spec_from_file_location("prawduct_setup", _SETUP_PATH)
-_setup_mod = importlib.util.module_from_spec(_setup_spec)
-_setup_spec.loader.exec_module(_setup_mod)
-BLOCK_BEGIN = _setup_mod.BLOCK_BEGIN
-BLOCK_END = _setup_mod.BLOCK_END
+# Block-marker constants from the plugin's lib/core
+import sys
+if str(Path(__file__).resolve().parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from lib import core as _core  # noqa: E402
+BLOCK_BEGIN = _core.BLOCK_BEGIN
+BLOCK_END = _core.BLOCK_END
 
 
 def read_template(name: str) -> str:

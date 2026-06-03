@@ -1,4 +1,4 @@
-"""Tests for ``tools/lib/critic_mode.py`` — Critic mode inference.
+"""Tests for ``lib/critic_mode.py`` — Critic mode inference.
 
 Each rule has at least one fixture exercising the win condition AND a
 companion fixture confirming a precedence neighbor takes over when the
@@ -8,9 +8,9 @@ mock-git would diverge from production behavior on rev-parse, rev-list,
 and porcelain status output (the three subprocess shapes the helper
 relies on).
 
-The module under test lives in ``tools/lib/critic_mode.py`` and is
-re-exported as ``tools.lib.infer_mode``; tests import the package-level
-name to confirm the re-export works end-to-end.
+The module under test lives in ``lib/critic_mode.py`` (the plugin's
+governance lib) and is re-exported as ``lib.infer_mode``; tests import
+the package-level name to confirm the re-export works end-to-end.
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT / "tools") not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT / "tools"))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from lib import infer_mode  # noqa: E402 — sys.path mutated above
 
@@ -634,11 +634,11 @@ class TestRationaleFormat:
 
 
 class TestInferCriticModeSubcommand:
-    """``python3 tools/product-hook infer-critic-mode`` is the
+    """``python3 bin/prawduct-hook infer-critic-mode`` is the
     structurally-bounded entrypoint the Critic SKILL uses. It must
     return ``<mode>|<rationale>`` on stdout and exit 0."""
 
-    HOOK_PATH = REPO_ROOT / "tools" / "product-hook"
+    HOOK_PATH = REPO_ROOT / "bin" / "prawduct-hook"
 
     def _run_subcommand(
         self, project_dir: Path, extra_args: list[str] | None = None
@@ -687,13 +687,13 @@ class TestInferCriticModeSubcommand:
 
 
 def _load_product_hook():
-    """Import product-hook for direct helper access."""
+    """Import the plugin runtime (bin/prawduct-hook) for direct helper access."""
     import importlib.machinery
     import importlib.util
 
-    hook_path = REPO_ROOT / "tools" / "product-hook"
-    loader = importlib.machinery.SourceFileLoader("product_hook", str(hook_path))
-    spec = importlib.util.spec_from_loader("product_hook", loader)
+    hook_path = REPO_ROOT / "bin" / "prawduct-hook"
+    loader = importlib.machinery.SourceFileLoader("prawduct_hook", str(hook_path))
+    spec = importlib.util.spec_from_loader("prawduct_hook", loader)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -710,7 +710,7 @@ class TestValidatorAcceptsModeChosenBy:
 
     def _write_findings(self, path: Path, **overrides) -> Path:
         data = {
-            "files_reviewed": ["tools/product-hook"],
+            "files_reviewed": ["bin/prawduct-hook"],
             "findings": [],
             "summary": "No issues.",
         }
