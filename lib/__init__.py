@@ -9,18 +9,21 @@ learnings-lifecycle audit. The file-sync *transport* modules (`sync_cmd`,
 bundled: the plugin is dev-time governance, not a sync engine (design §2, §7;
 build-plan Chunk 5 "Exclude sync-only machinery from the plugin runtime").
 
-Parity (Chunk 5 + Chunk 13): seven modules — `core`, `critic_mode`, `views`,
-`advisory_cmd`, `advisory_store`, `backlog_probes`, `audit_learnings_cmd` — are
-byte-identical copies of their `tools/lib/` counterparts, locked by a parity
-test so they cannot drift during Phase-1 coexistence. `audit_learnings_cmd`
-joined this set in Chunk 13 (it is pure governance — stdlib-only, operates on
-the consumer's own `learnings.md`, zero sync coupling — and was mis-grouped with
-the transport modules in Chunk 5). `operator_verification` is bundled but
-**intentionally diverged** from `tools/lib/` (its user-facing hints name the
-plugin-native enable / `prawduct-hook verify-operator-verification` path, not
-the frozen 1.x `prawduct-setup` path), so it is excluded from the byte-parity
-lock. When file-sync is fully removed (backlog `MIG-M4-REMOVE`, post-2.0.0), the
-remaining duplication collapses.
+Parity (Chunk 5 + Chunk 13): six modules — `core`, `critic_mode`, `views`,
+`advisory_cmd`, `advisory_store`, `audit_learnings_cmd` — are byte-identical
+copies of their `tools/lib/` counterparts, locked by a parity test so they
+cannot drift during Phase-1 coexistence. `audit_learnings_cmd` joined this set
+in Chunk 13 (it is pure governance — stdlib-only, operates on the consumer's own
+`learnings.md`, zero sync coupling — and was mis-grouped with the transport
+modules in Chunk 5). Two modules are bundled but **intentionally diverged** from
+`tools/lib/` — their user-facing hints name plugin-native paths, so they are
+excluded from the byte-parity lock: `operator_verification` (the plugin-native
+enable / `prawduct-hook verify-operator-verification` path, not the frozen 1.x
+`prawduct-setup` path) and `backlog_probes` (the legacy-backlog-format advisory
+names the plugin-namespaced `/prawduct:backlog migrate`, while the file-sync copy
+keeps the bare `/backlog migrate` skill — a v2.0.2 follow-up to the Chunk 13
+namespace sweep, which had missed this probe). When file-sync is fully removed
+(backlog `MIG-M4-REMOVE`, post-2.0.0), the remaining duplication collapses.
 """
 
 # Core utilities and constants (governance dependency — critic_mode/views import it)
