@@ -95,7 +95,7 @@ class TestReadStrYamlKey:
 
 
 class TestProductHookMirrorParity:
-    """The inline product-hook resolver must match the lib resolver on the same
+    """The inline prawduct-hook resolver must match the lib resolver on the same
     inputs (same discipline as the GITIGNORE_ENTRIES mirror test)."""
 
     def test_constants_match(self):

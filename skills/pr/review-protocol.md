@@ -74,7 +74,7 @@ The Critic may have caught these per-chunk. You catch what slipped through or em
 - No unintended file changes (lock files, IDE configs, unrelated formatting)
 - No TODOs or placeholders left in shipped code
 - No secrets or credentials
-- **Derived views** (when `views_enabled: true` in `project-state.yaml`): build-plan `## Status` checkboxes, `.prawduct/release-notes.md`, and the `scope_rollups:` block in `project-state.yaml` are all derived from change-log.md tags via `product-hook regen-views`. The canonical source is the change-log tag line. If any view diff has no matching change-log tag-line edit (Status flip with no `status=shipped` tag, release-notes section with no `release=` tag, scope_rollups update with no `scope=` tag), regen wasn't run or the tag is missing → **WARNING**. Don't review derived files as hand-curated content.
+- **Derived views** (when `views_enabled: true` in `project-state.yaml`): build-plan `## Status` checkboxes, `.prawduct/release-notes.md`, and the `scope_rollups:` block in `project-state.yaml` are all derived from change-log.md tags via `prawduct-hook regen-views`. The canonical source is the change-log tag line. If any view diff has no matching change-log tag-line edit (Status flip with no `status=shipped` tag, release-notes section with no `release=` tag, scope_rollups update with no `scope=` tag), regen wasn't run or the tag is missing → **WARNING**. Don't review derived files as hand-curated content.
 
 ### 7. Proportionality
 **Severity: NOTE**
@@ -155,7 +155,7 @@ After PR creation, update `pr_number` in the evidence file. After merge, delete 
 | **Scope** | One chunk's diff / end-of-cycle diff | `merge-base...HEAD` (full PR bundle) | Full PR diff (all chunks) |
 | **Perspective** | Is the work good? | Do the chunks compose into a sound whole? | Is this ready to merge? |
 | **Key concerns** | Spec compliance, tests, coherence | Cross-chunk integration cracks | Bugs, scope, narrative, simplification |
-| **Enforcement** | BLOCKING (stop hook) | BLOCKING (`product-hook check-cumulative-critic`) | BLOCKING (stop hook gate) |
+| **Enforcement** | BLOCKING (stop hook) | BLOCKING (`prawduct-hook check-cumulative-critic`) | BLOCKING (stop hook gate) |
 | **Independence** | Separate agent (Task tool) | Separate agent (Task tool) | Separate agent (Task tool) |
 
 ## Extending This Skill

@@ -262,7 +262,7 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
 
     Returns ``{"required": bool, "pending": int, "queue_path": str,
     "first_pending": str | None, "message": str}``. The caller decides what
-    exit code to map this to — the product-hook wrapper uses 0 when the
+    exit code to map this to — the prawduct-hook wrapper uses 0 when the
     gate is satisfied (not required OR no pending) and 1 otherwise.
     """
     product_path = Path(product_dir).resolve()

@@ -19,7 +19,7 @@ Two layers, mirroring the project's return-value convention:
     :func:`dismiss_advisory`, :func:`undismiss_advisory`, :func:`resolve_advisory`)
     are pure-ish library calls returning ``{status, ...}`` dicts — tested
     directly, never raising.
-  - :func:`run` is the argv dispatcher invoked from ``product-hook advisory`` —
+  - :func:`run` is the argv dispatcher invoked from ``prawduct-hook advisory`` —
     it parses flags, calls the right function, prints a human-readable summary,
     and returns a Unix exit code (the CLI boundary, where exit codes are the
     contract).
@@ -144,7 +144,7 @@ def resolve_advisory(product_dir, advisory_id: str) -> dict:
 
 
 _USAGE = (
-    "Usage: product-hook advisory "
+    "Usage: prawduct-hook advisory "
     "{list [--state=active|dismissed|resolved|all] [--feature=<name>] | "
     "show <id> | dismiss <id> [--reason <text>] | undismiss <id> | resolve <id>}"
 )

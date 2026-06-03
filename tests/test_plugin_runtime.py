@@ -393,8 +393,9 @@ class TestPluginDocsNamespacing:
         assert not leaks, (
             f"{rel} carries bare command invocation(s) {leaks} — plugin-bundled "
             "teaching prose must name the /prawduct:-namespaced skill (a bare form "
-            "does not resolve in a plugin repo's command namespace). Frozen "
-            "tools/ + templates/ copies keep the bare forms; these plugin files diverge."
+            "does not resolve in a plugin repo's command namespace). The file-sync "
+            "tools/ + templates/ copies that once kept the bare forms were deleted "
+            "with the engine in M4."
         )
 
     def test_namespaced_forms_present(self):
@@ -405,6 +406,21 @@ class TestPluginDocsNamespacing:
         assert "/prawduct:learnings" in planning
         building = (ROOT / "methodology/building.md").read_text(encoding="utf-8")
         assert "/prawduct:critic" in building and "/prawduct:pr" in building
+
+    @pytest.mark.parametrize("rel", DOCS)
+    def test_no_legacy_binary_name(self, rel):
+        """The runtime binary is `prawduct-hook`; the file-sync binary was
+        `product-hook`. The Chunk-1 sweep namespaced the slash-commands on these
+        lines but missed the bare BINARY name (caught by the M4 cumulative Critic),
+        because the slash-command scan above never matches a binary name. Pin it:
+        plugin teaching prose must never name `product-hook` (note `prawduct-hook`
+        does NOT contain the substring, so this is false-positive-free)."""
+        src = (ROOT / rel).read_text(encoding="utf-8")
+        assert "product-hook" not in src, (
+            f"{rel} names the retired file-sync binary `product-hook` — the plugin "
+            "runtime is `prawduct-hook`. (Legitimate consumer-side `tools/product-hook` "
+            "detection lives in lib/migrate_plugin + the MANAGED_FILES registry, not here.)"
+        )
 
 
 class TestPluginSubcommandsResolveViaLib:

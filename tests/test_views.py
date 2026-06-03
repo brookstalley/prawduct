@@ -979,7 +979,7 @@ class TestApplyRegen:
 
 
 # =============================================================================
-# Integration tests — product-hook regen-views subcommand
+# Integration tests — prawduct-hook regen-views subcommand
 # =============================================================================
 
 

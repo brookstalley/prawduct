@@ -18,7 +18,7 @@
 
 **Versioning:** patch bump (2.0.2 → 2.0.3). M4 is internal cleanup — the terminal tail of the v2.0.0 plugin transition — with zero behavioral change for plugin-governed consumers (the engine they don't use is gone). Conservative patch over a minor to avoid version inflation. The bump is the marketplace update-cache key.
 
-**Tests:** 615 passing (down from the pre-M4 ~1810 — the ~1200 deleted were the frozen engine's own suite; net plugin coverage is intact, every retired template-mirror test either retargeted to the plugin source-of-truth or proven redundant with an existing plugin-source test).
+**Tests:** 639 passing (down from the pre-M4 ~1810 — the ~1200 deleted were the frozen engine's own suite; net plugin coverage is intact, every retired template-mirror test either retargeted to the plugin source-of-truth or proven redundant with an existing plugin-source test, and the cumulative-Critic pass added a 23-principle pin against `docs/principles.md`).
 
 ## 2026-06-03: v2.0.2 — Advisory probes run again in the plugin runtime; migration guide leads with the steps (shipped)
 

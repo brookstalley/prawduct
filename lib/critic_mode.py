@@ -201,7 +201,7 @@ def _rule_verify_resolutions_fires(
     # surface. Even one file outside scope means the builder added new
     # work alongside the fix — that's a chunk/final case, not a verify
     # pass. (Symmetric with ``_verify_resolutions_gate_check`` in
-    # product-hook; same "diff ⊆ scope" contract.)
+    # bin/prawduct-hook; same "diff ⊆ scope" contract.)
     return diff_files.issubset(prior_set)
 
 

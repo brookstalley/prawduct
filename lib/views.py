@@ -2,7 +2,7 @@
 
 When `.prawduct/project-state.yaml` has `views_enabled: true`, the build-plan
 `## Status` block becomes a derived view of `.prawduct/change-log.md` tagged
-entries — `product-hook regen-views` rewrites the checkboxes from
+entries — `prawduct-hook regen-views` rewrites the checkboxes from
 `status=shipped` tags. Chunk titles, the `## Status` heading, the introductory
 HTML comment, and the freeform `Context:` line are author-curated; regen never
 touches them.

@@ -629,7 +629,7 @@ class TestRationaleFormat:
 
 
 # ---------------------------------------------------------------------------
-# product-hook subcommand integration
+# prawduct-hook subcommand integration
 # ---------------------------------------------------------------------------
 
 

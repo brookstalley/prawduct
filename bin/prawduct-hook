@@ -347,10 +347,9 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 
     Some product repos accidentally committed session files (e.g. .session-handoff.md)
     before they were added to .gitignore. Once tracked, those files cause noisy
-    merge conflicts whenever any session writes new content. The framework sync
-    command also runs untrack_gitignored_files(), but that only fires when the
-    user runs sync. This in-process check runs on every session start so the
-    cleanup happens in any product repo regardless of sync version.
+    merge conflicts whenever any session writes new content. This in-process
+    check runs on every session start so the cleanup happens in any product repo,
+    including ones that committed session files before this check existed.
 
     Returns a list of paths that were untracked (may be empty). Never raises.
     """
@@ -1771,8 +1770,8 @@ def cmd_clear(project_dir: Path) -> int:
         pass
 
     # Defensively untrack any session files that were accidentally committed.
-    # Runs every session-start so even product repos that have not yet synced
-    # to a Prawduct version with `untrack_gitignored_files()` get the cleanup.
+    # Runs every session-start so the cleanup happens in any product repo,
+    # including ones that committed session files before this check existed.
     try:
         untracked = _untrack_session_files(project_dir)
         if untracked:

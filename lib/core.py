@@ -104,7 +104,7 @@ DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
 
-    Mirrors the column-0 idiom used by ``is_views_enabled`` and product-hook's
+    Mirrors the column-0 idiom used by ``is_views_enabled`` and bin/prawduct-hook's
     ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
     missing/unreadable file or absent key. Surrounding quotes and inline ``#``
     comments are stripped; an empty value reads as None.
