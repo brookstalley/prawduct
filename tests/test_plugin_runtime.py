@@ -315,6 +315,46 @@ class TestPluginClearBriefing:
         assert "PRAWDUCT SYNC" not in result.stdout
         assert "framework file(s) updated" not in result.stdout
 
+    def _write_legacy_backlog(self, prawduct: Path, n: int = 7) -> None:
+        """A backlog with `n` legacy items (no [PFX-XXXX] ids) — above the
+        probe's >5 floor, none structured → the legacy-backlog-format probe
+        fires unless backlog_format_version: 2 is recorded."""
+        items = "\n".join(f"- Legacy item {i} that needs an id" for i in range(n))
+        (prawduct / "backlog.md").write_text(f"# Backlog\n\n## Open\n{items}\n")
+
+    def test_clear_fires_legacy_backlog_advisory(self, tmp_path):
+        # Root-cause regression (advisory probes never ran in the plugin runtime
+        # because evaluation was coupled to the now-excised sync step). A plugin
+        # repo with a legacy backlog and no recorded migration must surface the
+        # `legacy-backlog-format` nudge in the briefing AND persist it to the
+        # advisory store, exactly as the file-sync runtime did at sync time.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("# state, no backlog_format_version\n")
+        self._write_legacy_backlog(prawduct)
+        result = run_plugin_hook("clear", tmp_path)
+        assert result.returncode == 0, result.stderr
+        # Surfaced in the briefing the agent sees (stdout).
+        assert "ADVISORIES" in result.stdout
+        assert "[backlog]" in result.stdout
+        assert "/backlog migrate" in result.stdout
+        # Persisted so the dismiss/resolve lifecycle has a record to act on.
+        store = json.loads((prawduct / ".advisories.json").read_text())
+        active = [a for a in store["advisories"] if a.get("state") == "active"]
+        assert any(a.get("type") == "legacy-backlog-format" for a in active), store
+
+    def test_clear_no_advisory_when_backlog_migrated(self, tmp_path):
+        # Resolution side: backlog_format_version: 2 is the "done" fact, so the
+        # probe stays silent even with legacy-shaped items present.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
+        self._write_legacy_backlog(prawduct)
+        result = run_plugin_hook("clear", tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "legacy-backlog-format" not in result.stdout
+        assert "/backlog migrate" not in result.stdout
+
 
 class TestPluginStopGate:
     def _active_plan_repo(self, tmp_path) -> Path:

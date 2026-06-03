@@ -3,6 +3,22 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-03: v2.0.2 — Advisory probes run again in the plugin runtime; migration guide leads with the steps (shipped)
+
+<!-- prawduct: type=fix | release=v2.0.2 | status=shipped -->
+
+**Why:** A user migrated a repo onto the plugin and was surprised their backlog wasn't upgraded. Root cause: the `legacy-backlog-format` advisory — the designed nudge toward `/prawduct:backlog migrate` — never fired in *any* v2 plugin repo. Advisory probe evaluation was coupled to the file-sync `sync` step; Chunk 5 excised sync from the plugin runtime and silently took the probe step with it, so `.advisories.json` was read at session start but never populated. The whole advisory channel was dead in plugin repos.
+
+**What shipped:**
+- `cmd_clear` (plugin SessionStart) now calls `run_sync_advisories` directly — purely local, fail-soft, full reconcile+persist — before the briefing reads the store, re-homing the orphaned probe step (mirrors the v1 sync-time call). Restores the legacy-backlog nudge and every other advisory probe for plugin repos.
+- Two regression tests (fires + persists on a legacy backlog; suppressed once `backlog_format_version: 2`); corrected two stale comments that claimed the hook cannot import `lib`.
+- `documentation/MIGRATION.md` restructured to lead with the two-step action and the real install commands (`claude plugin marketplace add` / `install`); background relocated to the bottom.
+- Durable learning captured (excising a subsystem silently kills the incidental work it hosted). Filed `[ADV-3K7Q]`: the advisory output still shows un-namespaced skill names (`/backlog migrate`), constrained by the `backlog_probes` byte-parity lock — belongs with the Chunk-13 namespace sweep.
+
+**Versioning:** patch bump (2.0.1 → 2.0.2). Bugfix + doc improvement; the bump is the marketplace update-cache key (an unbumped `main` push does not ship).
+
+**Tests:** 1808 passing.
+
 ## 2026-06-02: v2.0.1 — Default to no commit/PR attribution trailers (shipped)
 
 <!-- prawduct: type=feature | release=v2.0.1 | status=shipped -->
