@@ -147,8 +147,9 @@ Full rationale + verified safety facts: `~/.claude/plans/lucky-plotting-kahn.md`
 ## Context
 **M4 COMPLETE — all 5 chunks done on `feat/retire-filesync-engine-m4`; ready for cumulative-Critic + PR.**
 The file-sync engine, its in-plugin guards, its templates + helper layer, and the committed/doc residue
-are all gone; the plugin runs standalone (615 green, evidence validates, init-product + clear/digest/banner
-smoke clean, regen-views clean). Versioned v2.0.3 (conservative patch — internal cleanup, zero behavioral
+are all gone; the plugin runs standalone (645 green — 615 at Chunk-5 close + 24 principle pins + 6
+binary-name guard cases from the cumulative-Critic resolution; evidence validates, init-product +
+clear/digest/banner smoke clean, regen-views clean). Versioned v2.0.3 (conservative patch — internal cleanup, zero behavioral
 change for plugin consumers). The final stale-ref sweep is clean: every surviving `tools/`/`prawduct-setup`
 reference is either immutable `change_log_history`/decision-provenance or legitimate consumer-side residue
 that `migrate`/`doctor` detect/remove (the `MANAGED_FILES` registry, the doctor/migrate skills). Backlog:

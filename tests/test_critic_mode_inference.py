@@ -686,7 +686,7 @@ class TestInferCriticModeSubcommand:
 # ---------------------------------------------------------------------------
 
 
-def _load_product_hook():
+def _load_prawduct_hook():
     """Import the plugin runtime (bin/prawduct-hook) for direct helper access."""
     import importlib.machinery
     import importlib.util
@@ -706,7 +706,7 @@ class TestValidatorAcceptsModeChosenBy:
 
     @pytest.fixture(autouse=True)
     def _module(self):
-        self.mod = _load_product_hook()
+        self.mod = _load_prawduct_hook()
 
     def _write_findings(self, path: Path, **overrides) -> Path:
         data = {
