@@ -513,7 +513,7 @@ _CRITIC_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"
 # scope. Cheaper than chunk/final for the common case of "Critic flagged 1-2
 # BLOCKING findings, builder fixed them, re-review pays full latency to
 # confirm the fix." Scope = prior files_reviewed ∪ files changed since
-# `commit_reviewed` (Chunk 01's anchor). Demotes to /critic final when scope
+# `commit_reviewed` (Chunk 01's anchor). Demotes to /prawduct:critic final when scope
 # widens past `len(delta) > 2 * len(prior) + 5` or when prior findings lack
 # the anchor.
 _CRITIC_MODE_VERIFY_RESOLUTIONS = (
@@ -1190,7 +1190,7 @@ def assemble_session_briefing(
         # Template-drift advisories are fire-once (Chunk B), so this surfaces at
         # most once per template change. One line naming the files, not a table.
         names = ", ".join(adv.get("file", "?").rsplit("/", 1)[-1] for adv in advisories)
-        lines.append(f"Template update(s) since setup: {names} — /janitor scope=templates to review")
+        lines.append(f"Template update(s) since setup: {names} — /prawduct:janitor scope=templates to review")
 
     # ADVISORIES (post-sync) — the per-clone nag log `.prawduct/.advisories.json`,
     # refreshed by cmd_clear's probe step before the briefing is assembled (the
@@ -1243,17 +1243,17 @@ def assemble_session_briefing(
                 action = adv.get("recommended_action", "")
                 if action:
                     aid = adv.get("id", "")
-                    lines.append(f"    → Run {action} (or /prawduct-advisory dismiss {aid})")
+                    lines.append(f"    → Run {action} (or /prawduct:advisory dismiss {aid})")
             if len(active_adv) > 5:
                 lines.append(
-                    f"  ... and {len(active_adv) - 5} more (run /prawduct-advisory list)"
+                    f"  ... and {len(active_adv) - 5} more (run /prawduct:advisory list)"
                 )
         else:
             lines.append("ADVISORIES (post-sync):")
         if dismissed_since:
             lines.append(
                 f"  Dismissed since last session: {dismissed_since} "
-                f"(run /prawduct-advisory list --state=dismissed to see)"
+                f"(run /prawduct:advisory list --state=dismissed to see)"
             )
         if resolved_since:
             lines.append(f"  Resolved since last session: {resolved_since}")
@@ -1327,9 +1327,9 @@ def assemble_session_briefing(
                     rule_count += 1
             # Collapse to a count + pointer. The full topic index re-printed
             # unchanged every session — a static table of contents is tax; the
-            # /learnings skill is the intended lookup path.
+            # /prawduct:learnings skill is the intended lookup path.
             if rule_count > 0:
-                lines.append(f"Learnings ({rule_count} rules): /learnings <topic> or read .prawduct/learnings.md")
+                lines.append(f"Learnings ({rule_count} rules): /prawduct:learnings <topic> or read .prawduct/learnings.md")
         except Exception:  # prawduct:ok-broad-except — briefing must never block session start
             pass
 
@@ -1357,9 +1357,9 @@ def assemble_session_briefing(
                         if item_text:
                             pending_items.append(item_text)
             if pending_items:
-                # One count line, not a 5-item dump every session. /backlog is
-                # the triage path; dumping arbitrary items here was tax.
-                lines.append(f"Backlog: {len(pending_items)} pending (/backlog to triage)")
+                # One count line, not a 5-item dump every session. /prawduct:backlog
+                # is the triage path; dumping arbitrary items here was tax.
+                lines.append(f"Backlog: {len(pending_items)} pending (/prawduct:backlog to triage)")
         except Exception:  # prawduct:ok-broad-except — briefing must never block session start
             pass
 
@@ -2106,7 +2106,7 @@ def validate_critic_findings(findings_path: Path) -> bool:
 def _compute_verify_resolutions_scope(
     prawduct_dir: Path, project_dir: Path
 ) -> tuple[list[str], str]:
-    """Compute the file scope a ``/critic verify-resolutions`` pass should review.
+    """Compute the file scope a ``/prawduct:critic verify-resolutions`` pass should review.
 
     Reads the *prior* ``.prawduct/.critic-findings.json`` (the record the
     builder is about to re-verify) and returns the union of:
@@ -2124,7 +2124,7 @@ def _compute_verify_resolutions_scope(
     readable. Successful computations return a non-empty scope and a reason
     prefixed ``ok:``. All other cases return an empty scope and a categorized
     reason so the caller (Critic agent or stop-hook gate) can fall safely
-    through to ``/critic chunk`` or ``/critic final``:
+    through to ``/prawduct:critic chunk`` or ``/prawduct:critic final``:
 
       - ``no-findings:`` — prior findings file missing.
       - ``unreadable-findings:`` — JSON parse or I/O failure.
@@ -2141,7 +2141,7 @@ def _compute_verify_resolutions_scope(
       - ``git-diff-failed:`` — the diff invocation itself failed.
       - ``scope-widened:`` — demotion criterion ``len(delta) > 2 * len(prior)
         + 5`` tripped. The prior surface no longer covers what changed; a
-        partial review would mislead. Fall through to ``/critic final``.
+        partial review would mislead. Fall through to ``/prawduct:critic final``.
 
     Fail-closed throughout — when the helper cannot anchor a delta it
     refuses to compute one rather than silently shrinking the review.
@@ -2150,7 +2150,7 @@ def _compute_verify_resolutions_scope(
     if not findings_path.is_file():
         return [], (
             "no-findings: .prawduct/.critic-findings.json is missing — "
-            "run /critic chunk or /critic final first"
+            "run /prawduct:critic chunk or /prawduct:critic final first"
         )
     try:
         data = json.loads(findings_path.read_text())
@@ -2161,7 +2161,7 @@ def _compute_verify_resolutions_scope(
     if not isinstance(commit_reviewed, str) or not commit_reviewed.strip():
         return [], (
             "no-commit-reviewed: prior findings lack commit_reviewed — "
-            "cannot anchor delta. Run /critic chunk or /critic final."
+            "cannot anchor delta. Run /prawduct:critic chunk or /prawduct:critic final."
         )
 
     findings = data.get("findings")
@@ -2175,7 +2175,7 @@ def _compute_verify_resolutions_scope(
         return [], (
             "no-actionable-findings: prior review had no blocking/warning "
             "findings — verify-resolutions has nothing to verify. "
-            "Run /critic chunk or /critic final."
+            "Run /prawduct:critic chunk or /prawduct:critic final."
         )
 
     prior_files = data.get("files_reviewed")
@@ -2199,7 +2199,7 @@ def _compute_verify_resolutions_scope(
         return [], (
             f"unresolved-commit: commit_reviewed {commit_reviewed[:12]} "
             "does not resolve in the current repo — cannot compute delta. "
-            "Run /critic chunk or /critic final."
+            "Run /prawduct:critic chunk or /prawduct:critic final."
         )
 
     diff_proc = subprocess.run(
@@ -2249,7 +2249,7 @@ def _compute_verify_resolutions_scope(
             f"scope-widened: {len(delta_files)} files changed since "
             f"commit_reviewed (prior surface {len(prior_files_set)} files; "
             f"demotion threshold len(delta) > 2 * prior + 5). Fall through "
-            "to /critic chunk or /critic final."
+            "to /prawduct:critic chunk or /prawduct:critic final."
         )
 
     scope = sorted(prior_files_set | delta_files)
@@ -2276,7 +2276,7 @@ def _verify_resolutions_gate_check(
       - ``(False, reason)`` — at least one chunk-diff file is outside the
         declared scope. The verify pass is stale relative to the current
         diff; the gate keeps the block in place and surfaces the reason so
-        the builder runs ``/critic chunk`` or ``/critic final`` instead.
+        the builder runs ``/prawduct:critic chunk`` or ``/prawduct:critic final`` instead.
 
     Fail-closed: a JSON read failure or schema gap returns ``(False, reason)``
     rather than silently clearing the gate (see learnings: "Escape hatches
@@ -2286,8 +2286,8 @@ def _verify_resolutions_gate_check(
         data = json.loads(findings_path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         return False, (
-            f"verify-resolutions findings unreadable ({exc}). Run /critic "
-            "chunk or /critic final."
+            f"verify-resolutions findings unreadable ({exc}). Run /prawduct:critic "
+            "chunk or /prawduct:critic final."
         )
 
     if data.get("mode") != _CRITIC_MODE_VERIFY_RESOLUTIONS:
@@ -2297,7 +2297,7 @@ def _verify_resolutions_gate_check(
     if not isinstance(files_reviewed, list):
         return False, (
             "verify-resolutions findings have no files_reviewed list. "
-            "Run /critic chunk or /critic final."
+            "Run /prawduct:critic chunk or /prawduct:critic final."
         )
     scope = {f for f in files_reviewed if isinstance(f, str) and f.strip()}
 
@@ -2315,7 +2315,7 @@ def _verify_resolutions_gate_check(
     return False, (
         f"verify-resolutions findings declare {len(scope)} file(s) in scope "
         f"but the current chunk diff includes {len(out_of_scope)} file(s) "
-        f"outside scope ({sample}{more}). Run /critic chunk or /critic final."
+        f"outside scope ({sample}{more}). Run /prawduct:critic chunk or /prawduct:critic final."
     )
 
 
@@ -2386,7 +2386,7 @@ def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
     3. Multi-chunk plan with incomplete chunks → satisfied (mid-cycle).
     4. Multi-chunk plan, all chunks ``[x]``, latest mode is in
        ``_CRITIC_MODE_GOALS_1_3_ONLY`` (chunk or verify-resolutions)
-       → unsatisfied. Run ``/critic final`` for end-of-cycle synthesis.
+       → unsatisfied. Run ``/prawduct:critic final`` for end-of-cycle synthesis.
     5. Multi-chunk plan, all chunks ``[x]``, latest mode is ``_CRITIC_MODE_FINAL``
        (or absent — legacy records default to final), or ``_CRITIC_MODE_CUMULATIVE``
        → satisfied (full goal set ran).
@@ -2414,7 +2414,7 @@ def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
     if mode in _CRITIC_MODE_GOALS_1_3_ONLY:
         return False, (
             f"All {total} chunks complete; last Critic review was "
-            f"'{mode}'. Run /critic final for end-of-cycle "
+            f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
             "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
             "Reconciliation) before pushing."
         )
@@ -2681,7 +2681,7 @@ def cmd_stop(project_dir: Path) -> int:
             blockers.append(_attributed("critic",
                 "CRITIC REVIEW: The build plan includes Critic review in each chunk's \"Done when\" steps,\n"
                 "  but no Critic findings were recorded this session. If you have completed a chunk,\n"
-                "  run `/critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
+                "  run `/prawduct:critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
                 "  and records findings to .prawduct/.critic-findings.json\n"
                 "\n"
                 "  Escape hatch: if Critic legitimately cannot run this session — e.g., the chunk\n"
@@ -2747,7 +2747,7 @@ def cmd_stop(project_dir: Path) -> int:
                         pass
 
                 if has_pr:
-                    # Symmetry with `/pr create` Steps 1b/1c: when the PR diff
+                    # Symmetry with `/prawduct:pr create` Steps 1b/1c: when the PR diff
                     # is doc-only (all .md) or trivial (every commit fileset-
                     # eligible per Chunk 04 bounds), the cumulative-Critic and
                     # PR-reviewer gates were legitimately skipped at create-
@@ -2787,7 +2787,7 @@ def cmd_stop(project_dir: Path) -> int:
         else:
             blockers.append(_attributed("pr",
                 f"PR REVIEW: PR exists for branch '{pr_block_branch}' but no valid review evidence found.\n"
-                "  Run /pr to invoke the PR reviewer before merging.\n"
+                "  Run /prawduct:pr to invoke the PR reviewer before merging.\n"
                 "  The reviewer writes evidence to .prawduct/.pr-reviews/<branch>.json\n"
                 "\n"
                 "  Escape hatch: if PR review cannot run this session (e.g., reviewer agent is\n"
@@ -2925,7 +2925,7 @@ def _looks_like_file_path(token: str) -> bool:
     conceptual references whose actual location varies, so they're not
     verifiable in a useful way.
 
-    Slash-commands (``/pr``, ``/learnings``, ``/critic``) also contain
+    Slash-commands (``/prawduct:pr``, ``/prawduct:learnings``, ``/prawduct:critic``) also contain
     ``/`` but are not file paths. Exclude tokens that start with ``/``,
     have no further ``/``, and contain no ``.`` — that shape is a single
     slash-command identifier, not a path."""
@@ -3602,7 +3602,7 @@ def cmd_verify_coverage(project_dir: Path) -> int:
 
 
 def cmd_check_cumulative_critic(project_dir: Path) -> int:
-    """Structural gate for `/pr create`: require a fresh cumulative-Critic record.
+    """Structural gate for `/prawduct:pr create`: require a fresh cumulative-Critic record.
 
     Exit 0 only when the Critic findings file:
       - exists and parses,
@@ -3616,7 +3616,7 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         are advisory at the PR gate, matching the PR reviewer's semantics).
 
     Exit 1 otherwise. stderr names the specific check that failed so the
-    caller (`/pr` skill) can present an actionable message to the user.
+    caller (`/prawduct:pr` skill) can present an actionable message to the user.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     findings_path = prawduct_dir / ".critic-findings.json"
@@ -3624,7 +3624,7 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
     if not findings_path.is_file():
         print(
             "missing: no cumulative-Critic findings at "
-            f"{findings_path}. Run /critic cumulative before opening a PR.",
+            f"{findings_path}. Run /prawduct:critic cumulative before opening a PR.",
             file=sys.stderr,
         )
         return 1
@@ -3647,7 +3647,7 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         print(
             f"wrong-mode: findings mode is {mode!r}, expected cumulative "
             f"({_CRITIC_MODE_CUMULATIVE!r}). The cumulative review covers "
-            "`merge-base...HEAD` — re-run /critic cumulative.",
+            "`merge-base...HEAD` — re-run /prawduct:critic cumulative.",
             file=sys.stderr,
         )
         return 1
@@ -3662,7 +3662,7 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         print(
             "no-session-start: missing .prawduct/.session-start — cannot "
             "validate cumulative-Critic freshness. Run /clear to start a "
-            "session, then re-run /critic cumulative.",
+            "session, then re-run /prawduct:critic cumulative.",
             file=sys.stderr,
         )
         return 1
@@ -3674,7 +3674,7 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
     except Exception as exc:  # prawduct:ok-broad-except — fail closed if freshness inputs are unreadable
         print(
             f"freshness-check-failed: could not compare cumulative-Critic "
-            f"findings vs session-start ({exc!r}). Re-run /critic cumulative.",
+            f"findings vs session-start ({exc!r}). Re-run /prawduct:critic cumulative.",
             file=sys.stderr,
         )
         return 1
@@ -3686,7 +3686,7 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         print(
             f"stale: cumulative findings ({findings_mtime}) "
             f"predate session-start ({session_start}). Re-run "
-            "/critic cumulative in the current session before opening a PR.",
+            "/prawduct:critic cumulative in the current session before opening a PR.",
             file=sys.stderr,
         )
         return 1
@@ -3779,7 +3779,7 @@ def cmd_regen_views(project_dir: Path) -> int:
 
 
 def cmd_check_operator_verification(project_dir: Path) -> int:
-    """Structural gate for `/pr create`: refuse open when queue has pending entries.
+    """Structural gate for `/prawduct:pr create`: refuse open when queue has pending entries.
 
     Mirrors :func:`cmd_check_cumulative_critic` semantics — exit 0 only
     when the gate is satisfied, exit 1 with stderr describing the
@@ -3795,7 +3795,7 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
     except ImportError:
         # Fail OPEN: this gate cannot evaluate a queue it can't load. If the
         # bundled lib/ failed to import (an incomplete plugin install),
-        # blocking /pr here would be a false positive. Surface a note, allow.
+        # blocking /prawduct:pr here would be a false positive. Surface a note, allow.
         print(
             "NOTE: check-operator-verification could not import the plugin lib/ "
             "from ${CLAUDE_PLUGIN_ROOT}; gate skipped.",
@@ -3818,7 +3818,7 @@ def cmd_accept_operator_verification(
 ) -> int:
     """Flip all pending entries to ``accepted`` with the supplied rationale.
 
-    Invoked by ``/pr create --accept-pending-verification "rationale"``.
+    Invoked by ``/prawduct:pr create --accept-pending-verification "rationale"``.
     Refuses an empty or missing rationale — the work-log capture is the
     whole point of the override.
     """
@@ -3840,7 +3840,7 @@ def cmd_accept_operator_verification(
     if rationale is None or not rationale.strip():
         print(
             "error: accept-operator-verification requires a non-empty "
-            "rationale argument — `/pr create --accept-pending-verification "
+            "rationale argument — `/prawduct:pr create --accept-pending-verification "
             '"rationale"`. The override is recorded in operator-verification.md '
             "as the work-log entry.",
             file=sys.stderr,
@@ -3948,10 +3948,10 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
 
 
 def cmd_check_pr_doc_only(project_dir: Path) -> int:
-    """Fast-path gate for `/pr create`: report whether the PR diff is doc-only.
+    """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 
     Exit 0 when every file in ``merge-base...HEAD`` ends in ``.md`` and the
-    diff is non-empty — the `/pr` skill uses this to skip the cumulative-
+    diff is non-empty — the `/prawduct:pr` skill uses this to skip the cumulative-
     Critic and PR-reviewer gates, mirroring the session-end stop-hook
     behavior (`_session_changes_are_doc_only`) at the PR boundary. The
     stop hook's PR-review evidence gate (Gate 3) consults the same helper
@@ -4083,12 +4083,12 @@ def _pr_diff_is_trivial(project_dir: Path) -> tuple[bool, str]:
 
 
 def cmd_check_pr_trivial(project_dir: Path) -> int:
-    """Fast-path gate for `/pr create`: report whether every commit in
+    """Fast-path gate for `/prawduct:pr create`: report whether every commit in
     ``merge-base...HEAD`` is fileset-eligible per Chunk 04's
     ``Type: trivial`` path bounds.
 
     Exit 0 when at least one commit exists ahead of base AND every
-    commit clears the bounds — the `/pr` skill skips the cumulative-
+    commit clears the bounds — the `/prawduct:pr` skill skips the cumulative-
     Critic and PR-reviewer gates in this case. This is the PR-boundary
     parallel to the doc-only fast-path: same fail-closed shape, same
     Gate-3 alignment at session end.
@@ -4117,7 +4117,7 @@ def cmd_check_pr_trivial(project_dir: Path) -> int:
 
 
 def cmd_compute_verify_resolutions_scope(project_dir: Path) -> int:
-    """Print the file scope a ``/critic verify-resolutions`` pass should review.
+    """Print the file scope a ``/prawduct:critic verify-resolutions`` pass should review.
 
     Thin CLI wrapper around ``_compute_verify_resolutions_scope`` (v1.5
     Chunk 02) so the Critic SKILL can call the canonical helper instead
@@ -4137,11 +4137,11 @@ def cmd_compute_verify_resolutions_scope(project_dir: Path) -> int:
       1 - cannot compute (no prior findings, no ``commit_reviewed``,
           unreadable findings, no actionable findings, unresolved commit,
           git failure, invalid files_reviewed). The Critic should fall
-          back to ``/critic chunk`` or ``/critic final`` and record
+          back to ``/prawduct:critic chunk`` or ``/prawduct:critic final`` and record
           ``mode_chosen_by: "fallback-no-prior-findings"`` (or similar).
       2 - scope widened past the demotion threshold
           (``len(delta) > 2 * len(prior) + 5``). The Critic should fall
-          back to ``/critic final`` and record
+          back to ``/prawduct:critic final`` and record
           ``mode_chosen_by: "fallback-scope-widened"``.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
@@ -4158,7 +4158,7 @@ def cmd_compute_verify_resolutions_scope(project_dir: Path) -> int:
 
 
 def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
-    """Print ``<mode>|<rationale>`` for the inferred ``/critic`` mode.
+    """Print ``<mode>|<rationale>`` for the inferred ``/prawduct:critic`` mode.
 
     Thin wrapper around ``tools.lib.critic_mode.infer_mode`` (v1.5
     Chunk 03). The subcommand exists so the Critic SKILL can call
@@ -4192,7 +4192,7 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
 
 
 def cmd_advisory(project_dir: Path, argv: list[str]) -> int:
-    """Dispatch the ``/prawduct-advisory`` management CLI (spec §6, Chunk 05).
+    """Dispatch the ``/prawduct:advisory`` management CLI (spec §6, Chunk 05).
 
     Thin wrapper around the bundled ``lib.advisory_cmd.run`` — the subcommand
     exists so the skill's ``allowed-tools`` can be scoped to

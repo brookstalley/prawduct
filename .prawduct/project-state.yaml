@@ -461,7 +461,9 @@ views_enabled: true
 # `.prawduct/` so the build-plan tooling (regen-views, infer-critic-mode, the
 # stop-hook gate) finds a scope-named plan instead of the conventional
 # artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
-active_build_plan: artifacts/v2.0.0-plugin-distribution-build-plan.md
+# Unset: the v2.0.0 plugin-distribution plan is complete (all chunks shipped).
+# Its build-plan file is retained as a historical artifact alongside the prior
+# vN plans; clearing the pointer ends the "active build plan" / staleness flag.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

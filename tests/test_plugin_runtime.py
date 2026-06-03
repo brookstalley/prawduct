@@ -3,9 +3,10 @@
 The architectural keystone. These enforce the load-bearing invariants of the
 ported runtime:
 
-  * **Lib parity** — the seven bundled governance modules are byte-identical to
-    their tools/lib/ counterparts (a mirror that cannot drift during Phase-1
-    coexistence), and the trimmed lib/__init__.py imports NONE of the excluded
+  * **Lib parity** — the bundled governance modules are byte-identical to their
+    tools/lib/ counterparts (a mirror that cannot drift during Phase-1
+    coexistence) except for an explicitly-diverged set that carries plugin-native
+    command hints, and the trimmed lib/__init__.py imports NONE of the excluded
     file-sync transport modules.
   * **Structure** — bin/prawduct-hook is an executable, parseable Python script
     with the sync cluster excised; hooks.json wires the briefing (clear) +
@@ -43,20 +44,49 @@ HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 # locked byte-for-byte against tools/lib/. `audit_learnings_cmd` joined this set
 # in Chunk 13 — it is pure governance (stdlib-only, operates on the consumer's
 # own learnings.md, no sync coupling), mis-grouped with the transport in Chunk 5.
+# `backlog_probes` LEFT this set in the v2.0.2 namespace follow-up (see
+# DIVERGED_MODULES) — its advisory names a plugin-namespaced skill.
 GOVERNANCE_MODULES = (
     "core",
     "critic_mode",
     "views",
     "advisory_cmd",
     "advisory_store",
-    "backlog_probes",
     "audit_learnings_cmd",
 )
-# Bundled but INTENTIONALLY diverged from tools/lib/ (Chunk 13): the plugin copy
-# carries plugin-native user-facing hints (`prawduct-hook` / project-state flag),
-# while tools/lib/ stays frozen on the 1.x `prawduct-setup` path. Excluded from
-# the byte-parity lock; a dedicated test asserts the divergence is the intended one.
-DIVERGED_MODULES = ("operator_verification",)
+# Bundled but INTENTIONALLY diverged from tools/lib/: the plugin copy carries
+# plugin-native user-facing hints, while tools/lib/ stays frozen on the 1.x
+# paths. Excluded from the byte-parity lock; the per-module expectations below
+# assert each divergence is the intended one.
+#   * operator_verification (Chunk 13) — `prawduct-hook` / project-state flag vs.
+#     the frozen 1.x `prawduct-setup` path.
+#   * backlog_probes (v2.0.2 follow-up) — the legacy-backlog-format advisory names
+#     the plugin-namespaced `/prawduct:backlog migrate`, while the file-sync copy
+#     keeps the bare `/backlog migrate` skill. Chunk 13 namespaced
+#     operator_verification but missed this probe, so the advisory (re-surfaced in
+#     the plugin runtime by v2.0.2) pointed plugin repos at a command that does
+#     not resolve in their namespace.
+DIVERGED_MODULES = ("operator_verification", "backlog_probes")
+# Per-module divergence pins: substrings the PLUGIN copy must carry, substrings
+# it must NOT carry (the frozen file-sync form), and substrings the tools/lib/
+# copy must retain (owner directive: no 1.x edits).
+DIVERGENCE_EXPECTATIONS = {
+    "operator_verification": {
+        # The plugin copy names the plugin-native enable path AND the namespaced
+        # PR skill; the frozen 1.x copy keeps the bare `/pr create` + `prawduct-setup`.
+        "plugin_requires": (
+            "prawduct-hook verify-operator-verification",
+            "/prawduct:pr create",
+        ),
+        "plugin_forbids": ("prawduct-setup", "/pr create"),
+        "framework_requires": ("prawduct-setup", "/pr create"),
+    },
+    "backlog_probes": {
+        "plugin_requires": ("/prawduct:backlog migrate",),
+        "plugin_forbids": ("/backlog migrate",),
+        "framework_requires": ("/backlog migrate",),
+    },
+}
 # The file-sync transport explicitly NOT bundled into the plugin runtime.
 EXCLUDED_MODULES = (
     "sync_cmd",
@@ -92,27 +122,34 @@ class TestPluginLibParity:
 
     @pytest.mark.parametrize("module", DIVERGED_MODULES)
     def test_diverged_module_is_bundled_and_plugin_native(self, module):
-        # operator_verification is bundled (the gate runs plugin-native) but its
-        # user-facing hints diverge from the frozen 1.x copy (Chunk 13).
+        # A diverged module is bundled (it runs plugin-native) but its user-facing
+        # hints differ from the frozen 1.x copy. DIVERGENCE_EXPECTATIONS pins the
+        # intended divergence per module so a re-sync that flattens it is caught.
         plugin_path = PLUGIN_LIB / f"{module}.py"
-        assert plugin_path.exists(), f"lib/{module}.py must be bundled (the gate runs plugin-native)"
+        assert plugin_path.exists(), f"lib/{module}.py must be bundled (it runs plugin-native)"
         plugin_src = plugin_path.read_text()
         framework_src = (FRAMEWORK_LIB / f"{module}.py").read_text()
         assert plugin_src != framework_src, (
             f"lib/{module}.py is expected to diverge from tools/lib/{module}.py "
-            "(Chunk 13 plugin-native hints); if you re-synced them, the divergence was lost."
+            "(plugin-native hints); if you re-synced them, the divergence was lost."
         )
-        # The plugin copy names the plugin-native paths, never the frozen file-sync ones.
-        assert "prawduct-hook verify-operator-verification" in plugin_src
-        assert "prawduct-setup" not in plugin_src, (
-            "the plugin operator_verification hints must not name the legacy "
-            "`prawduct-setup` file-sync path (Chunk 13 repoint)"
-        )
+        expect = DIVERGENCE_EXPECTATIONS[module]
+        # The plugin copy names the plugin-native form, never the frozen file-sync one.
+        for needle in expect["plugin_requires"]:
+            assert needle in plugin_src, (
+                f"lib/{module}.py must name the plugin-native form {needle!r}"
+            )
+        for needle in expect["plugin_forbids"]:
+            assert needle not in plugin_src, (
+                f"lib/{module}.py must not name the frozen file-sync form {needle!r} "
+                "(plugin repos resolve the namespaced/plugin-native path instead)"
+            )
         # The frozen 1.x copy is untouched — still on the legacy path.
-        assert "prawduct-setup" in framework_src, (
-            "tools/lib/operator_verification.py must stay frozen on the 1.x path "
-            "(owner directive: no 1.x edits)"
-        )
+        for needle in expect["framework_requires"]:
+            assert needle in framework_src, (
+                f"tools/lib/{module}.py must stay frozen on the 1.x form {needle!r} "
+                "(owner directive: no 1.x edits)"
+            )
 
     def test_init_imports_no_excluded_module(self):
         tree = ast.parse((PLUGIN_LIB / "__init__.py").read_text())
@@ -337,7 +374,14 @@ class TestPluginClearBriefing:
         # Surfaced in the briefing the agent sees (stdout).
         assert "ADVISORIES" in result.stdout
         assert "[backlog]" in result.stdout
-        assert "/backlog migrate" in result.stdout
+        # Plugin runtime renders the namespaced skill — the bare `/backlog migrate`
+        # form does not resolve in a plugin repo's command namespace.
+        assert "/prawduct:backlog migrate" in result.stdout
+        # BOTH advisory-output skill names are plugin-namespaced (ADV-3K7Q): the
+        # recommended action AND the dismiss hint. The hyphenated `/prawduct-advisory`
+        # form is the frozen file-sync skill name and must not leak into a plugin repo.
+        assert "/prawduct:advisory dismiss" in result.stdout
+        assert "/prawduct-advisory" not in result.stdout
         # Persisted so the dismiss/resolve lifecycle has a record to act on.
         store = json.loads((prawduct / ".advisories.json").read_text())
         active = [a for a in store["advisories"] if a.get("state") == "active"]
@@ -353,7 +397,31 @@ class TestPluginClearBriefing:
         result = run_plugin_hook("clear", tmp_path)
         assert result.returncode == 0, result.stderr
         assert "legacy-backlog-format" not in result.stdout
-        assert "/backlog migrate" not in result.stdout
+        assert "/prawduct:backlog migrate" not in result.stdout
+
+    def test_clear_briefing_namespaces_status_hints(self, tmp_path):
+        # ADV-3K7Q (whole-briefing coherence): the plugin clear briefing's status
+        # lines — backlog triage and learnings lookup — must name the
+        # plugin-namespaced skills, not the bare file-sync forms that do not
+        # resolve in a plugin repo's command namespace. The file-sync product-hook
+        # keeps the bare forms (see test_product_hook); only the plugin diverges.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Migrated backlog (format v2) so the legacy advisory stays silent and we
+        # isolate the status-line hints; two structured items → the count line fires.
+        (prawduct / "project-state.yaml").write_text("backlog_format_version: 2\n")
+        (prawduct / "backlog.md").write_text(
+            "# Backlog\n\n## Open\n- [ABC-0001] a pending item\n- [ABC-0002] another\n"
+        )
+        (prawduct / "learnings.md").write_text("# Learnings\n\n- a standing rule\n")
+        result = run_plugin_hook("clear", tmp_path)
+        assert result.returncode == 0, result.stderr
+        # Both status hints name the plugin-namespaced skills...
+        assert "/prawduct:backlog to triage" in result.stdout
+        assert "/prawduct:learnings <topic>" in result.stdout
+        # ...and the bare file-sync forms do not leak into a plugin briefing.
+        assert "(/backlog to triage)" not in result.stdout
+        assert "/learnings <topic>" not in result.stdout
 
 
 class TestPluginStopGate:
@@ -375,6 +443,12 @@ class TestPluginStopGate:
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
         assert result.returncode == 2, (result.stdout, result.stderr)
         assert "CRITIC" in result.stderr
+        # The gate names the plugin-namespaced skill — a bare `/critic` does not
+        # resolve in a plugin repo's command namespace. Pin the command form, not
+        # just the word: the message also cites the file `.prawduct/critic-review.md`
+        # (contains `/critic`), so the negative must target the backtick command form.
+        assert "`/prawduct:critic`" in result.stderr
+        assert "`/critic`" not in result.stderr
 
     def test_stop_passes_with_fresh_blocking_free_findings(self, tmp_path):
         prawduct = self._active_plan_repo(tmp_path)
@@ -435,6 +509,53 @@ class TestStopGateAttribution:
         assert result.returncode == 2, (result.stdout, result.stderr)
         assert "REFLECTION" in result.stderr
         assert "gate: reflection" in result.stderr
+
+
+class TestPluginRuntimeNamespacing:
+    """Full-coherence namespace sweep: the plugin runtime names the
+    /prawduct:-namespaced skills in ALL agent-facing gate output AND its own
+    docstrings/comments. A bare `/critic` or `/pr` does not resolve in a plugin
+    repo's command namespace. The frozen file-sync runtime (tools/product-hook,
+    tools/lib/) keeps the bare forms — see test_product_hook. Source-scan,
+    matching this module's other structural-invariant tests (test_sync_cluster_
+    excised, the lib parity locks): assert the BAD form is ABSENT, because a
+    presence-only check lets sibling leaks survive (the prior namespace sweep's
+    recurring failure mode — see learnings.md)."""
+
+    # Bare command phrases that must never appear in the plugin hook. Each is
+    # collision-free with file paths and prose: the command+arg phrases contain a
+    # space (no path does), and the backtick forms only ever wrap a command
+    # invocation. (Legit survivors are file paths like `.prawduct/critic-review.md`
+    # and the prose `critic/pr skills` — none match these needles.)
+    FORBIDDEN_BARE = (
+        "/critic chunk",
+        "/critic final",
+        "/critic cumulative",
+        "/critic verify-resolutions",
+        "`/critic`",
+        "/pr create",
+        "`/pr`",
+        "Run /pr ",
+        # The hyphenated `/prawduct-advisory` is the FROZEN file-sync skill name;
+        # the plugin skill is `/prawduct:advisory`. (Collision-free with the binary
+        # path `bin/prawduct-hook`, which contains `/prawduct-hook`, not `-advisory`.)
+        "/prawduct-advisory",
+    )
+
+    def test_hook_emits_no_bare_command_forms(self):
+        src = HOOK.read_text()
+        leaked = [needle for needle in self.FORBIDDEN_BARE if needle in src]
+        assert not leaked, (
+            f"bin/prawduct-hook leaks bare command form(s) {leaked} — the plugin "
+            "runtime must name the /prawduct:-namespaced skills in agent-facing "
+            "output and docstrings alike (a bare form does not resolve in a plugin "
+            "repo). The frozen file-sync copies keep the bare forms; the plugin "
+            "diverges."
+        )
+        # ...and the namespaced forms ARE present (the sweep replaced, not deleted).
+        assert "`/prawduct:critic`" in src, "stop-hook Critic gate must name /prawduct:critic"
+        assert "/prawduct:critic cumulative" in src, "pr-create gate must name /prawduct:critic cumulative"
+        assert "Run /prawduct:pr to invoke" in src, "stop-hook PR gate must name /prawduct:pr"
 
 
 class TestPluginSubcommandsResolveViaLib:

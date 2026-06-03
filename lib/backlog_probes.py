@@ -2,7 +2,7 @@
 
 Phase 2 (v1.7.0) ships exactly one production probe: ``legacy-backlog-format``,
 which nudges a product whose ``.prawduct/backlog.md`` is still in the legacy
-unstructured form (no ``[PFX-XXXX]`` ids) to run ``/backlog migrate``. The other
+unstructured form (no ``[PFX-XXXX]`` ids) to run ``/prawduct:backlog migrate``. The other
 three probes from backlog-system-requirements.md §8.2 (external-detected,
 legacy-section-schema, overdue-grooming) are deferred — see the v1.7.0 build
 plan's "Out of scope (deferred)".
@@ -92,7 +92,7 @@ def legacy_backlog_format_probe(
     project has not recorded ``backlog_format_version: 2``.
 
     Resolution condition (shared answer store, spec §7.1): reads
-    ``backlog_format_version`` from project-state.yaml — set by ``/backlog
+    ``backlog_format_version`` from project-state.yaml — set by ``/prawduct:backlog
     migrate`` on completion — so a teammate's migration auto-resolves the
     advisory for everyone on next sync, decoupled from local code state.
     """
@@ -122,14 +122,14 @@ def legacy_backlog_format_probe(
 
     summary = (
         f"{total} backlog items lack [PFX-XXXX] structured ids — run "
-        "/backlog migrate to add metadata and enable pick/find/list filtering."
+        "/prawduct:backlog migrate to add metadata and enable pick/find/list filtering."
     )
     return [
         AdvisoryCandidate(
             type="legacy-backlog-format",
             evidence=tuple(evidence),
             trigger_summary=summary,
-            recommended_action="/backlog migrate",
+            recommended_action="/prawduct:backlog migrate",
             priority="info",
         )
     ]
