@@ -14,15 +14,15 @@ Developer preferences for how code is written in this project. Captured during d
 - **Formatting**: No formatter configured — follow existing style (4-space indent, ~100 char lines)
 - **Linting**: No linter configured
 - **Type annotations**: Used throughout — function signatures use `str | None`, `list[str]`, `dict[str, str]` style (PEP 604)
-- **Imports**: `from __future__ import annotations` at top of every implementation file in `tools/`, `tests/`, and `hooks/` (the v2.0.0 plugin's bundled hook scripts) (backward-compat shims and `tests/conftest.py` excepted); grouped by stdlib / third-party / local
+- **Imports**: `from __future__ import annotations` at top of every implementation file in `lib/`, `tests/`, and `hooks/`, plus the plugin runtime scripts `bin/prawduct-hook` and `bin/test-reference-verify` (`__init__.py` and `tests/conftest.py` excepted); grouped by stdlib / third-party / local
 
 ## Testing
 
 - **Framework**: pytest
 - **Style**: Class-based test grouping (`class TestFeatureName`), descriptive method names (`test_returns_none_for_missing`), AAA pattern
-- **Coverage expectations**: Happy path + error cases + edge cases; mock external dependencies (subprocess, filesystem). Every public (non-underscore) module-level function in `tools/lib/` should be referenced by at least one test (directly imported, called, or attribute-accessed). Functions exercised only transitively (called from a tested entry point but never imported by a test) are tracked in the test's exemption list with a resolution path.
+- **Coverage expectations**: Happy path + error cases + edge cases; mock external dependencies (subprocess, filesystem). Every public (non-underscore) module-level function in `lib/` should be referenced by at least one test (directly imported, called, or attribute-accessed). The dedicated coverage scanner (`test_public_function_coverage`) was retired with the file-sync `tools/lib/` in M4; the Critic's Goal 1 (test-coverage adequacy) now backstops this — restore a `lib/`-scoped scanner if untested public functions start to drift in.
 - **Testing strategies**: Not applicable — CLI tools with deterministic I/O; no property-based testing currently
-- **Test location**: `tests/` directory. Test files are organized by capability (`test_prawduct_sync.py`, `test_prawduct_init.py`, `test_prawduct_migrate.py`, `test_prawduct_validate.py`); each loads from the consolidated `tools/prawduct-setup.py` entry point
+- **Test location**: `tests/` directory. Test files are organized by capability (`test_plugin_runtime.py`, `test_plugin_migrate.py`, `test_v5_methodology.py`, …), with preference-enforcement tests under `tests/preferences/`. Enforced by `tests/preferences/test_test_location.py` — every `test_*.py` must live under `tests/`, else `pyproject.toml`'s `testpaths` silently skips it.
 - **Parallelization**: pytest-xdist via `pyproject.toml` (`-n auto --dist loadfile`); `tests/conftest.py` groups same-directory tests onto one worker for fixture/state isolation
 - **Module loading**: Scripts with hyphens loaded via `importlib.util.spec_from_file_location`
 
@@ -37,7 +37,7 @@ Developer preferences for how code is written in this project. Captured during d
 
 - **Key libraries**: pytest (testing), importlib (hyphenated module loading), subprocess (git/external commands)
 - **Subprocess safety**: Always pass arguments as a list (`subprocess.run(["git", "status"])`); never use `shell=True`. The list-form is safe against command injection when arguments are path-derived or otherwise constructed; `shell=True` is not.
-- **Dev commands**: `pytest tests/ -v` (full suite), `pytest tests/test_prawduct_sync.py -v` (sync subset)
+- **Dev commands**: `pytest tests/ -v` (full suite), `pytest tests/test_plugin_runtime.py -v` (a single-file subset)
 
 ## Workflow
 
@@ -70,7 +70,7 @@ Each preference is enforced by one of three mechanisms. This table is the source
 | Sync-only architecture (no `async def`, no `asyncio`) | Test | `tests/preferences/test_sync_only_architecture.py` |
 | Subprocess safety (no `shell=True`) | Test | `tests/preferences/test_subprocess_safety.py` |
 | Test location (`test_*.py` only under `tests/`) | Test | `tests/preferences/test_test_location.py` |
-| Public functions in `tools/lib/` referenced in tests | Test | `tests/preferences/test_public_function_coverage.py` (presence check only — see test docstring; Critic Goal 1 backstops for real coverage adequacy) |
+| Public functions in `lib/` referenced in tests | Critic | Goal 1 (test-coverage adequacy) — the dedicated `test_public_function_coverage` scanner was retired with `tools/lib/` (M4); restore a `lib/`-scoped scanner if drift appears |
 | Naming (snake_case / PascalCase / UPPER_SNAKE) | Critic *(would be linter; no linter configured — see "Linting" above)* | Reviewer reads diff against this preference |
 | Error handling (return-value based; exceptions at boundaries) | Critic | Reviewer judges what counts as a "boundary" per the definition above |
 | Class-based test grouping (allows scenario-based class names) | Critic | Reviewer judges whether grouping is sensible — strict `Test<FuncName>` would over-enforce |
