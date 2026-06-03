@@ -17,11 +17,30 @@ Full rationale + verified safety facts: `~/.claude/plans/lucky-plotting-kahn.md`
   (assert-absent source-scan over the full skill vocabulary).
   *Done when:* diff reviewed, namespaced forms present + bare absent, full pytest green, `/prawduct:critic chunk` clean.
 
-- **Chunk 2 — Retire the file-sync engine (source + its tests, together).** Delete `tools/`
-  (product-hook, prawduct-setup.py, 3 shims, lib/); relocate `tools/test-reference-verify` →
-  `bin/`; delete the 10 engine test files; prune `TestPluginLibParity` + orphaned constants from
-  `test_plugin_runtime.py`; fix `tests/preferences/` `tools/` scans; de-lock `lib/core.py` framing.
-  *Done when:* full pytest green, plugin smoke (clear+stop) passes, `/prawduct:critic chunk` clean.
+- **Chunk 2 — Retire the file-sync engine.** SPLIT after discovery: several *kept*
+  governance-module unit tests reach their module-under-test THROUGH the engine
+  (`prawduct-setup.py` importlib, or `sys.path.insert(tools)` + `from lib import X` → `tools/lib`,
+  plus `tools/product-hook` subprocess sections). Those modules live in `lib/` too, so coverage
+  must be repointed, not dropped. Verified: `bin/prawduct-hook` exposes the needed subcommands
+  (regen-views, infer-critic-mode, audit-learnings, *-operator-verification, …) and
+  `from lib import X` resolves to the plugin copy with repo-root on sys.path.
+  - **2a — Repoint** the engine-coupled kept tests to the plugin (lib/ + bin/prawduct-hook) WHILE
+    `tools/` still exists; verify full suite green (proves the plugin modules carry the coverage).
+    Files: `test_advisory_cmd`, `test_advisory_store`, `test_audit_learnings`, `test_backlog_probes`
+    (repoint now; removed in Chunk 3), `test_critic_mode_inference`, `test_operator_verification`,
+    `test_views`, `test_build_plan_resolution`, `test_pr_reviewer`, `test_v5_templates` (the
+    prawduct-setup loader part). Repoint, do NOT delete the subprocess coverage — point it at
+    `bin/prawduct-hook`.
+  - **2b — Delete the engine:** `tools/` (product-hook, prawduct-setup.py, 3 shims, lib/); the 10
+    pure-engine test files (`test_prawduct_{sync,init,migrate,validate}`, `test_product_hook`,
+    `test_product_compat`, `test_integration_lifecycle`, `test_coverage_gaps`,
+    `test_preferences_lifecycle`, `test_lib_propagation`); relocate `tools/test-reference-verify`
+    → `bin/` (+ repoint `test_reference_verifier.py` and doc refs); prune `TestPluginLibParity` +
+    orphaned constants from `test_plugin_runtime.py`; fix `tests/preferences/` `tools/` scans
+    (`test_sync_only_architecture`, `test_future_annotations`, `test_subprocess_safety`,
+    `test_public_function_coverage` — drop/retarget the tools/lib coverage check); de-lock
+    `lib/core.py` framing. `test_plugin_migrate.py` creates FAKE tools/ files in a temp repo — keep.
+  *Done when:* full pytest green after 2a and after 2b, plugin smoke (clear+stop) passes, `/prawduct:critic chunk` clean.
 
 - **Chunk 3 — Strip in-plugin pre-2.0 guards.** Remove `_legacy_filesync_present` coexistence
   nudge, `fallback-no-tools-lib` path, pre-v1.4 evidence acceptance; remove
