@@ -2,7 +2,7 @@
      Tier: 1 (Source of Truth)
 
      This plan defines WHAT to build. For HOW to build (governance, test discipline,
-     Critic review, session handoff), read `.prawduct/build-governance.md` before starting.
+     Critic review, session handoff), read `/prawduct:building` before starting.
 
      The build plan must be specific enough that the builder can execute without making
      technology decisions. If the builder would need to guess, the plan is underspecified.
@@ -218,7 +218,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
 - **Acceptance criteria:** [Concrete checks — "npm test passes", "page renders scores", etc.]
 - **Critic mode:** [optional — omit and let `/critic` infer, or pick one to override: `chunk` | `final` | `cumulative` | `verify-resolutions`]
   <!-- The field is OPTIONAL. At runtime `/critic` (no args) infers the mode from
-       git state + build-plan position via `tools/product-hook infer-critic-mode`
+       git state + build-plan position via `prawduct-hook infer-critic-mode`
        and records `mode_chosen_by` as the helper's verbatim rationale string
        (e.g., "rule-3 final: ..."), or as the literal string `"explicit-args"`
        when a slash-command argument overrode inference. Inference
@@ -296,7 +296,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        at chunk-close describing what to verify and where. When
        `operator_verification_required: true` in project-state.yaml, `/pr create`
        blocks on pending entries; drain via
-       `python3 tools/prawduct-setup.py verify <project_dir> <VRF-id>`, or
+       `prawduct-hook verify-operator-verification <VRF-id>`, or
        override per-PR with `--accept-pending-verification "rationale"`. The
        Critic emits a NOTE if a chunk declares `Visual change: yes` but no
        queue entry references it. Methodology: `methodology/building.md`

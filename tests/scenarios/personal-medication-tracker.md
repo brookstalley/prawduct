@@ -55,7 +55,7 @@ This scenario creates productive tension across multiple framework dimensions:
 
 1. Create an isolated project directory for the evaluation:
    ```bash
-   python3 tools/prawduct-setup.py setup /tmp/eval-medication-tracker --name "DoseCheck"
+   python3 bin/prawduct-hook init-product /tmp/eval-medication-tracker --name "DoseCheck" --apply
    ```
 
 ### Running the evaluation

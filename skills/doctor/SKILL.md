@@ -71,7 +71,7 @@ Classify and report:
 Plugin-native — enabling a gate is a `project-state.yaml` flag flip (no migrate subcommand, no sync). This skill **reads and guides**; it does not edit `project-state.yaml`. Read the current value first, confirm intent (surface the BLOCKING consequence), then present the exact one-line edit for the user (or the main session) to apply.
 
 ### Coverage (F4 — symbol-coverage enforcement)
-Set `coverage_required: true` in `.prawduct/project-state.yaml`. **Consequence:** the Critic's Goal 1 then BLOCKS on any changed file missing from `.test-evidence.json`'s `changes_referenced`. (`/prawduct:building` "Coverage Evidence" explains the evidence shape; `tools/test-reference-verify` is the Python symbol floor — stronger language-native tools give `coverage_level: executed`.)
+Set `coverage_required: true` in `.prawduct/project-state.yaml`. **Consequence:** the Critic's Goal 1 then BLOCKS on any changed file missing from `.test-evidence.json`'s `changes_referenced`. (`/prawduct:building` "Coverage Evidence" explains the evidence shape; `bin/test-reference-verify` is the Python symbol floor — stronger language-native tools give `coverage_level: executed`.)
 
 ### Operator verification (F10 — pre-merge human-verification gate)
 Set `operator_verification_required: true` in `.prawduct/project-state.yaml`; entries accumulate in `.prawduct/operator-verification.md` as visual / live-integration chunks enqueue them. **Consequence:** `/prawduct:pr create` then BLOCKS while any entry's status is `pending`; the per-PR override is `/prawduct:pr create --accept-pending-verification "rationale"` (rationale recorded back into each entry).

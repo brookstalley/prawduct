@@ -29,9 +29,9 @@ Developer preferences for how code is written in this project. Captured during d
 ## Architecture Patterns
 
 - **Data modeling**: Plain dicts for JSON data, Path objects for filesystem
-- **Error handling**: Return-value based — internal functions in `tools/lib/` return dicts with `status`/`reason` fields rather than raising. Exceptions are only allowed to escape at **boundaries**: CLI entry points (`tools/prawduct-setup.py` argparse handlers, `tools/product-hook` subcommands), subprocess wrappers (when the underlying command is expected to fail and we can't recover), and unexpected `OSError`/`json.JSONDecodeError` at filesystem/parse boundaries (caught and logged with context, never silently swallowed). New code that raises within tool internals (anything called from another `tools/lib/` function) is a violation.
+- **Error handling**: Return-value based — internal functions in `lib/` return dicts with `status`/`reason` fields rather than raising. Exceptions are only allowed to escape at **boundaries**: CLI entry points (`bin/prawduct-hook` subcommands and the `lib/*_cmd.py` / `lib/migrate_plugin.py` / `lib/init_product.py` `run()` runners they dispatch to), subprocess wrappers (when the underlying command is expected to fail and we can't recover), and unexpected `OSError`/`json.JSONDecodeError` at filesystem/parse boundaries (caught and logged with context, never silently swallowed). New code that raises within governance internals (anything called from another `lib/` function) is a violation.
 - **Async**: Sync throughout — CLI tools, no async needed
-- **File organization**: `tools/` for entry-point scripts (`prawduct-setup.py` plus backward-compat shims), `tools/lib/` for the implementation subpackage (`core.py`, `init_cmd.py`, `migrate_cmd.py`, `sync_cmd.py`, `validate_cmd.py`), `templates/` for product templates, `tests/` for tests
+- **File organization**: `bin/` for entry-point scripts (`prawduct-hook`, `test-reference-verify`), `lib/` for the implementation package (`core.py`, `views.py`, `critic_mode.py`, `migrate_plugin.py`, `init_product.py`, `advisory_store.py`, `advisory_cmd.py`, `audit_learnings_cmd.py`, `operator_verification.py`), `skills/` + `methodology/` + `hooks/` for the plugin governance surface, `templates/` for product artifact templates, `tests/` for tests
 
 ## Tooling
 

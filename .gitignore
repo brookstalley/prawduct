@@ -13,10 +13,8 @@ __pycache__/
 .pytest_cache/
 
 # Prawduct session files
-.prawduct/sync-manifest.json
 .prawduct/.test-evidence.json
 .prawduct/.gates-waived
-.prawduct/.sync-pending
 .prawduct/artifacts/build-plan.md
 
 # Prawduct session files

@@ -3,6 +3,23 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-03: v2.0.3 — Retire the file-sync engine & strip pre-2.0 back-compat cruft (M4) (shipped)
+
+<!-- prawduct: type=refactor | release=v2.0.3 | status=shipped -->
+
+**Why:** v2.0.0 cut the framework over to plugin distribution but deliberately kept the v1 file-sync engine frozen as a sibling service for un-migrated repos (`[MIG-M4-REMOVE]`, blocked on a consumer census). Owner directive (2026-06-03): *"we DO NOT need backwards compatibility … remove ANY cruft that exists only for back compat to pre-2.0."* That unblocks M4 — the terminal step of the transition. Governance ships entirely from the plugin; the engine, its payload, and the in-plugin guards that existed only to coexist with it are dead weight.
+
+**What shipped (5 chunks, off `develop`):**
+- **Chunk 1 (DOC-4B2W):** namespaced the bare command forms in the 6 plugin-only prose files (`methodology/{building,planning,reflection}.md`, `skills/critic/{review-cycle,review-protocol}.md`, `skills/pr/review-protocol.md`) → `/prawduct:*`; added `TestPluginDocsNamespacing`.
+- **Chunk 2:** deleted the file-sync engine — `tools/` (product-hook, prawduct-setup.py, the 3 shims, `tools/lib/`) + 10 pure-engine test files + the lib-parity machinery; repointed the 11 engine-coupled governance-module tests onto the plugin (`lib/` + `bin/prawduct-hook`); relocated `tools/test-reference-verify` → `bin/`.
+- **Chunk 3:** stripped the in-plugin pre-2.0 guards — the `_legacy_filesync_present` migrate nudge, the `fallback-no-tools-lib` path, pre-v1.4 verifier-less evidence acceptance, the `legacy_backlog_format_probe`, the coexistence-nudge tests, and three inert sync-stub briefing params.
+- **Chunk 4:** removed the 13 file-sync-only templates (7 `skill-*.md` + `product-claude`/`critic-review`/`pr-review`/`build-governance`/`product-settings.json`/`conftest.py`); slimmed `lib/core.py` to the governance helpers the surviving modules use (reshaped `MANAGED_FILES` → a frozenset path registry migrate derives its REMOVE set from); reconciled 7 test files by retargeting content tests to their live plugin source-of-truth or deleting redundant file-sync mirrors (every contract preserved by name).
+- **Chunk 5:** removed the committed `.prawduct/{critic-review,pr-review,build-governance}.md`, the sync-manifest gitignore entries, and the dead F5a `.sync-pending` briefing block; swept stale engine refs out of kept code/docs (`bin/prawduct-hook` comment paths + user-facing gate messages, `lib/{views,critic_mode,audit_learnings_cmd}` docstrings/generated strings, README, `docs/project-structure.md`, `cross-cutting-concerns.md`, `project-preferences.md`, the templates' taught commands, the scenario fixtures). Reconciled `[MIG-M4-REMOVE]` and `[DOC-4B2W]`; filed `[JAN-4F7M]` (the janitor skill's Template Currency theme still teaches the file-sync sync-manifest workflow).
+
+**Versioning:** patch bump (2.0.2 → 2.0.3). M4 is internal cleanup — the terminal tail of the v2.0.0 plugin transition — with zero behavioral change for plugin-governed consumers (the engine they don't use is gone). Conservative patch over a minor to avoid version inflation. The bump is the marketplace update-cache key.
+
+**Tests:** 615 passing (down from the pre-M4 ~1810 — the ~1200 deleted were the frozen engine's own suite; net plugin coverage is intact, every retired template-mirror test either retargeted to the plugin source-of-truth or proven redundant with an existing plugin-source test).
+
 ## 2026-06-03: v2.0.2 — Advisory probes run again in the plugin runtime; migration guide leads with the steps (shipped)
 
 <!-- prawduct: type=fix | release=v2.0.2 | status=shipped -->

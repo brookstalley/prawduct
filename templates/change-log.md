@@ -8,8 +8,8 @@
 
      With views enabled (the default), add a tag-line directly under each ##
      header to mark which build-plan chunks the entry shipped and which
-     release it belongs to. `product-hook regen-views` (or `prawduct-setup.py views <dir>
-     --refresh`) uses these tags to regenerate three derived views:
+     release it belongs to. `prawduct-hook regen-views` uses these tags to
+     regenerate three derived views:
        * build-plan `## Status` block — checkboxes flip from `status=shipped`
        * `.prawduct/release-notes.md` — sections grouped by `release=`
        * `scope_rollups:` block in project-state.yaml — grouped by `scope=`
@@ -37,4 +37,4 @@
 
      With `views_enabled: true`, the Status checkboxes in build-plan.md are a
      derived view. Don't hand-edit them — add/update a tagged entry here and
-     run `python3 tools/product-hook regen-views`. -->
+     run `prawduct-hook regen-views`. -->

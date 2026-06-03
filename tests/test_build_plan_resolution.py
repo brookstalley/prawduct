@@ -2,9 +2,9 @@
 
 The build-plan-consuming tooling resolves the active plan via an optional
 `active_build_plan:` pointer in project-state.yaml, falling back to the
-conventional `artifacts/build-plan.md`. The resolver lives in tools/lib/core.py
-and is mirrored inline in tools/product-hook (standalone in product repos). A
-parity test pins the two implementations together, like the GITIGNORE mirror.
+conventional `artifacts/build-plan.md`. The resolver lives in lib/core.py
+and is mirrored inline in bin/prawduct-hook (kept import-light on the hot path).
+A parity test pins the two implementations together, like the GITIGNORE mirror.
 """
 
 from __future__ import annotations

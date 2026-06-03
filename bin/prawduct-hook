@@ -112,11 +112,11 @@ def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | No
     return f"[{ver_part}gate: {name}{new_part}]"
 
 
-# --- Active build-plan resolution (inline mirror of tools/lib/core.py) ---
-# product-hook is standalone in product repos and cannot import tools/lib, so
-# the resolver is duplicated here. Kept in sync with
-# core.resolve_build_plan_path / core.read_str_yaml_key by a parity test
-# (same discipline as the GITIGNORE_ENTRIES / _SESSION_GITIGNORED_PATHS mirror).
+# --- Active build-plan resolution (inline mirror of lib/core.py) ---
+# The hook keeps an inline copy so its top level stays import-light on the
+# session-start hot path. Kept in sync with core.resolve_build_plan_path /
+# core.read_str_yaml_key by a parity test (same discipline as the
+# GITIGNORE_ENTRIES / _SESSION_GITIGNORED_PATHS mirror).
 _BUILD_PLAN_POINTER_KEY = "active_build_plan"
 _DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
 
@@ -297,10 +297,12 @@ def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
 
 
 # Canonical list of session files that should be gitignored, never tracked.
-# Mirrors GITIGNORE_ENTRIES in tools/lib/core.py — kept duplicated here because
-# product-hook is intentionally standalone and ships into product repos that
-# do not have access to tools/lib. Keep these two lists in sync; the test
-# tests/test_coverage_gaps.py::TestProductHookGitignoreMirror asserts equality.
+# Parallel to GITIGNORE_ENTRIES in lib/core.py — the hook keeps an inline copy so
+# its top level stays import-light on the session-start hot path. The two lists
+# cover the same session files; lib/core.py's variant additionally carries
+# `__pycache__/` and a trailing slash on `.pr-reviews/` for its `.gitignore`
+# writer, while this list uses bare paths for `git ls-files` untracking. Keep the
+# shared session-file set in sync when adding entries.
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
     ".prawduct/.critic-findings.json",
@@ -312,10 +314,8 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.session-start",
     ".prawduct/.subagent-briefing.md",
     ".prawduct/.gates-waived",
-    ".prawduct/.sync-pending",
     ".prawduct/.advisories.json",
     ".prawduct/reflections.md",
-    ".prawduct/sync-manifest.json",
     ".prawduct/artifacts/build-plan.md",
 )
 
@@ -1224,28 +1224,6 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
             )
         if resolved_since:
             lines.append(f"  Resolved since last session: {resolved_since}")
-
-    # F5a sync-pending marker — surfaces when sync couldn't auto-commit
-    # framework drift because a precondition (WIP, protected branch,
-    # in-progress git op) blocked it. Surface so the user/Claude know there
-    # is uncommitted framework drift that should be resolved.
-    sync_pending_path = prawduct_dir / ".sync-pending"
-    if sync_pending_path.is_file():
-        try:
-            pending = json.loads(sync_pending_path.read_text())
-            reason = pending.get("reason", "unknown")
-            version = pending.get("version", "")
-            v_suffix = f" (v{version})" if version else ""
-            lines.append(
-                f"Framework sync pending{v_suffix}: {reason}. "
-                f"Resolve and commit `.prawduct/`/`CLAUDE.md`/etc. drift, "
-                f"or rerun sync once the blocker clears."
-            )
-        except (json.JSONDecodeError, OSError):
-            lines.append(
-                "Framework sync pending: marker file present but unreadable; "
-                "inspect `.prawduct/.sync-pending`."
-            )
 
     # CLAUDE.md size check
     claude_md_path = project_dir / "CLAUDE.md"
@@ -2459,7 +2437,7 @@ def cmd_stop(project_dir: Path) -> int:
                 "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"
                 "    echo '{\"reflection\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
-                "  .prawduct/build-governance.md \"Gate Waivers\" for when this is appropriate.\n"
+                "  `/prawduct:building` (Gate waivers) for when this is appropriate.\n"
             ))
     elif (
         has_changes
@@ -2576,13 +2554,13 @@ def cmd_stop(project_dir: Path) -> int:
                 "  re-firing every turn:\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
-                "  .prawduct/build-governance.md \"Gate Waivers\" for when this is appropriate.\n"
+                "  `/prawduct:building` (Gate waivers) for when this is appropriate.\n"
             ))
         else:
             blockers.append(_attributed("critic",
                 "CRITIC REVIEW: The build plan includes Critic review in each chunk's \"Done when\" steps,\n"
                 "  but no Critic findings were recorded this session. If you have completed a chunk,\n"
-                "  run `/prawduct:critic` now. The Critic reads .prawduct/critic-review.md for instructions\n"
+                "  run `/prawduct:critic` now. It runs as an independent agent\n"
                 "  and records findings to .prawduct/.critic-findings.json\n"
                 "\n"
                 "  Escape hatch: if Critic legitimately cannot run this session — e.g., the chunk\n"
@@ -2592,7 +2570,7 @@ def cmd_stop(project_dir: Path) -> int:
                 "  this gate stops re-firing every turn:\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
-                "  .prawduct/build-governance.md \"Gate Waivers\" for when this is appropriate.\n"
+                "  `/prawduct:building` (Gate waivers) for when this is appropriate.\n"
             ))
 
     # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
@@ -2697,7 +2675,7 @@ def cmd_stop(project_dir: Path) -> int:
                 "    echo '{\"pr\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. PR review is\n"
                 "  the release-readiness gate — waive only when merge will not happen this\n"
-                "  session. See .prawduct/build-governance.md \"Gate Waivers\".\n"
+                "  session. See `/prawduct:building` (Gate waivers).\n"
             ))
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
@@ -3290,9 +3268,9 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
 
 
 # v1.4 F4b — coverage-required gate inputs.
-# Helper kept parallel to ``is_views_enabled`` in tools/lib/views.py: column-0
+# Helper kept parallel to ``is_views_enabled`` in lib/views.py: column-0
 # key scan, fail-closed default of False. Inline rather than imported to keep
-# the product-hook surface flat (no new lib dependency just for a 10-line
+# the hook surface flat (no new lib dependency just for a 10-line
 # scanner). Same idiom = same drift discipline as views_enabled.
 def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
     if not state_path.exists():
@@ -3369,7 +3347,7 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
 
 def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:
     """Pick the git diff base for coverage verification. Mirrors
-    ``_resolve_base`` in ``tools/test-reference-verify`` so writer (verifier)
+    ``_resolve_base`` in ``bin/test-reference-verify`` so writer (verifier)
     and reader (verify-coverage) examine the same set of changes. If the
     bases diverge, every chunk's verify-coverage would emit spurious
     missing-coverage findings on files outside the verifier's base. Delegates
@@ -3380,7 +3358,7 @@ def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:
 
 def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
     """Files changed between ``base`` and the working tree, union untracked.
-    Mirrors ``_changed_files`` in ``tools/test-reference-verify`` — same
+    Mirrors ``_changed_files`` in ``bin/test-reference-verify`` — same
     union over ``git diff`` + ``git ls-files --others --exclude-standard``
     so verify-coverage sees exactly the file set the verifier scored.
     """
@@ -3450,7 +3428,7 @@ def cmd_verify_coverage(project_dir: Path) -> int:
         print(
             "error: coverage_required=true but evidence lacks F4a schema "
             "(no `verifier` field) — emit coverage fields with "
-            "`tools/test-reference-verify` (or a stronger product-specific "
+            "`bin/test-reference-verify` (or a stronger product-specific "
             "verifier) before re-running.",
             file=sys.stderr,
         )
@@ -3629,8 +3607,8 @@ def cmd_regen_views(project_dir: Path) -> int:
       0 - success (views disabled, no changes needed, or regen applied cleanly)
       2 - I/O or schema error (missing change-log or build-plan)
     """
-    # Ensure tools/ is on sys.path so `from lib import views` resolves both
-    # when invoked as a script and when imported via SourceFileLoader in tests.
+    # Ensure the plugin root is on sys.path so `from lib import views` resolves
+    # both when invoked as a script and when imported via SourceFileLoader in tests.
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -4061,7 +4039,7 @@ def cmd_compute_verify_resolutions_scope(project_dir: Path) -> int:
 def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     """Print ``<mode>|<rationale>`` for the inferred ``/prawduct:critic`` mode.
 
-    Thin wrapper around ``tools.lib.critic_mode.infer_mode`` (v1.5
+    Thin wrapper around ``lib.critic_mode.infer_mode`` (v1.5
     Chunk 03). The subcommand exists so the Critic SKILL can call
     inference without expanding its ``allowed-tools`` to ``Bash(python3
     -c *)`` — keeping the structural "no arbitrary code execution"

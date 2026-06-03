@@ -142,9 +142,22 @@ Full rationale + verified safety facts: `~/.claude/plans/lucky-plotting-kahn.md`
 - [x] Chunk 2 — Retire the file-sync engine (deleted tools/ + 10 engine tests + parity machinery; repointed 11 governance-module tests to lib/+bin; relocated test-reference-verify→bin/; Critic chunk PASS; 714 green)
 - [x] Chunk 3 — Strip in-plugin pre-2.0 guards (removed `_legacy_filesync_present` nudge, `fallback-no-tools-lib` path, pre-v1.4 evidence acceptance, `legacy_backlog_format_probe` module+registration+tests, `TestPluginCoexistenceNudge`; folded in the 3 inert sync-stub briefing params; Critic chunk PASS, 0 findings; 700 green)
 - [x] Chunk 4 — Remove file-sync-only templates (deleted 13 templates; slimmed lib/core.py to the surviving governance helpers + reshaped MANAGED_FILES→frozenset path registry; pruned __init__ re-exports; reconciled 7 test files — 5 more than the plan named — by retarget-to-plugin-source-of-truth or delete-redundant-mirror; Critic chunk PASS, 0 findings; 700→615 green; init-product dry-run + clear/digest/banner smoke clean)
-- [ ] Chunk 5 — Clean this-repo residue + docs
+- [x] Chunk 5 — Clean this-repo residue + docs (removed committed `.prawduct/{critic-review,pr-review,build-governance}.md` + sync-manifest gitignore entries + the dead F5a `.sync-pending` briefing block; swept stale engine refs from kept code/docs — `bin/prawduct-hook` comment paths + user-facing gate messages, `lib/{views,critic_mode,audit_learnings_cmd}` docstrings/generated strings, README, `docs/project-structure.md`, `cross-cutting-concerns.md`, `project-preferences.md`, the templates' taught commands, 7 scenario fixtures; v2.0.3 change-log + CHANGELOG + VERSION/plugin.json bump + regen-views; reconciled MIG-M4-REMOVE + DOC-4B2W → shipped; filed JAN-4F7M; final sweep clean; 615 green; `/prawduct:critic cumulative` + `/prawduct:pr` next)
 
 ## Context
+**M4 COMPLETE — all 5 chunks done on `feat/retire-filesync-engine-m4`; ready for cumulative-Critic + PR.**
+The file-sync engine, its in-plugin guards, its templates + helper layer, and the committed/doc residue
+are all gone; the plugin runs standalone (615 green, evidence validates, init-product + clear/digest/banner
+smoke clean, regen-views clean). Versioned v2.0.3 (conservative patch — internal cleanup, zero behavioral
+change for plugin consumers). The final stale-ref sweep is clean: every surviving `tools/`/`prawduct-setup`
+reference is either immutable `change_log_history`/decision-provenance or legitimate consumer-side residue
+that `migrate`/`doctor` detect/remove (the `MANAGED_FILES` registry, the doctor/migrate skills). Backlog:
+MIG-M4-REMOVE + DOC-4B2W reconciled to shipped; JAN-4F7M filed (the janitor skill's Template Currency theme
+still teaches the file-sync sync-manifest workflow — a separate plugin-era-rewrite pass). **Next: run
+`/prawduct:critic cumulative` (gates the PR), then `/prawduct:pr` to develop.**
+
+---
+### History (chunks 1-4)
 Chunks 1-4 committed on `feat/retire-filesync-engine-m4`. The file-sync engine, its in-plugin pre-2.0
 guards, AND its template + helper layer are gone; the plugin runs standalone (615 green, clear/digest/
 banner smoke clean, init-product dry-run scaffolds, evidence validates). Test count 700→615 (removed

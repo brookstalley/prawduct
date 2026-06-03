@@ -210,8 +210,7 @@ build_state:
 #   * build-plan `## Status` block (checkboxes from `status=shipped` tags)
 #   * `.prawduct/release-notes.md` (from `release=` tags)
 #   * `scope_rollups:` block below (from `scope=` tags)
-# Run `python3 tools/product-hook regen-views` to apply, or
-# `python3 tools/prawduct-setup.py views <dir> --refresh` for ad-hoc regen.
+# Run `prawduct-hook regen-views` to apply.
 # Set to `false` to opt out — Status becomes hand-edited and the other views
 # are not produced.
 
@@ -228,9 +227,9 @@ scope_rollups: {}
 # When true, the Critic requires every changed file to appear in
 # `.test-evidence.json`'s `changes_referenced` list and scales severity
 # language to the declared `coverage_level` (`referenced` floor vs.
-# `executed` real). The reference verifier at `tools/test-reference-verify`
+# `executed` real). The reference verifier at `bin/test-reference-verify`
 # emits the floor; products with non-trivial coverage concerns should plug
-# in a stronger verifier. See build-governance.md "Coverage Evidence".
+# in a stronger verifier. See `/prawduct:building` "Coverage Evidence".
 # Default off in v1.4 — schema is checked but content is not enforced.
 
 coverage_required: false
@@ -242,10 +241,9 @@ coverage_required: false
 # has any entry with `**Status:** pending`. The queue records pre-merge
 # human-verification items for visual / live-integration changes that
 # automated tests can't fully cover. Drain via
-# `python3 tools/prawduct-setup.py verify <product_dir> <VRF-id>` or
+# `prawduct-hook verify-operator-verification <VRF-id>` or
 # override per-PR with `/pr create --accept-pending-verification "rationale"`.
-# Default off in v1.4 — opt-in via
-# `prawduct-setup migrate --enable-operator-verification`.
+# Default off in v1.4 — opt-in by setting `operator_verification_required: true`.
 
 operator_verification_required: false
 
