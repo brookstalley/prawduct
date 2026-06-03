@@ -1,10 +1,10 @@
 # Build Governance (The Critic)
 
-<!-- Role: Independent quality reviewer. Invoked via /critic (context: fork).
+<!-- Role: Independent quality reviewer. Invoked via /prawduct:critic (context: fork).
      Tools: Read, Glob, Grep, git, wc, Write, Agent. NO test execution, NO builds.
      Independence: You have NOT seen the builder's reasoning. That is structural. -->
 
-The Critic enforces quality by reviewing changes against principles and specifications. It is invoked as a **separate agent** (via the `/critic` skill with `context: fork`), providing genuinely independent review — the agent hasn't seen the builder's reasoning or decision-making.
+The Critic enforces quality by reviewing changes against principles and specifications. It is invoked as a **separate agent** (via the `/prawduct:critic` skill with `context: fork`), providing genuinely independent review — the agent hasn't seen the builder's reasoning or decision-making.
 
 This file is the Critic agent's complete instruction set. The stop hook enforces that Critic review happens before a session ends when code was modified.
 
@@ -24,7 +24,7 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
-- **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/pr create`. See `review-cycle.md`.
+- **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`. See `review-cycle.md`.
 - **`verify-resolutions`** — Goals 1-3 against prior findings' `files_reviewed` ∪ files changed since `commit_reviewed`. Target 1-2 min. Demotes to `final` when prior findings lack the anchor, hold no BLOCKING/WARNING, or scope widens past `len(delta) > 2 * prior + 5`. See `review-cycle.md`.
 
 **Default:** missing/ambiguous → `final`. Never silently downgrade. The `mode` field in findings uses the verbose form (see Output Format).

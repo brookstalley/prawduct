@@ -27,6 +27,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -556,6 +557,59 @@ class TestPluginRuntimeNamespacing:
         assert "`/prawduct:critic`" in src, "stop-hook Critic gate must name /prawduct:critic"
         assert "/prawduct:critic cumulative" in src, "pr-create gate must name /prawduct:critic cumulative"
         assert "Run /prawduct:pr to invoke" in src, "stop-hook PR gate must name /prawduct:pr"
+
+
+class TestPluginDocsNamespacing:
+    """The plugin-bundled TEACHING PROSE names /prawduct:-namespaced commands, not
+    bare /critic / /pr forms. These files are read by an agent ONLY when the plugin
+    governs (the skills point at them via ${CLAUDE_SKILL_DIR}/../../methodology/…),
+    so a bare `/critic chunk` would not resolve in the repo's command namespace —
+    the same leak class as the runtime sweep (TestPluginRuntimeNamespacing), one
+    surface over. Source-scan, assert the bad form is ABSENT.
+
+    The needle is the FULL skill-command vocabulary (not just the tokens that
+    happened to leak), encoding the learnings.md rule: a partial sweep that pins
+    only the spellings present today silently passes over a sibling added later.
+    The frozen file-sync copies (tools/, templates/) keep the bare forms and are
+    NOT scanned here."""
+
+    DOCS = (
+        "methodology/building.md",
+        "methodology/planning.md",
+        "methodology/reflection.md",
+        "skills/critic/review-cycle.md",
+        "skills/critic/review-protocol.md",
+        "skills/pr/review-protocol.md",
+    )
+    # A genuine command-invocation token: a `/` that starts a command (NOT preceded
+    # by a word/path char — so paths like `skills/critic/…`, `.prawduct/backlog.md`,
+    # and the already-namespaced `/prawduct:critic` are excluded) followed by a
+    # skill name on a word boundary (so `/pr` does not match inside `/prawduct`).
+    # `/clear` is a Claude Code built-in, not a prawduct skill — deliberately absent.
+    BARE_INVOCATION = re.compile(
+        r"(?<![\w/:.\-])/(critic|pr|backlog|learnings|janitor|discovery|planning"
+        r"|building|reflection|methodology|doctor|advisory)\b"
+    )
+
+    @pytest.mark.parametrize("rel", DOCS)
+    def test_no_bare_command_invocations(self, rel):
+        src = (ROOT / rel).read_text(encoding="utf-8")
+        leaks = sorted({m.group(0) for m in self.BARE_INVOCATION.finditer(src)})
+        assert not leaks, (
+            f"{rel} carries bare command invocation(s) {leaks} — plugin-bundled "
+            "teaching prose must name the /prawduct:-namespaced skill (a bare form "
+            "does not resolve in a plugin repo's command namespace). Frozen "
+            "tools/ + templates/ copies keep the bare forms; these plugin files diverge."
+        )
+
+    def test_namespaced_forms_present(self):
+        # The sweep REPLACED bare forms; it didn't delete the references.
+        cycle = (ROOT / "skills/critic/review-cycle.md").read_text(encoding="utf-8")
+        assert "/prawduct:critic" in cycle and "/prawduct:pr create" in cycle
+        planning = (ROOT / "methodology/planning.md").read_text(encoding="utf-8")
+        assert "/prawduct:learnings" in planning
+        building = (ROOT / "methodology/building.md").read_text(encoding="utf-8")
+        assert "/prawduct:critic" in building and "/prawduct:pr" in building
 
 
 class TestPluginSubcommandsResolveViaLib:

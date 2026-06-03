@@ -4,7 +4,7 @@ Planning bridges understanding and building. You've understood enough of the pro
 
 ## Learnings as Design Constraints
 
-Before generating artifacts, run `/learnings [your planned work]` to surface relevant project rules and preferences. This returns only what's relevant without loading the full files. Active learnings encode architecture decisions, technology constraints, and patterns the project has been burned by. They should inform design — not as a checklist, but as context that prevents repeating known mistakes.
+Before generating artifacts, run `/prawduct:learnings [your planned work]` to surface relevant project rules and preferences. This returns only what's relevant without loading the full files. Active learnings encode architecture decisions, technology constraints, and patterns the project has been burned by. They should inform design — not as a checklist, but as context that prevents repeating known mistakes.
 
 ## Artifact Generation
 
@@ -82,7 +82,7 @@ When confidence is Medium or Low, the plan also lists *what would raise it*. Don
 
 ### Critic Mode Per Chunk
 
-`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is so the cycle doesn't re-pay full-review cost on every chunk. Four modes are available: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `skills/critic/review-protocol.md`). Declare `Critic mode:` explicitly only when the plan needs to override what inference would pick — e.g., forcing `final` on an early chunk that lands an architectural keystone (see the override examples below).
+`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is so the cycle doesn't re-pay full-review cost on every chunk. Four modes are available: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/prawduct:critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `skills/critic/review-protocol.md`). Declare `Critic mode:` explicitly only when the plan needs to override what inference would pick — e.g., forcing `final` on an early chunk that lands an architectural keystone (see the override examples below).
 
 **Heuristic — what inference will pick, and when to override:**
 - **Single-chunk plan** → inference picks `final` (no prior committed chunks). No declaration needed.
@@ -97,7 +97,7 @@ When confidence is Medium or Low, the plan also lists *what would raise it*. Don
 
 **Fail-safe defaults.** If `Critic mode:` is absent and inference cannot make a confident call, both the build cycle and the Critic itself default to `final`. Both layers fail safe to thoroughness — but rely on inference rather than omitting the field as a shortcut to `final`. If you want `final`, let inference pick it for the last chunk or declare it explicitly when overriding earlier.
 
-See `methodology/building.md` for the runtime behavior (how `/critic` infers mode and accepts overrides) and `skills/critic/review-cycle.md` for the per-mode behavior table.
+See `methodology/building.md` for the runtime behavior (how `/prawduct:critic` infers mode and accepts overrides) and `skills/critic/review-cycle.md` for the per-mode behavior table.
 
 ### Choosing a Chunk Type
 
@@ -109,7 +109,7 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 - **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage. Use when the chunk truly doesn't touch executable code.
 - **`cleanup`** — branch hygiene, file moves, dead-code removal. Critic tolerates a zero diff; structural-only review. Use when the chunk's value is the removal, not the new code.
 - **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped — Type: designer-handoff" and the stop-hook Critic gate also skips. **This is the only Type that bypasses Critic enforcement entirely — use deliberately.** Replaces the prior user-memory carveout with a framework-level rule.
-- **`cumulative-final`** — marker on the last chunk of a multi-chunk plan. Signals that a `/critic cumulative` review against `merge-base...HEAD` is required in addition to the chunk's own `final` review. The cumulative review is the `/pr create` gate (Principle 14 — Independent Review at the bundle level).
+- **`cumulative-final`** — marker on the last chunk of a multi-chunk plan. Signals that a `/prawduct:critic cumulative` review against `merge-base...HEAD` is required in addition to the chunk's own `final` review. The cumulative review is the `/prawduct:pr create` gate (Principle 14 — Independent Review at the bundle level).
 - **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small. Two enforcement layers run at chunk close:
   1. **File-set bounds (machine-enforced, hard):** chunk diff has no edits under `agents/`, `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file deletions; no new files. These are the catastrophic-blast-radius classes regardless of size — file-set is necessary but not sufficient.
   2. **Required `**Trivial because:**` rationale (machine-enforced, hard):** the chunk must include a non-empty rationale field. Empty or absent → BLOCKING at the stop-hook. The rationale is the semantic claim; **Critic Goal 3** validates rationale-vs-diff fit (Chunk 05) — a strong rationale points at the structural property bounding risk, not at the author's feeling about the change.
@@ -146,7 +146,7 @@ The Critic's Goal 2 looks for `Foreign API:` in the chunk and emits a **WARNING*
      transport resource handlers; capture actual
      response shapes in api-notes-ableton.md
   1. Acceptance criteria met and tests pass
-  2. /critic chunk run and blocking findings resolved
+  2. /prawduct:critic chunk run and blocking findings resolved
   3. Committed and chunk marked [x] in Status
 ```
 
@@ -158,7 +158,7 @@ vs. the WARNING form (same chunk with step 0 omitted):
 - **Foreign API:** ableton-live-mcp                    # ← field declared
 - **Done when:**
   1. Acceptance criteria met and tests pass            # ← no verify-api → WARNING
-  2. /critic chunk run and blocking findings resolved
+  2. /prawduct:critic chunk run and blocking findings resolved
   3. Committed and chunk marked [x] in Status
 ```
 

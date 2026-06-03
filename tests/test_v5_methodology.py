@@ -63,7 +63,7 @@ class TestBuildingMethodology:
         """References subagent briefing, boundary patterns, learnings skill."""
         assert ".subagent-briefing.md" in self.content
         assert "boundary-patterns.md" in self.content
-        assert "/learnings" in self.content
+        assert "/prawduct:learnings" in self.content
 
     def test_goal_based_critic(self):
         """References goal-based Critic review."""
@@ -139,7 +139,7 @@ class TestOtherMethodology:
         content = read_file("methodology/planning.md")
         lower = content.lower()
         assert "not a one-time phase" in lower or "isn't a one-time phase" in lower or "continuous" in lower
-        assert "/learnings" in content
+        assert "/prawduct:learnings" in content
 
     def test_reflection_learning_lifecycle(self):
         content = read_file("methodology/reflection.md")
