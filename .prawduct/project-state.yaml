@@ -24,6 +24,14 @@ backlog_format_version: 2
 # service for un-migrated external repos (removed at milestone M4, MIG-M4-REMOVE).
 distribution: plugin
 
+# Gitflow base branch (top-level scalar, read by `_resolve_base_branch`). This
+# repo cuts feature branches from `develop` and merges back to `develop`
+# (develop→main is a periodic release promotion). Without this knob the PR /
+# coverage / cumulative-Critic / reviewer gates fall back to `main` and scope a
+# feature branch as the entire develop→main promotion delta. `origin/develop` is
+# preferred over the bare `develop` for a stable remote-tracking merge-base.
+base_branch: develop
+
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
