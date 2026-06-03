@@ -365,8 +365,8 @@ class TestPluginDocsNamespacing:
     The needle is the FULL skill-command vocabulary (not just the tokens that
     happened to leak), encoding the learnings.md rule: a partial sweep that pins
     only the spellings present today silently passes over a sibling added later.
-    The frozen file-sync copies (tools/, templates/) keep the bare forms and are
-    NOT scanned here."""
+    (The file-sync copies under tools/ + templates/ that once kept the bare forms
+    were deleted with the engine in M4 — only these plugin-bundled files remain.)"""
 
     DOCS = (
         "methodology/building.md",
