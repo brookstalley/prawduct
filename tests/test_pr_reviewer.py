@@ -302,91 +302,52 @@ class TestStopPrReviewGate:
 # =============================================================================
 
 
-class TestPrReviewTemplateContent:
-    def test_pr_review_template_has_all_goals(self):
-        """The PR review template should cover all 7 review goals."""
-        content = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-        assert "No Bugs Shipped" in content
-        assert "Tests Cover the Change" in content
-        assert "Right Scope" in content
-        assert "Clear Narrative" in content
-        assert "Simplification" in content
-        assert "Merge Hygiene" in content
-        assert "Proportionality" in content
+class TestPrReviewSkillContent:
+    """The PR-review prose now lives only in the plugin — the file-sync
+    `templates/pr-review.md` + `templates/skill-pr.md` retired in M4 Chunk 4.
+    `skills/pr/review-protocol.md` carries the reviewer's 7 goals;
+    `skills/pr/SKILL.md` carries the /pr lifecycle flows + the review gate."""
 
-    def test_pr_command_template_has_all_flows(self):
-        """The /pr command template should cover all 4 flows."""
-        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
-        assert "Create Flow" in content
-        assert "Update Flow" in content
-        assert "Merge Flow" in content
-        assert "Status Flow" in content
+    def test_review_protocol_has_all_goals(self):
+        """The PR review protocol should cover all 7 review goals."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        for goal in (
+            "No Bugs Shipped", "Tests Cover the Change", "Right Scope",
+            "Clear Narrative", "Simplification", "Merge Hygiene", "Proportionality",
+        ):
+            assert goal in content, f"skills/pr/review-protocol.md missing goal: {goal}"
 
-    def test_pr_command_template_has_review_gate(self):
-        """The /pr command template must enforce review before PR creation."""
-        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
+    def test_pr_skill_has_all_flows(self):
+        """The /pr skill should cover all 4 flows."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        for flow in ("Create Flow", "Update Flow", "Merge Flow", "Status Flow"):
+            assert flow in content, f"skills/pr/SKILL.md missing flow: {flow}"
+
+    def test_pr_skill_has_review_gate(self):
+        """The /pr skill must enforce review before PR creation."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
         # Must contain hard gate language, not just numbered steps
         assert "MANDATORY" in content
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
         assert "evidence file" in content
 
-    def test_framework_pr_command_has_review_gate(self):
-        """The framework /pr command must enforce review before PR creation."""
-        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
-        assert "MANDATORY" in content
-        assert "Do NOT proceed" in content or "DO NOT proceed" in content
-        assert "evidence file" in content
-
-    def test_agent_skill_matches_template_goals(self):
-        """The full SKILL.md and condensed template should have the same goals."""
-        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-
-        goals = [
-            "No Bugs Shipped",
-            "Tests Cover the Change",
-            "Right Scope",
-            "Clear Narrative",
-            "Simplification",
-            "Merge Hygiene",
-            "Proportionality",
-        ]
-        for goal in goals:
-            assert goal in skill, f"SKILL.md missing goal: {goal}"
-            assert goal in template, f"Template missing goal: {goal}"
-
-    def test_pr_review_references_learnings(self):
+    def test_review_protocol_references_learnings(self):
         """PR reviewer must read learnings.md during setup."""
-        template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        assert "learnings.md" in template
-        assert "learnings.md" in skill
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        assert "learnings.md" in content
 
-    def test_pr_review_has_learnings_crosscheck(self):
+    def test_review_protocol_has_learnings_crosscheck(self):
         """PR reviewer must have a Learnings Cross-Check section."""
-        template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        assert "Learnings Cross-Check" in template
-        assert "Learnings Cross-Check" in skill
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        assert "Learnings Cross-Check" in content
 
 
 # =============================================================================
-# Discoverability in product CLAUDE.md
+# Discoverability in the plugin guidance layer
 # =============================================================================
 
 
 class TestDiscoverability:
-    def test_product_claude_mentions_pr_command(self):
-        """Product CLAUDE.md template should mention /pr for discoverability."""
-        content = (FRAMEWORK_DIR / "templates" / "product-claude.md").read_text()
-        assert "/pr" in content
-
-    def test_product_claude_routes_pr_requests(self):
-        """Product CLAUDE.md should mention PR-related actions routing to /pr."""
-        content = (FRAMEWORK_DIR / "templates" / "product-claude.md").read_text()
-        assert "PR" in content
-        assert "/pr" in content
-
     def test_building_methodology_mentions_pr(self):
         """Building methodology should mention /pr."""
         content = (FRAMEWORK_DIR / "methodology" / "building.md").read_text()

@@ -7,6 +7,23 @@
 
 ## Open
 
+- **[JAN-4F7M]** Rewrite `skills/janitor/SKILL.md` "Template Currency" theme for plugin distribution
+  `effort: M · impact: M · area: janitor · source: builder · added: 2026-06-03 · status: open`
+
+  The janitor skill's **Template Currency** investigation theme (and its Step 1 framework-health
+  pre-check + Step 7 hash-update guidance) still teaches the file-sync maintenance workflow:
+  comparing the consumer's place-once artifacts against `framework_source/templates/*` via
+  `.prawduct/sync-manifest.json` `place_once_templates` stored hashes. Under plugin distribution a
+  consumer carries no sync-manifest (init never creates it; `/prawduct:migrate` removes it) and has
+  no `framework_source` checkout, so the whole theme is inert for migrated/plugin-native repos.
+  Surfaced during M4 Chunk 4: `test_v5_templates.py::TestJanitorSkillTemplateCurrency` (which pinned
+  this content via the now-deleted `templates/skill-janitor.md`) was DELETED rather than retargeted,
+  precisely to avoid pinning stale guidance. Resolve: rework the theme for plugin-era maintenance —
+  what does "is this product's tooling current with the plugin?" mean when governance ships from the
+  plugin and updates via `autoUpdate`? — and add fresh `skills/janitor/SKILL.md` structural coverage
+  to replace the deleted mirror test. Candidate to fold into M4 Chunk 5 (docs/residue) if cheap, else
+  a standalone janitor-skill pass. Filed from M4 Chunk 4 on 2026-06-03. (builder)
+
 - **[DOC-7H2K]** Port `/prawduct:doctor`'s remaining file-sync-coupled flows to the plugin model (Chunk 13)
   `effort: L · impact: M · area: doctor · source: builder · added: 2026-06-02 · status: resolved · reviewed: 2026-06-02`
 

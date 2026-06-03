@@ -759,29 +759,21 @@ class TestAuditLearningsSubcommand:
 
 
 class TestNoBareSkillShadowing:
-    """Chunk 14: the six file-sync skill sources were relocated from
-    `.claude/skills/<name>/SKILL.md` to `templates/skill-<name>.md` so they no
-    longer double-load as bare `/<name>` skills when this repo runs on its own
-    plugin (a bare copy would shadow the plugin's `/prawduct:<name>` with a frozen
-    file-sync version). The synced product *destination*
-    `.claude/skills/<name>/SKILL.md` is unchanged — only the framework source moved,
-    proven byte-identical by the sync-render diff; these guard the structure so a
-    future edit can't silently re-introduce the shadow.
+    """A bare `.claude/skills/<name>/` in this framework repo would double-load as
+    a `/<name>` skill and shadow the plugin's `/prawduct:<name>`. Chunk 14 first
+    relocated the six file-sync skill *sources* out of `.claude/skills/` into
+    `templates/skill-<name>.md`; M4 Chunk 4 deleted those templates outright when
+    the file-sync engine retired (governance ships from the plugin's `skills/`).
+    This guards the structure so a future edit can't silently re-introduce a bare
+    shadowing skill dir.
     """
 
-    RELOCATED = ("pr", "janitor", "learnings", "backlog", "prawduct-advisory", "prawduct-doctor")
+    SHADOWABLE = ("pr", "janitor", "learnings", "backlog", "prawduct-advisory", "prawduct-doctor")
 
-    @pytest.mark.parametrize("name", RELOCATED)
-    def test_source_lives_in_templates(self, name):
-        assert (ROOT / "templates" / f"skill-{name}.md").is_file(), (
-            f"file-sync source for {name} must live at templates/skill-{name}.md "
-            "(Chunk 14 relocation)"
-        )
-
-    @pytest.mark.parametrize("name", RELOCATED)
+    @pytest.mark.parametrize("name", SHADOWABLE)
     def test_no_shadowing_bare_skill_dir(self, name):
         assert not (ROOT / ".claude" / "skills" / name).exists(), (
             f".claude/skills/{name}/ re-introduced — a bare /{name} skill would "
             f"shadow the plugin's /prawduct:{name} with a stale file-sync copy "
-            "(Chunk 14 relocation)"
+            "(Chunk 14 relocation / M4 Chunk 4 deletion)"
         )

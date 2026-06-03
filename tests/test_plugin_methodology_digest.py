@@ -204,10 +204,10 @@ class TestCommitAttributionDefault:
     always-injected session digest — it reaches every product session including
     migrated repos, whose CLAUDE.md is only the thin anchor and whose
     place-once ``project-preferences.md`` is never regenerated, making the digest
-    their SOLE carrier. The every-session product-claude block is deliberately
-    budget-bound (see TestProductClaudeStructure.test_token_budget), so the rule
-    is intentionally NOT duplicated there. Tolerant substring checks, not verbatim
-    prose.
+    their SOLE carrier. The digest is deliberately budget-bound (see
+    ``test_additional_context_under_inline_limit``), so the rule lives there once
+    and is not duplicated across the methodology guides. Tolerant substring checks,
+    not verbatim prose.
     """
 
     PROJECT_PREFS = ROOT / "templates" / "project-preferences.md"

@@ -69,6 +69,68 @@ Full rationale + verified safety facts: `~/.claude/plans/lucky-plotting-kahn.md`
   `test_v5_templates.py`.
   *Done when:* full pytest green, `init-product` dry-run scaffolds, `/prawduct:critic chunk` clean.
 
+  **Scope expansion (discovered 2026-06-03 during impl — same coupling pattern as Chunks 2/3).**
+  Grepping the deleted templates' distinctive paths surfaced FIVE more affected test files the
+  plan's two-file enumeration (`TestNoBareSkillShadowing` + `test_v5_templates.py`) missed:
+  `test_pr_reviewer.py`, `test_critic_skill_metadata.py`, `tests/preferences/test_critic_skill_structure.py`,
+  and prose/list refs in `test_plugin_init.py` (kept — its `FORBIDDEN` list asserts init NEVER
+  creates the protocol docs; reads no template) and `test_plugin_runtime.py`.
+  - **Reconciliation principle:** the deleted `templates/*` files were the file-sync *mirror*; the
+    plugin's `skills/` + `methodology/` are the source of truth now. Where a template-content test
+    is a redundant mirror of an EXISTING plugin-source test → **delete** (no contract lost). Where
+    it is the SOLE guard of a surviving plugin file → **retarget** to that file. Delete only
+    genuinely file-sync-specific assertions (block markers, synced-CLAUDE token budget,
+    self-containment, Framework-Freshness briefing, sync-manifest, conftest place-once).
+  - **Coverage proof (no orphaned contract):** `test_v5_methodology.py::TestCriticSkill` already
+    guards `skills/critic/review-protocol.md` (goals/severity/signals/quality/PBT/framework-checks)
+    — a near-exact duplicate of `test_v5_templates.py::TestCriticReviewGoalBased`; `TestBuildingMethodology`
+    guards `methodology/building.md`; the 23 principles live in `docs/principles.md` + framework
+    `CLAUDE.md`; the methodology digest (`test_plugin_methodology_digest.py`) carries the
+    every-session guidance. So the `product-claude`/`critic-review`/`build-governance` content tests
+    in `test_v5_templates.py` are redundant → delete.
+  - **Per-file actions:**
+    - `test_v5_templates.py`: DELETE the product-claude/critic-review/build-governance/conftest classes
+      (`TestProductClaude*`, `TestCriticReviewGoalBased`, `TestBuildGovernancePBT`,
+      `TestCrossTemplateConsistency`, `TestConftestPBT`, `TestProductClaudeFreshnessSection`,
+      `TestJanitorSkillTemplateCurrency`). RETARGET `TestLearningsSkillTemplate` → `skills/learnings/SKILL.md`.
+      KEEP the still-existing-template classes (`TestProjectStateV5Fields`, `TestBacklogTemplate`,
+      `TestBoundaryPatternsTemplate`, `TestTestSpecificationsPBT`, `TestProjectPreferencesPBT`,
+      `TestCriticSkillPBT`).
+    - `test_pr_reviewer.py`: RETARGET `templates/pr-review.md`→`skills/pr/review-protocol.md`,
+      `templates/skill-pr.md`→`skills/pr/SKILL.md`; drop the now-duplicate framework-vs-product /pr
+      gate test + the vacated skill-vs-template cross-check; DELETE the two `product-claude.md`
+      discoverability tests (synced-CLAUDE discoverability is file-sync). KEEP the stop-gate +
+      methodology/framework-CLAUDE tests.
+    - `test_critic_skill_metadata.py`: drop the `templates/skill-critic.md` surface; keep the plugin
+      `skills/critic/SKILL.md` surface (simplify the surfaces list + the legacy/plugin tool branch;
+      drop the now-single-surface parity test).
+    - `tests/preferences/test_critic_skill_structure.py`: drop the `critic-review.md` / `skill-critic.md`
+      / `build-governance.md` parametrize entries + `test_build_governance_references_mode`; keep the
+      plugin skill + review-cycle + methodology entries; fix the stale `tools/product-hook` validator
+      reference in the docstring.
+    - `test_plugin_runtime.py::TestNoBareSkillShadowing`: drop `test_source_lives_in_templates`
+      (asserted template existence — obsolete) ; keep the anti-shadow guard; update docstring.
+    - `test_plugin_methodology_digest.py::TestCommitAttributionDefault`: fix the dangling docstring
+      ref to the deleted `TestProductClaudeStructure.test_token_budget`.
+  - **core.py slim is larger than the 4 named symbols:** Chunk 2 deleted `tools/` (the sync/init/
+    validate commands), leaving the entire file-sync helper layer in `lib/core.py` dead (0 consumers,
+    0 tests). Remove: `effective_managed_files`, `create_manifest`, `PLACE_ONCE_TEMPLATES`,
+    `PLACE_ONCE_COPY`, `FILE_RENAMES`, `SKILL_PLACEMENTS`, `merge_settings`, `replace_settings`,
+    `write_template_overwrite`, `copy_hook`, `compute_hash`, `compute_block_hash`, `detect_version`,
+    `infer_product_name`, `untrack_gitignored_files`, `_resolve_framework_dir`, `_try_pull_framework`,
+    `load_json`, `ensure_dir`, `V1/V3/V4_GITIGNORE_ENTRIES`, `V1_SESSION_FILES`; reshape `MANAGED_FILES`
+    from `{path:{template,strategy,description}}` (the `template:` values point at deleted files) to a
+    `frozenset` path registry (migrate/`update_gitignore` iterate keys only); reword the stale
+    sync-era comments + module docstring; prune the `lib/__init__.py` re-export list to surviving
+    symbols. KEEP (live governance consumers): `MANAGED_FILES`/`MANAGED_DIRS`, `GITIGNORE_ENTRIES`,
+    `write_template`/`render_template`, `update_gitignore`, `extract_block`, `read_str_yaml_key`,
+    `resolve_build_plan_path`, the block/version/dir constants, `log`.
+  - **Deferred (flagged, not silently dropped):** `skills/janitor/SKILL.md`'s "Template Currency"
+    theme still teaches the file-sync sync-manifest/place-once workflow (obsolete under plugin
+    distribution). Out of scope for "remove templates"; `TestJanitorSkillTemplateCurrency` is deleted
+    here (it mirrored the deleted template + pinned that stale content). Backlogged for a janitor-skill
+    plugin-era rewrite + fresh coverage; candidate for Chunk 5 (docs/residue) if cheap.
+
 - **Chunk 5 — Clean this-repo residue + docs.** Remove committed `.prawduct/{critic-review,
   pr-review,build-governance}.md`; drop sync-manifest from the gitignore mirror + `.gitignore`;
   refresh `README.md` / `CLAUDE.md` / `docs/project-structure.md` / `docs/release-process.md`;
@@ -79,20 +141,30 @@ Full rationale + verified safety facts: `~/.claude/plans/lucky-plotting-kahn.md`
 - [x] Chunk 1 — DOC-4B2W namespace sweep (49 invocations namespaced; TestPluginDocsNamespacing added; Critic chunk clean; 1817 green)
 - [x] Chunk 2 — Retire the file-sync engine (deleted tools/ + 10 engine tests + parity machinery; repointed 11 governance-module tests to lib/+bin; relocated test-reference-verify→bin/; Critic chunk PASS; 714 green)
 - [x] Chunk 3 — Strip in-plugin pre-2.0 guards (removed `_legacy_filesync_present` nudge, `fallback-no-tools-lib` path, pre-v1.4 evidence acceptance, `legacy_backlog_format_probe` module+registration+tests, `TestPluginCoexistenceNudge`; folded in the 3 inert sync-stub briefing params; Critic chunk PASS, 0 findings; 700 green)
-- [ ] Chunk 4 — Remove file-sync-only templates
+- [x] Chunk 4 — Remove file-sync-only templates (deleted 13 templates; slimmed lib/core.py to the surviving governance helpers + reshaped MANAGED_FILES→frozenset path registry; pruned __init__ re-exports; reconciled 7 test files — 5 more than the plan named — by retarget-to-plugin-source-of-truth or delete-redundant-mirror; Critic chunk PASS, 0 findings; 700→615 green; init-product dry-run + clear/digest/banner smoke clean)
 - [ ] Chunk 5 — Clean this-repo residue + docs
 
 ## Context
-Chunks 1-3 committed on `feat/retire-filesync-engine-m4`. The file-sync engine is gone and the
-in-plugin pre-2.0 guards are stripped; the plugin runs standalone (700 green, clear+stop smoke clean,
-evidence validates against the tightened F4a-always schema). Test count 714→700 (removed 11 backlog-probe
-+ 3 coexistence + 2 legacy-backlog e2e; added 2 evidence-schema regression tests). **Next: Chunk 4** —
-remove file-sync-only templates + reconcile registry/tests: delete the 7 `skill-*.md` + governance
-templates (`product-claude`, `critic-review`, `pr-review`, `build-governance`, `product-settings.json`,
-`conftest.py`); slim `lib/core.py` (keep MANAGED_FILES paths migrate needs, drop sync-only
-fields/constants — `template:` fields, SKILL_PLACEMENTS, FILE_RENAMES, merge_settings — that
-lib/__init__.py re-exports); rework `TestNoBareSkillShadowing` + `test_v5_templates.py`. The `tools/lib`
-references in lib/core.py:111/116 + migrate_plugin are migrate's consumer-removal targets (keep, but
-reword core.py:111's sync-era rationale). Residual `fallback-no-tools-lib` strings linger only in
-file-sync-era `templates/` + `.prawduct/critic-review.md` — Chunk 4/5 targets (Critic-confirmed
-out-of-scope for Chunk 3).
+Chunks 1-4 committed on `feat/retire-filesync-engine-m4`. The file-sync engine, its in-plugin pre-2.0
+guards, AND its template + helper layer are gone; the plugin runs standalone (615 green, clear/digest/
+banner smoke clean, init-product dry-run scaffolds, evidence validates). Test count 700→615 (removed
+~85 redundant file-sync template-mirror + file-sync-specific tests; every deleted content contract is
+either retargeted to its live plugin source-of-truth or already guarded by `test_v5_methodology.py` /
+the methodology digest — verified by name, no orphaned contract). `lib/core.py` is now ~6 governance
+helpers (the sync helper layer was dead after Chunk 2 deleted `tools/`); `MANAGED_FILES` is a frozenset
+path registry migrate derives its REMOVE set from.
+
+**Next: Chunk 5 — Clean this-repo residue + docs (Critic mode: `cumulative` then `final`).** Targets:
+(1) the COMMITTED file-sync residue in THIS repo — `.prawduct/{critic-review,pr-review,build-governance}.md`
+(if present), the sync-manifest gitignore-mirror entry + `.gitignore`; (2) stale engine refs in KEPT
+CODE the Chunk-4 Critic + scans surfaced — `bin/prawduct-hook` prose comments referencing
+`untrack_gitignored_files()` / the sync command (lines ~348-351, ~1794-1799) and the `tools/lib/core.py`
+"inline mirror"/"Mirrors GITIGNORE_ENTRIES in tools/lib/core.py" / "Ensure tools/ is on sys.path"
+comments (lines ~115, ~300, ~3632); (3) stale doc/active-file refs — `.prawduct/cross-cutting-concerns.md:28`
+(`templates/pr-review.md`), `.prawduct/backlog.md:332` (`templates/skill-critic.md`), README / CLAUDE.md /
+`docs/project-structure.md` / `docs/release-process.md`; (4) the `MIG-M4-REMOVE` cleanup rider — repoint
+`lib/audit_learnings_cmd.py::run_audit_learnings` docstring off the legacy `prawduct-setup audit-learnings`
+path (the byte-parity lock to `tools/lib/` dissolved when Chunk 2 deleted it); (5) M4 change-log entry;
+mark DOC-4B2W done; reconcile `MIG-M4-REMOVE` → resolved. Backlog: `JAN-4F7M` (janitor skill Template
+Currency rewrite) may fold in here if cheap. *Done when:* full pytest green, no stale engine refs in kept
+docs/code, `/prawduct:critic cumulative` clean, ready for `/prawduct:pr`.
