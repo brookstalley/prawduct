@@ -298,6 +298,17 @@
 
   When `apply_claude_anchor` strips the framework generator comments via `_drop_generator_comments` (`lib/migrate_plugin.py`), it removes the comment lines but leaves the blank line that preceded them adjacent to the blank line that followed, producing two consecutive blank lines between the H1 title and the first product section. Cosmetic only (markdown collapses it on render), zero semantic impact, but it's a wart in a diff meant to be pristine. Found during the v2.0.0 1.x→2.x migration acceptance test against ../discodon (2026-06-02). Fix: collapse 3+ consecutive newlines to 2 in the assembled CLAUDE.md, or drop blank lines left adjacent to removed generator comments. Low priority / trivial. (user)
 
+- **[ADV-3K7Q]** Namespace skill names in plugin advisory output (briefing recommended_action + dismiss hint)
+  `effort: S · impact: S · area: advisory · source: critic · added: 2026-06-03 · status: open`
+
+  Surfaced when the advisory-probe-at-SessionStart fix (fix/plugin-advisory-probes-session-start) made post-sync advisories visible in plugin repos for the first time. The briefing now renders e.g. `→ Run /backlog migrate (or /prawduct-advisory dismiss <id>)` — but in a plugin repo the skills are namespaced `/prawduct:backlog` and `/prawduct:advisory`, so the un-namespaced forms are misleading/non-resolving for users.
+
+  Two sources, both currently legacy-form:
+  1. `recommended_action='/backlog migrate'` comes from lib/backlog_probes.py::legacy_backlog_format_probe — but lib/backlog_probes.py is byte-parity-locked to tools/lib/backlog_probes.py (GOVERNANCE_MODULES in test_plugin_runtime.py), and the frozen 1.x copy must stay on `/backlog` (owner directive: no 1.x edits). So it can't be edited in place.
+  2. The dismiss-hint literal `/prawduct-advisory dismiss` is in bin/prawduct-hook (plugin-native, NOT parity-locked) at the briefing's action-line construction (~line 1243).
+
+  Fix-shapes: (a) move backlog_probes to DIVERGED_MODULES (like operator_verification) and namespace the action string in the plugin copy + add the divergence-assertion test; or (b) namespace at DISPLAY time in the plugin briefing renderer (bin/prawduct-hook) via a small legacy→/prawduct: mapper applied to both recommended_action and the dismiss literal — keeps backlog_probes byte-locked. (b) is more contained and avoids touching the parity set. Do both the action and the dismiss hint together (a half-fix is incoherent). Belongs with the Chunk-13 namespace sweep (see the file-sync-removal backlog item). info-priority/cosmetic; not a broken gate. (critic)
+
 ## Promoted
 
 _None._
