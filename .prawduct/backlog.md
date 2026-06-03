@@ -293,6 +293,11 @@
 
   Under the v2.0.0 gitflow batched-release model, release-bound work merges feature→develop ahead of the develop→main release, where release-checklist step 4 runs `regen-views` ON the build plan to flip its Status checkboxes. Deleting the plan (and clearing `active_build_plan`) at develop-merge time leaves the release nothing to regenerate. The PR skill's merge-flow step 7 ("delete the build plan after merge") currently assumes the old develop-merge=release model. Fix: branch step 7 — develop-merge that ships now → delete; develop-merge ahead of a batched develop→main release → retain plan + `active_build_plan` pointer until the release flips the change-log to shipped. Discovered v2.0.0 PR #49. See `learnings.md` "Release-bound work merged feature→develop under gitflow" and `docs/release-process.md`. (user)
 
+- **[MIG-8C3V]** migrate's CLAUDE.md transform leaves a double blank line at the top of the migrated file
+  `effort: S · impact: S · area: migration · source: user · added: 2026-06-02 · status: open`
+
+  When `apply_claude_anchor` strips the framework generator comments via `_drop_generator_comments` (`lib/migrate_plugin.py`), it removes the comment lines but leaves the blank line that preceded them adjacent to the blank line that followed, producing two consecutive blank lines between the H1 title and the first product section. Cosmetic only (markdown collapses it on render), zero semantic impact, but it's a wart in a diff meant to be pristine. Found during the v2.0.0 1.x→2.x migration acceptance test against ../discodon (2026-06-02). Fix: collapse 3+ consecutive newlines to 2 in the assembled CLAUDE.md, or drop blank lines left adjacent to removed generator comments. Low priority / trivial. (user)
+
 ## Promoted
 
 _None._
