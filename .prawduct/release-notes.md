@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.2
+
+**Entry:** 2026-06-03: v2.0.2 — Advisory probes run again in the plugin runtime; migration guide leads with the steps (shipped)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.1
 
 **Entry:** 2026-06-02: v2.0.1 — Default to no commit/PR attribution trailers (shipped)

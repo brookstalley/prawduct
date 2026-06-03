@@ -323,9 +323,12 @@ _SESSION_GITIGNORED_PATHS = (
 def _read_advisory_store(prawduct_dir: Path) -> dict:
     """Read `.prawduct/.advisories.json` (the post-sync nag log).
 
-    Standalone read — product-hook ships into product repos without access to
-    tools/lib, so it cannot import advisory_store. Missing/unreadable/malformed
-    → empty store; never raises (briefing must not break on a bad file).
+    Dependency-light standalone reader: the briefing parses the store directly
+    rather than importing the bundled advisory_store, so the hot path stays
+    robust even on an incomplete plugin install. (cmd_clear's probe step DOES
+    import advisory_store to refresh this file before the briefing is assembled.)
+    Missing/unreadable/malformed → empty store; never raises (briefing must not
+    break on a bad file).
     """
     path = prawduct_dir / ".advisories.json"
     if not path.is_file():
@@ -1189,14 +1192,14 @@ def assemble_session_briefing(
         names = ", ".join(adv.get("file", "?").rsplit("/", 1)[-1] for adv in advisories)
         lines.append(f"Template update(s) since setup: {names} — /janitor scope=templates to review")
 
-    # ADVISORIES (post-sync) — v1.6.0 Phase 1. The per-clone nag log written by
-    # sync's probe step (`.prawduct/.advisories.json`). Read directly here
-    # because product-hook is standalone and cannot import tools/lib. Active
-    # advisories are listed priority-ordered (urgent→warn→info, then newest
-    # first), capped at 5. Empty active set with nothing newly resolved → omit
-    # the section entirely (spec §5.2 / A5 — no "0 active" noise). Phase 1
-    # ships an empty production probe roster, so this section stays silent
-    # until a feature registers a probe.
+    # ADVISORIES (post-sync) — the per-clone nag log `.prawduct/.advisories.json`,
+    # refreshed by cmd_clear's probe step before the briefing is assembled (the
+    # file-sync runtime refreshed it during `sync`). Read here via the
+    # dependency-light standalone reader (not the bundled advisory_store) so the
+    # briefing stays robust on a partial install. Active advisories are listed
+    # priority-ordered (urgent→warn→info, then newest first), capped at 5. Empty
+    # active set with nothing newly resolved → omit the section entirely
+    # (spec §5.2 / A5 — no "0 active" noise).
     adv_store = _read_advisory_store(prawduct_dir)
     adv_all = adv_store.get("advisories", []) if isinstance(adv_store, dict) else []
     active_adv = [a for a in adv_all if isinstance(a, dict) and a.get("state") == "active"]
@@ -1956,10 +1959,32 @@ def cmd_clear(project_dir: Path) -> int:
 
     # No framework sync in the plugin runtime: the plugin ships immutable,
     # read-only code and updates arrive via marketplace auto-update, not
-    # file-sync (design §2, §7). These sync-derived briefing inputs are always
-    # inert here — the persisted advisory store (.advisories.json) is still
-    # read in assemble_session_briefing, independent of these.
+    # file-sync (design §2, §7). `upgrade_info`/`freshness` and the template-drift
+    # `sync_advisories` are all sync-derived and stay inert here — the persisted
+    # advisory store (.advisories.json) is read in assemble_session_briefing,
+    # independent of these.
     upgrade_info, sync_advisories, freshness = None, [], None
+
+    # Advisory PROBES, however, are NOT sync-derived: they read the consumer's
+    # own `.prawduct/` (backlog.md, project-state.yaml) and are purely local.
+    # The file-sync runtime evaluated them inside `sync`; excising sync (Chunk 5)
+    # silently took the probe step with it, so in a plugin repo the roster never
+    # ran and `.advisories.json` never refreshed — e.g. the `legacy-backlog-format`
+    # nudge toward `/prawduct:backlog migrate` could never fire. Run the roster
+    # here, before the briefing reads the store, mirroring the v1 sync-time call.
+    # Local + fail-soft (run_sync_advisories never raises); the broad guard is
+    # belt-and-suspenders so a future feature's faulty probe can't block startup.
+    if prawduct_dir.is_dir():
+        try:
+            lib_root = _plugin_root()
+            if lib_root not in sys.path:
+                sys.path.insert(0, lib_root)
+            from lib.advisory_store import run_sync_advisories  # noqa: PLC0415 — lazy keeps top-level import cheap
+            run_sync_advisories(
+                project_dir, sync_version=_plugin_manifest_version() or ""
+            )
+        except Exception as exc:  # prawduct:ok-broad-except — advisory probes must never block session start
+            print(f"NOTE: advisory probe step skipped: {exc}", file=sys.stderr)
 
     # Capture git status baseline so session-start state doesn't trigger
     # spurious stop-hook gates (no sync runs first in the plugin runtime).

@@ -1,84 +1,60 @@
 # Migrating a Product Repo: file-sync (v1.x) → plugin (v2.0)
 
-This guide is for **existing Prawduct product repos** — repos that were set up with
-`prawduct-setup.py` and carry committed framework files. It walks you from the v1.x
-file-sync model to the v2.0 plugin model with a single, reversible command.
+This guide is for **existing Prawduct repos** — set up with `prawduct-setup.py` and carrying
+committed framework files. It moves them onto the v2 plugin in **two steps: one reversible
+commit, all your product state preserved.**
 
-If you are starting a **new** product, you don't need this — install the plugin and go.
-This guide is only about moving an existing file-sync repo onto the plugin.
+(Starting a *new* product, or already on the plugin? You don't need this — see the
+[README](../README.md).)
 
-> **Status.** The prawduct marketplace is **live as of v2.0.0**, and the cutover
-> (`/prawduct:migrate`) is complete and tested. The committed install reference below activates
-> the plugin on first trusted open — no developer flags needed. (`--plugin-dir` remains the path
-> for *hacking on the framework itself*.)
+## Migrate in two steps
 
-## Why migrate
+### 1. Install the plugin
 
-In v1.x, the framework was **copied into your repo** and kept in sync by a script. That
-caused the papercuts v2.0 removes:
+Run these in a shell — once per machine; they work for all your repos:
 
-- Framework files were committed in your tree, so every framework update produced a diff
-  you had to fold into your own commits (stash/pop/merge churn).
-- Synced files could be locally edited and silently drift from the framework.
-- There was no clean version signal — the framework version lived in `sync-manifest.json`
-  after a successful pull.
+```bash
+claude plugin marketplace add brookstalley/prawduct
+claude plugin install prawduct@prawduct
+```
 
-In v2.0 the framework ships as a **Claude Code plugin**. Your repo commits *zero* framework
-files — only a small install reference. The framework code lives out-of-tree in the plugin
-cache and updates with zero repo diff.
+This gives *you* the `/prawduct:*` skills (needed for step 2). Step 2 then commits a per-repo
+install reference, so everyone who clones the repo gets the plugin automatically — no flags, no
+framework files in the tree.
 
-## Before / after
+> **Developing the framework itself?** Skip the install and load your working copy instead:
+> `claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct`. The `--add-dir` (same
+> path) lets methodology-reading skills (`/prawduct:building`, `/prawduct:critic`) load their
+> bundled guides out-of-tree. `--plugin-dir` alone is enough for `/prawduct:migrate`; a real
+> marketplace install needs neither flag.
 
-| Concern | v1.x (file-sync) | v2.0 (plugin) |
-|---|---|---|
-| Framework code location | committed in your repo | `~/.claude/plugins/cache/` (out of tree) |
-| Update mechanism | `sync` + auto-commit, leaves drift | marketplace update, **zero repo diff** |
-| Framework checkout tracking | repo tracks a path to the framework checkout — `PRAWDUCT_FRAMEWORK_DIR` env, then `framework_source` in `.prawduct/sync-manifest.json`, then a sibling `../prawduct` | **none** — there is no framework checkout to locate |
-| Mutable product state | repo `.prawduct/` | repo `.prawduct/` (**unchanged**) |
-| Version source | `sync-manifest.json` after a pull | plugin's own `plugin.json` (offline-safe) |
-| Skill names | `/critic`, `/pr`, `/prawduct-doctor`, … | `/prawduct:critic`, `/prawduct:pr`, `/prawduct:doctor`, … |
-| Stash/pop/merge papercuts | structural | **eliminated** |
+### 2. Run the cutover
 
-The key shift in one line: v1 tracked *where the framework lives on disk*; v2 doesn't need to,
-because the framework is no longer in your tree at all.
+From the product repo, on a **clean working tree** (commit or stash in-progress work first —
+the cutover must land as one clean commit):
 
-## Prerequisites
+```bash
+cd ~/your-product
+claude
+> /prawduct:migrate
+```
 
-1. **Install the prawduct plugin.**
-   - **Marketplace (recommended):** add the prawduct marketplace and enable the plugin — Claude
-     Code prompts you on first trusted open. The install reference the cutover commits to
-     `.claude/settings.json` is what makes this automatic for every developer who clones your
-     repo:
-     ```jsonc
-     {
-       "extraKnownMarketplaces": {
-         "prawduct": { "source": { "source": "github", "repo": "brookstalley/prawduct", "ref": "main" }, "autoUpdate": true }
-       },
-       "enabledPlugins": { "prawduct@prawduct": true }
-     }
-     ```
-   - **Developer path (for hacking on the framework):** clone the prawduct repo and launch Claude
-     Code with `claude --plugin-dir /path/to/prawduct` from your product repo. This loads the plugin for
-     the session without a marketplace. `--plugin-dir` alone is enough for `/prawduct:migrate`
-     and `/prawduct:doctor` (neither reads bundled plugin files). If you continue into
-     development work in the same session, also pass `--add-dir /path/to/prawduct` (the same
-     path) so methodology-reading skills like `/prawduct:building` and `/prawduct:critic` can
-     load their bundled guides from the out-of-tree plugin — without it they sandbox-fail. A
-     real marketplace install needs neither flag.
-2. **A clean working tree.** The cutover lands as one reviewable commit, so commit or stash any
-   in-progress work first.
+It does a dry run, shows you exactly what will change, asks you to confirm, then applies and
+commits — all as **one `git revert`-able commit**.
 
-## The cutover — one command
+**That's it.** Verify with `/prawduct:doctor`.
 
-From your product repo, run **`/prawduct:migrate`**. It performs a dry-run first, shows you
-exactly what will change, asks for confirmation, applies, and commits — all in one reversible
-commit. Concretely:
+---
+
+*Everything below is reference — you don't need it to migrate.*
+
+## What `/prawduct:migrate` does
 
 1. **Clean-tree check** — refuses to proceed on a dirty tree.
-2. **Dry run** — `prawduct-hook migrate-plugin --json` (no changes); presents the plan
-   (files removed, dirs removed, files edited, the gitignored marker). If the repo is already
-   on the plugin (`distribution: plugin` present), it reports a no-op and stops.
-3. **Confirm** — you approve before anything is mutated.
+2. **Dry run** — `prawduct-hook migrate-plugin --json` (no changes); presents the plan (files
+   removed, dirs removed, files edited, the gitignored marker). If the repo is already on the
+   plugin (`distribution: plugin` present), it reports a no-op and stops.
+3. **Confirm** — nothing is mutated until you approve.
 4. **Apply** — `prawduct-hook migrate-plugin --apply`.
 5. **Commit** — one `chore(prawduct): migrate to plugin distribution` commit.
 
@@ -104,6 +80,15 @@ prawduct ever placed," only known framework files.
   product-specific instructions, above and below the block, are untouched.
 - `.claude/settings.json` — the prawduct hook wiring and framework banner are removed and the
   plugin install reference is merged in. Your own keys, hooks, and marketplaces are preserved.
+  This is the per-repo reference that auto-activates the plugin for everyone who clones the repo:
+  ```jsonc
+  {
+    "extraKnownMarketplaces": {
+      "prawduct": { "source": { "source": "github", "repo": "brookstalley/prawduct", "ref": "main" }, "autoUpdate": true }
+    },
+    "enabledPlugins": { "prawduct@prawduct": true }
+  }
+  ```
 - `.prawduct/project-state.yaml` — a single `distribution: plugin` line is appended (the signal
   that tells the frozen legacy hook to stand down).
 
@@ -115,14 +100,14 @@ prawduct ever placed," only known framework files.
 
 ## After migrating
 
-- **Verify.** Run `/prawduct:doctor` for a health check — it confirms the repo is on the plugin
-  and the governance surface is intact.
+- **Verify.** `/prawduct:doctor` confirms the repo is on the plugin and the governance surface
+  is intact.
 - **Governance** now comes from the plugin: the Stop hook's Critic + reflection gates, the
   SessionStart briefing + banner + guidance digest. Skills are `/prawduct:*`.
 - **Updates** arrive via the marketplace with zero repo diff. The version banner shows the
   current version and, on a bump, what changed.
-- If you loaded the plugin via `--plugin-dir` for this session, no restart is needed. If you
-  just installed it via the marketplace, reopen the repo to activate it.
+- **Fresh clones** auto-activate the plugin on first trusted open, thanks to the committed
+  install reference — no setup step for the next person.
 
 ## Rollback
 
@@ -144,3 +129,33 @@ legacy hook yields** whenever it detects the plugin (`distribution: plugin` in
 `project-state.yaml`, or prawduct in `enabledPlugins`). The detection is conservative — any
 missing file or parse error means the legacy hook keeps governing — so a pure, un-migrated
 file-sync repo behaves exactly as it always did.
+
+## Background: why v2 moved to a plugin
+
+You don't need this to migrate — it's here if you want the reasoning.
+
+In v1.x, the framework was **copied into your repo** and kept in sync by a script. That caused
+the papercuts v2.0 removes:
+
+- Framework files were committed in your tree, so every framework update produced a diff you had
+  to fold into your own commits (stash/pop/merge churn).
+- Synced files could be locally edited and silently drift from the framework.
+- There was no clean version signal — the framework version lived in `sync-manifest.json` after
+  a successful pull.
+
+In v2.0 the framework ships as a **Claude Code plugin**. Your repo commits *zero* framework
+files — only the small install reference. The framework code lives out-of-tree in the plugin
+cache and updates with zero repo diff.
+
+| Concern | v1.x (file-sync) | v2.0 (plugin) |
+|---|---|---|
+| Framework code location | committed in your repo | `~/.claude/plugins/cache/` (out of tree) |
+| Update mechanism | `sync` + auto-commit, leaves drift | marketplace update, **zero repo diff** |
+| Framework checkout tracking | repo tracks a path to the framework checkout — `PRAWDUCT_FRAMEWORK_DIR` env, then `framework_source` in `.prawduct/sync-manifest.json`, then a sibling `../prawduct` | **none** — there is no framework checkout to locate |
+| Mutable product state | repo `.prawduct/` | repo `.prawduct/` (**unchanged**) |
+| Version source | `sync-manifest.json` after a pull | plugin's own `plugin.json` (offline-safe) |
+| Skill names | `/critic`, `/pr`, `/prawduct-doctor`, … | `/prawduct:critic`, `/prawduct:pr`, `/prawduct:doctor`, … |
+| Stash/pop/merge papercuts | structural | **eliminated** |
+
+The key shift in one line: v1 tracked *where the framework lives on disk*; v2 doesn't need to,
+because the framework is no longer in your tree at all.
