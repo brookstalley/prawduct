@@ -8,6 +8,20 @@
 ## Open
 
 
+- **[BLD-7P3K]** Guard test: assert the active build plan's chunk headings parse (fail loud on heading-format drift)
+  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-06-04 · status: open · related: VWS-3K7P`
+
+  Recommended by `learnings.md` ("Build-plan chunk headings must use `### Chunk N:` colon form") AND
+  twice by the roi-batch-2 cumulative Critic after the build plan itself shipped with `#### Chunk NN:`
+  (four-hash, under a `### Lane` grouping level) — which silently defeated the `### Chunk ` parsers
+  (`verify-chunk-refs`, `_parse_build_plan_chunk_type`, `lib/critic_mode.py` plan-override) for the
+  WHOLE plan. The degradation is silent: chunk-type fail-closes to `code`, refs stop verifying, and
+  nothing errors. Fix-shape: a test (or a `regen-views`/stop-hook check) that resolves the active
+  build plan via `resolve_build_plan_path` and asserts its `## Status` chunk IDs each map to a
+  parseable `### Chunk <id>:` heading — so a depth/format mismatch fails LOUDLY instead of degrading.
+  Open question: test-only (pins the framework's own plan) vs. a runtime check that fires for any
+  product's active plan. Filed from roi-batch-2 Critic NOTE on 2026-06-04. (critic)
+
 - **[STH-4D2X]** Decide whether the trivial/doc-only file-set gate should also protect a consumer's own `.claude/skills/`
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-03 · status: open`
 
