@@ -51,7 +51,7 @@ When someone opens this directory, route based on context:
 → This repo is a Prawduct product in active development. Read `.prawduct/project-state.yaml` for framework state and `.prawduct/learnings.md` for accumulated wisdom. Apply the methodology to framework changes — principles, proportional review, reflection.
 
 **Onboarding another product** ("let's work on ../my-app", "set up prawduct for ../foo")
-→ Use `/prawduct:doctor <target-path>` (Onboard). For a brand-new repo it scaffolds the product-owned state (`prawduct-hook init-product`); for an existing v1 file-sync repo it routes to `/prawduct:migrate` (one reversible commit). Either way the repo commits only the install reference — no framework files. Tell the user to open the target in a new Claude Code session for governance: `claude <target-path>`.
+→ Use `/prawduct:onboard <target-path>`. For a new or existing repo it scaffolds the product-owned state (`prawduct-hook init-product`); for a pre-2.0 file-sync repo it routes to `/prawduct:migrate` (one reversible commit). Either way the repo commits only the install reference — no framework files. Tell the user to open the target in a new Claude Code session for governance: `claude <target-path>`. (For an already-onboarded repo, `/prawduct:doctor` is health-check/repair.)
 
 **Ad-hoc work outside this repo** ("build me X in ../foo", "create a CLI that does Y")
 → The user wants Claude to do work that isn't part of this framework and isn't being onboarded as a Prawduct product. Proceed with the work, applying principles as engineering judgment — not as a formal process. At session end, reflect on what was built and note any methodology observations (did the process help, hinder, or feel irrelevant?).
@@ -60,7 +60,7 @@ When someone opens this directory, route based on context:
 → Scan known product directories for `.prawduct/learnings.md`. Look for methodology friction or process feedback. Summarize and propose framework updates.
 
 **First contact** ("hello", "what is this?", "what can you do?")
-→ Briefly explain: Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. It installs as a Claude Code plugin; product repos onboard via `/prawduct:doctor` and commit only a small install reference — no framework files.
+→ Briefly explain: Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. It installs as a Claude Code plugin; product repos onboard via `/prawduct:onboard` and commit only a small install reference — no framework files.
 
 ## Sessions and Work Cycles
 
@@ -146,7 +146,7 @@ Session-end becomes a quick synthesis scan, not a from-scratch write. Read `meth
 
 ## Project Layout
 
-**Product repos** (onboarded via `/prawduct:doctor`, plugin-governed — they commit only their own state plus a small install reference, no framework files):
+**Product repos** (onboarded via `/prawduct:onboard`, plugin-governed — they commit only their own state plus a small install reference, no framework files):
 ```
 my-product/
 ├── CLAUDE.md                    # product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
