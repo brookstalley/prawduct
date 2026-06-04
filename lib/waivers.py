@@ -38,7 +38,11 @@ _LEGACY_REF = "prawduct/broad-except"
 _REF = r"[A-Za-z][\w.-]*/[A-Za-z][\w.-]*"
 _REFS = rf"{_REF}(?:\s*,\s*{_REF})*"
 _GENERAL_RE = re.compile(rf"{re.escape(KEYWORD)}\s+(?P<refs>{_REFS})(?P<rest>.*)$")
-_LEGACY_RE = re.compile(rf"{re.escape(LEGACY_KEYWORD)}(?P<rest>.*)$")
+# Trailing `(?!\w)` boundary so the legacy keyword is not matched as a prefix of a
+# longer word (e.g. ``prawduct:ok-broad-exception``). A word char ends the token;
+# every valid separator (space, ``-``, ``—``, ``:``) is a non-word char, so an
+# immediately-adjacent ``--reason`` still parses.
+_LEGACY_RE = re.compile(rf"{re.escape(LEGACY_KEYWORD)}(?!\w)(?P<rest>.*)$")
 
 
 @dataclass(frozen=True)

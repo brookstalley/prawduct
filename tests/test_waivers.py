@@ -77,6 +77,18 @@ class TestLegacyForm:
         line = "x  # prawduct:allow prawduct/broad-except -- reason"
         assert len(waivers.parse_waivers(line)) == 1
 
+    def test_legacy_keyword_not_matched_as_word_prefix(self):
+        # `prawduct:ok-broad-exception` must NOT false-match the legacy keyword.
+        line = "x  # prawduct:ok-broad-exception is not a waiver"
+        assert waivers.parse_waivers(line) == []
+        assert not waivers.line_waives(line, "prawduct/broad-except")
+
+    def test_legacy_separator_adjacent_still_parses(self):
+        # A reason butted directly against `--` (no space) still parses.
+        line = "except Exception:  # prawduct:ok-broad-except--boundary"
+        (w,) = waivers.parse_waivers(line)
+        assert w.ref == "prawduct/broad-except" and w.reason == "boundary"
+
 
 class TestScopeMatching:
     def test_matching_ref_waives(self):
