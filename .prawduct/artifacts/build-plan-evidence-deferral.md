@@ -77,10 +77,13 @@ N/A — edits land in `bin/prawduct-hook` (new `cmd_test_evidence` + dispatch), 
   stdin → deriving the session dir → inspecting `subagents/workflows/*/journal.jsonl`, and even then
   `started > result` cannot distinguish a LIVE run from a CRASHED one (the journal persists after
   completion). Harness-version-dependent → NOT safe to build now.
-- **Safe floor (ship):** `docs/waivers.md` documents a SANCTIONED in-flight-background-work gate
-  state with a distinct reason convention (e.g. `{"critic": "deferred: async background workflow
-  in flight — will satisfy this session"}`), so the agent stops overloading the "cannot satisfy
-  THIS session" waiver semantics. Records that this is a known rough edge with a real fix pending.
+- **Safe floor (ship) — REVISED during build:** the original plan (sanction an in-flight WAIVER
+  convention) was REJECTED on investigation — waiving the Critic gate would SKIP the Critic the
+  completed background work still needs, so a waiver is semantically wrong here, not just overloaded.
+  The shipped floor instead clarifies in `methodology/building.md` (Gate-waivers, where `.gates-waived`
+  is actually documented — NOT `docs/waivers.md`, which is the source-comment pragma) that in-flight
+  background work is "wait, don't waive": SPIN is the correct behavior, the repeated block is an
+  expected reminder, and the real fix is pending (`STH-3W7F`).
 - **Design (record in backlog STH-3W7F):** the cleaner real fix is a self-declared `.gates-deferred`
   file (the AGENT knows it launched background work; the hook can't) that defers the gate EXACTLY
   ONCE then auto-rearms (so it can never permanently skip the Critic) — sidesteps the fragile
