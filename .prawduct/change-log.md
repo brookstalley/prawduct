@@ -3,9 +3,9 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-06-04: release-tooling — fix the release/build tooling once and for all (REL-4T8N + 3) (release-pending)
+## 2026-06-04: release-tooling — fix the release/build tooling once and for all (REL-4T8N + 3) (shipped v2.0.6)
 
-<!-- prawduct: chunks=01,02,03,04,05 | status=merged | scope=release-tooling -->
+<!-- prawduct: chunks=01,02,03,04,05 | release=v2.0.6 | status=shipped | scope=release-tooling -->
 
 **Why:** The v2.0.5 release concretely confirmed REL-4T8N: the per-scope `regen-views` (point the
 `active_build_plan` pointer at each of four plans in turn) was 4× tedious, and it surfaced a second
@@ -33,11 +33,10 @@ read-only investigation workflow; built sequentially (shared files); one cumulat
 - **Chunk 05 (TST-9K4W):** the two structural test collectors prune the `.claude/` worktree subtree,
   so leftover worktree-isolated workflow checkouts no longer fail the suite.
 
-**Status:** MERGED to develop (release-pending). Full suite green (799 passed, +28 net); cumulative
-Critic (0 blocking; the release-notes same-scope-duplicate-heading regression it caught was fixed)
-and a 3-agent adversarial-verification workflow (REL-4T8N-A/B + BLD-8F2Q verdict: holds, byte-identity
-confirmed) both clean. Flips to `status=shipped` + gains a `release=` tag at the next develop→main
-release. Closes REL-4T8N, BLD-8F2Q, PR-7Q3M, TST-9K4W (archive at release).
+**Status:** SHIPPED in v2.0.6 (develop→main, 2026-06-04). Full suite green (799 passed, +28 net);
+cumulative Critic (0 blocking; the release-notes same-scope-duplicate-heading regression it caught
+was fixed) and a 3-agent adversarial-verification workflow (REL-4T8N-A/B + BLD-8F2Q verdict: holds,
+byte-identity confirmed) both clean. Merged via #62. Closes REL-4T8N, BLD-8F2Q, PR-7Q3M, TST-9K4W.
 
 ## 2026-06-04: cleanup-batch — 6 parallel backlog fixes (refactor/perf/test + critic/pr/methodology docs) (shipped v2.0.5)
 

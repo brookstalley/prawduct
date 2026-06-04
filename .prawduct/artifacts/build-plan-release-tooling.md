@@ -43,11 +43,11 @@ base=develop → retain); (h) TST-9K4W excludes the whole `.claude/` path compon
      tree (they share lib/views.py, bin/prawduct-hook, docs/release-process.md);
      parallel worktree builds were rejected as conflict-prone for ~zero gain. -->
 
-- [ ] Chunk 01: REL-4T8N-A — regen-views handles MULTIPLE release-pending plans (scope→file map, enumerate all scopes)
-- [ ] Chunk 02: REL-4T8N-B — release-notes.md renders ALL entries sharing a `release=` tag (no scope collapse / chunk union)
-- [ ] Chunk 03: BLD-8F2Q — verify-chunk-refs existence-checks only the pre-`::` path of a `path::symbol` token
-- [ ] Chunk 04: PR-7Q3M — PR merge-flow step 7 branches: delete-at-release vs retain-while-release-pending
-- [ ] Chunk 05: TST-9K4W — structural test collectors exclude the `.claude/` worktree subtree
+- [x] Chunk 01: REL-4T8N-A — regen-views handles MULTIPLE release-pending plans (scope→file map, enumerate all scopes)
+- [x] Chunk 02: REL-4T8N-B — release-notes.md renders ALL entries sharing a `release=` tag (no scope collapse / chunk union)
+- [x] Chunk 03: BLD-8F2Q — verify-chunk-refs existence-checks only the pre-`::` path of a `path::symbol` token
+- [x] Chunk 04: PR-7Q3M — PR merge-flow step 7 branches: delete-at-release vs retain-while-release-pending
+- [x] Chunk 05: TST-9K4W — structural test collectors exclude the `.claude/` worktree subtree
 Context: Plan authored 2026-06-04. Bundles REL-4T8N (both symptoms) with three adjacent
 release/build-tooling fixes that cohere in one PR (this repo's roi-batch/cleanup-batch pattern).
 Investigation via a 5-agent read-only workflow (run wf_4ee7d42a-761). Build is sequential in the
