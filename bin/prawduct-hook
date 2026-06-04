@@ -3760,8 +3760,14 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
       - has ``mode == _CRITIC_MODE_CUMULATIVE`` (chunk/final do not satisfy
         this gate — cumulative is specifically the ``merge-base...HEAD``
         bundle review),
-      - is fresh (mtime later than the current session's ``.session-start``
-        marker; stale evidence from a prior session is rejected),
+      - covers current HEAD (CRT-7M2D): the recorded ``commit_reviewed`` IS
+        HEAD, or the only changes since it are documentation (``.md``). A clean
+        cumulative review vouches for the *code* being shipped — so a code change
+        since the review fails the gate (re-run genuinely needed), but a doc-only
+        change does not (no needless re-run — the "treadmill" fix). This replaces
+        the prior mtime-vs-``.session-start`` recency check, which both
+        false-passed a stale record over real code changes and forced a full
+        re-run after every inert post-review fix.
       - contains no unresolved BLOCKING severity findings (WARNING and NOTE
         are advisory at the PR gate, matching the PR reviewer's semantics).
 
@@ -3802,48 +3808,89 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         )
         return 1
 
-    # Freshness check — fail closed if the marker is missing or the check
-    # itself crashes. Mirrors the `needs_review = True` default in
-    # `_check_previous_session_gates` around line 1872; the cumulative gate
-    # cannot vouch for freshness it can't verify. (See "Escape hatches in
-    # classification create silent failures" in learnings.md.)
-    session_start_path = prawduct_dir / ".session-start"
-    if not session_start_path.is_file():
+    # CRT-7M2D — judge the record by COMMIT-COVERAGE, not mtime-recency. The
+    # gate's real question is "has the bundle being PR'd had a clean cumulative
+    # review?" — a fact about COMMITS, not timestamps. The old mtime-vs-
+    # .session-start check both (a) FALSE-PASSED a stale record whenever the
+    # findings file was merely touched this session (commit_reviewed != HEAD over
+    # real code changes), and (b) forced a full re-run after every inert
+    # post-review fix (the "treadmill"). Coverage fixes both, honestly:
+    #   * commit_reviewed == HEAD                     -> covered (the review IS this tree)
+    #   * only ``.md`` changed since commit_reviewed  -> covered (the cumulative
+    #       behavioral verdict still holds; docs moved, code didn't)
+    #   * any non-doc change since commit_reviewed     -> stale (re-run genuinely needed)
+    # Fail closed (return 1) if any git step can't be evaluated — the gate must
+    # not vouch for coverage it can't verify ("Escape hatches in classification
+    # create silent failures", learnings.md).
+    commit_reviewed = data.get("commit_reviewed")
+    if not isinstance(commit_reviewed, str) or not commit_reviewed.strip():
         print(
-            "no-session-start: missing .prawduct/.session-start — cannot "
-            "validate cumulative-Critic freshness. Run /clear to start a "
-            "session, then re-run /prawduct:critic cumulative.",
+            "no-commit-reviewed: the cumulative record lacks a commit_reviewed "
+            "anchor, so the gate cannot verify it covers HEAD. Re-run "
+            "/prawduct:critic cumulative.",
             file=sys.stderr,
         )
         return 1
     try:
-        session_start = session_start_path.read_text().strip()
-        findings_mtime = datetime.fromtimestamp(
-            findings_path.stat().st_mtime, tz=timezone.utc
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if freshness inputs are unreadable
+        head_proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+        reviewed_proc = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{commit_reviewed}^{{commit}}"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if git is unavailable
         print(
-            f"freshness-check-failed: could not compare cumulative-Critic "
-            f"findings vs session-start ({exc!r}). Re-run /prawduct:critic cumulative.",
+            f"coverage-check-failed: could not resolve commits ({exc!r}). "
+            "Re-run /prawduct:critic cumulative.",
             file=sys.stderr,
         )
         return 1
-    # Lexicographic compare on whole-second %Y-%m-%dT%H:%M:%SZ strings is
-    # order-preserving — same identical-precision convention as cmd_clear's
-    # gate check. Adding fractional seconds to the format would break both
-    # sides; keep them in lockstep.
-    # STH-6B4R tie rule: findings_mtime == session_start is NOT fresh (stale).
-    # `<=` rejects the same-whole-second tie, matching the Critic-gate sites'
-    # strict `>` (which clears the gate only when findings_mtime is strictly
-    # greater). The two phrasings express the identical tie semantics.
-    if findings_mtime <= session_start:
+    if head_proc.returncode != 0 or reviewed_proc.returncode != 0:
         print(
-            f"stale: cumulative findings ({findings_mtime}) "
-            f"predate session-start ({session_start}). Re-run "
-            "/prawduct:critic cumulative in the current session before opening a PR.",
+            f"unresolved-commit: could not resolve HEAD or commit_reviewed "
+            f"({commit_reviewed[:12]}). Re-run /prawduct:critic cumulative.",
             file=sys.stderr,
         )
         return 1
+    head_sha = head_proc.stdout.strip()
+    reviewed_sha = reviewed_proc.stdout.strip()
+    if reviewed_sha != head_sha:
+        try:
+            diff_proc = subprocess.run(
+                ["git", "diff", "--name-only", f"{reviewed_sha}..HEAD"],
+                cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+            )
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if git diff fails
+            print(
+                f"coverage-check-failed: could not diff {reviewed_sha[:12]}..HEAD "
+                f"({exc!r}). Re-run /prawduct:critic cumulative.",
+                file=sys.stderr,
+            )
+            return 1
+        if diff_proc.returncode != 0:
+            print(
+                f"coverage-check-failed: git diff {reviewed_sha[:12]}..HEAD failed: "
+                f"{diff_proc.stderr.strip()}. Re-run /prawduct:critic cumulative.",
+                file=sys.stderr,
+            )
+            return 1
+        changed = [ln.strip() for ln in diff_proc.stdout.splitlines() if ln.strip()]
+        non_doc = [f for f in changed if not f.endswith(".md")]
+        if non_doc:
+            sample = ", ".join(non_doc[:3])
+            more = f" (+{len(non_doc) - 3} more)" if len(non_doc) > 3 else ""
+            print(
+                f"stale: code changed since the cumulative review "
+                f"({reviewed_sha[:12]}..{head_sha[:12]}): {sample}{more}. Re-run "
+                "/prawduct:critic cumulative. (Doc-only — all .md — changes since "
+                "the review do not require a re-run; make code/docstring fixes "
+                "before the review to avoid one.)",
+                file=sys.stderr,
+            )
+            return 1
+        # else: only .md changed since the review — coverage holds, no re-run.
 
     findings = data.get("findings", [])
     blocking = [f for f in findings if isinstance(f, dict) and f.get("severity") == "blocking"]
@@ -3856,7 +3903,7 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         )
         return 1
 
-    print(f"satisfied: cumulative-Critic record is fresh and clean ({findings_path})")
+    print(f"satisfied: cumulative-Critic record covers HEAD and is clean ({findings_path})")
     return 0
 
 
