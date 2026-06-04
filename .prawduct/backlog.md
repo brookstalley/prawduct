@@ -8,6 +8,22 @@
 ## Open
 
 
+- **[REL-4T8N]** Release tooling: handle MULTIPLE release-pending plans (regen-views per scope) instead of a single `active_build_plan` pointer
+  `effort: M · impact: M · area: release · source: builder · added: 2026-06-04`
+
+  The release model assumes ~one release-pending plan between `develop→main` releases: `regen-views`
+  resolves THE plan via the single `active_build_plan` pointer. But batched sub-releases stack up —
+  as of 2026-06-04 there are THREE release-pending plans (roi-batch chunks 01–05, roi-batch-2 01–09,
+  evidence-deferral 01–02), each a distinct `scope=`/`status=merged` change-log entry. The current
+  workaround is a hand-maintained comment in `project-state.yaml` instructing the release to point
+  the pointer at each plan in turn and `regen-views` per scope — manual, easy to miss one, and it's
+  recurred 3× (flagged "worth a backlog item if it keeps recurring" in the evidence-deferral plan).
+  Fix-shape: `regen-views` (or a release subcommand) ENUMERATES every `status=merged` change-log
+  entry, resolves each scope's build-plan file, and regenerates each plan's `## Status` — driven by
+  the change-log (the source of truth), not the single pointer. Then a release flips all merged→shipped
+  and regens all in one pass. Open question: how does regen map a `scope=` to its build-plan FILE
+  (a `scope:`-frontmatter scan across `artifacts/*.md`, or a `scope→file` map)? Filed 2026-06-04. (builder)
+
 - **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
   `effort: L · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · partial: floor+design shipped via #60 (code fix pending) · related: STH-7K2A`
 
