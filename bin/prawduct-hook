@@ -2526,8 +2526,8 @@ def cmd_stop(project_dir: Path) -> int:
     # over-declaring `trivial` produces a named blocker pointing at the
     # specific bound violated, never a silent carveout. The trivial
     # check does NOT honor the doc-only skip — bounds like
-    # "no edits under agents/" matter even when the diff is empirically
-    # all-.md (the agents/ tree itself is pure prose). Doc-only only
+    # "no edits under skills/" matter even when the diff is empirically
+    # all-.md (the skills/ tree itself is pure prose). Doc-only only
     # carves out the Critic protocol (which has no code to review); the
     # trivial-declaration contract is independent.
     trivial_block_reason = ""
@@ -2835,7 +2835,7 @@ _BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
 # parenthetical prose is allowed and ignored.
 _BUILD_PLAN_TYPE_RE = re.compile(r"^[\s\-\*]*\*\*Type:\*\*\s*([A-Za-z][\w\-]*)")
 # v1.5 Chunk 04 — `trivial` joins the allowed set. File-set bounds (no
-# edits under agents/, methodology/, templates/; no CLAUDE.md edit; no
+# edits under skills/, methodology/, templates/; no CLAUDE.md edit; no
 # test deletion; no new files) + required `**Trivial because:**`
 # rationale are enforced structurally; semantic-fit is Critic Goal 3 in
 # Chunk 05. Size is unbounded — trivial is a semantic claim, not a LOC
@@ -3142,8 +3142,8 @@ def _classify_trivial_change(
         return None
     if path == "CLAUDE.md":
         return f"claude-md-edited: {path}"
-    if path.startswith("agents/"):
-        return f"agent-file-edited: {path}"
+    if path.startswith("skills/"):
+        return f"skill-file-edited: {path}"
     if path.startswith("methodology/"):
         return f"methodology-edited: {path}"
     if path.startswith("templates/"):
@@ -3162,7 +3162,7 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
     file-set bounds. Returns ``(eligible, reason)``.
 
     Bounds (catastrophic-blast-radius classes, regardless of size):
-    no edits under ``agents/``, ``methodology/``, or ``templates/``; no
+    no edits under ``skills/``, ``methodology/``, or ``templates/``; no
     edits to ``CLAUDE.md``; no test-file removals (porcelain ``D`` under
     ``tests/`` OR rename whose source path is under ``tests/`` — a
     ``git mv`` out of the test directory is semantically a deletion);
@@ -3175,7 +3175,7 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
     fit (Chunk 05).
 
     Reason strings name the specific bound that failed for actionable
-    stop-hook messaging — e.g. ``"agent-file-edited: agents/critic/SKILL.md"``.
+    stop-hook messaging — e.g. ``"skill-file-edited: skills/critic/SKILL.md"``.
     The first violating file wins (deterministic order: porcelain
     output ordering); the user fixes one violation at a time.
 
@@ -3921,7 +3921,7 @@ def _pr_diff_is_trivial(project_dir: Path) -> tuple[bool, str]:
     file changes satisfy ``_classify_trivial_change``. The first
     violating commit short-circuits with a reason naming the SHA and
     the specific bound (e.g.
-    ``"not-trivial: commit a1b2c3d agent-file-edited: agents/foo.md"``).
+    ``"not-trivial: commit a1b2c3d skill-file-edited: skills/foo.md"``).
 
     Mirrors ``_pr_diff_is_doc_only`` at the PR boundary — same base
     resolution via ``_coverage_resolve_base``, same fail-closed posture
@@ -3930,7 +3930,7 @@ def _pr_diff_is_trivial(project_dir: Path) -> tuple[bool, str]:
     review time. This helper trusts that every chunk's rationale was
     Critic-passed and only checks the structural file-set bounds.
 
-    Per-commit (not cumulative) walk: a PR that adds an ``agents/``
+    Per-commit (not cumulative) walk: a PR that adds an ``skills/``
     file in commit 1 and removes it in commit 2 has an empty cumulative
     diff but is NOT fast-path eligible — the commit 1 violation is
     real signal that the work crossed a catastrophic-blast-radius
@@ -4026,7 +4026,7 @@ def cmd_check_pr_trivial(project_dir: Path) -> int:
     parallel to the doc-only fast-path: same fail-closed shape, same
     Gate-3 alignment at session end.
 
-    Exit 1 otherwise (any commit touches ``agents/``/``methodology/``/
+    Exit 1 otherwise (any commit touches ``skills/``/``methodology/``/
     ``templates/``/``CLAUDE.md``, adds a new file, removes a test
     file, empty diff, no resolvable base, or git failure). Fails
     closed: when the gate cannot be evaluated, fall through to the

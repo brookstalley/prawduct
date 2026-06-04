@@ -207,7 +207,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        section are verified to exist on disk by the Critic's Goal 2
        (build-plan ref drift check). Files this chunk *creates* should be
        preceded by the word "new" on the same line — e.g. "new
-       `agents/foo/bar.md`" — to flag them as forward refs. Future-chunk
+       `skills/foo/bar.md`" — to flag them as forward refs. Future-chunk
        sections (Chunk N+1, N+2, …) are never checked; forward references
        there are fine. -->
 
@@ -240,7 +240,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
          1-2 min) — re-review mode after fixing prior BLOCKING/WARNING findings.
 
        Missing field → inference. Unrecognized override → `final` (fail-safe).
-       See `agents/critic/review-cycle.md` for full per-mode behavior. -->
+       See `skills/critic/review-cycle.md` for full per-mode behavior. -->
 
 - **Type:** [optional — defaults to `code`. Allowed: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`]
   <!-- The Type axis is orthogonal to Critic mode — mode controls how deep the
@@ -265,7 +265,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
          step 4 below).
        - `trivial`: semantically simple change whose risk is low *because the
          author can name why* — not because LOC is small. **Structural bounds
-         (machine-enforced):** chunk diff has no edits under `agents/`,
+         (machine-enforced):** chunk diff has no edits under `skills/`,
          `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file
          deletions; no new files. Size is unbounded — an 80-LOC project-wide
          rename can be trivial; a 5-line state-machine change cannot. **Requires
@@ -274,7 +274,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
          declaring is unsafe and BLOCKING: violating any bound OR omitting
          rationale produces a named blocker, never a silent carveout.
 
-       See `agents/critic/review-cycle.md` "Per-Chunk Type Protocol Selector"
+       See `skills/critic/review-cycle.md` "Per-Chunk Type Protocol Selector"
        for the full per-type protocol matrix. -->
 - **Trivial because:** [required when `Type: trivial`; omit otherwise]
   <!-- One or two sentences naming what makes this change semantically simple.
