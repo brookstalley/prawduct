@@ -468,9 +468,9 @@ views_enabled: true
 # ## Status checkboxes to [x] (run once per scope, the REL-4T8N friction).
 # release-tooling (REL-4T8N + BLD-8F2Q + PR-7Q3M + TST-9K4W) SHIPPED in v2.0.6
 # (2026-06-04, #62); its build-plan file is retained as a historical artifact.
-# No release-pending plans remain — the pointer is cleared (unset → falls back
-# to artifacts/build-plan.md). The next in-progress plan sets it again.
-active_build_plan:
+# release-pending plans WERE cleared after v2.0.6; the in-progress rigor-and-stance
+# plan (owner pivot infra→methodology, 2026-06-04) now sets the pointer again.
+active_build_plan: artifacts/build-plan-rigor-and-stance.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
