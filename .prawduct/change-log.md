@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: release-tooling — fix the release/build tooling once and for all (REL-4T8N + 3) (release-pending)
+
+<!-- prawduct: chunks=01,02,03,04,05 | status=merged | scope=release-tooling -->
+
+**Why:** The v2.0.5 release concretely confirmed REL-4T8N: the per-scope `regen-views` (point the
+`active_build_plan` pointer at each of four plans in turn) was 4× tedious, and it surfaced a second
+symptom — the derived `release-notes.md` mis-aggregated all scopes of a release under one entry.
+Bundled with three adjacent release/build-tooling fixes that cohere in one PR. Designed by a 5-agent
+read-only investigation workflow; built sequentially (shared files); one cumulative Critic + a
+3-agent adversarial-verification workflow gated the bundle.
+
+**What merged (5 chunks, → develop, release-pending):**
+- **Chunk 01 (REL-4T8N-A):** `regen-views` regenerates EVERY release-pending plan in one pass —
+  enumerates each change-log `scope=` (status ∈ {shipped, merged}), resolves it to its build-plan
+  file via frontmatter `scope:` (`build_scope_to_plan_map`), regenerates each plan's `## Status`
+  (per-plan scope re-detection → no cross-scope leakage), de-duped by path, with a single-plan
+  back-compat fallback. `diagnose_scope_plan_coverage` warns on merged scopes with no plan file +
+  duplicate scopes. Also fixes a latent can't-run state (regen-views previously exit 2 here).
+- **Chunk 02 (REL-4T8N-B):** `release-notes.md` renders every distinct scope of a release as its own
+  `### ` sub-section with its OWN chunks (no cross-scope union); same-scope entries collapse; a
+  single sub-release renders flat (byte-compatible). The `## v2.0.5` digest now shows four correct
+  scope sub-sections.
+- **Chunk 03 (BLD-8F2Q):** `verify-chunk-refs` existence-checks only the pre-`::` path of a
+  `path::symbol` token (symbol stays deferred, BLD-5V8F) — kills a Goal-2 false positive.
+- **Chunk 04 (PR-7Q3M):** PR merge-flow step 7 branches on `resolve-base` — delete the plan (resolved
+  via the pointer, not a hardcoded path) + clear the pointer when the merge IS the release; RETAIN
+  both while release-pending under gitflow. Fixes the latent hardcoded-`build-plan.md` path.
+- **Chunk 05 (TST-9K4W):** the two structural test collectors prune the `.claude/` worktree subtree,
+  so leftover worktree-isolated workflow checkouts no longer fail the suite.
+
+**Status:** MERGED to develop (release-pending). Full suite green (799 passed, +28 net); cumulative
+Critic (0 blocking; the release-notes same-scope-duplicate-heading regression it caught was fixed)
+and a 3-agent adversarial-verification workflow (REL-4T8N-A/B + BLD-8F2Q verdict: holds, byte-identity
+confirmed) both clean. Flips to `status=shipped` + gains a `release=` tag at the next develop→main
+release. Closes REL-4T8N, BLD-8F2Q, PR-7Q3M, TST-9K4W (archive at release).
+
 ## 2026-06-04: cleanup-batch — 6 parallel backlog fixes (refactor/perf/test + critic/pr/methodology docs) (shipped v2.0.5)
 
 <!-- prawduct: chunks=01,02,03,04,05,06 | release=v2.0.5 | status=shipped | scope=cleanup-batch -->
