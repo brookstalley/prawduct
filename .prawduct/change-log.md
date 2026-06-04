@@ -3,6 +3,36 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: onboard — split repo onboarding out of /prawduct:doctor into /prawduct:onboard (shipped v2.0.8)
+
+<!-- prawduct: type=feature | release=v2.0.8 | status=shipped -->
+
+**Why:** `doctor` connotes health-check (brew/flutter doctor), not setup — so presenting it as the
+install/onboard entry point was confusing (owner-raised). The `doctor` skill was also overloaded
+with five flows; onboarding was the only one its name didn't fit.
+
+**What shipped (via #64 → develop, then v2.0.8):**
+- New **`/prawduct:onboard`** (`skills/onboard/SKILL.md`) — the onboarding entry point: scaffold a
+  new *or* existing repo (`prawduct-hook init-product`), or route a pre-2.0 file-sync repo to
+  `/prawduct:migrate`. Framed so new and existing repos are the same command.
+- **`/prawduct:doctor`** narrowed to health-check / repair / enable-gate / verify / audit-learnings
+  — drops the Onboard flow and the `init-product` tool grant; a stray path arg redirects to onboard.
+- Onboarding references repointed in `CLAUDE.md`, `README.md`, and the `bin/prawduct-hook`
+  `cmd_init_product` docstring (health-check references correctly stay `doctor`).
+- **README Quick Start trimmed** to two tight steps — install once at the user level; onboard any
+  repo (new or existing) with the same command. The `--add-dir` dev tip moved to "Develop the
+  framework itself".
+- Tests: repoint the init-product guard to the onboard skill, add a doctor-does-not-onboard guard
+  (asserts the tool grant is gone, not just the word), add `onboard` to the bare-command regex.
+
+**Versioning:** patch bump (2.0.7 → 2.0.8). A skill split + doc clarity change; conservative patch
+per repo practice. The bump is the marketplace update-cache key.
+
+**Tests:** 804 passing (1 skipped). Cumulative Critic clean (0 blocking; the routing NOTEs +
+docstring WARNING resolved in follow-ups); independent PR review clean (0 blocking). Deliberately
+did NOT add `/prawduct:onboard` to the session-digest skill list — it's a pre-governance setup
+entry, and the digest only fires in already-onboarded sessions (recorded rationale, not an oversight).
+
 ## 2026-06-04: rigor-and-stance — sharpen the methodology's PM seams (requirements rigor + agent stance) (shipped v2.0.7)
 
 <!-- prawduct: chunks=01,02,03 | release=v2.0.7 | status=shipped | scope=rigor-and-stance -->
