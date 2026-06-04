@@ -305,17 +305,48 @@ class TestStopPrReviewGate:
 class TestPrReviewSkillContent:
     """The PR-review prose now lives only in the plugin — the file-sync
     `templates/pr-review.md` + `templates/skill-pr.md` retired in M4 Chunk 4.
-    `skills/pr/review-protocol.md` carries the reviewer's 7 goals;
+    `skills/pr/review-protocol.md` carries the reviewer's 4 release-readiness goals;
     `skills/pr/SKILL.md` carries the /pr lifecycle flows + the review gate."""
 
     def test_review_protocol_has_all_goals(self):
-        """The PR review protocol should cover all 7 review goals."""
+        """The PR review protocol should cover the 4 release-readiness goals.
+
+        Contract change (PRR-4M9T): the PR reviewer's goals were trimmed to drop
+        the ones that overlapped the Critic (No Bugs Shipped, Tests Cover the
+        Change, Proportionality). With the layering now explicit — per-chunk
+        Critic = local correctness, final/cumulative Critic = bundle synthesis,
+        PR reviewer = release readiness — the reviewer owns only the
+        release-specific lens: scope, narrative/coherence, merge hygiene, and
+        bundle-level simplification. The dropped goals are asserted absent in
+        test_review_protocol_dropped_critic_overlap_goals so the trim doesn't
+        silently regrow.
+        """
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         for goal in (
-            "No Bugs Shipped", "Tests Cover the Change", "Right Scope",
-            "Clear Narrative", "Simplification", "Merge Hygiene", "Proportionality",
+            "Right Scope", "Clear Narrative", "Merge Hygiene",
+            "Bundle-Level Simplification",
         ):
             assert goal in content, f"skills/pr/review-protocol.md missing goal: {goal}"
+
+    def test_review_protocol_dropped_critic_overlap_goals(self):
+        """The Critic-overlapping PR-reviewer goals must stay removed (PRR-4M9T).
+
+        Guards the trim's intent: these were retired as standalone goals because
+        the Critic already owns bugs, test quality, and proportionality. The
+        words may still appear in prose that delineates the layering (e.g.
+        "do not re-litigate bugs ... or proportionality"), so we assert the
+        absence of the goal *headings* specifically, not the bare terms.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        for heading in (
+            "### 1. No Bugs Shipped",
+            "### 2. Tests Cover the Change",
+            "### 7. Proportionality",
+            "## 7. Proportionality",
+        ):
+            assert heading not in content, (
+                f"skills/pr/review-protocol.md still has dropped goal heading: {heading}"
+            )
 
     def test_pr_skill_has_all_flows(self):
         """The /pr skill should cover all 4 flows."""
