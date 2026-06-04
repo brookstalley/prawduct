@@ -52,7 +52,7 @@ MANAGED_FILES: frozenset[str] = frozenset({
     ".claude/skills/prawduct-advisory/SKILL.md",
     ".claude/skills/backlog/SKILL.md",
     ".claude/skills/critic/SKILL.md",
-    "tools/product-hook",
+    "tools/product-hook",  # prawduct:allow prawduct/legacy-ref -- 1.x file-sync hook; migration removes it from the consumer
     ".claude/settings.json",
 })
 
@@ -60,7 +60,7 @@ MANAGED_FILES: frozenset[str] = frozenset({
 # is ``migrate_plugin``, which globs the *consumer's* ``tools/lib`` so it removes
 # that repo's full (possibly older) module set during the cutover onto the plugin.
 MANAGED_DIRS: dict[str, dict] = {
-    "tools/lib": {
+    "tools/lib": {  # prawduct:allow prawduct/legacy-ref -- 1.x file-sync module dir; migration globs + removes it
         "glob": "*.py",
     },
 }

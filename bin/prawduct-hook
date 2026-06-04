@@ -117,6 +117,7 @@ def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | No
 # session-start hot path. Kept in sync with core.resolve_build_plan_path /
 # core.read_str_yaml_key by a parity test (same discipline as the
 # GITIGNORE_ENTRIES / _SESSION_GITIGNORED_PATHS mirror).
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestProductHookMirrorParity
 _BUILD_PLAN_POINTER_KEY = "active_build_plan"
 _DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
 
@@ -306,6 +307,7 @@ def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
 # `__pycache__/` and a trailing slash on `.pr-reviews/` for its `.gitignore`
 # writer, while this list uses bare paths for `git ls-files` untracking. Keep the
 # shared session-file set in sync when adding entries.
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
     ".prawduct/.critic-findings.json",
