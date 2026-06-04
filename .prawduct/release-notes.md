@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.5
+
+**Entry:** 2026-06-04: cleanup-batch — 6 parallel backlog fixes (refactor/perf/test + critic/pr/methodology docs) (shipped v2.0.5)
+
+**Chunks shipped:** 01, 02, 03, 04, 05, 06, 07, 08, 09
+
+**Scope:** cleanup-batch
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.4
 
 **Entry:** 2026-06-04: v2.0.4 — Intentional-waiver pragma (`prawduct:allow`) + trivial-gate fix (shipped)

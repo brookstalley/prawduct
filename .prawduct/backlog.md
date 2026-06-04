@@ -49,6 +49,15 @@
   and regens all in one pass. Open question: how does regen map a `scope=` to its build-plan FILE
   (a `scope:`-frontmatter scan across `artifacts/*.md`, or a `scope→file` map)? Filed 2026-06-04. (builder)
 
+  **Confirmed in the v2.0.5 release (2026-06-04):** four scopes (roi-batch, roi-batch-2,
+  evidence-deferral, cleanup-batch) shipped together — the manual per-scope `regen-views` (point the
+  pointer at each plan in turn) worked but was 4× tedious as predicted. It also surfaced a SECOND
+  symptom in the **derived release-notes.md**: the digest renders only ONE entry per `release=` tag, so
+  the `## v2.0.5` section showed just cleanup-batch and mis-aggregated `Chunks shipped: 01–09` (the union
+  across all four entries) under that single scope. Consumer impact is nil (the version-delta banner reads
+  the hand-written `CHANGELOG.md`, not this digest), but the fix should also make `views.py` render ALL
+  entries sharing a `release=` tag, not just the topmost.
+
 - **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
   `effort: L · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · partial: floor+design shipped via #60 (code fix pending) · related: STH-7K2A`
 

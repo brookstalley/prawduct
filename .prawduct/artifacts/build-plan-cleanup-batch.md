@@ -34,12 +34,12 @@ are prose-only protocol/methodology edits (doc-only).
      scope=cleanup-batch / status=shipped, then run regen-views.
      Do NOT hand-edit the checkboxes. (Stays [ ] while release-pending=merged.) -->
 
-- [ ] Chunk 01: SYN-9C4T — extract `read_bool_yaml_key` into `lib/core.py`, call from both sites
-- [ ] Chunk 02: TST-5W1J — cache test-file reads in `bin/test-reference-verify` (drop O(N·T))
-- [ ] Chunk 03: BLD-7P3K — guard test: active build plan's Status chunk IDs parse as `### Chunk <id>:`
-- [ ] Chunk 04: CRT-4W8M — Critic check: exact-match assertions for "no behavior change" refactors
-- [ ] Chunk 05: PRR-4M9T — trim PR-reviewer goals to remove Critic overlap
-- [ ] Chunk 06: MET-7H2D — testing guidance: multi-hop edge-case tests
+- [x] Chunk 01: SYN-9C4T — extract `read_bool_yaml_key` into `lib/core.py`, call from both sites
+- [x] Chunk 02: TST-5W1J — cache test-file reads in `bin/test-reference-verify` (drop O(N·T))
+- [x] Chunk 03: BLD-7P3K — guard test: active build plan's Status chunk IDs parse as `### Chunk <id>:`
+- [x] Chunk 04: CRT-4W8M — Critic check: exact-match assertions for "no behavior change" refactors
+- [x] Chunk 05: PRR-4M9T — trim PR-reviewer goals to remove Critic overlap
+- [x] Chunk 06: MET-7H2D — testing guidance: multi-hop edge-case tests
 Context: Plan authored 2026-06-04. Built via a parallel workflow (6 worktree-isolated subagents,
 one chunk each, disjoint file ownership); integrated, full-suite-verified, and cumulative-Critic'd
 in the launching session. Governance: per-chunk targeted tests by each agent → full suite at

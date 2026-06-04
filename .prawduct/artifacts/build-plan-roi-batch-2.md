@@ -33,15 +33,15 @@ the exact lines before editing (the backlog's line numbers predate recent edits)
      Do NOT hand-edit the checkboxes. Chunks are INDEPENDENT (no depends-on) and
      are built by ONE workflow with three file-disjoint lanes (see Build model). -->
 
-- [ ] Chunk 01: VWS-3K7P — validate change-log status= values + reconcile views.py docstring
-- [ ] Chunk 02: STH-2J9F — regen-views returns exit 1 (not 0) on ImportError
-- [ ] Chunk 03: VWS-8M2Q — harden views.py tag/frontmatter parsers
-- [ ] Chunk 04: STH-6B4R — gate freshness timestamp comparison precision + tie rule
-- [ ] Chunk 05: STH-1W5N — centralize trivial-change protected-path bounds into a documented constant
-- [ ] Chunk 06: TST-1D5W — tighten _validate_evidence_schema against bool-as-int
-- [ ] Chunk 07: TST-7Q3D — stop-gate regression coverage gaps (3 cases)
-- [ ] Chunk 08: ADV-9K2T — advisory_store surfaces corruption via a .corrupt sentinel
-- [ ] Chunk 09: TST-4H8M — unit coverage for migrate _collapse_blank_runs edge cases
+- [x] Chunk 01: VWS-3K7P — validate change-log status= values + reconcile views.py docstring
+- [x] Chunk 02: STH-2J9F — regen-views returns exit 1 (not 0) on ImportError
+- [x] Chunk 03: VWS-8M2Q — harden views.py tag/frontmatter parsers
+- [x] Chunk 04: STH-6B4R — gate freshness timestamp comparison precision + tie rule
+- [x] Chunk 05: STH-1W5N — centralize trivial-change protected-path bounds into a documented constant
+- [x] Chunk 06: TST-1D5W — tighten _validate_evidence_schema against bool-as-int
+- [x] Chunk 07: TST-7Q3D — stop-gate regression coverage gaps (3 cases)
+- [x] Chunk 08: ADV-9K2T — advisory_store surfaces corruption via a .corrupt sentinel
+- [x] Chunk 09: TST-4H8M — unit coverage for migrate _collapse_blank_runs edge cases
 Context: Plan authored 2026-06-04. Built by ONE workflow, three file-disjoint lanes:
 HOOK (bin/prawduct-hook + lib/views.py + their tests; chunks 01–07, run as two sequential
 sub-agents A=01–03, B=04–07 because both touch bin/prawduct-hook), ADV (lib/advisory_store.py;

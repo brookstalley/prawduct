@@ -30,8 +30,8 @@ not the auto-detector.
      scope=evidence-deferral / status=shipped, then run regen-views.
      Do NOT hand-edit the checkboxes. -->
 
-- [ ] Chunk 01: TST-6V2N — `test-evidence record` subcommand (writer for the gate's reader)
-- [ ] Chunk 02: STH-3W7F — stop-gate-vs-background-work: safe docs floor + recorded design
+- [x] Chunk 01: TST-6V2N — `test-evidence record` subcommand (writer for the gate's reader)
+- [x] Chunk 02: STH-3W7F — stop-gate-vs-background-work: safe docs floor + recorded design
 Context: Plan authored 2026-06-04 (bug triage follow-up from `incoming-bugs/`). Built directly in
 the main session (not a workflow — the two chunks share `bin/prawduct-hook` and chunk 02 is
 design-informed). Governance: full suite → cumulative Critic → present for PR (wait_for_user).

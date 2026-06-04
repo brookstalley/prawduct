@@ -29,11 +29,11 @@ test file (the builder locates the existing stop-gate test and mirrors it, or cr
      Do NOT hand-edit the checkboxes. Chunks are INDEPENDENT (no depends-on) and
      are built by two parallel background workflows (see Build Chunks → Build model). -->
 
-- [ ] Chunk 01: CRT-3M8Q — /critic honors the build plan's per-chunk Critic mode override
-- [ ] Chunk 02: BLD-4Q9X — `scope: null` suppresses change-log scope inference
-- [ ] Chunk 03: TST-2R7H — regression coverage for non-handoff Type → gate fall-through
-- [ ] Chunk 04: MIG-8C3V — migrate's CLAUDE.md transform no longer leaves a leading double blank line
-- [ ] Chunk 05: docs-coherence batch (MET-4K8Z, MET-1T5W, MET-8N2C, MET-2D9K, DOC-2W9P)
+- [x] Chunk 01: CRT-3M8Q — /critic honors the build plan's per-chunk Critic mode override
+- [x] Chunk 02: BLD-4Q9X — `scope: null` suppresses change-log scope inference
+- [x] Chunk 03: TST-2R7H — regression coverage for non-handoff Type → gate fall-through
+- [x] Chunk 04: MIG-8C3V — migrate's CLAUDE.md transform no longer leaves a leading double blank line
+- [x] Chunk 05: docs-coherence batch (MET-4K8Z, MET-1T5W, MET-8N2C, MET-2D9K, DOC-2W9P)
 Context: Plan authored 2026-06-03 pre-/clear. Built by two parallel workflows
 (`.prawduct/roi-batch/wf-code.js` = chunks 01–04, `.prawduct/roi-batch/wf-docs.js` = chunk 05).
 The workflows do the BUILD half only (fix + regression test + scoped test run, no commit, no

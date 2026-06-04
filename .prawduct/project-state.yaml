@@ -462,18 +462,13 @@ views_enabled: true
 # complete and released; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans.
 #
-# RELEASE-PENDING plans for the next develop→main release (regen-views must run ONCE PER SCOPE —
-# it resolves a single plan via this pointer, so at release point it at each in turn, regen, then
-# clear):
-#   1. build-plan-roi-batch.md        (scope=roi-batch,        chunks 01–05, status=merged, via #58)
-#   2. build-plan-roi-batch-2.md      (scope=roi-batch-2,      chunks 01–09, status=merged, via #59)
-#   3. build-plan-evidence-deferral.md (scope=evidence-deferral, chunks 01–02, status=merged, via #60)
-# The pointer below names the CURRENT in-progress plan (cleanup-batch, this session) — it arms the
-# stop-hook Critic gate + is the default regen target. The three plans above remain RELEASE-PENDING
-# from prior sessions; cleanup-batch joins them once merged. All are RETAINED until the release flips
-# their change-log entries merged→shipped + regens each. See docs/release-process.md +
-# learnings.md "KEEP the build plan" — do NOT clear at develop-merge.
-active_build_plan: artifacts/build-plan-cleanup-batch.md
+# v2.0.5 (2026-06-04) shipped FOUR batched scopes together — roi-batch (#58),
+# roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
+# change-log entries are status=shipped and regen-views flipped each plan's
+# ## Status checkboxes to [x] (run once per scope, the REL-4T8N friction).
+# No release-pending plans remain — the pointer is cleared (unset → falls back
+# to artifacts/build-plan.md). The next in-progress plan sets it again.
+active_build_plan:
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -522,6 +517,18 @@ deprecated_terms:
 # overwritten on next regen.
 
 scope_rollups:
+  cleanup-batch:
+    chunks: ["01", "02", "03", "04", "05", "06"]
+    releases: ["v2.0.5"]
+  evidence-deferral:
+    chunks: ["01", "02"]
+    releases: ["v2.0.5"]
+  roi-batch:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v2.0.5"]
+  roi-batch-2:
+    chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
+    releases: ["v2.0.5"]
   v1.4:
     chunks: ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14"]
     releases: ["v1.3.17", "v1.4.0"]

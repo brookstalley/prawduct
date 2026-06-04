@@ -3,9 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-06-04: evidence-deferral — test-evidence writer + stop-gate-vs-background-work floor (merged)
+## 2026-06-04: cleanup-batch — 6 parallel backlog fixes (refactor/perf/test + critic/pr/methodology docs) (shipped v2.0.5)
 
-<!-- prawduct: chunks=01,02 | status=merged | scope=evidence-deferral -->
+<!-- prawduct: chunks=01,02,03,04,05,06 | release=v2.0.5 | status=shipped | scope=cleanup-batch -->
+
+**Why:** Six small, file-disjoint backlog items batched into one PR and built IN PARALLEL via
+worktree-isolated workflow subagents (one chunk each), then integrated, full-suite-verified, and
+cumulative-Critic'd in the launching session.
+
+**What merged (6 chunks, via #61 → develop):**
+- **Chunk 01 (SYN-9C4T):** extract `lib/core.read_bool_yaml_key`; `views.is_views_enabled` delegates;
+  the hook keeps a parity-pinned inline mirror (import-light hot path, `prawduct/duplication` waiver).
+  Behavior byte-for-byte preserved.
+- **Chunk 02 (TST-5W1J):** cache test-file reads in `bin/test-reference-verify` (O(N·T)→O(T)); behavior-preserving.
+- **Chunk 03 (BLD-7P3K):** guard test that the active plan's `## Status` chunk IDs resolve to parseable
+  `### Chunk <id>:` headings (live guard + good/`####`/missing-colon fixtures).
+- **Chunk 04 (CRT-4W8M):** Critic check — exact-match assertions for "no behavior change" refactors → WARNING.
+- **Chunk 05 (PRR-4M9T):** trim PR-reviewer goals 7→4 (release-specific); test-evidence-freshness folded
+  into Merge Hygiene, not dropped.
+- **Chunk 06 (MET-7H2D):** `methodology/building.md` multi-hop edge-case testing guidance (token budget 4560→4650).
+Also filed BLD-8F2Q (chunk-ref `path::symbol` false positive) and TST-9K4W (structural tests scan leftover
+worktrees), and captured the parallel worktree-workflow build pattern as a learning.
+
+**Status:** SHIPPED in v2.0.5. Full suite green (771 passed, +17); cumulative Critic (0 blocking /
+2 warnings resolved / 2 notes) and independent PR review (0 blocking / 0 warning / 1 note) both clean.
+The 4th of four scopes shipping together in v2.0.5 (with roi-batch, roi-batch-2, evidence-deferral).
+
+## 2026-06-04: evidence-deferral — test-evidence writer + stop-gate-vs-background-work floor (shipped v2.0.5)
+
+<!-- prawduct: chunks=01,02 | release=v2.0.5 | status=shipped | scope=evidence-deferral -->
 
 **Why:** Two bug reports filed by a downstream product repo (Hallucinote, via `incoming-bugs/`)
 and confirmed firsthand. Built directly in the main session (not a workflow — both chunks share
@@ -32,9 +58,9 @@ stale plan ref caught + resolved) and independent PR review (0 blocking / 0 warn
 notes) both clean. TST-6V2N archived; STH-3W7F stays open (only floor+design shipped; the
 `.gates-deferred` code fix is pending).
 
-## 2026-06-04: roi-batch-2 — 9 ROI backlog fixes (views/hook/advisory hardening + tests) (merged)
+## 2026-06-04: roi-batch-2 — 9 ROI backlog fixes (views/hook/advisory hardening + tests) (shipped v2.0.5)
 
-<!-- prawduct: chunks=01,02,03,04,05,06,07,08,09 | status=merged | scope=roi-batch-2 -->
+<!-- prawduct: chunks=01,02,03,04,05,06,07,08,09 | release=v2.0.5 | status=shipped | scope=roi-batch-2 -->
 
 **Why:** A second round of high-ROI backlog fixes — the 2026-06-04 rough-edges hunt (8 items
 verified real before filing, 0 false positives) plus one older re-verified item (TST-1D5W).
@@ -68,9 +94,9 @@ until then. Full suite green (749 passed, +35); cumulative Critic (0 blocking / 
 2 notes — a build-plan heading-depth WARNING was caught and resolved) and independent PR review
 (0 blocking / 0 warning / 1 note) both clean. Filed BLD-7P3K (guard test so heading drift fails loud).
 
-## 2026-06-04: roi-batch — 9 ROI backlog fixes (CRT/BLD/TST/MIG + docs) (merged)
+## 2026-06-04: roi-batch — 9 ROI backlog fixes (CRT/BLD/TST/MIG + docs) (shipped v2.0.5)
 
-<!-- prawduct: chunks=01,02,03,04,05 | status=merged | scope=roi-batch -->
+<!-- prawduct: chunks=01,02,03,04,05 | release=v2.0.5 | status=shipped | scope=roi-batch -->
 
 **Why:** Nine pre-triaged backlog ROI items — two reproducible correctness bugs, two
 test/cosmetic fixes, and a docs-coherence batch — small and independent enough to build in
