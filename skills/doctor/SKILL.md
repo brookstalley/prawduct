@@ -12,7 +12,7 @@ This skill is for a repo that is **already onboarded**. To set up a new or exist
 
 ## Context Detection
 
-1. If an explicit target path was provided that is NOT yet a product repo (no `.prawduct/`) → onboarding lives in **`/prawduct:onboard <path>`**; point the user there and stop.
+1. If an explicit target path was provided → `doctor` runs in the *current* product repo, not on a target path. If they meant to **set up** that path, send them to **`/prawduct:onboard <path>`**; if they meant to **health-check a different** repo, have them `cd` there and re-run. Either way, stop here.
 2. Else if the current directory has `.prawduct/` (is a product repo) → **Health Check**, and route to Enable-Gate / Verify / Audit-Learnings on explicit request.
 3. Else → ask the user what they want to do.
 
