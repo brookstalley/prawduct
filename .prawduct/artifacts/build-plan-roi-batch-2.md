@@ -45,10 +45,13 @@ the exact lines before editing (the backlog's line numbers predate recent edits)
 Context: Plan authored 2026-06-04. Built by ONE workflow, three file-disjoint lanes:
 HOOK (bin/prawduct-hook + lib/views.py + their tests; chunks 01–07, run as two sequential
 sub-agents A=01–03, B=04–07 because both touch bin/prawduct-hook), ADV (lib/advisory_store.py;
-chunk 08), MIG (tests/test_plugin_migrate.py; chunk 09). The workflow does the BUILD half only
-(fix + regression test + SCOPED test run, no commit, no Critic). The launching session does the
-governance half: full suite → single `/prawduct:critic cumulative` → commit → `/prawduct:pr`
-→ archive the 9 backlog items + change-log.
+chunk 08), MIG (tests/test_plugin_migrate.py; chunk 09). The workflow did the BUILD half only
+(fix + regression test + SCOPED test run, no commit, no Critic). STATUS 2026-06-04: all 9 chunks
+BUILT + committed on `fix/roi-batch-2` (df64ac0 scaffold, de87b74 build, 723082b Critic-fix), full
+suite 749 passed, cumulative Critic CLEAN (0 blocking/0 warning/2 notes — heading WARNING resolved
+in 723082b). AWAITING `/prawduct:pr` (PR creation: wait_for_user). Remaining governance half runs at
+merge: add `scope=roi-batch-2 / status=merged` change-log entry (chunks 01–09), archive the 9
+backlog items, KEEP active_build_plan (release-pending — see project-state note: TWO plans pending).
 
 ## Scaffolding
 
