@@ -110,7 +110,9 @@ Push branch with `-u`. Draft title and description from work context + review fi
 4. Merge using squash strategy (or project-configured strategy from project-preferences.md)
 5. Delete remote branch, switch to base branch, pull, delete local branch
 6. Clean up evidence file
-7. Clean up build plan: delete `.prawduct/artifacts/build-plan.md` if it exists. Git preserves full plan history.
+7. **Clean up the build plan — but only when this merge IS the release.** Run `prawduct-hook resolve-base` to learn the integration base, then branch:
+   - **Base is the release surface** (`main`, or a trunk repo whose base resolves to `main`/`HEAD~1`): this merge ships the work now. Delete the active build plan — resolve it via the `active_build_plan` pointer in `project-state.yaml` (fall back to `artifacts/build-plan.md`), **not** a hardcoded path, so a scope-named plan is matched — and clear the `active_build_plan` pointer so no dangling reference remains. Git preserves full plan history.
+   - **Base is `develop`** (gitflow, ahead of a batched `develop→main` release): the work is release-pending — its change-log entry is `status=merged`, not yet `shipped`. **RETAIN** both the plan file and the `active_build_plan` pointer. The `develop→main` release flips the change-log to `status=shipped` and runs `regen-views` ON the plan to flip its `## Status` (see `docs/release-process.md` "Change-log `status=` values" and the "KEEP the build plan" learning); deleting now would leave the release nothing to regenerate. A non-blocking "consider deleting idle plan" advisory may surface in the briefing during this window — ignore it until the release ships.
 
 ## Status Flow
 

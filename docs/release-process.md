@@ -93,6 +93,8 @@ Two values are meaningful to the release flow:
   build plan's `## Status` stays `[ ]` and the `active_build_plan` pointer is retained until the
   release (see "KEEP the build plan" in `learnings.md` and the `active_build_plan` note in
   `project-state.yaml`). This is the develop-phase intermediate that step 3 flips to `shipped`.
+  The `/prawduct:pr` merge flow honors this: a feature→`develop` merge **retains** the plan and
+  pointer (merge-flow step 7), while a merge whose base is the release surface deletes them.
 - **`status=shipped`** — the work is in a tagged release. This is the **only** value that
   `regen-views` flips to `[x]` (in `## Status`, release notes, and `scope_rollups`).
 
