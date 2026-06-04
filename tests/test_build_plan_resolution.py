@@ -114,3 +114,27 @@ class TestProductHookMirrorParity:
         p = tmp_path / "s.yaml"
         p.write_text('active_build_plan: "artifacts/y-plan.md"  # c\n')
         assert _hook._read_str_yaml_key(p, "active_build_plan") == read_str_yaml_key(p, "active_build_plan")
+
+
+class TestSessionGitignoreMirror:
+    """The hook's inline ``_SESSION_GITIGNORED_PATHS`` (used by
+    ``_untrack_session_files``) must stay in sync with ``core.GITIGNORE_ENTRIES``
+    (the ``.gitignore`` writer's source). The two cover the same session-file set;
+    the documented differences are that core additionally carries ``__pycache__/``
+    and a trailing slash on ``.pr-reviews/`` (it writes ``.gitignore`` lines),
+    while the hook uses bare paths (it feeds ``git ls-files`` untracking).
+
+    Restores the parity test deleted with ``tests/test_coverage_gaps.py`` in M4 —
+    without it the two lists drift silently, re-tracking a session file in one path
+    while gitignoring it in the other.
+    """
+
+    def test_session_file_sets_match(self):
+        hook_set = {p.rstrip("/") for p in _hook._SESSION_GITIGNORED_PATHS}
+        core_session = {p.rstrip("/") for p in _mod.GITIGNORE_ENTRIES} - {"__pycache__"}
+        assert hook_set == core_session
+
+    def test_pycache_is_core_only(self):
+        # core writes __pycache__/ to .gitignore; the hook never untracks it.
+        assert any(p.rstrip("/") == "__pycache__" for p in _mod.GITIGNORE_ENTRIES)
+        assert not any(p.rstrip("/") == "__pycache__" for p in _hook._SESSION_GITIGNORED_PATHS)

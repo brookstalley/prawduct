@@ -89,3 +89,6 @@ from .operator_verification import (  # noqa: F401
 
 # Derived views (regen-views) — the hook calls `from lib import views`
 from . import views  # noqa: F401
+
+# Intentional-waiver pragma recognizer — the canary calls `from lib import waivers`
+from . import waivers  # noqa: F401

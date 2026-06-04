@@ -1,6 +1,8 @@
 [project]
 name = "prawduct"
-version = "1.3.7"
+# Vestigial packaging metadata (the repo is not PyPI-published). The canonical
+# plugin version is VERSION / .claude-plugin/plugin.json; keep this in step on release.
+version = "2.0.4"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]

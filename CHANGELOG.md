@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v2.0.4
+New `prawduct:allow <scope>/<rule-id> -- reason` intentional-waiver pragma — one durable, language-agnostic way to mark a reviewed, intentional violation of a named principle (generalizing `prawduct:ok-broad-except`, which still works); `project/*`-scoped waivers stay opaque to the framework so plugin updates never break them. Also closes a governance-gate hole (the trivial/doc-only file-set bound now protects `skills/`, not the removed `agents/`) and clears 2.0 doc/coherence staleness. Plugin-governed repos: no behavioral change.
+
 ## v2.0.3
 The v1 file-sync engine is fully retired. Governance now ships entirely from the plugin — no frozen sibling service, no committed framework templates, no sync machinery. Plugin-governed repos are unaffected (the engine they don't use is gone); any remaining v1 file-sync repo migrates onto the plugin with `/prawduct:migrate`.
 

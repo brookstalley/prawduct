@@ -56,7 +56,7 @@ def read_digest(root: Path) -> str:
 def main() -> int:
     try:
         digest = read_digest(plugin_root())
-    except Exception as exc:  # prawduct:ok-broad-except — a digest failure must never break session start
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a digest failure must never break session start
         print(f"NOTE: Prawduct could not read the session digest: {exc}", file=sys.stderr)
         return 0
     if not digest:

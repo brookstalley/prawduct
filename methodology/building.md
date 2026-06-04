@@ -236,14 +236,14 @@ See the plugin's bundled `skills/pr/review-protocol.md` for review criteria. Aft
 
 Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs and make debugging difficult.
 
-When a broad catch is genuinely necessary — system boundary error handlers, event loop recovery, top-level process supervisors — mark it explicitly:
+When a broad catch is genuinely necessary (system boundaries, event loops, top-level supervisors), mark it with an intentional-waiver pragma:
 
-- Python: `except Exception as e:  # prawduct:ok-broad-except — reason`
-- JS/TS: `catch (e) { // prawduct:ok-broad-except — reason`
+- Python: `except Exception as e:  # prawduct:allow prawduct/broad-except -- reason`
+- JS/TS: `catch (e) { // prawduct:allow prawduct/broad-except -- reason`
 
-The compliance canary skips marked lines. The Critic verifies that marked catches log with context and are at genuine system boundaries. The marker means "reviewed and intentional," not "exempt from review."
+`prawduct:allow <scope>/<rule-id> -- reason` is the general waiver mechanism (`docs/waivers.md`), generalizing the legacy `prawduct:ok-broad-except`. The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt."
 
-Broad catches that swallow errors without logging (`except Exception: pass`, empty `catch {}`) are always findings — no marker can justify silencing errors.
+Broad catches that swallow errors without logging (`except Exception: pass`, empty `catch {}`) are always findings — no waiver can justify silencing errors.
 
 ## Common Traps
 

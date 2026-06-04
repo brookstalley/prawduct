@@ -94,7 +94,7 @@ These narrative guides teach the approach. **Read the relevant guide when enteri
 
 ## The Critic — Independent Review
 
-Each build plan chunk includes `/critic` in its "Done when" steps. Follow the plan — run the Critic after acceptance criteria pass, before marking the chunk complete. The stop hook is a safety net — it blocks session end if code was modified against an active build plan and no Critic findings exist.
+Each build plan chunk includes `/prawduct:critic` in its "Done when" steps. Follow the plan — run the Critic after acceptance criteria pass, before marking the chunk complete. The stop hook is a safety net — it blocks session end if code was modified against an active build plan and no Critic findings exist.
 
 The Critic skill runs with `context: fork` (separate context) and restricted `allowed-tools` — it can read files, search code, and inspect git state, but **cannot run test suites, builds, or executables**. This is a structural constraint, not a behavioral one. The Critic reviews through code analysis only.
 
@@ -104,9 +104,9 @@ The Critic's review protocol (goals, severity, coordinator pattern) is bundled w
 
 ## PR Review — Release Readiness
 
-**Before creating a PR, use `/pr`.** It handles the full lifecycle: branch hygiene, independent review, PR creation, updates, and merging. The PR reviewer runs as a separate agent (like the Critic) providing fresh-eyes release-readiness assessment.
+**Before creating a PR, use `/prawduct:pr`.** It handles the full lifecycle: branch hygiene, independent review, PR creation, updates, and merging. The PR reviewer runs as a separate agent (like the Critic) providing fresh-eyes release-readiness assessment.
 
-If the user asks to "PR this", "create a PR", "push this up", or anything PR-related — use `/pr`.
+If the user asks to "PR this", "create a PR", "push this up", or anything PR-related — use `/prawduct:pr`.
 
 The PR reviewer's protocol is bundled with the plugin at `skills/pr/review-protocol.md`.
 

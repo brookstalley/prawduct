@@ -275,7 +275,7 @@ See [`docs/principles.md`](docs/principles.md) for the full principles with rati
 
 Full history is in [CHANGELOG.md](CHANGELOG.md). Highlights:
 
-### 2.0.0 — Plugin distribution (in progress)
+### 2.0 — Plugin distribution
 - Prawduct ships as a **Claude Code plugin** — product repos commit zero framework files, just a small install reference; updates arrive with zero repo diff
 - `/prawduct:*` namespaced skills; governance via the plugin's SessionStart (banner + briefing + guidance digest) and Stop (Critic + reflection gates) hooks
 - **Version-delta banner** (shows what changed + newly-active gates on update); marketplace `autoUpdate` for always-latest
