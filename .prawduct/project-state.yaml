@@ -467,12 +467,13 @@ views_enabled: true
 # clear):
 #   1. build-plan-roi-batch.md        (scope=roi-batch,        chunks 01–05, status=merged, via #58)
 #   2. build-plan-roi-batch-2.md      (scope=roi-batch-2,      chunks 01–09, status=merged, via #59)
-#   3. build-plan-evidence-deferral.md (scope=evidence-deferral, chunks 01–02, status=merged, via #60) ← this pointer
-# The pointer names the most-recent release-pending plan (a default regen target + arms the
-# stop-hook Critic gate for any new work this session). All three are RETAINED until the release
-# flips their change-log entries merged→shipped + regens each. See docs/release-process.md +
+#   3. build-plan-evidence-deferral.md (scope=evidence-deferral, chunks 01–02, status=merged, via #60)
+# The pointer below names the CURRENT in-progress plan (cleanup-batch, this session) — it arms the
+# stop-hook Critic gate + is the default regen target. The three plans above remain RELEASE-PENDING
+# from prior sessions; cleanup-batch joins them once merged. All are RETAINED until the release flips
+# their change-log entries merged→shipped + regens each. See docs/release-process.md +
 # learnings.md "KEEP the build plan" — do NOT clear at develop-merge.
-active_build_plan: artifacts/build-plan-evidence-deferral.md
+active_build_plan: artifacts/build-plan-cleanup-batch.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

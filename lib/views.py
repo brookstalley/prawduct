@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .core import resolve_build_plan_path
+from .core import read_bool_yaml_key, resolve_build_plan_path
 
 
 TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
@@ -725,20 +725,7 @@ def is_views_enabled(project_state_path: Path) -> bool:
     """True if project-state.yaml has top-level ``views_enabled: true``.
 
     Scans for a column-0 ``views_enabled:`` key, ignoring comments. Returns
-    False on any error or missing key — opt-in by design.
+    False on any error or missing key — opt-in by design. Delegates to the
+    shared ``core.read_bool_yaml_key`` scan.
     """
-    if not project_state_path.exists():
-        return False
-    try:
-        content = project_state_path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    for raw in content.splitlines():
-        if raw[:1] in (" ", "\t"):
-            continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith("views_enabled:"):
-            continue
-        value = line.split(":", 1)[1].strip().lower()
-        return value == "true"
-    return False
+    return read_bool_yaml_key(project_state_path, "views_enabled")

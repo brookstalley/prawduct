@@ -125,6 +125,38 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+def read_bool_yaml_key(path: Path, key: str) -> bool:
+    """True if ``path`` has a top-level (column-0) ``key: true`` scalar.
+
+    The boolean sibling of ``read_str_yaml_key``, sharing the same no-PyYAML
+    column-0 idiom but with boolean semantics: the value is lowercased and
+    compared to ``"true"`` (quotes are *not* stripped — a quoted ``"true"``
+    reads as False). Fail-soft to False on a missing/unreadable file, an absent
+    key, or a malformed/indented line — opt-in by design.
+
+    Factors out the scan shared by ``is_views_enabled`` (``views_enabled``) and
+    bin/prawduct-hook's ``_read_bool_yaml_key`` (``coverage_required``); the
+    latter stays an inline mirror (import-light hot path), pinned by a parity
+    test.
+    """
+    if not path.exists():
+        return False
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    needle = f"{key}:"
+    for raw in content.splitlines():
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        value = line.split(":", 1)[1].strip().lower()
+        return value == "true"
+    return False
+
+
 def resolve_build_plan_path(prawduct_dir: Path) -> Path:
     """Resolve the active build-plan path (supports standard + scope-named plans).
 

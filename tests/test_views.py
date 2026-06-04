@@ -8,6 +8,8 @@ writes back to build-plan.md.
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import os
 import subprocess
 import sys
@@ -20,9 +22,16 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from lib import core  # noqa: E402
 from lib import views  # noqa: E402
 
 HOOK_PATH = _REPO_ROOT / "bin" / "prawduct-hook"
+
+# plugin-runtime inline mirror via SourceFileLoader (extensionless shebang script)
+_hook_loader = importlib.machinery.SourceFileLoader("prawduct_hook_views", str(HOOK_PATH))
+_hook_spec = importlib.util.spec_from_loader("prawduct_hook_views", _hook_loader)
+_hook = importlib.util.module_from_spec(_hook_spec)
+_hook_loader.exec_module(_hook)
 
 
 # =============================================================================
@@ -710,6 +719,79 @@ class TestIsViewsEnabled:
         p = tmp_path / "project-state.yaml"
         p.write_text("# views_enabled: true\nviews_enabled: false\n")
         assert views.is_views_enabled(p) is False
+
+
+class TestReadBoolYamlKey:
+    """The shared scan extracted from ``is_views_enabled`` /
+    bin/prawduct-hook's ``_read_bool_yaml_key`` (SYN-9C4T)."""
+
+    def test_true_value(self, tmp_path: Path):
+        p = tmp_path / "s.yaml"
+        p.write_text("classification:\n  domain: util\ncoverage_required: true\n")
+        assert core.read_bool_yaml_key(p, "coverage_required") is True
+
+    def test_false_value(self, tmp_path: Path):
+        p = tmp_path / "s.yaml"
+        p.write_text("coverage_required: false\n")
+        assert core.read_bool_yaml_key(p, "coverage_required") is False
+
+    def test_missing_key(self, tmp_path: Path):
+        p = tmp_path / "s.yaml"
+        p.write_text("views_enabled: true\n")
+        assert core.read_bool_yaml_key(p, "coverage_required") is False
+
+    def test_missing_file(self, tmp_path: Path):
+        assert core.read_bool_yaml_key(tmp_path / "nope.yaml", "coverage_required") is False
+
+    def test_indented_line_ignored(self, tmp_path: Path):
+        """A nested ``key: true`` must not flip the top-level switch — only
+        column-0 keys count."""
+        p = tmp_path / "s.yaml"
+        p.write_text("nested:\n  coverage_required: true\n")
+        assert core.read_bool_yaml_key(p, "coverage_required") is False
+
+    def test_comment_only_line_ignored(self, tmp_path: Path):
+        p = tmp_path / "s.yaml"
+        p.write_text("# coverage_required: true\ncoverage_required: false\n")
+        assert core.read_bool_yaml_key(p, "coverage_required") is False
+
+    def test_quoted_true_reads_false(self, tmp_path: Path):
+        """Quotes are not stripped (unlike ``read_str_yaml_key``): a quoted
+        ``"true"`` does not equal the bare ``true`` sentinel."""
+        p = tmp_path / "s.yaml"
+        p.write_text('coverage_required: "true"\n')
+        assert core.read_bool_yaml_key(p, "coverage_required") is False
+
+
+class TestBoolKeyCallSiteParity:
+    """Both extracted call sites delegate to the same scan: ``is_views_enabled``
+    (lib) and the inline ``_read_bool_yaml_key`` mirror (prawduct-hook, kept
+    import-light on the hot path), pinned to ``core.read_bool_yaml_key``."""
+
+    def test_is_views_enabled_delegates(self, tmp_path: Path):
+        p = tmp_path / "project-state.yaml"
+        p.write_text("views_enabled: true\n")
+        assert views.is_views_enabled(p) == core.read_bool_yaml_key(p, "views_enabled")
+
+    def test_hook_mirror_parity_true(self, tmp_path: Path):
+        p = tmp_path / "project-state.yaml"
+        p.write_text("coverage_required: true\n")
+        assert _hook._read_bool_yaml_key(p, "coverage_required") == core.read_bool_yaml_key(
+            p, "coverage_required"
+        )
+
+    def test_hook_mirror_parity_missing_and_indented(self, tmp_path: Path):
+        # missing file
+        gone = tmp_path / "nope.yaml"
+        assert _hook._read_bool_yaml_key(gone, "coverage_required") == core.read_bool_yaml_key(
+            gone, "coverage_required"
+        )
+        # indented (must not flip)
+        p = tmp_path / "project-state.yaml"
+        p.write_text("nested:\n  coverage_required: true\n")
+        assert _hook._read_bool_yaml_key(p, "coverage_required") == core.read_bool_yaml_key(
+            p, "coverage_required"
+        )
 
 
 # =============================================================================

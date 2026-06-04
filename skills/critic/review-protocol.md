@@ -50,6 +50,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
 - Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
+- **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
 - For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → **NOTE**.
 - **Security in changed code:**
   - Input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable vector.
