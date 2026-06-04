@@ -135,15 +135,11 @@ See `.prawduct/change-log.md` for full details.
 
 ## v1.4.0
 
-### v1.4
-
 **Entry:** 2026-05-19: `/pr` doc-only fast-path
 
-### v1.4
-
-**Entry:** 2026-05-19: Chunk 14 — F10 operator-verification queue + `/pr` BLOCKING gate
-
 **Chunks shipped:** 05, 06, 07, 08, 09, 10, 11, 12, 13, 14
+
+**Scope:** v1.4
 
 See `.prawduct/change-log.md` for full details.
 

@@ -1106,6 +1106,44 @@ class TestBuildReleaseNotesView:
         first = views.build_release_notes_view(change_log)
         assert first == views.build_release_notes_view(change_log)
 
+    def test_multiple_entries_same_scope_collapse_to_one_block(self):
+        # Two change-log entries share BOTH release= AND scope= (the real v1.4.0
+        # shape). They must collapse to ONE flat block with union'd chunks — NOT
+        # two identical "### v1.4" sub-headings (regression the cumulative Critic
+        # caught: scope is not unique within a release, so render groups by scope).
+        change_log = (
+            "## 2026-03-01: v1.4 wave 1 (v1.4.0)\n"
+            "<!-- prawduct: release=v1.4.0 | status=shipped | scope=v1.4 -->\n"
+            "## 2026-03-02: v1.4 wave 2 (v1.4.0)\n"
+            "<!-- prawduct: chunks=05,06 | release=v1.4.0 | status=shipped | scope=v1.4 -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        assert out.count("## v1.4.0") == 1
+        assert "### " not in out  # same scope -> single flat block, no sub-headings
+        assert "**Chunks shipped:** 05, 06" in out  # chunks union'd under one block
+        assert "**Scope:** v1.4" in out
+        assert "v1.4 wave 1" in out  # first entry's title is the block title
+
+    def test_mixed_same_scope_and_distinct_scope_in_one_release(self):
+        # A release with TWO entries of scope=a (collapse) + one entry scope=b
+        # renders exactly TWO sub-sections (### a with union'd chunks, ### b).
+        change_log = (
+            "## d1: a part 1\n"
+            "<!-- prawduct: chunks=01 | release=v3 | status=shipped | scope=a -->\n"
+            "## d2: b\n"
+            "<!-- prawduct: chunks=09 | release=v3 | status=shipped | scope=b -->\n"
+            "## d3: a part 2\n"
+            "<!-- prawduct: chunks=02 | release=v3 | status=shipped | scope=a -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        assert out.count("### ") == 2  # scope a (merged) + scope b
+        assert "### a" in out and "### b" in out
+        chunks_lines = [ln for ln in out.splitlines() if ln.startswith("**Chunks shipped:**")]
+        assert "**Chunks shipped:** 01, 02" in chunks_lines  # a's two entries union'd
+        assert "**Chunks shipped:** 09" in chunks_lines  # b alone
+
     def test_idempotent_against_own_output(self):
         change_log = (
             "## 2026-05-18: rel\n"

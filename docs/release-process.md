@@ -134,10 +134,13 @@ Note on **step 2 ordering**: the version bump + change-log/CHANGELOG/release-not
 `active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
 above (so `main` inherits them in the tree-set), not as edits on `main` after the merge. That keeps
 `main` and `develop` content-identical. Since REL-4T8N, `regen-views` (step 4) resolves each
-scope-tagged plan from the change-log rather than the single `active_build_plan` pointer, so clearing
-the pointer no longer strands the regen for scope-tagged plans — run `regen-views` either before or
-after clearing it. The pointer's fallback still matters only when **no** scope-tagged plan resolves
-(e.g. a repo with a single unscoped `artifacts/build-plan.md`). For a patch release with no
+scope-tagged plan from the change-log rather than the single `active_build_plan` pointer, so for a
+**scope-tagged** plan you may run `regen-views` either before or after clearing the pointer. The
+pointer's fallback still matters when **no** scope-tagged plan resolves — a single unscoped plan
+(the conventional `artifacts/build-plan.md`, or an off-convention pointer-named plan with no
+frontmatter `scope:`). In that unscoped case `regen-views` finds the plan only via the pointer, so
+run it **before** clearing the pointer (clearing first makes the fallback resolve to a missing
+`artifacts/build-plan.md` and raise). For a patch release with no
 `scope=`/`chunks=` tag (nothing for it to flip), `regen-views` still touches no plan; the
 `release-notes.md` digest self-heals on the next release's regen (or add the entry by hand).
 

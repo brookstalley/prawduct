@@ -649,6 +649,38 @@ RELEASE_NOTES_HEADER = (
 )
 
 
+def _group_release_entries_by_scope(
+    entries: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Collapse a release's contributing entries into sub-release groups.
+
+    A "sub-release" is a distinct ``scope`` within the release: entries sharing a
+    scope MERGE (chunks union'd + sorted, first entry's title kept), so the same
+    scope never renders as two sub-sections. Scope-less entries (``scope=None``)
+    never merge — each stays its own group, keyed by title — since there is no
+    scope to disambiguate them. Groups appear in first-seen (change-log) order.
+
+    This makes the multi-scope render a function of distinct SCOPES, not raw
+    entry count, so a single scope split across two change-log entries (e.g.
+    v1.4.0's two ``scope=v1.4`` entries) collapses to one block rather than two
+    identical ``### v1.4`` headings.
+    """
+    groups: list[dict[str, object]] = []
+    by_scope: dict[str, int] = {}
+    for entry in entries:
+        scope = entry["scope"]
+        if scope is not None and scope in by_scope:
+            group = groups[by_scope[scope]]
+            group["chunks"] = sorted(set(group["chunks"]) | set(entry["chunks"]))
+            continue
+        if scope is not None:
+            by_scope[scope] = len(groups)
+        groups.append(
+            {"title": entry["title"], "chunks": list(entry["chunks"]), "scope": scope}
+        )
+    return groups
+
+
 def build_release_notes_view(change_log_content: str) -> str | None:
     """Generate release-notes.md content from release-tagged shipped entries.
 
@@ -656,13 +688,15 @@ def build_release_notes_view(change_log_content: str) -> str | None:
     entries exist (caller decides whether to create an empty placeholder or
     leave any existing file alone).
 
-    A release with a SINGLE contributing entry renders flat (``**Entry:**`` /
-    ``**Chunks shipped:**`` / ``**Scope:**`` under the ``## <release>`` heading)
-    — byte-compatible with the historical 1:1 layout. A release with MULTIPLE
-    contributing entries (a batched release: one version, several scopes) renders
-    one ``### <scope|title>`` sub-section per entry, each with its OWN chunk list
-    (NOT the union of all scopes), followed by a single shared ``See change-log``
-    trailer for the whole release (REL-4T8N).
+    A release with a SINGLE sub-release (one scope, or one scope-less entry)
+    renders flat (``**Entry:**`` / ``**Chunks shipped:**`` / ``**Scope:**`` under
+    the ``## <release>`` heading) — byte-compatible with the historical 1:1
+    layout, including a single scope split across multiple change-log entries
+    (their chunks union under one block). A release with MULTIPLE sub-releases (a
+    batched release: one version, several distinct scopes) renders one
+    ``### <scope|title>`` sub-section per sub-release, each with its OWN chunk
+    list (NOT the union across scopes), followed by a single shared
+    ``See change-log`` trailer for the whole release (REL-4T8N).
     """
     entries = parse_change_log(change_log_content)
     releases = _collect_releases(entries)
@@ -670,7 +704,7 @@ def build_release_notes_view(change_log_content: str) -> str | None:
         return None
     out: list[str] = [RELEASE_NOTES_HEADER]
     for rec in releases:
-        contributing: list[dict[str, object]] = rec["entries"]  # type: ignore[assignment]
+        contributing = _group_release_entries_by_scope(rec["entries"])  # type: ignore[arg-type]
         out.append(f"## {rec['release']}\n")
         if len(contributing) == 1:
             entry = contributing[0]
