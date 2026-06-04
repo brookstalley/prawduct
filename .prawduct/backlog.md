@@ -8,56 +8,6 @@
 ## Open
 
 
-- **[TST-9K4W]** Structural tests scan `.claude/worktrees/` — leftover/in-flight workflow worktrees fail the suite
-  `effort: S · impact: S · area: tests · source: builder · added: 2026-06-04 · status: open`
-
-  `test_test_location::test_all_test_files_live_under_tests_directory` and
-  `test_plugin_methodology_digest::test_source_is_one_canonical_copy` glob the whole repo tree, so when a
-  worktree-isolated workflow leaves `.claude/worktrees/wf_*/` dirs behind (worktrees with changes are NOT
-  auto-removed), the duplicate test/methodology copies inside them fail both tests ("test files outside
-  tests/", "not one canonical copy"). Surfaced integrating cleanup-batch (2026-06-04); worked around by
-  `git worktree remove -f` before the suite. As this repo now runs parallel worktree-isolated workflow
-  builds routinely, make the collectors robust: exclude a `.claude/` path component from the file globs in
-  both tests, and consider adding `.claude/worktrees/` to pytest `norecursedirs`/`--ignore` so collection
-  itself skips it. (builder)
-
-- **[BLD-8F2Q]** `verify-chunk-refs` misreads `path::symbol` backtick tokens as missing file paths
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-04 · status: open`
-
-  The chunk-ref parser (`bin/prawduct-hook` `cmd_verify_chunk_refs` / `_parse_build_plan_chunk_refs`)
-  captures a whole backtick token like `lib/views.py::is_views_enabled`, sees the `/`, and treats the
-  entire `module.py::symbol` string as a (missing) file path → false-positive exit 1 even though the
-  file exists and the symbol is valid. Surfaced in the cleanup-batch cumulative Critic (Chunk 01
-  SYN-9C4T plan criteria used `path::symbol`); worked around there by separating file and symbol in the
-  prose. Fix-shape: when a backtick token contains `::`, existence-check only the pre-`::` path part and
-  skip/symbol-verify the rest, OR exclude `::`-containing tokens from path verification. Low impact
-  (only trips on the rare `path::symbol` plan-prose convention) but a real Goal-2 false positive. (critic)
-
-- **[REL-4T8N]** Release tooling: handle MULTIPLE release-pending plans (regen-views per scope) instead of a single `active_build_plan` pointer
-  `effort: M · impact: M · area: release · source: builder · added: 2026-06-04`
-
-  The release model assumes ~one release-pending plan between `develop→main` releases: `regen-views`
-  resolves THE plan via the single `active_build_plan` pointer. But batched sub-releases stack up —
-  as of 2026-06-04 there are THREE release-pending plans (roi-batch chunks 01–05, roi-batch-2 01–09,
-  evidence-deferral 01–02), each a distinct `scope=`/`status=merged` change-log entry. The current
-  workaround is a hand-maintained comment in `project-state.yaml` instructing the release to point
-  the pointer at each plan in turn and `regen-views` per scope — manual, easy to miss one, and it's
-  recurred 3× (flagged "worth a backlog item if it keeps recurring" in the evidence-deferral plan).
-  Fix-shape: `regen-views` (or a release subcommand) ENUMERATES every `status=merged` change-log
-  entry, resolves each scope's build-plan file, and regenerates each plan's `## Status` — driven by
-  the change-log (the source of truth), not the single pointer. Then a release flips all merged→shipped
-  and regens all in one pass. Open question: how does regen map a `scope=` to its build-plan FILE
-  (a `scope:`-frontmatter scan across `artifacts/*.md`, or a `scope→file` map)? Filed 2026-06-04. (builder)
-
-  **Confirmed in the v2.0.5 release (2026-06-04):** four scopes (roi-batch, roi-batch-2,
-  evidence-deferral, cleanup-batch) shipped together — the manual per-scope `regen-views` (point the
-  pointer at each plan in turn) worked but was 4× tedious as predicted. It also surfaced a SECOND
-  symptom in the **derived release-notes.md**: the digest renders only ONE entry per `release=` tag, so
-  the `## v2.0.5` section showed just cleanup-batch and mis-aggregated `Chunks shipped: 01–09` (the union
-  across all four entries) under that single scope. Consumer impact is nil (the version-delta banner reads
-  the hand-written `CHANGELOG.md`, not this digest), but the fix should also make `views.py` render ALL
-  entries sharing a `release=` tag, not just the topmost.
-
 - **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
   `effort: L · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · partial: floor+design shipped via #60 (code fix pending) · related: STH-7K2A`
 
@@ -102,20 +52,6 @@
   archive semantics from a waiver ("deferred pending async run," not "unsatisfiable"). This needs a
   Stop-hook code change + a guard test that a deferred gate re-arms; deferred from the doc-floor
   chunk on proportionality. Could unify with [STH-7K2A] (both quiet a re-firing gate). (builder)
-
-- **[BLD-7P3K]** Guard test: assert the active build plan's chunk headings parse (fail loud on heading-format drift)
-  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-06-04 · status: open · related: VWS-3K7P`
-
-  Recommended by `learnings.md` ("Build-plan chunk headings must use `### Chunk N:` colon form") AND
-  twice by the roi-batch-2 cumulative Critic after the build plan itself shipped with `#### Chunk NN:`
-  (four-hash, under a `### Lane` grouping level) — which silently defeated the `### Chunk ` parsers
-  (`verify-chunk-refs`, `_parse_build_plan_chunk_type`, `lib/critic_mode.py` plan-override) for the
-  WHOLE plan. The degradation is silent: chunk-type fail-closes to `code`, refs stop verifying, and
-  nothing errors. Fix-shape: a test (or a `regen-views`/stop-hook check) that resolves the active
-  build plan via `resolve_build_plan_path` and asserts its `## Status` chunk IDs each map to a
-  parseable `### Chunk <id>:` heading — so a depth/format mismatch fails LOUDLY instead of degrading.
-  Open question: test-only (pins the framework's own plan) vs. a runtime check that fires for any
-  product's active plan. Filed from roi-batch-2 Critic NOTE on 2026-06-04. (critic)
 
 - **[STH-4D2X]** Decide whether the trivial/doc-only file-set gate should also protect a consumer's own `.claude/skills/`
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-03 · status: open`
@@ -162,16 +98,6 @@
      - **Keep:** project-owned skills/hooks (anything in `.claude/skills/` that's NOT in the prawduct-managed set — user-authored skills stay).
   Fix-shape: probably a `prawduct-doctor deploy-to-main` (or `prawduct-deploy`) subcommand that performs a filtered merge/squash — strips the listed paths from a temp index, commits the cleaned tree to `main`, leaves `develop` intact. Alternative: a git pre-receive hook recipe in `methodology/git-strategy.md` that products copy into their own remote. Need to decide which paths are framework-canonical (centralizable in `core.py`'s MANAGED_FILES + a new `DEPLOY_STRIP_PATHS` set) vs. project-configurable. Open question: does the filter run on every push to main, or only on explicit `prawduct-doctor deploy` invocations? Filed from user request on 2026-05-19. (builder)
 
-- **[SYN-9C4T]** Extract shared `read_bool_yaml_key(state_path, key)` from `lib/views.py::is_views_enabled` and `bin/prawduct-hook::_read_bool_yaml_key`
-  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-06-03`
-
-  Both perform the same column-0 boolean scan against `project-state.yaml`, intentionally duplicated to keep the hook flat (one inline ~10-line helper vs. a new lib import). Move to `lib/core.py::read_bool_yaml_key(path, key) -> bool` and call from both sites. **Now more actionable (re-verified 2026-06-03):** the file-sync `product-hook` named in the original NOTE was deleted in M4; the duplicate survives in the plugin runtime as `bin/prawduct-hook::_read_bool_yaml_key` (line ~3331, comment says "kept parallel to is_views_enabled in lib/views.py") against `lib/views.py::is_views_enabled` (line ~651). The third caller the original NOTE said would tip this to extraction is already here — `_read_bool_yaml_key` now also reads `coverage_required` (bin/prawduct-hook ~3464). Filed from /critic chunk NOTE on 2026-05-19 (Chunk 09); paths refreshed post-M4. (critic)
-
-- **[TST-5W1J]** Cache test-file contents in `bin/test-reference-verify` to drop O(N*T) re-reads
-  `effort: S · impact: S · area: tests · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-05-29`
-
-  `_has_reference` re-opens every test file once per changed file. Sub-second on framework scale (~20 test files × small chunk diffs) but a stronger verifier or larger product would feel it. Fix-shape: discover_tests reads all test contents into a dict once, then `_has_reference` runs substring across the cached text. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 08). (critic)
-
 - **[DOC-9J4B]** F8: add Foreign-API example to hallucinote product repo
   `effort: S · impact: S · area: docs · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
 
@@ -192,11 +118,6 @@
 
   Would let `final` reviews focus on emergent cross-chunk concerns by remembering what each `chunk` review already covered. Useful but not necessary for proportionality MVP (v1.3.13). Revisit if `final` reviews still feel slow after live use. Filed during proportional-Critic build plan as out-of-scope. (builder)
 
-- **[PRR-4M9T]** Trim PR-reviewer goals to remove Critic overlap
-  `effort: S · impact: S · area: pr-reviewer · source: builder · added: 2026-05-05 · status: open · reviewed: 2026-05-29`
-
-  PR reviewer Goals 1, 2, 4, 5, 6 in `skills/pr/review-protocol.md` overlap with Critic. Now that the layering is explicit (Critic-chunk = local; Critic-final = synthesis; PR reviewer = release readiness), PR reviewer goals could be trimmed to release-specific concerns (narrative, scope, merge hygiene, simplification). Filed during proportional-Critic build plan as out-of-scope. (builder)
-
 - **[MET-9K4R]** Workflow-values schema/validator
   `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-01 · status: open · reviewed: 2026-05-29`
 
@@ -212,20 +133,10 @@
 
   Cross-product reflection audit (Apr 16) surfaced a recurring drift hazard in discodon: test files re-implement production calculations (LogQL builders, SDK result parsing) rather than importing the shared helper, so tests keep passing while production drifts. Evidence: discodon/reflections.md §2026-04-14 "Pattern worth keeping". Candidate: extend Goal 1 or Goal 7 in skills/critic/review-protocol.md — when a test performs a calculation/parsing operation that exists in production, flag as WARNING unless the test is deliberately testing the helper itself. Needs design work on detection heuristic (string-matching is noisy; AST match is heavier). (reflection)
 
-- **[CRT-4W8M]** Critic check: byte-exact assertions for "no behavior change" refactors
-  `effort: S · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
-
-  When a refactor's explicit bar is "no behavior change," substring-level test assertions are insufficient. Discodon graph_ops refactor (Apr 16) had two silent text drifts (double-prefix, error message wrapper) that substring assertions missed and Critic caught only by reading the code. Evidence: discodon/reflections.md §2026-04-16 graph_ops. Candidate: add to skills/critic/review-protocol.md for Refactor work type — "If the chunk claims no behavior change, are output assertions exact-match (not substring/contains)? If not, flag WARNING." (reflection)
-
 - **[CRT-1B6Q]** Critic check: stateful objects in shared_kwargs need lifecycle cleanup
   `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-15 · status: open · reviewed: 2026-05-29`
 
   Discodon's multi-tool coordinator pattern passes stateful objects (PendingVoiceSlot, prior voice_getter closures) via `shared_kwargs` to multiple tools. Critic caught lifecycle bugs (missed_intro false-positives when idle) only after complex state interactions emerged. Evidence: discodon/reflections.md §2026-04-15 V0.5-5. Candidate: extend Goal 6 (The System Can Be Understood) — when an object with enter/exit/close methods is shared across tools, verify owner tool's stop() drains/closes it. Generalizes beyond discodon's specific pattern to any DI/coordinator framework. (reflection)
-
-- **[MET-7H2D]** Testing guidance: multi-hop edge-case tests
-  `effort: S · impact: M · area: methodology · source: reflection · added: 2026-04-08 · status: open · reviewed: 2026-05-29`
-
-  When a data structure or state machine's correctness depends on what happens on the NEXT invocation (accumulator, coordinator, cursor, stateful retry), tests that only check post-state miss multi-hop bugs. Discodon has repeatedly shipped bugs caught only by the next cycle (Apr 8 accumulator, Apr 15 V0.5-7a timestamp collision under prune). Evidence: discodon/reflections.md §2026-04-08 "What I'd do differently". Candidate: add a bullet to methodology/building.md §Test Discipline — "When tested behavior depends on subsequent invocations (next cycle, next call, next prune), exercise at least one additional step beyond the immediate post-state." Broadly applicable; no detection heuristic needed. (reflection)
 
 - **[CRT-5N3F]** Critic false positives from fork-context limits
   `effort: L · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
@@ -302,17 +213,101 @@
 
   Requirements/advisory-spec §8.3. At setup/health-check time, `prawduct-doctor` reports any external backlog files (`TODO.md`, `BACKLOG.md`) found in repo root + `.github/`. Redundant with the `external-backlog-detected` probe ([BKL-2F7K]); deferred with it — build both together or decide one supersedes the other. (builder)
 
-- **[PR-7Q3M]** Condition PR-skill merge-flow step 7 (build-plan deletion) on whether the develop-merge is itself the release
-  `effort: M · impact: M · area: pr · source: user · added: 2026-06-02 · status: open · related: BLD-3X9M`
-
-  Under the v2.0.0 gitflow batched-release model, release-bound work merges feature→develop ahead of the develop→main release, where release-checklist step 4 runs `regen-views` ON the build plan to flip its Status checkboxes. Deleting the plan (and clearing `active_build_plan`) at develop-merge time leaves the release nothing to regenerate. The PR skill's merge-flow step 7 ("delete the build plan after merge") currently assumes the old develop-merge=release model. Fix: branch step 7 — develop-merge that ships now → delete; develop-merge ahead of a batched develop→main release → retain plan + `active_build_plan` pointer until the release flips the change-log to shipped. Discovered v2.0.0 PR #49. See `learnings.md` "Release-bound work merged feature→develop under gitflow" and `docs/release-process.md`. (user)
-
 ## Promoted
 
 _None._
 
 ## Archive
 
+
+- **[REL-4T8N]** Release tooling: handle MULTIPLE release-pending plans (regen-views per scope) instead of a single `active_build_plan` pointer
+  `effort: M · impact: M · area: release · source: builder · added: 2026-06-04 · status: shipped · closed-by: #62 (v2.0.6)`
+
+  The release model assumed ~one release-pending plan between `develop→main` releases: `regen-views`
+  resolved THE plan via the single `active_build_plan` pointer. Batched sub-releases stack up (v2.0.5
+  shipped four scopes), so the release had to point the pointer at each plan in turn and `regen-views`
+  per scope — 4× tedious, easy to miss one. It also surfaced a SECOND symptom: the derived
+  `release-notes.md` rendered only one entry per `release=` tag, mis-aggregating all scopes of a
+  release under one heading with a union'd chunk list.
+
+  **Resolved #62 (v2.0.6):** Chunk 01 (REL-4T8N-A) — `regen-views` now enumerates every change-log
+  `scope=` (status ∈ {shipped, merged}), resolves each to its build-plan file via frontmatter `scope:`
+  (`build_scope_to_plan_map`), and regenerates every release-pending plan in one pass (per-plan scope
+  re-detection → no cross-scope leakage; single-plan back-compat preserved; also fixed a latent
+  can't-run exit-2 state). Chunk 02 (REL-4T8N-B) — `release-notes.md` renders each distinct scope as
+  its own `### ` sub-section (group-by-scope; same-scope collapses; single sub-release stays flat). The
+  open "scope→file" question was answered by the existing frontmatter parser. (builder)
+
+- **[BLD-8F2Q]** `verify-chunk-refs` misreads `path::symbol` backtick tokens as missing file paths
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-04 · status: shipped · closed-by: #62 (v2.0.6)`
+
+  The chunk-ref parser (`bin/prawduct-hook` `cmd_verify_chunk_refs` / `_parse_build_plan_chunk_refs`)
+  captured a whole backtick token like `lib/views.py::is_views_enabled`, saw the `/`, and treated the
+  entire `module.py::symbol` string as a (missing) file path → false-positive exit 1 even though the
+  file exists. **Resolved #62 (v2.0.6):** the parser splits on `::` and existence-checks only the
+  pre-`::` path (stored as the ref); symbol verification stays deferred (BLD-5V8F). The `new ` forward-
+  ref exclusion still composes; 6 net-new tests. (critic)
+
+- **[PR-7Q3M]** Condition PR-skill merge-flow step 7 (build-plan deletion) on whether the develop-merge is itself the release
+  `effort: M · impact: M · area: pr · source: user · added: 2026-06-02 · status: shipped · closed-by: #62 (v2.0.6) · related: BLD-3X9M`
+
+  Under the v2.0 gitflow batched-release model, release-bound work merges feature→develop ahead of the
+  develop→main release, where the release runs `regen-views` ON the build plan. Deleting the plan +
+  clearing `active_build_plan` at develop-merge time left the release nothing to regenerate; step 7 also
+  hardcoded `artifacts/build-plan.md`. **Resolved #62 (v2.0.6):** step 7 branches on `prawduct-hook
+  resolve-base` — base = release surface (`main` family) → delete the plan (resolved via the pointer,
+  not a hardcoded path) + clear the pointer; base = `develop` (release-pending) → RETAIN both until the
+  release. Dogfooded on this very PR's merge (base=develop → retained). (user)
+
+- **[TST-9K4W]** Structural tests scan `.claude/worktrees/` — leftover/in-flight workflow worktrees fail the suite
+  `effort: S · impact: S · area: tests · source: builder · added: 2026-06-04 · status: shipped · closed-by: #62 (v2.0.6)`
+
+  `test_test_location::test_all_test_files_live_under_tests_directory` and
+  `test_plugin_methodology_digest::test_source_is_one_canonical_copy` globbed the whole repo tree, so a
+  worktree-isolated workflow's leftover `.claude/worktrees/wf_*/` checkout (duplicate test/methodology
+  copies) failed both. **Resolved #62 (v2.0.6):** both collectors prune the `.claude/` path component
+  (and take a `root` param for testability); regression tests via synthetic worktree trees + a real-tree
+  simulation. Layer-2 `norecursedirs` was deliberately skipped (collection is already scoped by
+  `testpaths=["tests"]`). (builder)
+
+- **[BLD-7P3K]** Guard test: assert the active build plan's chunk headings parse (fail loud on heading-format drift)
+  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-06-04 · status: shipped · closed-by: #61 (v2.0.5) — shipped test-only; runtime-check-for-any-product variant not pursued · related: VWS-3K7P`
+
+  Recommended by `learnings.md` ("Build-plan chunk headings must use `### Chunk N:` colon form") AND
+  twice by the roi-batch-2 cumulative Critic after the build plan itself shipped with `#### Chunk NN:`
+  (four-hash, under a `### Lane` grouping level) — which silently defeated the `### Chunk ` parsers
+  (`verify-chunk-refs`, `_parse_build_plan_chunk_type`, `lib/critic_mode.py` plan-override) for the
+  WHOLE plan. The degradation is silent: chunk-type fail-closes to `code`, refs stop verifying, and
+  nothing errors. Fix-shape: a test (or a `regen-views`/stop-hook check) that resolves the active
+  build plan via `resolve_build_plan_path` and asserts its `## Status` chunk IDs each map to a
+  parseable `### Chunk <id>:` heading — so a depth/format mismatch fails LOUDLY instead of degrading.
+  Open question: test-only (pins the framework's own plan) vs. a runtime check that fires for any
+  product's active plan. Filed from roi-batch-2 Critic NOTE on 2026-06-04. (critic)
+
+- **[SYN-9C4T]** Extract shared `read_bool_yaml_key(state_path, key)` from `lib/views.py::is_views_enabled` and `bin/prawduct-hook::_read_bool_yaml_key`
+  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-19 · status: shipped · closed-by: #61 (v2.0.5) · reviewed: 2026-06-03`
+
+  Both perform the same column-0 boolean scan against `project-state.yaml`, intentionally duplicated to keep the hook flat (one inline ~10-line helper vs. a new lib import). Move to `lib/core.py::read_bool_yaml_key(path, key) -> bool` and call from both sites. **Now more actionable (re-verified 2026-06-03):** the file-sync `product-hook` named in the original NOTE was deleted in M4; the duplicate survives in the plugin runtime as `bin/prawduct-hook::_read_bool_yaml_key` (line ~3331, comment says "kept parallel to is_views_enabled in lib/views.py") against `lib/views.py::is_views_enabled` (line ~651). The third caller the original NOTE said would tip this to extraction is already here — `_read_bool_yaml_key` now also reads `coverage_required` (bin/prawduct-hook ~3464). Filed from /critic chunk NOTE on 2026-05-19 (Chunk 09); paths refreshed post-M4. (critic)
+
+- **[TST-5W1J]** Cache test-file contents in `bin/test-reference-verify` to drop O(N*T) re-reads
+  `effort: S · impact: S · area: tests · source: critic · added: 2026-05-19 · status: shipped · closed-by: #61 (v2.0.5) · reviewed: 2026-05-29`
+
+  `_has_reference` re-opens every test file once per changed file. Sub-second on framework scale (~20 test files × small chunk diffs) but a stronger verifier or larger product would feel it. Fix-shape: discover_tests reads all test contents into a dict once, then `_has_reference` runs substring across the cached text. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 08). (critic)
+
+- **[PRR-4M9T]** Trim PR-reviewer goals to remove Critic overlap
+  `effort: S · impact: S · area: pr-reviewer · source: builder · added: 2026-05-05 · status: shipped · closed-by: #61 (v2.0.5) · reviewed: 2026-05-29`
+
+  PR reviewer Goals 1, 2, 4, 5, 6 in `skills/pr/review-protocol.md` overlap with Critic. Now that the layering is explicit (Critic-chunk = local; Critic-final = synthesis; PR reviewer = release readiness), PR reviewer goals could be trimmed to release-specific concerns (narrative, scope, merge hygiene, simplification). Filed during proportional-Critic build plan as out-of-scope. (builder)
+
+- **[CRT-4W8M]** Critic check: byte-exact assertions for "no behavior change" refactors
+  `effort: S · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: shipped · closed-by: #61 (v2.0.5) · reviewed: 2026-05-29`
+
+  When a refactor's explicit bar is "no behavior change," substring-level test assertions are insufficient. Discodon graph_ops refactor (Apr 16) had two silent text drifts (double-prefix, error message wrapper) that substring assertions missed and Critic caught only by reading the code. Evidence: discodon/reflections.md §2026-04-16 graph_ops. Candidate: add to skills/critic/review-protocol.md for Refactor work type — "If the chunk claims no behavior change, are output assertions exact-match (not substring/contains)? If not, flag WARNING." (reflection)
+
+- **[MET-7H2D]** Testing guidance: multi-hop edge-case tests
+  `effort: S · impact: M · area: methodology · source: reflection · added: 2026-04-08 · status: shipped · closed-by: #61 (v2.0.5) · reviewed: 2026-05-29`
+
+  When a data structure or state machine's correctness depends on what happens on the NEXT invocation (accumulator, coordinator, cursor, stateful retry), tests that only check post-state miss multi-hop bugs. Discodon has repeatedly shipped bugs caught only by the next cycle (Apr 8 accumulator, Apr 15 V0.5-7a timestamp collision under prune). Evidence: discodon/reflections.md §2026-04-08 "What I'd do differently". Candidate: add a bullet to methodology/building.md §Test Discipline — "When tested behavior depends on subsequent invocations (next cycle, next call, next prune), exercise at least one additional step beyond the immediate post-state." Broadly applicable; no detection heuristic needed. (reflection)
 
 - **[TST-6V2N]** test-evidence freshness gate reads `.test-evidence.json` but the plugin ships no command to WRITE it
   `effort: M · impact: M · area: tests · source: user · added: 2026-06-04 · status: shipped · closed-by: #60 (72c4081, develop) · related: TST-5W1J · reviewed: 2026-06-04`

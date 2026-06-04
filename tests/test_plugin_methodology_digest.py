@@ -36,6 +36,23 @@ READER_SKILLS = ("methodology", *PHASES)
 ADDITIONAL_CONTEXT_INLINE_LIMIT = 10_000
 
 
+def _canonical_digest_copies(root: Path = ROOT) -> list[Path]:
+    """All `session-digest.md` files under `root`, excluding scratch trees.
+
+    Excludes `.git/` and `.claude/` — the latter holds worktree-isolated
+    workflow checkouts (`.claude/worktrees/wf_*/`) that carry a full duplicate
+    methodology tree. Those copies are a nested checkout, not a rogue
+    non-canonical source, so they must not fail the single-source assertion
+    (TST-9K4W). Filtered on the path COMPONENT, not a prefix, so it matches at
+    any depth and never trips on an unrelated file literally named `.claude`.
+    """
+    return sorted(
+        p
+        for p in root.rglob("session-digest.md")
+        if ".git" not in p.parts and ".claude" not in p.parts
+    )
+
+
 def _run_digest(plugin_root: Path | None) -> subprocess.CompletedProcess:
     """Invoke hooks/digest.py as Claude Code would (CLAUDE_PLUGIN_ROOT set), or
     with it absent to exercise the __file__ fallback when plugin_root is None.
@@ -61,8 +78,20 @@ class TestDigestSource:
     def test_source_is_one_canonical_copy(self):
         # The digest lives once, at the plugin root — not duplicated into a skill
         # dir. (Single source of truth; the readers serve the full guides.)
-        copies = [p for p in ROOT.rglob("session-digest.md") if ".git" not in p.parts]
+        copies = _canonical_digest_copies()
         assert copies == [DIGEST_SRC], f"expected one canonical digest, found {copies}"
+
+    def test_canonical_copy_check_ignores_claude_worktrees(self, tmp_path: Path):
+        # TST-9K4W: a session-digest.md inside a .claude/worktrees/ checkout must
+        # NOT count as a second canonical copy (it is a nested workflow checkout).
+        meth = tmp_path / "methodology"
+        meth.mkdir()
+        canonical = meth / "session-digest.md"
+        canonical.write_text("digest\n")
+        stray = tmp_path / ".claude" / "worktrees" / "wf_x" / "methodology"
+        stray.mkdir(parents=True)
+        (stray / "session-digest.md").write_text("digest copy\n")
+        assert _canonical_digest_copies(tmp_path) == [canonical]
 
 
 class TestDigestHook:

@@ -271,3 +271,84 @@ class TestActiveBuildPlanChunkHeadingsParse:
         )
         with pytest.raises(AssertionError):
             _assert_status_chunks_parse(malformed)
+
+
+# =============================================================================
+# BLD-8F2Q — verify-chunk-refs handles `path::symbol` tokens (path-only check)
+# =============================================================================
+
+
+def _project_with_chunk(tmp_path: Path, chunk_body: str) -> tuple[Path, Path]:
+    """Create a project root with a one-chunk build-plan. Returns (project, prawduct)."""
+    project = tmp_path / "proj"
+    prawduct = project / ".prawduct"
+    (prawduct / "artifacts").mkdir(parents=True)
+    (prawduct / "project-state.yaml").write_text("")
+    plan = (
+        "---\nartifact: build-plan\n---\n\n"
+        "## Build Chunks\n\n"
+        "### Chunk 01: a chunk\n\n"
+        + chunk_body
+        + "\n## Next Section\n"
+    )
+    (prawduct / "artifacts" / "build-plan.md").write_text(plan)
+    return project, prawduct
+
+
+class TestVerifyChunkRefsPathSymbol:
+    def test_existing_path_symbol_reports_no_missing(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/views.py::is_views_enabled`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "views.py").write_text("x = 1\n")
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        # The stored ref is the PATH portion only — not the full `path::symbol`.
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+        assert _hook._verify_chunk_refs(project, refs) == []
+
+    def test_missing_path_symbol_reports_path_portion_only(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/gone.py::foo`\n"
+        )
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
+        missing = _hook._verify_chunk_refs(project, refs)
+        assert len(missing) == 1
+        # The missing-ref message names the path, not `lib/gone.py::foo`.
+        assert missing[0]["ref"] == "lib/gone.py"
+
+    def test_new_qualifier_with_symbol_is_forward_ref(self, tmp_path: Path):
+        # `new `-prefixed path::symbol -> skipped (a file the chunk creates).
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- creates new `lib/created.py::bar`\n"
+        )
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_path_and_path_symbol_same_line_dedup(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- see `lib/views.py` and `lib/views.py::sym`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "views.py").write_text("x = 1\n")
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        # Both collapse to one path existence-check.
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+
+    def test_plain_path_unchanged(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(tmp_path, "- see `docs/x.md`\n")
+        (project / "docs").mkdir()
+        (project / "docs" / "x.md").write_text("doc\n")
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["docs/x.md"]
+        assert _hook._verify_chunk_refs(project, refs) == []
+
+    def test_symbol_without_slashed_path_skipped(self, tmp_path: Path):
+        # No `/` before `::` -> not a path reference (e.g. a bare class::method).
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- the `SomeClass::method` helper\n"
+        )
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []

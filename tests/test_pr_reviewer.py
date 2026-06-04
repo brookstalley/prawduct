@@ -362,6 +362,21 @@ class TestPrReviewSkillContent:
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
         assert "evidence file" in content
 
+    def test_merge_flow_step7_is_conditioned(self):
+        """PR-7Q3M: build-plan cleanup must branch on whether THIS merge is the
+        release — delete at the release surface, RETAIN while release-pending —
+        not unconditionally delete. Guards against a revert to the old
+        develop-merge=release assumption."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        # The discriminator is resolve-base, and BOTH branches must be present.
+        assert "resolve-base" in content, "step 7 must branch on resolve-base"
+        assert "RETAIN" in content, "step 7 must keep the plan while release-pending"
+        assert "active_build_plan" in content, (
+            "deletion must resolve the pointer, not a hardcoded build-plan.md path"
+        )
+        # The release-pending branch must be tied to the develop base / status=merged.
+        assert "release-pending" in content or "status=merged" in content
+
     def test_review_protocol_references_learnings(self):
         """PR reviewer must read learnings.md during setup."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()

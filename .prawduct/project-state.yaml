@@ -466,6 +466,8 @@ views_enabled: true
 # roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
 # change-log entries are status=shipped and regen-views flipped each plan's
 # ## Status checkboxes to [x] (run once per scope, the REL-4T8N friction).
+# release-tooling (REL-4T8N + BLD-8F2Q + PR-7Q3M + TST-9K4W) SHIPPED in v2.0.6
+# (2026-06-04, #62); its build-plan file is retained as a historical artifact.
 # No release-pending plans remain — the pointer is cleared (unset → falls back
 # to artifacts/build-plan.md). The next in-progress plan sets it again.
 active_build_plan:
@@ -523,6 +525,9 @@ scope_rollups:
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]
+  release-tooling:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v2.0.6"]
   roi-batch:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.0.5"]
