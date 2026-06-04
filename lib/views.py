@@ -601,12 +601,15 @@ def build_scope_view(
 def _collect_releases(
     entries: list[ChangeLogEntry],
 ) -> list[dict[str, object]]:
-    """Aggregate shipped entries by ``release`` tag, preserving change-log order.
+    """Group shipped entries by ``release`` tag, preserving change-log order.
 
-    Returns a list of ``{release, title, chunks, scope}`` dicts in the order
-    releases first appear in the change-log (which by convention is
-    newest-first). Multiple entries sharing a release are merged; chunks union
-    and dedupe; ``title`` and ``scope`` come from the first entry seen.
+    Returns a list of ``{release, entries}`` dicts in the order releases first
+    appear in the change-log (newest-first by convention). Each release keeps a
+    LIST of its contributing entries — ``{title, chunks (sorted, de-duped),
+    scope}`` in change-log order — WITHOUT collapsing them. A batched release
+    (one version, several scopes) thus preserves every scope's own title and own
+    chunk set, instead of overwriting title/scope from the first entry seen and
+    unioning all chunks under it (the REL-4T8N mis-aggregation bug).
     """
     seen: dict[str, dict[str, object]] = {}
     order: list[str] = []
@@ -617,26 +620,23 @@ def _collect_releases(
         if not isinstance(release, str) or not release:
             continue
         if release not in seen:
-            seen[release] = {
-                "release": release,
-                "title": entry.title,
-                "chunks": set(),
-                "scope": entry.tags.get("scope")
-                if isinstance(entry.tags.get("scope"), str)
-                else None,
-            }
+            seen[release] = {"release": release, "entries": []}
             order.append(release)
         chunks = entry.tags.get("chunks")
-        if isinstance(chunks, list):
-            seen[release]["chunks"].update(
-                c for c in chunks if isinstance(c, str)
-            )
-    out: list[dict[str, object]] = []
-    for release in order:
-        rec = dict(seen[release])
-        rec["chunks"] = sorted(rec["chunks"])
-        out.append(rec)
-    return out
+        chunk_list = (
+            sorted({c for c in chunks if isinstance(c, str)})
+            if isinstance(chunks, list)
+            else []
+        )
+        scope = entry.tags.get("scope")
+        seen[release]["entries"].append(
+            {
+                "title": entry.title,
+                "chunks": chunk_list,
+                "scope": scope if isinstance(scope, str) and scope else None,
+            }
+        )
+    return [seen[release] for release in order]
 
 
 RELEASE_NOTES_HEADER = (
@@ -655,6 +655,14 @@ def build_release_notes_view(change_log_content: str) -> str | None:
     Returns the full desired file content, or ``None`` if no shipped+released
     entries exist (caller decides whether to create an empty placeholder or
     leave any existing file alone).
+
+    A release with a SINGLE contributing entry renders flat (``**Entry:**`` /
+    ``**Chunks shipped:**`` / ``**Scope:**`` under the ``## <release>`` heading)
+    — byte-compatible with the historical 1:1 layout. A release with MULTIPLE
+    contributing entries (a batched release: one version, several scopes) renders
+    one ``### <scope|title>`` sub-section per entry, each with its OWN chunk list
+    (NOT the union of all scopes), followed by a single shared ``See change-log``
+    trailer for the whole release (REL-4T8N).
     """
     entries = parse_change_log(change_log_content)
     releases = _collect_releases(entries)
@@ -662,13 +670,24 @@ def build_release_notes_view(change_log_content: str) -> str | None:
         return None
     out: list[str] = [RELEASE_NOTES_HEADER]
     for rec in releases:
+        contributing: list[dict[str, object]] = rec["entries"]  # type: ignore[assignment]
         out.append(f"## {rec['release']}\n")
-        out.append(f"**Entry:** {rec['title']}\n")
-        chunks = rec["chunks"]
-        if chunks:
-            out.append(f"**Chunks shipped:** {', '.join(chunks)}\n")
-        if rec["scope"]:
-            out.append(f"**Scope:** {rec['scope']}\n")
+        if len(contributing) == 1:
+            entry = contributing[0]
+            out.append(f"**Entry:** {entry['title']}\n")
+            if entry["chunks"]:
+                out.append(f"**Chunks shipped:** {', '.join(entry['chunks'])}\n")
+            if entry["scope"]:
+                out.append(f"**Scope:** {entry['scope']}\n")
+        else:
+            # Batched release: one sub-section per scope, each with its own
+            # chunks. The ### heading carries the scope, so **Scope:** is omitted
+            # as redundant; the title fills in when an entry has no scope= tag.
+            for entry in contributing:
+                out.append(f"### {entry['scope'] or entry['title']}\n")
+                out.append(f"**Entry:** {entry['title']}\n")
+                if entry["chunks"]:
+                    out.append(f"**Chunks shipped:** {', '.join(entry['chunks'])}\n")
         out.append("See `.prawduct/change-log.md` for full details.\n")
     return "\n".join(out).rstrip() + "\n"
 

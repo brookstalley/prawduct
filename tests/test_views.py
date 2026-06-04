@@ -1022,6 +1022,8 @@ class TestBuildReleaseNotesView:
         assert "**Chunks shipped:** 00, 01, 02" in out
         assert "**Scope:** v1.4" in out
         assert "2026-05-18: v1.4 Wave 1" in out  # title
+        # Single-entry release renders FLAT — no ### sub-section (byte-compatible).
+        assert "### " not in out
 
     def test_multiple_releases_preserve_changelog_order(self):
         # Change-log convention: newest first.
@@ -1037,7 +1039,10 @@ class TestBuildReleaseNotesView:
         pos_older = out.index("## v1.3.16")
         assert pos_newer < pos_older
 
-    def test_multiple_entries_same_release_merged(self):
+    def test_multiple_entries_same_release_render_separately_no_union(self):
+        # REL-4T8N: two entries share one release version but are distinct.
+        # They must render as separate sub-sections, NOT collapse into one with
+        # a union'd chunk list. (No scope= tags -> ### heading from the title.)
         change_log = (
             "## 2026-05-18: first part (v1.3.17)\n"
             "<!-- prawduct: chunks=00,01 | release=v1.3.17 | status=shipped -->\n"
@@ -1046,10 +1051,60 @@ class TestBuildReleaseNotesView:
         )
         out = views.build_release_notes_view(change_log)
         assert out is not None
-        # One section per release version.
+        # One ## section per release version; two ### sub-sections under it.
         assert out.count("## v1.3.17") == 1
-        # Chunks from both entries unioned + sorted.
-        assert "**Chunks shipped:** 00, 01, 02, 03" in out
+        assert out.count("### ") == 2
+        chunks_lines = [ln for ln in out.splitlines() if ln.startswith("**Chunks shipped:**")]
+        # Each entry keeps its OWN chunks — NOT the union.
+        assert "**Chunks shipped:** 00, 01" in chunks_lines
+        assert "**Chunks shipped:** 02, 03" in chunks_lines
+        # The mis-aggregated union must NOT appear on any single line.
+        assert all("00, 01, 02, 03" not in ln for ln in chunks_lines)
+        # No scope= -> ### heading falls back to the entry title.
+        assert "### 2026-05-18: first part (v1.3.17)" in out
+        # One shared trailer for the whole release block.
+        assert out.count("See `.prawduct/change-log.md` for full details.") == 1
+
+    def test_four_scope_batched_release_v2_0_5_regression(self):
+        # The exact v2.0.5 shape that exposed the bug: four scopes, one version.
+        change_log = (
+            "## 2026-06-04: cleanup-batch — 6 fixes (shipped v2.0.5)\n"
+            "<!-- prawduct: chunks=01,02,03,04,05,06 | release=v2.0.5 | status=shipped | scope=cleanup-batch -->\n"
+            "## 2026-06-04: evidence-deferral (shipped v2.0.5)\n"
+            "<!-- prawduct: chunks=01,02 | release=v2.0.5 | status=shipped | scope=evidence-deferral -->\n"
+            "## 2026-06-04: roi-batch-2 (shipped v2.0.5)\n"
+            "<!-- prawduct: chunks=01,02,03,04,05,06,07,08,09 | release=v2.0.5 | status=shipped | scope=roi-batch-2 -->\n"
+            "## 2026-06-04: roi-batch (shipped v2.0.5)\n"
+            "<!-- prawduct: chunks=01,02,03,04,05 | release=v2.0.5 | status=shipped | scope=roi-batch -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        assert out.count("## v2.0.5") == 1
+        for scope in ("cleanup-batch", "evidence-deferral", "roi-batch-2", "roi-batch"):
+            assert f"### {scope}" in out
+        # Change-log order preserved (cleanup-batch first).
+        assert out.index("### cleanup-batch") < out.index("### roi-batch")
+        chunks_lines = [ln for ln in out.splitlines() if ln.startswith("**Chunks shipped:**")]
+        # cleanup-batch keeps ITS 01-06, not the cross-scope union 01-09.
+        assert "**Chunks shipped:** 01, 02, 03, 04, 05, 06" in chunks_lines
+        assert "**Chunks shipped:** 01, 02" in chunks_lines  # evidence-deferral
+        assert "**Chunks shipped:** 01, 02, 03, 04, 05" in chunks_lines  # roi-batch
+        # The old union ran 01..09 under one scope — that line must not exist
+        # except as roi-batch-2's OWN legitimate 01-09.
+        union = "**Chunks shipped:** 01, 02, 03, 04, 05, 06, 07, 08, 09"
+        assert chunks_lines.count(union) == 1  # only roi-batch-2 owns 01-09
+        # One shared trailer for the whole v2.0.5 block.
+        assert out.count("See `.prawduct/change-log.md` for full details.") == 1
+
+    def test_multi_scope_idempotent(self):
+        change_log = (
+            "## 2026-06-04: a\n"
+            "<!-- prawduct: chunks=01 | release=v2 | status=shipped | scope=a -->\n"
+            "## 2026-06-04: b\n"
+            "<!-- prawduct: chunks=02 | release=v2 | status=shipped | scope=b -->\n"
+        )
+        first = views.build_release_notes_view(change_log)
+        assert first == views.build_release_notes_view(change_log)
 
     def test_idempotent_against_own_output(self):
         change_log = (
