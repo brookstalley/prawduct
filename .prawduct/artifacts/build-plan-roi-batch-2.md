@@ -68,15 +68,15 @@ N/A — edits land in existing trees: `lib/views.py`, `lib/advisory_store.py`, `
      they run SEQUENTIALLY within the lane. Per-chunk "Done when" Critic steps are satisfied ONCE,
      cumulatively, by the launching session after the workflow finishes — see Governance. -->
 
-### Lane HOOK-A (owns lib/views.py, bin/prawduct-hook::cmd_regen_views, tests/test_views.py)
+**Lane HOOK-A (owns lib/views.py, bin/prawduct-hook::cmd_regen_views, tests/test_views.py)**
 
-#### Chunk 01: VWS-3K7P — validate change-log `status=` values + reconcile docstring
+### Chunk 01: VWS-3K7P — validate change-log `status=` values + reconcile docstring
 **Type:** code
 **Acceptance criteria:**
 - New pure helper `validate_status_values(entries) -> list[str]` in `lib/views.py` returns a
   warning string for every change-log entry whose `status=` tag is present but not in
   `{shipped, merged}` (e.g. `status=shippd`). Empty list when all are valid/absent.
-- `bin/prawduct-hook::cmd_regen_views` calls it and prints each warning to stderr (NON-fatal —
+- `cmd_regen_views` (in `bin/prawduct-hook`) calls it and prints each warning to stderr (NON-fatal —
   does not change the exit code or the flip rule).
 - The `lib/views.py` module docstring (~line 19) status enum reconciled from
   `shipped | in-progress | deferred` to `shipped | merged` (note: only `shipped` flips checkboxes;
@@ -86,7 +86,7 @@ N/A — edits land in existing trees: `lib/views.py`, `lib/advisory_store.py`, `
   yield none; absent status yields none.
 **Done when:** scoped `pytest tests/test_views.py` green; `/prawduct:critic` (cumulative, by launching session).
 
-#### Chunk 02: STH-2J9F — regen-views returns exit 1 on ImportError
+### Chunk 02: STH-2J9F — regen-views returns exit 1 on ImportError
 **Type:** code
 **Acceptance criteria:**
 - `cmd_regen_views`'s `except ImportError:` branch returns **1** (honest-failure), matching
@@ -96,7 +96,7 @@ N/A — edits land in existing trees: `lib/views.py`, `lib/advisory_store.py`, `
 - Test asserts ImportError path → exit 1 (in `tests/test_views.py`).
 **Done when:** scoped tests green; cumulative Critic.
 
-#### Chunk 03: VWS-8M2Q — harden views.py tag/frontmatter parsers
+### Chunk 03: VWS-8M2Q — harden views.py tag/frontmatter parsers
 **Type:** code
 **Acceptance criteria:**
 - `parse_tag_line` (or the scope-rollup formatter) no longer emits unparseable YAML when a chunk
@@ -109,9 +109,9 @@ N/A — edits land in existing trees: `lib/views.py`, `lib/advisory_store.py`, `
 - Tests in `tests/test_views.py` for both corners.
 **Done when:** scoped tests green; cumulative Critic.
 
-### Lane HOOK-B (owns bin/prawduct-hook gate/trivial/evidence regions, tests/test_plugin_runtime.py, tests/test_trivial_fileset_gate.py)
+**Lane HOOK-B (owns bin/prawduct-hook gate/trivial/evidence regions, tests/test_plugin_runtime.py, tests/test_trivial_fileset_gate.py)**
 
-#### Chunk 04: STH-6B4R — gate freshness timestamp comparison precision + tie rule
+### Chunk 04: STH-6B4R — gate freshness timestamp comparison precision + tie rule
 **Type:** code
 **Acceptance criteria:**
 - The stop-hook Critic gate (`findings_mtime > session_start`, ~L1796–1804) and the
@@ -125,7 +125,7 @@ N/A — edits land in existing trees: `lib/views.py`, `lib/advisory_store.py`, `
 NOTE: Do not change the evidence-freshness `>=` site (`_test_status`, ~L466–477) unless needed —
 its `>=` is a deliberately different convention; if touched, preserve its semantics and test it.
 
-#### Chunk 05: STH-1W5N — centralize trivial-change protected-path bounds
+### Chunk 05: STH-1W5N — centralize trivial-change protected-path bounds
 **Type:** code
 **Acceptance criteria:**
 - The Type:trivial / doc-only fileset bounds (skills/, methodology/, templates/, CLAUDE.md,
@@ -137,7 +137,7 @@ its `>=` is a deliberately different convention; if touched, preserve its semant
   of truth (the bound list is non-empty and contains the documented paths).
 **Done when:** scoped `pytest tests/test_trivial_fileset_gate.py tests/test_plugin_runtime.py` green; cumulative Critic.
 
-#### Chunk 06: TST-1D5W — tighten _validate_evidence_schema against bool-as-int
+### Chunk 06: TST-1D5W — tighten _validate_evidence_schema against bool-as-int
 **Type:** code
 **Acceptance criteria:**
 - `_validate_evidence_schema` (~L535) rejects a bool where an int is required (Python `bool` is a
@@ -147,7 +147,7 @@ its `>=` is a deliberately different convention; if touched, preserve its semant
   `tests/test_plugin_runtime.py`.
 **Done when:** scoped tests green; cumulative Critic.
 
-#### Chunk 07: TST-7Q3D — stop-gate regression coverage gaps (test-only)
+### Chunk 07: TST-7Q3D — stop-gate regression coverage gaps (test-only)
 **Type:** code
 **Acceptance criteria:** add three regression cases to `TestPluginStopGate`
 (`tests/test_plugin_runtime.py`), NO runtime change:
@@ -157,9 +157,9 @@ its `>=` is a deliberately different convention; if touched, preserve its semant
 - (c) gate-waiver unknown key → assert stderr diagnostic WITHOUT blocking.
 **Done when:** scoped `pytest tests/test_plugin_runtime.py` green; cumulative Critic.
 
-### Lane ADV (owns lib/advisory_store.py, tests/test_advisory_store.py)
+**Lane ADV (owns lib/advisory_store.py, tests/test_advisory_store.py)**
 
-#### Chunk 08: ADV-9K2T — advisory_store surfaces corruption via a .corrupt sentinel
+### Chunk 08: ADV-9K2T — advisory_store surfaces corruption via a .corrupt sentinel
 **Type:** code
 **Acceptance criteria:**
 - In `read_store`, when an EXISTING `.advisories.json` fails to parse (`json.JSONDecodeError`) or
@@ -173,12 +173,12 @@ its `>=` is a deliberately different convention; if touched, preserve its semant
   no sentinel; valid file → no sentinel.
 **Done when:** scoped `pytest tests/test_advisory_store.py` green; cumulative Critic.
 
-### Lane MIG (owns tests/test_plugin_migrate.py)
+**Lane MIG (owns tests/test_plugin_migrate.py)**
 
-#### Chunk 09: TST-4H8M — unit coverage for migrate _collapse_blank_runs edge cases (test-only)
+### Chunk 09: TST-4H8M — unit coverage for migrate _collapse_blank_runs edge cases (test-only)
 **Type:** code
 **Acceptance criteria:** add `TestCollapseBlankRuns` in `tests/test_plugin_migrate.py` exercising
-`lib/migrate_plugin.py::_collapse_blank_runs` directly (NO runtime change): 3/4/5/7+ consecutive
+`_collapse_blank_runs` (in `lib/migrate_plugin.py`) directly (NO runtime change): 3/4/5/7+ consecutive
 newlines collapse to exactly 2; only-newlines input; empty string; and while-loop convergence
 (`a\n\n\nb\n\n\nc` → `a\n\nb\n\nc`).
 **Done when:** scoped `pytest tests/test_plugin_migrate.py` green; cumulative Critic.

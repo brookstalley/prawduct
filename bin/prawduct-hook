@@ -3779,8 +3779,9 @@ def cmd_regen_views(project_dir: Path) -> int:
         ):
             print(f"WARNING: {warning}", file=sys.stderr)
     except OSError:
-        # Best-effort advisory only — plan_regen already succeeded above, so a
-        # read hiccup here must not fail the command.
+        # Best-effort advisory only — the regen computation (plan_regen) already
+        # succeeded above and apply_regen still runs below, so a change-log read
+        # hiccup here must not fail the warning-emitting command.
         pass
 
     try:
