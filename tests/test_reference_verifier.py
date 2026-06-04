@@ -9,6 +9,8 @@ nothing useful.
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
@@ -19,6 +21,23 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERIFIER_PATH = REPO_ROOT / "bin" / "test-reference-verify"
+
+
+def _load_verifier_module():
+    """Import bin/test-reference-verify as a module.
+
+    The verifier ships as a CLI verb with no ``.py`` suffix, so the usual
+    import machinery can't find it by name — load it explicitly by path. Used
+    by the in-process cache tests, which need to count reads without a
+    subprocess boundary in the way.
+    """
+    spec = importlib.util.spec_from_loader(
+        "trv",
+        importlib.machinery.SourceFileLoader("trv", str(VERIFIER_PATH)),
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -359,3 +378,81 @@ class TestSelfCompat:
         )
 
         assert result.returncode == 0, result.stderr
+
+
+class TestReferenceCache:
+    """Test-file contents are read ONCE and matched against every changed
+    file from that cache — not re-read per changed file. These tests load the
+    verifier in-process (no subprocess) so they can count reads directly.
+    """
+
+    def test_each_test_file_read_once_regardless_of_changed_count(
+        self, mini_repo: Path, monkeypatch
+    ):
+        """The cache reads each test file exactly once even when many changed
+        files are matched against it. Before the cache, ``_has_reference`` ran
+        per changed file and re-opened every test — O(changed × tests) reads.
+        """
+        trv = _load_verifier_module()
+
+        # Five changed files, each with a distinct symbol; none referenced so
+        # every changed file forces a full scan of the test list (worst case).
+        for i in range(5):
+            (mini_repo / "src" / f"mod{i}.py").write_text(
+                f"def helper_{i}():\n    return {i}\n"
+            )
+
+        # Count reads of the discovered test files by their resolved path.
+        test_dir = (mini_repo / "tests").resolve()
+        reads: dict[str, int] = {}
+        real_read_text = Path.read_text
+
+        def counting_read_text(self, *args, **kwargs):
+            resolved = self.resolve()
+            if test_dir in resolved.parents:
+                reads[str(resolved)] = reads.get(str(resolved), 0) + 1
+            return real_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", counting_read_text)
+
+        fields = trv._build_evidence_fields(
+            mini_repo.resolve(), "main", test_dir
+        )
+
+        # The single baseline test file must be read exactly once despite the
+        # five changed files matched against it.
+        assert reads, "expected at least one test file to be read"
+        assert all(count == 1 for count in reads.values()), reads
+        # Sanity: the run still produced valid evidence.
+        assert fields["coverage_level"] == "referenced"
+
+    def test_multi_changed_file_result_parity(self, mini_repo: Path):
+        """Result parity check: with several changed files — some referenced,
+        some not — exactly the referenced ones land in ``changes_referenced``.
+        Confirms the cache refactor preserved matching behavior."""
+        # Referenced: a test mentions its symbol.
+        (mini_repo / "src" / "alpha.py").write_text(
+            "def alpha_fn():\n    return 'a'\n"
+        )
+        (mini_repo / "tests" / "test_alpha.py").write_text(
+            "def test_alpha_fn():\n"
+            "    from src.alpha import alpha_fn\n"
+            "    assert alpha_fn() == 'a'\n"
+        )
+        # Not referenced: no test mentions its symbol.
+        (mini_repo / "src" / "beta.py").write_text(
+            "def beta_fn():\n    return 'b'\n"
+        )
+        # Also referenced via the pre-existing baseline test.
+        (mini_repo / "src" / "core.py").write_text(
+            "def existing_helper():\n    return 99\n"
+        )
+
+        result = _run_verifier(mini_repo, "--base", "main")
+
+        assert result.returncode == 0, result.stderr
+        evidence = json.loads(result.stdout)
+        referenced = set(evidence["changes_referenced"])
+        assert "src/alpha.py" in referenced
+        assert "src/core.py" in referenced
+        assert "src/beta.py" not in referenced
