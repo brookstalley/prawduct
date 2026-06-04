@@ -193,7 +193,22 @@ def test_subcommand_registered():
     assert "init-product <target> --name" in src  # usage string
 
 
-def test_doctor_skill_invokes_init_product():
-    text = (ROOT / "skills" / "doctor" / "SKILL.md").read_text()
-    assert "init-product" in text, "the doctor Onboard flow must use init-product"
+def test_onboard_skill_invokes_init_product():
+    # Onboarding was split out of `doctor` into its own `/prawduct:onboard` skill
+    # (doctor = health-check/repair of an already-onboarded repo). The init-product
+    # scaffold call now lives in the onboard skill.
+    text = (ROOT / "skills" / "onboard" / "SKILL.md").read_text()
+    assert "init-product" in text, "the onboard flow must use init-product"
     assert "Bash(prawduct-hook init-product" in text, "allowed-tools must permit init-product"
+
+
+def test_doctor_skill_does_not_onboard():
+    # Guard the split: doctor must NOT grant the scaffold capability (the
+    # init-product tool), and must route setup to /prawduct:onboard. A prose
+    # mention of init-product (explaining what onboard does) is fine — the
+    # contract is the tool grant, not the word.
+    text = (ROOT / "skills" / "doctor" / "SKILL.md").read_text()
+    assert "Bash(prawduct-hook init-product" not in text, (
+        "doctor must not grant init-product — scaffolding moved to /prawduct:onboard"
+    )
+    assert "/prawduct:onboard" in text, "doctor must route setup requests to /prawduct:onboard"
