@@ -3529,11 +3529,13 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
 
 
 # v1.4 F4b — coverage-required gate inputs.
-# Helper kept parallel to ``is_views_enabled`` in lib/views.py: column-0
-# key scan, fail-closed default of False. Inline rather than imported to keep
-# the hook surface flat (no new lib dependency just for a 10-line
-# scanner). Same idiom = same drift discipline as views_enabled.
+# Inline mirror of lib/core.read_bool_yaml_key: a column-0 key scan with a
+# fail-closed default of False. Inline rather than imported to keep the hook
+# surface flat on the session-start hot path (same discipline as
+# _read_str_yaml_key above); pinned to the lib helper by TestBoolKeyCallSiteParity.
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestBoolKeyCallSiteParity
 def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
+    """True if ``state_path`` has a top-level (column-0) ``key: true`` scalar."""
     if not state_path.exists():
         return False
     try:
