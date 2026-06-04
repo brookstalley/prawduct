@@ -194,7 +194,7 @@ A team-wide *dismissal* mechanism (e.g., "the whole team agrees to not run `/llm
 
 ### 4.1 Probe execution
 
-- Probes are registered by features at framework startup (e.g., in `tools/lib/probes/prompt_management.py`).
+- Probes are registered by features at framework startup (e.g., in `lib/probes/prompt_management.py`).
 - Each probe is a function: `(project_state, codebase) → list[AdvisoryCandidate]`.
 - Sync calls all registered probes. Returned candidates are matched against existing advisories by id.
 
@@ -215,7 +215,7 @@ When the user runs a `recommended_action` (e.g., `/llm-strategy detect`), the ac
 
 ## 5. Session briefing integration
 
-The existing `tools/product-hook session-start` (or equivalent) gains a new section after the current `Framework freshness` and `Place-once template advisories` blocks:
+The existing session-start briefing (the SessionStart hook wired in `hooks/hooks.json`, dispatched through `bin/prawduct-hook`) gains a new section after the current `Framework freshness` and `Place-once template advisories` blocks:
 
 ```
 ADVISORIES (post-sync, 3 active):
@@ -273,7 +273,7 @@ These aliases are user-project conveniences. The unified `/prawduct-advisory` co
 Each feature provides probes via a registration point:
 
 ```python
-# tools/lib/probes/__init__.py
+# lib/probes/__init__.py
 from typing import Callable, Iterable
 from .types import AdvisoryCandidate, ProjectState
 
@@ -293,7 +293,7 @@ def run_all_probes(state: ProjectState, codebase: "Codebase") -> list[AdvisoryCa
     return candidates
 ```
 
-Each feature's `tools/lib/probes/<feature>.py` calls `register_probe(...)` at import time. Sync imports both modules to ensure registration happens before `run_all_probes` is called.
+Each feature's `lib/probes/<feature>.py` calls `register_probe(...)` at import time. Sync imports both modules to ensure registration happens before `run_all_probes` is called.
 
 ### 7.1 Probe authoring guidelines
 
@@ -431,8 +431,8 @@ Some probes might find dozens of file:line citations (e.g., "hard-coded model ID
 
 ## 12. Dependencies
 
-- **Sync subsystem** (`tools/lib/sync_cmd.py`) — must gain the probe-execution step and the diff-with-existing-store logic.
-- **Session-briefing hook** (`tools/product-hook session-start` or equivalent) — must gain the advisories section.
+- **Advisory-store subsystem** (`lib/advisory_store.py`) — must gain the probe-execution step and the diff-with-existing-store logic.
+- **Session-briefing hook** (`hooks/hooks.json`, dispatched through `bin/prawduct-hook`) — must gain the advisories section.
 - **CLI surface** — `/prawduct-advisory` skill + per-feature dismissal aliases (`/backlog dismiss-advisory`, `/llm-strategy dismiss-advisory`).
 - **Feature build plans** — each feature implements its probes against this infrastructure's registration API.
 

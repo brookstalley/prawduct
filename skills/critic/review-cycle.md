@@ -21,7 +21,15 @@ The stop hook enforces review for code changes when a build plan exists. It also
 
 ## Mode Selection
 
-Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical caller is `/prawduct:critic` (no args) — the SKILL invokes `prawduct-hook infer-critic-mode` to pick the mode from git + build-plan state and records `mode_chosen_by` as the verbatim rationale string the helper returns (e.g., `"rule-3 final: last unchecked chunk of 4-chunk plan is in progress"`), or as the literal string `"explicit-args"` when `$ARGUMENTS` overrode inference. The build plan's `Critic mode:` field is the **build-plan-level override**; an explicit slash-command argument (`/prawduct:critic chunk` etc.) is the **per-invocation override** on top of that. See `methodology/planning.md` "Critic Mode Per Chunk" for the heuristic of when an explicit declaration is worth the override.
+Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical caller is `/prawduct:critic` (no args) — the SKILL invokes `prawduct-hook infer-critic-mode` to pick the mode from git + build-plan state and records `mode_chosen_by` as the verbatim rationale string the helper returns (e.g., `"rule-3 final: last unchecked chunk of 4-chunk plan is in progress"`), or as the literal string `"explicit-args"` when `$ARGUMENTS` overrode inference.
+
+Three precedence layers, highest first:
+
+1. **Per-invocation override** — an explicit slash-command argument (`/prawduct:critic chunk` etc.). Recorded as `mode_chosen_by: "explicit-args"`.
+2. **Plan-level override** — the active build plan's CURRENT chunk (first unchecked `- [ ]` item in the Status section) `Critic mode:` field. **As of CRT-3M8Q this override is honored by inference itself**: `infer-critic-mode` reads the current chunk's `**Critic mode:**` field and, when it names a valid mode, returns that mode with rationale `plan-override: <mode>` — *before* walking the inference rules. Previously this field was inert (the Skill-tool args never threaded to the forked skill's `$ARGUMENTS`, and the skill didn't read the plan), so a plan-mandated `final` silently ran as the inferred `chunk`. Now a plan-mandated mode wins over inference. An absent, blank, or unrecognized `Critic mode:` value is ignored and inference proceeds normally.
+3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), used only when neither override applies.
+
+See `methodology/planning.md` "Critic Mode Per Chunk" for the heuristic of when an explicit declaration is worth the override.
 
 **Heuristic when authoring a build plan** (mostly matches what inference will pick — declare `Critic mode:` only to override):
 - Single-chunk plan → `final` (inference picks this; no declaration needed).

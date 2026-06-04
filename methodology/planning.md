@@ -80,6 +80,8 @@ When confidence is Medium or Low, the plan also lists *what would raise it*. Don
 
 **Governance checkpoints** are points during the build where you pause to review the whole — not just the current chunk but the trajectory. Place them at natural boundaries: after the first chunk (architecture validation), at the midpoint, and before completion. The number scales with risk (1-2 for low-risk, 3-5 for high-risk).
 
+**Enumerate the surfaces when a chunk introduces a project-wide concept.** Some chunks add a structural concept that has to be threaded through many files at once — a new build-plan field, a governance flag, a convention every reviewer must honor. These cascade: a single concept can touch the product CLAUDE.md, the Critic skill and its review protocol, the PR protocol, the methodology guides, the build-plan template, and the tests that guard them — eight or more surfaces is common. The plan should list those surfaces up front, in the chunk description, rather than discovering them mid-build. Two reasons. First, an enumerated surface count makes the chunk's true size visible, so it can be split if it's too large to review in one Critic pass. Second, several of those surfaces (methodology files, the Critic protocol) carry token-budget guardrail tests; a cascade that adds prose to each will pressure those budgets and force an aggressive trim of surrounding text before any budget can be raised. Anticipating the cascade means the trim is planned, not a surprise at chunk-close. This pattern has recurred enough (the Requirements-Precede-Code threading, the source-of-truth guardrail, the waiver-pragma work) to be a planning default, not a lesson re-learned per chunk.
+
 ### Critic Mode Per Chunk
 
 `Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is so the cycle doesn't re-pay full-review cost on every chunk. Four modes are available: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/prawduct:critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `skills/critic/review-protocol.md`). Declare `Critic mode:` explicitly only when the plan needs to override what inference would pick — e.g., forcing `final` on an early chunk that lands an architectural keystone (see the override examples below).
@@ -122,11 +124,17 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 
 **Type vs. mode orthogonality.** A `Type: doc-only` chunk can still be `Critic mode: final` (full review of prose deliverables); a `Type: code` chunk can be `Critic mode: chunk` (lightweight Goals 1-3 review). The two fields answer different questions — declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review; `trivial` on a non-eligible chunk produces a named blocker).
 
+### Forward-References to Not-Yet-Created Files
+
+The Critic's ref-drift check (Goal 2) verifies that backticked file paths in the current chunk's section exist on disk — a guard against plans that reference files a rename or refactor has since moved. But a chunk that *creates* a file legitimately names a path that doesn't exist yet. To distinguish the two, prefix the path with the word **`new`** on the same line — e.g. "new `skills/foo/bar.md`". The verifier treats a path immediately preceded by `new` as a forward reference and skips the existence check for it; everything else in the current chunk must already exist. (Paths in future-chunk sections — Chunk N+1, N+2, … — are never checked, so forward references there need no marker.)
+
+This convention is also documented in the build-plan template's inline comment, but authors who write plans without copying the template won't see it there — so it lives here too. Omit the `new` prefix on a file your chunk creates and you'll get a spurious BLOCKING ref-drift finding; the fix is the one-word prefix, not weakening the check.
+
 ### Foreign API Verification
 
 When a chunk wraps a foreign API or SDK — anything whose surface the agent doesn't own and can't change — **the first step is reading source or running discovery probes, not drafting handlers from documentation.** Vendor docs lag behind code; LLM training data lags further. Tests written against an assumed signature pass against fakes that mirror the same assumption, then fail at integration time when the real surface diverges. This pattern recurs every time the framework or a product touches a foreign SDK (hallucinote's Ableton Live MCP integration is the canonical case — handlers shipped against signatures that didn't match the real API, found at integration time).
 
-**The rule.** A chunk that wraps a foreign API declares `**Foreign API:** <name>` in the build plan (between `**Type:**` and `**Done when:**`) and includes a `verify-api` step as the first item in its Done-when. `verify-api` means one of, in preference order:
+**The rule.** A chunk that wraps a foreign API declares `**Foreign API:** <name>` in the build plan (between `**Type:**` and `**Done when:**`) and includes a `verify-api` step prepended as step 0 in its Done-when (so existing step numbering is preserved across chunks with and without a foreign API). `verify-api` means one of, in preference order:
 - Read the foreign code directly (vendor SDK source, MCP server source, library `.pyi` stubs).
 - Run a discovery probe against a live instance (curl, REPL session, smoke script) and capture the actual response shape.
 - If neither is possible, document the docs source consulted and flag the chunk as `Requirements Confidence: Medium` with "API surface assumed from docs" listed as an open assumption.
@@ -165,6 +173,14 @@ vs. the WARNING form (same chunk with step 0 omitted):
 The Critic finds the `verify-api` step by case-insensitive substring match anywhere in the chunk's Done-when items — exact phrasing doesn't matter, but the literal token `verify-api` should appear.
 
 **Discovery surfaces foreign APIs early.** When discovery flags an external SDK or service in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry that forward into the build plan as `**Foreign API:** <name>` on whichever chunk first touches the wrapper. Annotation in the plan is what triggers the Critic check.
+
+### Visual Change Verification
+
+Tests confirm logic; they don't confirm that a human-facing surface *looks and reads* right. When a chunk produces a user-visible change — a UI screen, a CLI output format, the appearance of a generated artifact, a live external integration — a passing test suite is necessary but not sufficient. Someone has to look at it before merge.
+
+**The rule.** A chunk that produces a user-visible change declares `**Visual change:** yes` in the build plan (alongside the other chunk fields). At chunk-close the builder appends an entry to `.prawduct/operator-verification.md` describing what to verify and where (see `methodology/building.md` chunk-close step). When `operator_verification_required: true` in `project-state.yaml`, `/prawduct:pr create` blocks on pending entries — drain each via `prawduct-hook verify-operator-verification <VRF-id>`, or override per-PR with `--accept-pending-verification "rationale"`. The Critic emits a NOTE if a chunk declares `Visual change: yes` but no queue entry references it.
+
+The field is declared only when relevant — omitting it is safe (no user-visible surface to verify). Reserve `yes` for changes a test can't speak to: pixel layout, copy and tone, output legibility, the shape of a real third-party response. Pure logic and internal-API chunks don't need it.
 
 ## Common Traps
 

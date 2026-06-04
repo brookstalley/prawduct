@@ -133,7 +133,7 @@ def collect_shipped_chunks(
     return shipped
 
 
-def _parse_build_plan_frontmatter_scope(content: str) -> str | None:
+def _parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]:
     """Parse ``scope:`` from a build-plan's YAML frontmatter block.
 
     The frontmatter is the block bounded by ``---`` on its own line. A leading
@@ -142,10 +142,19 @@ def _parse_build_plan_frontmatter_scope(content: str) -> str | None:
     comment header before the frontmatter, so requiring ``---`` on line 1 would
     make the field inert in practice.
 
-    Returns the bare string value (quotes stripped) or ``None`` if the field is
-    absent, empty, set to the YAML null literal (``null`` / ``~``), nested
-    inside another key, outside the frontmatter, or the file lacks a
-    frontmatter entirely.
+    Returns a ``(present, value)`` tuple. ``present`` distinguishes "the
+    ``scope:`` key appears in the frontmatter" from "the key is absent" — a
+    distinction that matters because the two cases drive different fallback
+    behavior in :func:`_detect_active_scope` (see BLD-4Q9X):
+
+    * ``(True, "v1.5")`` — key present with a real value (quotes stripped).
+    * ``(True, None)``   — key present but set to the YAML null literal
+      (``null`` / ``~``) or left empty. This is the documented *explicit
+      opt-out* form: the author is saying "do not scope-filter," and inference
+      MUST be suppressed rather than silently inheriting a change-log scope.
+    * ``(False, None)``  — key absent, nested inside another key, outside the
+      frontmatter, or the file lacks a frontmatter entirely. Here inference may
+      legitimately fall back to the change-log.
     """
     lines = content.splitlines()
     i = 0
@@ -162,21 +171,24 @@ def _parse_build_plan_frontmatter_scope(content: str) -> str | None:
     while i < len(lines) and not lines[i].strip():
         i += 1
     if i >= len(lines) or lines[i].strip() != "---":
-        return None
+        return (False, None)
     for j in range(i + 1, len(lines)):
         line = lines[j]
         if line.strip() == "---":
-            return None
+            return (False, None)
         if line[:1] in (" ", "\t"):
             continue
         stripped = line.split("#", 1)[0].rstrip()
         if not stripped.startswith("scope:"):
             continue
         value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+        # Key is present. An empty or null-literal value is an explicit
+        # opt-out, not an absence — return (True, None) so callers can
+        # suppress change-log inference.
         if not value or value.lower() in ("null", "~"):
-            return None
-        return value
-    return None
+            return (True, None)
+        return (True, value)
+    return (False, None)
 
 
 def _detect_active_scope(
@@ -187,12 +199,20 @@ def _detect_active_scope(
     Resolution order (highest precedence first):
 
     1. ``scope:`` field in build-plan YAML frontmatter — explicit, preferred.
-    2. Most recent change-log entry's ``scope=`` tag — inferred.
+       An explicit null/empty ``scope:`` is the author's opt-out: it pins the
+       result to ``None`` and SKIPS change-log inference, so a stale prior
+       ``scope=`` tag can't silently override the author's intent (BLD-4Q9X).
+    2. Most recent change-log entry's ``scope=`` tag — inferred, but only when
+       the build-plan ``scope:`` key is *absent* (not merely null).
     3. ``None`` — no scope detected; fail-safe to legacy unfiltered union.
     """
-    fm_scope = _parse_build_plan_frontmatter_scope(build_plan_content)
+    present, fm_scope = _parse_build_plan_frontmatter_scope(build_plan_content)
     if fm_scope:
         return fm_scope
+    if present:
+        # Key was explicitly present but null/empty — an author opt-out.
+        # Suppress inference: do not inherit a change-log scope.
+        return None
     if change_log_content:
         entries = parse_change_log(change_log_content)
         for entry in entries:
