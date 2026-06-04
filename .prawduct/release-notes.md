@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.7
+
+**Entry:** 2026-06-04: rigor-and-stance — sharpen the methodology's PM seams (requirements rigor + agent stance) (shipped v2.0.7)
+
+**Chunks shipped:** 01, 02, 03
+
+**Scope:** rigor-and-stance
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.6
 
 **Entry:** 2026-06-04: release-tooling — fix the release/build tooling once and for all (REL-4T8N + 3) (shipped v2.0.6)

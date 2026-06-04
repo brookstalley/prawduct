@@ -83,6 +83,8 @@ The cost of one round of clarification is small. The cost of building the wrong 
 
 **Don't interrogate.** One inference to confirm beats five questions. Pairs with Principle 20 (Infer, Confirm, Proceed). Once requirements are clear, the methodology files (`methodology/discovery.md`, `methodology/planning.md`, `methodology/building.md`) tell you what to do next.
 
+**Scale the rigor to the work.** How hard you pin requirements down — and whether you must *research* rather than rely on intrinsic knowledge — depends on three things: the **stakes** of getting it wrong, your **confidence** in designing a *great* solution unaided, and the **volatility** of the domain (fast-moving or post-training-cutoff data must be verified, not recalled — a rapidly-evolving language, a fast-moving tool, current versions/prices/results). Fill what you can infer and record each as a vetoable assumption; surface only consequential, unverifiable unknowns. See `methodology/discovery.md` "Calibrate Rigor."
+
 ## Methodology
 
 These narrative guides teach the approach. **Read the relevant guide when entering each type of work** — not from memory, actually read the file:

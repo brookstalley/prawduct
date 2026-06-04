@@ -61,7 +61,7 @@ last_validated: null
 
 **Why:** [One sentence — what makes confidence what it is]
 
-**Open assumptions / unknowns:** [If Medium/Low, list them. If High, "None."]
+**Open assumptions / unknowns:** [List each answer you *inferred* rather than confirmed, as a vetoable assumption: `[ASSUMPTION: <what you assumed> | HIGH/MED/LOW impact | user can correct / override / defer]`. If High with nothing inferred, "None." See `methodology/discovery.md` "Calibrate Rigor".]
 
 **What would raise confidence:** [If Medium/Low, what discovery, decision, or research closes the gap? If High, "N/A."]
 

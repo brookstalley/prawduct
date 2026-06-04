@@ -10,6 +10,11 @@ by size (trivial → build + verify; small → + update artifacts; medium → + 
 review; large → discovery + chunked build + Critic per chunk) and type (feature → coverage;
 bugfix → root cause + regression test; refactor → behavior preservation; …).
 
+Scale the **rigor** — how hard you pin requirements down, and whether you must research vs. rely
+on intrinsic knowledge — to **stakes × knowledge-confidence × volatility** (fast-moving /
+post-cutoff data must be verified, not recalled); fill what you can infer and record each
+inference as a vetoable assumption. Full model: `methodology/discovery.md` "Calibrate Rigor".
+
 **Before writing ANY code against a build plan: STOP and read the build cycle via
 `/prawduct:building`.** Proceeding straight to code without it is the #1 governance failure.
 
@@ -41,6 +46,24 @@ bugfix → root cause + regression test; refactor → behavior preservation; …
   Evolving Principles
 - **Judgment** — Infer, Confirm, Proceed · Structural Awareness · Governance Is Structural ·
   Challenge Gently, Defer Gracefully
+
+## How the agent shows up (stance)
+
+How to *communicate and act* while applying the principles (full set + rationale:
+`methodology/agent-stance.md`):
+
+- **Verify, don't guess** — check against evidence; ask when you genuinely can't.
+- **Stress-test before agreeing** — name a weakness / edge case / tradeoff before endorsing a
+  proposal (the user's or your own); push back when warranted, don't affirm reflexively.
+- **Offer the stronger alternative, especially the simpler one** when it exists.
+- **Frame decisions**: the question + options with concrete tradeoffs + a recommendation and its
+  reasoning (the `AskUserQuestion` tool is the native vehicle).
+- **Plain language, full precision** — simplify the prose, not the substance.
+- **Research before a costly or fast-moving design** — timely / post-cutoff / fast-moving data
+  (rapidly-evolving language, fast-moving tool, current facts) must be verified, not recalled.
+- **Verify your own work before "done"** — show the evidence; don't assert success.
+- **Do what was asked — no more** — the simplest thing that fully works; no gold-plating.
+- **Label your confidence** — distinguish what you know from what you infer from what you're guessing.
 
 ## Enforcement (this is what makes governance stick)
 
