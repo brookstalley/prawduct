@@ -70,8 +70,9 @@ Disjoint file ownership per chunk (this is what makes the parallel build safe):
 **Acceptance criteria:**
 - Add a public `read_bool_yaml_key(path, key) -> bool` to `lib/core.py` (alongside the existing
   no-PyYAML yaml helpers ~line 108) performing the column-0 boolean scan against a YAML file.
-- `lib/views.py::is_views_enabled` and `bin/prawduct-hook::_read_bool_yaml_key` (which also serves
-  `coverage_required`) both delegate to the new helper. Behavior is byte-for-byte preserved.
+- `is_views_enabled` (in `lib/views.py`) and `_read_bool_yaml_key` (in `bin/prawduct-hook`, which
+  also serves `coverage_required`) both delegate to the new helper. Behavior is byte-for-byte preserved.
+  (File and symbol kept as separate backtick tokens — `path::symbol` trips the chunk-ref parser; see BLD-8F2Q.)
 - Tests in `tests/test_views.py` cover the extracted helper (true/false/missing-key/missing-file/
   malformed-line) and confirm both call sites still resolve correctly.
 **Done when:** `python3 -m pytest tests/test_views.py -n0` green; behavior unchanged; integrated.

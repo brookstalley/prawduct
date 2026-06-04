@@ -8,6 +8,18 @@
 ## Open
 
 
+- **[BLD-8F2Q]** `verify-chunk-refs` misreads `path::symbol` backtick tokens as missing file paths
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-04 · status: open`
+
+  The chunk-ref parser (`bin/prawduct-hook` `cmd_verify_chunk_refs` / `_parse_build_plan_chunk_refs`)
+  captures a whole backtick token like `lib/views.py::is_views_enabled`, sees the `/`, and treats the
+  entire `module.py::symbol` string as a (missing) file path → false-positive exit 1 even though the
+  file exists and the symbol is valid. Surfaced in the cleanup-batch cumulative Critic (Chunk 01
+  SYN-9C4T plan criteria used `path::symbol`); worked around there by separating file and symbol in the
+  prose. Fix-shape: when a backtick token contains `::`, existence-check only the pre-`::` path part and
+  skip/symbol-verify the rest, OR exclude `::`-containing tokens from path verification. Low impact
+  (only trips on the rare `path::symbol` plan-prose convention) but a real Goal-2 false positive. (critic)
+
 - **[REL-4T8N]** Release tooling: handle MULTIPLE release-pending plans (regen-views per scope) instead of a single `active_build_plan` pointer
   `effort: M · impact: M · area: release · source: builder · added: 2026-06-04`
 
