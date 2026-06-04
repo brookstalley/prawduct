@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: evidence-deferral — test-evidence writer + stop-gate-vs-background-work floor (merged)
+
+<!-- prawduct: chunks=01,02 | status=merged | scope=evidence-deferral -->
+
+**Why:** Two bug reports filed by a downstream product repo (Hallucinote, via `incoming-bugs/`)
+and confirmed firsthand. Built directly in the main session (not a workflow — both chunks share
+`bin/prawduct-hook` and chunk 02 is design-informed).
+
+**What merged (2 chunks, via #60 → develop):**
+- **Chunk 01 (TST-6V2N):** new `prawduct-hook test-evidence record [-- <pytest args>]` subcommand —
+  the missing WRITER for the `.prawduct/.test-evidence.json` the `test-status` freshness gate and
+  cumulative-Critic staleness check READ. Runs pytest with a JUnit XML report (exact counts),
+  stamps `git_sha=HEAD` + ISO timestamp, overlays the F4a coverage half via
+  `test-reference-verify --merge-into`, writes atomically. Exit mirrors the suite; evidence written
+  either way. Closes the "stamp a fresh sha over stale counts" hole. 5 tests; dogfooded itself.
+- **Chunk 02 (STH-3W7F):** doc-only floor + design. `methodology/building.md` Gate-waivers now
+  states "in-flight background work is not a waiver case — wait, don't waive" (waiving would skip
+  the Critic the completed work still needs). The real fix (a self-declared `.gates-deferred` that
+  defers once then re-arms) is recorded in the backlog and DEFERRED — the Stop hook can't detect
+  in-flight work itself. building.md token budget 4450→4560 (addition halved first; rationale in-test).
+  Also gitignored the `incoming-bugs/` drop-box.
+
+**Status:** RELEASE-PENDING (`status=merged`). This is the THIRD release-pending plan (after
+`roi-batch`, `roi-batch-2`); the `develop→main` release runs `regen-views` once per scope. Full
+suite green (754 passed, +5); cumulative Critic (0 blocking / 0 warning / 4 notes — 1 WARNING for a
+stale plan ref caught + resolved) and independent PR review (0 blocking / 0 warning / 3 cosmetic
+notes) both clean. TST-6V2N archived; STH-3W7F stays open (only floor+design shipped; the
+`.gates-deferred` code fix is pending).
+
 ## 2026-06-04: roi-batch-2 — 9 ROI backlog fixes (views/hook/advisory hardening + tests) (merged)
 
 <!-- prawduct: chunks=01,02,03,04,05,06,07,08,09 | status=merged | scope=roi-batch-2 -->
