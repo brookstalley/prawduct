@@ -460,9 +460,10 @@ views_enabled: true
 # artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
 # The v2.0.0 plugin-distribution and M4 file-sync-retirement (v2.0.3, shipped
 # 2026-06-04) plans are complete; their build-plan files are retained as historical
-# artifacts alongside the prior vN plans. No plan is active — unset falls back to
-# artifacts/build-plan.md.
-active_build_plan:
+# artifacts alongside the prior vN plans. The active plan is the waiver-pragma +
+# 2.0-rock-solid-cleanup work (Wave 1 shipped, Wave 2 in progress); clear this
+# pointer back to unset when that branch ships.
+active_build_plan: artifacts/waiver-pragma-plan.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

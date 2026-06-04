@@ -76,7 +76,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - No unlisted dependencies → **BLOCKING**.
 - No undocumented architectural decisions → **BLOCKING**.
 - No extra functionality beyond what was planned → **WARNING**.
-- No broad exception handling without logging/re-raising → **WARNING**. Catches marked with `# prawduct:ok-broad-except` are reviewed-but-verifiable: check that they log with context and are at genuine system boundaries. The marker means "intentional," not "exempt."
+- No broad exception handling without logging/re-raising → **WARNING**. Intentional-waiver pragmas (`prawduct:allow <scope>/<rule-id> -- reason`, legacy `prawduct:ok-broad-except`; spec `docs/waivers.md`) are reviewed-but-verifiable: the reason must be present and genuine — for `broad-except`, the catch logs with context at a real boundary. "Intentional," not "exempt"; a reason-less or defect-masking waiver is a finding.
 - **Rationale-vs-diff fit (`Type: trivial` only)**: compare `**Trivial because:**` claim vs diff. Mismatch (claim "rename" but diff adds defs; "type annotations" but control flow changes; "logging" but behavior shifts) → **BLOCKING** (scope expansion). Low-information rationale ("small change", "easy fix") → **WARNING** (no testable claim). Examples in `methodology/planning.md`.
 
 ### 4. Everything Is Coherent

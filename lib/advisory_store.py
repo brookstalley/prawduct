@@ -212,7 +212,7 @@ def run_all_probes(state: ProjectState, codebase: Codebase) -> list[AdvisoryCand
         fn = record["fn"]
         try:
             produced = list(fn(state, codebase))
-        except Exception:  # prawduct:ok-broad-except — a faulty probe must not block sync; skip it
+        except Exception:  # prawduct:allow prawduct/broad-except -- a faulty probe must not block sync; skip it
             continue
         for cand in produced:
             candidates.append(

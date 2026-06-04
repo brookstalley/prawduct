@@ -76,7 +76,7 @@ Accept flag form for machine callers (`--area=sync --budget=30m --type=quick-win
 - `pick something quick and high-impact` → `{type: quick-win}` → high-impact + low-effort items.
 
 ### migrate
-Convert legacy unstructured items to the structured format and fold the old sections into Open/Promoted/Archive. **Idempotent** (only touches items lacking a metadata bar) and **never destructive** (bodies are preserved verbatim; items are never deleted). This is the action the `legacy-backlog-format` post-sync advisory recommends.
+Convert legacy unstructured items to the structured format and fold the old sections into Open/Promoted/Archive. **Idempotent** (only touches items lacking a metadata bar) and **never destructive** (bodies are preserved verbatim; items are never deleted). Run it when a repo carries unstructured legacy items (the `pick`/list views flag these). (The `legacy-backlog-format` post-sync advisory that used to nudge this was retired with the file-sync engine in M4; re-adding it as a plugin-native probe is tracked in the backlog.)
 
 1. Read `.prawduct/backlog.md`. Identify legacy items — top-level bullets with no `effort: … · status: …` metadata bar. If there are none, report "already migrated" and stop.
 2. Walk them in **batches of ~10**. For each item show its title + first ~2 lines of body and your **inferred metadata**:
@@ -87,7 +87,7 @@ Convert legacy unstructured items to the structured format and fold the old sect
    Present the batch and let the user accept as-is, edit inline (e.g. supply `effort impact`), or skip individual items. When run non-interactively, apply your inferences and report what you assumed.
 3. On accept, rewrite each item to the structured shape (id + metadata bar + original body unchanged), placing it in the section matching its `status` (default `open`).
 4. **Fold sections**: map legacy headings onto the canonical three — `## Active — next up` and `## Queue` → `## Open` (use judgment if "Active" items were truly in-flight → `## Promoted`); preserve any already-`[RESOLVED]`/shipped items by moving them to `## Archive` with `status: shipped`. (`/prawduct:backlog migrate --sections` does only this heading conversion without re-touching item metadata.)
-5. **On completion** (all legacy items structured + sections folded), write `backlog_format_version: 2` as a top-level key in `.prawduct/project-state.yaml`. This is the resolution-condition fact the `legacy-backlog-format` probe consults — setting it auto-resolves the advisory on the next sync (and, because project-state.yaml is committed, for every teammate). If migration is partial (user skipped items), do **not** set it yet — say how many remain.
+5. **On completion** (all legacy items structured + sections folded), write `backlog_format_version: 2` as a top-level key in `.prawduct/project-state.yaml`. This records — as a committed, shared fact — that the backlog is on the structured format (and is the resolution-condition a future plugin-native `legacy-backlog-format` probe would consult). If migration is partial (user skipped items), do **not** set it yet — say how many remain.
 6. Report: items migrated, sections folded, whether `backlog_format_version` was set, and how many (if any) remain legacy.
 
 $ARGUMENTS
