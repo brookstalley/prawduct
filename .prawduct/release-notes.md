@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.9
+
+**Entry:** 2026-06-04: CRT-7M2D — cumulative-Critic gate judges commit-coverage, not mtime-recency (shipped v2.0.9)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.8
 
 **Entry:** 2026-06-04: onboard — split repo onboarding out of /prawduct:doctor into /prawduct:onboard (shipped v2.0.8)

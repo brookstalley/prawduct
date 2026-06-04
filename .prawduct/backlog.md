@@ -8,23 +8,6 @@
 ## Open
 
 
-- **[CRT-7M2D]** Cumulative-Critic gate: judge freshness by commit-coverage (or exempt doc-only deltas), not recency
-  `effort: M · impact: M · area: critic · source: builder · added: 2026-06-04 · status: open · related: STH-6B4R`
-
-  Observed twice (rigor-and-stance + onboard releases, 2026-06-04): every post-cumulative fix — even
-  the Critic's OWN requested NOTE fixes or the PR reviewer's one-line docstring WARNING — moves HEAD
-  past the cumulative record's `commit_reviewed`, forcing a full `/prawduct:critic cumulative` re-run
-  to keep the record honestly covering HEAD. The `check-cumulative-critic` gate reports "fresh" on
-  mtime/session-recency, NOT on `commit_reviewed == HEAD`, so it would FALSE-PASS a stale record
-  (caught both times by inspecting the record; re-ran rather than exploit the gap). Net: a 4-10 min
-  cumulative re-run for an inert doc/docstring change, repeatedly. Fix-shapes: (a) the gate compares
-  the record's `commit_reviewed` to HEAD and only passes when equal (honest), AND a sanctioned
-  "post-review doc-only delta" path: if `git diff <commit_reviewed>..HEAD` is doc-only (or below a
-  trivial-fileset bound), the existing cumulative record still satisfies the gate (no re-run). (b)
-  alternatively, a `verify-resolutions`-style lightweight re-bless that advances `commit_reviewed`
-  without a full 7-goal pass when the delta is inert. Relates to STH-6B4R (gate freshness precision).
-  Filed from the v2.0.7/v2.0.8 releases. (builder)
-
 - **[LRN-3F8K]** Reconcile the dangling sentinel on the "Framework ownership follows the write strategy" learning
   `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open`
 
@@ -261,6 +244,16 @@ _None._
 
 ## Archive
 
+
+- **[CRT-7M2D]** Cumulative-Critic gate judges commit-coverage, not mtime-recency
+  `effort: M · impact: M · area: critic · source: builder · added: 2026-06-04 · status: shipped · closed-by: #65 (v2.0.9) · related: STH-6B4R`
+
+  `check-cumulative-critic` now passes iff the cumulative record covers HEAD (`commit_reviewed == HEAD`,
+  or only `.md` changed since), instead of judging mtime vs `.session-start` — closing the false-pass
+  (a stale record passing over real code changes) AND the post-review re-run treadmill (inert doc fixes
+  no longer force a full cumulative re-run). New `tests/test_cumulative_gate.py` (8 real-git tests; the
+  gate previously had none); doc wording swept "fresh" → "HEAD-covering". Dogfooded on its own PR #65
+  (doc-only post-review fixes stayed covered, no re-run). Shipped v2.0.9. (builder)
 
 - **[REL-4T8N]** Release tooling: handle MULTIPLE release-pending plans (regen-views per scope) instead of a single `active_build_plan` pointer
   `effort: M · impact: M · area: release · source: builder · added: 2026-06-04 · status: shipped · closed-by: #62 (v2.0.6)`

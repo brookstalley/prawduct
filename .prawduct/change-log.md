@@ -3,6 +3,36 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: CRT-7M2D — cumulative-Critic gate judges commit-coverage, not mtime-recency (shipped v2.0.9)
+
+<!-- prawduct: type=fix | release=v2.0.9 | status=shipped -->
+
+**Why:** The `/prawduct:pr` cumulative-Critic gate (`check-cumulative-critic`) judged the findings
+record by mtime vs `.session-start`. That both (a) FALSE-PASSED a stale record over real code
+changes (mtime fresh, but `commit_reviewed != HEAD`), and (b) forced a full ~4-10 min cumulative
+re-run after every inert post-review fix — the "treadmill" that bit the v2.0.7 and v2.0.8 releases.
+
+**What shipped (via #65 → develop, then v2.0.9):**
+- `bin/prawduct-hook` `cmd_check_cumulative_critic`: replaced the mtime/`.session-start` freshness
+  block with a **commit-coverage** check — the gate passes iff the record is clean, schema-valid,
+  cumulative-mode, and covers HEAD (`commit_reviewed == HEAD`, or the only files changed since are
+  docs `.md`). A code change since the review fails (re-run genuinely needed); a doc-only change does
+  not. Fails closed on any git error. The `.md`-only carveout reuses the framework's existing
+  doc-only definition (no new trust boundary).
+- `tests/test_cumulative_gate.py` (NEW): the gate had **zero** direct coverage. 8 real-git tests —
+  covers-head, doc-only-delta-covered, code-delta-stale, blocking, missing/unresolved
+  `commit_reviewed`, wrong-mode, missing-file.
+- Doc sweep: `skills/critic/review-cycle.md`, `skills/pr/SKILL.md`, `methodology/building.md`
+  repointed from "fresh" to "HEAD-covering" gate wording.
+
+**Dogfood:** this fix's OWN PR had doc-only post-review fixes, and the gate stayed satisfied without
+a cumulative re-run — the treadmill is gone, demonstrated on the very PR that fixes it.
+
+**Versioning:** patch bump (2.0.8 → 2.0.9). Internal governance-tooling correctness fix; no
+behavioral change for product builds beyond the (now-honest) PR gate. Closes CRT-7M2D.
+
+**Tests:** 812 passing (+8). Cumulative Critic 0 blocking; independent PR review 0 blocking.
+
 ## 2026-06-04: onboard — split repo onboarding out of /prawduct:doctor into /prawduct:onboard (shipped v2.0.8)
 
 <!-- prawduct: type=feature | release=v2.0.8 | status=shipped -->

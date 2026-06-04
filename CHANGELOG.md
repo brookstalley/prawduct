@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v2.0.9
+Governance-tooling fix (CRT-7M2D): the `/prawduct:pr` cumulative-Critic gate now judges its review record by **commit-coverage** rather than timestamp recency — it passes when the recorded review covers HEAD (or only docs changed since), and fails when real code changed since the review. This closes a correctness hole (a stale record could pass) and removes a workflow snag where every small post-review fix forced a full ~4-10 min review re-run. No change to how product builds are governed. Internal — most plugin users won't notice beyond smoother PRs.
+
 ## v2.0.8
 Onboarding gets its own command. Setting Prawduct up in a repo is now **`/prawduct:onboard`** (new or existing repo — same command), instead of the mis-named `/prawduct:doctor`, which connoted health-check, not setup. `/prawduct:doctor` keeps its real job: health-check, repair, enable-gate, verify, and audit-learnings on an already-onboarded repo. The README quick start is trimmed to two steps — install the plugin once at the user level, then onboard any repo. No behavioral change to governance; existing repos are unaffected.
 
