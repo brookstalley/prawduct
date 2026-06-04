@@ -40,9 +40,9 @@ Claude Code best practices) rather than invented-here.
      scope=rigor-and-stance / status=shipped, then run regen-views.
      Do NOT hand-edit the checkboxes. -->
 
-- [ ] Chunk 01: Requirements rigor — stakes/knowledge/volatility self-assessment + intentional inference + research triggers
-- [ ] Chunk 02: Agent stance doc + condensed digest stance section
-- [ ] Chunk 03: Digest sweep — audit other artifacts for digest-worthy content (propose → ratify → apply)
+- [x] Chunk 01: Requirements rigor — stakes/knowledge/volatility self-assessment + intentional inference + research triggers
+- [x] Chunk 02: Agent stance doc + condensed digest stance section
+- [x] Chunk 03: Digest sweep — audit other artifacts for digest-worthy content (propose → ratify → apply)
 Context: Plan authored 2026-06-04. Owner-directed pivot (infra foundation judged stable: v2.0.6
 shipped, 798 tests green, develop≡main). Built sequentially in the main tree (shared files +
 coherent prose — parallel worktrees would manufacture conflicts). Design validated by two research

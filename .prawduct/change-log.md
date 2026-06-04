@@ -3,9 +3,9 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-06-04: rigor-and-stance — sharpen the methodology's PM seams (requirements rigor + agent stance) (release-pending)
+## 2026-06-04: rigor-and-stance — sharpen the methodology's PM seams (requirements rigor + agent stance) (shipped v2.0.7)
 
-<!-- prawduct: chunks=01,02,03 | status=merged | scope=rigor-and-stance -->
+<!-- prawduct: chunks=01,02,03 | release=v2.0.7 | status=shipped | scope=rigor-and-stance -->
 
 **Why:** Owner-directed pivot from infrastructure to product-management methodology — the infra
 foundation was judged stable (v2.0.6 shipped, suite green, develop≡main, backlog ~97% governance
@@ -13,7 +13,7 @@ machinery). Sharpen two PM seams the infra-heavy backlog had starved: proportion
 rigor, and an explicit agent stance. Design validated by two web-research passes this session
 (Claude Code capabilities + agent-design best practices), not first principles.
 
-**What merged (3 chunks, → develop):**
+**What merged (3 chunks, via #63 → develop):**
 - **Chunk 01 (requirements rigor):** new canonical `methodology/discovery.md` "Calibrate Rigor to
   Stakes, Knowledge, and Volatility" — rigor scales to stakes × knowledge-confidence × volatility,
   with two distinct research axes (knowledge gap → reason/decompose; volatility/recency → web
@@ -38,8 +38,8 @@ note, all cross-chunk coherence fixes applied (cross-cutting-concerns rows updat
 STN-6K3D). Full suite green (+5 tests: 798→803). Two durable learnings captured (research-trigger
 self-exemption / volatility-vs-knowledge split; canonical-mechanism-vs-structural-constraint).
 
-**Status:** RELEASE-PENDING (`status=merged`). The `develop→main` release flips this to
-`status=shipped` + `release=v2.0.7` and runs `regen-views`.
+**Status:** SHIPPED in v2.0.7 (develop→main, 2026-06-04, #63). `regen-views` flipped the build
+plan's `## Status` checkboxes to `[x]` and added the v2.0.7 release-notes section + scope rollup.
 
 ## 2026-06-04: release-tooling — fix the release/build tooling once and for all (REL-4T8N + 3) (shipped v2.0.6)
 
