@@ -7,6 +7,29 @@
 
 ## Open
 
+- **[STH-4D2X]** Decide whether the trivial/doc-only file-set gate should also protect a consumer's own `.claude/skills/`
+  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-03 · status: open`
+
+  The waiver-pragma branch (W2-C1) fixed `_classify_trivial_change` to bound `skills/` (the framework
+  repo's own skill definitions) instead of the deleted `agents/`. Open question it surfaced: in a
+  CONSUMER repo, a product's own skills live at `.claude/skills/` (not top-level `skills/`), and
+  `_is_metadata_path` no longer excuses them (M4 made `.claude/skills/` count as gated code). Should
+  editing `.claude/skills/foo/SKILL.md` in a `Type: trivial`/doc-only chunk trip the catastrophic-
+  blast-radius bound? A product skill is important but arguably not "governs all future work"
+  catastrophic the way the framework's own `skills/`/`methodology/`/`templates/` are. Changing it
+  affects every consumer, so it needs a deliberate decision + test, not a silent add. Filed from the
+  2.0-rock-solid pass, 2026-06-03. (builder)
+
+- **[DOC-2W9P]** Repoint stale `tools/lib/` example paths in `documentation/` design specs to plugin-native
+  `effort: S · impact: S · area: docs · source: builder · added: 2026-06-03 · status: open`
+
+  `documentation/post-sync-advisory-spec.md` (≈ lines 197/218/276/296/434/435) and
+  `documentation/governance-tax-followups.md` §3 still illustrate the advisory/probe layout with
+  retired file-sync paths (`tools/lib/probes/…`, `tools/product-hook`, `prawduct-setup.py`, `run_sync`).
+  The spec is still the authoritative reference for `lib/advisory_store.py`, so the illustrative paths
+  should point at `lib/advisory_store.py` / `hooks/hooks.json` / `bin/prawduct-hook`. Internal design
+  archive, not user-facing — deferred from the 2.0-rock-solid pass Wave 2. (builder)
+
 - **[JAN-4F7M]** Rewrite `skills/janitor/SKILL.md` "Template Currency" theme for plugin distribution
   `effort: M · impact: M · area: janitor · source: builder · added: 2026-06-03 · status: resolved · reviewed: 2026-06-04`
 

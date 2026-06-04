@@ -81,23 +81,21 @@ full suite green; `/prawduct:critic chunk`.
 
 ---
 
-## Wave 2 — 2.0 rock-solid cleanup (queued, not this cycle)
+## Wave 2 — 2.0 rock-solid cleanup
 
-Surfaced by the 2026-06-03 audit; tracked here so it is not lost:
-- **Governance gate:** `_classify_trivial_change` / `_is_trivial_fileset_eligible` / `check-pr-trivial`
-  in `bin/prawduct-hook` still bound on the deleted `agents/` path and are **missing `skills/`** (a
-  `trivial`/`doc-only` chunk could edit `skills/critic/SKILL.md` untripped). Add `skills/`, rename
-  reason `agent-file-edited`→`skill-file-edited`, and add the **missing** regression tests (the
-  path bounds have zero coverage today). Update prose: `methodology/planning.md`,
-  `templates/build-plan.md`, `skills/pr/*`.
-- **Dangling refs:** `lib/operator_verification.py:222` (`migrate_cmd.py`), `skills/backlog/SKILL.md`
-  (retired `legacy-backlog-format` advisory framing).
-- **Lost parity test:** restore the `_SESSION_GITIGNORED_PATHS`↔`GITIGNORE_ENTRIES` mirror test
-  (deleted with M4's `test_coverage_gaps.py`); the comments at `bin/prawduct-hook:119,303` and
-  `tests/test_build_plan_resolution.py:99` cite it as live.
-- **Apply the new pragma:** `prawduct/legacy-ref` on the legit migration `tools/` refs;
-  `prawduct/duplication` on the bin↔lib mirror comments.
-- **Ship-blocker docs:** `README.md:278` "(in progress)"; `CLAUDE.md:97,107,109` bare `/critic`,`/pr`.
-- **Stale specs:** `documentation/post-sync-advisory-spec.md`, `documentation/governance-tax-followups.md`.
-- **Backlog hygiene:** archive 9 obsolete + 6 already-shipped items; re-path 18 live items; re-validate
-  2 uncertain flaky-test items.
+- [x] **W2-C1 — Governance-gate fix.** `_classify_trivial_change` now bounds `skills/` (not the
+  deleted `agents/`); reason `agent-file-edited`→`skill-file-edited`; **new `tests/test_trivial_fileset_gate.py`**
+  (12 tests — the coverage the bound never had); prose cascade (planning.md, build-plan.md, pr SKILL/protocol).
+- [x] **W2-C2 — Markers + dangling refs + parity test.** `prawduct/legacy-ref` on `lib/core.py`
+  migration literals; `prawduct/duplication` on the two parity-tested bin↔lib mirrors; restored the
+  `_SESSION_GITIGNORED_PATHS`↔`GITIGNORE_ENTRIES` parity test; fixed `operator_verification.py`
+  (`migrate_cmd.py`→`core.read_bool_yaml_key`) and `skills/backlog/SKILL.md` (retired-advisory framing).
+- [x] **W2-C3 — Ship-blocker docs.** README "(in progress)" dropped; CLAUDE.md bare `/critic`,`/pr`
+  namespaced; `pyproject.toml` version 1.3.7→2.0.3.
+- [ ] **W2-C4 — Backlog hygiene (remaining).** Archive 9 obsolete (file-sync) + 6 already-shipped
+  items sitting in `## Open`; re-path 18 still-valid items (old `tools/product-hook`→`bin/prawduct-hook`,
+  `agents/…`→`skills/…`); re-validate 2 uncertain flaky-test items (`TST-4P8H`, `TST-1M6V`).
+- [ ] **Deferred (filed to backlog):** `documentation/` internal-spec stale `tools/lib/` paths;
+  the `.claude/skills/` (consumer-own-skill) trivial-gate question.
+
+694 tests green. Cumulative Critic clean (0 blocking). Branch ready to PR when the owner is.
