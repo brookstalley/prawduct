@@ -68,6 +68,12 @@ The field is required, but it's not a gate. No review blocks Medium or Low plans
 
 When confidence is Medium or Low, the plan also lists *what would raise it*. Don't leave that field as "more thinking." Specify the missing information and the cheapest path to get it: a single clarifying question, a 30-minute spike, a 5-line scope sketch to confirm. The cure isn't more process — it's the cheapest concrete step that closes the gap.
 
+**Record inferred answers as vetoable assumptions.** When you fill a requirement yourself rather than confirming it with the user (intentional inference — see `methodology/discovery.md` "Calibrate Rigor"), capture it in the plan's **Open assumptions** field in a form the user can scan and veto:
+
+`[ASSUMPTION: <what you assumed> | HIGH/MED/LOW impact | user can correct / override / defer]`
+
+This is what makes filling-in *intentional* rather than silent: a High-impact assumption the user disagrees with is caught before it becomes built code, and the impact tag tells the reader which ones to check first. An assumption is not a confirmed requirement — it's a decision you made on the user's behalf, surfaced for correction. The same convention carries into the build plan's `Open assumptions / unknowns` field (see `templates/build-plan.md`).
+
 **Good chunks are:**
 - **Vertically sliced** — each chunk delivers working, testable functionality from data model through UI (if applicable)
 - **Dependency-ordered** — later chunks build on earlier ones; the first chunk validates the architecture

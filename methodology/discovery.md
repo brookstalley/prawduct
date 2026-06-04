@@ -50,6 +50,29 @@ If you can answer all three, you have enough — capture them in the build plan'
 
 This connects directly to Principle 6 (Requirements Precede Code) and Principle 20 (Infer, Confirm, Proceed). The build cycle's `Before You Build: Confidence Check` (see `methodology/building.md`) is the same pattern at the next stage — discovery framing asks "what's the problem"; the build-side check asks "are we ready to commit code to the answer?"
 
+## Calibrate Rigor to Stakes, Knowledge, and Volatility
+
+Risk Calibration (above) sets discovery *depth* for a new product. Within any work — a new product, a feature, a refactor — calibrate *how hard you pin down requirements and how much you research* by asking yourself three questions. Size is a proxy; these are the real drivers, and they apply even to small work.
+
+1. **What are the stakes of getting this wrong?** Consequence and blast radius. High stakes → pin requirements down harder, document the design before building, and review more. A one-line change to a payment path outranks a large change to a throwaway script.
+2. **Can I design a *great* solution from intrinsic knowledge?** Not adequate — great. If you can't, the gap is *knowledge*: decompose, plan harder, or research established patterns before committing.
+3. **Does correctness depend on timely, post-training-cutoff, or fast-moving data?** If yes, the gap is *volatility*: verify against current evidence — your training is stale by construction.
+
+Questions 2 and 3 are different gaps with different remedies — keep them separate. A knowledge gap wants more reasoning or decomposition; a volatility gap wants research. (A design can be high on both — novel *and* fast-moving.)
+
+**Research when the inputs OR the design depend on timely data.** This covers both what you build *with* and what you decide:
+
+- **Timely facts you will assert or act on** — current library/tool versions, prices, availability, recent results or scores. Verify before relying on them, almost regardless of cost: it's cheap, and asserting stale data as current is a correctness failure.
+- **Design decisions in fast-moving domains** — a rapidly-evolving language (e.g. Zig), a fast-moving product (e.g. Claude Code itself), or current best practices in an emerging field. Research scaled to stakes × implementation cost; prefer expert and established solutions over reasoning from first principles (Principle 7).
+
+Self-check: *"Does this depend on the current state of the world, or a field that moves faster than my training cycle?"* If yes, research before relying on intrinsic knowledge, and say what you checked. If you can't verify (no tools available), proceed only with the uncertainty labeled — never assert stale knowledge as current (Principle 5).
+
+**Make your inferences explicit (intentional inference).** "Infer, confirm, proceed" and "Ask the fewest questions that most change the project" (below) already say to answer what you can yourself and surface only high-value questions. Add one discipline so filling-in is *intentional, not silent*: record each answer you *inferred* (rather than confirmed or verified) as a vetoable assumption —
+
+`[ASSUMPTION: <what you assumed> | HIGH/MED/LOW impact | user can correct / override / defer]`
+
+— so an inference is visible and correctable instead of buried. Surface a question to the user only when its answer is both **consequential** and **genuinely unverifiable** by you, and surface it **early** — before you've invested in implementation, not after you've hit a wall. The bar that earns a question is impact, not uncertainty alone; every question spends user patience (the cost of asking).
+
 ## How to Discover
 
 **Infer, confirm, proceed.** Don't interrogate. Use context to form hypotheses, state them, and let the user correct you. "Since this handles payment data, I'm assuming we need PCI-DSS awareness and encrypted storage. Sound right?" moves faster than "What security requirements do you have?"
@@ -66,7 +89,7 @@ This connects directly to Principle 6 (Requirements Precede Code) and Principle 
 
 After you understand the concept and structural characteristics — typically after the first exchange — search for what already exists in this space. This isn't a gate or a report; it's expertise you bring to the conversation (Principle #7).
 
-**What to search for.** Always look for existing solutions that solve the same core problem. For medium-risk and above, also search for key libraries, established patterns, and relevant standards. If web search is available, use it — it surfaces current, specific results that training data may miss. If it's not available, draw on your domain knowledge and say so.
+**What to search for.** Always look for existing solutions that solve the same core problem. For medium-risk and above, also search for key libraries, established patterns, and relevant standards. If web search is available, use it — it surfaces current, specific results that training data may miss. If it's not available, draw on your domain knowledge and say so. (Per "Calibrate Rigor" above, a fast-moving or post-cutoff topic makes this search *mandatory*, not optional — intrinsic knowledge is stale there by construction.)
 
 **Scale search depth to risk.** Low-risk: 1-2 quick searches. Medium-risk: 2-3 searches covering solutions and relevant libraries. High-risk: 3-5 searches including solutions, libraries, standards, and cautionary tales.
 
