@@ -8,6 +8,19 @@
 ## Open
 
 
+- **[TST-9K4W]** Structural tests scan `.claude/worktrees/` — leftover/in-flight workflow worktrees fail the suite
+  `effort: S · impact: S · area: tests · source: builder · added: 2026-06-04 · status: open`
+
+  `test_test_location::test_all_test_files_live_under_tests_directory` and
+  `test_plugin_methodology_digest::test_source_is_one_canonical_copy` glob the whole repo tree, so when a
+  worktree-isolated workflow leaves `.claude/worktrees/wf_*/` dirs behind (worktrees with changes are NOT
+  auto-removed), the duplicate test/methodology copies inside them fail both tests ("test files outside
+  tests/", "not one canonical copy"). Surfaced integrating cleanup-batch (2026-06-04); worked around by
+  `git worktree remove -f` before the suite. As this repo now runs parallel worktree-isolated workflow
+  builds routinely, make the collectors robust: exclude a `.claude/` path component from the file globs in
+  both tests, and consider adding `.claude/worktrees/` to pytest `norecursedirs`/`--ignore` so collection
+  itself skips it. (builder)
+
 - **[BLD-8F2Q]** `verify-chunk-refs` misreads `path::symbol` backtick tokens as missing file paths
   `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-04 · status: open`
 
