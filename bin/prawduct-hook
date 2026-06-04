@@ -4101,6 +4101,14 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     -c *)`` — keeping the structural "no arbitrary code execution"
     constraint enforceable.
 
+    Precedence (delegated to ``infer_mode``): explicit ``args`` (the
+    per-invocation override) win first, then the active build plan's
+    CURRENT chunk ``**Critic mode:**`` field (the plan-level "successive
+    override", rationale ``plan-override: <mode>`` — CRT-3M8Q), then the
+    four inference rules. This is why a plan-mandated ``final`` is now
+    honored here instead of being silently demoted to the inferred
+    ``chunk``.
+
     Output format: a single stdout line ``<mode>|<rationale>`` where
     ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
     ``cumulative`` / ``verify-resolutions``) and ``<rationale>`` is the
