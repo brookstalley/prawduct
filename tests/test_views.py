@@ -1217,6 +1217,231 @@ class TestApplyRegen:
 
 
 # =============================================================================
+# Multi-scope regen (REL-4T8N): scope→plan map, scope enumeration, diagnostics,
+# and plan_regen flipping every release-pending plan in one pass.
+# =============================================================================
+
+
+def _write_scoped_plan(
+    artifacts_dir: Path, filename: str, scope: str | None, chunk_ids: list[str]
+) -> None:
+    """Write a minimal scope-tagged build plan with the given chunk lines."""
+    front = "---\nartifact: build-plan\n"
+    if scope is not None:
+        front += f"scope: {scope}\n"
+    front += "---\n\n## Status\n"
+    body = "".join(f"- [ ] Chunk {cid}: work\n" for cid in chunk_ids)
+    (artifacts_dir / filename).write_text(front + body)
+
+
+class TestBuildScopeToPlanMap:
+    def test_maps_each_scope_to_its_plan_file(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01"])
+        _write_scoped_plan(artifacts, "build-plan-beta.md", "beta", ["01"])
+        mapping = views.build_scope_to_plan_map(artifacts)
+        assert set(mapping) == {"alpha", "beta"}
+        assert mapping["alpha"].name == "build-plan-alpha.md"
+        assert mapping["beta"].name == "build-plan-beta.md"
+
+    def test_excludes_plans_without_scope_frontmatter(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01"])
+        _write_scoped_plan(artifacts, "build-plan.md", None, ["01"])  # no scope
+        (artifacts / "project-preferences.md").write_text("# prefs, not a plan\n")
+        mapping = views.build_scope_to_plan_map(artifacts)
+        assert set(mapping) == {"alpha"}
+
+    def test_duplicate_scope_keeps_first_by_sorted_filename(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "b-plan.md", "dup", ["01"])
+        _write_scoped_plan(artifacts, "a-plan.md", "dup", ["02"])
+        mapping = views.build_scope_to_plan_map(artifacts)
+        assert mapping["dup"].name == "a-plan.md"  # first by sorted filename
+
+    def test_missing_dir_returns_empty(self, tmp_path: Path):
+        assert views.build_scope_to_plan_map(tmp_path / "nope") == {}
+
+
+class TestCollectReleasePendingScopes:
+    def test_includes_shipped_and_merged_newest_first_deduped(self):
+        change_log = (
+            "## 2026-06-04: c (newest)\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=gamma -->\n"
+            "## 2026-06-03: b\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=beta -->\n"
+            "## 2026-06-02: a (dup scope=gamma)\n"
+            "<!-- prawduct: chunks=02 | status=shipped | scope=gamma -->\n"
+        )
+        scopes = views.collect_release_pending_scopes(views.parse_change_log(change_log))
+        assert scopes == ["gamma", "beta"]  # newest-first, deduped
+
+    def test_excludes_untagged_and_other_status(self):
+        change_log = (
+            "## 2026-06-04: untagged\n\nBody.\n"
+            "## 2026-06-03: in-progress\n"
+            "<!-- prawduct: chunks=01 | status=in-progress | scope=wip -->\n"
+            "## 2026-06-02: no-scope shipped\n"
+            "<!-- prawduct: chunks=01 | status=shipped -->\n"
+        )
+        scopes = views.collect_release_pending_scopes(views.parse_change_log(change_log))
+        assert scopes == []  # wip status excluded; shipped-without-scope contributes no scope
+
+
+class TestDiagnoseScopePlanCoverage:
+    def test_merged_scope_without_plan_file_warns(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        change_log = (
+            "## 2026-06-04: pending\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=orphan -->\n"
+        )
+        warnings = views.diagnose_scope_plan_coverage(change_log, artifacts)
+        assert len(warnings) == 1
+        assert "orphan" in warnings[0] and "release-pending" in warnings[0]
+
+    def test_shipped_scope_without_plan_file_is_silent(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        change_log = (
+            "## 2026-06-04: historical\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=v1.0 -->\n"
+        )
+        assert views.diagnose_scope_plan_coverage(change_log, artifacts) == []
+
+    def test_merged_scope_with_plan_file_is_clean(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "build-plan-ok.md", "ok", ["01"])
+        change_log = (
+            "## 2026-06-04: pending\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=ok -->\n"
+        )
+        assert views.diagnose_scope_plan_coverage(change_log, artifacts) == []
+
+    def test_duplicate_scope_warns(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "a-plan.md", "dup", ["01"])
+        _write_scoped_plan(artifacts, "b-plan.md", "dup", ["02"])
+        warnings = views.diagnose_scope_plan_coverage("", artifacts)
+        assert any("duplicate scope" in w and "dup" in w for w in warnings)
+
+
+class TestMultiScopePlanRegen:
+    def _prawduct_dir(self, tmp_path: Path, change_log: str) -> Path:
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text("views_enabled: true\n")
+        (prawduct_dir / "change-log.md").write_text(change_log)
+        return prawduct_dir
+
+    def test_flips_every_plan_in_one_pass_no_cross_scope_leak(self, tmp_path: Path):
+        change_log = (
+            "## 2026-06-04: alpha\n"
+            "<!-- prawduct: chunks=01,02 | release=v9 | status=shipped | scope=alpha -->\n"
+            "## 2026-06-04: beta\n"
+            "<!-- prawduct: chunks=01 | release=v9 | status=shipped | scope=beta -->\n"
+        )
+        prawduct_dir = self._prawduct_dir(tmp_path, change_log)
+        artifacts = prawduct_dir / "artifacts"
+        # Both plans CONTAIN a Chunk 02; only alpha shipped 02. beta's 02 must
+        # stay unshipped — proving the per-plan scope filter blocks leakage.
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01", "02"])
+        _write_scoped_plan(artifacts, "build-plan-beta.md", "beta", ["01", "02"])
+
+        enabled, results = views.plan_regen(prawduct_dir)
+        assert enabled is True
+        status = [r for r in results if r.name == "status"]
+        assert {r.path_relative for r in status} == {
+            "artifacts/build-plan-alpha.md",
+            "artifacts/build-plan-beta.md",
+        }
+        views.apply_regen(prawduct_dir, results)
+
+        alpha = (artifacts / "build-plan-alpha.md").read_text()
+        beta = (artifacts / "build-plan-beta.md").read_text()
+        assert "- [x] Chunk 01: work" in alpha and "- [x] Chunk 02: work" in alpha
+        assert "- [x] Chunk 01: work" in beta
+        assert "- [ ] Chunk 02: work" in beta  # NO leak from alpha's shipped 02
+
+    def test_merged_scope_plan_regenerated_but_chunks_stay_unshipped(self, tmp_path: Path):
+        change_log = (
+            "## 2026-06-04: pending\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=gamma -->\n"
+        )
+        prawduct_dir = self._prawduct_dir(tmp_path, change_log)
+        artifacts = prawduct_dir / "artifacts"
+        _write_scoped_plan(artifacts, "build-plan-gamma.md", "gamma", ["01"])
+        # Pre-mark [x] to prove a merged (not shipped) scope flips it BACK to [ ].
+        p = artifacts / "build-plan-gamma.md"
+        p.write_text(p.read_text().replace("- [ ] Chunk 01", "- [x] Chunk 01"))
+
+        _, results = views.plan_regen(prawduct_dir)
+        views.apply_regen(prawduct_dir, results)
+        assert "- [ ] Chunk 01: work" in p.read_text()  # merged does not flip to [x]
+
+    def test_scope_without_plan_file_skipped_not_fatal(self, tmp_path: Path):
+        change_log = (
+            "## 2026-06-04: alpha\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=alpha -->\n"
+            "## 2026-06-04: orphan (no plan file)\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=orphan -->\n"
+        )
+        prawduct_dir = self._prawduct_dir(tmp_path, change_log)
+        _write_scoped_plan(prawduct_dir / "artifacts", "build-plan-alpha.md", "alpha", ["01"])
+
+        enabled, results = views.plan_regen(prawduct_dir)  # must NOT raise
+        assert enabled is True
+        status_paths = {r.path_relative for r in results if r.name == "status"}
+        assert status_paths == {"artifacts/build-plan-alpha.md"}  # orphan skipped
+
+    def test_pointer_plan_regenerated_even_when_scope_not_release_pending(self, tmp_path: Path):
+        # An in-progress pinned plan (its scope NOT yet in the change-log) is
+        # still regenerated, alongside a separate release-pending scope.
+        change_log = (
+            "## 2026-06-04: shipped scope\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=alpha -->\n"
+        )
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text(
+            "views_enabled: true\n"
+            "active_build_plan: artifacts/build-plan-wip.md\n"
+        )
+        (prawduct_dir / "change-log.md").write_text(change_log)
+        artifacts = prawduct_dir / "artifacts"
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01"])
+        _write_scoped_plan(artifacts, "build-plan-wip.md", "wip", ["01"])  # not in change-log
+
+        _, results = views.plan_regen(prawduct_dir)
+        status_paths = {r.path_relative for r in results if r.name == "status"}
+        assert status_paths == {
+            "artifacts/build-plan-alpha.md",
+            "artifacts/build-plan-wip.md",
+        }
+
+    def test_idempotent_second_pass_all_status_noop(self, tmp_path: Path):
+        change_log = (
+            "## 2026-06-04: alpha\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=alpha -->\n"
+            "## 2026-06-04: beta\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=beta -->\n"
+        )
+        prawduct_dir = self._prawduct_dir(tmp_path, change_log)
+        artifacts = prawduct_dir / "artifacts"
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01"])
+        _write_scoped_plan(artifacts, "build-plan-beta.md", "beta", ["01"])
+        _, results = views.plan_regen(prawduct_dir)
+        views.apply_regen(prawduct_dir, results)
+        _, second = views.plan_regen(prawduct_dir)
+        assert all(r.action == "noop" for r in second if r.name == "status")
+
+
+# =============================================================================
 # Integration tests — prawduct-hook regen-views subcommand
 # =============================================================================
 

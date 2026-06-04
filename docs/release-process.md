@@ -70,9 +70,15 @@ When `develop` is ready to release as `vX.Y.Z`:
    <!-- prawduct: chunks=01,02,… | release=vX.Y.Z | status=shipped | scope=vX.Y.Z -->
    ```
 4. **Regenerate derived views:** `prawduct-hook regen-views`. With `views_enabled`, the build
-   plan's `## Status` checkboxes, release notes, and `scope_rollups` are a *derived view* of
+   plans' `## Status` checkboxes, release notes, and `scope_rollups` are a *derived view* of
    the change-log's `status=shipped` entries — they flip to `[x]` only at this release step.
    Do **not** hand-edit the checkboxes; `regen-views` would revert the edit.
+   **Batched releases (multiple scopes in one version):** a single `regen-views` now regenerates
+   the `## Status` of **every** release-pending plan in one pass — it enumerates each distinct
+   `scope=` in the change-log (`status` ∈ {`shipped`, `merged`}) and resolves it to its build-plan
+   file via that plan's frontmatter `scope:` (REL-4T8N). You no longer point `active_build_plan` at
+   each plan in turn and re-run per scope. A `status=merged` scope with no matching plan file is
+   reported on stderr and skipped (not fatal).
 5. **Tag the release:** `git tag vX.Y.Z` (and push the tag).
 6. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
@@ -125,10 +131,13 @@ empty `git diff origin/develop HEAD` is the content-identical invariant the gitf
 Note on **step 2 ordering**: the version bump + change-log/CHANGELOG/release-notes updates +
 `active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
 above (so `main` inherits them in the tree-set), not as edits on `main` after the merge. That keeps
-`main` and `develop` content-identical. And `regen-views` (step 4) needs a *resolvable active build
-plan* — if the release retires the plan (clears `active_build_plan`), either run `regen-views` before
-clearing the pointer, or, for a patch release with no `scope=`/`chunks=` tag (nothing for it to flip),
-add the `release-notes.md` digest entry by hand (it self-heals on the next release's regen).
+`main` and `develop` content-identical. Since REL-4T8N, `regen-views` (step 4) resolves each
+scope-tagged plan from the change-log rather than the single `active_build_plan` pointer, so clearing
+the pointer no longer strands the regen for scope-tagged plans — run `regen-views` either before or
+after clearing it. The pointer's fallback still matters only when **no** scope-tagged plan resolves
+(e.g. a repo with a single unscoped `artifacts/build-plan.md`). For a patch release with no
+`scope=`/`chunks=` tag (nothing for it to flip), `regen-views` still touches no plan; the
+`release-notes.md` digest self-heals on the next release's regen (or add the entry by hand).
 
 ## Why the checkboxes stay `[ ]` during development
 

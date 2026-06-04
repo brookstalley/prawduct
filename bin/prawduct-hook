@@ -3926,6 +3926,14 @@ def cmd_regen_views(project_dir: Path) -> int:
             views.parse_change_log(change_log_text)
         ):
             print(f"WARNING: {warning}", file=sys.stderr)
+        # Surface release-pending (status=merged) scopes with no resolvable
+        # build-plan file, and duplicate scopes across plan files — non-fatal
+        # (warn + skip), mirroring the status-typo precedent above. The regen
+        # itself silently skips an unresolvable scope (REL-4T8N multi-scope).
+        for warning in views.diagnose_scope_plan_coverage(
+            change_log_text, prawduct_dir / "artifacts"
+        ):
+            print(f"WARNING: {warning}", file=sys.stderr)
     except OSError:
         # Best-effort advisory only — the regen computation (plan_regen) already
         # succeeded above and apply_regen still runs below, so a change-log read
