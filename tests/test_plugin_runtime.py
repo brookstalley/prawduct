@@ -944,3 +944,68 @@ class TestNoBareSkillShadowing:
             f"shadow the plugin's /prawduct:{name} with a stale file-sync copy "
             "(Chunk 14 relocation / M4 Chunk 4 deletion)"
         )
+
+
+class TestTestEvidenceRecord:
+    """TST-6V2N: `test-evidence record` RUNS the suite and WRITES the evidence
+    the freshness gate (`test-status`) reads — closing the reader-without-a-writer
+    gap that forced every product repo to hand-maintain a sha-stamp shim.
+    """
+
+    def _repo_with_test(self, tmp_path, body: str) -> Path:
+        repo = tmp_path / "ev"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text(body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def test_passing_suite_writes_schema_valid_evidence(self, tmp_path):
+        repo = self._repo_with_test(tmp_path, "def test_ok():\n    assert True\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        assert ev_path.is_file()
+        ev = json.loads(ev_path.read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 0, 0)
+        # counts are tied to a REAL run, and the sha is HEAD (not a stale stamp)
+        assert ev["git_sha"] == _git(repo, "rev-parse", "HEAD").stdout.strip()
+        assert ev["timestamp"] and ev["duration_seconds"] >= 0
+        # the plugin's own validator accepts what the plugin produced
+        assert _run_in(repo, "validate-evidence").returncode == 0
+
+    def test_failing_suite_exits_nonzero_but_still_writes(self, tmp_path):
+        repo = self._repo_with_test(tmp_path, "def test_bad():\n    assert False\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["failed"] >= 1 and ev["passed"] == 0
+        # evidence is still schema-valid (a failing run is recorded, not dropped)
+        assert _run_in(repo, "validate-evidence").returncode == 0
+
+    def test_skipped_tests_are_counted(self, tmp_path):
+        body = (
+            "import pytest\n"
+            "@pytest.mark.skip(reason='x')\n"
+            "def test_s():\n    pass\n"
+            "def test_ok():\n    assert True\n"
+        )
+        repo = self._repo_with_test(tmp_path, body)
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 1 and ev["skipped"] == 1
+
+    def test_record_makes_test_status_current(self, tmp_path):
+        repo = self._repo_with_test(tmp_path, "def test_ok():\n    assert True\n")
+        _make_session_start(repo / ".prawduct", offset_seconds=-120)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0
+        assert _run_in(repo, "test-status").returncode == 0
+
+    def test_unknown_subcommand_is_a_usage_error(self, tmp_path):
+        repo = self._repo_with_test(tmp_path, "def test_ok():\n    assert True\n")
+        res = _run_in(repo, "test-evidence", "bogus")
+        assert res.returncode == 2
+        assert "usage" in res.stderr.lower()

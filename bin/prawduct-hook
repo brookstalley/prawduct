@@ -2853,6 +2853,152 @@ def cmd_validate_evidence(project_dir: Path) -> int:
 
 
 # =============================================================================
+# test-evidence command (TST-6V2N — the WRITER for test-status's reader)
+# =============================================================================
+
+
+def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
+    """Run the suite and WRITE ``.prawduct/.test-evidence.json`` (TST-6V2N).
+
+    The freshness gate (``test-status``) and the cumulative-Critic staleness
+    check READ this file, but nothing in the plugin PRODUCED it — every product
+    repo improvised a hand-written JSON plus a sha-stamp shim, and the
+    ``git_sha`` check was satisfiable by stamping a fresh sha over stale counts.
+    This subcommand closes the reader-without-a-writer gap: it runs pytest with a
+    JUnit XML report (exact counts, not a parsed summary line), stamps
+    ``git_sha = HEAD`` plus an ISO-8601 UTC timestamp, overlays the F4a coverage
+    half via ``bin/test-reference-verify --merge-into``, and writes the record
+    atomically — so the gate judges output the plugin itself produced, tied to a
+    real run.
+
+    Usage: ``prawduct-hook test-evidence record [-- <extra pytest args>]``
+
+    Exit code mirrors the suite (0 iff every test passed); the evidence file is
+    written either way (a failing run records ``failed > 0``).
+    """
+    import tempfile  # noqa: PLC0415 — only this command needs them
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    if not argv or argv[0] != "record":
+        print(
+            "usage: prawduct-hook test-evidence record [-- <pytest args>]",
+            file=sys.stderr,
+        )
+        return 2
+    extra = argv[1:]
+    if extra and extra[0] == "--":  # tolerate the conventional `--` separator
+        extra = extra[1:]
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    evidence_path = prawduct_dir / ".test-evidence.json"
+
+    # Run the suite with a JUnit XML report — built into pytest (no plugin) and
+    # parse-robust where the terminal summary line is not (xdist, warnings, and
+    # "no tests ran" all perturb the summary; the XML attributes do not).
+    fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
+    os.close(fd)
+    junit = Path(junit_name)
+    cmd = [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *extra]
+    try:
+        proc = subprocess.run(cmd, cwd=str(project_dir))
+        try:
+            root = ET.parse(junit).getroot()
+        except (ET.ParseError, OSError) as exc:
+            print(
+                f"error: could not parse pytest JUnit report: {exc}",
+                file=sys.stderr,
+            )
+            return 2
+    finally:
+        try:
+            junit.unlink()
+        except OSError:
+            pass
+
+    suite = root if root.tag == "testsuite" else root.find("testsuite")
+    if suite is None:
+        print(
+            "error: pytest produced no <testsuite> (no tests collected?)",
+            file=sys.stderr,
+        )
+        return 2
+    total = int(suite.get("tests", "0"))
+    failures = int(suite.get("failures", "0"))
+    errors = int(suite.get("errors", "0"))
+    skipped = int(suite.get("skipped", "0"))
+    duration = float(suite.get("time", "0") or "0")
+    passed = total - failures - errors - skipped
+    failed = failures + errors
+
+    sha_proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+    )
+    git_sha = sha_proc.stdout.strip() if sha_proc.returncode == 0 else ""
+
+    # Base record carries the pytest half PLUS schema-valid placeholder F4a
+    # fields, so the file is self-sufficient even if the F4a overlay below is
+    # skipped (verifier absent on a broken install). The overlay fills the real
+    # coverage half.
+    record = {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "git_sha": git_sha,
+        "command": " ".join(["python3 -m pytest -q", *extra]).strip(),
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "duration_seconds": round(duration, 2),
+        "verifier": "test-reference-verify (F4a overlay pending)",
+        "coverage_level": "referenced",
+        "tests_executed": [],
+        "changes_referenced": [],
+    }
+    # Atomic write — the freshness gate must never observe a half-written file.
+    prawduct_dir.mkdir(parents=True, exist_ok=True)
+    tmp = evidence_path.with_name(evidence_path.name + ".tmp")
+    tmp.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    os.replace(tmp, evidence_path)
+
+    # Overlay the F4a coverage half via the existing verifier (reuse, not
+    # duplicate). Best-effort — the base record above is already schema-valid.
+    base, _ = _coverage_resolve_base(project_dir)
+    verifier = Path(_plugin_root()) / "bin" / "test-reference-verify"
+    if verifier.is_file():
+        merge_cmd = [
+            sys.executable,
+            str(verifier),
+            "--merge-into",
+            str(evidence_path),
+            "--repo",
+            str(project_dir),
+        ]
+        if base:
+            merge_cmd += ["--base", base]
+        mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)
+        if mp.returncode != 0:
+            print(
+                f"note: F4a coverage overlay did not complete (exit "
+                f"{mp.returncode}); pytest-half evidence written.",
+                file=sys.stderr,
+            )
+    else:
+        print(
+            "note: bin/test-reference-verify not found; F4a coverage half "
+            "omitted (pytest-half evidence written).",
+            file=sys.stderr,
+        )
+
+    print(
+        f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
+        f"in {record['duration_seconds']}s @ {git_sha[:10] or '(no git)'} "
+        f"({record['timestamp']})"
+    )
+    return 0 if proc.returncode == 0 else 1
+
+
+# =============================================================================
 # check-cumulative-critic command (v1.4 F2 — PR gate)
 # =============================================================================
 
@@ -4387,7 +4533,8 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
 
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
+    "{clear|stop|test-status|validate-evidence|test-evidence record [-- pytest args]|"
+    "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
@@ -4414,6 +4561,8 @@ def main() -> int:
         return cmd_test_status(project_dir)
     elif command == "validate-evidence":
         return cmd_validate_evidence(project_dir)
+    elif command == "test-evidence":
+        return cmd_test_evidence(project_dir, sys.argv[2:])
     elif command == "check-cumulative-critic":
         return cmd_check_cumulative_critic(project_dir)
     elif command == "verify-chunk-refs":
