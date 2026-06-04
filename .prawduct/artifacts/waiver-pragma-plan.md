@@ -92,10 +92,14 @@ full suite green; `/prawduct:critic chunk`.
   (`migrate_cmd.py`→`core.read_bool_yaml_key`) and `skills/backlog/SKILL.md` (retired-advisory framing).
 - [x] **W2-C3 — Ship-blocker docs.** README "(in progress)" dropped; CLAUDE.md bare `/critic`,`/pr`
   namespaced; `pyproject.toml` version 1.3.7→2.0.3.
-- [ ] **W2-C4 — Backlog hygiene (remaining).** Archive 9 obsolete (file-sync) + 6 already-shipped
-  items sitting in `## Open`; re-path 18 still-valid items (old `tools/product-hook`→`bin/prawduct-hook`,
-  `agents/…`→`skills/…`); re-validate 2 uncertain flaky-test items (`TST-4P8H`, `TST-1M6V`).
-- [ ] **Deferred (filed to backlog):** `documentation/` internal-spec stale `tools/lib/` paths;
-  the `.claude/skills/` (consumer-own-skill) trivial-gate question.
+- [x] **W2-C4 — Backlog hygiene.** Archived 16 items from `## Open` (Open 60→44, Archive 4→20):
+  9 obsolete file-sync items + TST-1M6V (both named tests deleted in M4) dropped with reasons;
+  6 already-shipped items moved retaining their resolution notes. Re-pathed kept items
+  (`tools/product-hook`→`bin/prawduct-hook`, `agents/critic|pr`→`skills/…/review-protocol.md`,
+  `tools/lib/project_state`→`lib/core.py`, `tools/lib/backlog_probes`→`lib/`). TST-4P8H narrowed
+  (5 of 6 named tests gone; only `TestStopPrReviewGate` survives — that's the re-validation result).
+- [x] **Deferred work filed:** `DOC-2W9P` (`documentation/` internal-spec stale `tools/lib/` paths);
+  `STH-4D2X` (the `.claude/skills/` consumer-own-skill trivial-gate question).
 
-694 tests green. Cumulative Critic clean (0 blocking). Branch ready to PR when the owner is.
+**Wave 2 complete.** 694 tests green. Branch ready to PR — re-run `/prawduct:critic cumulative`
+before `/prawduct:pr create` (HEAD advanced past the last cumulative record with the doc/backlog commits).

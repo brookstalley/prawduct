@@ -7,6 +7,7 @@
 
 ## Open
 
+
 - **[STH-4D2X]** Decide whether the trivial/doc-only file-set gate should also protect a consumer's own `.claude/skills/`
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-03 · status: open`
 
@@ -29,50 +30,6 @@
   The spec is still the authoritative reference for `lib/advisory_store.py`, so the illustrative paths
   should point at `lib/advisory_store.py` / `hooks/hooks.json` / `bin/prawduct-hook`. Internal design
   archive, not user-facing — deferred from the 2.0-rock-solid pass Wave 2. (builder)
-
-- **[JAN-4F7M]** Rewrite `skills/janitor/SKILL.md` "Template Currency" theme for plugin distribution
-  `effort: M · impact: M · area: janitor · source: builder · added: 2026-06-03 · status: resolved · reviewed: 2026-06-04`
-
-  The janitor skill's **Template Currency** investigation theme (and its Step 1 framework-health
-  pre-check + Step 7 hash-update guidance) still teaches the file-sync maintenance workflow:
-  comparing the consumer's place-once artifacts against `framework_source/templates/*` via
-  `.prawduct/sync-manifest.json` `place_once_templates` stored hashes. Under plugin distribution a
-  consumer carries no sync-manifest (init never creates it; `/prawduct:migrate` removes it) and has
-  no `framework_source` checkout, so the whole theme is inert for migrated/plugin-native repos.
-  Surfaced during M4 Chunk 4: `test_v5_templates.py::TestJanitorSkillTemplateCurrency` (which pinned
-  this content via the now-deleted `templates/skill-janitor.md`) was DELETED rather than retargeted,
-  precisely to avoid pinning stale guidance. Resolve: rework the theme for plugin-era maintenance —
-  what does "is this product's tooling current with the plugin?" mean when governance ships from the
-  plugin and updates via `autoUpdate`? — and add fresh `skills/janitor/SKILL.md` structural coverage
-  to replace the deleted mirror test. Candidate to fold into M4 Chunk 5 (docs/residue) if cheap, else
-  a standalone janitor-skill pass. Filed from M4 Chunk 4 on 2026-06-03. (builder)
-
-  **Resolved (v2.0.3 pre-promotion, 2026-06-04):** reworked the Template Currency theme for plugin
-  distribution — it now compares the product's artifacts against the read-only plugin templates at
-  `${CLAUDE_PLUGIN_ROOT}/templates/` (no `sync-manifest.json`, no `framework_source`, no place-once
-  hash store). The Step 1 framework-health pre-check now confirms the plugin runtime is reachable
-  (`${CLAUDE_PLUGIN_ROOT}/templates/` readable) instead of asserting a sync-manifest exists; Step 7
-  records resolved drift in `.prawduct/change-log.md` rather than recomputing template hashes.
-  Structural coverage restored via `test_plugin_runtime.py::TestJanitorSkillPluginEra` (asserts no
-  `sync-manifest`/`framework_source`/`place_once` residue + the plugin-root target). The same pass
-  also cleaned the file-sync-era `_METADATA_PREFIXES` entries (`.claude/skills/`, `tools/product-hook`)
-  from both mirrors (`bin/prawduct-hook` + `lib/critic_mode.py`) — a product's own `.claude/skills/`
-  skill now counts as gated code, not excused metadata (`TestMetadataPathClassification`). Surfaced by
-  the develop→main release-readiness review; folded into v2.0.3 rather than deferred. 652 passing. (builder)
-
-- **[DOC-7H2K]** Port `/prawduct:doctor`'s remaining file-sync-coupled flows to the plugin model (Chunk 13)
-  `effort: L · impact: M · area: doctor · source: builder · added: 2026-06-02 · status: resolved · reviewed: 2026-06-02`
-
-  Surfaced during v2.0.0 Chunk 11 (dogfood + self-containment audit). The plugin's `skills/doctor/SKILL.md` is a thin wrapper over `python3 <framework>/tools/prawduct-setup.py` for nearly every flow: Onboard (`setup`), Health Check (`validate`), Migrate feature opt-ins (`migrate --enable-coverage|--enable-settings-layout|--enable-operator-verification`), and Audit Learnings (`audit-learnings`). In a migrated consumer there is no framework checkout, so all of these break — only the **Verify** flow was ported this chunk (new `prawduct-hook verify-operator-verification`, which operates purely on the consumer's `.prawduct/`). The rest were deliberately NOT ported because (a) `setup`/`validate` ARE the file-sync engine, which design §5 / Chunk 5 deliberately excludes from the plugin runtime — bundling them would re-introduce exactly what the architecture removes; and (b) the plugin onboarding model is "install the plugin + `/prawduct:migrate`", not a `setup` script. Resolve as part of Chunk 13 (remove file-sync + its name): rework the doctor skill to the plugin model — Onboard → install + `/prawduct:migrate`; Health Check → a plugin-native `prawduct-hook` validate/health read of the consumer's own `.prawduct/` (no framework path); coverage / operator-verification opt-ins → plugin-native `project-state.yaml` flag flips (need no sync); decide whether `--enable-settings-layout` (pure file-sync settings normalization) and `audit-learnings` survive in the plugin world. Also: `lib/operator_verification.py::run_verify_entry`'s "no queue" error hint still names the legacy `prawduct-setup migrate --enable-operator-verification` path — repoint once the plugin-native enable exists. And the legacy `agents/` tree ships inside the plugin and the loader picks it up as frontmatter-less agents (`claude plugin validate` warnings) — Chunk 13's grep-sweep across `agents/` should drop it. Filed from Chunk 11 dogfood on 2026-06-02. (builder)
-
-  **Resolved (Chunk 13, 2026-06-02):** all four flows reworked off file-sync — Onboard → install + `/prawduct:migrate`; Health-Check → plugin-native Read/Glob of the consumer's own `.prawduct/`; opt-ins (F4/F10) → `project-state.yaml` flag flips (F5 settings-layout dropped as file-sync-only); Audit-Learnings → new plugin-native `prawduct-hook audit-learnings` (port of `lib/audit_learnings_cmd.py`). Operator-verification hint repointed off `prawduct-setup migrate`. The legacy `agents/` tree dropped (clears the 6 `claude plugin validate` frontmatter warnings). `/prawduct:doctor` `allowed-tools` tightened (broad `Bash(python3 *)` removed). Confirmed by the Chunk-13 Critic (NOTE 2). (builder)
-
-- **[MIG-M4-REMOVE]** Permanently delete the file-sync engine + payload + shims (post-2.0.0 milestone M4)
-  `effort: L · impact: M · area: distribution · source: builder · added: 2026-06-02 · status: shipped · closed-by: M4 (v2.0.3) · reviewed: 2026-06-03`
-
-  The terminal step of the file-sync→plugin transition, deliberately deferred out of 2.0.0. Chunk 13 removes file-sync only from THIS repo's active path; the engine stays a **live service** for un-migrated external repos, because `tools/product-hook` + `tools/lib/*` are `MANAGED_FILES` synced into products and a product's own `try_sync()` calls back to this framework's `tools/prawduct-setup.py sync` every session (fail-soft: missing script ⇒ no crash, the sibling keeps governing on its last-synced version). **Blocked on:** marketplace live (Chunk 2) AND every local sibling migrated to the plugin (`/prawduct:migrate`). Inventory is the owner's — manual, "only this one machine"; no consumer census / deprecation advisory is being added (owner decision 2026-06-02, keep 1.x frozen). When unblocked: delete `templates/`, the 7 `.claude/skills/*` sync sources, `tools/product-hook`, `tools/lib/*` (sync modules), `tools/prawduct-setup.py`, and the `prawduct-{init,sync,migrate}.py` shims; finish the deep name-sweep across the (now-removed) `templates/`+`tools/` — *you can only remove a mechanism's name from a path once the mechanism has left it.* After M4, a stale un-migrated sibling fails-soft (silent no-update), an acceptable terminal contract because it was warned during M3. See build-plan Chunk 13 "Permanent-removal path (M1–M4)". **Cleanup rider (Chunk 13 Critic NOTE 1, 2026-06-02):** the plugin `lib/audit_learnings_cmd.py` is byte-parity-locked to `tools/lib/audit_learnings_cmd.py`, so its `run_audit_learnings` docstring still names the legacy `prawduct-setup audit-learnings` path (correct for the file-sync copy, stale for the plugin). When `tools/lib/` is deleted here, the parity lock dissolves — repoint that docstring to `prawduct-hook audit-learnings`. (builder)
-
-  **Resolved (M4, v2.0.3, 2026-06-03):** the owner directive (2026-06-03, "we DO NOT need backwards compatibility … remove ANY cruft that exists only for back compat to pre-2.0") lifted the consumer-census block — the inventory is "only this one machine," all local siblings migrated. M4 (5 chunks on `feat/retire-filesync-engine-m4`) executed the full removal: Chunk 2 deleted `tools/` (product-hook, prawduct-setup.py, the 3 shims, `tools/lib/`), Chunk 4 deleted the file-sync templates (`product-claude`/`critic-review`/`pr-review`/`build-governance`/`product-settings.json`/`conftest.py` + the 7 `skill-*.md` sources) and slimmed `lib/core.py`, Chunk 5 removed the committed `.prawduct/` protocol-doc residue + swept the deep name-sweep across kept code/docs/templates. The `run_audit_learnings` docstring rider was discharged (repointed to `prawduct-hook audit-learnings`, Chunk 5). Deferred fragment: `[JAN-4F7M]` (the janitor skill's file-sync Template Currency theme). (builder)
 
 - **[CRT-SHADOW]** (Optional) Recreate an A/B "shadow Critic" as a plugin variant
   `effort: M · impact: S · area: critic · source: builder · added: 2026-06-02 · status: open · reviewed: 2026-06-02`
@@ -106,52 +63,25 @@
   1. **Recommend gitflow** (`develop` for ongoing work, `main` as the deployed/released branch, feature/release/hotfix branches off `develop`) as the prawduct-recommended workflow. Captured in `project-preferences.md` (or a new `methodology/git-strategy.md`) with rationale: prawduct's session-artifacts churn pattern fits gitflow's "develop is mutable, main is immutable releases" split much better than trunk-based flow, where every session-edit lands on the deployable branch.
   2. **In gitflow repos, strip prawduct artifacts from `main` when promoting `develop` → `main`** (or when pushing directly to `main`). Filter scope:
      - **Strip:** `.prawduct/` contents — `backlog.md`, `build-plan.md`, `artifacts/`, `learnings.md`, `learnings-detail.md`, `change-log.md`, `.session-*`, `.critic-findings.json`, `.test-evidence.json`, etc. (governance bookkeeping, not deployment payload).
-     - **Strip:** prawduct-owned hooks/skills — `tools/product-hook`, `.claude/skills/{critic,pr,janitor,learnings,prawduct-doctor}/SKILL.md`, framework-managed `.claude/settings.json` hook entries.
+     - **Strip:** prawduct-owned hooks/skills — `bin/prawduct-hook`, `.claude/skills/{critic,pr,janitor,learnings,prawduct-doctor}/SKILL.md`, framework-managed `.claude/settings.json` hook entries.
      - **Keep:** `docs/` and `documentation/` (real product documentation, not governance artifacts).
      - **Keep:** project-owned skills/hooks (anything in `.claude/skills/` that's NOT in the prawduct-managed set — user-authored skills stay).
   Fix-shape: probably a `prawduct-doctor deploy-to-main` (or `prawduct-deploy`) subcommand that performs a filtered merge/squash — strips the listed paths from a temp index, commits the cleaned tree to `main`, leaves `develop` intact. Alternative: a git pre-receive hook recipe in `methodology/git-strategy.md` that products copy into their own remote. Need to decide which paths are framework-canonical (centralizable in `core.py`'s MANAGED_FILES + a new `DEPLOY_STRIP_PATHS` set) vs. project-configurable. Open question: does the filter run on every push to main, or only on explicit `prawduct-doctor deploy` invocations? Filed from user request on 2026-05-19. (builder)
 
-- **[SYN-3D8K]** Align `enable_v1_4_views` detector/mutator on inline-comment forms
-  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-05-29`
-
-  Same pattern Chunk 10 fixed in `enable_v1_4_coverage`: `is_views_enabled`-style detection strips inline comments via `split('#', 1)`, but `enable_v1_4_views`'s flip uses exact `line.strip() == "views_enabled: false"`. A user line like `views_enabled: false  # opt-out` is detected as present-and-off but never flipped → silent no-op (manifest flag still set, file unchanged). Edge case (templates emit bare values), but the asymmetry will keep biting until both helpers use the same shape-aware match. Apply the Chunk-10 fix-shape: iterate lines, skip indented, compare comment-stripped value, re-attach inline comment on rewrite. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 10) — the views variant was left alone in-chunk to keep diff scope tight. (critic)
-
 - **[SYN-9C4T]** Extract shared `read_bool_yaml_key(state_path, key)` from `views.py::is_views_enabled` and product-hook's `_read_bool_yaml_key`
   `effort: S · impact: S · area: sync · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-05-29`
 
-  Both perform the same column-0 boolean scan against `project-state.yaml`, intentionally duplicated to keep product-hook flat (one inline 10-line helper vs. a new lib import). Two callers is the borderline; a third opt-in YAML flag (Chunk 11's F5 `auto_sync_commit`, or a future operator-verification toggle from F10) would push this to extraction. Move to `tools/lib/project_state.py::read_bool_yaml_key(path, key) -> bool` and call from both sites. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 09). (critic)
+  Both perform the same column-0 boolean scan against `project-state.yaml`, intentionally duplicated to keep product-hook flat (one inline 10-line helper vs. a new lib import). Two callers is the borderline; a third opt-in YAML flag (Chunk 11's F5 `auto_sync_commit`, or a future operator-verification toggle from F10) would push this to extraction. Move to `lib/core.py::read_bool_yaml_key(path, key) -> bool` and call from both sites. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 09). (critic)
 
 - **[TST-5W1J]** Cache test-file contents in `bin/test-reference-verify` to drop O(N*T) re-reads
   `effort: S · impact: S · area: tests · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-05-29`
 
   `_has_reference` re-opens every test file once per changed file. Sub-second on framework scale (~20 test files × small chunk diffs) but a stronger verifier or larger product would feel it. Fix-shape: discover_tests reads all test contents into a dict once, then `_has_reference` runs substring across the cached text. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 08). (critic)
 
-- **[BLD-0G6V]** Backfill Done-when blocks on Chunks 05-14 of v1.4 build plan
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  Chunks 00-04 each carry a Done-when block; Chunks 05-14 do not. Not a chunk-close blocker (chunk-mode Critic still fires on declared `**Critic mode:**`), but worth backfilling for consistency before Chunk 06 starts. Filed from /critic chunk NOTE on 2026-05-18 (Chunk 05). (critic)
-
-- **[BLD-7A2E]** Capture pre-commit-regen scope-shift in Wave 2 retrospective / change-log
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  F1 plan line 234 promises "pre-commit regen of build-plan Status from work-log"; Chunk 05 shipped on-demand `regen-views` plus methodology docs that tell users to invoke manually (Chunk 06 plan note confirms this is deliberate as "ad-hoc regen between commits"). The deliverable line was flagged "high level — to be expanded before chunk starts" so this is not silent, but the Wave-2 release entry / retrospective should record the explicit decision: pre-commit hook (deferred to Chunk 07's migration tooling or Wave-3) vs. on-demand `regen-views` (shipped now). Filed from /critic chunk NOTE on 2026-05-18 (Chunk 05). (critic)
-
-- **[BLD-3X9M]** Resolve `status=shipped` semantic — per-chunk merge vs. tagged release
-  `effort: S · impact: M · area: build-plan · source: builder · added: 2026-05-18 · status: resolved · reviewed: 2026-06-02`
-
-  Chunk 05 dogfooding raised an open question: does `status=shipped` on a change-log tag line mean "merged to mainline" (per-chunk timing — Status flips `[x]` when the chunk commits) or "in a tagged release" (wave timing — Status flips when a release entry covers it)? Current state: Chunk 05 left `[ ]` pending Wave 2 release entry. The Critic check (mismatch → WARNING) is symmetric, so either interpretation is internally consistent once chosen. Decide before Wave 2 release; document the chosen semantic in `templates/change-log.md` schema doc. Filed from Chunk 05 work, 2026-05-18. (builder)
-
-  **Resolved (v2.0.0 Chunk 14, 2026-06-02):** decided as **tagged-release / wave timing** — `status=shipped` means "in a tagged release" and flips Status `[x]` only at the `develop → main` release; `status=merged` is the develop-phase intermediate that does NOT flip checkboxes. Documented in `docs/release-process.md` (release checklist + "Why the checkboxes stay `[ ]` during development") and the v2.0.0 build-plan "Checkbox model" note. (Schema-doc home moved from `templates/change-log.md` to `docs/release-process.md` under the plugin model.)
-
 - **[MET-4K8Z]** 8-surface cascade pattern — anticipate token-budget pressure in chunk plans
   `effort: S · impact: M · area: methodology · source: reflection · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
 
   Chunk 05's source-of-truth guardrail threading touched 8 surfaces (product-claude / Critic SKILL / 2 critic-review / 2 pr-review / methodology / build-plan template). Same pattern Requirements Precede Code (v1.3.15) hit. When a chunk introduces a project-wide structural concept, the plan should enumerate the surface count up front so token-budget bumps (and the aggressive trim that precedes them) are anticipated, not discovered. Worth promoting to methodology after one more datapoint; until then, captured as observation. Filed from Chunk 05 reflection, 2026-05-18. (reflection)
-
-- **[DOC-6P3Q]** v1.4 release-readiness: document the new `/pr create` gate before tagging
-  `effort: S · impact: M · area: docs · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  F2 ships hard enforcement: `check-cumulative-critic` blocks `/pr create` without a fresh cumulative-mode findings file. Product owners who sync v1.4 without reading the change-log will hit the gate cold and read it as a regression. Before tagging v1.4 (after all waves merge): add a change-log entry naming the new gate, a `prawduct-doctor` migration prompt if relevant, and a Compatibility-Strategy line in the release notes (the cumulative gate is new structural enforcement, not a behavior tweak). Filed from /critic cumulative NOTE on 2026-05-18. (critic)
 
 - **[MET-1T5W]** Document the `new \`path\`` forward-ref convention in methodology prose
   `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
@@ -178,20 +108,10 @@
 
   v1.4 Chunk 02 (F3) shipped file-path verification only; the original plan also called for symbol (function/class names) and backlog-ID verification. Deferred during build because (a) symbols in prose are often approximate (`parse_func` vs implementation's `_parse_func`) so strict grep produces false positives requiring fuzzy match; (b) this project's backlog has no formal IDs (bullet titles, not e.g. `BL-123`), so the check would be inert here and need per-project ID convention. Add when a project surfaces a concrete need: define matching rules (substring grep across configured source roots for symbols; project-preferences `backlog_id_pattern` regex for backlog refs) and extend `_parse_build_plan_chunk_refs` to return `symbols` and `backlog_refs` lists alongside `file_paths`. Note: this project now HAS formal backlog IDs (`[PFX-XXXX]`) post-migration, so the backlog-ID half is newly actionable. Filed from /critic NOTE on 2026-05-18. (critic)
 
-- **[SYN-7L0D]** Remove dead `if rel_path in ("CLAUDE.md",)` lines in sync_cmd.py `template`-strategy branch
-  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-08 · status: open · reviewed: 2026-05-29`
-
-  Two pre-existing branches (`force=True` overwrite + `current_hash != stored_hash` skip) emit a "re-read CLAUDE.md" note guarded by `if rel_path in ("CLAUDE.md",)`. CLAUDE.md uses `block_template`, not `template`, so it can never reach these branches. Dead since the strategy split. Remove or document. Filed from /critic chunk on 2026-05-08 — flagged after the same dead pattern was caught in the new stale-clean branch (already removed there). Two-line cleanup; defer until next sync_cmd.py touch. (critic)
-
-- **[SYN-3F6P]** Sync: skip-summary line counts + `--diff` preview flag
-  `effort: M · impact: M · area: sync · source: reflection · added: 2026-05-08 · status: open · reviewed: 2026-05-29`
-
-  When sync skips a file as "local edits," it gives no signal about the size or shape of the divergence — the user must `--force` blind or manually diff. Add to the skip note: `+N lines / -M lines vs current template`. Add a `--diff` flag that prints the unified diff(s) of would-be skips (or all would-be changes) without writing anything. For `block_template`, also note that content outside markers won't change. Lets users decide whether to force without a separate investigation. (reflection)
-
 - **[BLD-6Q1N]** Extract `_iter_status_section_items` shared parser for build-plan Status
   `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-08 · status: open · reviewed: 2026-05-29`
 
-  `_count_build_plan_chunks` (tools/product-hook lines ~2073-2113, added v1.3.13) duplicates the Status-section parsing skeleton of `_parse_build_plan_status` (lines ~1021-1099): same `## Status` detection, same HTML-comment skip, same exit on next `## ` heading. Two callers is borderline; if a third caller appears (e.g., a future stop-hook check that needs chunk metadata), extract to `_iter_status_section_items(prawduct_dir) -> Iterator[StatusItem]` and refactor both call sites. Filed from /critic NOTE on 2026-05-08. (critic)
+  `_count_build_plan_chunks` (bin/prawduct-hook lines ~2073-2113, added v1.3.13) duplicates the Status-section parsing skeleton of `_parse_build_plan_status` (lines ~1021-1099): same `## Status` detection, same HTML-comment skip, same exit on next `## ` heading. Two callers is borderline; if a third caller appears (e.g., a future stop-hook check that needs chunk metadata), extract to `_iter_status_section_items(prawduct_dir) -> Iterator[StatusItem]` and refactor both call sites. Filed from /critic NOTE on 2026-05-08. (critic)
 
 - **[CRT-2H8K]** `.critic-findings.json` cumulative-state file
   `effort: M · impact: S · area: critic · source: builder · added: 2026-05-05 · status: open · reviewed: 2026-05-29`
@@ -201,22 +121,12 @@
 - **[PRR-4M9T]** Trim PR-reviewer goals to remove Critic overlap
   `effort: S · impact: S · area: pr-reviewer · source: builder · added: 2026-05-05 · status: open · reviewed: 2026-05-29`
 
-  PR reviewer Goals 1, 2, 4, 5, 6 in `agents/pr-reviewer/SKILL.md` overlap with Critic. Now that the layering is explicit (Critic-chunk = local; Critic-final = synthesis; PR reviewer = release readiness), PR reviewer goals could be trimmed to release-specific concerns (narrative, scope, merge hygiene, simplification). Filed during proportional-Critic build plan as out-of-scope. (builder)
+  PR reviewer Goals 1, 2, 4, 5, 6 in `skills/pr/review-protocol.md` overlap with Critic. Now that the layering is explicit (Critic-chunk = local; Critic-final = synthesis; PR reviewer = release readiness), PR reviewer goals could be trimmed to release-specific concerns (narrative, scope, merge hygiene, simplification). Filed during proportional-Critic build plan as out-of-scope. (builder)
 
 - **[TST-1D5W]** Tighten `_validate_evidence_schema` against bool-as-int
   `effort: S · impact: S · area: tests · source: critic · added: 2026-05-05 · status: open · reviewed: 2026-05-29`
 
   Python's `bool` is a subclass of `int`, so `{"passed": True}` slips through `isinstance(v, int)` in the test-evidence validator. No real test runner emits booleans for these fields, so impact is theoretical, but the loophole is real. If addressed: add `or isinstance(v, bool)` exclusion to the type check (with a comment), and add a `TestValidateEvidenceSchema::test_bool_rejected_for_int_field` case. Filed from /critic NOTE on 2026-05-05. (critic)
-
-- **[TST-8B3X]** Audit public-function coverage exemptions in `tests/preferences/test_public_function_coverage.py`
-  `effort: M · impact: S · area: tests · source: builder · added: 2026-05-05 · status: open · reviewed: 2026-05-29`
-
-  Four functions in `tools/lib/` are exercised transitively but never directly referenced as a function call (under the tightened detection that requires `Attribute.attr` or `Name` in `Call.func`): `core.py::log`, `core.py::load_json`, `migrate_cmd.py::strip_test_tracking`, `migrate_cmd.py::generate_sync_manifest`. For each, decide: (a) add a direct unit test class, or (b) rename to `_<name>` (private-by-convention) and remove from the exemption list. Rationale captured inline in `EXEMPT_FROM_DIRECT_COVERAGE`. (builder)
-
-- **[SYN-5G2J]** Extract `_git_run` helper for fw-dir git lookups
-  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-01 · status: open · reviewed: 2026-05-29`
-
-  `_get_framework_head_commit`, `_get_template_last_change` (sync_cmd.py), and the inline `git log -1` inside `_compute_framework_freshness` (product-hook) share the same try/except + subprocess.run + timeout=10 + broad-except + None-on-failure pattern. Three is the minimum-viable case for extraction. If a fourth fw-dir git lookup gets added, factor into `tools/lib/core.py` as `_git_run(fw_dir, args, timeout=10) -> str | None`. Currently small and well-commented; not urgent. (critic, 2026-05-01)
 
 - **[MET-9K4R]** Workflow-values schema/validator
   `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-01 · status: open · reviewed: 2026-05-29`
@@ -231,12 +141,12 @@
 - **[CRT-6T1V]** Critic check: test helpers duplicating production logic
   `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
 
-  Cross-product reflection audit (Apr 16) surfaced a recurring drift hazard in discodon: test files re-implement production calculations (LogQL builders, SDK result parsing) rather than importing the shared helper, so tests keep passing while production drifts. Evidence: discodon/reflections.md §2026-04-14 "Pattern worth keeping". Candidate: extend Goal 1 or Goal 7 in critic/SKILL.md — when a test performs a calculation/parsing operation that exists in production, flag as WARNING unless the test is deliberately testing the helper itself. Needs design work on detection heuristic (string-matching is noisy; AST match is heavier). (reflection)
+  Cross-product reflection audit (Apr 16) surfaced a recurring drift hazard in discodon: test files re-implement production calculations (LogQL builders, SDK result parsing) rather than importing the shared helper, so tests keep passing while production drifts. Evidence: discodon/reflections.md §2026-04-14 "Pattern worth keeping". Candidate: extend Goal 1 or Goal 7 in skills/critic/review-protocol.md — when a test performs a calculation/parsing operation that exists in production, flag as WARNING unless the test is deliberately testing the helper itself. Needs design work on detection heuristic (string-matching is noisy; AST match is heavier). (reflection)
 
 - **[CRT-4W8M]** Critic check: byte-exact assertions for "no behavior change" refactors
   `effort: S · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
 
-  When a refactor's explicit bar is "no behavior change," substring-level test assertions are insufficient. Discodon graph_ops refactor (Apr 16) had two silent text drifts (double-prefix, error message wrapper) that substring assertions missed and Critic caught only by reading the code. Evidence: discodon/reflections.md §2026-04-16 graph_ops. Candidate: add to critic-review.md template for Refactor work type — "If the chunk claims no behavior change, are output assertions exact-match (not substring/contains)? If not, flag WARNING." (reflection)
+  When a refactor's explicit bar is "no behavior change," substring-level test assertions are insufficient. Discodon graph_ops refactor (Apr 16) had two silent text drifts (double-prefix, error message wrapper) that substring assertions missed and Critic caught only by reading the code. Evidence: discodon/reflections.md §2026-04-16 graph_ops. Candidate: add to skills/critic/review-protocol.md for Refactor work type — "If the chunk claims no behavior change, are output assertions exact-match (not substring/contains)? If not, flag WARNING." (reflection)
 
 - **[CRT-1B6Q]** Critic check: stateful objects in shared_kwargs need lifecycle cleanup
   `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-15 · status: open · reviewed: 2026-05-29`
@@ -268,20 +178,10 @@
 
   Split 2,240-line monolith (grew from 1,757 since original filing) into logical modules (_gates.py, _briefing.py, _yaml_parser.py). Currently working and well-tested, but 5 distinct concerns in one file hinders readability. (janitor)
 
-- **[SYN-3T7B]** run_sync() decomposition
-  `effort: M · impact: M · area: sync · source: janitor · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
-
-  Extract per-strategy logic (template, block_template, always_update, merge_settings) from 337-line function in sync_cmd.py. (janitor)
-
 - **[TST-4P8H]** Flaky tests under parallel execution (xdist)
   `effort: M · impact: M · area: tests · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
 
-  Several tests fail intermittently with `-n10` but pass sequentially: `TestClear::test_appends_multiple_reflections`, `TestClear::test_skips_empty_reflection`, `TestStopPrReviewGate::test_stop_clean_without_pr`, `TestNewProject::test_warning_disappears_after_filling`, `TestTrySyncFrameworkDiscovery::test_manifest_framework_source`, `TestMatchHistoricalRender::test_depth_cap_respected`. The depth_cap test creates 111 git subprocess commits in a loop — when 9 other xdist workers are simultaneously doing similar subprocess-heavy work, the system runs out of fork resources / hits IO contention and the test times out. Passes 100% of the time when run in isolation or with reduced parallelism. Root cause likely race conditions in the subprocess-based hook tests sharing process-level state or temp dir contention. (builder)
-
-- **[TST-1M6V]** Pre-existing timeout flakes in test_product_hook.py
-  `effort: M · impact: S · area: tests · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
-
-  `TestStopCriticGate::test_no_build_plan_anywhere_skips_critic` and `TestCanaryDepNoRationale::test_no_manifest_file_no_flag` intermittently hit the 15s timeout. May need investigation into why the product-hook subprocess hangs in certain test configurations. (builder)
+  Re-validated 2026-06-03: 5 of the 6 originally-named tests were removed with the file-sync engine (M4) — only `TestStopPrReviewGate::test_stop_clean_without_pr` survives. The narrow open question is whether that surviving subprocess-heavy test (and peers) still flake under `-n10`. The depth_cap test creates 111 git subprocess commits in a loop — when 9 other xdist workers are simultaneously doing similar subprocess-heavy work, the system runs out of fork resources / hits IO contention and the test times out. Passes 100% of the time when run in isolation or with reduced parallelism. Root cause likely race conditions in the subprocess-based hook tests sharing process-level state or temp dir contention. (builder)
 
 - **[STH-7B5N]** Session lock file for concurrent session detection
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
@@ -301,7 +201,7 @@
 - **[BKL-2F7K]** Ship the three remaining §8.2 backlog probes (`external-backlog-detected`, `legacy-section-schema`, `backlog-overdue-grooming`)
   `effort: L · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: open`
 
-  v1.7.0 shipped only `legacy-backlog-format` (the first production probe). The other three §8.2 probes are deferred — no product today has an external backlog file, an old-section-schema backlog, or a stale-grooming signal worth nagging. Build when one does. Each registers against the v1.6.0 advisory infrastructure via `register_probe("backlog", …)` in `tools/lib/backlog_probes.py` (the idempotent `register_backlog_probes()` already there) and resolves off a `project-state.yaml` fact: `external-backlog-detected` → `backlog_external_imports` (set by `/backlog import`); `legacy-section-schema` → reuse `backlog_format_version: 2` (migration folds the old `## Active`/`## Queue` headings); `backlog-overdue-grooming` → `backlog_last_groomed_at` + the 90-day window (spec §8.2). Tune the >5-item / >20-item / 90-day thresholds against a real product's backlog before shipping. (builder)
+  v1.7.0 shipped only `legacy-backlog-format` (the first production probe). The other three §8.2 probes are deferred — no product today has an external backlog file, an old-section-schema backlog, or a stale-grooming signal worth nagging. Build when one does. Each registers against the v1.6.0 advisory infrastructure via `register_probe("backlog", …)` in a new `lib/` probe module via `lib/advisory_store.register_probe` (the file-sync `tools/lib/backlog_probes.py` was deleted in M4) and resolves off a `project-state.yaml` fact: `external-backlog-detected` → `backlog_external_imports` (set by `/backlog import`); `legacy-section-schema` → reuse `backlog_format_version: 2` (migration folds the old `## Active`/`## Queue` headings); `backlog-overdue-grooming` → `backlog_last_groomed_at` + the 90-day window (spec §8.2). Tune the >5-item / >20-item / 90-day thresholds against a real product's backlog before shipping. (builder)
 
 - **[BKL-5H9M]** `/backlog import <path>` — convert an external TODO/BACKLOG file into structured items
   `effort: M · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: open`
@@ -353,33 +253,13 @@
 
   When `apply_claude_anchor` strips the framework generator comments via `_drop_generator_comments` (`lib/migrate_plugin.py`), it removes the comment lines but leaves the blank line that preceded them adjacent to the blank line that followed, producing two consecutive blank lines between the H1 title and the first product section. Cosmetic only (markdown collapses it on render), zero semantic impact, but it's a wart in a diff meant to be pristine. Found during the v2.0.0 1.x→2.x migration acceptance test against ../discodon (2026-06-02). Fix: collapse 3+ consecutive newlines to 2 in the assembled CLAUDE.md, or drop blank lines left adjacent to removed generator comments. Low priority / trivial. (user)
 
-- **[ADV-3K7Q]** Namespace skill names in plugin advisory output (briefing recommended_action + dismiss hint)
-  `effort: S · impact: S · area: advisory · source: critic · added: 2026-06-03 · status: open`
-
-  Surfaced when the advisory-probe-at-SessionStart fix (fix/plugin-advisory-probes-session-start) made post-sync advisories visible in plugin repos for the first time. The briefing now renders e.g. `→ Run /backlog migrate (or /prawduct-advisory dismiss <id>)` — but in a plugin repo the skills are namespaced `/prawduct:backlog` and `/prawduct:advisory`, so the un-namespaced forms are misleading/non-resolving for users.
-
-  Two sources, both currently legacy-form:
-  1. `recommended_action='/backlog migrate'` comes from lib/backlog_probes.py::legacy_backlog_format_probe — but lib/backlog_probes.py is byte-parity-locked to tools/lib/backlog_probes.py (GOVERNANCE_MODULES in test_plugin_runtime.py), and the frozen 1.x copy must stay on `/backlog` (owner directive: no 1.x edits). So it can't be edited in place.
-  2. The dismiss-hint literal `/prawduct-advisory dismiss` is in bin/prawduct-hook (plugin-native, NOT parity-locked) at the briefing's action-line construction (~line 1243).
-
-  Fix-shapes: (a) move backlog_probes to DIVERGED_MODULES (like operator_verification) and namespace the action string in the plugin copy + add the divergence-assertion test; or (b) namespace at DISPLAY time in the plugin briefing renderer (bin/prawduct-hook) via a small legacy→/prawduct: mapper applied to both recommended_action and the dismiss literal — keeps backlog_probes byte-locked. (b) is more contained and avoids touching the parity set. Do both the action and the dismiss hint together (a half-fix is incoherent). Belongs with the Chunk-13 namespace sweep (see the file-sync-removal backlog item). info-priority/cosmetic; not a broken gate. (critic)
-
-  **Implemented (branch `fix/advisory-namespace-backlog`, pending merge — do not archive until merged):** Took fix-shape (a) for source #1 — moved `backlog_probes` from `GOVERNANCE_MODULES` to `DIVERGED_MODULES`; the plugin copy renders `/prawduct:backlog migrate`, the frozen `tools/lib/` copy is unchanged; added a per-module `DIVERGENCE_EXPECTATIONS` map to the parity test. Namespaced source #2 — the `/prawduct-advisory` dismiss/list hints in `bin/prawduct-hook` → `/prawduct:advisory`. While sweeping the renderer the Critic surfaced three more bare hints in the same `assemble_session_briefing` (backlog-count, learnings, template/janitor) — all now `/prawduct:*`; the file-sync `tools/product-hook` stays frozen on the bare forms. Pinned by `test_clear_fires_legacy_backlog_advisory` (advisory action + dismiss hint) and new `test_clear_briefing_namespaces_status_hints` (status hints + non-leak of bare forms). 1809/1809 green; Critic verify-resolutions clean. **Follow-on gate-message sweep — done in this same commit:** the deferred larger surface is closed. `bin/prawduct-hook` now names `/prawduct:critic`/`/prawduct:pr` in every agent-facing gate (stop-hook Critic + PR blockers, verify-resolutions scope notes, the pr-create cumulative-Critic gate, the accept-verification rationale gate) and in its own docstrings/comments; `lib/operator_verification.py`'s 3 surviving `/pr create` stragglers are namespaced (completing the module's divergence); and the `/prawduct-advisory` docstring at `cmd_advisory` (4195) → `/prawduct:advisory`. Pinned by `TestPluginRuntimeNamespacing` (source-scan, asserts the bad forms are ABSENT) + the strengthened `test_stop_blocks_when_critic_findings_absent` + `DIVERGENCE_EXPECTATIONS[operator_verification]` forbidding bare `/pr create`. Frozen `tools/product-hook` + `tools/lib/` stay on the bare forms (owner directive). 1810/1810 green. (claude)
-
-- **[DOC-4B2W]** Namespace bare command forms in plugin-bundled teaching prose (`skills/critic/*.md`, `methodology/*.md`)
-  `effort: M · impact: M · area: docs/governance · source: builder · added: 2026-06-03 · status: shipped · closed-by: M4 Chunk 1 (v2.0.3) · reviewed: 2026-06-03`
-
-  **Resolved (M4 Chunk 1, v2.0.3, 2026-06-03):** swept the 6 plugin-only prose files (`methodology/{building,planning,reflection}.md`, `skills/critic/{review-cycle,review-protocol}.md`, `skills/pr/review-protocol.md`) → `/prawduct:*`; pinned by `TestPluginDocsNamespacing` (assert-absent source-scan over the skill vocabulary). Decision (point 3): conceptual short-names ARE namespaced in the teaching prose, since a plugin repo resolves `/prawduct:*`. File-path carve-outs (`.prawduct/critic-review.md`) and the built-in `/clear` preserved; the file-sync `tools/` copies that carried duplicated prose were deleted outright in Chunk 2 rather than kept on bare forms. (builder)
-
-  The runtime gate-message sweep (#53) namespaced `bin/prawduct-hook` + `lib/` agent-facing OUTPUT, but the plugin-bundled PROSE an agent reads via `/prawduct:*` still carries ~34+ bare command forms — `skills/critic/review-cycle.md`, `skills/critic/review-protocol.md`, and `methodology/{building,planning,reflection}.md` say "run /critic", "/pr create", "/critic cumulative" etc. where a plugin repo resolves `/prawduct:critic`, `/prawduct:pr`. Same leak class as #53, larger + lower-severity surface (teaching prose, not gates; agents can often infer the mapping, and the SessionStart briefing already lists namespaced forms). This is the "entire leak class as a build plan" follow-up.
-
-  Scope notes for the build plan: (1) sweep the whole FORM-FAMILY per the new learning — bare `/cmd`, hyphenated `/prawduct-advisory`, legacy `prawduct-setup` — one grep per spelling; (2) preserve carve-outs: file paths (`.prawduct/critic-review.md`, `agents/critic/SKILL.md`), the Claude Code built-in `/clear`, and prose like "critic/pr skills"; (3) DECISION REQUIRED — whether to namespace conceptual short-names in teaching guides at all, or keep `/critic` as the canonical short name with a one-time namespacing note (judgment call, raise with owner); (4) the frozen `tools/` copies of any duplicated prose stay bare; (5) pin with an assert-absent source-scan like `TestPluginRuntimeNamespacing`, extended to the docs surface. (builder)
 
 ## Promoted
 
 _None._
 
 ## Archive
+
 
 - **[CRT-2M5P]** Critic skill `Bash(git *)` allowed-tools is too broad — permits state-mutating git verbs (checkout/stash/reset/branch)
   `effort: S · impact: M · area: critic · source: critic · added: 2026-05-23 · status: shipped · closed-by: reduce-governance-tax Chunk E · reviewed: 2026-05-29`
@@ -404,3 +284,148 @@ _None._
   `effort: M · impact: M · area: build-plan · source: critic · added: 2026-05-29 · status: shipped · closed-by: v1.6.0 Chunk 06 · reviewed: 2026-05-29`
 
   During v1.6.0 Chunk 02 the helper returned `rule-4 final: no active build plan ... fail-safe to thoroughness` even though `.prawduct/artifacts/v1.6.0-advisory-infrastructure-plan.md` is the active plan. **Resolved** by Chunk 06's `active_build_plan:` pointer (project-state.yaml) + the shared `core.resolve_build_plan_path` resolver, mirrored inline in product-hook and used by `infer-critic-mode`, `regen-views`, the stop-hook gates, `verify-chunk-refs`, and `check-pr-trivial`. The chosen shape is the explicit pointer (not the `*plan*.md` glob the original fix-shape proposed — a glob is ambiguous when multiple scope-named plans accumulate, which this repo demonstrates). Validated against both the framework repo (pointer → scope-named plan) and the back-compat default (no pointer → `build-plan.md`). Filed from /critic NOTE on 2026-05-29 (v1.6.0 Chunk 02); closed 2026-05-29 (v1.6.0 Chunk 06). (critic)
+
+- **[JAN-4F7M]** Rewrite `skills/janitor/SKILL.md` "Template Currency" theme for plugin distribution
+  `effort: M · impact: M · area: janitor · source: builder · added: 2026-06-03 · status: resolved · reviewed: 2026-06-04`
+
+  The janitor skill's **Template Currency** investigation theme (and its Step 1 framework-health
+  pre-check + Step 7 hash-update guidance) still teaches the file-sync maintenance workflow:
+  comparing the consumer's place-once artifacts against `framework_source/templates/*` via
+  `.prawduct/sync-manifest.json` `place_once_templates` stored hashes. Under plugin distribution a
+  consumer carries no sync-manifest (init never creates it; `/prawduct:migrate` removes it) and has
+  no `framework_source` checkout, so the whole theme is inert for migrated/plugin-native repos.
+  Surfaced during M4 Chunk 4: `test_v5_templates.py::TestJanitorSkillTemplateCurrency` (which pinned
+  this content via the now-deleted `templates/skill-janitor.md`) was DELETED rather than retargeted,
+  precisely to avoid pinning stale guidance. Resolve: rework the theme for plugin-era maintenance —
+  what does "is this product's tooling current with the plugin?" mean when governance ships from the
+  plugin and updates via `autoUpdate`? — and add fresh `skills/janitor/SKILL.md` structural coverage
+  to replace the deleted mirror test. Candidate to fold into M4 Chunk 5 (docs/residue) if cheap, else
+  a standalone janitor-skill pass. Filed from M4 Chunk 4 on 2026-06-03. (builder)
+
+  **Resolved (v2.0.3 pre-promotion, 2026-06-04):** reworked the Template Currency theme for plugin
+  distribution — it now compares the product's artifacts against the read-only plugin templates at
+  `${CLAUDE_PLUGIN_ROOT}/templates/` (no `sync-manifest.json`, no `framework_source`, no place-once
+  hash store). The Step 1 framework-health pre-check now confirms the plugin runtime is reachable
+  (`${CLAUDE_PLUGIN_ROOT}/templates/` readable) instead of asserting a sync-manifest exists; Step 7
+  records resolved drift in `.prawduct/change-log.md` rather than recomputing template hashes.
+  Structural coverage restored via `test_plugin_runtime.py::TestJanitorSkillPluginEra` (asserts no
+  `sync-manifest`/`framework_source`/`place_once` residue + the plugin-root target). The same pass
+  also cleaned the file-sync-era `_METADATA_PREFIXES` entries (`.claude/skills/`, `tools/product-hook`)
+  from both mirrors (`bin/prawduct-hook` + `lib/critic_mode.py`) — a product's own `.claude/skills/`
+  skill now counts as gated code, not excused metadata (`TestMetadataPathClassification`). Surfaced by
+  the develop→main release-readiness review; folded into v2.0.3 rather than deferred. 652 passing. (builder)
+
+- **[DOC-7H2K]** Port `/prawduct:doctor`'s remaining file-sync-coupled flows to the plugin model (Chunk 13)
+  `effort: L · impact: M · area: doctor · source: builder · added: 2026-06-02 · status: resolved · reviewed: 2026-06-02`
+
+  Surfaced during v2.0.0 Chunk 11 (dogfood + self-containment audit). The plugin's `skills/doctor/SKILL.md` is a thin wrapper over `python3 <framework>/tools/prawduct-setup.py` for nearly every flow: Onboard (`setup`), Health Check (`validate`), Migrate feature opt-ins (`migrate --enable-coverage|--enable-settings-layout|--enable-operator-verification`), and Audit Learnings (`audit-learnings`). In a migrated consumer there is no framework checkout, so all of these break — only the **Verify** flow was ported this chunk (new `prawduct-hook verify-operator-verification`, which operates purely on the consumer's `.prawduct/`). The rest were deliberately NOT ported because (a) `setup`/`validate` ARE the file-sync engine, which design §5 / Chunk 5 deliberately excludes from the plugin runtime — bundling them would re-introduce exactly what the architecture removes; and (b) the plugin onboarding model is "install the plugin + `/prawduct:migrate`", not a `setup` script. Resolve as part of Chunk 13 (remove file-sync + its name): rework the doctor skill to the plugin model — Onboard → install + `/prawduct:migrate`; Health Check → a plugin-native `prawduct-hook` validate/health read of the consumer's own `.prawduct/` (no framework path); coverage / operator-verification opt-ins → plugin-native `project-state.yaml` flag flips (need no sync); decide whether `--enable-settings-layout` (pure file-sync settings normalization) and `audit-learnings` survive in the plugin world. Also: `lib/operator_verification.py::run_verify_entry`'s "no queue" error hint still names the legacy `prawduct-setup migrate --enable-operator-verification` path — repoint once the plugin-native enable exists. And the legacy `agents/` tree ships inside the plugin and the loader picks it up as frontmatter-less agents (`claude plugin validate` warnings) — Chunk 13's grep-sweep across `agents/` should drop it. Filed from Chunk 11 dogfood on 2026-06-02. (builder)
+
+  **Resolved (Chunk 13, 2026-06-02):** all four flows reworked off file-sync — Onboard → install + `/prawduct:migrate`; Health-Check → plugin-native Read/Glob of the consumer's own `.prawduct/`; opt-ins (F4/F10) → `project-state.yaml` flag flips (F5 settings-layout dropped as file-sync-only); Audit-Learnings → new plugin-native `prawduct-hook audit-learnings` (port of `lib/audit_learnings_cmd.py`). Operator-verification hint repointed off `prawduct-setup migrate`. The legacy `agents/` tree dropped (clears the 6 `claude plugin validate` frontmatter warnings). `/prawduct:doctor` `allowed-tools` tightened (broad `Bash(python3 *)` removed). Confirmed by the Chunk-13 Critic (NOTE 2). (builder)
+
+- **[MIG-M4-REMOVE]** Permanently delete the file-sync engine + payload + shims (post-2.0.0 milestone M4)
+  `effort: L · impact: M · area: distribution · source: builder · added: 2026-06-02 · status: shipped · closed-by: M4 (v2.0.3) · reviewed: 2026-06-03`
+
+  The terminal step of the file-sync→plugin transition, deliberately deferred out of 2.0.0. Chunk 13 removes file-sync only from THIS repo's active path; the engine stays a **live service** for un-migrated external repos, because `tools/product-hook` + `tools/lib/*` are `MANAGED_FILES` synced into products and a product's own `try_sync()` calls back to this framework's `tools/prawduct-setup.py sync` every session (fail-soft: missing script ⇒ no crash, the sibling keeps governing on its last-synced version). **Blocked on:** marketplace live (Chunk 2) AND every local sibling migrated to the plugin (`/prawduct:migrate`). Inventory is the owner's — manual, "only this one machine"; no consumer census / deprecation advisory is being added (owner decision 2026-06-02, keep 1.x frozen). When unblocked: delete `templates/`, the 7 `.claude/skills/*` sync sources, `tools/product-hook`, `tools/lib/*` (sync modules), `tools/prawduct-setup.py`, and the `prawduct-{init,sync,migrate}.py` shims; finish the deep name-sweep across the (now-removed) `templates/`+`tools/` — *you can only remove a mechanism's name from a path once the mechanism has left it.* After M4, a stale un-migrated sibling fails-soft (silent no-update), an acceptable terminal contract because it was warned during M3. See build-plan Chunk 13 "Permanent-removal path (M1–M4)". **Cleanup rider (Chunk 13 Critic NOTE 1, 2026-06-02):** the plugin `lib/audit_learnings_cmd.py` is byte-parity-locked to `tools/lib/audit_learnings_cmd.py`, so its `run_audit_learnings` docstring still names the legacy `prawduct-setup audit-learnings` path (correct for the file-sync copy, stale for the plugin). When `tools/lib/` is deleted here, the parity lock dissolves — repoint that docstring to `prawduct-hook audit-learnings`. (builder)
+
+  **Resolved (M4, v2.0.3, 2026-06-03):** the owner directive (2026-06-03, "we DO NOT need backwards compatibility … remove ANY cruft that exists only for back compat to pre-2.0") lifted the consumer-census block — the inventory is "only this one machine," all local siblings migrated. M4 (5 chunks on `feat/retire-filesync-engine-m4`) executed the full removal: Chunk 2 deleted `tools/` (product-hook, prawduct-setup.py, the 3 shims, `tools/lib/`), Chunk 4 deleted the file-sync templates (`product-claude`/`critic-review`/`pr-review`/`build-governance`/`product-settings.json`/`conftest.py` + the 7 `skill-*.md` sources) and slimmed `lib/core.py`, Chunk 5 removed the committed `.prawduct/` protocol-doc residue + swept the deep name-sweep across kept code/docs/templates. The `run_audit_learnings` docstring rider was discharged (repointed to `prawduct-hook audit-learnings`, Chunk 5). Deferred fragment: `[JAN-4F7M]` (the janitor skill's file-sync Template Currency theme). (builder)
+
+- **[BLD-3X9M]** Resolve `status=shipped` semantic — per-chunk merge vs. tagged release
+  `effort: S · impact: M · area: build-plan · source: builder · added: 2026-05-18 · status: resolved · reviewed: 2026-06-02`
+
+  Chunk 05 dogfooding raised an open question: does `status=shipped` on a change-log tag line mean "merged to mainline" (per-chunk timing — Status flips `[x]` when the chunk commits) or "in a tagged release" (wave timing — Status flips when a release entry covers it)? Current state: Chunk 05 left `[ ]` pending Wave 2 release entry. The Critic check (mismatch → WARNING) is symmetric, so either interpretation is internally consistent once chosen. Decide before Wave 2 release; document the chosen semantic in `templates/change-log.md` schema doc. Filed from Chunk 05 work, 2026-05-18. (builder)
+
+  **Resolved (v2.0.0 Chunk 14, 2026-06-02):** decided as **tagged-release / wave timing** — `status=shipped` means "in a tagged release" and flips Status `[x]` only at the `develop → main` release; `status=merged` is the develop-phase intermediate that does NOT flip checkboxes. Documented in `docs/release-process.md` (release checklist + "Why the checkboxes stay `[ ]` during development") and the v2.0.0 build-plan "Checkbox model" note. (Schema-doc home moved from `templates/change-log.md` to `docs/release-process.md` under the plugin model.)
+
+- **[ADV-3K7Q]** Namespace skill names in plugin advisory output (briefing recommended_action + dismiss hint)
+  `effort: S · impact: S · area: advisory · source: critic · added: 2026-06-03 · status: open`
+
+  Surfaced when the advisory-probe-at-SessionStart fix (fix/plugin-advisory-probes-session-start) made post-sync advisories visible in plugin repos for the first time. The briefing now renders e.g. `→ Run /backlog migrate (or /prawduct-advisory dismiss <id>)` — but in a plugin repo the skills are namespaced `/prawduct:backlog` and `/prawduct:advisory`, so the un-namespaced forms are misleading/non-resolving for users.
+
+  Two sources, both currently legacy-form:
+  1. `recommended_action='/backlog migrate'` comes from lib/backlog_probes.py::legacy_backlog_format_probe — but lib/backlog_probes.py is byte-parity-locked to tools/lib/backlog_probes.py (GOVERNANCE_MODULES in test_plugin_runtime.py), and the frozen 1.x copy must stay on `/backlog` (owner directive: no 1.x edits). So it can't be edited in place.
+  2. The dismiss-hint literal `/prawduct-advisory dismiss` is in bin/prawduct-hook (plugin-native, NOT parity-locked) at the briefing's action-line construction (~line 1243).
+
+  Fix-shapes: (a) move backlog_probes to DIVERGED_MODULES (like operator_verification) and namespace the action string in the plugin copy + add the divergence-assertion test; or (b) namespace at DISPLAY time in the plugin briefing renderer (bin/prawduct-hook) via a small legacy→/prawduct: mapper applied to both recommended_action and the dismiss literal — keeps backlog_probes byte-locked. (b) is more contained and avoids touching the parity set. Do both the action and the dismiss hint together (a half-fix is incoherent). Belongs with the Chunk-13 namespace sweep (see the file-sync-removal backlog item). info-priority/cosmetic; not a broken gate. (critic)
+
+  **Implemented (branch `fix/advisory-namespace-backlog`, pending merge — do not archive until merged):** Took fix-shape (a) for source #1 — moved `backlog_probes` from `GOVERNANCE_MODULES` to `DIVERGED_MODULES`; the plugin copy renders `/prawduct:backlog migrate`, the frozen `tools/lib/` copy is unchanged; added a per-module `DIVERGENCE_EXPECTATIONS` map to the parity test. Namespaced source #2 — the `/prawduct-advisory` dismiss/list hints in `bin/prawduct-hook` → `/prawduct:advisory`. While sweeping the renderer the Critic surfaced three more bare hints in the same `assemble_session_briefing` (backlog-count, learnings, template/janitor) — all now `/prawduct:*`; the file-sync `tools/product-hook` stays frozen on the bare forms. Pinned by `test_clear_fires_legacy_backlog_advisory` (advisory action + dismiss hint) and new `test_clear_briefing_namespaces_status_hints` (status hints + non-leak of bare forms). 1809/1809 green; Critic verify-resolutions clean. **Follow-on gate-message sweep — done in this same commit:** the deferred larger surface is closed. `bin/prawduct-hook` now names `/prawduct:critic`/`/prawduct:pr` in every agent-facing gate (stop-hook Critic + PR blockers, verify-resolutions scope notes, the pr-create cumulative-Critic gate, the accept-verification rationale gate) and in its own docstrings/comments; `lib/operator_verification.py`'s 3 surviving `/pr create` stragglers are namespaced (completing the module's divergence); and the `/prawduct-advisory` docstring at `cmd_advisory` (4195) → `/prawduct:advisory`. Pinned by `TestPluginRuntimeNamespacing` (source-scan, asserts the bad forms are ABSENT) + the strengthened `test_stop_blocks_when_critic_findings_absent` + `DIVERGENCE_EXPECTATIONS[operator_verification]` forbidding bare `/pr create`. Frozen `tools/product-hook` + `tools/lib/` stay on the bare forms (owner directive). 1810/1810 green. (claude)
+
+- **[DOC-4B2W]** Namespace bare command forms in plugin-bundled teaching prose (`skills/critic/*.md`, `methodology/*.md`)
+  `effort: M · impact: M · area: docs/governance · source: builder · added: 2026-06-03 · status: shipped · closed-by: M4 Chunk 1 (v2.0.3) · reviewed: 2026-06-03`
+
+  **Resolved (M4 Chunk 1, v2.0.3, 2026-06-03):** swept the 6 plugin-only prose files (`methodology/{building,planning,reflection}.md`, `skills/critic/{review-cycle,review-protocol}.md`, `skills/pr/review-protocol.md`) → `/prawduct:*`; pinned by `TestPluginDocsNamespacing` (assert-absent source-scan over the skill vocabulary). Decision (point 3): conceptual short-names ARE namespaced in the teaching prose, since a plugin repo resolves `/prawduct:*`. File-path carve-outs (`.prawduct/critic-review.md`) and the built-in `/clear` preserved; the file-sync `tools/` copies that carried duplicated prose were deleted outright in Chunk 2 rather than kept on bare forms. (builder)
+
+  The runtime gate-message sweep (#53) namespaced `bin/prawduct-hook` + `lib/` agent-facing OUTPUT, but the plugin-bundled PROSE an agent reads via `/prawduct:*` still carries ~34+ bare command forms — `skills/critic/review-cycle.md`, `skills/critic/review-protocol.md`, and `methodology/{building,planning,reflection}.md` say "run /critic", "/pr create", "/critic cumulative" etc. where a plugin repo resolves `/prawduct:critic`, `/prawduct:pr`. Same leak class as #53, larger + lower-severity surface (teaching prose, not gates; agents can often infer the mapping, and the SessionStart briefing already lists namespaced forms). This is the "entire leak class as a build plan" follow-up.
+
+  Scope notes for the build plan: (1) sweep the whole FORM-FAMILY per the new learning — bare `/cmd`, hyphenated `/prawduct-advisory`, legacy `prawduct-setup` — one grep per spelling; (2) preserve carve-outs: file paths (`.prawduct/critic-review.md`, `agents/critic/SKILL.md`), the Claude Code built-in `/clear`, and prose like "critic/pr skills"; (3) DECISION REQUIRED — whether to namespace conceptual short-names in teaching guides at all, or keep `/critic` as the canonical short name with a one-time namespacing note (judgment call, raise with owner); (4) the frozen `tools/` copies of any duplicated prose stay bare; (5) pin with an assert-absent source-scan like `TestPluginRuntimeNamespacing`, extended to the docs surface. (builder)
+
+- **[SYN-3D8K]** Align `enable_v1_4_views` detector/mutator on inline-comment forms
+  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-19 · status: dropped · reviewed: 2026-05-29`
+
+  Same pattern Chunk 10 fixed in `enable_v1_4_coverage`: `is_views_enabled`-style detection strips inline comments via `split('#', 1)`, but `enable_v1_4_views`'s flip uses exact `line.strip() == "views_enabled: false"`. A user line like `views_enabled: false  # opt-out` is detected as present-and-off but never flipped → silent no-op (manifest flag still set, file unchanged). Edge case (templates emit bare values), but the asymmetry will keep biting until both helpers use the same shape-aware match. Apply the Chunk-10 fix-shape: iterate lines, skip indented, compare comment-stripped value, re-attach inline comment on rewrite. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 10) — the views variant was left alone in-chunk to keep diff scope tight. (critic)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — the enable_v1_4_views mutator/flip lived in the deleted sync engine; only the is_views_enabled reader survives and it isn't the buggy path.
+
+- **[BLD-0G6V]** Backfill Done-when blocks on Chunks 05-14 of v1.4 build plan
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-18 · status: dropped · reviewed: 2026-05-29`
+
+  Chunks 00-04 each carry a Done-when block; Chunks 05-14 do not. Not a chunk-close blocker (chunk-mode Critic still fires on declared `**Critic mode:**`), but worth backfilling for consistency before Chunk 06 starts. Filed from /critic chunk NOTE on 2026-05-18 (Chunk 05). (critic)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — backfilling Done-when on the long-shipped v1.4 plan has no consumer.
+
+- **[BLD-7A2E]** Capture pre-commit-regen scope-shift in Wave 2 retrospective / change-log
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-18 · status: dropped · reviewed: 2026-05-29`
+
+  F1 plan line 234 promises "pre-commit regen of build-plan Status from work-log"; Chunk 05 shipped on-demand `regen-views` plus methodology docs that tell users to invoke manually (Chunk 06 plan note confirms this is deliberate as "ad-hoc regen between commits"). The deliverable line was flagged "high level — to be expanded before chunk starts" so this is not silent, but the Wave-2 release entry / retrospective should record the explicit decision: pre-commit hook (deferred to Chunk 07's migration tooling or Wave-3) vs. on-demand `regen-views` (shipped now). Filed from /critic chunk NOTE on 2026-05-18 (Chunk 05). (critic)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — the v1.4 Wave-2 retrospective window is closed; the decision shipped.
+
+- **[DOC-6P3Q]** v1.4 release-readiness: document the new `/pr create` gate before tagging
+  `effort: S · impact: M · area: docs · source: critic · added: 2026-05-18 · status: dropped · reviewed: 2026-05-29`
+
+  F2 ships hard enforcement: `check-cumulative-critic` blocks `/pr create` without a fresh cumulative-mode findings file. Product owners who sync v1.4 without reading the change-log will hit the gate cold and read it as a regression. Before tagging v1.4 (after all waves merge): add a change-log entry naming the new gate, a `prawduct-doctor` migration prompt if relevant, and a Compatibility-Strategy line in the release notes (the cumulative gate is new structural enforcement, not a behavior tweak). Filed from /critic cumulative NOTE on 2026-05-18. (critic)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — the 'before tagging v1.4' window is closed; the /pr cumulative gate shipped and is live.
+
+- **[SYN-7L0D]** Remove dead `if rel_path in ("CLAUDE.md",)` lines in sync_cmd.py `template`-strategy branch
+  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-08 · status: dropped · reviewed: 2026-05-29`
+
+  Two pre-existing branches (`force=True` overwrite + `current_hash != stored_hash` skip) emit a "re-read CLAUDE.md" note guarded by `if rel_path in ("CLAUDE.md",)`. CLAUDE.md uses `block_template`, not `template`, so it can never reach these branches. Dead since the strategy split. Remove or document. Filed from /critic chunk on 2026-05-08 — flagged after the same dead pattern was caught in the new stale-clean branch (already removed there). Two-line cleanup; defer until next sync_cmd.py touch. (critic)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — the dead CLAUDE.md branch lived in the deleted sync_cmd.py.
+
+- **[SYN-3F6P]** Sync: skip-summary line counts + `--diff` preview flag
+  `effort: M · impact: M · area: sync · source: reflection · added: 2026-05-08 · status: dropped · reviewed: 2026-05-29`
+
+  When sync skips a file as "local edits," it gives no signal about the size or shape of the divergence — the user must `--force` blind or manually diff. Add to the skip note: `+N lines / -M lines vs current template`. Add a `--diff` flag that prints the unified diff(s) of would-be skips (or all would-be changes) without writing anything. For `block_template`, also note that content outside markers won't change. Lets users decide whether to force without a separate investigation. (reflection)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — pure file-sync `sync` UX (--diff/--force/skip-summary); the sync engine is gone.
+
+- **[TST-8B3X]** Audit public-function coverage exemptions in `tests/preferences/test_public_function_coverage.py`
+  `effort: M · impact: S · area: tests · source: builder · added: 2026-05-05 · status: dropped · reviewed: 2026-05-29`
+
+  Four functions in `tools/lib/` are exercised transitively but never directly referenced as a function call (under the tightened detection that requires `Attribute.attr` or `Name` in `Call.func`): `core.py::log`, `core.py::load_json`, `migrate_cmd.py::strip_test_tracking`, `migrate_cmd.py::generate_sync_manifest`. For each, decide: (a) add a direct unit test class, or (b) rename to `_<name>` (private-by-convention) and remove from the exemption list. Rationale captured inline in `EXEMPT_FROM_DIRECT_COVERAGE`. (builder)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — two of the four named functions were in the deleted tools/lib/migrate_cmd.py and the exemption list referenced the old tree (a fresh public-function-coverage audit against lib/ can be re-filed if wanted).
+
+- **[SYN-5G2J]** Extract `_git_run` helper for fw-dir git lookups
+  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-01 · status: dropped · reviewed: 2026-05-29`
+
+  `_get_framework_head_commit`, `_get_template_last_change` (sync_cmd.py), and the inline `git log -1` inside `_compute_framework_freshness` (product-hook) share the same try/except + subprocess.run + timeout=10 + broad-except + None-on-failure pattern. Three is the minimum-viable case for extraction. If a fourth fw-dir git lookup gets added, factor into `tools/lib/core.py` as `_git_run(fw_dir, args, timeout=10) -> str | None`. Currently small and well-commented; not urgent. (critic, 2026-05-01)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — the three _git_run call sites were framework-dir freshness probes in the deleted sync_cmd.py/product-hook.
+
+- **[SYN-3T7B]** run_sync() decomposition
+  `effort: M · impact: M · area: sync · source: janitor · added: 2026-04-16 · status: dropped · reviewed: 2026-05-29`
+
+  Extract per-strategy logic (template, block_template, always_update, merge_settings) from 337-line function in sync_cmd.py. (janitor)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** references file-sync machinery deleted in M4 — run_sync() was the deleted sync_cmd.py dispatcher; no 2.0 analog.
+
+- **[TST-1M6V]** Pre-existing timeout flakes in test_product_hook.py
+  `effort: M · impact: S · area: tests · source: builder · added: 2026-04-16 · status: dropped · reviewed: 2026-05-29`
+
+  `TestStopCriticGate::test_no_build_plan_anywhere_skips_critic` and `TestCanaryDepNoRationale::test_no_manifest_file_no_flag` intermittently hit the 15s timeout. May need investigation into why the product-hook subprocess hangs in certain test configurations. (builder)
+
+  **Dropped (2.0 rock-solid pass, 2026-06-03):** both named tests were removed with the file-sync engine in M4 — `TestStopCriticGate::test_no_build_plan_anywhere_skips_critic` and `TestCanaryDepNoRationale::test_no_manifest_file_no_flag` (manifest = file-sync) no longer exist.
+
+
