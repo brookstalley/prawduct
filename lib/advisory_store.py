@@ -280,20 +280,47 @@ def _migrate_store(data: dict) -> dict:
     return data
 
 
+def _preserve_corrupt(path: Path, raw: str) -> None:
+    """Best-effort: stash corrupt store bytes aside as ``<path>.corrupt``.
+
+    Surfaces corruption for user recovery instead of silently swallowing it
+    (a returned empty store would otherwise be indistinguishable from a clean
+    first run). Best-effort by design — the read path must stay non-raising, so
+    a failed preservation is swallowed rather than propagated.
+    """
+    try:
+        path.with_name(path.name + ".corrupt").write_text(raw)
+    except OSError:
+        pass  # best-effort: never let preservation break the (non-raising) read
+
+
 def read_store(product_dir) -> dict:
     """Read the nag log. Missing/unreadable/malformed → empty default (no raise).
 
     A lower/absent ``schema_version`` is migrated forward on read (spec A7);
     the migrated version persists on the next :func:`write_store`.
+
+    Corruption handling (ADV-9K2T): an EXISTING file that fails to parse or
+    parses to the wrong shape is preserved aside as ``.advisories.json.corrupt``
+    BEFORE the empty default is returned, so corruption is surfaced for recovery
+    rather than silently swallowed. A MISSING file is the normal first-run empty
+    path (no sentinel). An ``OSError`` (genuinely unreadable) stays empty with no
+    sentinel — the bytes can't be read, so there's nothing to preserve.
     """
     path = _store_path(product_dir)
     if not path.is_file():
-        return _empty_store()
+        return _empty_store()  # first run — not corruption, no sentinel
     try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+        raw = path.read_text()
+    except OSError:
+        return _empty_store()  # unreadable — can't read it to preserve it
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        _preserve_corrupt(path, raw)  # readable but unparseable → surface it
         return _empty_store()
     if not isinstance(data, dict) or not isinstance(data.get("advisories"), list):
+        _preserve_corrupt(path, raw)  # parsed but wrong shape → surface it
         return _empty_store()
     return _migrate_store(data)
 

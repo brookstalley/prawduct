@@ -217,6 +217,58 @@ class TestCollectShippedChunks:
         assert views.collect_shipped_chunks(entries, scope="v1.5") == {"01"}
 
 
+class TestValidateStatusValues:
+    """VWS-3K7P: surface change-log `status=` typos as non-fatal warnings.
+
+    An unrecognized status (e.g. `status=shippd`) parses fine but silently fails
+    to flip any checkbox — the typo guard turns that into a visible warning.
+    """
+
+    def test_typo_yields_one_warning(self):
+        entries = [
+            views.ChangeLogEntry(
+                title="2026-06-04: typo", tags={"chunks": ["01"], "status": "shippd"}
+            )
+        ]
+        warnings = views.validate_status_values(entries)
+        assert len(warnings) == 1
+        assert "shippd" in warnings[0]
+
+    def test_valid_shipped_yields_none(self):
+        entries = [
+            views.ChangeLogEntry(
+                title="2026-06-04: ok", tags={"chunks": ["01"], "status": "shipped"}
+            )
+        ]
+        assert views.validate_status_values(entries) == []
+
+    def test_valid_merged_yields_none(self):
+        entries = [
+            views.ChangeLogEntry(
+                title="2026-06-04: ok", tags={"chunks": ["01"], "status": "merged"}
+            )
+        ]
+        assert views.validate_status_values(entries) == []
+
+    def test_absent_status_yields_none(self):
+        entries = [
+            views.ChangeLogEntry(title="2026-06-04: untagged", tags={}),
+            views.ChangeLogEntry(
+                title="2026-06-04: chunks-only", tags={"chunks": ["02"]}
+            ),
+        ]
+        assert views.validate_status_values(entries) == []
+
+    def test_one_warning_per_bad_entry(self):
+        entries = [
+            views.ChangeLogEntry(title="a", tags={"status": "shippd"}),
+            views.ChangeLogEntry(title="b", tags={"status": "shipped"}),
+            views.ChangeLogEntry(title="c", tags={"status": "in-progress"}),
+        ]
+        warnings = views.validate_status_values(entries)
+        assert len(warnings) == 2  # shippd + in-progress (shipped is valid)
+
+
 class TestParseBuildPlanFrontmatterScope:
     def test_scope_field_present(self):
         content = (
@@ -296,6 +348,29 @@ class TestParseBuildPlanFrontmatterScope:
     def test_html_comment_without_frontmatter_is_absent(self):
         """Comment header but no frontmatter at all → key absent."""
         content = "<!-- header -->\n# Plan\nNo frontmatter.\n"
+        assert views._parse_build_plan_frontmatter_scope(content) == (False, None)
+
+    def test_unclosed_html_comment_is_handled_leniently(self):
+        """VWS-8M2Q (v1.5.1 R5): a leading HTML comment that is never closed
+        (no ``-->``) must not raise or misparse. The comment scan walks to EOF,
+        no ``---`` opener is found, and the result is the safe ``(False, None)``
+        absent reading — the documented lenient handling of malformed input."""
+        content = (
+            "<!-- Build Plan: this header is never closed\n"
+            "     no terminator on any line\n"
+            "---\n"
+            "scope: v9.9\n"
+            "---\n"
+            "## Status\n"
+        )
+        # The `---`/`scope:` lines are swallowed by the unterminated comment scan,
+        # so the frontmatter is unreachable → (False, None), no exception.
+        assert views._parse_build_plan_frontmatter_scope(content) == (False, None)
+
+    def test_unclosed_html_comment_only_input(self):
+        """An input that is nothing but an unclosed comment also degrades to
+        absent rather than raising (empty/EOF edge of the lenient path)."""
+        content = "<!-- open and never closed\nstill open\n"
         assert views._parse_build_plan_frontmatter_scope(content) == (False, None)
 
 
@@ -803,6 +878,43 @@ class TestBuildScopeView:
         _, scopes = views.build_scope_view(change_log, self.BASE_STATE)
         assert scopes["v1.4"]["chunks"] == ["01", "02", "03"]
 
+    def test_malformed_chunk_id_does_not_corrupt_yaml(self):
+        """VWS-8M2Q: a chunk ID with a quote/special char must NOT produce
+        unparseable scope_rollups YAML. The unsafe ID is dropped (it falls
+        outside the CHUNK_ID_SAFE charset); the well-formed sibling survives and
+        the emitted block round-trips through a real YAML parser."""
+        import yaml
+
+        # `01"a` (embedded quote) and `0 2` (space) are malformed; `03` is fine.
+        change_log = (
+            '## 2026-06-04: malformed\n'
+            '<!-- prawduct: chunks=01"a,0 2,03 | status=shipped | scope=v1.4 -->\n'
+        )
+        new, scopes = views.build_scope_view(change_log, self.BASE_STATE)
+        # Only the safe ID survived into the aggregated mapping.
+        assert scopes == {"v1.4": {"chunks": ["03"], "releases": []}}
+        assert new is not None
+        # The emitted project-state.yaml (with the scope_rollups block) is valid
+        # YAML — the embedded quote did not corrupt the document.
+        parsed = yaml.safe_load(new)
+        assert parsed["scope_rollups"]["v1.4"]["chunks"] == ["03"]
+
+    def test_collect_scope_rollups_drops_unsafe_ids_directly(self):
+        """Unit-level guard on the collector: unsafe chunk IDs are filtered out
+        before they ever reach the formatter."""
+        entries = [
+            views.ChangeLogEntry(
+                title="x",
+                tags={
+                    "chunks": ['"', "}", "ok-1", "ok_2"],
+                    "status": "shipped",
+                    "scope": "s",
+                },
+            )
+        ]
+        rollups = views._collect_scope_rollups(entries)
+        assert rollups == {"s": {"chunks": ["ok-1", "ok_2"], "releases": []}}
+
 
 class TestBuildReleaseNotesView:
     def test_none_when_no_releases(self):
@@ -1223,3 +1335,97 @@ class TestRegenViewsAllThree:
         assert (product / ".prawduct" / "artifacts" / "build-plan.md").read_text() == plan_after_first
         # And output reflects no work done.
         assert "up to date" in second.stdout.lower() or "no changes" in second.stdout.lower()
+
+
+class TestRegenViewsImportError:
+    """STH-2J9F: a broken/incomplete install (lib/ unimportable) must fail
+    honestly with exit 1 — a state-mutating command must not report success
+    when its machinery is absent (mirrors accept/verify-operator-verification).
+    """
+
+    def test_import_error_returns_exit_1(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-05-18: rel\n"
+                "<!-- prawduct: chunks=00 | status=shipped -->\n"
+            ),
+            build_plan="## Status\n- [ ] Chunk 00: A\n",
+        )
+        # Point CLAUDE_PLUGIN_ROOT at an empty dir with no lib/ package so
+        # `from lib import views` raises ImportError. The script's own dir is
+        # bin/, which has no lib/ either, so the import genuinely fails.
+        empty_root = tmp_path / "empty_plugin_root"
+        empty_root.mkdir()
+        env = {
+            **os.environ,
+            "CLAUDE_PROJECT_DIR": str(product),
+            "CLAUDE_PLUGIN_ROOT": str(empty_root),
+        }
+        result = subprocess.run(
+            ["python3", str(HOOK_PATH), "regen-views"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(product),
+            timeout=20,
+        )
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        assert "could not import" in result.stderr.lower()
+        # Build plan was NOT silently regenerated under the broken install.
+        assert (
+            "- [ ] Chunk 00: A"
+            in (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+        )
+
+
+class TestRegenViewsStatusTypoWarning:
+    """VWS-3K7P: a change-log `status=` typo is surfaced on stderr as a
+    NON-fatal warning — regen still succeeds (exit 0) and still flips the
+    valid entries; only the typoed entry fails to flip (as it always did)."""
+
+    def test_typo_warns_on_stderr_non_fatal(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-06-04: good entry\n"
+                "<!-- prawduct: chunks=00 | status=shipped -->\n"
+                "\n"
+                "## 2026-06-04: typoed entry\n"
+                "<!-- prawduct: chunks=01 | status=shippd -->\n"
+            ),
+            build_plan=(
+                "## Status\n"
+                "- [ ] Chunk 00: A\n"
+                "- [ ] Chunk 01: B\n"
+            ),
+        )
+        result = _run_regen(product)
+        # Non-fatal: command still succeeds.
+        assert result.returncode == 0, result.stderr
+        # Warning surfaced on stderr, naming the bad value.
+        assert "shippd" in result.stderr
+        assert "warning" in result.stderr.lower()
+        new_plan = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+        # Valid entry flipped; typoed entry did NOT flip (flip rule unchanged).
+        assert "- [x] Chunk 00: A" in new_plan
+        assert "- [ ] Chunk 01: B" in new_plan
+
+    def test_no_warning_when_all_valid(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-06-04: shipped entry\n"
+                "<!-- prawduct: chunks=00 | status=shipped -->\n"
+                "\n"
+                "## 2026-06-04: merged entry\n"
+                "<!-- prawduct: chunks=01 | status=merged -->\n"
+            ),
+            build_plan="## Status\n- [ ] Chunk 00: A\n- [ ] Chunk 01: B\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stderr
+        assert "WARNING" not in result.stderr

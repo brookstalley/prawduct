@@ -31,6 +31,15 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "bin" / "prawduct-hook"
 
+# TestCollapseBlankRuns imports the engine DIRECTLY (in-process), unlike the rest
+# of this file which subprocesses bin/prawduct-hook. The direct import keeps the
+# pure-helper unit tests isolated and fast; sys.path + ``from lib import ...``
+# mirrors the established pattern in the sibling lib tests (test_advisory_store.py).
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from lib import migrate_plugin as _migrate_plugin  # noqa: E402 — sys.path mutated above
+
 # The 7 framework skills (registry-derived; mirrored here so the fixture is
 # realistic — the engine derives this set itself, the test must not).
 FRAMEWORK_SKILLS = [
@@ -535,3 +544,45 @@ def test_migrate_nudges_point_at_existing_skill():
     # Chunk 8's nudges reference /prawduct:migrate — the skill must now back them.
     assert (ROOT / "skills" / "migrate" / "SKILL.md").is_file()
     assert "/prawduct:migrate" in (ROOT / "bin" / "prawduct-hook").read_text()
+
+
+# =============================================================================
+# Unit — _collapse_blank_runs (pure helper, imported in-process)
+# =============================================================================
+
+
+class TestCollapseBlankRuns:
+    """Unit coverage for ``_collapse_blank_runs`` edge cases (TST-4H8M).
+
+    Exercises the helper DIRECTLY (no subprocess) — it is a pure str→str
+    function, so a subprocess round-trip would only add noise and couple these
+    cases to the migrate dispatch wiring the other tests already cover.
+    """
+
+    @pytest.mark.parametrize(
+        "n",
+        [3, 4, 5, 7, 8, 12],
+        ids=["run3", "run4", "run5", "run7", "run8", "run12"],
+    )
+    def test_run_of_n_newlines_collapses_to_two(self, n):
+        # Any run of 3+ consecutive newlines (3, 4, 5, and 7+) collapses to
+        # exactly two newlines (one blank line) regardless of run length.
+        text = "a" + ("\n" * n) + "b"
+        assert _migrate_plugin._collapse_blank_runs(text) == "a\n\nb"
+
+    def test_only_newlines_input_collapses_to_two(self):
+        # A string that is nothing but a long newline run collapses to exactly two.
+        assert _migrate_plugin._collapse_blank_runs("\n" * 9) == "\n\n"
+
+    def test_empty_string_is_unchanged(self):
+        assert _migrate_plugin._collapse_blank_runs("") == ""
+
+    def test_no_blank_run_is_unchanged(self):
+        # A single blank line (two newlines) is already at the floor — untouched.
+        assert _migrate_plugin._collapse_blank_runs("a\n\nb") == "a\n\nb"
+
+    def test_while_loop_converges_across_multiple_runs(self):
+        # The while-loop must collapse EVERY run, not just the first — two
+        # separate triple-newline runs each reduce to a double newline.
+        text = "a\n\n\nb\n\n\nc"
+        assert _migrate_plugin._collapse_blank_runs(text) == "a\n\nb\n\nc"

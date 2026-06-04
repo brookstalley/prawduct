@@ -559,10 +559,20 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
         if field not in evidence:
             missing.append(field)
             continue
-        if not isinstance(evidence[field], allowed_types):
+        value = evidence[field]
+        # TST-1D5W: bool is a subclass of int, so a writer that emits
+        # ``{"passed": true}`` would slip through ``isinstance(value, int)`` and
+        # be silently read as the integer 1. Reject a bool wherever the field
+        # does not explicitly allow it (none of the numeric fields do) — a JSON
+        # boolean in a count/duration slot is always writer drift, not a real
+        # test count.
+        bool_in_int_slot = (
+            isinstance(value, bool) and bool not in allowed_types
+        )
+        if bool_in_int_slot or not isinstance(value, allowed_types):
             wrong_type.append(
                 f"{field} must be {' | '.join(t.__name__ for t in allowed_types)}, "
-                f"got {type(evidence[field]).__name__}"
+                f"got {type(value).__name__}"
             )
     if missing:
         return False, f"evidence missing required field(s): {', '.join(sorted(missing))}"
@@ -1798,6 +1808,17 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
         if critic_findings.is_file() and session_start_file.is_file():
             try:
                 session_start = session_start_file.read_text().strip()
+                # STH-6B4R: format findings_mtime to the SAME whole-second
+                # %Y-%m-%dT%H:%M:%SZ shape `.session-start` is written in (see
+                # cmd_clear's `stamp`), so the comparison is identical-precision
+                # lexicographic (== order-preserving for fixed-width second
+                # strings) — no fractional/format mismatch on either side.
+                # Tie rule: findings_mtime == session_start is NOT fresh
+                # (rejected). Strict `>` means a findings file whose mtime lands
+                # in the same whole second as session-start does not clear the
+                # gate — consistent with the cumulative-critic site's `<= ->
+                # stale`. Both Critic-gate sites use the strict convention; only
+                # `_test_status`'s evidence-freshness uses `>=` (deliberately).
                 findings_mtime = datetime.fromtimestamp(
                     critic_findings.stat().st_mtime, tz=timezone.utc
                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -2579,6 +2600,12 @@ def cmd_stop(project_dir: Path) -> int:
         if critic_findings.is_file() and session_start_file.is_file():
             try:
                 session_start = session_start_file.read_text().strip()
+                # STH-6B4R: identical-precision compare — findings_mtime is
+                # formatted to the same whole-second %Y-%m-%dT%H:%M:%SZ shape
+                # `.session-start` is written in, so this is order-preserving
+                # lexicographic with no format mismatch. Tie rule (mirrors the
+                # cmd_clear gate above): findings_mtime == session_start is NOT
+                # fresh — the strict `>` rejects a same-whole-second tie.
                 findings_mtime = datetime.fromtimestamp(
                     critic_findings.stat().st_mtime, tz=timezone.utc
                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -3108,6 +3135,32 @@ def _parse_build_plan_chunk_trivial_rationale(
     return rationale, None
 
 
+# STH-1W5N — single source of truth for the unconditional ``Type: trivial`` /
+# doc-only protected-path bounds. Each entry is ``(path, is_exact, reason_label)``:
+# a change touching ``path`` (prefix match unless ``is_exact``) is a
+# catastrophic-blast-radius edit that a trivial/doc-only chunk may never make,
+# and the violation is reported as ``"<reason_label>: <path>"``. Centralized
+# here (was inline in ``_classify_trivial_change``) so the stop-hook gate and
+# the PR-boundary gate share one provably-identical list — and so the bound set
+# is testable as data. The conditional bounds (test-file removals, newly-tracked
+# files) stay in ``_classify_trivial_change`` because they depend on the change
+# verb, not just the path.
+#   skills/       — the critic/pr/etc. SKILL definitions + bundled protocols ARE
+#                   the governance; editing one changes the framework itself.
+#   methodology/  — the build/discovery/planning/reflection guides Claude reads
+#                   as operating instructions; a "trivial" rewrite is never trivial.
+#   templates/    — the artifact templates every product's specs are generated
+#                   from; a silent change propagates to all downstream output.
+#   CLAUDE.md     — the project's top-level operating contract (exact match —
+#                   a nested ``foo/CLAUDE.md`` is ordinary product doc).
+_TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
+    ("skills/", False, "skill-file-edited"),
+    ("methodology/", False, "methodology-edited"),
+    ("templates/", False, "template-edited"),
+    ("CLAUDE.md", True, "claude-md-edited"),
+})
+
+
 def _classify_trivial_change(
     *,
     path: str,
@@ -3122,6 +3175,12 @@ def _classify_trivial_change(
     per-commit name-status diff). Centralizing the rule set prevents
     the stop-hook gate and the PR-boundary gate from drifting apart
     silently.
+
+    The unconditional path bounds live in the module-level
+    ``_TRIVIAL_PROTECTED_PATHS`` constant (STH-1W5N — single source of
+    truth, referenced from this one call site). The conditional bounds
+    (test-file removals, newly-tracked files) stay inline below because
+    they depend on the change verb, not just the path.
 
     Metadata paths (``.prawduct/``, ``.claude/settings.json``, etc. —
     see ``_is_metadata_path``) are treated as out-of-scope and return
@@ -3142,14 +3201,14 @@ def _classify_trivial_change(
         return None
     if src_path is not None and _is_metadata_path(src_path):
         return None
-    if path == "CLAUDE.md":
-        return f"claude-md-edited: {path}"
-    if path.startswith("skills/"):
-        return f"skill-file-edited: {path}"
-    if path.startswith("methodology/"):
-        return f"methodology-edited: {path}"
-    if path.startswith("templates/"):
-        return f"template-edited: {path}"
+    # Unconditional path bounds — driven by the _TRIVIAL_PROTECTED_PATHS
+    # constant so this gate and the PR-boundary gate share one list. The
+    # classes are mutually exclusive (a path matches at most one), so the
+    # frozenset's unordered iteration is behavior-preserving.
+    for protected, is_exact, reason_label in _TRIVIAL_PROTECTED_PATHS:
+        matched = path == protected if is_exact else path.startswith(protected)
+        if matched:
+            return f"{reason_label}: {path}"
     if is_deletion and path.startswith("tests/"):
         return f"test-file-deleted: {path}"
     if src_path is not None and src_path.startswith("tests/"):
@@ -3614,9 +3673,13 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         )
         return 1
     # Lexicographic compare on whole-second %Y-%m-%dT%H:%M:%SZ strings is
-    # order-preserving — same convention as cmd_clear's gate check around
-    # line 1874. Adding fractional seconds to the format would break both
+    # order-preserving — same identical-precision convention as cmd_clear's
+    # gate check. Adding fractional seconds to the format would break both
     # sides; keep them in lockstep.
+    # STH-6B4R tie rule: findings_mtime == session_start is NOT fresh (stale).
+    # `<=` rejects the same-whole-second tie, matching the Critic-gate sites'
+    # strict `>` (which clears the gate only when findings_mtime is strictly
+    # greater). The two phrasings express the identical tie semantics.
     if findings_mtime <= session_start:
         print(
             f"stale: cumulative findings ({findings_mtime}) "
@@ -3661,6 +3724,9 @@ def cmd_regen_views(project_dir: Path) -> int:
 
     Exit codes:
       0 - success (views disabled, no changes needed, or regen applied cleanly)
+      1 - the plugin lib/ could not be imported (incomplete install) — a
+          state-mutating command must not report success on a broken install
+          (mirrors accept/verify-operator-verification's ImportError handling)
       2 - I/O or schema error (missing change-log or build-plan)
     """
     # Ensure the plugin root is on sys.path so `from lib import views` resolves
@@ -3671,16 +3737,16 @@ def cmd_regen_views(project_dir: Path) -> int:
     try:
         from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
     except ImportError:
-        # The bundled governance lib/ should always import in the plugin (it
-        # ships alongside this script under ${CLAUDE_PLUGIN_ROOT}). Degrade
-        # gracefully rather than crash if the install is incomplete; views
-        # derivation is a convenience, and Status can be updated by hand.
+        # Honest failure: regen-views mutates state (build-plan checkboxes,
+        # release-notes, scope_rollups), so it must not claim success when its
+        # machinery is absent (an incomplete plugin install). Matches
+        # accept/verify-operator-verification — exit 1, not a silent exit 0.
         print(
-            "NOTE: regen-views could not import the plugin lib/ from "
+            "error: regen-views could not import the plugin lib/ from "
             "${CLAUDE_PLUGIN_ROOT}; Status not auto-regenerated.",
             file=sys.stderr,
         )
-        return 0
+        return 1
 
     prawduct_dir = get_prawduct_dir(project_dir)
     try:
@@ -3701,6 +3767,21 @@ def cmd_regen_views(project_dir: Path) -> int:
     if not enabled:
         print("Views disabled (set views_enabled: true in project-state.yaml).")
         return 0
+
+    # Surface change-log status= typos (e.g. status=shippd) as NON-fatal
+    # warnings on stderr — an unrecognized status silently fails to flip a
+    # checkbox, so we warn rather than letting the typo pass unnoticed. This
+    # does NOT change the exit code or the flip rule (only status==shipped flips).
+    try:
+        change_log_text = (prawduct_dir / "change-log.md").read_text(encoding="utf-8")
+        for warning in views.validate_status_values(
+            views.parse_change_log(change_log_text)
+        ):
+            print(f"WARNING: {warning}", file=sys.stderr)
+    except OSError:
+        # Best-effort advisory only — plan_regen already succeeded above, so a
+        # read hiccup here must not fail the command.
+        pass
 
     try:
         views.apply_regen(prawduct_dir, results)
