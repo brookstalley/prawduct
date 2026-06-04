@@ -8,6 +8,23 @@
 ## Open
 
 
+- **[CRT-7M2D]** Cumulative-Critic gate: judge freshness by commit-coverage (or exempt doc-only deltas), not recency
+  `effort: M · impact: M · area: critic · source: builder · added: 2026-06-04 · status: open · related: STH-6B4R`
+
+  Observed twice (rigor-and-stance + onboard releases, 2026-06-04): every post-cumulative fix — even
+  the Critic's OWN requested NOTE fixes or the PR reviewer's one-line docstring WARNING — moves HEAD
+  past the cumulative record's `commit_reviewed`, forcing a full `/prawduct:critic cumulative` re-run
+  to keep the record honestly covering HEAD. The `check-cumulative-critic` gate reports "fresh" on
+  mtime/session-recency, NOT on `commit_reviewed == HEAD`, so it would FALSE-PASS a stale record
+  (caught both times by inspecting the record; re-ran rather than exploit the gap). Net: a 4-10 min
+  cumulative re-run for an inert doc/docstring change, repeatedly. Fix-shapes: (a) the gate compares
+  the record's `commit_reviewed` to HEAD and only passes when equal (honest), AND a sanctioned
+  "post-review doc-only delta" path: if `git diff <commit_reviewed>..HEAD` is doc-only (or below a
+  trivial-fileset bound), the existing cumulative record still satisfies the gate (no re-run). (b)
+  alternatively, a `verify-resolutions`-style lightweight re-bless that advances `commit_reviewed`
+  without a full 7-goal pass when the delta is inert. Relates to STH-6B4R (gate freshness precision).
+  Filed from the v2.0.7/v2.0.8 releases. (builder)
+
 - **[LRN-3F8K]** Reconcile the dangling sentinel on the "Framework ownership follows the write strategy" learning
   `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open`
 
