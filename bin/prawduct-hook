@@ -4461,7 +4461,7 @@ def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
 
 
 def cmd_init_product(argv: list[str]) -> int:
-    """Scaffold a NEW plugin-governed product repo (``/prawduct:doctor`` Onboard).
+    """Scaffold a new or existing plugin-governed product repo (``/prawduct:onboard``).
 
     Thin wrapper around the plugin-native ``lib.init_product.run``. Unlike the other
     subcommands it operates on a TARGET path passed in ``argv`` (the new repo),
