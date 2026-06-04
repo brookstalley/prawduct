@@ -32,6 +32,27 @@
   dir under the session dir?) is harness-version-dependent and needs verification before (1) is viable;
   (3) is the cheap, safe floor. Filed 2026-06-04. (user)
 
+  **DESIGN + safe floor shipped (evidence-deferral, 2026-06-04 — chunk 02).** Investigation
+  corrected the framing: the report's option (3) "sanction an in-flight WAIVER" is actually WRONG —
+  waiving the Critic gate while background work is in flight would SKIP the Critic the completed
+  work still needs (the waiver persists the session, auto-clears next). So the agent is NOT forced
+  to choose between two bad options: SPIN is the *correct* behavior (wait, then run the Critic when
+  the job lands); the only real defect is the NOISE of repeated harmless blocks during a legitimate
+  wait. Shipped floor: `methodology/building.md` Gate-waivers now states "in-flight background work
+  is NOT a waiver case — wait, don't waive," so the semantic-overload temptation is removed.
+  Detection finding (rules out option 1 for now): the Stop hook (`prawduct-hook stop`) does NOT read
+  stdin, so it has no `transcript_path`/`session_id`; even if it did, inspecting
+  `subagents/workflows/*/journal.jsonl` can't distinguish a LIVE run from a CRASHED one (`started >
+  result` matches both; the journal persists after completion) — harness-version-dependent, unsafe
+  to build. Recommended REAL fix (option 2, refined): a SELF-DECLARED `.prawduct/.gates-deferred`
+  file (the AGENT knows it launched background work; the hook can't detect it) that the Stop hook
+  honors to defer the gate EXACTLY ONCE, then auto-rearms (clears itself on the deferred fire) — so
+  it quiets the wait WITHOUT ever permanently skipping the Critic (the next Stop re-checks normally;
+  the harness's pending-background-work keeps the session alive across the deferred fire). Distinct
+  archive semantics from a waiver ("deferred pending async run," not "unsatisfiable"). This needs a
+  Stop-hook code change + a guard test that a deferred gate re-arms; deferred from the doc-floor
+  chunk on proportionality. Could unify with [STH-7K2A] (both quiet a re-firing gate). (builder)
+
 - **[TST-6V2N]** test-evidence freshness gate reads `.test-evidence.json` but the plugin ships no command to WRITE it
   `effort: M · impact: M · area: tests · source: user · added: 2026-06-04 · status: open · related: TST-5W1J`
 

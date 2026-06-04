@@ -462,15 +462,18 @@ views_enabled: true
 # complete and released; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans.
 #
-# TWO plans are now release-pending for the next develop→main release:
-#   1. build-plan-roi-batch.md   (scope=roi-batch,   chunks 01–05, status=merged, via #58)
-#   2. build-plan-roi-batch-2.md (scope=roi-batch-2, chunks 01–09, status=merged) ← this pointer
-# The pointer names roi-batch-2 (the in-progress plan) to arm THIS session's stop-hook Critic
-# gate. Both are RELEASE-PENDING: at the develop→main release, `regen-views` must run once per
-# plan/scope (it resolves a single plan via this pointer) — point it at roi-batch, regen, then at
-# roi-batch-2, regen — before clearing this pointer. See docs/release-process.md + learnings.md
+# RELEASE-PENDING plans for the next develop→main release (regen-views must run ONCE PER SCOPE —
+# it resolves a single plan via this pointer, so at release point it at each in turn, regen, then
+# clear):
+#   1. build-plan-roi-batch.md       (scope=roi-batch,       chunks 01–05, status=merged, via #58)
+#   2. build-plan-roi-batch-2.md     (scope=roi-batch-2,     chunks 01–09, status=merged, via #59)
+# IN PROGRESS (not yet merged — becomes the 3rd release-pending plan at merge):
+#   3. build-plan-evidence-deferral.md (scope=evidence-deferral, chunks 01–02) ← this pointer
+# The pointer names the IN-PROGRESS plan to arm THIS session's stop-hook Critic gate. All
+# release-pending plans (1, 2, and 3-once-merged) are RETAINED until the release flips their
+# change-log entries merged→shipped + regens each. See docs/release-process.md + learnings.md
 # "KEEP the build plan" — do NOT clear at develop-merge.
-active_build_plan: artifacts/build-plan-roi-batch-2.md
+active_build_plan: artifacts/build-plan-evidence-deferral.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
