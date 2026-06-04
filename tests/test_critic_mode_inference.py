@@ -763,3 +763,50 @@ class TestValidatorAcceptsModeChosenBy:
             mode_chosen_by=42,
         )
         assert self.mod.validate_critic_findings(path) is False
+
+
+# ---------------------------------------------------------------------------
+# Metadata-path classification (file-sync-era prefixes retired post-M4)
+# ---------------------------------------------------------------------------
+
+
+class TestMetadataPathClassification:
+    """Post-M4 the metadata allowlist is plugin-only: product-owned state
+    (``.prawduct/``) and the committed install reference
+    (``.claude/settings.json``). The file-sync-era prefixes
+    (``.claude/skills/`` for synced framework skills, ``tools/product-hook``)
+    were removed — a plugin repo never carries them, and a product's *own*
+    skill under ``.claude/skills/`` is product code that must be gated, not
+    excused from the reflection/Critic gates.
+    """
+
+    def test_product_state_and_install_reference_are_metadata(self):
+        from lib.critic_mode import _is_metadata_path
+
+        assert _is_metadata_path(".prawduct/project-state.yaml")
+        assert _is_metadata_path(".claude/settings.json")
+
+    def test_retired_filesync_prefixes_are_not_metadata(self):
+        from lib.critic_mode import _is_metadata_path
+
+        # A product's own skill is product code, not excused framework metadata.
+        assert not _is_metadata_path(".claude/skills/my-skill/SKILL.md")
+        # The committed file-sync product hook is retired; never excused.
+        assert not _is_metadata_path("tools/product-hook")
+
+    def test_own_skill_edits_count_as_code_in_inference(self, tmp_path: Path):
+        """End-to-end companion: 5 uncommitted ``.claude/skills/`` files with no
+        build plan now drive the no-plan medium+ rule (→ ``final``, rationale
+        ``"no build plan"``), proving the classifier change reaches the
+        gate-relevant code-file count. Before the retirement these were metadata
+        and the same repo fell through to rule-4 (``"rule-4 final:"``)."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        for i in range(5):
+            _write(tmp_path, f".claude/skills/skill_{i}/SKILL.md", f"# skill {i}\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "final"
+        assert "no build plan" in rationale

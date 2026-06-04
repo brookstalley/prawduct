@@ -20,6 +20,8 @@
 
 **Tests:** 645 passing (down from the pre-M4 ~1810 — the ~1200 deleted were the frozen engine's own suite; net plugin coverage is intact, every retired template-mirror test either retargeted to the plugin source-of-truth or proven redundant with an existing plugin-source test; the cumulative-Critic pass added a 23-principle pin against `docs/principles.md` + a `product-hook` binary-name guard).
 
+**Pre-promotion follow-up (2026-06-04):** the develop→main release-readiness review surfaced one straggler from the M4 retirement — the deferred `[JAN-4F7M]` — so it was folded into v2.0.3 rather than shipped incoherent. `skills/janitor/SKILL.md`'s Template Currency theme (plus its Step 1 framework-health pre-check and Step 7 hash-update guidance) was repointed from the retired `sync-manifest.json`/`framework_source`/place-once mechanism to the read-only plugin templates at `${CLAUDE_PLUGIN_ROOT}/templates/`. The same pass cleaned the two file-sync-era `_METADATA_PREFIXES` entries (`.claude/skills/`, `tools/product-hook`) from both mirrors (`bin/prawduct-hook` + `lib/critic_mode.py`) — a product's own `.claude/skills/` skill now counts as gated code, not excused metadata (closes a small governance hole). Plus the folded comment-only fix to `tests/test_plugin_runtime.py` (stale stop-gate assertion rationale). +7 regression tests (`TestJanitorSkillPluginEra`, `TestMetadataPathClassification`); **652 passing**.
+
 ## 2026-06-03: v2.0.2 — Advisory probes run again in the plugin runtime; migration guide leads with the steps (shipped)
 
 <!-- prawduct: type=fix | release=v2.0.2 | status=shipped -->

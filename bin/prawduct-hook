@@ -182,12 +182,15 @@ def git_has_changes(project_dir: Path) -> str:
 
 
 # Paths that are framework/session metadata — changes to these should
-# never trigger reflection or Critic gates.
+# never trigger reflection or Critic gates. Plugin-only: product-owned state
+# and the committed install reference. The file-sync-era entries
+# (``.claude/skills/`` for synced framework skills, ``tools/product-hook``)
+# are intentionally absent — a plugin repo never carries them, and a
+# product's *own* skill under ``.claude/skills/`` is product code that must
+# be gated, not excused. (Mirrored in ``lib/critic_mode.py``.)
 _METADATA_PREFIXES = (
     ".prawduct/",
     ".claude/settings.json",
-    ".claude/skills/",
-    "tools/product-hook",
 )
 
 

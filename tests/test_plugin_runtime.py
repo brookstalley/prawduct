@@ -424,6 +424,34 @@ class TestPluginDocsNamespacing:
         )
 
 
+class TestJanitorSkillPluginEra:
+    """`skills/janitor/SKILL.md`'s Template Currency theme must teach the plugin
+    model, not the retired file-sync workflow. Replaces the deleted
+    `test_v5_templates.py::TestJanitorSkillTemplateCurrency` mirror (it pinned the
+    file-sync language via the now-removed `templates/skill-janitor.md`) — closing
+    [JAN-4F7M]. A regression here means the skill drifted back to teaching
+    `sync-manifest.json`/`framework_source`, neither of which exists in a plugin
+    repo (init never creates them; `/prawduct:migrate` removes them)."""
+
+    SKILL = "skills/janitor/SKILL.md"
+
+    @pytest.mark.parametrize("needle", ["sync-manifest", "framework_source", "place_once"])
+    def test_no_filesync_residue(self, needle):
+        src = (ROOT / self.SKILL).read_text(encoding="utf-8")
+        assert needle not in src, (
+            f"{self.SKILL} still teaches the retired file-sync term `{needle}` — "
+            "post-M4 a plugin repo carries no sync-manifest and no framework_source; "
+            "Template Currency compares against the read-only plugin templates."
+        )
+
+    def test_template_currency_targets_plugin_root(self):
+        src = (ROOT / self.SKILL).read_text(encoding="utf-8")
+        assert "${CLAUDE_PLUGIN_ROOT}/templates/" in src, (
+            f"{self.SKILL} must resolve framework templates from "
+            "`${CLAUDE_PLUGIN_ROOT}/templates/` (the plugin ships them read-only)."
+        )
+
+
 class TestPluginSubcommandsResolveViaLib:
     def _repo(self, tmp_path) -> Path:
         prawduct = tmp_path / ".prawduct"

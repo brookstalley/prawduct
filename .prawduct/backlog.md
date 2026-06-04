@@ -8,7 +8,7 @@
 ## Open
 
 - **[JAN-4F7M]** Rewrite `skills/janitor/SKILL.md` "Template Currency" theme for plugin distribution
-  `effort: M · impact: M · area: janitor · source: builder · added: 2026-06-03 · status: open`
+  `effort: M · impact: M · area: janitor · source: builder · added: 2026-06-03 · status: resolved · reviewed: 2026-06-04`
 
   The janitor skill's **Template Currency** investigation theme (and its Step 1 framework-health
   pre-check + Step 7 hash-update guidance) still teaches the file-sync maintenance workflow:
@@ -23,6 +23,19 @@
   plugin and updates via `autoUpdate`? — and add fresh `skills/janitor/SKILL.md` structural coverage
   to replace the deleted mirror test. Candidate to fold into M4 Chunk 5 (docs/residue) if cheap, else
   a standalone janitor-skill pass. Filed from M4 Chunk 4 on 2026-06-03. (builder)
+
+  **Resolved (v2.0.3 pre-promotion, 2026-06-04):** reworked the Template Currency theme for plugin
+  distribution — it now compares the product's artifacts against the read-only plugin templates at
+  `${CLAUDE_PLUGIN_ROOT}/templates/` (no `sync-manifest.json`, no `framework_source`, no place-once
+  hash store). The Step 1 framework-health pre-check now confirms the plugin runtime is reachable
+  (`${CLAUDE_PLUGIN_ROOT}/templates/` readable) instead of asserting a sync-manifest exists; Step 7
+  records resolved drift in `.prawduct/change-log.md` rather than recomputing template hashes.
+  Structural coverage restored via `test_plugin_runtime.py::TestJanitorSkillPluginEra` (asserts no
+  `sync-manifest`/`framework_source`/`place_once` residue + the plugin-root target). The same pass
+  also cleaned the file-sync-era `_METADATA_PREFIXES` entries (`.claude/skills/`, `tools/product-hook`)
+  from both mirrors (`bin/prawduct-hook` + `lib/critic_mode.py`) — a product's own `.claude/skills/`
+  skill now counts as gated code, not excused metadata (`TestMetadataPathClassification`). Surfaced by
+  the develop→main release-readiness review; folded into v2.0.3 rather than deferred. 652 passing. (builder)
 
 - **[DOC-7H2K]** Port `/prawduct:doctor`'s remaining file-sync-coupled flows to the plugin model (Chunk 13)
   `effort: L · impact: M · area: doctor · source: builder · added: 2026-06-02 · status: resolved · reviewed: 2026-06-02`

@@ -76,11 +76,15 @@ _DEFAULT_BASE_BRANCHES = ("main", "master", "develop")
 # Mirrors ``_METADATA_PREFIXES`` in ``bin/prawduct-hook``. Kept in sync
 # manually — duplication is acceptable for this small set; extracting to
 # ``lib.core`` would expand core's surface for one consumer.
+#
+# Plugin-only metadata: product-owned state and the committed install
+# reference. The file-sync-era entries (``.claude/skills/`` for synced
+# framework skills, ``tools/product-hook``) are intentionally absent — post
+# v2.0.x a plugin repo never carries them, and a product's *own* skill under
+# ``.claude/skills/`` is product code that must be gated, not excused.
 _METADATA_PREFIXES = (
     ".prawduct/",
     ".claude/settings.json",
-    ".claude/skills/",
-    "tools/product-hook",
 )
 
 
