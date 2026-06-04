@@ -36,10 +36,10 @@ cumulative when about to PR) without the cost.
 
 Pure-ish: takes ``project_dir``, reads files under it, runs ``git``
 subprocesses against it. Deterministic given fixed git state. Imports
-only from the stdlib — no ``tools.product-hook`` dependency (per the
-v1.5 Chunk 03 plan: "Imports only `tools.lib.core`"; product-hook
-helpers are intentionally re-implemented here to keep the module
-lightweight and importable from the slash-command shim).
+only from the stdlib + ``lib.core`` (the build-plan resolver) — no
+dependency on ``bin/prawduct-hook``; its metadata/build-plan helpers are
+intentionally re-implemented here to keep the module lightweight and
+importable from the slash-command shim.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ from pathlib import Path
 from .core import resolve_build_plan_path
 
 # Verbose-string mode constants — used to recognize prior findings'
-# ``mode`` field. Must stay in lockstep with ``tools/product-hook``'s
+# ``mode`` field. Must stay in lockstep with ``bin/prawduct-hook``'s
 # ``_CRITIC_MODE_*`` constants. (Persisted form is verbose; caller-side
 # short tokens are what we return / accept as ``args``.)
 _MODE_VERIFY_RESOLUTIONS_VERBOSE = (
@@ -73,14 +73,18 @@ _VALID_ARG_MODES = frozenset({
 # (typically ``main``; ``develop`` for gitflow projects).
 _DEFAULT_BASE_BRANCHES = ("main", "master", "develop")
 
-# Mirrors ``_METADATA_PREFIXES`` in ``tools/product-hook``. Kept in sync
+# Mirrors ``_METADATA_PREFIXES`` in ``bin/prawduct-hook``. Kept in sync
 # manually — duplication is acceptable for this small set; extracting to
-# ``tools.lib.core`` would expand core's surface for one consumer.
+# ``lib.core`` would expand core's surface for one consumer.
+#
+# Plugin-only metadata: product-owned state and the committed install
+# reference. The file-sync-era entries (``.claude/skills/`` for synced
+# framework skills, ``tools/product-hook``) are intentionally absent — post
+# v2.0.x a plugin repo never carries them, and a product's *own* skill under
+# ``.claude/skills/`` is product code that must be gated, not excused.
 _METADATA_PREFIXES = (
     ".prawduct/",
     ".claude/settings.json",
-    ".claude/skills/",
-    "tools/product-hook",
 )
 
 
@@ -201,7 +205,7 @@ def _rule_verify_resolutions_fires(
     # surface. Even one file outside scope means the builder added new
     # work alongside the fix — that's a chunk/final case, not a verify
     # pass. (Symmetric with ``_verify_resolutions_gate_check`` in
-    # product-hook; same "diff ⊆ scope" contract.)
+    # bin/prawduct-hook; same "diff ⊆ scope" contract.)
     return diff_files.issubset(prior_set)
 
 
@@ -279,7 +283,7 @@ def _rule_final_fires(prawduct_dir: Path, project_dir: Path) -> str:
 
 
 def _is_metadata_path(filepath: str) -> bool:
-    """Mirrors ``tools/product-hook``'s ``_is_metadata_path``."""
+    """Mirrors ``bin/prawduct-hook``'s ``_is_metadata_path``."""
     return any(filepath.startswith(p) for p in _METADATA_PREFIXES)
 
 
@@ -379,7 +383,7 @@ def _git_head_sha(project_dir: Path) -> str:
 def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     """Count chunks in the active build plan's Status section.
 
-    Mirrors ``tools/product-hook``'s ``_count_build_plan_chunks``. Resolves the
+    Mirrors ``bin/prawduct-hook``'s ``_count_build_plan_chunks``. Resolves the
     plan via the ``active_build_plan:`` pointer (falls back to
     ``artifacts/build-plan.md``), so scope-named plans are counted too.
     Returns ``(total, complete)``; ``(0, 0)`` if plan/Status absent.

@@ -1,8 +1,8 @@
 """Project-preferences enforcement: `from __future__ import annotations`.
 
 Enforces the Imports preference in `.prawduct/artifacts/project-preferences.md`:
-every implementation file in `tools/`, `tests/`, and `hooks/` (the v2.0.0
-plugin's bundled hook scripts) must begin with `from __future__ import
+every implementation file in `lib/`, `tests/`, `hooks/`, and the plugin
+runtime (`bin/prawduct-hook`, `bin/test-reference-verify`) must begin with `from __future__ import
 annotations` (after the module docstring, if any).
 
 Exceptions, by design:
@@ -26,13 +26,18 @@ EXPLICIT_EXCEPTIONS = {
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in ("tools", "tests", "hooks"):
+    for root in ("lib", "tests", "hooks"):
         for path in (REPO_ROOT / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
             if path.name == "__init__.py":
                 continue
             files.append(path)
+    # The plugin runtime scripts are executable Python with no .py suffix.
+    for name in ("prawduct-hook", "test-reference-verify"):
+        script = REPO_ROOT / "bin" / name
+        if script.is_file():
+            files.append(script)
     return sorted(files)
 
 

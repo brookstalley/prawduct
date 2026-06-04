@@ -65,9 +65,8 @@ def _plugin_root() -> Path:
     """The plugin root — ``<root>/lib/init_product.py`` → ``<root>``.
 
     Resolve ``templates/`` and ``VERSION`` from the plugin root directly rather
-    than via ``core.TEMPLATES_DIR`` / ``core.PRAWDUCT_VERSION``: ``core.py`` is
-    byte-parity-locked to ``tools/lib/core.py`` (Chunk 5), and its
-    ``FRAMEWORK_DIR = __file__.parent.parent.parent`` is correct only at the
+    than via ``core.TEMPLATES_DIR`` / ``core.PRAWDUCT_VERSION``: ``core.py``'s
+    ``FRAMEWORK_DIR = __file__.parent.parent.parent`` assumed the file-sync
     ``tools/lib/`` depth — in the plugin's top-level ``lib/`` it lands one level
     too high (``…/source`` instead of ``…/<plugin>``). The plugin always resolves
     its own resources from the plugin root (as ``bin/`` and ``hooks/`` do); this is

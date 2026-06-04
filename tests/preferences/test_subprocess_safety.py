@@ -25,11 +25,16 @@ SUBPROCESS_FUNCS = frozenset({"run", "check_output", "check_call", "call", "Pope
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in ("tools", "tests", "hooks"):
+    for root in ("lib", "tests", "hooks"):
         for path in (REPO_ROOT / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
             files.append(path)
+    # The plugin runtime scripts are executable Python with no .py suffix.
+    for name in ("prawduct-hook", "test-reference-verify"):
+        script = REPO_ROOT / "bin" / name
+        if script.is_file():
+            files.append(script)
     return sorted(files)
 
 

@@ -26,7 +26,7 @@ from datetime import date
 from pathlib import Path
 
 # Recognized status tokens. ``pending`` is the only status that blocks
-# ``/pr create``; ``verified`` and ``accepted`` are both drained states
+# ``/prawduct:pr create``; ``verified`` and ``accepted`` are both drained states
 # kept in the file as append-only history.
 _STATUS_PENDING = "pending"
 _STATUS_VERIFIED = "verified"
@@ -262,7 +262,7 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
 
     Returns ``{"required": bool, "pending": int, "queue_path": str,
     "first_pending": str | None, "message": str}``. The caller decides what
-    exit code to map this to — the product-hook wrapper uses 0 when the
+    exit code to map this to — the prawduct-hook wrapper uses 0 when the
     gate is satisfied (not required OR no pending) and 1 otherwise.
     """
     product_path = Path(product_dir).resolve()
@@ -400,7 +400,7 @@ def run_accept_pending(
 ) -> dict:
     """Flip all pending entries to ``accepted`` with the supplied rationale.
 
-    Used by ``/pr create --accept-pending-verification "rationale"`` — the
+    Used by ``/prawduct:pr create --accept-pending-verification "rationale"`` — the
     override is recorded in the queue file itself so the work-log shows
     why the gate was bypassed for this PR.
 
@@ -418,7 +418,7 @@ def run_accept_pending(
     if not rationale or not rationale.strip():
         return {
             "error": (
-                "Rationale required: `/pr create --accept-pending-verification` "
+                "Rationale required: `/prawduct:pr create --accept-pending-verification` "
                 "must record why the operator-verification gate was bypassed."
             )
         }

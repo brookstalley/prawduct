@@ -9,8 +9,7 @@ CRT-8H3D). The `!Bash(...pytest*)` deny entries are kept as belt-and-suspenders
 documentation and still asserted present, but skill-frontmatter `!`-deny is not
 reliably honored by the harness, so they are not the mechanism. Git is likewise
 restricted to read-only verbs so a review can't mutate the tree (CRT-2M5P).
-Drift in the framework-owned skill, the product-distribution template, or the
-plugin-distributed skill (v2.0.0) fails loud.
+Drift in the plugin-distributed Critic skill fails loud.
 """
 
 from __future__ import annotations
@@ -21,17 +20,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Critic skill surfaces that must carry identical structural safety (pure-allow
-# deny set, read-only git verbs only). Chunk 13 removed the legacy framework
+# Critic skill surface that must carry the structural safety set (pure-allow deny
+# set, read-only git verbs only). Chunk 13 removed the legacy framework
 # `.claude/skills/critic/SKILL.md` (this repo is now governed by the plugin) and
-# retired the `critic-test` shadow skill. The two surviving surfaces are the
-# file-sync product template (still synced to un-migrated legacy repos) and the
-# plugin-distributed skill. The plugin repoints its runtime-hook invocations from
-# `python3 tools/product-hook …` to the bundled `prawduct-hook …` (Chunk 5), so
-# its frontmatter is not byte-identical — the safety set is, the prefix is not.
-_PRODUCT_TEMPLATE = REPO_ROOT / "templates" / "skill-critic.md"
+# retired the `critic-test` shadow skill; M4 Chunk 4 deleted the file-sync product
+# template (`templates/skill-critic.md`) when the engine retired. The plugin-
+# distributed skill is the sole surviving surface — its runtime-hook invocations
+# call the bundled `prawduct-hook …` (Chunk 5 repoint).
 _PLUGIN_CRITIC_SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"
-CRITIC_SKILL_SURFACES = [_PRODUCT_TEMPLATE, _PLUGIN_CRITIC_SKILL]
+CRITIC_SKILL_SURFACES = [_PLUGIN_CRITIC_SKILL]
 
 # The same read-only-git constraint (CRT-2M5P) applies to every Critic surface.
 GIT_READONLY_SURFACES = CRITIC_SKILL_SURFACES
@@ -54,14 +51,6 @@ def _extract_allowed_tools(content: str) -> str:
 class TestCriticSkillDenyPatterns:
     """Both Critic skill surfaces must structurally deny pytest invocations."""
 
-    def test_product_template_has_all_deny_patterns(self):
-        allowed = _extract_allowed_tools(_PRODUCT_TEMPLATE.read_text())
-        for pat in REQUIRED_DENY_PATTERNS:
-            assert pat in allowed, (
-                f"templates/skill-critic.md is missing deny pattern `{pat}` "
-                f"in allowed-tools"
-            )
-
     def test_plugin_skill_has_all_deny_patterns(self):
         allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
         for pat in REQUIRED_DENY_PATTERNS:
@@ -73,31 +62,20 @@ class TestCriticSkillDenyPatterns:
     def test_existing_legitimate_tools_preserved(self):
         """The deny additions must not accidentally drop existing allows.
 
-        Common tools are checked on every surface; the runtime-hook invocation
-        prefix is distribution-specific — file-sync surfaces call
-        `python3 tools/product-hook …`, the plugin surface calls the bundled
-        `prawduct-hook …` (Chunk 5 repoint)."""
-        common = ["Read", "Glob", "Grep", "Bash(wc *)", "Write", "Agent"]
-        legacy_hook_tools = [
-            "Bash(python3 tools/product-hook test-status)",
-            "Bash(python3 tools/product-hook verify-chunk-refs *)",
-            "Bash(python3 tools/product-hook infer-critic-mode *)",
-        ]
-        plugin_hook_tools = [
+        The plugin Critic surface calls the bundled `prawduct-hook …` runtime
+        (Chunk 5 repoint, replacing the retired `python3 tools/product-hook …`)."""
+        expected = [
+            "Read", "Glob", "Grep", "Bash(wc *)", "Write", "Agent",
             "Bash(prawduct-hook test-status)",
             "Bash(prawduct-hook verify-chunk-refs *)",
             "Bash(prawduct-hook infer-critic-mode *)",
         ]
-        for surface in CRITIC_SKILL_SURFACES:
-            allowed = _extract_allowed_tools(surface.read_text())
-            expected = common + (
-                plugin_hook_tools if surface == _PLUGIN_CRITIC_SKILL else legacy_hook_tools
+        allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
+        for tool in expected:
+            assert tool in allowed, (
+                f"{_PLUGIN_CRITIC_SKILL.relative_to(REPO_ROOT)} dropped legitimate "
+                f"tool `{tool}` from allowed-tools"
             )
-            for tool in expected:
-                assert tool in allowed, (
-                    f"{surface.relative_to(REPO_ROOT)} dropped legitimate "
-                    f"tool `{tool}` from allowed-tools"
-                )
 
     def test_git_is_read_only(self):
         """CRT-2M5P: the Critic must NOT have the broad `Bash(git *)` allow —
@@ -153,19 +131,3 @@ class TestCriticSkillDenyPatterns:
                         f"structurally blocked by the allow-list"
                     )
 
-    def test_all_surfaces_have_equivalent_deny_sets(self):
-        """Drift between any Critic surface (product template, plugin
-        distribution) and the reference set = bug."""
-        reference_path = CRITIC_SKILL_SURFACES[0]
-        reference_denies = set(
-            re.findall(r"!Bash\([^)]+\)", _extract_allowed_tools(reference_path.read_text()))
-        )
-        for surface in CRITIC_SKILL_SURFACES[1:]:
-            surface_denies = set(
-                re.findall(r"!Bash\([^)]+\)", _extract_allowed_tools(surface.read_text()))
-            )
-            assert surface_denies == reference_denies, (
-                f"deny-set drift: {surface.relative_to(REPO_ROOT)} has "
-                f"{surface_denies - reference_denies} that the reference lacks; "
-                f"reference has {reference_denies - surface_denies} that it lacks"
-            )

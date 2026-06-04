@@ -1,4 +1,4 @@
-"""Tests for tools/test-reference-verify — F4a floor coverage verifier.
+"""Tests for bin/test-reference-verify — F4a floor coverage verifier.
 
 The verifier runs git inside a real on-disk repo, so each test builds a
 miniature repo under tmp_path: init, commit a baseline, mutate / add files,
@@ -17,7 +17,8 @@ from pathlib import Path
 
 import pytest
 
-VERIFIER_PATH = Path(__file__).resolve().parent.parent / "tools" / "test-reference-verify"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+VERIFIER_PATH = REPO_ROOT / "bin" / "test-reference-verify"
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -318,16 +319,14 @@ class TestBaseResolution:
 
 class TestSelfCompat:
     """The verifier's emitted shape must satisfy the schema validator that
-    product-hook uses. Cross-validation here catches drift between the two
-    sides of the contract.
+    the plugin runtime (bin/prawduct-hook validate-evidence) uses.
+    Cross-validation here catches drift between the two sides of the contract.
     """
 
     def test_emitted_fields_satisfy_schema_validator(self, mini_repo: Path):
         """Take what the verifier writes, glue on fingerprint fields, and
-        run it through product-hook's validate-evidence. Failure here means
-        the verifier and the schema disagree on shape."""
-        from tests.test_product_hook import run_hook  # late import to avoid cycles
-
+        run it through the plugin runtime's validate-evidence. Failure here
+        means the verifier and the schema disagree on shape."""
         out = mini_repo / "coverage.json"
         _run_verifier(mini_repo, "--base", "main", "--output", str(out))
         coverage = json.loads(out.read_text())
@@ -348,6 +347,15 @@ class TestSelfCompat:
         prawduct.mkdir(exist_ok=True)
         (prawduct / ".test-evidence.json").write_text(json.dumps(evidence))
 
-        result = run_hook("validate-evidence", mini_repo, git_output="")
+        result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "bin" / "prawduct-hook"), "validate-evidence"],
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "CLAUDE_PROJECT_DIR": str(mini_repo),
+                "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT),
+            },
+        )
 
         assert result.returncode == 0, result.stderr

@@ -1,32 +1,21 @@
-"""Tests for PR reviewer integration — init, sync, and hook.
+"""Tests for the plugin runtime's PR-review gate + PR-review prose.
 
-Tests that prawduct-setup.py creates PR reviewer files, tracks them
-in the manifest, and the stop hook handles PR review evidence.
+Covers the stop-hook PR-review-evidence gate (bin/prawduct-hook stop) and the
+PR-reviewer template/skill content. The file-sync init/sync/manifest behavior
+(prawduct-setup.py) retired with the engine in M4.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
-# Load prawduct-setup.py via importlib
-_TOOLS = Path(__file__).resolve().parent.parent / "tools"
-
-_spec = importlib.util.spec_from_file_location("prawduct_setup", _TOOLS / "prawduct-setup.py")
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
-run_init = _mod.run_init
-run_sync = _mod.run_sync
-create_manifest = _mod.create_manifest
-compute_hash = _mod.compute_hash
-compute_block_hash = _mod.compute_block_hash
-
-HOOK_PATH = _TOOLS / "product-hook"
-FRAMEWORK_DIR = _TOOLS.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
+HOOK_PATH = REPO_ROOT / "bin" / "prawduct-hook"
+FRAMEWORK_DIR = REPO_ROOT
 
 
 # =============================================================================
@@ -43,7 +32,7 @@ def run_hook(
     gh_script_body: str | None = None,
     env_extra: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
-    """Run product-hook with controlled mocks for git and gh.
+    """Run the plugin runtime (bin/prawduct-hook) with controlled mocks for git and gh.
 
     If git_script is provided, it's used as the full git mock script body.
     Otherwise a basic git mock is generated from git_output.
@@ -51,6 +40,7 @@ def run_hook(
     env = {
         "HOME": str(project_dir),
         "CLAUDE_PROJECT_DIR": str(project_dir),
+        "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT),
         "PATH": "",
     }
 
@@ -90,186 +80,6 @@ def run_hook(
         env=env,
         timeout=15,
     )
-
-
-# =============================================================================
-# Init: PR reviewer files created
-# =============================================================================
-
-
-class TestInitPrReviewFiles:
-    def test_creates_pr_review_md(self, tmp_path: Path):
-        run_init(str(tmp_path), "TestProduct")
-        pr_review = tmp_path / ".prawduct" / "pr-review.md"
-        assert pr_review.is_file()
-        content = pr_review.read_text()
-        assert "PR Review" in content
-        assert "No Bugs Shipped" in content
-
-    def test_creates_pr_command(self, tmp_path: Path):
-        run_init(str(tmp_path), "TestProduct")
-        pr_skill = tmp_path / ".claude" / "skills" / "pr" / "SKILL.md"
-        assert pr_skill.is_file()
-        content = pr_skill.read_text()
-        assert "PR lifecycle" in content
-        assert "Create Flow" in content
-
-    def test_pr_review_in_actions(self, tmp_path: Path):
-        result = run_init(str(tmp_path), "TestProduct")
-        actions = result["actions"]
-        assert any("pr-review.md" in a for a in actions)
-        assert any("skills/pr/SKILL.md" in a for a in actions)
-
-    def test_pr_reviews_gitignored(self, tmp_path: Path):
-        run_init(str(tmp_path), "TestProduct")
-        gitignore = (tmp_path / ".gitignore").read_text()
-        assert ".prawduct/.pr-reviews/" in gitignore
-
-    def test_idempotent_pr_files(self, tmp_path: Path):
-        run_init(str(tmp_path), "TestProduct")
-        result = run_init(str(tmp_path), "TestProduct")
-        # Second run should not recreate PR files
-        assert not any("pr-review.md" in a for a in result["actions"])
-        assert not any("skills/pr/SKILL.md" in a for a in result["actions"])
-
-
-# =============================================================================
-# Init: Manifest includes PR reviewer entries
-# =============================================================================
-
-
-class TestInitManifestPrEntries:
-    def test_manifest_has_pr_review(self, tmp_path: Path):
-        run_init(str(tmp_path), "TestProduct")
-        manifest = json.loads(
-            (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
-        )
-        assert ".prawduct/pr-review.md" in manifest["files"]
-        entry = manifest["files"][".prawduct/pr-review.md"]
-        assert entry["strategy"] == "template"
-        assert entry["template"] == "templates/pr-review.md"
-        assert entry["generated_hash"] is not None
-
-    def test_manifest_has_pr_command(self, tmp_path: Path):
-        run_init(str(tmp_path), "TestProduct")
-        manifest = json.loads(
-            (tmp_path / ".prawduct" / "sync-manifest.json").read_text()
-        )
-        assert ".claude/skills/pr/SKILL.md" in manifest["files"]
-        entry = manifest["files"][".claude/skills/pr/SKILL.md"]
-        assert entry["strategy"] == "template"
-        assert entry["template"] == "templates/skill-pr.md"
-        assert entry["generated_hash"] is not None
-
-
-# =============================================================================
-# Sync: PR reviewer files tracked and updated
-# =============================================================================
-
-
-class TestSyncPrReviewFiles:
-    @pytest.fixture()
-    def product_dir(self, tmp_path: Path):
-        """Create a product with a manifest pointing to the real framework."""
-        run_init(str(tmp_path), "SyncTest")
-        return tmp_path
-
-    def test_sync_no_change_when_current(self, product_dir: Path):
-        # Sync immediately after init — nothing should change
-        result = run_sync(
-            str(product_dir), str(FRAMEWORK_DIR), no_pull=True
-        )
-        assert not any("pr-review" in a for a in result["actions"])
-        assert not any("skills/pr" in a for a in result["actions"])
-
-    def test_sync_updates_pr_review_when_template_changes(self, product_dir: Path):
-        # Write "old" content to simulate a previous template version.
-        # Set stored hash to match the file on disk (user hasn't edited),
-        # but it won't match the current rendered template (template "changed").
-        pr_review = product_dir / ".prawduct" / "pr-review.md"
-        old_content = "# Old PR Review\nPrevious version."
-        pr_review.write_text(old_content)
-        old_hash = compute_hash(pr_review)
-
-        manifest_path = product_dir / ".prawduct" / "sync-manifest.json"
-        manifest = json.loads(manifest_path.read_text())
-        manifest["files"][".prawduct/pr-review.md"]["generated_hash"] = old_hash
-        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-
-        result = run_sync(
-            str(product_dir), str(FRAMEWORK_DIR), no_pull=True
-        )
-        assert any("pr-review" in a for a in result["actions"])
-
-    def test_sync_skips_user_edited_pr_review(self, product_dir: Path):
-        # Edit the product's pr-review.md
-        pr_review = product_dir / ".prawduct" / "pr-review.md"
-        pr_review.write_text("# Custom PR review instructions\nUser edited this.")
-
-        # Simulate template change
-        manifest_path = product_dir / ".prawduct" / "sync-manifest.json"
-        manifest = json.loads(manifest_path.read_text())
-        manifest["files"][".prawduct/pr-review.md"]["generated_hash"] = "stale_hash"
-        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-
-        result = run_sync(
-            str(product_dir), str(FRAMEWORK_DIR), no_pull=True
-        )
-        # Should skip because user edited
-        assert not any("pr-review" in a for a in result["actions"])
-        assert any("pr-review" in n for n in result["notes"])
-
-    def test_sync_updates_pr_command_when_template_changes(self, product_dir: Path):
-        # Write "old" content to simulate previous version
-        pr_skill = product_dir / ".claude" / "skills" / "pr" / "SKILL.md"
-        pr_skill.write_text("# Old PR command\nPrevious version.")
-        old_hash = compute_hash(pr_skill)
-
-        manifest_path = product_dir / ".prawduct" / "sync-manifest.json"
-        manifest = json.loads(manifest_path.read_text())
-        manifest["files"][".claude/skills/pr/SKILL.md"]["generated_hash"] = old_hash
-        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-
-        result = run_sync(
-            str(product_dir), str(FRAMEWORK_DIR), no_pull=True
-        )
-        assert any("skills/pr" in a for a in result["actions"])
-
-
-# =============================================================================
-# Sync: create_manifest includes PR entries
-# =============================================================================
-
-
-class TestCreateManifestPrEntries:
-    def test_manifest_includes_pr_review_config(self, tmp_path: Path):
-        file_hashes = {
-            "CLAUDE.md": "abc123",
-            ".prawduct/critic-review.md": "def456",
-            ".prawduct/pr-review.md": "ghi789",
-            ".claude/skills/pr/SKILL.md": "jkl012",
-            "tools/product-hook": "mno345",
-            ".claude/settings.json": None,
-        }
-        manifest = create_manifest(tmp_path, FRAMEWORK_DIR, "Test", file_hashes)
-
-        assert ".prawduct/pr-review.md" in manifest["files"]
-        assert manifest["files"][".prawduct/pr-review.md"]["template"] == "templates/pr-review.md"
-        assert manifest["files"][".prawduct/pr-review.md"]["generated_hash"] == "ghi789"
-
-    def test_manifest_includes_pr_command_config(self, tmp_path: Path):
-        file_hashes = {
-            "CLAUDE.md": "abc123",
-            ".prawduct/critic-review.md": "def456",
-            ".prawduct/pr-review.md": "ghi789",
-            ".claude/skills/pr/SKILL.md": "jkl012",
-            "tools/product-hook": "mno345",
-            ".claude/settings.json": None,
-        }
-        manifest = create_manifest(tmp_path, FRAMEWORK_DIR, "Test", file_hashes)
-
-        assert ".claude/skills/pr/SKILL.md" in manifest["files"]
-        assert manifest["files"][".claude/skills/pr/SKILL.md"]["template"] == "templates/skill-pr.md"
 
 
 # =============================================================================
@@ -492,91 +302,52 @@ class TestStopPrReviewGate:
 # =============================================================================
 
 
-class TestPrReviewTemplateContent:
-    def test_pr_review_template_has_all_goals(self):
-        """The PR review template should cover all 7 review goals."""
-        content = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-        assert "No Bugs Shipped" in content
-        assert "Tests Cover the Change" in content
-        assert "Right Scope" in content
-        assert "Clear Narrative" in content
-        assert "Simplification" in content
-        assert "Merge Hygiene" in content
-        assert "Proportionality" in content
+class TestPrReviewSkillContent:
+    """The PR-review prose now lives only in the plugin — the file-sync
+    `templates/pr-review.md` + `templates/skill-pr.md` retired in M4 Chunk 4.
+    `skills/pr/review-protocol.md` carries the reviewer's 7 goals;
+    `skills/pr/SKILL.md` carries the /pr lifecycle flows + the review gate."""
 
-    def test_pr_command_template_has_all_flows(self):
-        """The /pr command template should cover all 4 flows."""
-        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
-        assert "Create Flow" in content
-        assert "Update Flow" in content
-        assert "Merge Flow" in content
-        assert "Status Flow" in content
+    def test_review_protocol_has_all_goals(self):
+        """The PR review protocol should cover all 7 review goals."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        for goal in (
+            "No Bugs Shipped", "Tests Cover the Change", "Right Scope",
+            "Clear Narrative", "Simplification", "Merge Hygiene", "Proportionality",
+        ):
+            assert goal in content, f"skills/pr/review-protocol.md missing goal: {goal}"
 
-    def test_pr_command_template_has_review_gate(self):
-        """The /pr command template must enforce review before PR creation."""
-        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
+    def test_pr_skill_has_all_flows(self):
+        """The /pr skill should cover all 4 flows."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        for flow in ("Create Flow", "Update Flow", "Merge Flow", "Status Flow"):
+            assert flow in content, f"skills/pr/SKILL.md missing flow: {flow}"
+
+    def test_pr_skill_has_review_gate(self):
+        """The /pr skill must enforce review before PR creation."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
         # Must contain hard gate language, not just numbered steps
         assert "MANDATORY" in content
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
         assert "evidence file" in content
 
-    def test_framework_pr_command_has_review_gate(self):
-        """The framework /pr command must enforce review before PR creation."""
-        content = (FRAMEWORK_DIR / "templates" / "skill-pr.md").read_text()
-        assert "MANDATORY" in content
-        assert "Do NOT proceed" in content or "DO NOT proceed" in content
-        assert "evidence file" in content
-
-    def test_agent_skill_matches_template_goals(self):
-        """The full SKILL.md and condensed template should have the same goals."""
-        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-
-        goals = [
-            "No Bugs Shipped",
-            "Tests Cover the Change",
-            "Right Scope",
-            "Clear Narrative",
-            "Simplification",
-            "Merge Hygiene",
-            "Proportionality",
-        ]
-        for goal in goals:
-            assert goal in skill, f"SKILL.md missing goal: {goal}"
-            assert goal in template, f"Template missing goal: {goal}"
-
-    def test_pr_review_references_learnings(self):
+    def test_review_protocol_references_learnings(self):
         """PR reviewer must read learnings.md during setup."""
-        template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        assert "learnings.md" in template
-        assert "learnings.md" in skill
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        assert "learnings.md" in content
 
-    def test_pr_review_has_learnings_crosscheck(self):
+    def test_review_protocol_has_learnings_crosscheck(self):
         """PR reviewer must have a Learnings Cross-Check section."""
-        template = (FRAMEWORK_DIR / "templates" / "pr-review.md").read_text()
-        skill = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        assert "Learnings Cross-Check" in template
-        assert "Learnings Cross-Check" in skill
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        assert "Learnings Cross-Check" in content
 
 
 # =============================================================================
-# Discoverability in product CLAUDE.md
+# Discoverability in the plugin guidance layer
 # =============================================================================
 
 
 class TestDiscoverability:
-    def test_product_claude_mentions_pr_command(self):
-        """Product CLAUDE.md template should mention /pr for discoverability."""
-        content = (FRAMEWORK_DIR / "templates" / "product-claude.md").read_text()
-        assert "/pr" in content
-
-    def test_product_claude_routes_pr_requests(self):
-        """Product CLAUDE.md should mention PR-related actions routing to /pr."""
-        content = (FRAMEWORK_DIR / "templates" / "product-claude.md").read_text()
-        assert "PR" in content
-        assert "/pr" in content
-
     def test_building_methodology_mentions_pr(self):
         """Building methodology should mention /pr."""
         content = (FRAMEWORK_DIR / "methodology" / "building.md").read_text()

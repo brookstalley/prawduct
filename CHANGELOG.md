@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v2.0.3
+The v1 file-sync engine is fully retired. Governance now ships entirely from the plugin — no frozen sibling service, no committed framework templates, no sync machinery. Plugin-governed repos are unaffected (the engine they don't use is gone); any remaining v1 file-sync repo migrates onto the plugin with `/prawduct:migrate`.
+
 ## v2.0.2
 Advisory probes run again in the plugin runtime. The `legacy-backlog-format` nudge (and every other post-sync advisory) was silently dead in v2 plugin repos — probe evaluation had been coupled to the removed file-sync `sync` step — so session-start never surfaced the prompt to run `/prawduct:backlog migrate`. The plugin SessionStart now evaluates the probe roster directly (local, fail-soft). Also: the file-sync→plugin **migration guide** now leads with the two-step action and the real install commands instead of burying them under background.
 

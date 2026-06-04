@@ -2,9 +2,9 @@
 
 The build-plan-consuming tooling resolves the active plan via an optional
 `active_build_plan:` pointer in project-state.yaml, falling back to the
-conventional `artifacts/build-plan.md`. The resolver lives in tools/lib/core.py
-and is mirrored inline in tools/product-hook (standalone in product repos). A
-parity test pins the two implementations together, like the GITIGNORE mirror.
+conventional `artifacts/build-plan.md`. The resolver lives in lib/core.py
+and is mirrored inline in bin/prawduct-hook (kept import-light on the hot path).
+A parity test pins the two implementations together, like the GITIGNORE mirror.
 """
 
 from __future__ import annotations
@@ -15,18 +15,19 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 
-# lib resolver via prawduct-setup importlib
-_spec = importlib.util.spec_from_file_location("prawduct_setup", _ROOT / "tools" / "prawduct-setup.py")
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
+# lib resolver — the plugin's lib/core
+import sys
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+from lib import core as _mod  # noqa: E402
 resolve_build_plan_path = _mod.resolve_build_plan_path
 read_str_yaml_key = _mod.read_str_yaml_key
 BUILD_PLAN_POINTER_KEY = _mod.BUILD_PLAN_POINTER_KEY
 DEFAULT_BUILD_PLAN_REL = _mod.DEFAULT_BUILD_PLAN_REL
 
-# product-hook inline mirror via SourceFileLoader (extensionless shebang script)
-_hook_loader = importlib.machinery.SourceFileLoader("product_hook_res", str(_ROOT / "tools" / "product-hook"))
-_hook_spec = importlib.util.spec_from_loader("product_hook_res", _hook_loader)
+# plugin-runtime inline mirror via SourceFileLoader (extensionless shebang script)
+_hook_loader = importlib.machinery.SourceFileLoader("prawduct_hook_res", str(_ROOT / "bin" / "prawduct-hook"))
+_hook_spec = importlib.util.spec_from_loader("prawduct_hook_res", _hook_loader)
 _hook = importlib.util.module_from_spec(_hook_spec)
 _hook_loader.exec_module(_hook)
 
@@ -94,7 +95,7 @@ class TestReadStrYamlKey:
 
 
 class TestProductHookMirrorParity:
-    """The inline product-hook resolver must match the lib resolver on the same
+    """The inline prawduct-hook resolver must match the lib resolver on the same
     inputs (same discipline as the GITIGNORE_ENTRIES mirror test)."""
 
     def test_constants_match(self):

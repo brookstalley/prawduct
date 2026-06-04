@@ -7,6 +7,36 @@
 
 ## Open
 
+- **[JAN-4F7M]** Rewrite `skills/janitor/SKILL.md` "Template Currency" theme for plugin distribution
+  `effort: M · impact: M · area: janitor · source: builder · added: 2026-06-03 · status: resolved · reviewed: 2026-06-04`
+
+  The janitor skill's **Template Currency** investigation theme (and its Step 1 framework-health
+  pre-check + Step 7 hash-update guidance) still teaches the file-sync maintenance workflow:
+  comparing the consumer's place-once artifacts against `framework_source/templates/*` via
+  `.prawduct/sync-manifest.json` `place_once_templates` stored hashes. Under plugin distribution a
+  consumer carries no sync-manifest (init never creates it; `/prawduct:migrate` removes it) and has
+  no `framework_source` checkout, so the whole theme is inert for migrated/plugin-native repos.
+  Surfaced during M4 Chunk 4: `test_v5_templates.py::TestJanitorSkillTemplateCurrency` (which pinned
+  this content via the now-deleted `templates/skill-janitor.md`) was DELETED rather than retargeted,
+  precisely to avoid pinning stale guidance. Resolve: rework the theme for plugin-era maintenance —
+  what does "is this product's tooling current with the plugin?" mean when governance ships from the
+  plugin and updates via `autoUpdate`? — and add fresh `skills/janitor/SKILL.md` structural coverage
+  to replace the deleted mirror test. Candidate to fold into M4 Chunk 5 (docs/residue) if cheap, else
+  a standalone janitor-skill pass. Filed from M4 Chunk 4 on 2026-06-03. (builder)
+
+  **Resolved (v2.0.3 pre-promotion, 2026-06-04):** reworked the Template Currency theme for plugin
+  distribution — it now compares the product's artifacts against the read-only plugin templates at
+  `${CLAUDE_PLUGIN_ROOT}/templates/` (no `sync-manifest.json`, no `framework_source`, no place-once
+  hash store). The Step 1 framework-health pre-check now confirms the plugin runtime is reachable
+  (`${CLAUDE_PLUGIN_ROOT}/templates/` readable) instead of asserting a sync-manifest exists; Step 7
+  records resolved drift in `.prawduct/change-log.md` rather than recomputing template hashes.
+  Structural coverage restored via `test_plugin_runtime.py::TestJanitorSkillPluginEra` (asserts no
+  `sync-manifest`/`framework_source`/`place_once` residue + the plugin-root target). The same pass
+  also cleaned the file-sync-era `_METADATA_PREFIXES` entries (`.claude/skills/`, `tools/product-hook`)
+  from both mirrors (`bin/prawduct-hook` + `lib/critic_mode.py`) — a product's own `.claude/skills/`
+  skill now counts as gated code, not excused metadata (`TestMetadataPathClassification`). Surfaced by
+  the develop→main release-readiness review; folded into v2.0.3 rather than deferred. 652 passing. (builder)
+
 - **[DOC-7H2K]** Port `/prawduct:doctor`'s remaining file-sync-coupled flows to the plugin model (Chunk 13)
   `effort: L · impact: M · area: doctor · source: builder · added: 2026-06-02 · status: resolved · reviewed: 2026-06-02`
 
@@ -15,9 +45,11 @@
   **Resolved (Chunk 13, 2026-06-02):** all four flows reworked off file-sync — Onboard → install + `/prawduct:migrate`; Health-Check → plugin-native Read/Glob of the consumer's own `.prawduct/`; opt-ins (F4/F10) → `project-state.yaml` flag flips (F5 settings-layout dropped as file-sync-only); Audit-Learnings → new plugin-native `prawduct-hook audit-learnings` (port of `lib/audit_learnings_cmd.py`). Operator-verification hint repointed off `prawduct-setup migrate`. The legacy `agents/` tree dropped (clears the 6 `claude plugin validate` frontmatter warnings). `/prawduct:doctor` `allowed-tools` tightened (broad `Bash(python3 *)` removed). Confirmed by the Chunk-13 Critic (NOTE 2). (builder)
 
 - **[MIG-M4-REMOVE]** Permanently delete the file-sync engine + payload + shims (post-2.0.0 milestone M4)
-  `effort: L · impact: M · area: distribution · source: builder · added: 2026-06-02 · status: blocked · reviewed: 2026-06-02`
+  `effort: L · impact: M · area: distribution · source: builder · added: 2026-06-02 · status: shipped · closed-by: M4 (v2.0.3) · reviewed: 2026-06-03`
 
   The terminal step of the file-sync→plugin transition, deliberately deferred out of 2.0.0. Chunk 13 removes file-sync only from THIS repo's active path; the engine stays a **live service** for un-migrated external repos, because `tools/product-hook` + `tools/lib/*` are `MANAGED_FILES` synced into products and a product's own `try_sync()` calls back to this framework's `tools/prawduct-setup.py sync` every session (fail-soft: missing script ⇒ no crash, the sibling keeps governing on its last-synced version). **Blocked on:** marketplace live (Chunk 2) AND every local sibling migrated to the plugin (`/prawduct:migrate`). Inventory is the owner's — manual, "only this one machine"; no consumer census / deprecation advisory is being added (owner decision 2026-06-02, keep 1.x frozen). When unblocked: delete `templates/`, the 7 `.claude/skills/*` sync sources, `tools/product-hook`, `tools/lib/*` (sync modules), `tools/prawduct-setup.py`, and the `prawduct-{init,sync,migrate}.py` shims; finish the deep name-sweep across the (now-removed) `templates/`+`tools/` — *you can only remove a mechanism's name from a path once the mechanism has left it.* After M4, a stale un-migrated sibling fails-soft (silent no-update), an acceptable terminal contract because it was warned during M3. See build-plan Chunk 13 "Permanent-removal path (M1–M4)". **Cleanup rider (Chunk 13 Critic NOTE 1, 2026-06-02):** the plugin `lib/audit_learnings_cmd.py` is byte-parity-locked to `tools/lib/audit_learnings_cmd.py`, so its `run_audit_learnings` docstring still names the legacy `prawduct-setup audit-learnings` path (correct for the file-sync copy, stale for the plugin). When `tools/lib/` is deleted here, the parity lock dissolves — repoint that docstring to `prawduct-hook audit-learnings`. (builder)
+
+  **Resolved (M4, v2.0.3, 2026-06-03):** the owner directive (2026-06-03, "we DO NOT need backwards compatibility … remove ANY cruft that exists only for back compat to pre-2.0") lifted the consumer-census block — the inventory is "only this one machine," all local siblings migrated. M4 (5 chunks on `feat/retire-filesync-engine-m4`) executed the full removal: Chunk 2 deleted `tools/` (product-hook, prawduct-setup.py, the 3 shims, `tools/lib/`), Chunk 4 deleted the file-sync templates (`product-claude`/`critic-review`/`pr-review`/`build-governance`/`product-settings.json`/`conftest.py` + the 7 `skill-*.md` sources) and slimmed `lib/core.py`, Chunk 5 removed the committed `.prawduct/` protocol-doc residue + swept the deep name-sweep across kept code/docs/templates. The `run_audit_learnings` docstring rider was discharged (repointed to `prawduct-hook audit-learnings`, Chunk 5). Deferred fragment: `[JAN-4F7M]` (the janitor skill's file-sync Template Currency theme). (builder)
 
 - **[CRT-SHADOW]** (Optional) Recreate an A/B "shadow Critic" as a plugin variant
   `effort: M · impact: S · area: critic · source: builder · added: 2026-06-02 · status: open · reviewed: 2026-06-02`
@@ -66,7 +98,7 @@
 
   Both perform the same column-0 boolean scan against `project-state.yaml`, intentionally duplicated to keep product-hook flat (one inline 10-line helper vs. a new lib import). Two callers is the borderline; a third opt-in YAML flag (Chunk 11's F5 `auto_sync_commit`, or a future operator-verification toggle from F10) would push this to extraction. Move to `tools/lib/project_state.py::read_bool_yaml_key(path, key) -> bool` and call from both sites. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 09). (critic)
 
-- **[TST-5W1J]** Cache test-file contents in `tools/test-reference-verify` to drop O(N*T) re-reads
+- **[TST-5W1J]** Cache test-file contents in `bin/test-reference-verify` to drop O(N*T) re-reads
   `effort: S · impact: S · area: tests · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-05-29`
 
   `_has_reference` re-opens every test file once per changed file. Sub-second on framework scale (~20 test files × small chunk diffs) but a stronger verifier or larger product would feel it. Fix-shape: discover_tests reads all test contents into a dict once, then `_has_reference` runs substring across the cached text. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 08). (critic)
@@ -308,6 +340,17 @@
   2. The dismiss-hint literal `/prawduct-advisory dismiss` is in bin/prawduct-hook (plugin-native, NOT parity-locked) at the briefing's action-line construction (~line 1243).
 
   Fix-shapes: (a) move backlog_probes to DIVERGED_MODULES (like operator_verification) and namespace the action string in the plugin copy + add the divergence-assertion test; or (b) namespace at DISPLAY time in the plugin briefing renderer (bin/prawduct-hook) via a small legacy→/prawduct: mapper applied to both recommended_action and the dismiss literal — keeps backlog_probes byte-locked. (b) is more contained and avoids touching the parity set. Do both the action and the dismiss hint together (a half-fix is incoherent). Belongs with the Chunk-13 namespace sweep (see the file-sync-removal backlog item). info-priority/cosmetic; not a broken gate. (critic)
+
+  **Implemented (branch `fix/advisory-namespace-backlog`, pending merge — do not archive until merged):** Took fix-shape (a) for source #1 — moved `backlog_probes` from `GOVERNANCE_MODULES` to `DIVERGED_MODULES`; the plugin copy renders `/prawduct:backlog migrate`, the frozen `tools/lib/` copy is unchanged; added a per-module `DIVERGENCE_EXPECTATIONS` map to the parity test. Namespaced source #2 — the `/prawduct-advisory` dismiss/list hints in `bin/prawduct-hook` → `/prawduct:advisory`. While sweeping the renderer the Critic surfaced three more bare hints in the same `assemble_session_briefing` (backlog-count, learnings, template/janitor) — all now `/prawduct:*`; the file-sync `tools/product-hook` stays frozen on the bare forms. Pinned by `test_clear_fires_legacy_backlog_advisory` (advisory action + dismiss hint) and new `test_clear_briefing_namespaces_status_hints` (status hints + non-leak of bare forms). 1809/1809 green; Critic verify-resolutions clean. **Follow-on gate-message sweep — done in this same commit:** the deferred larger surface is closed. `bin/prawduct-hook` now names `/prawduct:critic`/`/prawduct:pr` in every agent-facing gate (stop-hook Critic + PR blockers, verify-resolutions scope notes, the pr-create cumulative-Critic gate, the accept-verification rationale gate) and in its own docstrings/comments; `lib/operator_verification.py`'s 3 surviving `/pr create` stragglers are namespaced (completing the module's divergence); and the `/prawduct-advisory` docstring at `cmd_advisory` (4195) → `/prawduct:advisory`. Pinned by `TestPluginRuntimeNamespacing` (source-scan, asserts the bad forms are ABSENT) + the strengthened `test_stop_blocks_when_critic_findings_absent` + `DIVERGENCE_EXPECTATIONS[operator_verification]` forbidding bare `/pr create`. Frozen `tools/product-hook` + `tools/lib/` stay on the bare forms (owner directive). 1810/1810 green. (claude)
+
+- **[DOC-4B2W]** Namespace bare command forms in plugin-bundled teaching prose (`skills/critic/*.md`, `methodology/*.md`)
+  `effort: M · impact: M · area: docs/governance · source: builder · added: 2026-06-03 · status: shipped · closed-by: M4 Chunk 1 (v2.0.3) · reviewed: 2026-06-03`
+
+  **Resolved (M4 Chunk 1, v2.0.3, 2026-06-03):** swept the 6 plugin-only prose files (`methodology/{building,planning,reflection}.md`, `skills/critic/{review-cycle,review-protocol}.md`, `skills/pr/review-protocol.md`) → `/prawduct:*`; pinned by `TestPluginDocsNamespacing` (assert-absent source-scan over the skill vocabulary). Decision (point 3): conceptual short-names ARE namespaced in the teaching prose, since a plugin repo resolves `/prawduct:*`. File-path carve-outs (`.prawduct/critic-review.md`) and the built-in `/clear` preserved; the file-sync `tools/` copies that carried duplicated prose were deleted outright in Chunk 2 rather than kept on bare forms. (builder)
+
+  The runtime gate-message sweep (#53) namespaced `bin/prawduct-hook` + `lib/` agent-facing OUTPUT, but the plugin-bundled PROSE an agent reads via `/prawduct:*` still carries ~34+ bare command forms — `skills/critic/review-cycle.md`, `skills/critic/review-protocol.md`, and `methodology/{building,planning,reflection}.md` say "run /critic", "/pr create", "/critic cumulative" etc. where a plugin repo resolves `/prawduct:critic`, `/prawduct:pr`. Same leak class as #53, larger + lower-severity surface (teaching prose, not gates; agents can often infer the mapping, and the SessionStart briefing already lists namespaced forms). This is the "entire leak class as a build plan" follow-up.
+
+  Scope notes for the build plan: (1) sweep the whole FORM-FAMILY per the new learning — bare `/cmd`, hyphenated `/prawduct-advisory`, legacy `prawduct-setup` — one grep per spelling; (2) preserve carve-outs: file paths (`.prawduct/critic-review.md`, `agents/critic/SKILL.md`), the Claude Code built-in `/clear`, and prose like "critic/pr skills"; (3) DECISION REQUIRED — whether to namespace conceptual short-names in teaching guides at all, or keep `/critic` as the canonical short name with a one-time namespacing note (judgment call, raise with owner); (4) the frozen `tools/` copies of any duplicated prose stay bare; (5) pin with an assert-absent source-scan like `TestPluginRuntimeNamespacing`, extended to the docs surface. (builder)
 
 ## Promoted
 

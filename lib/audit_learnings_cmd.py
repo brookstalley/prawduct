@@ -429,7 +429,7 @@ def _apply_retirements(
 
 
 def run_audit_learnings(product_dir: str, *, apply: bool = False) -> dict:
-    """User-facing runner for ``prawduct-setup audit-learnings``.
+    """User-facing runner for ``prawduct-hook audit-learnings``.
 
     Matches the ``run_migrate_*`` shape so the CLI dispatch and JSON-mode
     callers see a consistent contract:

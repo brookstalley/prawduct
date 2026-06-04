@@ -83,7 +83,7 @@ Before ending a work cycle, verify two things:
 
 **Persistence**: Were any plans, roadmaps, chunk definitions, or significant decisions created during this work cycle but not yet written to an artifact? If so, persist them now. Conversation context does not survive across sessions — anything not in a file is lost.
 
-**Deferred work**: Were any items identified as out-of-scope during this work cycle? Add them to `.prawduct/backlog.md` with a source marker: `(builder)` for work you identified, `(critic)` for Critic NOTEs that warrant future investigation, `(reflection)` for ideas surfaced during reflection. One bullet per item with enough context to be actionable later. These items are surfaced in the next session's briefing and triaged during `/janitor` runs.
+**Deferred work**: Were any items identified as out-of-scope during this work cycle? Add them to `.prawduct/backlog.md` with a source marker: `(builder)` for work you identified, `(critic)` for Critic NOTEs that warrant future investigation, `(reflection)` for ideas surfaced during reflection. One bullet per item with enough context to be actionable later. These items are surfaced in the next session's briefing and triaged during `/prawduct:janitor` runs.
 
 **Earn the backlog entry — don't let it inflate.** The backlog is for work with a *real, near-term consumer*, not a graveyard for every observation. Before filing, apply this bar:
 - **File it** when the item has a user-facing payoff or a concrete pending need (a bug a product hits, a feature someone is waiting on, a refactor blocking other work).
@@ -149,7 +149,7 @@ Learnings are split across two files by purpose:
 - Consulted when: hitting an error in a known area, debugging something unexpected, or working in a domain with known pitfalls
 - Organized by topic area with clear `## Topic` headers for searchability
 
-The `/learnings [topic]` skill reads both files in a forked context and returns only what's relevant to your task — keeping your main context clean. Use it before planning work in an unfamiliar area. The Critic and PR reviewer read the full files directly for comprehensive cross-checking.
+The `/prawduct:learnings [topic]` skill reads both files in a forked context and returns only what's relevant to your task — keeping your main context clean. Use it before planning work in an unfamiliar area. The Critic and PR reviewer read the full files directly for comprehensive cross-checking.
 
 **Prune regularly.** When a learning has been incorporated into a principle or methodology update, condense or remove it from `learnings.md`. When a learning has been structurally enforced (hook, gate, code pattern that prevents the mistake), it has done its job and can be pruned.
 

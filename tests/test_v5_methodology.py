@@ -63,7 +63,7 @@ class TestBuildingMethodology:
         """References subagent briefing, boundary patterns, learnings skill."""
         assert ".subagent-briefing.md" in self.content
         assert "boundary-patterns.md" in self.content
-        assert "/learnings" in self.content
+        assert "/prawduct:learnings" in self.content
 
     def test_goal_based_critic(self):
         """References goal-based Critic review."""
@@ -139,7 +139,7 @@ class TestOtherMethodology:
         content = read_file("methodology/planning.md")
         lower = content.lower()
         assert "not a one-time phase" in lower or "isn't a one-time phase" in lower or "continuous" in lower
-        assert "/learnings" in content
+        assert "/prawduct:learnings" in content
 
     def test_reflection_learning_lifecycle(self):
         content = read_file("methodology/reflection.md")
@@ -382,3 +382,62 @@ class TestMethodologyPBT:
         lower = ccc.lower()
         assert "pbt" in lower or "property-based" in lower
         assert "testing strategies" in lower
+
+
+# =============================================================================
+# docs/principles.md — the 23 principles (canonical source)
+# =============================================================================
+
+
+class TestPrinciplesDoc:
+    """All 23 principles are present, named, and numbered in the canonical source.
+
+    Before M4 this contract was held by `test_v5_templates.py::TestProductClaudePrinciples`
+    against the file-sync `product-claude.md` template *copy*. Chunk 4 deleted that
+    template (and its test) as file-sync residue; this re-anchors the contract to the
+    real source of truth — `docs/principles.md` — so an accidental drop or rename of a
+    principle fails loud (M4 cumulative-Critic NOTE 1).
+    """
+
+    PRINCIPLES = [
+        (1, "Tests Are Contracts"),
+        (2, "Complete Delivery"),
+        (3, "Living Documentation"),
+        (4, "Reasoned Decisions"),
+        (5, "Honest Confidence"),
+        (6, "Requirements Precede Code"),
+        (7, "Bring Expertise"),
+        (8, "Accessibility From the Start"),
+        (9, "Visible Costs"),
+        (10, "Clean Deployment"),
+        (11, "Proportional Effort"),
+        (12, "Scope Discipline"),
+        (13, "Coherent Artifacts"),
+        (14, "Independent Review"),
+        (15, "Validate Before Propagating"),
+        (16, "Root Cause Discipline"),
+        (17, "Automatic Reflection"),
+        (18, "Close the Learning Loop"),
+        (19, "Evolving Principles"),
+        (20, "Infer, Confirm, Proceed"),
+        (21, "Structural Awareness"),
+        (22, "Governance Is Structural"),
+        (23, "Challenge Gently, Defer Gracefully"),
+    ]
+
+    @pytest.mark.parametrize("num,name", PRINCIPLES, ids=[f"{n}-{name}" for n, name in PRINCIPLES])
+    def test_principle_present_and_numbered(self, num: int, name: str):
+        principles = read_file("docs/principles.md")
+        assert f"### {num}. {name}" in principles, (
+            f"docs/principles.md is missing the `### {num}. {name}` heading — "
+            "the 23 principles are the framework's foundation; a drop or renumber must fail loud."
+        )
+
+    def test_exactly_23_numbered_principles(self):
+        """No principle is added/removed without updating this contract."""
+        import re
+        principles = read_file("docs/principles.md")
+        headings = re.findall(r"^### (\d+)\. ", principles, re.MULTILINE)
+        assert [int(h) for h in headings] == list(range(1, 24)), (
+            f"expected principle headings 1..23 in order, found {headings}"
+        )

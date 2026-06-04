@@ -65,15 +65,15 @@ Do all forms of documentation — comments, READMEs, specs, configs, generated d
 
 Have product artifacts kept pace with framework template improvements?
 
-When the session briefing shows template drift advisories, or when running a full survey, compare the product's place-once artifacts against the current framework templates. Check `.prawduct/sync-manifest.json` for `place_once_templates` entries — stored hashes indicate which template version was used when the product was created.
+When the session briefing shows template drift advisories, or when running a full survey, compare the product's artifacts against the current framework templates the plugin ships at `${CLAUDE_PLUGIN_ROOT}/templates/`. The product's artifacts were created from these templates at onboarding; the plugin's templates evolve over time, so a product can fall behind.
 
 - project-preferences.md — Are there new preference fields the product hasn't declared?
 - conftest.py — Are there new test infrastructure patterns available?
 - boundary-patterns.md — Are there new contract surface types to consider?
-- test-specifications.md — Are there new testing strategies (e.g., property-based testing) in the template that this product's specs don't address? Note: this is a planning artifact, not a place-once file — it won't have a `place_once_templates` entry. Compare by reading the framework template directly from `framework_source/templates/test-specifications.md`.
+- test-specifications.md — Are there new testing strategies (e.g., property-based testing) in the template that this product's specs don't address? Compare by reading the plugin template directly at `${CLAUDE_PLUGIN_ROOT}/templates/test-specifications.md`.
 
 For each difference between the template and the product's version:
-1. Read the current framework template (resolve via `sync-manifest.json` → `framework_source`, or try `../prawduct`)
+1. Read the current framework template from `${CLAUDE_PLUGIN_ROOT}/templates/<file>`
 2. Read the product's version of the file
 3. Identify sections or fields in the template that are absent from the product's version
 4. Assess whether each missing section is relevant to this product's domain and structural characteristics
@@ -139,7 +139,7 @@ Understand the project before investigating. Read `project-state.yaml` to learn 
 
 Also read `project-preferences.md` (if present in `.prawduct/artifacts/`) to understand the project's declared conventions — language idioms, code style, testing approach, architecture patterns, and workflow preferences. These preferences are the project's stated standards, but they may not reflect current practice. Note them for comparison during the survey.
 
-**Framework health pre-check.** Verify `.prawduct/sync-manifest.json` exists and `framework_source` is reachable. If framework infrastructure is broken or the manifest is missing, advise running `/prawduct:doctor` before proceeding — the janitor needs a healthy framework connection for Template Currency checks and general context.
+**Framework health pre-check.** Confirm the plugin runtime is reachable — `${CLAUDE_PLUGIN_ROOT}` is set and `${CLAUDE_PLUGIN_ROOT}/templates/` is readable. The plugin ships templates read-only; there is no per-product sync manifest. If the plugin root or its templates are unreachable, the janitor is running outside the plugin runtime — advise checking the plugin install (and `/prawduct:doctor`) before relying on Template Currency checks.
 
 This context shapes how you interpret every theme. "Structural clarity" means something different for a 500-line CLI tool than for a multi-service platform. "Controllability" means something different for firmware with a hardware simulator than for a web app with a dev server.
 
@@ -220,7 +220,7 @@ Review the build cycle in this project's CLAUDE.md before writing any code. Foll
 
 After all approved work is complete:
 - Summarize what was changed, what was deferred, and why
-- If template drift advisories were addressed, update the stored template hashes in `.prawduct/sync-manifest.json` → `place_once_templates` to mark them as reviewed. For each entry where the product's artifact was updated to incorporate the template's new content, recompute the template hash from the current framework template and write it back. This clears the advisory from future session briefings.
+- If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates. Plugin templates are read-only and there is no per-product hash store to write back — Template Currency is a live comparison against `${CLAUDE_PLUGIN_ROOT}/templates/`, so updating the product artifact is itself the resolution.
 - Triage `.prawduct/backlog.md`: resolve items addressed by maintenance, remove stale items, add any new items discovered during maintenance
 - Capture learnings in `.prawduct/learnings.md` if the maintenance surfaced patterns worth remembering
 - Reflect: did the maintenance reveal systemic issues that suggest process changes, new tooling, or methodology updates?
