@@ -227,41 +227,48 @@ class TestParseBuildPlanFrontmatterScope:
             "---\n"
             "## Status\n"
         )
-        assert views._parse_build_plan_frontmatter_scope(content) == "v1.5"
+        assert views._parse_build_plan_frontmatter_scope(content) == (True, "v1.5")
 
     def test_scope_field_quoted(self):
         content = '---\nscope: "v1.5.1"\n---\n'
-        assert views._parse_build_plan_frontmatter_scope(content) == "v1.5.1"
+        assert views._parse_build_plan_frontmatter_scope(content) == (True, "v1.5.1")
 
-    def test_scope_field_null_or_empty_returns_none(self):
-        # YAML null literals are the documented "omitted" form
-        assert views._parse_build_plan_frontmatter_scope("---\nscope: null\n---\n") is None
-        assert views._parse_build_plan_frontmatter_scope("---\nscope: NULL\n---\n") is None
-        assert views._parse_build_plan_frontmatter_scope("---\nscope: ~\n---\n") is None
-        # Empty value is treated as absent
-        assert views._parse_build_plan_frontmatter_scope("---\nscope:\n---\n") is None
-        assert views._parse_build_plan_frontmatter_scope("---\nscope: \n---\n") is None
+    def test_scope_field_null_or_empty_is_present_with_no_value(self):
+        # YAML null literals are the documented explicit opt-out: the key is
+        # PRESENT (present=True) but carries no value (None). Distinguishing
+        # this from key-absent is what lets _detect_active_scope suppress
+        # change-log inference rather than silently inheriting a prior scope
+        # (BLD-4Q9X).
+        assert views._parse_build_plan_frontmatter_scope("---\nscope: null\n---\n") == (True, None)
+        assert views._parse_build_plan_frontmatter_scope("---\nscope: NULL\n---\n") == (True, None)
+        assert views._parse_build_plan_frontmatter_scope("---\nscope: ~\n---\n") == (True, None)
+        # Empty value is likewise an explicit opt-out (key present, no value).
+        assert views._parse_build_plan_frontmatter_scope("---\nscope:\n---\n") == (True, None)
+        assert views._parse_build_plan_frontmatter_scope("---\nscope: \n---\n") == (True, None)
 
     def test_scope_field_with_inline_comment(self):
         content = "---\nscope: v1.5  # active version\n---\n"
-        assert views._parse_build_plan_frontmatter_scope(content) == "v1.5"
+        assert views._parse_build_plan_frontmatter_scope(content) == (True, "v1.5")
 
-    def test_no_frontmatter_returns_none(self):
-        assert views._parse_build_plan_frontmatter_scope("# Plan\nNo frontmatter.\n") is None
+    def test_no_frontmatter_is_absent(self):
+        assert views._parse_build_plan_frontmatter_scope("# Plan\nNo frontmatter.\n") == (
+            False,
+            None,
+        )
 
-    def test_frontmatter_without_scope_returns_none(self):
+    def test_frontmatter_without_scope_is_absent(self):
         content = "---\nartifact: build-plan\nversion: 2\n---\n"
-        assert views._parse_build_plan_frontmatter_scope(content) is None
+        assert views._parse_build_plan_frontmatter_scope(content) == (False, None)
 
     def test_scope_after_closing_frontmatter_marker_ignored(self):
         """A `scope:` line outside the frontmatter is not the frontmatter scope."""
         content = "---\nartifact: build-plan\n---\n## Notes\nscope: shouldnotmatch\n"
-        assert views._parse_build_plan_frontmatter_scope(content) is None
+        assert views._parse_build_plan_frontmatter_scope(content) == (False, None)
 
     def test_indented_scope_ignored(self):
         """Only column-0 `scope:` counts; nested keys don't."""
         content = "---\ndepends_on:\n  scope: nested-not-frontmatter\n---\n"
-        assert views._parse_build_plan_frontmatter_scope(content) is None
+        assert views._parse_build_plan_frontmatter_scope(content) == (False, None)
 
     def test_leading_html_comment_tolerated(self):
         """Every real build-plan starts with an HTML comment header; the
@@ -276,20 +283,20 @@ class TestParseBuildPlanFrontmatterScope:
             "---\n"
             "## Status\n"
         )
-        assert views._parse_build_plan_frontmatter_scope(content) == "v1.5.1"
+        assert views._parse_build_plan_frontmatter_scope(content) == (True, "v1.5.1")
 
     def test_leading_single_line_html_comment_tolerated(self):
         content = "<!-- one-liner -->\n---\nscope: v2\n---\n"
-        assert views._parse_build_plan_frontmatter_scope(content) == "v2"
+        assert views._parse_build_plan_frontmatter_scope(content) == (True, "v2")
 
     def test_leading_blank_lines_before_comment_tolerated(self):
         content = "\n\n<!-- header -->\n\n---\nscope: v3\n---\n"
-        assert views._parse_build_plan_frontmatter_scope(content) == "v3"
+        assert views._parse_build_plan_frontmatter_scope(content) == (True, "v3")
 
-    def test_html_comment_without_frontmatter_returns_none(self):
-        """Comment header but no frontmatter at all → None."""
+    def test_html_comment_without_frontmatter_is_absent(self):
+        """Comment header but no frontmatter at all → key absent."""
         content = "<!-- header -->\n# Plan\nNo frontmatter.\n"
-        assert views._parse_build_plan_frontmatter_scope(content) is None
+        assert views._parse_build_plan_frontmatter_scope(content) == (False, None)
 
 
 class TestDetectActiveScope:
@@ -320,6 +327,43 @@ class TestDetectActiveScope:
     def test_returns_none_when_change_log_not_provided(self):
         build_plan = "---\nartifact: build-plan\n---\n## Status\n"
         assert views._detect_active_scope(build_plan, None) is None
+
+    def test_explicit_null_scope_suppresses_change_log_inference(self):
+        """BLD-4Q9X: an explicit ``scope: null`` is the author's opt-out and
+        MUST NOT inherit a prior change-log ``scope=`` tag via inference.
+
+        Regression: previously ``scope: null`` was indistinguishable from a
+        missing key, so detection fell through to change-log inference and
+        silently picked up the prior ``scope=v1.4`` — wrongly scope-filtering a
+        fresh plan and flipping its chunks to shipped. With the opt-out
+        respected, the result is ``None`` (legacy unfiltered union)."""
+        build_plan = "---\nartifact: build-plan\nscope: null\n---\n## Status\n"
+        change_log = (
+            "## 2026-05-22: prior release\n"
+            "<!-- prawduct: chunks=01,02,03 | status=shipped | scope=v1.4 -->\n"
+        )
+        # Inference is suppressed: must NOT inherit scope=v1.4.
+        assert views._detect_active_scope(build_plan, change_log) is None
+
+    def test_empty_scope_suppresses_change_log_inference(self):
+        """An empty ``scope:`` value is the same explicit opt-out as ``null``."""
+        build_plan = "---\nartifact: build-plan\nscope:\n---\n## Status\n"
+        change_log = (
+            "## 2026-05-22: prior release\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=v1.4 -->\n"
+        )
+        assert views._detect_active_scope(build_plan, change_log) is None
+
+    def test_absent_scope_key_still_infers_from_change_log(self):
+        """Contrast with the opt-out: when the ``scope:`` key is genuinely
+        ABSENT, inference still falls back to the most-recent change-log
+        ``scope=`` tag — the legacy behavior is preserved for that case."""
+        build_plan = "---\nartifact: build-plan\n---\n## Status\n"
+        change_log = (
+            "## 2026-05-22: prior release\n"
+            "<!-- prawduct: chunks=01,02,03 | status=shipped | scope=v1.4 -->\n"
+        )
+        assert views._detect_active_scope(build_plan, change_log) == "v1.4"
 
 
 class TestExtractStatusSection:
