@@ -85,8 +85,12 @@ N/A — edits land in `bin/prawduct-hook` (new `cmd_test_evidence` + dispatch), 
   file (the AGENT knows it launched background work; the hook can't) that defers the gate EXACTLY
   ONCE then auto-rearms (so it can never permanently skip the Critic) — sidesteps the fragile
   auto-detection. Update STH-3W7F with this design + the detection-fragility finding.
-- No runtime/code change in this chunk (doc + backlog only).
-**Done when:** docs coherent; cumulative Critic.
+- No runtime/behavior change in this chunk. Touches `methodology/building.md` (the floor),
+  `.prawduct/backlog.md` (STH-3W7F design), and `tests/test_v5_methodology.py` (the building.md
+  token-budget guardrail bumped 4450→4560 to accommodate the floor — the file sat at its prior
+  ceiling, so the addition was halved first and trimming unrelated prose would violate Scope
+  Discipline; rationale recorded in the test comment).
+**Done when:** docs coherent; full suite green; cumulative Critic.
 
 ## Governance Checkpoints
 

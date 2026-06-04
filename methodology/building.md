@@ -84,6 +84,8 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
+**In-flight background work is not a waiver case.** If the Critic/reflection gate blocks only because a tracked background `Workflow`/`Task` is still producing the diff, **wait — don't waive**: the gate *will* be satisfied this session once the job lands, and waiving would skip the Critic the completed work still needs. The repeated block is an expected reminder during a legitimate async wait, not an error to escape. (Rough edge `STH-3W7F`: a `.gates-deferred` mechanism to quiet the wait without skipping the Critic is the pending fix.)
+
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/prawduct:critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
