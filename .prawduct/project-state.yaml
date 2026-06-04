@@ -460,13 +460,17 @@ views_enabled: true
 # artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
 # The v2.0.0, M4 (v2.0.3), and waiver-pragma/2.0-rock-solid (v2.0.4) plans are
 # complete and released; their build-plan files are retained as historical
-# artifacts alongside the prior vN plans. The active plan is the roi-batch (9 ROI
-# backlog fixes), merged to develop via #58 and RELEASE-PENDING: its change-log
-# entry is status=merged and stays here so the next develop→main release can run
-# regen-views to flip the plan's checkboxes, then clear this pointer (see
-# docs/release-process.md + learnings.md "KEEP the build plan" — do NOT clear at
-# develop-merge).
-active_build_plan: artifacts/build-plan-roi-batch.md
+# artifacts alongside the prior vN plans.
+#
+# TWO plans are now release-pending for the next develop→main release:
+#   1. build-plan-roi-batch.md   (scope=roi-batch,   chunks 01–05, status=merged, via #58)
+#   2. build-plan-roi-batch-2.md (scope=roi-batch-2, chunks 01–09, status=merged) ← this pointer
+# The pointer names roi-batch-2 (the in-progress plan) to arm THIS session's stop-hook Critic
+# gate. Both are RELEASE-PENDING: at the develop→main release, `regen-views` must run once per
+# plan/scope (it resolves a single plan via this pointer) — point it at roi-batch, regen, then at
+# roi-batch-2, regen — before clearing this pointer. See docs/release-process.md + learnings.md
+# "KEEP the build plan" — do NOT clear at develop-merge.
+active_build_plan: artifacts/build-plan-roi-batch-2.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
