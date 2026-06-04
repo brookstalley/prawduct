@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import re
+
+import pytest
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -138,3 +141,133 @@ class TestSessionGitignoreMirror:
         # core writes __pycache__/ to .gitignore; the hook never untracks it.
         assert any(p.rstrip("/") == "__pycache__" for p in _mod.GITIGNORE_ENTRIES)
         assert not any(p.rstrip("/") == "__pycache__" for p in _hook._SESSION_GITIGNORED_PATHS)
+
+
+# --- build-plan chunk-heading parse guard (BLD-7P3K) ------------------------
+#
+# A plan that lists chunks in `## Status` as `- [ ] Chunk NN: ...` but writes
+# their bodies as `#### Chunk NN:` (four-hash, e.g. nested under a `### Lane`
+# grouping) silently defeats every `### Chunk ` parser in the codebase —
+# verify-chunk-refs, `_parse_build_plan_chunk_type` (fail-closes the chunk
+# type to `code`), and the `lib/critic_mode.py` plan-override. Nothing errors;
+# governance just quietly stops resolving the chunk. These helpers mirror the
+# production heading rule exactly (``bin/prawduct-hook`` ~line 2910): a heading
+# counts only if it `startswith("### Chunk ")` AND carries a colon, with the
+# leading-zero-tolerant ID before the colon.
+
+# Status line: "- [ ] Chunk 01: ..." / "- [x] Chunk 01: ..." (checkbox + colon).
+_STATUS_CHUNK_RE = re.compile(r"^- \[[ xX]\] Chunk (\S+):")
+
+
+def _status_chunk_ids(content: str) -> list[str]:
+    """Chunk IDs listed in the plan's ``## Status`` section, in order."""
+    ids: list[str] = []
+    in_status = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            in_status = stripped == "## Status"
+            continue
+        if not in_status:
+            continue
+        m = _STATUS_CHUNK_RE.match(line)
+        if m:
+            ids.append(m.group(1))
+    return ids
+
+
+def _parseable_body_chunk_ids(content: str) -> set[str]:
+    """Leading-zero-normalized IDs of parseable ``### Chunk <id>:`` headings.
+
+    Replicates the matcher the production parsers use: three-hash + ``Chunk ``
+    + a colon. A ``#### Chunk`` (four-hash), a missing colon, or an em-dash
+    heading is NOT counted — which is exactly the silent-defeat we guard.
+    """
+    found: set[str] = set()
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("### Chunk "):
+            continue
+        rest = stripped[len("### Chunk "):]
+        if ":" not in rest:  # parsers split on ":" — no colon, no match
+            continue
+        head = rest.split(":", 1)[0].strip()
+        found.add(head.lstrip("0") or "0")
+    return found
+
+
+def _assert_status_chunks_parse(content: str) -> None:
+    """Every ``## Status`` chunk ID must resolve to a parseable body heading."""
+    body = _parseable_body_chunk_ids(content)
+    unresolved = [
+        cid for cid in _status_chunk_ids(content)
+        if (cid.lstrip("0") or "0") not in body
+    ]
+    assert not unresolved, (
+        f"Status chunk IDs with no parseable `### Chunk <id>:` heading: "
+        f"{unresolved}. A `#### Chunk`/missing-colon/wrong-depth heading "
+        f"silently defeats the `### Chunk ` parsers — fix the heading depth/form."
+    )
+
+
+class TestActiveBuildPlanChunkHeadingsParse:
+    """Guard: the active build plan's `## Status` chunk IDs each map to a
+    parseable `### Chunk <id>:` body heading (three-hash, colon form).
+
+    Scope is **test-only** for this batch; a runtime-check-for-any-product
+    variant (the hook flagging the active plan at session start) is deferred —
+    backlog BLD-7P3K.
+
+    The live-active-plan guard is the primary requirement; the in-test fixtures
+    keep the guard deterministic even when this worktree's active pointer is
+    unset (the integrator sets it, so the live check dogfoods the cleanup-batch
+    plan once merged).
+    """
+
+    def test_active_plan_status_chunks_have_parseable_headings(self):
+        plan_path = resolve_build_plan_path(_ROOT / ".prawduct")
+        if not plan_path.is_file():
+            pytest.skip(f"no active build plan resolved at {plan_path}")
+        content = plan_path.read_text()
+        status_ids = _status_chunk_ids(content)
+        if not status_ids:
+            pytest.skip(f"active plan {plan_path.name} has no `## Status` chunk list")
+        _assert_status_chunks_parse(content)
+
+    def test_fixture_good_plan_passes(self):
+        good = (
+            "## Status\n"
+            "- [ ] Chunk 01: AAA — do a thing\n"
+            "- [x] Chunk 02: BBB — done thing\n"
+            "## Build Chunks\n"
+            "### Chunk 01: AAA — do a thing\n"
+            "**Type:** code\n"
+            "### Chunk 02: BBB — done thing\n"
+            "**Type:** doc-only\n"
+        )
+        _assert_status_chunks_parse(good)  # no AssertionError
+
+    def test_fixture_four_hash_heading_fails(self):
+        # The exact bug: bodies written as `#### Chunk` under a `### Lane`.
+        malformed = (
+            "## Status\n"
+            "- [ ] Chunk 01: AAA — do a thing\n"
+            "## Build Chunks\n"
+            "### Lane A\n"
+            "#### Chunk 01: AAA — do a thing\n"
+            "**Type:** code\n"
+        )
+        with pytest.raises(AssertionError):
+            _assert_status_chunks_parse(malformed)
+
+    def test_fixture_missing_colon_heading_fails(self):
+        # `### Chunk 01 AAA` (no colon) — the parsers split on ":" and miss it.
+        malformed = (
+            "## Status\n"
+            "- [ ] Chunk 01: AAA — do a thing\n"
+            "## Build Chunks\n"
+            "### Chunk 01 AAA — do a thing\n"
+            "**Type:** code\n"
+        )
+        with pytest.raises(AssertionError):
+            _assert_status_chunks_parse(malformed)
