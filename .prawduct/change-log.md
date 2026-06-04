@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: roi-batch-2 — 9 ROI backlog fixes (views/hook/advisory hardening + tests) (merged)
+
+<!-- prawduct: chunks=01,02,03,04,05,06,07,08,09 | status=merged | scope=roi-batch-2 -->
+
+**Why:** A second round of high-ROI backlog fixes — the 2026-06-04 rough-edges hunt (8 items
+verified real before filing, 0 false positives) plus one older re-verified item (TST-1D5W).
+Two silent-degradation correctness bugs, a release-process typo guard, parser/gate hardening,
+a behavior-preserving constant extraction, and pure test coverage. Built by ONE workflow across
+three file-disjoint lanes (HOOK A→B sequential on `bin/prawduct-hook`, ADV + MIG concurrent) and
+governed by the launching session (full suite → cumulative Critic → independent PR review).
+
+**What merged (9 chunks/items, via #59 → develop):**
+- **Chunk 01 (VWS-3K7P):** `validate_status_values()` warns on change-log `status=` typos in
+  `regen-views` (non-fatal stderr); `lib/views.py` docstring reconciled to `{shipped, merged}`.
+- **Chunk 02 (STH-2J9F):** `cmd_regen_views` returns exit 1 (not 0) on ImportError — a
+  state-mutating command must not report success on a broken install.
+- **Chunk 03 (VWS-8M2Q):** drop unsafe chunk IDs from `scope_rollups` YAML (`CHUNK_ID_SAFE_RE`);
+  document `_parse_build_plan_frontmatter_scope` unclosed-comment leniency + malformed-frontmatter test.
+- **Chunk 04 (STH-6B4R):** gate-freshness sites were already identical-precision — documented the
+  invariant + tie rule (`findings_mtime == session_start` is NOT fresh) and pinned it with a test.
+- **Chunk 05 (STH-1W5N):** extract `_TRIVIAL_PROTECTED_PATHS` frozenset (single source of truth
+  for the trivial/doc-only protected-path bounds); behavior-preserving.
+- **Chunk 06 (TST-1D5W):** `_validate_evidence_schema` rejects a bool in an int field.
+- **Chunk 07 (TST-7Q3D):** `TestPluginStopGateRegressions` — verify-resolutions out-of-scope,
+  trivial-fileset-bounds, unknown-waiver-key cases.
+- **Chunk 08 (ADV-9K2T):** `read_store` preserves a `.advisories.json.corrupt` sentinel on
+  parse/shape failure of an existing store (surfaces corruption vs a silent reset).
+- **Chunk 09 (TST-4H8M):** `TestCollapseBlankRuns` unit coverage for migrate `_collapse_blank_runs`.
+
+**Status:** RELEASE-PENDING (`status=merged`). This is the SECOND release-pending plan (after
+`roi-batch`); both ship at the next `develop→main` release, which must run `regen-views` once
+per scope (the pointer resolves one plan). The build plan's `## Status` checkboxes stay `[ ]`
+until then. Full suite green (749 passed, +35); cumulative Critic (0 blocking / 0 warning /
+2 notes — a build-plan heading-depth WARNING was caught and resolved) and independent PR review
+(0 blocking / 0 warning / 1 note) both clean. Filed BLD-7P3K (guard test so heading drift fails loud).
+
 ## 2026-06-04: roi-batch — 9 ROI backlog fixes (CRT/BLD/TST/MIG + docs) (merged)
 
 <!-- prawduct: chunks=01,02,03,04,05 | status=merged | scope=roi-batch -->
