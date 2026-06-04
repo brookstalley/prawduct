@@ -492,7 +492,7 @@ class TestPluginDocsNamespacing:
     # `/clear` is a Claude Code built-in, not a prawduct skill — deliberately absent.
     BARE_INVOCATION = re.compile(
         r"(?<![\w/:.\-])/(critic|pr|backlog|learnings|janitor|discovery|planning"
-        r"|building|reflection|methodology|doctor|advisory)\b"
+        r"|building|reflection|methodology|doctor|onboard|advisory)\b"
     )
 
     @pytest.mark.parametrize("rel", DOCS)

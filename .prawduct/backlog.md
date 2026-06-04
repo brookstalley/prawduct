@@ -8,6 +8,19 @@
 ## Open
 
 
+- **[LRN-3F8K]** Reconcile the dangling sentinel on the "Framework ownership follows the write strategy" learning
+  `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open`
+
+  `audit-learnings` reports an error: the learning "Framework ownership follows the write strategy,
+  not just registry membership" carries `sentinel=tests/test_prawduct_sync.py::TestAutoCommitSafety::test_user_authored_place_once_edits_treated_as_wip`,
+  but `tests/test_prawduct_sync.py` was deleted with the file-sync engine in M4 (v2.0.3) — so the
+  sentinel is dangling and the audit flags it as a failing sentinel (which blocks the learning's
+  retirement). Pre-existing (M4-era); surfaced by the rigor-and-stance cumulative Critic as outside
+  that bundle, flagged rather than fixed inline (Scope Discipline). Fix-shape: decide whether the
+  write-strategy-ownership contract still has a live equivalent test (repoint the sentinel to it), or
+  the learning has outlived its mechanism (drop the sentinel annotation / retire the learning) — a
+  one-line annotation fix once decided. Filed from the v2.0.7 release audit. (critic)
+
 - **[STN-6K3D]** (Optional) Ship a non-forced `output-styles/` style power users can voluntarily select
   `effort: S · impact: S · area: agent-stance · source: builder · added: 2026-06-04 · status: open`
 

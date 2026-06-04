@@ -30,58 +30,38 @@ Claude Code is fantastic at writing code, but without discipline it makes assump
 - Python 3 (the plugin's governance hooks are Python, zero external dependencies)
 - git
 
-Prawduct v2 is distributed as a **Claude Code plugin**. A product repo commits only a
-small install *reference* — never framework files. (See [MIGRATION](documentation/MIGRATION.md)
-to move an existing v1 file-sync repo onto the plugin.)
+Prawduct is a **Claude Code plugin**: install it **once at the user level**, then **onboard each
+repo** you want governed — the same command for a new or existing repo. A project commits only a
+tiny install *reference*, never framework files.
 
-### Install the plugin
-
-Prawduct is published as a Claude Code plugin from its own marketplace (this repo, pinned to
-`main`). Add the marketplace and install the plugin:
+### 1. Install the plugin (once, for your machine)
 
 ```bash
 claude plugin marketplace add brookstalley/prawduct
 claude plugin install prawduct@prawduct
 ```
 
-The `/prawduct:*` skills and governance are then available in your sessions. To onboard a repo
-so it self-governs for everyone who clones it, run `/prawduct:doctor` (below) — it commits a
-small install reference (marketplace + enabled plugin); no framework files land in your tree.
+`/prawduct:*` is now available in every Claude Code session.
 
-> **Developing the framework itself?** Load your working copy instead of the released plugin
-> with `claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct` — the `--add-dir`
-> (same path) lets methodology-reading skills (`/prawduct:building`, `/prawduct:critic`,
-> `/prawduct:planning`) load their bundled guides from the out-of-tree plugin. See
-> [Develop the framework itself](#develop-the-framework-itself).
-
-### Start a new product
+### 2. Onboard a repo — new or existing, same command
 
 ```bash
-mkdir ~/my-product && cd ~/my-product && git init
+cd ~/my-repo          # new repo? `mkdir ~/my-repo && cd "$_" && git init` first
 claude
-> /prawduct:doctor .
+> /prawduct:onboard .
 ```
 
-`/prawduct:doctor` (Onboard) scaffolds the product-owned state — `.prawduct/`, a thin
-governance anchor in `CLAUDE.md`, and the committed install reference — with **zero**
-framework files in your tree. Then describe what you want to build:
+This scaffolds `.prawduct/`, a thin `CLAUDE.md` anchor, and the committed install reference — zero
+framework files in your tree. Then describe what you want:
 
 ```
-> I want to build a meal planning app for families with dietary restrictions
+> build a meal-planning app for families with dietary restrictions
+> add OAuth login to the existing API
 ```
 
-### Add Prawduct to an existing repo
-
-```bash
-cd ~/existing-repo
-claude
-> /prawduct:doctor .
-```
-
-For a brand-new `.prawduct/`, doctor scaffolds it; for a repo that still carries v1
-file-sync framework files, it routes you to `/prawduct:migrate` (one reversible commit).
-
-Prawduct will ask the obvious questions and also the non-obvious questions before getting started. It analyzes existing code (if any) to infer project conventions (language, test framework, code style) and records them for future reference.
+Anyone who clones the repo gets the same governance (the plugin auto-installs on first trusted
+open). Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync
+repo? `/prawduct:onboard` routes it to [`/prawduct:migrate`](documentation/MIGRATION.md).
 
 ## How Prawduct Works
 
@@ -160,10 +140,10 @@ It validates the committed install reference, confirms the repo is on the plugin
 
 ```bash
 cd prawduct
-claude --plugin-dir .
+claude --plugin-dir . --add-dir .
 ```
 
-This repo is governed by its own plugin — it dogfoods itself. See [docs/release-process.md](docs/release-process.md) for the gitflow release model and the release checklist.
+This repo is governed by its own plugin — it dogfoods itself. The `--add-dir .` (same path) lets methodology-reading skills (`/prawduct:building`, `/prawduct:critic`, `/prawduct:planning`) load their bundled guides from the out-of-tree plugin; a real marketplace install grants that automatically. See [docs/release-process.md](docs/release-process.md) for the gitflow release model and the release checklist.
 
 ## Q&A
 
@@ -250,7 +230,7 @@ prawduct/
 │   ├── plugin.json             # name: prawduct, version (mirrors VERSION)
 │   └── marketplace.json        # single-plugin marketplace entry (plugin source "./", consumers pin ref: main)
 ├── hooks/hooks.json            # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
-├── skills/                     # framework skills → /prawduct:* (critic, pr, doctor, migrate, building, …)
+├── skills/                     # framework skills → /prawduct:* (onboard, doctor, critic, pr, migrate, building, …)
 ├── bin/prawduct-hook           # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
 ├── lib/                        # governance + scaffolding/migration modules (init_product, migrate_plugin, …)
 ├── methodology/ docs/ templates/  # bundled; read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
@@ -280,7 +260,7 @@ Full history is in [CHANGELOG.md](CHANGELOG.md). Highlights:
 - `/prawduct:*` namespaced skills; governance via the plugin's SessionStart (banner + briefing + guidance digest) and Stop (Critic + reflection gates) hooks
 - **Version-delta banner** (shows what changed + newly-active gates on update); marketplace `autoUpdate` for always-latest
 - **`/prawduct:migrate`** — one-command, reversible v1 file-sync → plugin cutover (see [MIGRATION](documentation/MIGRATION.md))
-- Plugin-native new-product scaffolding via `/prawduct:doctor`
+- Plugin-native onboarding/scaffolding via `/prawduct:onboard` (health-check/repair stays `/prawduct:doctor`)
 - Gitflow release model (see [docs/release-process.md](docs/release-process.md))
 - Backward compatible: existing v1 file-sync repos migrate onto the plugin via `/prawduct:migrate` (one reversible, revertable commit)
 

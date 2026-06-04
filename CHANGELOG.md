@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v2.0.8
+Onboarding gets its own command. Setting Prawduct up in a repo is now **`/prawduct:onboard`** (new or existing repo — same command), instead of the mis-named `/prawduct:doctor`, which connoted health-check, not setup. `/prawduct:doctor` keeps its real job: health-check, repair, enable-gate, verify, and audit-learnings on an already-onboarded repo. The README quick start is trimmed to two steps — install the plugin once at the user level, then onboard any repo. No behavioral change to governance; existing repos are unaffected.
+
 ## v2.0.7
 Sharper product-management methodology — and the first release in a while that consuming repos will *feel* in how the agent works, not just internals. Two additions reach every governed session through the digest. (1) **Proportional requirements rigor:** before building, the agent calibrates how hard to pin down requirements — and whether to research rather than rely on intrinsic knowledge — by *stakes × knowledge-confidence × volatility* (fast-moving or post-training-cutoff facts get verified, not recalled), and records answers it inferred rather than confirmed as vetoable `[ASSUMPTION: …]` instead of guessing silently. (2) An explicit **agent stance** (`/prawduct:methodology stance`): verify don't guess, stress-test before agreeing, offer the simpler alternative, frame decisions with concrete tradeoffs + a recommendation, plain language, research fast-moving designs, verify your own work before "done," scope discipline, and label confidence. Full model in `methodology/discovery.md` "Calibrate Rigor" and `methodology/agent-stance.md`. Plugin-governed repos pick this up automatically on next session.
 

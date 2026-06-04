@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.8
+
+**Entry:** 2026-06-04: onboard — split repo onboarding out of /prawduct:doctor into /prawduct:onboard (shipped v2.0.8)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.7
 
 **Entry:** 2026-06-04: rigor-and-stance — sharpen the methodology's PM seams (requirements rigor + agent stance) (shipped v2.0.7)
