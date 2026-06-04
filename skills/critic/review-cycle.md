@@ -17,7 +17,7 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 
 The stop hook enforces review for code changes when a build plan exists. It also surfaces an advisory WARNING when all chunks are marked `[x]` but the most recent review ran Goals 1-3 only (`chunk` or `verify-resolutions` mode) — run `/prawduct:critic final` before pushing.
 
-`/prawduct:pr create` is gated by `prawduct-hook check-cumulative-critic` — opening a PR without a fresh, blocking-free `cumulative` record fails the gate.
+`/prawduct:pr create` is gated by `prawduct-hook check-cumulative-critic` — opening a PR without a blocking-free, HEAD-covering `cumulative` record fails the gate.
 
 ## Mode Selection
 
