@@ -245,6 +245,16 @@ _None._
 ## Archive
 
 
+- **[CRT-7M2D]** Cumulative-Critic gate judges commit-coverage, not mtime-recency
+  `effort: M · impact: M · area: critic · source: builder · added: 2026-06-04 · status: shipped · closed-by: #65 (v2.0.9) · related: STH-6B4R`
+
+  `check-cumulative-critic` now passes iff the cumulative record covers HEAD (`commit_reviewed == HEAD`,
+  or only `.md` changed since), instead of judging mtime vs `.session-start` — closing the false-pass
+  (a stale record passing over real code changes) AND the post-review re-run treadmill (inert doc fixes
+  no longer force a full cumulative re-run). New `tests/test_cumulative_gate.py` (8 real-git tests; the
+  gate previously had none); doc wording swept "fresh" → "HEAD-covering". Dogfooded on its own PR #65
+  (doc-only post-review fixes stayed covered, no re-run). Shipped v2.0.9. (builder)
+
 - **[REL-4T8N]** Release tooling: handle MULTIPLE release-pending plans (regen-views per scope) instead of a single `active_build_plan` pointer
   `effort: M · impact: M · area: release · source: builder · added: 2026-06-04 · status: shipped · closed-by: #62 (v2.0.6)`
 
