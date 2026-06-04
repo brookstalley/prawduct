@@ -42,7 +42,7 @@ Before any non-trivial work cycle, answer three questions in one sentence each:
 2. **What does success look like?** "User can do X and see Y," not "it works."
 3. **What's out of scope?** What you're deliberately not doing.
 
-If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Don't silently build on guesses — that's how unclear requirements become debt. Apply for any chunk that touches behavior; skip for trivial (typo, config). Mirrors the discovery-side pattern (see `methodology/discovery.md` "Discovery Recurs").
+If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Fill what you can infer yourself and record each as a vetoable assumption; surface only consequential, unverifiable unknowns, and early. Don't silently build on guesses — that's how unclear requirements become debt. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode (read-only explore + interview before execution) is the native clarify-before-build vehicle. Mirrors the discovery-side self-assessment, the `[ASSUMPTION: …]` recording format, and research triggers (see `methodology/discovery.md` "Calibrate Rigor").
 
 ## The Build Cycle
 
@@ -128,7 +128,7 @@ When you modify files that affect a contract surface:
 
 ### Decision Research (when choices constrain future options)
 
-A decision is "major" when it has: **lock-in** (hard to reverse), **pervasiveness** (used across many files), **structural impact** (shapes architecture), or **external dependency** (long-term reliance on a library/service).
+A decision is "major" when it has: **lock-in** (hard to reverse), **pervasiveness** (used across many files), **structural impact** (shapes architecture), **external dependency** (long-term reliance on a library/service), or **volatility** (correctness depends on timely / fast-moving / post-cutoff data — knowledge gaps want reasoning, volatility gaps want web research; see `methodology/discovery.md` "Calibrate Rigor").
 
 Research scales to impact:
 - **Medium-impact** (pervasive pattern, non-core dependency): Quick research in the main context. A few web searches, check library health.

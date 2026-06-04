@@ -138,8 +138,22 @@ class TestBuildingMethodology:
         # trimming itself, and trimming UNRELATED prose to fit would violate Scope
         # Discipline. The bullet is the chunk's whole deliverable and is already
         # minimal. If this test fails again, prefer trimming over another bump.
+        #
+        # Bumped 4650 → 4720 in rigor-and-stance Chunk 01 (requirements-rigor
+        # model). "Before You Build" gains a terse intentional-inference clause
+        # (fill + record a vetoable assumption; surface only consequential,
+        # unverifiable unknowns, early) + a Plan Mode pointer, and "Decision
+        # Research" gains **volatility** as a major-decision trigger with the
+        # knowledge-vs-volatility remedy split. The CANONICAL model (the
+        # stakes/knowledge/volatility self-assessment, the `[ASSUMPTION: …]`
+        # format, and the Zig / Claude Code / versions examples) was deliberately
+        # placed in discovery.md (which has token headroom) to MINIMIZE this
+        # delta — building.md carries only condensed operational pointers. The
+        # residual ~45 tokens are irreducible without dropping a concept;
+        # trimming UNRELATED prose to fit would violate Scope Discipline. If this
+        # test fails again, prefer trimming over another bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4650, f"building.md is ~{tokens} tokens, should be <4650"
+        assert tokens < 4720, f"building.md is ~{tokens} tokens, should be <4720"
 
 
 # =============================================================================

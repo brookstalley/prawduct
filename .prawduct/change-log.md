@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: rigor-and-stance — sharpen the methodology's PM seams (requirements rigor + agent stance) (release-pending)
+
+<!-- prawduct: chunks=01,02,03 | status=merged | scope=rigor-and-stance -->
+
+**Why:** Owner-directed pivot from infrastructure to product-management methodology — the infra
+foundation was judged stable (v2.0.6 shipped, suite green, develop≡main, backlog ~97% governance
+machinery). Sharpen two PM seams the infra-heavy backlog had starved: proportional requirements
+rigor, and an explicit agent stance. Design validated by two web-research passes this session
+(Claude Code capabilities + agent-design best practices), not first principles.
+
+**What merged (3 chunks, → develop):**
+- **Chunk 01 (requirements rigor):** new canonical `methodology/discovery.md` "Calibrate Rigor to
+  Stakes, Knowledge, and Volatility" — rigor scales to stakes × knowledge-confidence × volatility,
+  with two distinct research axes (knowledge gap → reason/decompose; volatility/recency → web
+  research, with Zig / Claude Code / current-versions examples + a proportionality guard) and
+  intentional inference (record each inferred answer as a vetoable
+  `[ASSUMPTION: … | impact | correct/override/defer]`). Condensed pointers in `building.md`
+  (Before-You-Build + a Decision-Research volatility trigger), the Assumptions element in
+  `planning.md` + `templates/build-plan.md`, and a `CLAUDE.md` alignment. building.md token budget
+  4650→4720.
+- **Chunk 02 (agent stance):** new `methodology/agent-stance.md` — 9 positive, testable stance
+  directives (the owner's 6 + verify-own-work, scope-discipline, calibrated-uncertainty), each
+  cross-linked to the principle it operationalizes; honesty stances anchored to Anthropic's honesty
+  taxonomy. Condensed into the always-on `session-digest.md` (the composable carrier — a
+  `force-for-plugin` output style would clobber a consumer's own style, verified). Indexed in the
+  methodology skill; cross-linked from `docs/principles.md`.
+- **Chunk 03 (digest sweep):** audited artifacts for digest-worthy content; conservative outcome
+  (honoring the v1.8.0 anti-bloat diet) — added only the requirements-rigor headline to the digest
+  (owner-ratified) and resisted further additions.
+
+**Governance:** per-chunk Critic clean (0 blocking); cumulative Critic 0 blocking / 2 warning / 1
+note, all cross-chunk coherence fixes applied (cross-cutting-concerns rows updated/added; filed
+STN-6K3D). Full suite green (+5 tests: 798→803). Two durable learnings captured (research-trigger
+self-exemption / volatility-vs-knowledge split; canonical-mechanism-vs-structural-constraint).
+
+**Status:** RELEASE-PENDING (`status=merged`). The `develop→main` release flips this to
+`status=shipped` + `release=v2.0.7` and runs `regen-views`.
+
 ## 2026-06-04: release-tooling — fix the release/build tooling once and for all (REL-4T8N + 3) (shipped v2.0.6)
 
 <!-- prawduct: chunks=01,02,03,04,05 | release=v2.0.6 | status=shipped | scope=release-tooling -->

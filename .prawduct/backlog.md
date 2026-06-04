@@ -8,6 +8,18 @@
 ## Open
 
 
+- **[STN-6K3D]** (Optional) Ship a non-forced `output-styles/` style power users can voluntarily select
+  `effort: S · impact: S · area: agent-stance · source: builder · added: 2026-06-04 · status: open`
+
+  rigor-and-stance Chunk 02 placed the agent stance in the always-on session digest because a
+  `force-for-plugin` output style HARD-OVERRIDES (clobbers) a consumer's own output style and does not
+  compose — disqualifying for unconditional, composable governance (verified against the Claude Code
+  output-styles docs, 2026-06-04). A *non-forced* output style is a separate, safe nice-to-have: ship
+  `output-styles/<name>.md` (no `force-for-plugin`) so power users can OPT IN to the prawduct voice via
+  `/config` without clobbering their own style. Low priority — the digest already delivers the stance
+  unconditionally; this is pure ergonomics. Filed from the rigor-and-stance cumulative Critic
+  (Complete Delivery — the plan deferred this). (builder)
+
 - **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
   `effort: L · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · partial: floor+design shipped via #60 (code fix pending) · related: STH-7K2A`
 
