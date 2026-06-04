@@ -240,10 +240,11 @@ class TestPluginStopGate:
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
         assert result.returncode == 2, (result.stdout, result.stderr)
         assert "CRITIC" in result.stderr
-        # The gate names the plugin-namespaced skill — a bare `/critic` does not
-        # resolve in a plugin repo's command namespace. Pin the command form, not
-        # just the word: the message also cites the file `.prawduct/critic-review.md`
-        # (contains `/critic`), so the negative must target the backtick command form.
+        # The gate names the plugin-namespaced command — a bare `/critic` does not
+        # resolve in a plugin repo's command namespace, so the message must surface
+        # `/prawduct:critic` and never a bare `/critic`. Both assertions pin the
+        # backtick command form so they match the command the message tells users to
+        # run, not an incidental `/critic` substring elsewhere in the output.
         assert "`/prawduct:critic`" in result.stderr
         assert "`/critic`" not in result.stderr
 
