@@ -458,12 +458,15 @@ views_enabled: true
 # `.prawduct/` so the build-plan tooling (regen-views, infer-critic-mode, the
 # stop-hook gate) finds a scope-named plan instead of the conventional
 # artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
-# The v2.0.0 plugin-distribution and M4 file-sync-retirement (v2.0.3, shipped
-# 2026-06-04) plans are complete; their build-plan files are retained as historical
-# artifacts alongside the prior vN plans. The active plan is the waiver-pragma +
-# 2.0-rock-solid-cleanup work (Wave 1 shipped, Wave 2 in progress); clear this
-# pointer back to unset when that branch ships.
-active_build_plan:
+# The v2.0.0, M4 (v2.0.3), and waiver-pragma/2.0-rock-solid (v2.0.4) plans are
+# complete and released; their build-plan files are retained as historical
+# artifacts alongside the prior vN plans. The active plan is the roi-batch (9 ROI
+# backlog fixes), merged to develop via #58 and RELEASE-PENDING: its change-log
+# entry is status=merged and stays here so the next develop→main release can run
+# regen-views to flip the plan's checkboxes, then clear this pointer (see
+# docs/release-process.md + learnings.md "KEEP the build plan" — do NOT clear at
+# develop-merge).
+active_build_plan: artifacts/build-plan-roi-batch.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

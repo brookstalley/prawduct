@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: roi-batch — 9 ROI backlog fixes (CRT/BLD/TST/MIG + docs) (merged)
+
+<!-- prawduct: chunks=01,02,03,04,05 | status=merged | scope=roi-batch -->
+
+**Why:** Nine pre-triaged backlog ROI items — two reproducible correctness bugs, two
+test/cosmetic fixes, and a docs-coherence batch — small and independent enough to build in
+one batch. Built by two parallel background workflows (file-disjoint lanes) and governed by
+the launching session (full suite → cumulative Critic → independent PR review).
+
+**What merged (5 chunks, 9 backlog items, via #58 → develop):**
+- **Chunk 01 (CRT-3M8Q):** critic-mode inference honors the active build plan's current-chunk
+  `**Critic mode:**` field as a successive override (`plan-override: <mode>`), routing around
+  the Skill-tool `$ARGUMENTS`-not-threading gap.
+- **Chunk 02 (BLD-4Q9X):** `scope: null`/empty in build-plan frontmatter suppresses change-log
+  scope inference instead of inheriting a stale `scope=` tag — `_parse_build_plan_frontmatter_scope`
+  returns `(present, value)`.
+- **Chunk 03 (TST-2R7H):** regression truth-table pinning that only `Type: designer-handoff`
+  skips the stop-hook Critic gate (new `tests/test_critic_gate_fallthrough.py`).
+- **Chunk 04 (MIG-8C3V):** migrate's CLAUDE.md transform collapses 3+ newline runs, dropping
+  the leading double blank line.
+- **Chunk 05 (docs):** methodology/planning.md (forward-ref convention, step-0 Done-when
+  wording, Visual Change Verification section, 8-surface-cascade → token-budget guidance) +
+  two design docs repointed from retired `tools/` paths to plugin-native.
+
+**Status:** RELEASE-PENDING (`status=merged`). The build plan's `## Status` checkboxes stay
+`[ ]` until the next `develop→main` release flips this entry to `status=shipped` and runs
+`regen-views` (per `docs/release-process.md`). Full suite green (714 passed); cumulative Critic
+and independent PR review both clean (0 blocking).
+
 ## 2026-06-04: v2.0.4 — Intentional-waiver pragma (`prawduct:allow`) + trivial-gate fix (shipped)
 
 <!-- prawduct: type=feature | release=v2.0.4 | status=shipped -->
