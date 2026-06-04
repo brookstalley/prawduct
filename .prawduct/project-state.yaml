@@ -462,7 +462,7 @@ views_enabled: true
 # 2026-06-04) plans are complete; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans. No plan is active — unset falls back to
 # artifacts/build-plan.md.
-active_build_plan:
+active_build_plan: artifacts/waiver-pragma-plan.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

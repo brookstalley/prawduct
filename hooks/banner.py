@@ -191,7 +191,7 @@ def main() -> int:
     try:
         root = plugin_root()
         version = read_version(root)
-    except Exception as exc:  # prawduct:ok-broad-except — a banner failure must never break session start
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a banner failure must never break session start
         print(f"NOTE: Prawduct banner could not read plugin version: {exc}", file=sys.stderr)
         return 0
 
@@ -217,7 +217,7 @@ def main() -> int:
         for line in render_delta(last, version, root):
             print(line)
         write_marker(prawduct, version)
-    except Exception as exc:  # prawduct:ok-broad-except — delta/marker is a safety net; never break session start
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- delta/marker is a safety net; never break session start
         print(f"NOTE: Prawduct version-delta banner degraded: {exc}", file=sys.stderr)
     return 0
 

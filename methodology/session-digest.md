@@ -21,8 +21,10 @@ bugfix → root cause + regression test; refactor → behavior preservation; …
 - **Never silently drop a requirement.** Implement it or explicitly descope it.
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
   yourself — the independence is the whole value.
-- **Catch specific exceptions.** Mark a genuinely necessary broad catch
-  `# prawduct:ok-broad-except — reason`; never swallow errors silently.
+- **Catch specific exceptions.** Waive a genuinely necessary broad catch with
+  `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
+  (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver
+  pragma — see `docs/waivers.md`.)
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
   "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in

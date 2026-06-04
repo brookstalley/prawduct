@@ -81,7 +81,7 @@ def _plugin_manifest_version() -> str | None:
         data = json.loads(manifest.read_text(encoding="utf-8"))
         version = data.get("version")
         return str(version) if version else None
-    except Exception:  # prawduct:ok-broad-except — attribution is best-effort; a block must never crash on it
+    except Exception:  # prawduct:allow prawduct/broad-except -- attribution is best-effort; a block must never crash on it
         return None
 
 
@@ -93,7 +93,7 @@ def _load_gate_registry() -> dict[str, dict]:
         data = json.loads(path.read_text(encoding="utf-8"))
         gates = data.get("gates", [])
         return {g["id"]: g for g in gates if isinstance(g, dict) and g.get("id")}
-    except Exception:  # prawduct:ok-broad-except — attribution is best-effort; a block must never crash on it
+    except Exception:  # prawduct:allow prawduct/broad-except -- attribution is best-effort; a block must never crash on it
         return {}
 
 
@@ -168,7 +168,7 @@ def git_status_output(project_dir: Path) -> str | None:
         if result.returncode != 0:
             return None
         return result.stdout
-    except Exception:  # prawduct:ok-broad-except — git failure must not crash hook
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         return None
 
 
@@ -367,7 +367,7 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
         )
         if check.returncode != 0:
             return untracked
-    except Exception:  # prawduct:ok-broad-except — git failure must not crash hook
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         return untracked
 
     for path in _SESSION_GITIGNORED_PATHS:
@@ -390,7 +390,7 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
             )
             if rm.returncode == 0:
                 untracked.append(path)
-        except Exception:  # prawduct:ok-broad-except — single-file failure must not abort the loop
+        except Exception:  # prawduct:allow prawduct/broad-except -- single-file failure must not abort the loop
             continue
 
     return untracked
@@ -408,7 +408,7 @@ def _git_head_sha(project_dir: Path) -> str:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except Exception:  # prawduct:ok-broad-except — git failure must not crash hook
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         pass
     return ""
 
@@ -622,7 +622,7 @@ def _extract_dependency_names(dep_file: Path) -> list[str]:
     """Extract package names from dependency files."""
     try:
         content = dep_file.read_text()
-    except Exception:  # prawduct:ok-broad-except — dependency scanning is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- dependency scanning is best-effort
         return []
 
     name = dep_file.name
@@ -661,7 +661,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
 
     try:
         state_content = state_path.read_text()
-    except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
         return findings
 
     # 1. Architecture coverage (test_count is now computed, not tracked)
@@ -687,7 +687,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
                     findings.append(
                         f"architecture: {', '.join(unmentioned[:3])} in {source_root}/ not in architecture.md"
                     )
-        except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
+        except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
 
     # 3. Dependency coverage
@@ -706,7 +706,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
                         findings.append(
                             f"dependencies: {len(missing)} in {dep_file_name} not in manifest ({preview}{more})"
                         )
-        except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
+        except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
 
     # 4. Stale build plan detection — check Status section first, fall back to WIP
@@ -732,7 +732,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
                         f"build plan: {build_plan_label} exists but no active work — "
                         "if work is complete, delete the plan"
                     )
-        except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
+        except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
 
     # 5. Completed but uncleaned build plan in state
@@ -748,7 +748,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
                                 "build plan: project-state.yaml has a completed build plan "
                                 "(strategy set, no active chunks) — consider resetting to defaults"
                             )
-        except Exception:  # prawduct:ok-broad-except — staleness scan is best-effort
+        except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
 
     return findings
@@ -777,7 +777,7 @@ def _get_product_name(prawduct_dir: Path) -> str:
                 break
             elif in_identity and not line.startswith(" ") and line.strip():
                 break
-    except Exception:  # prawduct:ok-broad-except — product name extraction is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- product name extraction is best-effort
         pass
     return "Unknown"
 
@@ -791,7 +791,7 @@ def _get_current_branch(project_dir: Path) -> str:
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
-    except Exception:  # prawduct:ok-broad-except — branch detection is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- branch detection is best-effort
         pass
     return "main"
 
@@ -867,7 +867,7 @@ def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
                     wip[key.strip()] = val
 
         return wip
-    except Exception:  # prawduct:ok-broad-except — WIP extraction is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- WIP extraction is best-effort
         return {}
 
 
@@ -920,7 +920,7 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
                     branches[current_branch][key.strip()] = val
 
         return branches
-    except Exception:  # prawduct:ok-broad-except — WIP extraction is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- WIP extraction is best-effort
         return {}
 
 
@@ -1001,7 +1001,7 @@ def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
             result["_has_status_items"] = "true"
 
         return result
-    except Exception:  # prawduct:ok-broad-except — build plan parsing is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- build plan parsing is best-effort
         return {}
 
 
@@ -1056,7 +1056,7 @@ def _detect_worktrees(project_dir: Path) -> list[dict[str, str]]:
         )
         if result.returncode != 0:
             return []
-    except Exception:  # prawduct:ok-broad-except — worktree detection is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- worktree detection is best-effort
         return []
 
     # Porcelain output: groups of "worktree <path>", "HEAD <sha>", "branch refs/heads/<name>"
@@ -1255,7 +1255,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                     f"CLAUDE.md is large ({project_lines} project lines) — move architecture "
                     f"docs, config tables, and component inventories to docs/ or .prawduct/artifacts/"
                 )
-        except Exception:  # prawduct:ok-broad-except — briefing must never block session start
+        except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             pass
 
     # (Cut: per-session "Tests: ~N" count and the "Last Critic review took …"
@@ -1277,7 +1277,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
             # /prawduct:learnings skill is the intended lookup path.
             if rule_count > 0:
                 lines.append(f"Learnings ({rule_count} rules): /prawduct:learnings <topic> or read .prawduct/learnings.md")
-        except Exception:  # prawduct:ok-broad-except — briefing must never block session start
+        except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             pass
 
     # Backlog — show items inline so resolved ones are naturally noticed
@@ -1307,7 +1307,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                 # One count line, not a 5-item dump every session. /prawduct:backlog
                 # is the triage path; dumping arbitrary items here was tax.
                 lines.append(f"Backlog: {len(pending_items)} pending (/prawduct:backlog to triage)")
-        except Exception:  # prawduct:ok-broad-except — briefing must never block session start
+        except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             pass
 
     return "\n".join(lines)
@@ -1348,7 +1348,7 @@ def _extract_critical_rules(project_dir: Path) -> list[str]:
             if in_section and line.strip().startswith("- **"):
                 rules.append(line.strip())
         return rules if rules else fallback
-    except Exception:  # prawduct:ok-broad-except — rule extraction is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- rule extraction is best-effort
         return fallback
 
 
@@ -1389,7 +1389,7 @@ def generate_subagent_briefing(project_dir: Path) -> None:
                         summary_lines.append("(see full file for details)")
                         break
                 sections.append("\n".join(summary_lines).strip() + "\n")
-        except Exception:  # prawduct:ok-broad-except — briefing generation is best-effort
+        except Exception:  # prawduct:allow prawduct/broad-except -- briefing generation is best-effort
             pass
 
     # Active learnings
@@ -1400,7 +1400,7 @@ def generate_subagent_briefing(project_dir: Path) -> None:
             if learnings:
                 sections.append("## Active Learnings\n")
                 sections.append(learnings + "\n")
-        except Exception:  # prawduct:ok-broad-except — briefing generation is best-effort
+        except Exception:  # prawduct:allow prawduct/broad-except -- briefing generation is best-effort
             pass
 
     (prawduct_dir / ".subagent-briefing.md").write_text("\n".join(sections))
@@ -1428,7 +1428,7 @@ def _git_session_commits(project_dir: Path) -> list[str]:
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip().splitlines()
-    except Exception:  # prawduct:ok-broad-except — commit listing is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- commit listing is best-effort
         pass
     return []
 
@@ -1465,7 +1465,7 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
             for f in warnings[:3]:
                 parts.append(f"  WARNING: {f.get('summary', 'no summary')}")
         return "\n".join(parts)
-    except Exception:  # prawduct:ok-broad-except — findings summarization is best-effort
+    except Exception:  # prawduct:allow prawduct/broad-except -- findings summarization is best-effort
         return None
 
 
@@ -1511,7 +1511,7 @@ def generate_session_handoff(project_dir: Path) -> None:
                 sections.append("## Previous Session Reflection")
                 sections.append(reflection)
                 sections.append("")
-        except Exception:  # prawduct:ok-broad-except — handoff generation is best-effort
+        except Exception:  # prawduct:allow prawduct/broad-except -- handoff generation is best-effort
             pass
 
     # 3. Critic findings summary
@@ -1545,7 +1545,7 @@ def generate_session_handoff(project_dir: Path) -> None:
     if len(sections) > 2:
         try:
             (prawduct_dir / ".session-handoff.md").write_text("\n".join(sections) + "\n")
-        except Exception:  # prawduct:ok-broad-except — handoff write must never block clear
+        except Exception:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
             pass
 
 
@@ -1609,12 +1609,35 @@ def _is_dependency_file(filepath: str) -> bool:
     return name in ("requirements.txt", "package.json", "Pipfile", "pyproject.toml", "Cargo.toml", "go.mod", "Gemfile")
 
 
+def _waivers_module():
+    """Lazy-import the shared waiver recognizer (``lib/waivers.py``).
+
+    Returns the module, or ``None`` if it can't be imported. The canary is
+    best-effort and must never crash, so callers treat ``None`` as "recognizer
+    unavailable" and fail open (emit no waiver-dependent finding).
+    """
+    try:
+        lib_root = _plugin_root()
+        if lib_root not in sys.path:
+            sys.path.insert(0, lib_root)
+        from lib import waivers  # noqa: PLC0415 — lazy keeps top-level import cheap
+        return waivers
+    except Exception:  # prawduct:allow prawduct/broad-except -- recognizer is best-effort; canary must not crash
+        return None
+
+
 def _check_broad_exceptions(project_dir: Path, source_files: list[str]) -> list[str]:
     """Check if changed source files contain broad exception patterns.
 
-    Skips lines marked with 'prawduct:ok-broad-except' (intentional, reviewed).
-    For Python, also skips broad catches that re-raise or log within 3 lines.
+    Skips lines waived with ``prawduct/broad-except`` (intentional, reviewed),
+    recognized via the shared ``lib.waivers`` recognizer — which honors both the
+    ``prawduct:allow prawduct/broad-except`` form and the legacy
+    ``prawduct:ok-broad-except`` spelling (see docs/waivers.md). For Python, also
+    skips broad catches that re-raise or log within 3 lines.
     """
+    waivers = _waivers_module()
+    if waivers is None:
+        return []  # recognizer unavailable — fail open (best-effort canary)
     # Language-specific patterns for overly broad exception handling
     patterns = {
         ".py": r"except\s+(?:Exception|BaseException)\s*(?::|,|as\b)",
@@ -1624,7 +1647,6 @@ def _check_broad_exceptions(project_dir: Path, source_files: list[str]) -> list[
         ".tsx": r"catch\s*\([^)]*\)\s*\{\s*\}",
         ".go": r"_\s*=\s*\w+\.(?:\w+)\(",  # _ = foo.Bar() — ignored errors
     }
-    pragma = "prawduct:ok-broad-except"
     flagged = []
     for filepath in source_files:
         full_path = project_dir / filepath
@@ -1641,10 +1663,8 @@ def _check_broad_exceptions(project_dir: Path, source_files: list[str]) -> list[
             for i, line in enumerate(lines):
                 if not re.search(pattern, line):
                     continue
-                # Skip if line (or line above) has the pragma marker
-                if pragma in line:
-                    continue
-                if i > 0 and pragma in lines[i - 1]:
+                # Skip if this line (or the line above) waives broad-except.
+                if waivers.waives(lines, i, "prawduct/broad-except"):
                     continue
                 # For Python: skip if the except block re-raises or logs
                 if suffix == ".py":
@@ -1656,7 +1676,31 @@ def _check_broad_exceptions(project_dir: Path, source_files: list[str]) -> list[
                 break
             if has_unflagged:
                 flagged.append(filepath)
-        except Exception:  # prawduct:ok-broad-except — canary must never crash
+        except Exception:  # prawduct:allow prawduct/broad-except -- canary must never crash on a single file
+            pass
+    return flagged
+
+
+def _check_invalid_waivers(project_dir: Path, source_files: list[str]) -> list[str]:
+    """Source files carrying a reason-less ``prawduct:allow`` waiver.
+
+    The reason is mandatory (docs/waivers.md): a waiver without one is malformed
+    and defeats the "reviewed and intentional" contract. Best-effort like the
+    rest of the canary.
+    """
+    waivers = _waivers_module()
+    if waivers is None:
+        return []
+    flagged = []
+    for filepath in source_files:
+        full_path = project_dir / filepath
+        if not full_path.is_file():
+            continue
+        try:
+            lines = full_path.read_text().splitlines()
+            if waivers.invalid_waivers(lines):
+                flagged.append(filepath)
+        except Exception:  # prawduct:allow prawduct/broad-except -- canary must never crash on a single file
             pass
     return flagged
 
@@ -1697,6 +1741,14 @@ def compliance_canary(project_dir: Path) -> list[str]:
         findings.append(
             f"CANARY: Broad exception handling detected in: {', '.join(broad_except_files)}. "
             f"Verify exceptions are specific and include logging/re-raising."
+        )
+
+    # 4. Reason-less prawduct:allow waivers (malformed — a waiver must say why)
+    invalid_waiver_files = _check_invalid_waivers(project_dir, source_changed)
+    if invalid_waiver_files:
+        findings.append(
+            f"CANARY: Reason-less prawduct:allow waiver in: {', '.join(invalid_waiver_files)}. "
+            f"A waiver must state why it's intentional (see docs/waivers.md)."
         )
 
     return findings
@@ -1749,7 +1801,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
                 if findings_mtime > session_start and validate_critic_findings(critic_findings):
                     needs_review = False
-            except Exception:  # prawduct:ok-broad-except — gate check must not crash clear
+            except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash clear
                 pass
         if needs_review:
             warnings.append("Critic review not recorded")
@@ -1769,7 +1821,7 @@ def cmd_clear(project_dir: Path) -> int:
                 f"WARNING: Previous session had unmet governance: {', '.join(gate_warnings)}. "
                 f"Consider addressing before continuing."
             )
-    except Exception:  # prawduct:ok-broad-except — gate check must never block clear
+    except Exception:  # prawduct:allow prawduct/broad-except -- gate check must never block clear
         pass
 
     # Defensively untrack any session files that were accidentally committed.
@@ -1782,13 +1834,13 @@ def cmd_clear(project_dir: Path) -> int:
                 "PRAWDUCT: untracked previously-committed session files (kept locally): "
                 + ", ".join(untracked)
             )
-    except Exception:  # prawduct:ok-broad-except — defensive cleanup must never block clear
+    except Exception:  # prawduct:allow prawduct/broad-except -- defensive cleanup must never block clear
         pass
 
     # Generate handoff BEFORE archiving/deleting session files
     try:
         generate_session_handoff(project_dir)
-    except Exception:  # prawduct:ok-broad-except — handoff must never block clear
+    except Exception:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
         pass
 
     # Preserve previous session's reflection before clearing
@@ -1830,7 +1882,7 @@ def cmd_clear(project_dir: Path) -> int:
                     f"  Test history: keep only the current count, remove per-chunk history.\n"
                     f"  Change log: keep the last ~10 entries, remove older ones (git has the history)."
                 )
-        except Exception:  # prawduct:ok-broad-except — size check must not block session start
+        except Exception:  # prawduct:allow prawduct/broad-except -- size check must not block session start
             pass
 
     # Check for missing or unfilled project-preferences.md
@@ -1842,7 +1894,7 @@ def cmd_clear(project_dir: Path) -> int:
             content = prefs_path.read_text()
             # Template has empty fields like "- **Language**:\n" — filled has content after colon
             prefs_unfilled = "- **Language**:\n" in content
-        except Exception:  # prawduct:ok-broad-except — prefs check must not block session start
+        except Exception:  # prawduct:allow prawduct/broad-except -- prefs check must not block session start
             pass
 
     if prefs_missing or prefs_unfilled:
@@ -1884,7 +1936,7 @@ def cmd_clear(project_dir: Path) -> int:
             run_sync_advisories(
                 project_dir, sync_version=_plugin_manifest_version() or ""
             )
-        except Exception as exc:  # prawduct:ok-broad-except — advisory probes must never block session start
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- advisory probes must never block session start
             print(f"NOTE: advisory probe step skipped: {exc}", file=sys.stderr)
 
     # Capture git status baseline so session-start state doesn't trigger
@@ -1900,12 +1952,12 @@ def cmd_clear(project_dir: Path) -> int:
             staleness = staleness_scan(project_dir)
             briefing = assemble_session_briefing(project_dir, staleness)
             print(briefing)
-        except Exception as e:  # prawduct:ok-broad-except — briefing must never block session start
+        except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)
 
         try:
             generate_subagent_briefing(project_dir)
-        except Exception as e:  # prawduct:ok-broad-except — briefing must never block session start
+        except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             print(f"NOTE: Subagent briefing generation failed: {e}", file=sys.stderr)
 
     return 0
@@ -1980,7 +2032,7 @@ def validate_critic_findings(findings_path: Path) -> bool:
             if not isinstance(val, str) or not val.strip():
                 return False
         return True
-    except Exception:  # prawduct:ok-broad-except — validation must not crash gate check
+    except Exception:  # prawduct:allow prawduct/broad-except -- validation must not crash gate check
         return False
 
 
@@ -2239,7 +2291,7 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
                 total += 1
                 complete += 1
         return total, complete
-    except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
+    except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
         return 0, 0
 
 
@@ -2339,7 +2391,7 @@ def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
                     if status_val != "complete":
                         return True
         return False
-    except Exception:  # prawduct:ok-broad-except — build plan check must not crash gate check
+    except Exception:  # prawduct:allow prawduct/broad-except -- build plan check must not crash gate check
         return False
 
 
@@ -2368,7 +2420,7 @@ def cmd_stop(project_dir: Path) -> int:
     # v5: Compliance canary (informational)
     try:
         canary_findings = compliance_canary(project_dir)
-    except Exception:  # prawduct:ok-broad-except — canary must never block session end
+    except Exception:  # prawduct:allow prawduct/broad-except -- canary must never block session end
         pass
 
     # Check for changes (session-scoped: only new changes since session start)
@@ -2407,7 +2459,7 @@ def cmd_stop(project_dir: Path) -> int:
             content = reflected_file.read_text().strip()
             # Require at least ~50 chars to avoid empty/token reflections
             reflection_sufficient = len(content) >= 50
-        except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             pass
 
     # Reflection blocker fires when there are real changes, the reflection is
@@ -2536,7 +2588,7 @@ def cmd_stop(project_dir: Path) -> int:
                         critic_would_block = False
                     else:
                         verify_resolutions_block_reason = scope_reason
-            except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
+            except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
                 pass
 
     if critic_would_block:
@@ -2659,7 +2711,7 @@ def cmd_stop(project_dir: Path) -> int:
                         if not pr_review_valid:
                             pr_would_block = True
                             pr_block_branch = current_branch
-        except Exception:  # prawduct:ok-broad-except — gate check must not crash session end
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             pass
 
     if pr_would_block:
@@ -3552,7 +3604,7 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         findings_mtime = datetime.fromtimestamp(
             findings_path.stat().st_mtime, tz=timezone.utc
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
-    except Exception as exc:  # prawduct:ok-broad-except — fail closed if freshness inputs are unreadable
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if freshness inputs are unreadable
         print(
             f"freshness-check-failed: could not compare cumulative-Critic "
             f"findings vs session-start ({exc!r}). Re-run /prawduct:critic cumulative.",
