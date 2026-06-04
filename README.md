@@ -185,7 +185,7 @@ A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference
 
 ## Testing Prawduct
 
-Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance (615 tests):
+Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance (714 tests):
 
 ```bash
 cd prawduct

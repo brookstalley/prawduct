@@ -267,6 +267,114 @@ class TestPluginStopGate:
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
         assert result.returncode == 0, (result.stdout, result.stderr)
 
+    def test_stop_blocks_when_findings_mtime_exactly_ties_session_start(self, tmp_path):
+        """STH-6B4R tie rule: findings_mtime == session_start is NOT fresh.
+
+        The Critic gate clears only on a strict `findings_mtime > session_start`
+        at identical (whole-second) precision. A findings file whose mtime lands
+        in the exact same whole second as session-start must NOT clear the gate
+        — so this otherwise-valid, blocking-free findings file still blocks
+        (exit 2). Pins the tie semantics against a future `>=` regression.
+        """
+        prawduct = self._active_plan_repo(tmp_path)
+        findings = prawduct / ".critic-findings.json"
+        findings.write_text(json.dumps({
+            "findings": [], "files_reviewed": ["src/app.py"], "summary": "No issues found.",
+        }))
+        # Force the findings mtime to a fixed whole second, then write
+        # session-start to that SAME whole-second string -> an exact tie.
+        tie = datetime(2026, 6, 4, 12, 0, 0, tzinfo=timezone.utc)
+        epoch = tie.timestamp()
+        os.utime(findings, (epoch, epoch))
+        (prawduct / ".session-start").write_text(tie.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "CRITIC" in result.stderr
+
+
+class TestPluginStopGateRegressions:
+    """TST-7Q3D: regression coverage for three previously-untested stop-gate
+    branches — verify-resolutions out-of-scope blocking, Type:trivial fileset
+    violations, and the unknown-gate-waiver-key diagnostic. Mirrors
+    TestPluginStopGate's fixtures (active plan + session markers + fresh findings).
+    """
+
+    # The verbose persisted form of the verify-resolutions mode (the bare
+    # `verify-resolutions` token is the caller-side input, rejected on disk).
+    _VERIFY_RESOLUTIONS_MODE = "verify-resolutions (delta review, prior findings only)"
+
+    def _active_plan_repo(self, tmp_path) -> Path:
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented the chunk and verified all tests pass cleanly."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        _make_session_start(prawduct)
+        return prawduct
+
+    def test_verify_resolutions_out_of_scope_file_blocks(self, tmp_path):
+        # (a) Findings declare files_reviewed=[a.py] in verify-resolutions mode,
+        # but the current diff also modifies b.py — out of the verify pass's
+        # declared scope, so the (fresh, valid) findings must NOT clear the gate.
+        prawduct = self._active_plan_repo(tmp_path)
+        (prawduct / ".critic-findings.json").write_text(json.dumps({
+            "findings": [],
+            "files_reviewed": ["a.py"],
+            "summary": "Resolutions verified.",
+            "mode": self._VERIFY_RESOLUTIONS_MODE,
+        }))
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=" M a.py\n M b.py",
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "verify-resolutions" in result.stderr
+        # The blocker names the out-of-scope widening (b.py is outside scope).
+        assert "outside scope" in result.stderr
+        assert "b.py" in result.stderr
+
+    def test_trivial_chunk_outside_fileset_bounds_blocks(self, tmp_path):
+        # (b) A chunk declaring Type: trivial that edits skills/ (a catastrophic-
+        # blast-radius bound) must block with the fileset reason, even though the
+        # rationale is present.
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: tweak a skill\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: tweak a skill\n"
+            "**Type:** trivial\n"
+            "**Trivial because:** a one-word typo fix in a skill doc.\n"
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: edited the skill doc and confirmed the change reads cleanly."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        _make_session_start(prawduct)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=" M skills/critic/SKILL.md",
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "TYPE: TRIVIAL" in result.stderr
+        assert "skill-file-edited" in result.stderr
+
+    def test_unknown_gate_waiver_key_warns_without_blocking(self, tmp_path):
+        # (c) An unknown key in .gates-waived emits a stderr diagnostic but never
+        # blocks — unknown keys simply have no effect. Use a no-build-plan repo so
+        # nothing else would block: exit 0, with the diagnostic present.
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("")
+        _make_session_start(prawduct)
+        (prawduct / ".gates-waived").write_text(json.dumps({"bogus": "not a real gate"}))
+        result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "unknown keys" in result.stderr
+        assert "bogus" in result.stderr
+
 
 class TestStopGateAttribution:
     """Design §5a: a blocking message names the version + gate that caused it,
@@ -528,6 +636,20 @@ class TestValidateEvidenceSchema:
         # Names the now-required F4a fields so the writer bug is obvious.
         assert "verifier" in result.stderr
         assert "coverage_level" in result.stderr
+
+    def test_bool_rejected_for_int_field(self, tmp_path):
+        # TST-1D5W: bool is a subclass of int, so `{"passed": true}` would slip
+        # through a bare isinstance(v, int) check and be read as the integer 1.
+        # The schema must reject a JSON boolean in an int-typed count field —
+        # it is always writer drift, never a real test count.
+        evidence = dict(self._COMPLETE)
+        evidence["passed"] = True  # JSON bool where an int count is required
+        repo = self._write_evidence(tmp_path, evidence)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 1, result.stdout
+        # The violation names the offending field and the bool type it got.
+        assert "passed" in result.stderr
+        assert "bool" in result.stderr
 
 
 class TestWriteIsolationInvariant:
@@ -822,3 +944,68 @@ class TestNoBareSkillShadowing:
             f"shadow the plugin's /prawduct:{name} with a stale file-sync copy "
             "(Chunk 14 relocation / M4 Chunk 4 deletion)"
         )
+
+
+class TestTestEvidenceRecord:
+    """TST-6V2N: `test-evidence record` RUNS the suite and WRITES the evidence
+    the freshness gate (`test-status`) reads — closing the reader-without-a-writer
+    gap that forced every product repo to hand-maintain a sha-stamp shim.
+    """
+
+    def _repo_with_test(self, tmp_path, body: str) -> Path:
+        repo = tmp_path / "ev"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text(body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def test_passing_suite_writes_schema_valid_evidence(self, tmp_path):
+        repo = self._repo_with_test(tmp_path, "def test_ok():\n    assert True\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        assert ev_path.is_file()
+        ev = json.loads(ev_path.read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 0, 0)
+        # counts are tied to a REAL run, and the sha is HEAD (not a stale stamp)
+        assert ev["git_sha"] == _git(repo, "rev-parse", "HEAD").stdout.strip()
+        assert ev["timestamp"] and ev["duration_seconds"] >= 0
+        # the plugin's own validator accepts what the plugin produced
+        assert _run_in(repo, "validate-evidence").returncode == 0
+
+    def test_failing_suite_exits_nonzero_but_still_writes(self, tmp_path):
+        repo = self._repo_with_test(tmp_path, "def test_bad():\n    assert False\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["failed"] >= 1 and ev["passed"] == 0
+        # evidence is still schema-valid (a failing run is recorded, not dropped)
+        assert _run_in(repo, "validate-evidence").returncode == 0
+
+    def test_skipped_tests_are_counted(self, tmp_path):
+        body = (
+            "import pytest\n"
+            "@pytest.mark.skip(reason='x')\n"
+            "def test_s():\n    pass\n"
+            "def test_ok():\n    assert True\n"
+        )
+        repo = self._repo_with_test(tmp_path, body)
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 1 and ev["skipped"] == 1
+
+    def test_record_makes_test_status_current(self, tmp_path):
+        repo = self._repo_with_test(tmp_path, "def test_ok():\n    assert True\n")
+        _make_session_start(repo / ".prawduct", offset_seconds=-120)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0
+        assert _run_in(repo, "test-status").returncode == 0
+
+    def test_unknown_subcommand_is_a_usage_error(self, tmp_path):
+        repo = self._repo_with_test(tmp_path, "def test_ok():\n    assert True\n")
+        res = _run_in(repo, "test-evidence", "bogus")
+        assert res.returncode == 2
+        assert "usage" in res.stderr.lower()

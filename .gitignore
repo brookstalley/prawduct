@@ -24,3 +24,6 @@ __pycache__/
 # banner (hooks/banner.py). Mutable per-repo state — gitignored so a plugin
 # version bump never produces a tracked-file diff (the core no-noise guarantee).
 .prawduct/.prawduct-version
+
+# Untracked drop-box for externally-filed bug reports (triaged into .prawduct/backlog.md).
+incoming-bugs/

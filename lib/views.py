@@ -16,7 +16,10 @@ Recognized keys:
 
 * ``chunks``  comma-separated chunk IDs (zero-padded, matching build-plan headers)
 * ``release`` version string (used by release-notes view, Chunk 06)
-* ``status``  ``shipped`` | ``in-progress`` | ``deferred``
+* ``status``  ``shipped`` | ``merged`` — the two recognized values. Only
+  ``shipped`` flips a checkbox to ``[x]``; ``merged`` is the release-pending
+  intermediate (PR merged to develop, develop→main release still pending) and
+  does NOT flip a checkbox.
 * ``scope``   rollup identifier, e.g., ``v1.4``
 
 Entries without a tag line are ignored — untagged historical entries coexist
@@ -30,7 +33,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .core import resolve_build_plan_path
+from .core import read_bool_yaml_key, resolve_build_plan_path
 
 
 TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
@@ -38,6 +41,12 @@ H2_RE = re.compile(r"^##\s+(.+?)\s*$")
 CHUNK_LINE_RE = re.compile(
     r"^(?P<prefix>\s*-\s+)\[(?P<state>[ xX])\](?P<rest>\s+Chunk\s+(?P<id>[A-Za-z0-9_-]+):.*)$"
 )
+# Safe charset for a chunk ID, mirroring CHUNK_LINE_RE's `id` group. A chunk ID
+# is only ever a build-plan header token, so anything outside this set (a quote,
+# `}`, `:`, whitespace) is malformed and — left unquoted/quoted naively — would
+# corrupt the generated scope_rollups YAML (e.g. `chunks: ["0"a]`). Such IDs are
+# dropped before they reach a derived view.
+CHUNK_ID_SAFE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 @dataclass
@@ -115,6 +124,36 @@ def parse_change_log(content: str) -> list[ChangeLogEntry]:
     return entries
 
 
+VALID_STATUS_VALUES = frozenset({"shipped", "merged"})
+
+
+def validate_status_values(entries: list[ChangeLogEntry]) -> list[str]:
+    """Return a warning string for each entry with an unrecognized ``status=`` tag.
+
+    A change-log ``status=`` typo (e.g. ``status=shippd``) silently fails to flip
+    a checkbox — the entry parses fine but ``shipped_chunks`` returns ``[]``, so
+    the chunk never marks complete and the release driver sees no error. This
+    pure helper surfaces those typos as non-fatal warnings: it flags every entry
+    whose ``status=`` tag is PRESENT but not in ``{shipped, merged}``. Entries
+    with no ``status=`` tag (untagged historical entries) are not flagged.
+
+    Returns ``[]`` when every status value is valid or absent.
+    """
+    warnings: list[str] = []
+    for entry in entries:
+        status = entry.tags.get("status")
+        if status is None:
+            continue
+        if status not in VALID_STATUS_VALUES:
+            warnings.append(
+                f"change-log entry {entry.title!r} (line {entry.line_number}) "
+                f"has unrecognized status={status!r} — expected one of "
+                f"{sorted(VALID_STATUS_VALUES)}; this entry will not flip any "
+                f"checkbox. Likely a typo."
+            )
+    return warnings
+
+
 def collect_shipped_chunks(
     entries: list[ChangeLogEntry], scope: str | None = None
 ) -> set[str]:
@@ -133,7 +172,7 @@ def collect_shipped_chunks(
     return shipped
 
 
-def _parse_build_plan_frontmatter_scope(content: str) -> str | None:
+def _parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]:
     """Parse ``scope:`` from a build-plan's YAML frontmatter block.
 
     The frontmatter is the block bounded by ``---`` on its own line. A leading
@@ -142,10 +181,24 @@ def _parse_build_plan_frontmatter_scope(content: str) -> str | None:
     comment header before the frontmatter, so requiring ``---`` on line 1 would
     make the field inert in practice.
 
-    Returns the bare string value (quotes stripped) or ``None`` if the field is
-    absent, empty, set to the YAML null literal (``null`` / ``~``), nested
-    inside another key, outside the frontmatter, or the file lacks a
-    frontmatter entirely.
+    Returns a ``(present, value)`` tuple. ``present`` distinguishes "the
+    ``scope:`` key appears in the frontmatter" from "the key is absent" — a
+    distinction that matters because the two cases drive different fallback
+    behavior in :func:`_detect_active_scope` (see BLD-4Q9X):
+
+    * ``(True, "v1.5")`` — key present with a real value (quotes stripped).
+    * ``(True, None)``   — key present but set to the YAML null literal
+      (``null`` / ``~``) or left empty. This is the documented *explicit
+      opt-out* form: the author is saying "do not scope-filter," and inference
+      MUST be suppressed rather than silently inheriting a change-log scope.
+    * ``(False, None)``  — key absent, nested inside another key, outside the
+      frontmatter, the file lacks a frontmatter entirely, OR a leading HTML
+      comment header is never closed (no ``-->``). The unclosed-comment case is
+      handled LENIENTLY: the comment scan walks to EOF without finding ``-->``,
+      so no ``---`` opener is located and the result is ``(False, None)`` — a
+      safe "absent" reading that lets inference fall back to the change-log
+      rather than raising on a malformed file. A real build-plan always closes
+      its header, so this only affects hand-corrupted input.
     """
     lines = content.splitlines()
     i = 0
@@ -154,7 +207,10 @@ def _parse_build_plan_frontmatter_scope(content: str) -> str | None:
     while i < len(lines) and not lines[i].strip():
         i += 1
     if i < len(lines) and lines[i].lstrip().startswith("<!--"):
-        # Walk to the closing `-->` (inclusive).
+        # Walk to the closing `-->` (inclusive). If the comment is UNCLOSED,
+        # this walks to EOF; `i` then lands past the last line so the consume
+        # below is skipped and the `i >= len(lines)` guard returns (False, None)
+        # — a deliberately lenient reading of a malformed header (see docstring).
         while i < len(lines) and "-->" not in lines[i]:
             i += 1
         if i < len(lines):
@@ -162,21 +218,24 @@ def _parse_build_plan_frontmatter_scope(content: str) -> str | None:
     while i < len(lines) and not lines[i].strip():
         i += 1
     if i >= len(lines) or lines[i].strip() != "---":
-        return None
+        return (False, None)
     for j in range(i + 1, len(lines)):
         line = lines[j]
         if line.strip() == "---":
-            return None
+            return (False, None)
         if line[:1] in (" ", "\t"):
             continue
         stripped = line.split("#", 1)[0].rstrip()
         if not stripped.startswith("scope:"):
             continue
         value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+        # Key is present. An empty or null-literal value is an explicit
+        # opt-out, not an absence — return (True, None) so callers can
+        # suppress change-log inference.
         if not value or value.lower() in ("null", "~"):
-            return None
-        return value
-    return None
+            return (True, None)
+        return (True, value)
+    return (False, None)
 
 
 def _detect_active_scope(
@@ -187,12 +246,20 @@ def _detect_active_scope(
     Resolution order (highest precedence first):
 
     1. ``scope:`` field in build-plan YAML frontmatter — explicit, preferred.
-    2. Most recent change-log entry's ``scope=`` tag — inferred.
+       An explicit null/empty ``scope:`` is the author's opt-out: it pins the
+       result to ``None`` and SKIPS change-log inference, so a stale prior
+       ``scope=`` tag can't silently override the author's intent (BLD-4Q9X).
+    2. Most recent change-log entry's ``scope=`` tag — inferred, but only when
+       the build-plan ``scope:`` key is *absent* (not merely null).
     3. ``None`` — no scope detected; fail-safe to legacy unfiltered union.
     """
-    fm_scope = _parse_build_plan_frontmatter_scope(build_plan_content)
+    present, fm_scope = _parse_build_plan_frontmatter_scope(build_plan_content)
     if fm_scope:
         return fm_scope
+    if present:
+        # Key was explicitly present but null/empty — an author opt-out.
+        # Suppress inference: do not inherit a change-log scope.
+        return None
     if change_log_content:
         entries = parse_change_log(change_log_content)
         for entry in entries:
@@ -332,7 +399,13 @@ def _collect_scope_rollups(
         rec = raw.setdefault(scope, {"chunks": set(), "releases": set()})
         chunks = entry.tags.get("chunks")
         if isinstance(chunks, list):
-            rec["chunks"].update(c for c in chunks if isinstance(c, str))
+            # Drop any chunk ID outside the safe charset so a malformed ID
+            # (quote / brace / colon) cannot corrupt the scope_rollups YAML.
+            rec["chunks"].update(
+                c
+                for c in chunks
+                if isinstance(c, str) and CHUNK_ID_SAFE_RE.match(c)
+            )
         release = entry.tags.get("release")
         if isinstance(release, str) and release:
             rec["releases"].add(release)
@@ -652,20 +725,7 @@ def is_views_enabled(project_state_path: Path) -> bool:
     """True if project-state.yaml has top-level ``views_enabled: true``.
 
     Scans for a column-0 ``views_enabled:`` key, ignoring comments. Returns
-    False on any error or missing key — opt-in by design.
+    False on any error or missing key — opt-in by design. Delegates to the
+    shared ``core.read_bool_yaml_key`` scan.
     """
-    if not project_state_path.exists():
-        return False
-    try:
-        content = project_state_path.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    for raw in content.splitlines():
-        if raw[:1] in (" ", "\t"):
-            continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith("views_enabled:"):
-            continue
-        value = line.split(":", 1)[1].strip().lower()
-        return value == "true"
-    return False
+    return read_bool_yaml_key(project_state_path, "views_enabled")

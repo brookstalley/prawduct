@@ -126,6 +126,42 @@ def _write_build_plan(prawduct: Path, items: list[tuple[str, str]]) -> None:
     (artifacts / "build-plan.md").write_text("\n".join(lines) + "\n")
 
 
+def _write_build_plan_with_chunks(
+    prawduct: Path,
+    items: list[tuple[str, str]],
+    chunk_modes: dict[str, str] | None = None,
+) -> None:
+    """Write ``artifacts/build-plan.md`` with a Status section AND per-chunk
+    ``### Chunk NN: …`` detail sections.
+
+    ``items`` is a list of ``(state, title)`` where ``title`` is the full
+    Status line text (e.g. ``"Chunk 02: F3 — widget"``). ``chunk_modes`` maps a
+    chunk id (e.g. ``"02"``) to the value written in that chunk's
+    ``- **Critic mode:** <value>`` field. Chunks absent from the map get no
+    ``Critic mode:`` field (the omit-and-infer common case).
+    """
+    chunk_modes = chunk_modes or {}
+    lines = ["# Build Plan", "", "## Status", ""]
+    lines.extend(f"- [{state}] {title}" for state, title in items)
+    lines.append("")
+    lines.append("## Chunks")
+    lines.append("")
+    for _state, title in items:
+        lines.append(f"### {title}")
+        lines.append("")
+        lines.append("- **Type:** code")
+        # Extract the chunk id from "Chunk NN: …".
+        chunk_id = title[len("Chunk "):].split(":", 1)[0].strip()
+        mode = chunk_modes.get(chunk_id)
+        if mode is not None:
+            lines.append(f"- **Critic mode:** {mode}")
+        lines.append("- **Deliverables:** stuff")
+        lines.append("")
+    artifacts = prawduct / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    (artifacts / "build-plan.md").write_text("\n".join(lines) + "\n")
+
+
 # ---------------------------------------------------------------------------
 # Explicit-args override
 # ---------------------------------------------------------------------------
@@ -556,6 +592,138 @@ class TestRule4ChunkDefault:
         )
         # Mid-chunk-2 uncommitted work
         _write(tmp_path, "src/chunk2.py", "# work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk"
+        assert rationale.startswith("rule-4 chunk:")
+
+
+# ---------------------------------------------------------------------------
+# Plan-override — current chunk's `Critic mode:` field (CRT-3M8Q)
+# ---------------------------------------------------------------------------
+
+
+class TestPlanCriticModeOverride:
+    """The active build plan's CURRENT chunk `Critic mode:` field is a
+    successive override on top of inference: when the first-unchecked chunk
+    declares a valid mode, inference returns it with a
+    ``plan-override: <mode>`` rationale. Explicit `$ARGUMENTS` still wins on
+    top (per-invocation override); an absent/blank/invalid field falls
+    through to the ordinary inference rules.
+    """
+
+    def test_plan_override_final_beats_inferred_chunk(self, tmp_path: Path):
+        """Mid-plan (chunk 2 of 4 unchecked) would infer ``chunk`` (rule-4),
+        but the current chunk declares ``Critic mode: final`` — the plan
+        override wins and rationale reflects it. This is the exact CRT-3M8Q
+        scenario: a plan-mandated ``final`` that used to silently run as the
+        inferred ``chunk``."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        _write_build_plan_with_chunks(
+            tmp_path / ".prawduct",
+            [
+                ("x", "Chunk 01: keystone"),
+                (" ", "Chunk 02: widget"),
+                (" ", "Chunk 03: gadget"),
+                (" ", "Chunk 04: wrap-up"),
+            ],
+            chunk_modes={"02": "final"},
+        )
+        # Mid-chunk-2 uncommitted work — inference alone would pick chunk.
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "final"
+        assert rationale == "plan-override: final"
+
+    def test_explicit_args_still_beats_plan_override(self, tmp_path: Path):
+        """The slash-command argument is the per-invocation override and wins
+        over the plan-level override."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        _write_build_plan_with_chunks(
+            tmp_path / ".prawduct",
+            [
+                ("x", "Chunk 01: keystone"),
+                (" ", "Chunk 02: widget"),
+                (" ", "Chunk 03: gadget"),
+            ],
+            chunk_modes={"02": "final"},
+        )
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
+
+        mode, rationale = infer_mode(tmp_path, "chunk")
+        assert mode == "chunk"
+        assert rationale == "explicit-args"
+
+    def test_no_override_field_falls_through_to_inference(self, tmp_path: Path):
+        """Current chunk with no ``Critic mode:`` field → ordinary inference
+        (rule-4 chunk for a mid-plan review)."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        _write_build_plan_with_chunks(
+            tmp_path / ".prawduct",
+            [
+                ("x", "Chunk 01: keystone"),
+                (" ", "Chunk 02: widget"),
+                (" ", "Chunk 03: gadget"),
+            ],
+            chunk_modes={},  # no declarations
+        )
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk"
+        assert rationale.startswith("rule-4 chunk:")
+
+    def test_invalid_override_value_falls_through_to_inference(self, tmp_path: Path):
+        """An unrecognized ``Critic mode:`` value is ignored (not honored as
+        an override) — inference proceeds as if the field were absent."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        _write_build_plan_with_chunks(
+            tmp_path / ".prawduct",
+            [
+                ("x", "Chunk 01: keystone"),
+                (" ", "Chunk 02: widget"),
+                (" ", "Chunk 03: gadget"),
+            ],
+            chunk_modes={"02": "ultra-thorough"},
+        )
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk"
+        assert rationale.startswith("rule-4 chunk:")
+
+    def test_override_on_current_chunk_not_a_sibling(self, tmp_path: Path):
+        """The override is read from the CURRENT chunk (first unchecked),
+        not a later sibling. Chunk 02 is current with no declaration; chunk
+        03 declares ``final`` — that later declaration must NOT leak into the
+        chunk-02 review."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        _write_build_plan_with_chunks(
+            tmp_path / ".prawduct",
+            [
+                ("x", "Chunk 01: keystone"),
+                (" ", "Chunk 02: widget"),
+                (" ", "Chunk 03: gadget"),
+            ],
+            chunk_modes={"03": "final"},  # sibling, not current
+        )
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
 
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "chunk"

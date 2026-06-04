@@ -14,7 +14,7 @@ backlog only when you decide to do it.
 
 **Observation (gate/Critic ceremony audit).** The Critic has four modes —
 `chunk`, `final`, `cumulative`, `verify-resolutions` — selected by an inference
-cascade (`tools/lib/critic_mode.py`) plus an override stack, persisted with a
+cascade (`lib/critic_mode.py`) plus an override stack, persisted with a
 "two-form verbose string" rule the stop hook validates. But:
 - `chunk` and `verify-resolutions` both run Goals 1–3.
 - `final` and `cumulative` both run all 7 goals; the only real difference is diff
@@ -58,9 +58,9 @@ hallucinote rough-edges review.)
 
 ## 3. Session-start sync: kill the 30s-timeout false positive (small, compat-adjacent)
 
-**Observation (sync-friction audit).** `try_sync` shells out to
-`prawduct-setup.py sync` with a **30s** timeout. `run_sync`'s slow paths —
-`_try_pull_framework` (git pull/fetch) and per-stale-file 100-commit history
+**Observation (sync-friction audit).** The session-start briefing shells out to
+`bin/prawduct-hook sync` with a **30s** timeout. The sync entrypoint's slow paths —
+the framework pull (git pull/fetch) and per-stale-file 100-commit history
 walks — can exceed 30s on a cold cache or large framework. On timeout the
 subprocess is killed, the manifest isn't bumped, and the next session nags
 "sync didn't apply" even though nothing is wrong. (Chunk B made the version-NOTE

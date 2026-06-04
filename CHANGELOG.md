@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v2.0.5
+Internal quality + governance hardening, batched from four development scopes (roi-batch, roi-batch-2, evidence-deferral, cleanup-batch). Most visible to plugin users: a new `prawduct-hook test-evidence record` command that runs the suite and writes the `.test-evidence.json` the freshness gate reads (closing a reader-without-a-writer gap); the Stop gate now treats in-flight background work as "wait, don't waive" so it never silently skips the Critic; and the Critic flags substring assertions on "no behavior change" refactors. The rest is silent-degradation guards (regen-views exit codes, advisory-corruption surfacing), parser/gate hardening, behavior-preserving refactors, and added test coverage. Plugin-governed repos: no behavioral change beyond the new gate guidance.
+
 ## v2.0.4
 New `prawduct:allow <scope>/<rule-id> -- reason` intentional-waiver pragma — one durable, language-agnostic way to mark a reviewed, intentional violation of a named principle (generalizing `prawduct:ok-broad-except`, which still works); `project/*`-scoped waivers stay opaque to the framework so plugin updates never break them. Also closes a governance-gate hole (the trivial/doc-only file-set bound now protects `skills/`, not the removed `agents/`) and clears 2.0 doc/coherence staleness. Plugin-governed repos: no behavioral change.
 

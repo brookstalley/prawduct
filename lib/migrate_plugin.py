@@ -261,6 +261,20 @@ def _drop_generator_comments(text: str) -> str:
     )
 
 
+def _collapse_blank_runs(text: str) -> str:
+    """Collapse any run of 3+ consecutive newlines to 2 (one blank line).
+
+    Dropping a generator-comment line that sat between two blank lines (e.g. the
+    template comments between the H1 and the first product section) leaves the
+    surrounding blanks adjacent, producing a triple-newline run = a double blank
+    line. Cosmetic only — markdown collapses it on render — but it is a wart in a
+    diff meant to be pristine, so the assembled CLAUDE.md normalises it (MIG-8C3V).
+    """
+    while "\n\n\n" in text:
+        text = text.replace("\n\n\n", "\n\n")
+    return text
+
+
 def apply_claude_anchor(project_dir: Path) -> bool:
     """Strip the heavy ``PRAWDUCT:BEGIN/END`` governance block (and the framework
     generator comments that bracket it) and ensure the thin static governance
@@ -285,8 +299,8 @@ def apply_claude_anchor(project_dir: Path) -> bool:
     block, before, after = core.extract_block(original)
 
     if block is not None:
-        head = _drop_generator_comments(before).rstrip("\n")
-        tail = _drop_generator_comments(after).strip("\n")
+        head = _collapse_blank_runs(_drop_generator_comments(before)).rstrip("\n")
+        tail = _collapse_blank_runs(_drop_generator_comments(after)).strip("\n")
         pieces = [p for p in (head, anchor, tail) if p]
         new = "\n\n".join(pieces) + "\n"
     elif ANCHOR_SENTINEL in original:

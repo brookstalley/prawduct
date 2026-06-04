@@ -3,6 +3,126 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: cleanup-batch — 6 parallel backlog fixes (refactor/perf/test + critic/pr/methodology docs) (shipped v2.0.5)
+
+<!-- prawduct: chunks=01,02,03,04,05,06 | release=v2.0.5 | status=shipped | scope=cleanup-batch -->
+
+**Why:** Six small, file-disjoint backlog items batched into one PR and built IN PARALLEL via
+worktree-isolated workflow subagents (one chunk each), then integrated, full-suite-verified, and
+cumulative-Critic'd in the launching session.
+
+**What merged (6 chunks, via #61 → develop):**
+- **Chunk 01 (SYN-9C4T):** extract `lib/core.read_bool_yaml_key`; `views.is_views_enabled` delegates;
+  the hook keeps a parity-pinned inline mirror (import-light hot path, `prawduct/duplication` waiver).
+  Behavior byte-for-byte preserved.
+- **Chunk 02 (TST-5W1J):** cache test-file reads in `bin/test-reference-verify` (O(N·T)→O(T)); behavior-preserving.
+- **Chunk 03 (BLD-7P3K):** guard test that the active plan's `## Status` chunk IDs resolve to parseable
+  `### Chunk <id>:` headings (live guard + good/`####`/missing-colon fixtures).
+- **Chunk 04 (CRT-4W8M):** Critic check — exact-match assertions for "no behavior change" refactors → WARNING.
+- **Chunk 05 (PRR-4M9T):** trim PR-reviewer goals 7→4 (release-specific); test-evidence-freshness folded
+  into Merge Hygiene, not dropped.
+- **Chunk 06 (MET-7H2D):** `methodology/building.md` multi-hop edge-case testing guidance (token budget 4560→4650).
+Also filed BLD-8F2Q (chunk-ref `path::symbol` false positive) and TST-9K4W (structural tests scan leftover
+worktrees), and captured the parallel worktree-workflow build pattern as a learning.
+
+**Status:** SHIPPED in v2.0.5. Full suite green (771 passed, +17); cumulative Critic (0 blocking /
+2 warnings resolved / 2 notes) and independent PR review (0 blocking / 0 warning / 1 note) both clean.
+The 4th of four scopes shipping together in v2.0.5 (with roi-batch, roi-batch-2, evidence-deferral).
+
+## 2026-06-04: evidence-deferral — test-evidence writer + stop-gate-vs-background-work floor (shipped v2.0.5)
+
+<!-- prawduct: chunks=01,02 | release=v2.0.5 | status=shipped | scope=evidence-deferral -->
+
+**Why:** Two bug reports filed by a downstream product repo (Hallucinote, via `incoming-bugs/`)
+and confirmed firsthand. Built directly in the main session (not a workflow — both chunks share
+`bin/prawduct-hook` and chunk 02 is design-informed).
+
+**What merged (2 chunks, via #60 → develop):**
+- **Chunk 01 (TST-6V2N):** new `prawduct-hook test-evidence record [-- <pytest args>]` subcommand —
+  the missing WRITER for the `.prawduct/.test-evidence.json` the `test-status` freshness gate and
+  cumulative-Critic staleness check READ. Runs pytest with a JUnit XML report (exact counts),
+  stamps `git_sha=HEAD` + ISO timestamp, overlays the F4a coverage half via
+  `test-reference-verify --merge-into`, writes atomically. Exit mirrors the suite; evidence written
+  either way. Closes the "stamp a fresh sha over stale counts" hole. 5 tests; dogfooded itself.
+- **Chunk 02 (STH-3W7F):** doc-only floor + design. `methodology/building.md` Gate-waivers now
+  states "in-flight background work is not a waiver case — wait, don't waive" (waiving would skip
+  the Critic the completed work still needs). The real fix (a self-declared `.gates-deferred` that
+  defers once then re-arms) is recorded in the backlog and DEFERRED — the Stop hook can't detect
+  in-flight work itself. building.md token budget 4450→4560 (addition halved first; rationale in-test).
+  Also gitignored the `incoming-bugs/` drop-box.
+
+**Status:** RELEASE-PENDING (`status=merged`). This is the THIRD release-pending plan (after
+`roi-batch`, `roi-batch-2`); the `develop→main` release runs `regen-views` once per scope. Full
+suite green (754 passed, +5); cumulative Critic (0 blocking / 0 warning / 4 notes — 1 WARNING for a
+stale plan ref caught + resolved) and independent PR review (0 blocking / 0 warning / 3 cosmetic
+notes) both clean. TST-6V2N archived; STH-3W7F stays open (only floor+design shipped; the
+`.gates-deferred` code fix is pending).
+
+## 2026-06-04: roi-batch-2 — 9 ROI backlog fixes (views/hook/advisory hardening + tests) (shipped v2.0.5)
+
+<!-- prawduct: chunks=01,02,03,04,05,06,07,08,09 | release=v2.0.5 | status=shipped | scope=roi-batch-2 -->
+
+**Why:** A second round of high-ROI backlog fixes — the 2026-06-04 rough-edges hunt (8 items
+verified real before filing, 0 false positives) plus one older re-verified item (TST-1D5W).
+Two silent-degradation correctness bugs, a release-process typo guard, parser/gate hardening,
+a behavior-preserving constant extraction, and pure test coverage. Built by ONE workflow across
+three file-disjoint lanes (HOOK A→B sequential on `bin/prawduct-hook`, ADV + MIG concurrent) and
+governed by the launching session (full suite → cumulative Critic → independent PR review).
+
+**What merged (9 chunks/items, via #59 → develop):**
+- **Chunk 01 (VWS-3K7P):** `validate_status_values()` warns on change-log `status=` typos in
+  `regen-views` (non-fatal stderr); `lib/views.py` docstring reconciled to `{shipped, merged}`.
+- **Chunk 02 (STH-2J9F):** `cmd_regen_views` returns exit 1 (not 0) on ImportError — a
+  state-mutating command must not report success on a broken install.
+- **Chunk 03 (VWS-8M2Q):** drop unsafe chunk IDs from `scope_rollups` YAML (`CHUNK_ID_SAFE_RE`);
+  document `_parse_build_plan_frontmatter_scope` unclosed-comment leniency + malformed-frontmatter test.
+- **Chunk 04 (STH-6B4R):** gate-freshness sites were already identical-precision — documented the
+  invariant + tie rule (`findings_mtime == session_start` is NOT fresh) and pinned it with a test.
+- **Chunk 05 (STH-1W5N):** extract `_TRIVIAL_PROTECTED_PATHS` frozenset (single source of truth
+  for the trivial/doc-only protected-path bounds); behavior-preserving.
+- **Chunk 06 (TST-1D5W):** `_validate_evidence_schema` rejects a bool in an int field.
+- **Chunk 07 (TST-7Q3D):** `TestPluginStopGateRegressions` — verify-resolutions out-of-scope,
+  trivial-fileset-bounds, unknown-waiver-key cases.
+- **Chunk 08 (ADV-9K2T):** `read_store` preserves a `.advisories.json.corrupt` sentinel on
+  parse/shape failure of an existing store (surfaces corruption vs a silent reset).
+- **Chunk 09 (TST-4H8M):** `TestCollapseBlankRuns` unit coverage for migrate `_collapse_blank_runs`.
+
+**Status:** RELEASE-PENDING (`status=merged`). This is the SECOND release-pending plan (after
+`roi-batch`); both ship at the next `develop→main` release, which must run `regen-views` once
+per scope (the pointer resolves one plan). The build plan's `## Status` checkboxes stay `[ ]`
+until then. Full suite green (749 passed, +35); cumulative Critic (0 blocking / 0 warning /
+2 notes — a build-plan heading-depth WARNING was caught and resolved) and independent PR review
+(0 blocking / 0 warning / 1 note) both clean. Filed BLD-7P3K (guard test so heading drift fails loud).
+
+## 2026-06-04: roi-batch — 9 ROI backlog fixes (CRT/BLD/TST/MIG + docs) (shipped v2.0.5)
+
+<!-- prawduct: chunks=01,02,03,04,05 | release=v2.0.5 | status=shipped | scope=roi-batch -->
+
+**Why:** Nine pre-triaged backlog ROI items — two reproducible correctness bugs, two
+test/cosmetic fixes, and a docs-coherence batch — small and independent enough to build in
+one batch. Built by two parallel background workflows (file-disjoint lanes) and governed by
+the launching session (full suite → cumulative Critic → independent PR review).
+
+**What merged (5 chunks, 9 backlog items, via #58 → develop):**
+- **Chunk 01 (CRT-3M8Q):** critic-mode inference honors the active build plan's current-chunk
+  `**Critic mode:**` field as a successive override (`plan-override: <mode>`), routing around
+  the Skill-tool `$ARGUMENTS`-not-threading gap.
+- **Chunk 02 (BLD-4Q9X):** `scope: null`/empty in build-plan frontmatter suppresses change-log
+  scope inference instead of inheriting a stale `scope=` tag — `_parse_build_plan_frontmatter_scope`
+  returns `(present, value)`.
+- **Chunk 03 (TST-2R7H):** regression truth-table pinning that only `Type: designer-handoff`
+  skips the stop-hook Critic gate (new `tests/test_critic_gate_fallthrough.py`).
+- **Chunk 04 (MIG-8C3V):** migrate's CLAUDE.md transform collapses 3+ newline runs, dropping
+  the leading double blank line.
+- **Chunk 05 (docs):** methodology/planning.md (forward-ref convention, step-0 Done-when
+  wording, Visual Change Verification section, 8-surface-cascade → token-budget guidance) +
+  two design docs repointed from retired `tools/` paths to plugin-native.
+
+**Status:** RELEASE-PENDING (`status=merged`). The build plan's `## Status` checkboxes stay
+`[ ]` until the next `develop→main` release flips this entry to `status=shipped` and runs
+`regen-views` (per `docs/release-process.md`). Full suite green (714 passed); cumulative Critic
+and independent PR review both clean (0 blocking).
+
 ## 2026-06-04: v2.0.4 — Intentional-waiver pragma (`prawduct:allow`) + trivial-gate fix (shipped)
 
 <!-- prawduct: type=feature | release=v2.0.4 | status=shipped -->

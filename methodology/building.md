@@ -84,6 +84,8 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
+**In-flight background work is not a waiver case.** If the Critic/reflection gate blocks only because a tracked background `Workflow`/`Task` is still producing the diff, **wait — don't waive**: the gate *will* be satisfied this session once the job lands, and waiving would skip the Critic the completed work still needs. The repeated block is an expected reminder during a legitimate async wait, not an error to escape. (Rough edge `STH-3W7F`: a `.gates-deferred` mechanism to quiet the wait without skipping the Critic is the pending fix.)
+
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/prawduct:critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
@@ -186,6 +188,8 @@ Tests are the most important artifact you produce during building. They're contr
 **All tests pass, always.** There is no "pre-existing" exception. Diagnose and fix every failure.
 
 **Test coverage is proportionate.** Match coverage to risk. Every product needs at least: happy path, error handling for likely failures, and edge cases for anything involving money, data, or safety.
+
+**Multi-hop behavior needs multi-hop tests.** When tested behavior depends on a subsequent invocation (accumulators, coordinators, cursors, stateful retries — next cycle, next call, next prune), exercise at least one step beyond the immediate post-state. Post-state-only tests miss multi-hop bugs.
 
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively — proportionality applies to strategies too.
 

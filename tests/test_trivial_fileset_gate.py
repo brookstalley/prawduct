@@ -86,3 +86,38 @@ class TestNonProtectedChanges:
         reason = _classify("skills/critic/SKILL.md")
         assert reason is not None and reason.startswith("skill-file-edited")
         assert "agent-file-edited" not in reason
+
+
+class TestProtectedPathsConstant:
+    """STH-1W5N: the unconditional protected-path bounds are centralized in the
+    module-level `_TRIVIAL_PROTECTED_PATHS` constant — the single source of truth
+    referenced by `_classify_trivial_change`. These assertions pin that the
+    constant (not a stale inline literal) is what the classifier consults."""
+
+    def test_constant_is_non_empty_frozenset(self):
+        assert isinstance(_hook._TRIVIAL_PROTECTED_PATHS, frozenset)
+        assert _hook._TRIVIAL_PROTECTED_PATHS, "the protected-path bound list must be non-empty"
+
+    def test_constant_contains_documented_paths(self):
+        # The four catastrophic-blast-radius classes the bound has always covered.
+        paths = {entry[0] for entry in _hook._TRIVIAL_PROTECTED_PATHS}
+        assert {"skills/", "methodology/", "templates/", "CLAUDE.md"} <= paths
+
+    def test_claude_md_is_exact_match_not_prefix(self):
+        # CLAUDE.md is an exact-match bound (a nested foo/CLAUDE.md is ordinary
+        # product doc); the others are prefix bounds. The flag in the constant
+        # is what drives that distinction.
+        by_path = {entry[0]: entry[1] for entry in _hook._TRIVIAL_PROTECTED_PATHS}
+        assert by_path["CLAUDE.md"] is True
+        assert by_path["skills/"] is False
+
+    def test_classifier_reads_the_constant(self):
+        # Every entry in the constant must actually produce a violation from the
+        # classifier with the constant's own reason label — proving the constant
+        # is the source of truth, not a parallel copy that could drift.
+        for protected, is_exact, reason_label in _hook._TRIVIAL_PROTECTED_PATHS:
+            sample = protected if is_exact else protected + "x.md"
+            reason = _classify(sample)
+            assert reason == f"{reason_label}: {sample}", (
+                f"constant entry {protected!r} did not drive the classifier"
+            )

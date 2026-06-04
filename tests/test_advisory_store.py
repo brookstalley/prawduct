@@ -109,11 +109,48 @@ class TestStoreIO:
         store = read_store(tmp_path)
         assert store["advisories"] == []
 
+    def test_corrupt_file_preserves_bytes_in_sentinel(self, tmp_path: Path):
+        """ADV-9K2T: an existing unparseable store is stashed aside as
+        ``.advisories.json.corrupt`` (carrying the original bytes) before the
+        empty default is returned — corruption is surfaced, not swallowed."""
+        (tmp_path / ".prawduct").mkdir()
+        original = "not json{{{"
+        (tmp_path / ".prawduct" / ".advisories.json").write_text(original)
+        store = read_store(tmp_path)
+        assert store == {"schema_version": SCHEMA_VERSION, "advisories": []}
+        sentinel = tmp_path / ".prawduct" / ".advisories.json.corrupt"
+        assert sentinel.is_file()
+        assert sentinel.read_text() == original
+
     def test_wrong_shape_returns_empty(self, tmp_path: Path):
         (tmp_path / ".prawduct").mkdir()
         (tmp_path / ".prawduct" / ".advisories.json").write_text(json.dumps({"advisories": "nope"}))
         store = read_store(tmp_path)
         assert store["advisories"] == []
+
+    def test_wrong_shape_writes_sentinel(self, tmp_path: Path):
+        """ADV-9K2T: a store that parses but has the wrong shape (advisories not
+        a list / not a dict) is also preserved aside before returning empty."""
+        (tmp_path / ".prawduct").mkdir()
+        original = json.dumps({"advisories": "nope"})
+        (tmp_path / ".prawduct" / ".advisories.json").write_text(original)
+        store = read_store(tmp_path)
+        assert store["advisories"] == []
+        sentinel = tmp_path / ".prawduct" / ".advisories.json.corrupt"
+        assert sentinel.is_file()
+        assert sentinel.read_text() == original
+
+    def test_missing_file_writes_no_sentinel(self, tmp_path: Path):
+        """A missing store is the normal first-run empty path — never corruption,
+        so no ``.corrupt`` sentinel is written."""
+        read_store(tmp_path)
+        assert not (tmp_path / ".prawduct" / ".advisories.json.corrupt").exists()
+
+    def test_valid_file_writes_no_sentinel(self, tmp_path: Path):
+        """A valid store reads cleanly with no ``.corrupt`` sentinel written."""
+        write_store(tmp_path, {"schema_version": SCHEMA_VERSION, "advisories": [{"id": "x", "state": "active"}]})
+        read_store(tmp_path)
+        assert not (tmp_path / ".prawduct" / ".advisories.json.corrupt").exists()
 
     def test_roundtrip(self, tmp_path: Path):
         store = {"schema_version": SCHEMA_VERSION, "advisories": [{"id": "x", "state": "active"}]}

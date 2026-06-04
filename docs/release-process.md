@@ -78,6 +78,58 @@ When `develop` is ready to release as `vX.Y.Z`:
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.
 
+### Change-log `status=` values
+
+Two values are meaningful to the release flow:
+
+- **`status=merged`** — the work is merged to `develop` but **not yet in a tagged release**
+  (release-pending). `regen-views` does **not** flip checkboxes for `merged` entries, so the
+  build plan's `## Status` stays `[ ]` and the `active_build_plan` pointer is retained until the
+  release (see "KEEP the build plan" in `learnings.md` and the `active_build_plan` note in
+  `project-state.yaml`). This is the develop-phase intermediate that step 3 flips to `shipped`.
+- **`status=shipped`** — the work is in a tagged release. This is the **only** value that
+  `regen-views` flips to `[x]` (in `## Status`, release notes, and `scope_rollups`).
+
+Any other `status=` value (including a typo) is currently treated like "not shipped" — the entry
+is silently ignored by the derived views with no warning. Authors editing tag lines by hand should
+double-check the spelling; a misspelled `status=shipped` will never flip its checkboxes. (The
+`lib/views.py` docstring's legacy `in-progress`/`deferred` names predate the `merged` convention
+and are not emitted today; reconciling the docstring + adding a typo-guard warning is tracked in
+the backlog.)
+
+## Step 1 mechanics — promoting when `develop` and `main` have diverged
+
+Because releases land on `main` as **squash/single-parent** commits (not back-merged into
+`develop`), `develop` and `main` accumulate divergent histories even though their *content* stays
+identical at each release. Consequence: a `develop` → `main` PR will report **"merge conflict
+cannot be cleanly created"** once more than one release has passed — the conflicts are bookkeeping
+artifacts (same final content reached by different commits), not real disagreements. Do **not**
+resolve this by back-merging `main` into `develop` (it pollutes `develop` with the squash commits
+and is the "no back-merge" rule's whole point).
+
+Instead, promote by setting `main`'s tree equal to `develop`'s and committing directly to `main`
+(the practice used for v2.0.0 / v2.0.1 / v2.0.4):
+
+```sh
+git checkout main && git pull
+git read-tree --reset -u origin/develop      # main's index+worktree := develop's tree
+git commit -m "release: vX.Y.Z — <headline>" # single-parent commit on main, develop's tree
+git diff --stat origin/develop HEAD          # MUST be empty (content-identical)
+git push origin main
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+Close any develop→main PR that was opened with a note that the release was promoted directly. The
+empty `git diff origin/develop HEAD` is the content-identical invariant the gitflow model promises.
+
+Note on **step 2 ordering**: the version bump + change-log/CHANGELOG/release-notes updates +
+`active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
+above (so `main` inherits them in the tree-set), not as edits on `main` after the merge. That keeps
+`main` and `develop` content-identical. And `regen-views` (step 4) needs a *resolvable active build
+plan* — if the release retires the plan (clears `active_build_plan`), either run `regen-views` before
+clearing the pointer, or, for a patch release with no `scope=`/`chunks=` tag (nothing for it to flip),
+add the `release-notes.md` digest entry by hand (it self-heals on the next release's regen).
+
 ## Why the checkboxes stay `[ ]` during development
 
 Because the Status checkboxes derive from `status=shipped` change-log entries, a chunk completed

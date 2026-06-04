@@ -559,10 +559,20 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
         if field not in evidence:
             missing.append(field)
             continue
-        if not isinstance(evidence[field], allowed_types):
+        value = evidence[field]
+        # TST-1D5W: bool is a subclass of int, so a writer that emits
+        # ``{"passed": true}`` would slip through ``isinstance(value, int)`` and
+        # be silently read as the integer 1. Reject a bool wherever the field
+        # does not explicitly allow it (none of the numeric fields do) — a JSON
+        # boolean in a count/duration slot is always writer drift, not a real
+        # test count.
+        bool_in_int_slot = (
+            isinstance(value, bool) and bool not in allowed_types
+        )
+        if bool_in_int_slot or not isinstance(value, allowed_types):
             wrong_type.append(
                 f"{field} must be {' | '.join(t.__name__ for t in allowed_types)}, "
-                f"got {type(evidence[field]).__name__}"
+                f"got {type(value).__name__}"
             )
     if missing:
         return False, f"evidence missing required field(s): {', '.join(sorted(missing))}"
@@ -1798,6 +1808,17 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
         if critic_findings.is_file() and session_start_file.is_file():
             try:
                 session_start = session_start_file.read_text().strip()
+                # STH-6B4R: format findings_mtime to the SAME whole-second
+                # %Y-%m-%dT%H:%M:%SZ shape `.session-start` is written in (see
+                # cmd_clear's `stamp`), so the comparison is identical-precision
+                # lexicographic (== order-preserving for fixed-width second
+                # strings) — no fractional/format mismatch on either side.
+                # Tie rule: findings_mtime == session_start is NOT fresh
+                # (rejected). Strict `>` means a findings file whose mtime lands
+                # in the same whole second as session-start does not clear the
+                # gate — consistent with the cumulative-critic site's `<= ->
+                # stale`. Both Critic-gate sites use the strict convention; only
+                # `_test_status`'s evidence-freshness uses `>=` (deliberately).
                 findings_mtime = datetime.fromtimestamp(
                     critic_findings.stat().st_mtime, tz=timezone.utc
                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -2579,6 +2600,12 @@ def cmd_stop(project_dir: Path) -> int:
         if critic_findings.is_file() and session_start_file.is_file():
             try:
                 session_start = session_start_file.read_text().strip()
+                # STH-6B4R: identical-precision compare — findings_mtime is
+                # formatted to the same whole-second %Y-%m-%dT%H:%M:%SZ shape
+                # `.session-start` is written in, so this is order-preserving
+                # lexicographic with no format mismatch. Tie rule (mirrors the
+                # cmd_clear gate above): findings_mtime == session_start is NOT
+                # fresh — the strict `>` rejects a same-whole-second tie.
                 findings_mtime = datetime.fromtimestamp(
                     critic_findings.stat().st_mtime, tz=timezone.utc
                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -2823,6 +2850,152 @@ def cmd_validate_evidence(project_dir: Path) -> int:
         return 1
     print("valid")
     return 0
+
+
+# =============================================================================
+# test-evidence command (TST-6V2N — the WRITER for test-status's reader)
+# =============================================================================
+
+
+def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
+    """Run the suite and WRITE ``.prawduct/.test-evidence.json`` (TST-6V2N).
+
+    The freshness gate (``test-status``) and the cumulative-Critic staleness
+    check READ this file, but nothing in the plugin PRODUCED it — every product
+    repo improvised a hand-written JSON plus a sha-stamp shim, and the
+    ``git_sha`` check was satisfiable by stamping a fresh sha over stale counts.
+    This subcommand closes the reader-without-a-writer gap: it runs pytest with a
+    JUnit XML report (exact counts, not a parsed summary line), stamps
+    ``git_sha = HEAD`` plus an ISO-8601 UTC timestamp, overlays the F4a coverage
+    half via ``bin/test-reference-verify --merge-into``, and writes the record
+    atomically — so the gate judges output the plugin itself produced, tied to a
+    real run.
+
+    Usage: ``prawduct-hook test-evidence record [-- <extra pytest args>]``
+
+    Exit code mirrors the suite (0 iff every test passed); the evidence file is
+    written either way (a failing run records ``failed > 0``).
+    """
+    import tempfile  # noqa: PLC0415 — only this command needs them
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    if not argv or argv[0] != "record":
+        print(
+            "usage: prawduct-hook test-evidence record [-- <pytest args>]",
+            file=sys.stderr,
+        )
+        return 2
+    extra = argv[1:]
+    if extra and extra[0] == "--":  # tolerate the conventional `--` separator
+        extra = extra[1:]
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    evidence_path = prawduct_dir / ".test-evidence.json"
+
+    # Run the suite with a JUnit XML report — built into pytest (no plugin) and
+    # parse-robust where the terminal summary line is not (xdist, warnings, and
+    # "no tests ran" all perturb the summary; the XML attributes do not).
+    fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
+    os.close(fd)
+    junit = Path(junit_name)
+    cmd = [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *extra]
+    try:
+        proc = subprocess.run(cmd, cwd=str(project_dir))
+        try:
+            root = ET.parse(junit).getroot()
+        except (ET.ParseError, OSError) as exc:
+            print(
+                f"error: could not parse pytest JUnit report: {exc}",
+                file=sys.stderr,
+            )
+            return 2
+    finally:
+        try:
+            junit.unlink()
+        except OSError:
+            pass
+
+    suite = root if root.tag == "testsuite" else root.find("testsuite")
+    if suite is None:
+        print(
+            "error: pytest produced no <testsuite> (no tests collected?)",
+            file=sys.stderr,
+        )
+        return 2
+    total = int(suite.get("tests", "0"))
+    failures = int(suite.get("failures", "0"))
+    errors = int(suite.get("errors", "0"))
+    skipped = int(suite.get("skipped", "0"))
+    duration = float(suite.get("time", "0") or "0")
+    passed = total - failures - errors - skipped
+    failed = failures + errors
+
+    sha_proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+    )
+    git_sha = sha_proc.stdout.strip() if sha_proc.returncode == 0 else ""
+
+    # Base record carries the pytest half PLUS schema-valid placeholder F4a
+    # fields, so the file is self-sufficient even if the F4a overlay below is
+    # skipped (verifier absent on a broken install). The overlay fills the real
+    # coverage half.
+    record = {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "git_sha": git_sha,
+        "command": " ".join(["python3 -m pytest -q", *extra]).strip(),
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "duration_seconds": round(duration, 2),
+        "verifier": "test-reference-verify (F4a overlay pending)",
+        "coverage_level": "referenced",
+        "tests_executed": [],
+        "changes_referenced": [],
+    }
+    # Atomic write — the freshness gate must never observe a half-written file.
+    prawduct_dir.mkdir(parents=True, exist_ok=True)
+    tmp = evidence_path.with_name(evidence_path.name + ".tmp")
+    tmp.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    os.replace(tmp, evidence_path)
+
+    # Overlay the F4a coverage half via the existing verifier (reuse, not
+    # duplicate). Best-effort — the base record above is already schema-valid.
+    base, _ = _coverage_resolve_base(project_dir)
+    verifier = Path(_plugin_root()) / "bin" / "test-reference-verify"
+    if verifier.is_file():
+        merge_cmd = [
+            sys.executable,
+            str(verifier),
+            "--merge-into",
+            str(evidence_path),
+            "--repo",
+            str(project_dir),
+        ]
+        if base:
+            merge_cmd += ["--base", base]
+        mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)
+        if mp.returncode != 0:
+            print(
+                f"note: F4a coverage overlay did not complete (exit "
+                f"{mp.returncode}); pytest-half evidence written.",
+                file=sys.stderr,
+            )
+    else:
+        print(
+            "note: bin/test-reference-verify not found; F4a coverage half "
+            "omitted (pytest-half evidence written).",
+            file=sys.stderr,
+        )
+
+    print(
+        f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
+        f"in {record['duration_seconds']}s @ {git_sha[:10] or '(no git)'} "
+        f"({record['timestamp']})"
+    )
+    return 0 if proc.returncode == 0 else 1
 
 
 # =============================================================================
@@ -3108,6 +3281,32 @@ def _parse_build_plan_chunk_trivial_rationale(
     return rationale, None
 
 
+# STH-1W5N — single source of truth for the unconditional ``Type: trivial`` /
+# doc-only protected-path bounds. Each entry is ``(path, is_exact, reason_label)``:
+# a change touching ``path`` (prefix match unless ``is_exact``) is a
+# catastrophic-blast-radius edit that a trivial/doc-only chunk may never make,
+# and the violation is reported as ``"<reason_label>: <path>"``. Centralized
+# here (was inline in ``_classify_trivial_change``) so the stop-hook gate and
+# the PR-boundary gate share one provably-identical list — and so the bound set
+# is testable as data. The conditional bounds (test-file removals, newly-tracked
+# files) stay in ``_classify_trivial_change`` because they depend on the change
+# verb, not just the path.
+#   skills/       — the critic/pr/etc. SKILL definitions + bundled protocols ARE
+#                   the governance; editing one changes the framework itself.
+#   methodology/  — the build/discovery/planning/reflection guides Claude reads
+#                   as operating instructions; a "trivial" rewrite is never trivial.
+#   templates/    — the artifact templates every product's specs are generated
+#                   from; a silent change propagates to all downstream output.
+#   CLAUDE.md     — the project's top-level operating contract (exact match —
+#                   a nested ``foo/CLAUDE.md`` is ordinary product doc).
+_TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
+    ("skills/", False, "skill-file-edited"),
+    ("methodology/", False, "methodology-edited"),
+    ("templates/", False, "template-edited"),
+    ("CLAUDE.md", True, "claude-md-edited"),
+})
+
+
 def _classify_trivial_change(
     *,
     path: str,
@@ -3122,6 +3321,12 @@ def _classify_trivial_change(
     per-commit name-status diff). Centralizing the rule set prevents
     the stop-hook gate and the PR-boundary gate from drifting apart
     silently.
+
+    The unconditional path bounds live in the module-level
+    ``_TRIVIAL_PROTECTED_PATHS`` constant (STH-1W5N — single source of
+    truth, referenced from this one call site). The conditional bounds
+    (test-file removals, newly-tracked files) stay inline below because
+    they depend on the change verb, not just the path.
 
     Metadata paths (``.prawduct/``, ``.claude/settings.json``, etc. —
     see ``_is_metadata_path``) are treated as out-of-scope and return
@@ -3142,14 +3347,14 @@ def _classify_trivial_change(
         return None
     if src_path is not None and _is_metadata_path(src_path):
         return None
-    if path == "CLAUDE.md":
-        return f"claude-md-edited: {path}"
-    if path.startswith("skills/"):
-        return f"skill-file-edited: {path}"
-    if path.startswith("methodology/"):
-        return f"methodology-edited: {path}"
-    if path.startswith("templates/"):
-        return f"template-edited: {path}"
+    # Unconditional path bounds — driven by the _TRIVIAL_PROTECTED_PATHS
+    # constant so this gate and the PR-boundary gate share one list. The
+    # classes are mutually exclusive (a path matches at most one), so the
+    # frozenset's unordered iteration is behavior-preserving.
+    for protected, is_exact, reason_label in _TRIVIAL_PROTECTED_PATHS:
+        matched = path == protected if is_exact else path.startswith(protected)
+        if matched:
+            return f"{reason_label}: {path}"
     if is_deletion and path.startswith("tests/"):
         return f"test-file-deleted: {path}"
     if src_path is not None and src_path.startswith("tests/"):
@@ -3324,11 +3529,13 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
 
 
 # v1.4 F4b — coverage-required gate inputs.
-# Helper kept parallel to ``is_views_enabled`` in lib/views.py: column-0
-# key scan, fail-closed default of False. Inline rather than imported to keep
-# the hook surface flat (no new lib dependency just for a 10-line
-# scanner). Same idiom = same drift discipline as views_enabled.
+# Inline mirror of lib/core.read_bool_yaml_key: a column-0 key scan with a
+# fail-closed default of False. Inline rather than imported to keep the hook
+# surface flat on the session-start hot path (same discipline as
+# _read_str_yaml_key above); pinned to the lib helper by TestBoolKeyCallSiteParity.
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestBoolKeyCallSiteParity
 def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
+    """True if ``state_path`` has a top-level (column-0) ``key: true`` scalar."""
     if not state_path.exists():
         return False
     try:
@@ -3614,9 +3821,13 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
         )
         return 1
     # Lexicographic compare on whole-second %Y-%m-%dT%H:%M:%SZ strings is
-    # order-preserving — same convention as cmd_clear's gate check around
-    # line 1874. Adding fractional seconds to the format would break both
+    # order-preserving — same identical-precision convention as cmd_clear's
+    # gate check. Adding fractional seconds to the format would break both
     # sides; keep them in lockstep.
+    # STH-6B4R tie rule: findings_mtime == session_start is NOT fresh (stale).
+    # `<=` rejects the same-whole-second tie, matching the Critic-gate sites'
+    # strict `>` (which clears the gate only when findings_mtime is strictly
+    # greater). The two phrasings express the identical tie semantics.
     if findings_mtime <= session_start:
         print(
             f"stale: cumulative findings ({findings_mtime}) "
@@ -3661,6 +3872,9 @@ def cmd_regen_views(project_dir: Path) -> int:
 
     Exit codes:
       0 - success (views disabled, no changes needed, or regen applied cleanly)
+      1 - the plugin lib/ could not be imported (incomplete install) — a
+          state-mutating command must not report success on a broken install
+          (mirrors accept/verify-operator-verification's ImportError handling)
       2 - I/O or schema error (missing change-log or build-plan)
     """
     # Ensure the plugin root is on sys.path so `from lib import views` resolves
@@ -3671,16 +3885,16 @@ def cmd_regen_views(project_dir: Path) -> int:
     try:
         from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
     except ImportError:
-        # The bundled governance lib/ should always import in the plugin (it
-        # ships alongside this script under ${CLAUDE_PLUGIN_ROOT}). Degrade
-        # gracefully rather than crash if the install is incomplete; views
-        # derivation is a convenience, and Status can be updated by hand.
+        # Honest failure: regen-views mutates state (build-plan checkboxes,
+        # release-notes, scope_rollups), so it must not claim success when its
+        # machinery is absent (an incomplete plugin install). Matches
+        # accept/verify-operator-verification — exit 1, not a silent exit 0.
         print(
-            "NOTE: regen-views could not import the plugin lib/ from "
+            "error: regen-views could not import the plugin lib/ from "
             "${CLAUDE_PLUGIN_ROOT}; Status not auto-regenerated.",
             file=sys.stderr,
         )
-        return 0
+        return 1
 
     prawduct_dir = get_prawduct_dir(project_dir)
     try:
@@ -3701,6 +3915,22 @@ def cmd_regen_views(project_dir: Path) -> int:
     if not enabled:
         print("Views disabled (set views_enabled: true in project-state.yaml).")
         return 0
+
+    # Surface change-log status= typos (e.g. status=shippd) as NON-fatal
+    # warnings on stderr — an unrecognized status silently fails to flip a
+    # checkbox, so we warn rather than letting the typo pass unnoticed. This
+    # does NOT change the exit code or the flip rule (only status==shipped flips).
+    try:
+        change_log_text = (prawduct_dir / "change-log.md").read_text(encoding="utf-8")
+        for warning in views.validate_status_values(
+            views.parse_change_log(change_log_text)
+        ):
+            print(f"WARNING: {warning}", file=sys.stderr)
+    except OSError:
+        # Best-effort advisory only — the regen computation (plan_regen) already
+        # succeeded above and apply_regen still runs below, so a change-log read
+        # hiccup here must not fail the warning-emitting command.
+        pass
 
     try:
         views.apply_regen(prawduct_dir, results)
@@ -4101,6 +4331,14 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     -c *)`` — keeping the structural "no arbitrary code execution"
     constraint enforceable.
 
+    Precedence (delegated to ``infer_mode``): explicit ``args`` (the
+    per-invocation override) win first, then the active build plan's
+    CURRENT chunk ``**Critic mode:**`` field (the plan-level "successive
+    override", rationale ``plan-override: <mode>`` — CRT-3M8Q), then the
+    four inference rules. This is why a plan-mandated ``final`` is now
+    honored here instead of being silently demoted to the inferred
+    ``chunk``.
+
     Output format: a single stdout line ``<mode>|<rationale>`` where
     ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
     ``cumulative`` / ``verify-resolutions``) and ``<rationale>`` is the
@@ -4297,7 +4535,8 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
 
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear|stop|test-status|validate-evidence|check-cumulative-critic|"
+    "{clear|stop|test-status|validate-evidence|test-evidence record [-- pytest args]|"
+    "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
@@ -4324,6 +4563,8 @@ def main() -> int:
         return cmd_test_status(project_dir)
     elif command == "validate-evidence":
         return cmd_validate_evidence(project_dir)
+    elif command == "test-evidence":
+        return cmd_test_evidence(project_dir, sys.argv[2:])
     elif command == "check-cumulative-critic":
         return cmd_check_cumulative_critic(project_dir)
     elif command == "verify-chunk-refs":

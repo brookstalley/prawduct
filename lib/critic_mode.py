@@ -1,9 +1,15 @@
 """Critic mode inference — picks the right ``/critic`` mode from git +
 build-plan state so the builder doesn't have to declare it at every chunk.
 
-Explicit ``$ARGUMENTS`` always wins (override path). When ``$ARGUMENTS`` is
-empty / None / unrecognized, :func:`infer_mode` walks four rules in
-precedence order and returns the first that fires:
+Explicit ``$ARGUMENTS`` always wins (the per-invocation override path).
+Below it sits the **plan-level override**: when the active build plan's
+CURRENT chunk (the first unchecked ``- [ ]`` item in the Status section)
+declares a valid ``**Critic mode:**`` field, that mode is honored as a
+successive override (rationale ``"plan-override: <mode>"``) — the
+methodology has always called this field a "successive override," and
+this is where it is read (CRT-3M8Q). Only when neither override fires
+does :func:`infer_mode` walk four inference rules in precedence order and
+return the first that fires:
 
   1. ``verify-resolutions`` — prior ``.critic-findings.json`` has
      BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves +
@@ -45,6 +51,7 @@ importable from the slash-command shim.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -60,13 +67,23 @@ _MODE_VERIFY_RESOLUTIONS_VERBOSE = (
 _MODE_CUMULATIVE_VERBOSE = "cumulative (bundle review, ready for merge)"
 
 # Short-token caller-side mode names — what ``$ARGUMENTS`` carries and
-# what :func:`infer_mode` returns as the first element of its tuple.
+# what :func:`infer_mode` returns as the first element of its tuple. The
+# same token set is accepted in the build plan's per-chunk
+# ``**Critic mode:**`` field (the plan-level override).
 _VALID_ARG_MODES = frozenset({
     "chunk",
     "final",
     "cumulative",
     "verify-resolutions",
 })
+
+# Matches a chunk's ``- **Critic mode:** <value>`` build-plan field.
+# Mirrors ``bin/prawduct-hook``'s ``_BUILD_PLAN_TYPE_RE`` shape (leading
+# list-item / bold markers tolerated). The value token is hyphen-aware so
+# ``verify-resolutions`` is captured whole.
+_BUILD_PLAN_CRITIC_MODE_RE = re.compile(
+    r"^[\s\-\*]*\*\*Critic mode:\*\*\s*([A-Za-z][\w\-]*)"
+)
 
 # Candidate base branches probed in order — first one that resolves wins.
 # Mirrors the convention used by ``/pr`` and the cumulative-Critic gate
@@ -122,6 +139,16 @@ def infer_mode(
                 return token, "explicit-args"
 
     prawduct_dir = project_dir / ".prawduct"
+
+    # Plan-level override: the active build plan's CURRENT chunk may declare
+    # a ``**Critic mode:**`` field. The methodology calls this a "successive
+    # override" — honor it here (above inference, below explicit args) so a
+    # plan-mandated ``final`` is no longer silently demoted to the inferred
+    # ``chunk`` (CRT-3M8Q). Only a recognized token overrides; an absent /
+    # blank / unrecognized field falls through to ordinary inference.
+    plan_mode = _current_chunk_critic_mode(prawduct_dir)
+    if plan_mode is not None:
+        return plan_mode, f"plan-override: {plan_mode}"
 
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
         return "verify-resolutions", (
@@ -378,6 +405,111 @@ def _git_head_sha(project_dir: Path) -> str:
     if proc.returncode != 0:
         return ""
     return proc.stdout.strip()
+
+
+def _current_chunk_id_from_status(prawduct_dir: Path) -> str | None:
+    """Return the chunk id of the first ``- [ ]`` item in the build-plan
+    Status section, e.g. ``"02"`` for ``- [ ] Chunk 02: widget``.
+
+    Mirrors ``bin/prawduct-hook``'s ``_current_chunk_id_from_status`` (via
+    ``_parse_build_plan_status``) so the inference helper, the stop hook,
+    and the Critic helper agree on "which chunk is current." Returns
+    ``None`` when there is no plan, no Status section, all chunks are
+    complete, or the current item isn't in the ``Chunk NN:`` form.
+    """
+    plan_path = resolve_build_plan_path(prawduct_dir)
+    if not plan_path.is_file():
+        return None
+    try:
+        content = plan_path.read_text()
+    except OSError:
+        return None
+
+    in_status = False
+    in_comment = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped == "## Status":
+            in_status = True
+            continue
+        if not in_status:
+            continue
+        if stripped.startswith("## ") and stripped != "## Status":
+            break
+        if "<!--" in stripped:
+            in_comment = True
+        if "-->" in stripped:
+            in_comment = False
+            continue
+        if in_comment:
+            continue
+        if stripped.startswith("- [ ]"):
+            current = stripped[5:].strip()
+            if not current.startswith("Chunk "):
+                return None
+            chunk_id = current[len("Chunk "):].split(":", 1)[0].strip()
+            return chunk_id or None
+    return None
+
+
+def _current_chunk_critic_mode(prawduct_dir: Path) -> str | None:
+    """Return the current chunk's declared ``**Critic mode:**`` token, or
+    ``None``.
+
+    Resolves the current chunk via :func:`_current_chunk_id_from_status`,
+    finds that chunk's ``### Chunk <id>:`` detail section, and reads its
+    ``- **Critic mode:** <value>`` field. Returns the short-token value
+    only when it is one of the recognized modes; an absent, blank, or
+    unrecognized value yields ``None`` (fall through to inference rather
+    than honoring a typo as a mode override — same fail-open-to-inference
+    posture the methodology's "optional field" contract implies).
+
+    Section discovery mirrors ``bin/prawduct-hook``'s
+    ``_parse_build_plan_chunk_type``: name-anchored on
+    ``### Chunk <id>:`` with leading-zero tolerance, fenced code blocks
+    skipped, stop at the next sibling chunk or top-level section.
+    """
+    chunk_id = _current_chunk_id_from_status(prawduct_dir)
+    if chunk_id is None:
+        return None
+
+    plan_path = resolve_build_plan_path(prawduct_dir)
+    if not plan_path.is_file():
+        return None
+    try:
+        content = plan_path.read_text()
+    except OSError:
+        return None
+
+    target = chunk_id.lstrip("0") or "0"
+
+    in_section = False
+    in_fence = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("### Chunk "):
+            rest = stripped[len("### Chunk "):]
+            head = rest.split(":", 1)[0].strip()
+            head_norm = head.lstrip("0") or "0"
+            if in_section:
+                break  # hit sibling chunk
+            if head_norm == target:
+                in_section = True
+            continue
+        if not in_section:
+            continue
+        if stripped.startswith("## "):
+            break
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = _BUILD_PLAN_CRITIC_MODE_RE.match(line)
+        if m:
+            token = m.group(1)
+            return token if token in _VALID_ARG_MODES else None
+    return None
 
 
 def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:

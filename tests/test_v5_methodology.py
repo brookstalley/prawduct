@@ -117,8 +117,29 @@ class TestBuildingMethodology:
         # either the helper name or the override-reporting protocol that
         # makes inference tunable. If this test fails again, prefer trimming
         # over another bump.
+        #
+        # Bumped 4450 → 4560 in evidence-deferral Chunk 02 (STH-3W7F floor):
+        # the Gate-waivers step gains a new, distinct governance clarification —
+        # in-flight background work is NOT a waiver case (wait, don't waive;
+        # waiving skips the Critic the completed work needs). The addition was
+        # already halved (~196 → ~103 tokens) before this bump; the four
+        # remaining sentences are each load-bearing (the rule, why waiving is
+        # wrong, that the block is expected, and the STH-3W7F pointer). The file
+        # sat at the prior ceiling, so a new clarification cannot be added by
+        # trimming itself; trimming UNRELATED prose to fit would violate Scope
+        # Discipline. If this test fails again, prefer trimming over another bump.
+        #
+        # Bumped 4560 → 4650 in cleanup-batch Chunk 06 (MET-7H2D — multi-hop test
+        # guidance). Test Discipline gains one tight bullet: when tested behavior
+        # depends on a SUBSEQUENT invocation (accumulator/coordinator/cursor/retry),
+        # exercise a step beyond the immediate post-state (~46 words / ~50 tokens).
+        # The file already sat at the 4560 ceiling (the evidence-deferral STH-3W7F
+        # clause consumed the prior headroom), so the addition cannot be made by
+        # trimming itself, and trimming UNRELATED prose to fit would violate Scope
+        # Discipline. The bullet is the chunk's whole deliverable and is already
+        # minimal. If this test fails again, prefer trimming over another bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4450, f"building.md is ~{tokens} tokens, should be <4450"
+        assert tokens < 4650, f"building.md is ~{tokens} tokens, should be <4650"
 
 
 # =============================================================================

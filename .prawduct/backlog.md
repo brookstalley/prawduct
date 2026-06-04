@@ -8,6 +8,115 @@
 ## Open
 
 
+- **[TST-9K4W]** Structural tests scan `.claude/worktrees/` — leftover/in-flight workflow worktrees fail the suite
+  `effort: S · impact: S · area: tests · source: builder · added: 2026-06-04 · status: open`
+
+  `test_test_location::test_all_test_files_live_under_tests_directory` and
+  `test_plugin_methodology_digest::test_source_is_one_canonical_copy` glob the whole repo tree, so when a
+  worktree-isolated workflow leaves `.claude/worktrees/wf_*/` dirs behind (worktrees with changes are NOT
+  auto-removed), the duplicate test/methodology copies inside them fail both tests ("test files outside
+  tests/", "not one canonical copy"). Surfaced integrating cleanup-batch (2026-06-04); worked around by
+  `git worktree remove -f` before the suite. As this repo now runs parallel worktree-isolated workflow
+  builds routinely, make the collectors robust: exclude a `.claude/` path component from the file globs in
+  both tests, and consider adding `.claude/worktrees/` to pytest `norecursedirs`/`--ignore` so collection
+  itself skips it. (builder)
+
+- **[BLD-8F2Q]** `verify-chunk-refs` misreads `path::symbol` backtick tokens as missing file paths
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-04 · status: open`
+
+  The chunk-ref parser (`bin/prawduct-hook` `cmd_verify_chunk_refs` / `_parse_build_plan_chunk_refs`)
+  captures a whole backtick token like `lib/views.py::is_views_enabled`, sees the `/`, and treats the
+  entire `module.py::symbol` string as a (missing) file path → false-positive exit 1 even though the
+  file exists and the symbol is valid. Surfaced in the cleanup-batch cumulative Critic (Chunk 01
+  SYN-9C4T plan criteria used `path::symbol`); worked around there by separating file and symbol in the
+  prose. Fix-shape: when a backtick token contains `::`, existence-check only the pre-`::` path part and
+  skip/symbol-verify the rest, OR exclude `::`-containing tokens from path verification. Low impact
+  (only trips on the rare `path::symbol` plan-prose convention) but a real Goal-2 false positive. (critic)
+
+- **[REL-4T8N]** Release tooling: handle MULTIPLE release-pending plans (regen-views per scope) instead of a single `active_build_plan` pointer
+  `effort: M · impact: M · area: release · source: builder · added: 2026-06-04`
+
+  The release model assumes ~one release-pending plan between `develop→main` releases: `regen-views`
+  resolves THE plan via the single `active_build_plan` pointer. But batched sub-releases stack up —
+  as of 2026-06-04 there are THREE release-pending plans (roi-batch chunks 01–05, roi-batch-2 01–09,
+  evidence-deferral 01–02), each a distinct `scope=`/`status=merged` change-log entry. The current
+  workaround is a hand-maintained comment in `project-state.yaml` instructing the release to point
+  the pointer at each plan in turn and `regen-views` per scope — manual, easy to miss one, and it's
+  recurred 3× (flagged "worth a backlog item if it keeps recurring" in the evidence-deferral plan).
+  Fix-shape: `regen-views` (or a release subcommand) ENUMERATES every `status=merged` change-log
+  entry, resolves each scope's build-plan file, and regenerates each plan's `## Status` — driven by
+  the change-log (the source of truth), not the single pointer. Then a release flips all merged→shipped
+  and regens all in one pass. Open question: how does regen map a `scope=` to its build-plan FILE
+  (a `scope:`-frontmatter scan across `artifacts/*.md`, or a `scope→file` map)? Filed 2026-06-04. (builder)
+
+  **Confirmed in the v2.0.5 release (2026-06-04):** four scopes (roi-batch, roi-batch-2,
+  evidence-deferral, cleanup-batch) shipped together — the manual per-scope `regen-views` (point the
+  pointer at each plan in turn) worked but was 4× tedious as predicted. It also surfaced a SECOND
+  symptom in the **derived release-notes.md**: the digest renders only ONE entry per `release=` tag, so
+  the `## v2.0.5` section showed just cleanup-batch and mis-aggregated `Chunks shipped: 01–09` (the union
+  across all four entries) under that single scope. Consumer impact is nil (the version-delta banner reads
+  the hand-written `CHANGELOG.md`, not this digest), but the fix should also make `views.py` render ALL
+  entries sharing a `release=` tag, not just the topmost.
+
+- **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
+  `effort: L · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · partial: floor+design shipped via #60 (code fix pending) · related: STH-7K2A`
+
+  Filed by a Hallucinote session (`incoming-bugs/stop-gate-blocks-on-in-flight-background-work.md`) and
+  **confirmed firsthand** in the roi-batch-2 session: the `critic-review` + `reflection` Stop gates fire
+  on "tracked files changed, no Critic/reflection yet" with NO awareness of in-flight background work.
+  While a background `Workflow`/`Task` is still generating the diff, ending the turn (the natural thing
+  while awaiting an async run) trips the block, and every subsequent yield re-fires it until the job
+  completes (roi-batch-2 absorbed ~15 block-loops over the ~12-min HOOK lane). The two available
+  outcomes both misfit: SPIN (absorb a block every turn) or WAIVE — but `.gates-waived` means "cannot be
+  satisfied THIS session" (`docs/waivers.md`), which is FALSE here (the gate WILL be satisfied minutes
+  later), so waiving overloads the semantics and pollutes the archive with a "can't satisfy" reason for
+  work that was satisfied. Distinct from [STH-7K2A] (a same-signature loop COUNTER that escalates/
+  downgrades after N fires): this is about *deferral when a live tracked job exists*, not loop-counting —
+  though a unified design could cover both. Remediation options (from the report): (1) background-aware
+  deferral — before blocking, the Stop hook checks for a live tracked background job (workflow run dir /
+  task registry) and DEFERS, re-running the gate on the next Stop after completion; (2) a first-class
+  `.gates-deferred` state (reason + expected-completion) distinct from a waiver, so the archive records
+  "deferred pending async run"; (3) minimal — sanction an in-flight-work waiver reason-prefix in
+  `docs/waivers.md` to stop the semantic overload. Open design problem: the Stop hook is a subprocess and
+  has no guaranteed handle on "is a Workflow still running" — the detection signal (a live workflow run
+  dir under the session dir?) is harness-version-dependent and needs verification before (1) is viable;
+  (3) is the cheap, safe floor. Filed 2026-06-04. (user)
+
+  **DESIGN + safe floor shipped (evidence-deferral, 2026-06-04 — chunk 02).** Investigation
+  corrected the framing: the report's option (3) "sanction an in-flight WAIVER" is actually WRONG —
+  waiving the Critic gate while background work is in flight would SKIP the Critic the completed
+  work still needs (the waiver persists the session, auto-clears next). So the agent is NOT forced
+  to choose between two bad options: SPIN is the *correct* behavior (wait, then run the Critic when
+  the job lands); the only real defect is the NOISE of repeated harmless blocks during a legitimate
+  wait. Shipped floor: `methodology/building.md` Gate-waivers now states "in-flight background work
+  is NOT a waiver case — wait, don't waive," so the semantic-overload temptation is removed.
+  Detection finding (rules out option 1 for now): the Stop hook (`prawduct-hook stop`) does NOT read
+  stdin, so it has no `transcript_path`/`session_id`; even if it did, inspecting
+  `subagents/workflows/*/journal.jsonl` can't distinguish a LIVE run from a CRASHED one (`started >
+  result` matches both; the journal persists after completion) — harness-version-dependent, unsafe
+  to build. Recommended REAL fix (option 2, refined): a SELF-DECLARED `.prawduct/.gates-deferred`
+  file (the AGENT knows it launched background work; the hook can't detect it) that the Stop hook
+  honors to defer the gate EXACTLY ONCE, then auto-rearms (clears itself on the deferred fire) — so
+  it quiets the wait WITHOUT ever permanently skipping the Critic (the next Stop re-checks normally;
+  the harness's pending-background-work keeps the session alive across the deferred fire). Distinct
+  archive semantics from a waiver ("deferred pending async run," not "unsatisfiable"). This needs a
+  Stop-hook code change + a guard test that a deferred gate re-arms; deferred from the doc-floor
+  chunk on proportionality. Could unify with [STH-7K2A] (both quiet a re-firing gate). (builder)
+
+- **[BLD-7P3K]** Guard test: assert the active build plan's chunk headings parse (fail loud on heading-format drift)
+  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-06-04 · status: open · related: VWS-3K7P`
+
+  Recommended by `learnings.md` ("Build-plan chunk headings must use `### Chunk N:` colon form") AND
+  twice by the roi-batch-2 cumulative Critic after the build plan itself shipped with `#### Chunk NN:`
+  (four-hash, under a `### Lane` grouping level) — which silently defeated the `### Chunk ` parsers
+  (`verify-chunk-refs`, `_parse_build_plan_chunk_type`, `lib/critic_mode.py` plan-override) for the
+  WHOLE plan. The degradation is silent: chunk-type fail-closes to `code`, refs stop verifying, and
+  nothing errors. Fix-shape: a test (or a `regen-views`/stop-hook check) that resolves the active
+  build plan via `resolve_build_plan_path` and asserts its `## Status` chunk IDs each map to a
+  parseable `### Chunk <id>:` heading — so a depth/format mismatch fails LOUDLY instead of degrading.
+  Open question: test-only (pins the framework's own plan) vs. a runtime check that fires for any
+  product's active plan. Filed from roi-batch-2 Critic NOTE on 2026-06-04. (critic)
+
 - **[STH-4D2X]** Decide whether the trivial/doc-only file-set gate should also protect a consumer's own `.claude/skills/`
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-03 · status: open`
 
@@ -20,16 +129,6 @@
   catastrophic the way the framework's own `skills/`/`methodology/`/`templates/` are. Changing it
   affects every consumer, so it needs a deliberate decision + test, not a silent add. Filed from the
   2.0-rock-solid pass, 2026-06-03. (builder)
-
-- **[DOC-2W9P]** Repoint stale `tools/lib/` example paths in `documentation/` design specs to plugin-native
-  `effort: S · impact: S · area: docs · source: builder · added: 2026-06-03 · status: open`
-
-  `documentation/post-sync-advisory-spec.md` (≈ lines 197/218/276/296/434/435) and
-  `documentation/governance-tax-followups.md` §3 still illustrate the advisory/probe layout with
-  retired file-sync paths (`tools/lib/probes/…`, `tools/product-hook`, `prawduct-setup.py`, `run_sync`).
-  The spec is still the authoritative reference for `lib/advisory_store.py`, so the illustrative paths
-  should point at `lib/advisory_store.py` / `hooks/hooks.json` / `bin/prawduct-hook`. Internal design
-  archive, not user-facing — deferred from the 2.0-rock-solid pass Wave 2. (builder)
 
 - **[CRT-SHADOW]** (Optional) Recreate an A/B "shadow Critic" as a plugin variant
   `effort: M · impact: S · area: critic · source: builder · added: 2026-06-02 · status: open · reviewed: 2026-06-02`
@@ -45,11 +144,6 @@
   `effort: M · impact: M · area: stop-hook · source: reflection · added: 2026-05-23 · status: open · closes: v1.5.2 discoverability half · reviewed: 2026-05-29`
 
   v1.5.2 (2026-05-23) shipped the discoverability piece: all four blocker stderr messages now name `.gates-waived`, the JSON shape, and `build-governance.md` so agents stuck in unsatisfiable gate states can declare a waiver. The structural piece is still open. Pathology: even with the escape hatch named in the blocker text, an agent can in principle ignore it and continue re-firing the same gate. Defense-in-depth fix-shape: track stop-hook fire count per session in a new `.prawduct/.stop-fire-count` file recording `{count, blocker_signature, ts}`. On the Nth (e.g., 3rd) consecutive fire with the same signature and no progress (no new Critic findings, no new waiver, no diff change since last fire), either (a) escalate the blocker text to name the loop explicitly and force-surface the waiver mechanism above the existing prose, or (b) auto-downgrade to advisory (stderr-only) on the assumption that the agent has seen the gate and made an informed call. (a) is conservative; (b) is firmer about not burning tokens. Auto-clear on session start. Open design questions: per-blocker counter or session-wide? what counts as "progress" (any diff change or only changes that materially address the gate)? should the counter persist if the blocker signature changes mid-session? Filed from v1.5.2 release (2026-05-23) as the deferred structural half of the original infinite-loop bug; the original "discoverability" half is shipped and the backlog entry closes against v1.5.2's change-log entry. (reflection)
-
-- **[BLD-4Q9X]** `scope: null` in build-plan frontmatter does not suppress change-log inference
-  `effort: M · impact: M · area: build-plan · source: critic · added: 2026-05-23 · status: open · reviewed: 2026-05-29`
-
-  Surfaced by v1.5.1 Chunk 05 cumulative Critic. The template ships `scope: null` as the documented opt-out form, and `_parse_build_plan_frontmatter_scope` correctly returns `None` for null literals. But `_detect_active_scope` then treats "key present with null" identically to "key absent" — it falls through to change-log inference, picking up the most-recent `scope=` tag. Result: a product with a tagged release in change-log.md (e.g. `scope=v1.5`) plus a fresh `scope: null` build-plan with new chunks 01/02/03 will see `regen-views` flip those chunks to `[x]` because v1.5's tagged entries claim chunks 01/02/03. Author's explicit-null intent ("don't filter") is overridden silently. Fix-shape: distinguish "key absent" from "key present with null/empty" in `_parse_build_plan_frontmatter_scope` (return a sentinel or change to `tuple[bool, str | None]`); have `_detect_active_scope` skip inference when key was explicitly null. Doesn't bite the framework's own v1.5.1 plan (sets `scope: v1.5.1` explicitly). Filed from /critic cumulative WARNING on 2026-05-23 (v1.5.1 Chunk 05). (critic)
 
 - **[CRT-1F7N]** Re-enable cumulative inference mid-build by recording per-HEAD cumulative records
   `effort: M · impact: S · area: critic · source: builder · added: 2026-05-22 · status: open · reviewed: 2026-05-29`
@@ -68,35 +162,15 @@
      - **Keep:** project-owned skills/hooks (anything in `.claude/skills/` that's NOT in the prawduct-managed set — user-authored skills stay).
   Fix-shape: probably a `prawduct-doctor deploy-to-main` (or `prawduct-deploy`) subcommand that performs a filtered merge/squash — strips the listed paths from a temp index, commits the cleaned tree to `main`, leaves `develop` intact. Alternative: a git pre-receive hook recipe in `methodology/git-strategy.md` that products copy into their own remote. Need to decide which paths are framework-canonical (centralizable in `core.py`'s MANAGED_FILES + a new `DEPLOY_STRIP_PATHS` set) vs. project-configurable. Open question: does the filter run on every push to main, or only on explicit `prawduct-doctor deploy` invocations? Filed from user request on 2026-05-19. (builder)
 
-- **[SYN-9C4T]** Extract shared `read_bool_yaml_key(state_path, key)` from `views.py::is_views_enabled` and product-hook's `_read_bool_yaml_key`
-  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-05-29`
+- **[SYN-9C4T]** Extract shared `read_bool_yaml_key(state_path, key)` from `lib/views.py::is_views_enabled` and `bin/prawduct-hook::_read_bool_yaml_key`
+  `effort: S · impact: S · area: sync · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-06-03`
 
-  Both perform the same column-0 boolean scan against `project-state.yaml`, intentionally duplicated to keep product-hook flat (one inline 10-line helper vs. a new lib import). Two callers is the borderline; a third opt-in YAML flag (Chunk 11's F5 `auto_sync_commit`, or a future operator-verification toggle from F10) would push this to extraction. Move to `lib/core.py::read_bool_yaml_key(path, key) -> bool` and call from both sites. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 09). (critic)
+  Both perform the same column-0 boolean scan against `project-state.yaml`, intentionally duplicated to keep the hook flat (one inline ~10-line helper vs. a new lib import). Move to `lib/core.py::read_bool_yaml_key(path, key) -> bool` and call from both sites. **Now more actionable (re-verified 2026-06-03):** the file-sync `product-hook` named in the original NOTE was deleted in M4; the duplicate survives in the plugin runtime as `bin/prawduct-hook::_read_bool_yaml_key` (line ~3331, comment says "kept parallel to is_views_enabled in lib/views.py") against `lib/views.py::is_views_enabled` (line ~651). The third caller the original NOTE said would tip this to extraction is already here — `_read_bool_yaml_key` now also reads `coverage_required` (bin/prawduct-hook ~3464). Filed from /critic chunk NOTE on 2026-05-19 (Chunk 09); paths refreshed post-M4. (critic)
 
 - **[TST-5W1J]** Cache test-file contents in `bin/test-reference-verify` to drop O(N*T) re-reads
   `effort: S · impact: S · area: tests · source: critic · added: 2026-05-19 · status: open · reviewed: 2026-05-29`
 
   `_has_reference` re-opens every test file once per changed file. Sub-second on framework scale (~20 test files × small chunk diffs) but a stronger verifier or larger product would feel it. Fix-shape: discover_tests reads all test contents into a dict once, then `_has_reference` runs substring across the cached text. Filed from /critic chunk NOTE on 2026-05-19 (Chunk 08). (critic)
-
-- **[MET-4K8Z]** 8-surface cascade pattern — anticipate token-budget pressure in chunk plans
-  `effort: S · impact: M · area: methodology · source: reflection · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  Chunk 05's source-of-truth guardrail threading touched 8 surfaces (product-claude / Critic SKILL / 2 critic-review / 2 pr-review / methodology / build-plan template). Same pattern Requirements Precede Code (v1.3.15) hit. When a chunk introduces a project-wide structural concept, the plan should enumerate the surface count up front so token-budget bumps (and the aggressive trim that precedes them) are anticipated, not discovered. Worth promoting to methodology after one more datapoint; until then, captured as observation. Filed from Chunk 05 reflection, 2026-05-18. (reflection)
-
-- **[MET-1T5W]** Document the `new \`path\`` forward-ref convention in methodology prose
-  `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  `verify-chunk-refs` (F3) supports `new \`path/to/file\`` syntax to mark forward-references for not-yet-created files; this is implemented, tested, and documented inside `templates/build-plan.md`'s inline HTML comment, but not in `methodology/planning.md` prose. Authors who write plans without copying the template won't know the keyword exists and will get spurious BLOCKING ref-drift findings for chunks creating new files. Fix-shape: add a one-paragraph "Forward-references" note to planning.md near the build-plan-structure section. Filed from /critic cumulative NOTE on 2026-05-18. (critic)
-
-- **[MET-8N2C]** Tighten F8 worked-example numbering language for consistency
-  `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  `methodology/planning.md:118` describes the `verify-api` step as "the first item in its Done-when", while the worked example a few lines down uses "step 0" (`0. verify-api: ...`). Both true, but the terminology is inconsistent. Fix-shape: change line 118 to "prepended as step 0 in its Done-when (so existing step numbering is preserved across chunks with and without a foreign API)". One-line tweak. Filed from /critic cumulative NOTE on 2026-05-18. (critic)
-
-- **[TST-2R7H]** Add fixture coverage for `cumulative-final`/`cleanup` Type fall-through to default gate
-  `effort: S · impact: M · area: tests · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  Code analysis confirms only `designer-handoff` skips the Critic gate; the other Type values (`code`, `doc-only`, `cleanup`, `cumulative-final`) all fall through to the default gate path. But no dedicated test fixture pins this — `TestDesignerHandoffSkipsCriticGate` only covers the explicit skip branch. A refactor that accidentally broadens the skip list (e.g. `if chunk_type in {"designer-handoff", "doc-only"}`) would silently regress. Fix-shape: add a parametrized `TestNonHandoffTypesFallThroughToGate` covering the four fall-through Types. Filed from /critic cumulative NOTE on 2026-05-18. (critic)
 
 - **[DOC-9J4B]** F8: add Foreign-API example to hallucinote product repo
   `effort: S · impact: S · area: docs · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
@@ -122,11 +196,6 @@
   `effort: S · impact: S · area: pr-reviewer · source: builder · added: 2026-05-05 · status: open · reviewed: 2026-05-29`
 
   PR reviewer Goals 1, 2, 4, 5, 6 in `skills/pr/review-protocol.md` overlap with Critic. Now that the layering is explicit (Critic-chunk = local; Critic-final = synthesis; PR reviewer = release readiness), PR reviewer goals could be trimmed to release-specific concerns (narrative, scope, merge hygiene, simplification). Filed during proportional-Critic build plan as out-of-scope. (builder)
-
-- **[TST-1D5W]** Tighten `_validate_evidence_schema` against bool-as-int
-  `effort: S · impact: S · area: tests · source: critic · added: 2026-05-05 · status: open · reviewed: 2026-05-29`
-
-  Python's `bool` is a subclass of `int`, so `{"passed": True}` slips through `isinstance(v, int)` in the test-evidence validator. No real test runner emits booleans for these fields, so impact is theoretical, but the loophole is real. If addressed: add `or isinstance(v, bool)` exclusion to the type check (with a comment), and add a `TestValidateEvidenceSchema::test_bool_rejected_for_int_field` case. Filed from /critic NOTE on 2026-05-05. (critic)
 
 - **[MET-9K4R]** Workflow-values schema/validator
   `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-01 · status: open · reviewed: 2026-05-29`
@@ -173,10 +242,10 @@
 
   Mar 23 discodon doc audit found 3 WIP branches were already merged into develop via other PRs but project-state.yaml still listed them in-progress. No mechanism reflects branch completion back to project-state.yaml when PRs merge. Consider git-based detection (branch existence on remote) or a post-merge sync step. (reflection)
 
-- **[STH-9V4K]** product-hook decomposition
-  `effort: L · impact: M · area: stop-hook · source: janitor · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
+- **[STH-9V4K]** `bin/prawduct-hook` decomposition
+  `effort: L · impact: M · area: stop-hook · source: janitor · added: 2026-04-16 · status: open · reviewed: 2026-06-03`
 
-  Split 2,240-line monolith (grew from 1,757 since original filing) into logical modules (_gates.py, _briefing.py, _yaml_parser.py). Currently working and well-tested, but 5 distinct concerns in one file hinders readability. (janitor)
+  Split the hook monolith into logical modules (_gates.py, _briefing.py, _yaml_parser.py). Currently working and well-tested, but several distinct concerns in one file hinder readability. **Re-verified 2026-06-03:** the original `tools/product-hook` (2,240 lines) was deleted in M4; the monolith carried over to the plugin runtime as `bin/prawduct-hook`, now **4,369 lines** — the readability pressure has grown, not shrunk, since filing. Extraction targets land in `lib/` (already 11 modules), alongside `gates`/`briefing`/`yaml` concern splits. (janitor)
 
 - **[TST-4P8H]** Flaky tests under parallel execution (xdist)
   `effort: M · impact: M · area: tests · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
@@ -187,11 +256,6 @@
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
 
   Advisory lock file in product-hook clear/stop to warn when another Claude session is active on the same project. Agreed on non-blocking approach with staleness timeout (~4 hours). (builder)
-
-- **[MET-2D9K]** `methodology/planning.md` parallel section for the `Visual change:` build-plan field
-  `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  F8 added a "Foreign API Verification" section to planning.md when introducing `**Foreign API:**`. F10 (Chunk 14) added `**Visual change:**` to the build-plan template with inline-comment guidance but no parallel planning.md section. The build-plan template's HTML comment is sufficient discoverability for v1.4.0; consider a v1.5 enhancement (~50 tokens) to align with the F8 precedent and pre-empt the asymmetry NOTE the Critic emitted. Filed from /critic Chunk 14 final review NOTE. (critic)
 
 <!-- v1.7.0 deferred scope — the backlog feature shipped its lean core (the /backlog skill + the single
      legacy-backlog-format probe). The items below are real requirements scope (backlog-system-requirements.md,
@@ -238,21 +302,10 @@
 
   Requirements/advisory-spec §8.3. At setup/health-check time, `prawduct-doctor` reports any external backlog files (`TODO.md`, `BACKLOG.md`) found in repo root + `.github/`. Redundant with the `external-backlog-detected` probe ([BKL-2F7K]); deferred with it — build both together or decide one supersedes the other. (builder)
 
-- **[CRT-3M8Q]** `/critic` ignores the build plan's per-chunk `Critic mode:` override — Skill-tool args don't thread to `$ARGUMENTS`, so a plan-mandated `final` silently runs as inferred `chunk`
-  `effort: M · impact: M · area: critic · source: reflection · added: 2026-06-01 · status: open · related: CRT-1F7N`
-
-  The `/critic` skill ignores the build plan's per-chunk `**Critic mode:**` field, and Skill-tool args don't thread to its `$ARGUMENTS`, so a plan-mandated `final` override silently runs as inferred `chunk` mode. Discovered in v2.0.0 Chunk 9 (a destructive cutover whose plan overrode the mode to `final`): the independent Critic ran clean goals 1-3 twice but goals 4-7 were never run by the agent (`mode_chosen_by: rule-4`, not `explicit-args`). The methodology already says the per-chunk `Critic mode:` should be a "successive override," but the skill doesn't read it and the Skill-tool args never reach the forked skill, so the override is inert. Fix-shape: (a) have the `/critic` skill read the active build plan's per-chunk `**Critic mode:**` field as an override (matching the methodology's "successive override" intent), and/or (b) fix Skill-tool args reaching the forked skill's `$ARGUMENTS`. Type: process/governance. Priority: medium. Filed from v2.0.0 Chunk 9 reflection on 2026-06-01. (reflection)
-
 - **[PR-7Q3M]** Condition PR-skill merge-flow step 7 (build-plan deletion) on whether the develop-merge is itself the release
   `effort: M · impact: M · area: pr · source: user · added: 2026-06-02 · status: open · related: BLD-3X9M`
 
   Under the v2.0.0 gitflow batched-release model, release-bound work merges feature→develop ahead of the develop→main release, where release-checklist step 4 runs `regen-views` ON the build plan to flip its Status checkboxes. Deleting the plan (and clearing `active_build_plan`) at develop-merge time leaves the release nothing to regenerate. The PR skill's merge-flow step 7 ("delete the build plan after merge") currently assumes the old develop-merge=release model. Fix: branch step 7 — develop-merge that ships now → delete; develop-merge ahead of a batched develop→main release → retain plan + `active_build_plan` pointer until the release flips the change-log to shipped. Discovered v2.0.0 PR #49. See `learnings.md` "Release-bound work merged feature→develop under gitflow" and `docs/release-process.md`. (user)
-
-- **[MIG-8C3V]** migrate's CLAUDE.md transform leaves a double blank line at the top of the migrated file
-  `effort: S · impact: S · area: migration · source: user · added: 2026-06-02 · status: open`
-
-  When `apply_claude_anchor` strips the framework generator comments via `_drop_generator_comments` (`lib/migrate_plugin.py`), it removes the comment lines but leaves the blank line that preceded them adjacent to the blank line that followed, producing two consecutive blank lines between the H1 title and the first product section. Cosmetic only (markdown collapses it on render), zero semantic impact, but it's a wart in a diff meant to be pristine. Found during the v2.0.0 1.x→2.x migration acceptance test against ../discodon (2026-06-02). Fix: collapse 3+ consecutive newlines to 2 in the assembled CLAUDE.md, or drop blank lines left adjacent to removed generator comments. Low priority / trivial. (user)
-
 
 ## Promoted
 
@@ -260,6 +313,129 @@ _None._
 
 ## Archive
 
+
+- **[TST-6V2N]** test-evidence freshness gate reads `.test-evidence.json` but the plugin ships no command to WRITE it
+  `effort: M · impact: M · area: tests · source: user · added: 2026-06-04 · status: shipped · closed-by: #60 (72c4081, develop) · related: TST-5W1J · reviewed: 2026-06-04`
+
+  Filed by a Hallucinote session (`incoming-bugs/test-evidence-gate-reads-a-file-the-plugin-doesnt-write.md`)
+  and **confirmed firsthand** in roi-batch-2: the plugin has a READER (`cmd_test_status` freshness check +
+  the cumulative-Critic staleness flag + `cmd_validate_evidence` schema check) but NO command that RUNS the
+  suite and PRODUCES `.test-evidence.json` (timestamp + `git_sha` + passed/failed/skipped/duration + the
+  F4a fields). `bin/test-reference-verify` writes only the F4a half (`changes_referenced`/`coverage_level`)
+  via `--merge-into`; nothing writes the pytest half. Under the retired file-sync model `product-hook`
+  wrote it; post-plugin-migration it's a reader without a writer. roi-batch-2 had to hand-author the
+  passed/failed/git_sha/timestamp JSON and manually merge F4a — exactly the friction the prior roi-batch
+  handoff flagged ("no automated test-evidence writer is wired up"). Hallucinote improvises with a local
+  `tools/stamp_evidence_sha.py` shim; every product repo reinvents this. Worse, the gate's `git_sha` check
+  is satisfiable by a post-commit stamp over STALE counts — nothing ties the recorded counts to a real run.
+  Fix-shape: add a `prawduct-hook test-evidence record [-- <pytest args>]` subcommand that runs (or wraps)
+  the suite, captures real `passed/failed/skipped/duration`, stamps `git_sha = HEAD` + ISO timestamp, calls
+  `test-reference-verify --merge-into` for the F4a half, and writes atomically — so the freshness gate
+  judges output the plugin itself produced + ties counts to an actual run. Watch the pytest-count parse
+  (no native JSON without a plugin; parse the summary line or use exit-code + `--json-report`). Until then,
+  ship the sha-stamp+schema as a documented helper so repos don't each reinvent it. Filed 2026-06-04. (user)
+
+- **[VWS-3K7P]** Validate change-log `status=` values + reconcile views.py docstring
+  `effort: M · impact: M · area: views · source: janitor · added: 2026-06-04 · status: shipped · closed-by: #59 (a91d156, develop) · reviewed: 2026-06-04`
+
+  lib/views.py parse_tag_line accepts ANY status= string; only `status=shipped` flips checkboxes, so a typo (e.g. `status=shippd`) silently never flips and emits no warning — a real release-process footgun. Also the views.py module docstring (~line 19) lists status values as `shipped|in-progress|deferred` but the actual convention (docs/release-process.md, learnings.md, roi-batch entry) uses `merged` for the release-pending intermediate; in-progress/deferred are not emitted today. Fix-shape: add a pure `validate_status_values(entries) -> list[str]` helper in views.py recognizing {shipped, merged} (warn on others) and have bin/prawduct-hook cmd_regen_views print the warnings; sync the docstring to {shipped, merged}; never change the flip rule (only shipped flips). + tests. The DOC half (defining the enum in release-process.md) already shipped in a28ccaa; this is the code half. (janitor)
+
+- **[STH-2J9F]** regen-views returns exit 0 on ImportError (silent degradation)
+  `effort: S · impact: M · area: stop-hook · source: janitor · added: 2026-06-04 · status: shipped · closed-by: #59 (a91d156, develop) · reviewed: 2026-06-04`
+
+  bin/prawduct-hook cmd_regen_views (~line 3673-3683) catches `from lib import views` ImportError, prints a NOTE, and returns 0 — but it is a state-mutating command, and other mutating commands (accept-operator-verification, verify-operator-verification) return 1 on ImportError per the honest-failure pattern. A user on a broken install sees exit 0 and assumes views regenerated. Fix-shape: return 1 for ImportError, keep 0 for the disabled-by-config path. + test. (janitor)
+
+- **[STH-6B4R]** Gate freshness timestamp comparison is lexicographic / tie-ambiguous
+  `effort: M · impact: M · area: stop-hook · source: janitor · added: 2026-06-04 · status: shipped · closed-by: #59 (a91d156, develop) · reviewed: 2026-06-04`
+
+  The stop-hook Critic gate (bin/prawduct-hook ~2579-2594) and check-cumulative-critic (~3616-3627) compare ISO-8601 string mtimes (`.session-start` vs findings mtime). Same-second ties are ambiguous and the precision contract is undocumented/untested. Fix-shape: format both sides to identical %Y-%m-%dT%H:%M:%SZ precision and TEST the tie case (findings_mtime == session_start must be rejected as not-fresh), or switch to numeric epoch seconds. Document the tie-breaking rule. (janitor)
+
+- **[TST-7Q3D]** Stop-gate regression coverage gaps (verify-resolutions, trivial-fileset, waiver unknown-key)
+  `effort: M · impact: M · area: tests · source: janitor · added: 2026-06-04 · status: shipped · closed-by: #59 (a91d156, develop) · reviewed: 2026-06-04`
+
+  TestPluginStopGate is missing three regression cases: (a) verify-resolutions mode out-of-scope file blocking — findings with files_reviewed=[a.py], diff modifies [a.py,b.py] -> assert exit 2 out-of-scope (bin/prawduct-hook ~2198); (b) Type: trivial chunk modifying files outside the allowed bounds -> assert exit 2 fileset reason (~2536-2564); (c) gate-waiver unknown key -> assert stderr diagnostic WITHOUT blocking (~2438-2447). All test-only, no runtime change. (janitor)
+
+- **[TST-4H8M]** Unit coverage for migrate `_collapse_blank_runs` edge cases
+  `effort: S · impact: S · area: tests · source: janitor · added: 2026-06-04 · status: shipped · closed-by: #59 (a91d156, develop) · reviewed: 2026-06-04`
+
+  lib/migrate_plugin.py _collapse_blank_runs (~264-273, added by MIG-8C3V) has no dedicated unit tests for 3/4/5/7+ consecutive newlines, only-newlines, empty string, or while-loop convergence (e.g. `a\n\n\nb\n\n\nc` -> `a\n\nb\n\nc`). Currently only covered indirectly via the end-to-end migrate test. Add a TestCollapseBlankRuns class. (janitor)
+
+- **[VWS-8M2Q]** Harden lib/views.py tag/frontmatter parsers (quote-in-chunk-id, unclosed HTML comment)
+  `effort: S · impact: S · area: views · source: janitor · added: 2026-06-04 · status: shipped · closed-by: #59 (a91d156, develop) · reviewed: 2026-06-04`
+
+  Two low-impact parser corners in lib/views.py: (a) chunk IDs from parse_tag_line are quoted verbatim into scope_rollups YAML (~368-384) without escaping — a chunk id containing a quote (malformed tag) produces unparseable YAML; CHUNK_LINE_RE guards the build-plan file but not tag-line input. (b) _parse_build_plan_frontmatter_scope (~165-170) silently treats an UNCLOSED HTML comment block as missing frontmatter (returns (False,None)) rather than flagging it; the v1.5.1 R5 'explicit malformed-frontmatter test' was never added. Fix-shape: validate/escape chunk IDs (or yaml.safe_dump); raise or explicitly document unclosed-comment leniency + add the malformed-frontmatter test. (janitor)
+
+- **[ADV-9K2T]** advisory_store read/write failures degrade silently (no corruption surfacing)
+  `effort: M · impact: M · area: advisory · source: janitor · added: 2026-06-04 · status: shipped · closed-by: #59 (a91d156, develop) · reviewed: 2026-06-04`
+
+  lib/advisory_store.py best-effort read/write falls back to safe defaults on any failure, so a corrupted `.advisories.json` is silently reset with no signal — the user never learns their advisory state was lost. Fix-shape: on a parse/read failure, drop a `.advisories.json.corrupt` sentinel (or log) so corruption is surfaced on next session start for user-initiated recovery, instead of silently swallowed. (janitor)
+
+- **[STH-1W5N]** Centralize the trivial-change protected-path bounds into a documented constant
+  `effort: S · impact: S · area: stop-hook · source: janitor · added: 2026-06-04 · status: shipped · closed-by: #59 (a91d156, develop) · related: STH-4D2X · reviewed: 2026-06-04`
+
+  The Type: trivial / doc-only fileset bounds (skills/, methodology/, templates/, CLAUDE.md, test deletions, new files) are enforced inline in bin/prawduct-hook (~3120-3180) with no central spec. Extract to a documented module-level `_TRIVIAL_PROTECTED_PATHS` frozenset (lib/core.py or bin/prawduct-hook) with a rationale per path, referenced from all call sites. Relates to STH-4D2X (the `.claude/skills/` bound question). (janitor)
+
+- **[TST-1D5W]** Tighten `_validate_evidence_schema` against bool-as-int
+  `effort: S · impact: S · area: tests · source: critic · added: 2026-05-05 · status: shipped · closed-by: #59 (a91d156, develop) · reviewed: 2026-06-04`
+
+  Python's `bool` is a subclass of `int`, so `{"passed": True}` slips through `isinstance(v, int)` in the test-evidence validator. No real test runner emits booleans for these fields, so impact is theoretical, but the loophole is real. If addressed: add `or isinstance(v, bool)` exclusion to the type check (with a comment), and add a `TestValidateEvidenceSchema::test_bool_rejected_for_int_field` case. Filed from /critic NOTE on 2026-05-05. (critic)
+
+- **[CRT-3M8Q]** `/critic` ignores the build plan's per-chunk `Critic mode:` override — Skill-tool args don't thread to `$ARGUMENTS`, so a plan-mandated `final` silently runs as inferred `chunk`
+  `effort: M · impact: M · area: critic · source: reflection · added: 2026-06-01 · status: shipped · closed-by: #58 (befd69b, develop) · related: CRT-1F7N · reviewed: 2026-06-04`
+
+  The `/critic` skill ignores the build plan's per-chunk `**Critic mode:**` field, and Skill-tool args don't thread to its `$ARGUMENTS`, so a plan-mandated `final` override silently runs as inferred `chunk` mode. Discovered in v2.0.0 Chunk 9 (a destructive cutover whose plan overrode the mode to `final`): the independent Critic ran clean goals 1-3 twice but goals 4-7 were never run by the agent (`mode_chosen_by: rule-4`, not `explicit-args`). The methodology already says the per-chunk `Critic mode:` should be a "successive override," but the skill doesn't read it and the Skill-tool args never reach the forked skill, so the override is inert. Fix-shape: (a) have the `/critic` skill read the active build plan's per-chunk `**Critic mode:**` field as an override (matching the methodology's "successive override" intent), and/or (b) fix Skill-tool args reaching the forked skill's `$ARGUMENTS`. Type: process/governance. Priority: medium. Filed from v2.0.0 Chunk 9 reflection on 2026-06-01. (reflection)
+
+- **[BLD-4Q9X]** `scope: null` in build-plan frontmatter does not suppress change-log inference
+  `effort: M · impact: M · area: build-plan · source: critic · added: 2026-05-23 · status: shipped · closed-by: #58 (befd69b, develop) · reviewed: 2026-06-04`
+
+  Surfaced by v1.5.1 Chunk 05 cumulative Critic. The template ships `scope: null` as the documented opt-out form, and `_parse_build_plan_frontmatter_scope` correctly returns `None` for null literals. But `_detect_active_scope` then treats "key present with null" identically to "key absent" — it falls through to change-log inference, picking up the most-recent `scope=` tag. Result: a product with a tagged release in change-log.md (e.g. `scope=v1.5`) plus a fresh `scope: null` build-plan with new chunks 01/02/03 will see `regen-views` flip those chunks to `[x]` because v1.5's tagged entries claim chunks 01/02/03. Author's explicit-null intent ("don't filter") is overridden silently. Fix-shape: distinguish "key absent" from "key present with null/empty" in `_parse_build_plan_frontmatter_scope` (return a sentinel or change to `tuple[bool, str | None]`); have `_detect_active_scope` skip inference when key was explicitly null. Doesn't bite the framework's own v1.5.1 plan (sets `scope: v1.5.1` explicitly). Filed from /critic cumulative WARNING on 2026-05-23 (v1.5.1 Chunk 05). (critic)
+
+- **[TST-2R7H]** Add fixture coverage for `cumulative-final`/`cleanup` Type fall-through to default gate
+  `effort: S · impact: M · area: tests · source: critic · added: 2026-05-18 · status: shipped · closed-by: #58 (befd69b, develop) · reviewed: 2026-06-04`
+
+  Code analysis confirms only `designer-handoff` skips the Critic gate; the other Type values (`code`, `doc-only`, `cleanup`, `cumulative-final`) all fall through to the default gate path. But no dedicated test fixture pins this — `TestDesignerHandoffSkipsCriticGate` only covers the explicit skip branch. A refactor that accidentally broadens the skip list (e.g. `if chunk_type in {"designer-handoff", "doc-only"}`) would silently regress. Fix-shape: add a parametrized `TestNonHandoffTypesFallThroughToGate` covering the four fall-through Types. Filed from /critic cumulative NOTE on 2026-05-18. (critic)
+
+- **[MIG-8C3V]** migrate's CLAUDE.md transform leaves a double blank line at the top of the migrated file
+  `effort: S · impact: S · area: migration · source: user · added: 2026-06-02 · status: shipped · closed-by: #58 (befd69b, develop) · reviewed: 2026-06-04`
+
+  When `apply_claude_anchor` strips the framework generator comments via `_drop_generator_comments` (`lib/migrate_plugin.py`), it removes the comment lines but leaves the blank line that preceded them adjacent to the blank line that followed, producing two consecutive blank lines between the H1 title and the first product section. Cosmetic only (markdown collapses it on render), zero semantic impact, but it's a wart in a diff meant to be pristine. Found during the v2.0.0 1.x→2.x migration acceptance test against ../discodon (2026-06-02). Fix: collapse 3+ consecutive newlines to 2 in the assembled CLAUDE.md, or drop blank lines left adjacent to removed generator comments. Low priority / trivial. (user)
+
+- **[MET-4K8Z]** 8-surface cascade pattern — anticipate token-budget pressure in chunk plans
+  `effort: S · impact: M · area: methodology · source: reflection · added: 2026-05-18 · status: shipped · closed-by: #58 (befd69b, develop) · reviewed: 2026-06-04`
+
+  Chunk 05's source-of-truth guardrail threading touched 8 surfaces (product-claude / Critic SKILL / 2 critic-review / 2 pr-review / methodology / build-plan template). Same pattern Requirements Precede Code (v1.3.15) hit. When a chunk introduces a project-wide structural concept, the plan should enumerate the surface count up front so token-budget bumps (and the aggressive trim that precedes them) are anticipated, not discovered. Worth promoting to methodology after one more datapoint; until then, captured as observation. Filed from Chunk 05 reflection, 2026-05-18. (reflection)
+
+- **[MET-1T5W]** Document the `new \`path\`` forward-ref convention in methodology prose
+  `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-18 · status: shipped · closed-by: #58 (befd69b, develop) · reviewed: 2026-06-04`
+
+  `verify-chunk-refs` (F3) supports `new \`path/to/file\`` syntax to mark forward-references for not-yet-created files; this is implemented, tested, and documented inside `templates/build-plan.md`'s inline HTML comment, but not in `methodology/planning.md` prose. Authors who write plans without copying the template won't know the keyword exists and will get spurious BLOCKING ref-drift findings for chunks creating new files. Fix-shape: add a one-paragraph "Forward-references" note to planning.md near the build-plan-structure section. Filed from /critic cumulative NOTE on 2026-05-18. (critic)
+
+- **[MET-8N2C]** Tighten F8 worked-example numbering language for consistency
+  `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-18 · status: shipped · closed-by: #58 (befd69b, develop) · reviewed: 2026-06-04`
+
+  `methodology/planning.md:118` describes the `verify-api` step as "the first item in its Done-when", while the worked example a few lines down uses "step 0" (`0. verify-api: ...`). Both true, but the terminology is inconsistent. Fix-shape: change line 118 to "prepended as step 0 in its Done-when (so existing step numbering is preserved across chunks with and without a foreign API)". One-line tweak. Filed from /critic cumulative NOTE on 2026-05-18. (critic)
+
+- **[MET-2D9K]** `methodology/planning.md` parallel section for the `Visual change:` build-plan field
+  `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-18 · status: shipped · closed-by: #58 (befd69b, develop) · reviewed: 2026-06-04`
+
+  F8 added a "Foreign API Verification" section to planning.md when introducing `**Foreign API:**`. F10 (Chunk 14) added `**Visual change:**` to the build-plan template with inline-comment guidance but no parallel planning.md section. The build-plan template's HTML comment is sufficient discoverability for v1.4.0; consider a v1.5 enhancement (~50 tokens) to align with the F8 precedent and pre-empt the asymmetry NOTE the Critic emitted. Filed from /critic Chunk 14 final review NOTE. (critic)
+
+- **[DOC-2W9P]** Repoint stale `tools/lib/` example paths in `documentation/` design specs to plugin-native
+  `effort: S · impact: S · area: docs · source: builder · added: 2026-06-03 · status: shipped · closed-by: #58 (befd69b, develop) · reviewed: 2026-06-04`
+
+  `documentation/post-sync-advisory-spec.md` (≈ lines 197/218/276/296/434/435) and
+  `documentation/governance-tax-followups.md` §3 still illustrate the advisory/probe layout with
+  retired file-sync paths (`tools/lib/probes/…`, `tools/product-hook`, `prawduct-setup.py`, `run_sync`).
+  The spec is still the authoritative reference for `lib/advisory_store.py`, so the illustrative paths
+  should point at `lib/advisory_store.py` / `hooks/hooks.json` / `bin/prawduct-hook`. Internal design
+  archive, not user-facing — deferred from the 2.0-rock-solid pass Wave 2. (builder)
+
+- **[ADV-3K7Q]** Namespace skill names in plugin advisory output (briefing recommended_action + dismiss hint)
+  `effort: S · impact: S · area: advisory · source: critic · added: 2026-06-03 · status: shipped · closed-by: #53 (12e03b3, v2.0.3) · reviewed: 2026-06-03`
+
+  Surfaced when the advisory-probe-at-SessionStart fix made post-sync advisories visible in plugin repos for the first time. The briefing rendered un-namespaced skill forms (`/backlog migrate`, `/prawduct-advisory dismiss`) where a plugin repo resolves `/prawduct:backlog` / `/prawduct:advisory`. info-priority/cosmetic; not a broken gate.
+
+  **Shipped (#53 — `fix(plugin): namespace all agent-facing command forms in the plugin runtime`, commit `12e03b3`, in develop/v2.0.3):** the runtime gate-message + advisory-output sweep landed. `bin/prawduct-hook` now renders `/prawduct:advisory` (0 bare `/prawduct-advisory` remain) and `/prawduct:critic`/`/prawduct:pr` in every agent-facing gate; `lib/operator_verification.py`'s `/pr create` stragglers namespaced. Pinned by `TestPluginRuntimeNamespacing` (assert-absent source-scan) + strengthened stop-gate/divergence tests. The byte-parity-lock half (`backlog_probes` → `DIVERGED_MODULES`) is moot: `lib/backlog_probes.py` and its frozen `tools/lib/` twin were both deleted in M4 (v2.0.3, Chunk 3) along with the `legacy_backlog_format_probe`, so source #1 no longer exists. The stale standalone branch `origin/fix/advisory-namespace-backlog` (single commit, same title/SHA-content as #53) was superseded by the merged PR and can be deleted. (Triage 2026-06-03 — the "do not archive until merged" hold is satisfied: the work is in HEAD.)
 
 - **[CRT-2M5P]** Critic skill `Bash(git *)` allowed-tools is too broad — permits state-mutating git verbs (checkout/stash/reset/branch)
   `effort: S · impact: M · area: critic · source: critic · added: 2026-05-23 · status: shipped · closed-by: reduce-governance-tax Chunk E · reviewed: 2026-05-29`
@@ -335,19 +511,6 @@ _None._
   Chunk 05 dogfooding raised an open question: does `status=shipped` on a change-log tag line mean "merged to mainline" (per-chunk timing — Status flips `[x]` when the chunk commits) or "in a tagged release" (wave timing — Status flips when a release entry covers it)? Current state: Chunk 05 left `[ ]` pending Wave 2 release entry. The Critic check (mismatch → WARNING) is symmetric, so either interpretation is internally consistent once chosen. Decide before Wave 2 release; document the chosen semantic in `templates/change-log.md` schema doc. Filed from Chunk 05 work, 2026-05-18. (builder)
 
   **Resolved (v2.0.0 Chunk 14, 2026-06-02):** decided as **tagged-release / wave timing** — `status=shipped` means "in a tagged release" and flips Status `[x]` only at the `develop → main` release; `status=merged` is the develop-phase intermediate that does NOT flip checkboxes. Documented in `docs/release-process.md` (release checklist + "Why the checkboxes stay `[ ]` during development") and the v2.0.0 build-plan "Checkbox model" note. (Schema-doc home moved from `templates/change-log.md` to `docs/release-process.md` under the plugin model.)
-
-- **[ADV-3K7Q]** Namespace skill names in plugin advisory output (briefing recommended_action + dismiss hint)
-  `effort: S · impact: S · area: advisory · source: critic · added: 2026-06-03 · status: open`
-
-  Surfaced when the advisory-probe-at-SessionStart fix (fix/plugin-advisory-probes-session-start) made post-sync advisories visible in plugin repos for the first time. The briefing now renders e.g. `→ Run /backlog migrate (or /prawduct-advisory dismiss <id>)` — but in a plugin repo the skills are namespaced `/prawduct:backlog` and `/prawduct:advisory`, so the un-namespaced forms are misleading/non-resolving for users.
-
-  Two sources, both currently legacy-form:
-  1. `recommended_action='/backlog migrate'` comes from lib/backlog_probes.py::legacy_backlog_format_probe — but lib/backlog_probes.py is byte-parity-locked to tools/lib/backlog_probes.py (GOVERNANCE_MODULES in test_plugin_runtime.py), and the frozen 1.x copy must stay on `/backlog` (owner directive: no 1.x edits). So it can't be edited in place.
-  2. The dismiss-hint literal `/prawduct-advisory dismiss` is in bin/prawduct-hook (plugin-native, NOT parity-locked) at the briefing's action-line construction (~line 1243).
-
-  Fix-shapes: (a) move backlog_probes to DIVERGED_MODULES (like operator_verification) and namespace the action string in the plugin copy + add the divergence-assertion test; or (b) namespace at DISPLAY time in the plugin briefing renderer (bin/prawduct-hook) via a small legacy→/prawduct: mapper applied to both recommended_action and the dismiss literal — keeps backlog_probes byte-locked. (b) is more contained and avoids touching the parity set. Do both the action and the dismiss hint together (a half-fix is incoherent). Belongs with the Chunk-13 namespace sweep (see the file-sync-removal backlog item). info-priority/cosmetic; not a broken gate. (critic)
-
-  **Implemented (branch `fix/advisory-namespace-backlog`, pending merge — do not archive until merged):** Took fix-shape (a) for source #1 — moved `backlog_probes` from `GOVERNANCE_MODULES` to `DIVERGED_MODULES`; the plugin copy renders `/prawduct:backlog migrate`, the frozen `tools/lib/` copy is unchanged; added a per-module `DIVERGENCE_EXPECTATIONS` map to the parity test. Namespaced source #2 — the `/prawduct-advisory` dismiss/list hints in `bin/prawduct-hook` → `/prawduct:advisory`. While sweeping the renderer the Critic surfaced three more bare hints in the same `assemble_session_briefing` (backlog-count, learnings, template/janitor) — all now `/prawduct:*`; the file-sync `tools/product-hook` stays frozen on the bare forms. Pinned by `test_clear_fires_legacy_backlog_advisory` (advisory action + dismiss hint) and new `test_clear_briefing_namespaces_status_hints` (status hints + non-leak of bare forms). 1809/1809 green; Critic verify-resolutions clean. **Follow-on gate-message sweep — done in this same commit:** the deferred larger surface is closed. `bin/prawduct-hook` now names `/prawduct:critic`/`/prawduct:pr` in every agent-facing gate (stop-hook Critic + PR blockers, verify-resolutions scope notes, the pr-create cumulative-Critic gate, the accept-verification rationale gate) and in its own docstrings/comments; `lib/operator_verification.py`'s 3 surviving `/pr create` stragglers are namespaced (completing the module's divergence); and the `/prawduct-advisory` docstring at `cmd_advisory` (4195) → `/prawduct:advisory`. Pinned by `TestPluginRuntimeNamespacing` (source-scan, asserts the bad forms are ABSENT) + the strengthened `test_stop_blocks_when_critic_findings_absent` + `DIVERGENCE_EXPECTATIONS[operator_verification]` forbidding bare `/pr create`. Frozen `tools/product-hook` + `tools/lib/` stay on the bare forms (owner directive). 1810/1810 green. (claude)
 
 - **[DOC-4B2W]** Namespace bare command forms in plugin-bundled teaching prose (`skills/critic/*.md`, `methodology/*.md`)
   `effort: M · impact: M · area: docs/governance · source: builder · added: 2026-06-03 · status: shipped · closed-by: M4 Chunk 1 (v2.0.3) · reviewed: 2026-06-03`
