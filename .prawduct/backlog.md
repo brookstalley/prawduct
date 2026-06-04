@@ -8,6 +8,51 @@
 ## Open
 
 
+- **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
+  `effort: L · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · related: STH-7K2A`
+
+  Filed by a Hallucinote session (`incoming-bugs/stop-gate-blocks-on-in-flight-background-work.md`) and
+  **confirmed firsthand** in the roi-batch-2 session: the `critic-review` + `reflection` Stop gates fire
+  on "tracked files changed, no Critic/reflection yet" with NO awareness of in-flight background work.
+  While a background `Workflow`/`Task` is still generating the diff, ending the turn (the natural thing
+  while awaiting an async run) trips the block, and every subsequent yield re-fires it until the job
+  completes (roi-batch-2 absorbed ~15 block-loops over the ~12-min HOOK lane). The two available
+  outcomes both misfit: SPIN (absorb a block every turn) or WAIVE — but `.gates-waived` means "cannot be
+  satisfied THIS session" (`docs/waivers.md`), which is FALSE here (the gate WILL be satisfied minutes
+  later), so waiving overloads the semantics and pollutes the archive with a "can't satisfy" reason for
+  work that was satisfied. Distinct from [STH-7K2A] (a same-signature loop COUNTER that escalates/
+  downgrades after N fires): this is about *deferral when a live tracked job exists*, not loop-counting —
+  though a unified design could cover both. Remediation options (from the report): (1) background-aware
+  deferral — before blocking, the Stop hook checks for a live tracked background job (workflow run dir /
+  task registry) and DEFERS, re-running the gate on the next Stop after completion; (2) a first-class
+  `.gates-deferred` state (reason + expected-completion) distinct from a waiver, so the archive records
+  "deferred pending async run"; (3) minimal — sanction an in-flight-work waiver reason-prefix in
+  `docs/waivers.md` to stop the semantic overload. Open design problem: the Stop hook is a subprocess and
+  has no guaranteed handle on "is a Workflow still running" — the detection signal (a live workflow run
+  dir under the session dir?) is harness-version-dependent and needs verification before (1) is viable;
+  (3) is the cheap, safe floor. Filed 2026-06-04. (user)
+
+- **[TST-6V2N]** test-evidence freshness gate reads `.test-evidence.json` but the plugin ships no command to WRITE it
+  `effort: M · impact: M · area: tests · source: user · added: 2026-06-04 · status: open · related: TST-5W1J`
+
+  Filed by a Hallucinote session (`incoming-bugs/test-evidence-gate-reads-a-file-the-plugin-doesnt-write.md`)
+  and **confirmed firsthand** in roi-batch-2: the plugin has a READER (`cmd_test_status` freshness check +
+  the cumulative-Critic staleness flag + `cmd_validate_evidence` schema check) but NO command that RUNS the
+  suite and PRODUCES `.test-evidence.json` (timestamp + `git_sha` + passed/failed/skipped/duration + the
+  F4a fields). `bin/test-reference-verify` writes only the F4a half (`changes_referenced`/`coverage_level`)
+  via `--merge-into`; nothing writes the pytest half. Under the retired file-sync model `product-hook`
+  wrote it; post-plugin-migration it's a reader without a writer. roi-batch-2 had to hand-author the
+  passed/failed/git_sha/timestamp JSON and manually merge F4a — exactly the friction the prior roi-batch
+  handoff flagged ("no automated test-evidence writer is wired up"). Hallucinote improvises with a local
+  `tools/stamp_evidence_sha.py` shim; every product repo reinvents this. Worse, the gate's `git_sha` check
+  is satisfiable by a post-commit stamp over STALE counts — nothing ties the recorded counts to a real run.
+  Fix-shape: add a `prawduct-hook test-evidence record [-- <pytest args>]` subcommand that runs (or wraps)
+  the suite, captures real `passed/failed/skipped/duration`, stamps `git_sha = HEAD` + ISO timestamp, calls
+  `test-reference-verify --merge-into` for the F4a half, and writes atomically — so the freshness gate
+  judges output the plugin itself produced + ties counts to an actual run. Watch the pytest-count parse
+  (no native JSON without a plugin; parse the summary line or use exit-code + `--json-report`). Until then,
+  ship the sha-stamp+schema as a documented helper so repos don't each reinvent it. Filed 2026-06-04. (user)
+
 - **[BLD-7P3K]** Guard test: assert the active build plan's chunk headings parse (fail loud on heading-format drift)
   `effort: S · impact: M · area: build-plan · source: critic · added: 2026-06-04 · status: open · related: VWS-3K7P`
 
