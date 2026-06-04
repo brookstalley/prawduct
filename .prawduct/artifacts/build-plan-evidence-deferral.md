@@ -44,7 +44,7 @@ N/A — existing repo. Test runner: `python3 -m pytest`.
 ## Project Structure
 
 N/A — edits land in `bin/prawduct-hook` (new `cmd_test_evidence` + dispatch), `tests/`,
-`docs/waivers.md`, `.prawduct/backlog.md` (STH-3W7F design update).
+`methodology/building.md` (STH-3W7F floor), `.prawduct/backlog.md` (STH-3W7F design update).
 
 ## Build Chunks
 
