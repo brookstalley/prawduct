@@ -466,9 +466,10 @@ views_enabled: true
 # roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
 # change-log entries are status=shipped and regen-views flipped each plan's
 # ## Status checkboxes to [x] (run once per scope, the REL-4T8N friction).
-# No release-pending plans remain — the pointer is cleared (unset → falls back
-# to artifacts/build-plan.md). The next in-progress plan sets it again.
-active_build_plan:
+# release-tooling (2026-06-04) is now the in-progress plan — REL-4T8N (both
+# symptoms) bundled with BLD-8F2Q, PR-7Q3M, TST-9K4W. The pointer is retained
+# until that work ships at a develop→main release (per PR step-7, Chunk 04).
+active_build_plan: artifacts/build-plan-release-tooling.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

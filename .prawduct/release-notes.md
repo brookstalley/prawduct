@@ -7,11 +7,29 @@
 
 ## v2.0.5
 
+### cleanup-batch
+
 **Entry:** 2026-06-04: cleanup-batch — 6 parallel backlog fixes (refactor/perf/test + critic/pr/methodology docs) (shipped v2.0.5)
+
+**Chunks shipped:** 01, 02, 03, 04, 05, 06
+
+### evidence-deferral
+
+**Entry:** 2026-06-04: evidence-deferral — test-evidence writer + stop-gate-vs-background-work floor (shipped v2.0.5)
+
+**Chunks shipped:** 01, 02
+
+### roi-batch-2
+
+**Entry:** 2026-06-04: roi-batch-2 — 9 ROI backlog fixes (views/hook/advisory hardening + tests) (shipped v2.0.5)
 
 **Chunks shipped:** 01, 02, 03, 04, 05, 06, 07, 08, 09
 
-**Scope:** cleanup-batch
+### roi-batch
+
+**Entry:** 2026-06-04: roi-batch — 9 ROI backlog fixes (CRT/BLD/TST/MIG + docs) (shipped v2.0.5)
+
+**Chunks shipped:** 01, 02, 03, 04, 05
 
 See `.prawduct/change-log.md` for full details.
 

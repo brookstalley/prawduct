@@ -1022,6 +1022,8 @@ class TestBuildReleaseNotesView:
         assert "**Chunks shipped:** 00, 01, 02" in out
         assert "**Scope:** v1.4" in out
         assert "2026-05-18: v1.4 Wave 1" in out  # title
+        # Single-entry release renders FLAT — no ### sub-section (byte-compatible).
+        assert "### " not in out
 
     def test_multiple_releases_preserve_changelog_order(self):
         # Change-log convention: newest first.
@@ -1037,7 +1039,10 @@ class TestBuildReleaseNotesView:
         pos_older = out.index("## v1.3.16")
         assert pos_newer < pos_older
 
-    def test_multiple_entries_same_release_merged(self):
+    def test_multiple_entries_same_release_render_separately_no_union(self):
+        # REL-4T8N: two entries share one release version but are distinct.
+        # They must render as separate sub-sections, NOT collapse into one with
+        # a union'd chunk list. (No scope= tags -> ### heading from the title.)
         change_log = (
             "## 2026-05-18: first part (v1.3.17)\n"
             "<!-- prawduct: chunks=00,01 | release=v1.3.17 | status=shipped -->\n"
@@ -1046,10 +1051,98 @@ class TestBuildReleaseNotesView:
         )
         out = views.build_release_notes_view(change_log)
         assert out is not None
-        # One section per release version.
+        # One ## section per release version; two ### sub-sections under it.
         assert out.count("## v1.3.17") == 1
-        # Chunks from both entries unioned + sorted.
-        assert "**Chunks shipped:** 00, 01, 02, 03" in out
+        assert out.count("### ") == 2
+        chunks_lines = [ln for ln in out.splitlines() if ln.startswith("**Chunks shipped:**")]
+        # Each entry keeps its OWN chunks — NOT the union.
+        assert "**Chunks shipped:** 00, 01" in chunks_lines
+        assert "**Chunks shipped:** 02, 03" in chunks_lines
+        # The mis-aggregated union must NOT appear on any single line.
+        assert all("00, 01, 02, 03" not in ln for ln in chunks_lines)
+        # No scope= -> ### heading falls back to the entry title.
+        assert "### 2026-05-18: first part (v1.3.17)" in out
+        # One shared trailer for the whole release block.
+        assert out.count("See `.prawduct/change-log.md` for full details.") == 1
+
+    def test_four_scope_batched_release_v2_0_5_regression(self):
+        # The exact v2.0.5 shape that exposed the bug: four scopes, one version.
+        change_log = (
+            "## 2026-06-04: cleanup-batch — 6 fixes (shipped v2.0.5)\n"
+            "<!-- prawduct: chunks=01,02,03,04,05,06 | release=v2.0.5 | status=shipped | scope=cleanup-batch -->\n"
+            "## 2026-06-04: evidence-deferral (shipped v2.0.5)\n"
+            "<!-- prawduct: chunks=01,02 | release=v2.0.5 | status=shipped | scope=evidence-deferral -->\n"
+            "## 2026-06-04: roi-batch-2 (shipped v2.0.5)\n"
+            "<!-- prawduct: chunks=01,02,03,04,05,06,07,08,09 | release=v2.0.5 | status=shipped | scope=roi-batch-2 -->\n"
+            "## 2026-06-04: roi-batch (shipped v2.0.5)\n"
+            "<!-- prawduct: chunks=01,02,03,04,05 | release=v2.0.5 | status=shipped | scope=roi-batch -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        assert out.count("## v2.0.5") == 1
+        for scope in ("cleanup-batch", "evidence-deferral", "roi-batch-2", "roi-batch"):
+            assert f"### {scope}" in out
+        # Change-log order preserved (cleanup-batch first).
+        assert out.index("### cleanup-batch") < out.index("### roi-batch")
+        chunks_lines = [ln for ln in out.splitlines() if ln.startswith("**Chunks shipped:**")]
+        # cleanup-batch keeps ITS 01-06, not the cross-scope union 01-09.
+        assert "**Chunks shipped:** 01, 02, 03, 04, 05, 06" in chunks_lines
+        assert "**Chunks shipped:** 01, 02" in chunks_lines  # evidence-deferral
+        assert "**Chunks shipped:** 01, 02, 03, 04, 05" in chunks_lines  # roi-batch
+        # The old union ran 01..09 under one scope — that line must not exist
+        # except as roi-batch-2's OWN legitimate 01-09.
+        union = "**Chunks shipped:** 01, 02, 03, 04, 05, 06, 07, 08, 09"
+        assert chunks_lines.count(union) == 1  # only roi-batch-2 owns 01-09
+        # One shared trailer for the whole v2.0.5 block.
+        assert out.count("See `.prawduct/change-log.md` for full details.") == 1
+
+    def test_multi_scope_idempotent(self):
+        change_log = (
+            "## 2026-06-04: a\n"
+            "<!-- prawduct: chunks=01 | release=v2 | status=shipped | scope=a -->\n"
+            "## 2026-06-04: b\n"
+            "<!-- prawduct: chunks=02 | release=v2 | status=shipped | scope=b -->\n"
+        )
+        first = views.build_release_notes_view(change_log)
+        assert first == views.build_release_notes_view(change_log)
+
+    def test_multiple_entries_same_scope_collapse_to_one_block(self):
+        # Two change-log entries share BOTH release= AND scope= (the real v1.4.0
+        # shape). They must collapse to ONE flat block with union'd chunks — NOT
+        # two identical "### v1.4" sub-headings (regression the cumulative Critic
+        # caught: scope is not unique within a release, so render groups by scope).
+        change_log = (
+            "## 2026-03-01: v1.4 wave 1 (v1.4.0)\n"
+            "<!-- prawduct: release=v1.4.0 | status=shipped | scope=v1.4 -->\n"
+            "## 2026-03-02: v1.4 wave 2 (v1.4.0)\n"
+            "<!-- prawduct: chunks=05,06 | release=v1.4.0 | status=shipped | scope=v1.4 -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        assert out.count("## v1.4.0") == 1
+        assert "### " not in out  # same scope -> single flat block, no sub-headings
+        assert "**Chunks shipped:** 05, 06" in out  # chunks union'd under one block
+        assert "**Scope:** v1.4" in out
+        assert "v1.4 wave 1" in out  # first entry's title is the block title
+
+    def test_mixed_same_scope_and_distinct_scope_in_one_release(self):
+        # A release with TWO entries of scope=a (collapse) + one entry scope=b
+        # renders exactly TWO sub-sections (### a with union'd chunks, ### b).
+        change_log = (
+            "## d1: a part 1\n"
+            "<!-- prawduct: chunks=01 | release=v3 | status=shipped | scope=a -->\n"
+            "## d2: b\n"
+            "<!-- prawduct: chunks=09 | release=v3 | status=shipped | scope=b -->\n"
+            "## d3: a part 2\n"
+            "<!-- prawduct: chunks=02 | release=v3 | status=shipped | scope=a -->\n"
+        )
+        out = views.build_release_notes_view(change_log)
+        assert out is not None
+        assert out.count("### ") == 2  # scope a (merged) + scope b
+        assert "### a" in out and "### b" in out
+        chunks_lines = [ln for ln in out.splitlines() if ln.startswith("**Chunks shipped:**")]
+        assert "**Chunks shipped:** 01, 02" in chunks_lines  # a's two entries union'd
+        assert "**Chunks shipped:** 09" in chunks_lines  # b alone
 
     def test_idempotent_against_own_output(self):
         change_log = (
@@ -1214,6 +1307,231 @@ class TestApplyRegen:
         assert (prawduct_dir / "artifacts" / "build-plan.md").read_text() == before_plan
         assert (prawduct_dir / "project-state.yaml").read_text() == before_state
         assert not (prawduct_dir / "release-notes.md").exists()
+
+
+# =============================================================================
+# Multi-scope regen (REL-4T8N): scope→plan map, scope enumeration, diagnostics,
+# and plan_regen flipping every release-pending plan in one pass.
+# =============================================================================
+
+
+def _write_scoped_plan(
+    artifacts_dir: Path, filename: str, scope: str | None, chunk_ids: list[str]
+) -> None:
+    """Write a minimal scope-tagged build plan with the given chunk lines."""
+    front = "---\nartifact: build-plan\n"
+    if scope is not None:
+        front += f"scope: {scope}\n"
+    front += "---\n\n## Status\n"
+    body = "".join(f"- [ ] Chunk {cid}: work\n" for cid in chunk_ids)
+    (artifacts_dir / filename).write_text(front + body)
+
+
+class TestBuildScopeToPlanMap:
+    def test_maps_each_scope_to_its_plan_file(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01"])
+        _write_scoped_plan(artifacts, "build-plan-beta.md", "beta", ["01"])
+        mapping = views.build_scope_to_plan_map(artifacts)
+        assert set(mapping) == {"alpha", "beta"}
+        assert mapping["alpha"].name == "build-plan-alpha.md"
+        assert mapping["beta"].name == "build-plan-beta.md"
+
+    def test_excludes_plans_without_scope_frontmatter(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01"])
+        _write_scoped_plan(artifacts, "build-plan.md", None, ["01"])  # no scope
+        (artifacts / "project-preferences.md").write_text("# prefs, not a plan\n")
+        mapping = views.build_scope_to_plan_map(artifacts)
+        assert set(mapping) == {"alpha"}
+
+    def test_duplicate_scope_keeps_first_by_sorted_filename(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "b-plan.md", "dup", ["01"])
+        _write_scoped_plan(artifacts, "a-plan.md", "dup", ["02"])
+        mapping = views.build_scope_to_plan_map(artifacts)
+        assert mapping["dup"].name == "a-plan.md"  # first by sorted filename
+
+    def test_missing_dir_returns_empty(self, tmp_path: Path):
+        assert views.build_scope_to_plan_map(tmp_path / "nope") == {}
+
+
+class TestCollectReleasePendingScopes:
+    def test_includes_shipped_and_merged_newest_first_deduped(self):
+        change_log = (
+            "## 2026-06-04: c (newest)\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=gamma -->\n"
+            "## 2026-06-03: b\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=beta -->\n"
+            "## 2026-06-02: a (dup scope=gamma)\n"
+            "<!-- prawduct: chunks=02 | status=shipped | scope=gamma -->\n"
+        )
+        scopes = views.collect_release_pending_scopes(views.parse_change_log(change_log))
+        assert scopes == ["gamma", "beta"]  # newest-first, deduped
+
+    def test_excludes_untagged_and_other_status(self):
+        change_log = (
+            "## 2026-06-04: untagged\n\nBody.\n"
+            "## 2026-06-03: in-progress\n"
+            "<!-- prawduct: chunks=01 | status=in-progress | scope=wip -->\n"
+            "## 2026-06-02: no-scope shipped\n"
+            "<!-- prawduct: chunks=01 | status=shipped -->\n"
+        )
+        scopes = views.collect_release_pending_scopes(views.parse_change_log(change_log))
+        assert scopes == []  # wip status excluded; shipped-without-scope contributes no scope
+
+
+class TestDiagnoseScopePlanCoverage:
+    def test_merged_scope_without_plan_file_warns(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        change_log = (
+            "## 2026-06-04: pending\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=orphan -->\n"
+        )
+        warnings = views.diagnose_scope_plan_coverage(change_log, artifacts)
+        assert len(warnings) == 1
+        assert "orphan" in warnings[0] and "release-pending" in warnings[0]
+
+    def test_shipped_scope_without_plan_file_is_silent(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        change_log = (
+            "## 2026-06-04: historical\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=v1.0 -->\n"
+        )
+        assert views.diagnose_scope_plan_coverage(change_log, artifacts) == []
+
+    def test_merged_scope_with_plan_file_is_clean(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "build-plan-ok.md", "ok", ["01"])
+        change_log = (
+            "## 2026-06-04: pending\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=ok -->\n"
+        )
+        assert views.diagnose_scope_plan_coverage(change_log, artifacts) == []
+
+    def test_duplicate_scope_warns(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "a-plan.md", "dup", ["01"])
+        _write_scoped_plan(artifacts, "b-plan.md", "dup", ["02"])
+        warnings = views.diagnose_scope_plan_coverage("", artifacts)
+        assert any("duplicate scope" in w and "dup" in w for w in warnings)
+
+
+class TestMultiScopePlanRegen:
+    def _prawduct_dir(self, tmp_path: Path, change_log: str) -> Path:
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text("views_enabled: true\n")
+        (prawduct_dir / "change-log.md").write_text(change_log)
+        return prawduct_dir
+
+    def test_flips_every_plan_in_one_pass_no_cross_scope_leak(self, tmp_path: Path):
+        change_log = (
+            "## 2026-06-04: alpha\n"
+            "<!-- prawduct: chunks=01,02 | release=v9 | status=shipped | scope=alpha -->\n"
+            "## 2026-06-04: beta\n"
+            "<!-- prawduct: chunks=01 | release=v9 | status=shipped | scope=beta -->\n"
+        )
+        prawduct_dir = self._prawduct_dir(tmp_path, change_log)
+        artifacts = prawduct_dir / "artifacts"
+        # Both plans CONTAIN a Chunk 02; only alpha shipped 02. beta's 02 must
+        # stay unshipped — proving the per-plan scope filter blocks leakage.
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01", "02"])
+        _write_scoped_plan(artifacts, "build-plan-beta.md", "beta", ["01", "02"])
+
+        enabled, results = views.plan_regen(prawduct_dir)
+        assert enabled is True
+        status = [r for r in results if r.name == "status"]
+        assert {r.path_relative for r in status} == {
+            "artifacts/build-plan-alpha.md",
+            "artifacts/build-plan-beta.md",
+        }
+        views.apply_regen(prawduct_dir, results)
+
+        alpha = (artifacts / "build-plan-alpha.md").read_text()
+        beta = (artifacts / "build-plan-beta.md").read_text()
+        assert "- [x] Chunk 01: work" in alpha and "- [x] Chunk 02: work" in alpha
+        assert "- [x] Chunk 01: work" in beta
+        assert "- [ ] Chunk 02: work" in beta  # NO leak from alpha's shipped 02
+
+    def test_merged_scope_plan_regenerated_but_chunks_stay_unshipped(self, tmp_path: Path):
+        change_log = (
+            "## 2026-06-04: pending\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=gamma -->\n"
+        )
+        prawduct_dir = self._prawduct_dir(tmp_path, change_log)
+        artifacts = prawduct_dir / "artifacts"
+        _write_scoped_plan(artifacts, "build-plan-gamma.md", "gamma", ["01"])
+        # Pre-mark [x] to prove a merged (not shipped) scope flips it BACK to [ ].
+        p = artifacts / "build-plan-gamma.md"
+        p.write_text(p.read_text().replace("- [ ] Chunk 01", "- [x] Chunk 01"))
+
+        _, results = views.plan_regen(prawduct_dir)
+        views.apply_regen(prawduct_dir, results)
+        assert "- [ ] Chunk 01: work" in p.read_text()  # merged does not flip to [x]
+
+    def test_scope_without_plan_file_skipped_not_fatal(self, tmp_path: Path):
+        change_log = (
+            "## 2026-06-04: alpha\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=alpha -->\n"
+            "## 2026-06-04: orphan (no plan file)\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=orphan -->\n"
+        )
+        prawduct_dir = self._prawduct_dir(tmp_path, change_log)
+        _write_scoped_plan(prawduct_dir / "artifacts", "build-plan-alpha.md", "alpha", ["01"])
+
+        enabled, results = views.plan_regen(prawduct_dir)  # must NOT raise
+        assert enabled is True
+        status_paths = {r.path_relative for r in results if r.name == "status"}
+        assert status_paths == {"artifacts/build-plan-alpha.md"}  # orphan skipped
+
+    def test_pointer_plan_regenerated_even_when_scope_not_release_pending(self, tmp_path: Path):
+        # An in-progress pinned plan (its scope NOT yet in the change-log) is
+        # still regenerated, alongside a separate release-pending scope.
+        change_log = (
+            "## 2026-06-04: shipped scope\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=alpha -->\n"
+        )
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text(
+            "views_enabled: true\n"
+            "active_build_plan: artifacts/build-plan-wip.md\n"
+        )
+        (prawduct_dir / "change-log.md").write_text(change_log)
+        artifacts = prawduct_dir / "artifacts"
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01"])
+        _write_scoped_plan(artifacts, "build-plan-wip.md", "wip", ["01"])  # not in change-log
+
+        _, results = views.plan_regen(prawduct_dir)
+        status_paths = {r.path_relative for r in results if r.name == "status"}
+        assert status_paths == {
+            "artifacts/build-plan-alpha.md",
+            "artifacts/build-plan-wip.md",
+        }
+
+    def test_idempotent_second_pass_all_status_noop(self, tmp_path: Path):
+        change_log = (
+            "## 2026-06-04: alpha\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=alpha -->\n"
+            "## 2026-06-04: beta\n"
+            "<!-- prawduct: chunks=01 | status=shipped | scope=beta -->\n"
+        )
+        prawduct_dir = self._prawduct_dir(tmp_path, change_log)
+        artifacts = prawduct_dir / "artifacts"
+        _write_scoped_plan(artifacts, "build-plan-alpha.md", "alpha", ["01"])
+        _write_scoped_plan(artifacts, "build-plan-beta.md", "beta", ["01"])
+        _, results = views.plan_regen(prawduct_dir)
+        views.apply_regen(prawduct_dir, results)
+        _, second = views.plan_regen(prawduct_dir)
+        assert all(r.action == "noop" for r in second if r.name == "status")
 
 
 # =============================================================================

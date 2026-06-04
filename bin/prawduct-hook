@@ -3057,8 +3057,9 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     modifies).
 
     Returns ``{"file_paths": [{"line_num": int, "ref": str}, ...],
-    "error": str | None}``. Symbol and backlog-ID extraction are deferred —
-    see Chunk 02 plan-vs-execution divergence (commit message).
+    "error": str | None}``. For a ``path::symbol`` token the stored ``ref`` is
+    the pre-``::`` path only (existence-checked), and the symbol is ignored —
+    symbol and backlog-ID verification remain deferred (BLD-5V8F).
     """
     result: dict = {"file_paths": [], "error": None}
     plan_path = _resolve_build_plan_path(prawduct_dir)
@@ -3115,15 +3116,22 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
         ]
         for match in _BUILD_PLAN_PATH_RE.finditer(line):
             token = match.group(1)
-            if not _looks_like_file_path(token):
+            # A `path::symbol` token (e.g. `lib/views.py::is_views_enabled`) is
+            # verified by its FILE path only — existence-check the pre-`::` part,
+            # not the whole token, so a valid file isn't reported missing
+            # (BLD-8F2Q). The symbol half stays deferred (BLD-5V8F).
+            path_part = token.split("::", 1)[0]
+            if not _looks_like_file_path(path_part):
                 continue
+            # The `new ` forward-ref exclusion keys on the token START offset,
+            # which a trailing `::symbol` does not move, so it still composes.
             if any(start == match.start(1) for start, _ in excluded_spans):
                 continue
-            key = (token, line_num)
+            key = (path_part, line_num)
             if key in seen:
                 continue
             seen.add(key)
-            result["file_paths"].append({"line_num": line_num, "ref": token})
+            result["file_paths"].append({"line_num": line_num, "ref": path_part})
     return result
 
 
@@ -3924,6 +3932,14 @@ def cmd_regen_views(project_dir: Path) -> int:
         change_log_text = (prawduct_dir / "change-log.md").read_text(encoding="utf-8")
         for warning in views.validate_status_values(
             views.parse_change_log(change_log_text)
+        ):
+            print(f"WARNING: {warning}", file=sys.stderr)
+        # Surface release-pending (status=merged) scopes with no resolvable
+        # build-plan file, and duplicate scopes across plan files — non-fatal
+        # (warn + skip), mirroring the status-typo precedent above. The regen
+        # itself silently skips an unresolvable scope (REL-4T8N multi-scope).
+        for warning in views.diagnose_scope_plan_coverage(
+            change_log_text, prawduct_dir / "artifacts"
         ):
             print(f"WARNING: {warning}", file=sys.stderr)
     except OSError:

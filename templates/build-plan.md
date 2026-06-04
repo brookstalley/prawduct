@@ -209,7 +209,9 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        preceded by the word "new" on the same line — e.g. "new
        `skills/foo/bar.md`" — to flag them as forward refs. Future-chunk
        sections (Chunk N+1, N+2, …) are never checked; forward references
-       there are fine. -->
+       there are fine. A `path::symbol` token (e.g. `lib/views.py::some_fn`) is
+       tolerated — only the pre-`::` path is existence-checked; the symbol is
+       ignored. -->
 
 - **Tests:** [Test scenarios from test-specifications that apply to this chunk]
   <!-- For medium/high-risk products, note which test levels this chunk introduces

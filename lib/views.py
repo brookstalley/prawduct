@@ -342,6 +342,112 @@ def build_status_view(
     return "\n".join(new_lines) + trailing, changes
 
 
+def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
+    """Map each frontmatter ``scope:`` to its build-plan FILE under artifacts/.
+
+    Scans ``artifacts_dir/*.md`` and records ``{scope_value: path}`` for every
+    file whose YAML frontmatter declares a non-empty ``scope:`` (parsed by
+    :func:`_parse_build_plan_frontmatter_scope`). This is the scope→FILE
+    resolver that lets ``regen-views`` regenerate every release-pending plan in
+    one pass instead of via the single ``active_build_plan`` pointer (REL-4T8N).
+
+    On a duplicate scope across two files, the first by sorted filename wins
+    (deterministic; a duplicate scope is malformed — surfaced separately by
+    :func:`diagnose_scope_plan_coverage`). Returns ``{}`` when the directory is
+    absent or holds no scope-tagged plans. Read-only.
+    """
+    result: dict[str, Path] = {}
+    if not artifacts_dir.is_dir():
+        return result
+    for path in sorted(artifacts_dir.glob("*.md")):
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        _present, scope = _parse_build_plan_frontmatter_scope(content)
+        if scope and scope not in result:
+            result[scope] = path
+    return result
+
+
+def collect_release_pending_scopes(entries: list[ChangeLogEntry]) -> list[str]:
+    """Distinct ``scope=`` values from shipped/merged entries, newest-first.
+
+    Enumerates every scope that has at least one change-log entry whose
+    ``status`` is in :data:`VALID_STATUS_VALUES` (``shipped`` or ``merged``), in
+    change-log order (newest-first by file position), de-duplicated. ``merged``
+    is the release-pending intermediate; ``shipped`` is the just-released (or
+    historical) state. Both are included so ``regen-views`` flips the right
+    plans regardless of which value the release operator used (the v2.0.5
+    release, for instance, tagged its four scopes ``status=shipped`` directly).
+    """
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for entry in entries:
+        if entry.tags.get("status") not in VALID_STATUS_VALUES:
+            continue
+        scope = entry.tags.get("scope")
+        if isinstance(scope, str) and scope and scope not in seen:
+            seen.add(scope)
+            ordered.append(scope)
+    return ordered
+
+
+def diagnose_scope_plan_coverage(
+    change_log_content: str, artifacts_dir: Path
+) -> list[str]:
+    """Warn about release-pending scopes with no plan file + duplicate scopes.
+
+    Pure diagnostic (mirrors :func:`validate_status_values`): the caller
+    (``cmd_regen_views``) prints the returned strings on stderr. Two cases:
+
+    * A ``status=merged`` (release-pending) scope with NO matching build-plan
+      file — its ``## Status`` cannot be regenerated, a real release-process
+      error. A ``status=shipped`` scope with no file is deliberately NOT flagged:
+      its plan is a retired historical artifact or predates the ``scope:``
+      frontmatter convention, so the absence is expected, not an error.
+    * Two ``artifacts/*.md`` files declaring the same ``scope:`` — ambiguous; the
+      map keeps the first by sorted filename.
+
+    Returns ``[]`` when coverage is clean.
+    """
+    warnings: list[str] = []
+    if artifacts_dir.is_dir():
+        first_seen: dict[str, str] = {}
+        for path in sorted(artifacts_dir.glob("*.md")):
+            try:
+                content = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            _present, scope = _parse_build_plan_frontmatter_scope(content)
+            if not scope:
+                continue
+            if scope in first_seen:
+                warnings.append(
+                    f"duplicate scope={scope!r}: {path.name} also declares it "
+                    f"(keeping {first_seen[scope]}); one plan is malformed."
+                )
+            else:
+                first_seen[scope] = path.name
+
+    plan_map = build_scope_to_plan_map(artifacts_dir)
+    seen: set[str] = set()
+    for entry in parse_change_log(change_log_content):
+        if entry.tags.get("status") != "merged":
+            continue
+        scope = entry.tags.get("scope")
+        if not (isinstance(scope, str) and scope) or scope in seen:
+            continue
+        seen.add(scope)
+        if scope not in plan_map:
+            warnings.append(
+                f"change-log scope={scope!r} is release-pending (status=merged) "
+                f"but has no matching build-plan file in artifacts/ — its "
+                f"## Status cannot be regenerated."
+            )
+    return warnings
+
+
 YAML_TOP_LEVEL_KEY_RE = re.compile(r"^(?P<key>[A-Za-z_][A-Za-z0-9_]*):\s*")
 
 
@@ -495,12 +601,15 @@ def build_scope_view(
 def _collect_releases(
     entries: list[ChangeLogEntry],
 ) -> list[dict[str, object]]:
-    """Aggregate shipped entries by ``release`` tag, preserving change-log order.
+    """Group shipped entries by ``release`` tag, preserving change-log order.
 
-    Returns a list of ``{release, title, chunks, scope}`` dicts in the order
-    releases first appear in the change-log (which by convention is
-    newest-first). Multiple entries sharing a release are merged; chunks union
-    and dedupe; ``title`` and ``scope`` come from the first entry seen.
+    Returns a list of ``{release, entries}`` dicts in the order releases first
+    appear in the change-log (newest-first by convention). Each release keeps a
+    LIST of its contributing entries — ``{title, chunks (sorted, de-duped),
+    scope}`` in change-log order — WITHOUT collapsing them. A batched release
+    (one version, several scopes) thus preserves every scope's own title and own
+    chunk set, instead of overwriting title/scope from the first entry seen and
+    unioning all chunks under it (the REL-4T8N mis-aggregation bug).
     """
     seen: dict[str, dict[str, object]] = {}
     order: list[str] = []
@@ -511,26 +620,23 @@ def _collect_releases(
         if not isinstance(release, str) or not release:
             continue
         if release not in seen:
-            seen[release] = {
-                "release": release,
-                "title": entry.title,
-                "chunks": set(),
-                "scope": entry.tags.get("scope")
-                if isinstance(entry.tags.get("scope"), str)
-                else None,
-            }
+            seen[release] = {"release": release, "entries": []}
             order.append(release)
         chunks = entry.tags.get("chunks")
-        if isinstance(chunks, list):
-            seen[release]["chunks"].update(
-                c for c in chunks if isinstance(c, str)
-            )
-    out: list[dict[str, object]] = []
-    for release in order:
-        rec = dict(seen[release])
-        rec["chunks"] = sorted(rec["chunks"])
-        out.append(rec)
-    return out
+        chunk_list = (
+            sorted({c for c in chunks if isinstance(c, str)})
+            if isinstance(chunks, list)
+            else []
+        )
+        scope = entry.tags.get("scope")
+        seen[release]["entries"].append(
+            {
+                "title": entry.title,
+                "chunks": chunk_list,
+                "scope": scope if isinstance(scope, str) and scope else None,
+            }
+        )
+    return [seen[release] for release in order]
 
 
 RELEASE_NOTES_HEADER = (
@@ -543,12 +649,54 @@ RELEASE_NOTES_HEADER = (
 )
 
 
+def _group_release_entries_by_scope(
+    entries: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Collapse a release's contributing entries into sub-release groups.
+
+    A "sub-release" is a distinct ``scope`` within the release: entries sharing a
+    scope MERGE (chunks union'd + sorted, first entry's title kept), so the same
+    scope never renders as two sub-sections. Scope-less entries (``scope=None``)
+    never merge — each stays its own group, keyed by title — since there is no
+    scope to disambiguate them. Groups appear in first-seen (change-log) order.
+
+    This makes the multi-scope render a function of distinct SCOPES, not raw
+    entry count, so a single scope split across two change-log entries (e.g.
+    v1.4.0's two ``scope=v1.4`` entries) collapses to one block rather than two
+    identical ``### v1.4`` headings.
+    """
+    groups: list[dict[str, object]] = []
+    by_scope: dict[str, int] = {}
+    for entry in entries:
+        scope = entry["scope"]
+        if scope is not None and scope in by_scope:
+            group = groups[by_scope[scope]]
+            group["chunks"] = sorted(set(group["chunks"]) | set(entry["chunks"]))
+            continue
+        if scope is not None:
+            by_scope[scope] = len(groups)
+        groups.append(
+            {"title": entry["title"], "chunks": list(entry["chunks"]), "scope": scope}
+        )
+    return groups
+
+
 def build_release_notes_view(change_log_content: str) -> str | None:
     """Generate release-notes.md content from release-tagged shipped entries.
 
     Returns the full desired file content, or ``None`` if no shipped+released
     entries exist (caller decides whether to create an empty placeholder or
     leave any existing file alone).
+
+    A release with a SINGLE sub-release (one scope, or one scope-less entry)
+    renders flat (``**Entry:**`` / ``**Chunks shipped:**`` / ``**Scope:**`` under
+    the ``## <release>`` heading) — byte-compatible with the historical 1:1
+    layout, including a single scope split across multiple change-log entries
+    (their chunks union under one block). A release with MULTIPLE sub-releases (a
+    batched release: one version, several distinct scopes) renders one
+    ``### <scope|title>`` sub-section per sub-release, each with its OWN chunk
+    list (NOT the union across scopes), followed by a single shared
+    ``See change-log`` trailer for the whole release (REL-4T8N).
     """
     entries = parse_change_log(change_log_content)
     releases = _collect_releases(entries)
@@ -556,13 +704,24 @@ def build_release_notes_view(change_log_content: str) -> str | None:
         return None
     out: list[str] = [RELEASE_NOTES_HEADER]
     for rec in releases:
+        contributing = _group_release_entries_by_scope(rec["entries"])  # type: ignore[arg-type]
         out.append(f"## {rec['release']}\n")
-        out.append(f"**Entry:** {rec['title']}\n")
-        chunks = rec["chunks"]
-        if chunks:
-            out.append(f"**Chunks shipped:** {', '.join(chunks)}\n")
-        if rec["scope"]:
-            out.append(f"**Scope:** {rec['scope']}\n")
+        if len(contributing) == 1:
+            entry = contributing[0]
+            out.append(f"**Entry:** {entry['title']}\n")
+            if entry["chunks"]:
+                out.append(f"**Chunks shipped:** {', '.join(entry['chunks'])}\n")
+            if entry["scope"]:
+                out.append(f"**Scope:** {entry['scope']}\n")
+        else:
+            # Batched release: one sub-section per scope, each with its own
+            # chunks. The ### heading carries the scope, so **Scope:** is omitted
+            # as redundant; the title fills in when an entry has no scope= tag.
+            for entry in contributing:
+                out.append(f"### {entry['scope'] or entry['title']}\n")
+                out.append(f"**Entry:** {entry['title']}\n")
+                if entry["chunks"]:
+                    out.append(f"**Chunks shipped:** {', '.join(entry['chunks'])}\n")
         out.append("See `.prawduct/change-log.md` for full details.\n")
     return "\n".join(out).rstrip() + "\n"
 
@@ -578,53 +737,74 @@ class ViewRegenResult:
     path_relative: str = ""  # path relative to prawduct_dir, for caller to write
 
 
-def plan_regen(prawduct_dir: Path) -> tuple[bool, list[ViewRegenResult]]:
-    """Compute what regen-views would do; do NOT write.
+def _plan_status_results(
+    prawduct_dir: Path, change_log_content: str
+) -> list[ViewRegenResult]:
+    """One status :class:`ViewRegenResult` per release-pending build plan (REL-4T8N).
 
-    Returns ``(enabled, results)``. ``enabled`` is False when views_enabled is
-    not set — in that case results is empty. Otherwise results contains one
-    entry per view (status, release-notes, scope-rollups) describing the
-    intended action and the new content to write.
+    Multi-scope model: enumerate every scope-tagged plan FILE whose scope appears
+    in the change-log as shipped/merged, regenerate each plan's ``## Status``
+    (each plan re-detects its OWN scope via :func:`build_status_view`, so chunk
+    flips never leak across scopes), and ALWAYS include the ``active_build_plan``
+    pointer's plan so an in-progress pinned plan is regenerated mid-batch. Plans
+    are de-duped by resolved path (two scopes → one file, or the pointer
+    coinciding with a scope mapping).
 
-    Callers (prawduct-hook regen-views) decide whether
-    to apply the changes.
+    Backward-compat: when no scope-tagged plan and no existing pointer/default
+    plan resolve, fall back to the historical single-plan contract — resolve via
+    :func:`resolve_build_plan_path` and raise ``FileNotFoundError`` if it is
+    missing, exactly as the pre-REL-4T8N single-plan path did.
     """
-    state_path = prawduct_dir / "project-state.yaml"
-    if not is_views_enabled(state_path):
-        return False, []
+    entries = parse_change_log(change_log_content)
+    relevant_scopes = set(collect_release_pending_scopes(entries))
+    plan_map = build_scope_to_plan_map(prawduct_dir / "artifacts")
 
-    change_log_path = prawduct_dir / "change-log.md"
-    # Resolve the active plan via the optional `active_build_plan:` pointer
-    # (supports scope-named plans); falls back to artifacts/build-plan.md.
-    build_plan_path = resolve_build_plan_path(prawduct_dir)
-    build_plan_rel = build_plan_path.relative_to(prawduct_dir).as_posix()
-    release_notes_path = prawduct_dir / "release-notes.md"
-    if not change_log_path.exists():
-        raise FileNotFoundError(f"change-log not found at {change_log_path}")
-    if not build_plan_path.exists():
-        raise FileNotFoundError(f"build-plan not found at {build_plan_path}")
+    plan_paths: list[Path] = []
+    seen: set[Path] = set()
 
-    change_log = change_log_path.read_text(encoding="utf-8")
-    build_plan = build_plan_path.read_text(encoding="utf-8")
-    project_state = state_path.read_text(encoding="utf-8")
+    def _add(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            plan_paths.append(path)
+
+    # Plans whose scope is present (shipped/merged) in the change-log.
+    for scope, path in plan_map.items():
+        if scope in relevant_scopes and path.exists():
+            _add(path)
+
+    # Always include the explicitly-pinned active plan, even when its scope is
+    # not (yet) release-pending — the in-progress plan mid-batch.
+    pointer_plan = resolve_build_plan_path(prawduct_dir)
+    if pointer_plan.exists():
+        _add(pointer_plan)
+
+    if not plan_paths:
+        # Back-compat: no scope-tagged plan resolved AND no pointer/default plan
+        # exists. Preserve today's contract — require the resolved plan.
+        fallback = resolve_build_plan_path(prawduct_dir)
+        if not fallback.exists():
+            raise FileNotFoundError(f"build-plan not found at {fallback}")
+        plan_paths.append(fallback)
 
     results: list[ViewRegenResult] = []
-
-    # --- Status view ---
-    status_new, status_changes = build_status_view(change_log, build_plan)
-    if status_new is None:
-        results.append(
-            ViewRegenResult(
-                name="status",
-                action="noop",
-                summary="Status: up to date",
-                path_relative=build_plan_rel,
+    for plan_path in plan_paths:
+        plan_rel = plan_path.relative_to(prawduct_dir).as_posix()
+        plan_content = plan_path.read_text(encoding="utf-8")
+        status_new, status_changes = build_status_view(change_log_content, plan_content)
+        if status_new is None:
+            results.append(
+                ViewRegenResult(
+                    name="status",
+                    action="noop",
+                    summary=f"Status ({plan_rel}): up to date",
+                    path_relative=plan_rel,
+                )
             )
-        )
-    else:
+            continue
         shipped = sorted(cid for cid, _, new in status_changes if new == "x")
         unshipped = sorted(cid for cid, _, new in status_changes if new == " ")
-        parts = []
+        parts: list[str] = []
         if shipped:
             parts.append(f"shipped [{', '.join(shipped)}]")
         if unshipped:
@@ -634,13 +814,50 @@ def plan_regen(prawduct_dir: Path) -> tuple[bool, list[ViewRegenResult]]:
                 name="status",
                 action="write",
                 summary=(
-                    f"Status: {len(status_changes)} chunk(s) flipped — "
+                    f"Status ({plan_rel}): {len(status_changes)} chunk(s) flipped — "
                     + "; ".join(parts)
                 ),
                 new_content=status_new,
-                path_relative=build_plan_rel,
+                path_relative=plan_rel,
             )
         )
+    return results
+
+
+def plan_regen(prawduct_dir: Path) -> tuple[bool, list[ViewRegenResult]]:
+    """Compute what regen-views would do; do NOT write.
+
+    Returns ``(enabled, results)``. ``enabled`` is False when views_enabled is
+    not set — in that case results is empty. Otherwise results contains a
+    ``status`` entry PER release-pending build plan (the multi-scope model, see
+    :func:`_plan_status_results`), followed by a single ``release-notes`` and a
+    single ``scope-rollups`` entry, each describing the intended action and the
+    new content to write.
+
+    Callers (prawduct-hook regen-views) decide whether to apply the changes, and
+    may call :func:`diagnose_scope_plan_coverage` to surface release-pending
+    scopes that have no resolvable plan file.
+    """
+    state_path = prawduct_dir / "project-state.yaml"
+    if not is_views_enabled(state_path):
+        return False, []
+
+    change_log_path = prawduct_dir / "change-log.md"
+    release_notes_path = prawduct_dir / "release-notes.md"
+    if not change_log_path.exists():
+        raise FileNotFoundError(f"change-log not found at {change_log_path}")
+
+    change_log = change_log_path.read_text(encoding="utf-8")
+    project_state = state_path.read_text(encoding="utf-8")
+
+    results: list[ViewRegenResult] = []
+
+    # --- Status view (one result per release-pending plan; REL-4T8N) ---
+    # The build plan is no longer resolved here. _plan_status_results enumerates
+    # every scope-tagged plan (driven by the change-log) plus the pinned active
+    # plan, and falls back to the single-plan resolve_build_plan_path contract
+    # (including its FileNotFoundError) when no scope-tagged plan resolves.
+    results.extend(_plan_status_results(prawduct_dir, change_log))
 
     # --- Release-notes view ---
     rn_new = build_release_notes_view(change_log)
