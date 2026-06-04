@@ -78,6 +78,25 @@ When `develop` is ready to release as `vX.Y.Z`:
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.
 
+### Change-log `status=` values
+
+Two values are meaningful to the release flow:
+
+- **`status=merged`** — the work is merged to `develop` but **not yet in a tagged release**
+  (release-pending). `regen-views` does **not** flip checkboxes for `merged` entries, so the
+  build plan's `## Status` stays `[ ]` and the `active_build_plan` pointer is retained until the
+  release (see "KEEP the build plan" in `learnings.md` and the `active_build_plan` note in
+  `project-state.yaml`). This is the develop-phase intermediate that step 3 flips to `shipped`.
+- **`status=shipped`** — the work is in a tagged release. This is the **only** value that
+  `regen-views` flips to `[x]` (in `## Status`, release notes, and `scope_rollups`).
+
+Any other `status=` value (including a typo) is currently treated like "not shipped" — the entry
+is silently ignored by the derived views with no warning. Authors editing tag lines by hand should
+double-check the spelling; a misspelled `status=shipped` will never flip its checkboxes. (The
+`lib/views.py` docstring's legacy `in-progress`/`deferred` names predate the `merged` convention
+and are not emitted today; reconciling the docstring + adding a typo-guard warning is tracked in
+the backlog.)
+
 ## Step 1 mechanics — promoting when `develop` and `main` have diverged
 
 Because releases land on `main` as **squash/single-parent** commits (not back-merged into

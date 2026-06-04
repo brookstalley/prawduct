@@ -14,7 +14,7 @@ backlog only when you decide to do it.
 
 **Observation (gate/Critic ceremony audit).** The Critic has four modes —
 `chunk`, `final`, `cumulative`, `verify-resolutions` — selected by an inference
-cascade (`tools/lib/critic_mode.py`) plus an override stack, persisted with a
+cascade (`lib/critic_mode.py`) plus an override stack, persisted with a
 "two-form verbose string" rule the stop hook validates. But:
 - `chunk` and `verify-resolutions` both run Goals 1–3.
 - `final` and `cumulative` both run all 7 goals; the only real difference is diff
