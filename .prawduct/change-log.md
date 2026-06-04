@@ -3,6 +3,19 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-04: v2.0.4 — Intentional-waiver pragma (`prawduct:allow`) + trivial-gate fix (shipped)
+
+<!-- prawduct: type=feature | release=v2.0.4 | status=shipped -->
+
+**Why:** The single-purpose `prawduct:ok-broad-except` marker needed generalizing into one durable, language-agnostic way to declare intentional principle violations; and a 2.0-readiness audit surfaced a real governance hole plus doc/coherence staleness left by the M4 file-sync cutover.
+
+**What shipped:**
+- **Waiver pragma `prawduct:allow <scope>/<rule-id> -- reason`** — a general, language-agnostic intentional-waiver mechanism generalizing `prawduct:ok-broad-except` (now `prawduct/broad-except`; legacy spelling still honored). New `lib/waivers.py` recognizer (scope-matched — no cross-waiving; mandatory reason; fail-safe), `docs/waivers.md` spec, canary wiring with a new reason-less-waiver finding, all 49 in-repo legacy usages migrated. `project/*` waivers are opaque to the framework, so a prawduct update can never break a consumer's waivers.
+- **Trivial/doc-only gate fix** — `_classify_trivial_change` bounded the deleted `agents/` path and was missing `skills/`, so a `Type: trivial` chunk could have edited the Critic's own protocol (`skills/critic/SKILL.md`) without tripping the catastrophic-blast-radius guard. Fixed test-first (12 new tests the bound never had); reason `agent-file-edited` → `skill-file-edited`.
+- **Coherence + ship-blockers** — restored the `GITIGNORE_ENTRIES`↔`_SESSION_GITIGNORED_PATHS` parity test (deleted in M4); fixed dangling refs (`operator_verification.py`, `skills/backlog/SKILL.md`); README/CLAUDE.md/pyproject staleness; backlog hygiene (Open 60→44, 16 archived).
+
+**Versioning:** patch bump (2.0.3 → 2.0.4). Additive + internal-correctness — the legacy pragma spelling is honored and the gate fix only tightens the framework's self-hosting guard, so zero behavioral change for plugin-governed consumers. The bump is the marketplace update-cache key.
+
 ## 2026-06-03: v2.0.3 — Retire the file-sync engine & strip pre-2.0 back-compat cruft (M4) (shipped)
 
 <!-- prawduct: type=refactor | release=v2.0.3 | status=shipped -->

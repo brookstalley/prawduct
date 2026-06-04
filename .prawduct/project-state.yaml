@@ -463,7 +463,7 @@ views_enabled: true
 # artifacts alongside the prior vN plans. The active plan is the waiver-pragma +
 # 2.0-rock-solid-cleanup work (Wave 1 shipped, Wave 2 in progress); clear this
 # pointer back to unset when that branch ships.
-active_build_plan: artifacts/waiver-pragma-plan.md
+active_build_plan:
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

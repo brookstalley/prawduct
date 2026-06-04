@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.4
+
+**Entry:** 2026-06-04: v2.0.4 — Intentional-waiver pragma (`prawduct:allow`) + trivial-gate fix (shipped)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.3
 
 **Entry:** 2026-06-03: v2.0.3 — Retire the file-sync engine & strip pre-2.0 back-compat cruft (M4) (shipped)
