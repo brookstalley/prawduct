@@ -256,6 +256,13 @@ class TestAgentStance:
         assert "Verify, don't guess" in digest, "digest must carry the condensed stance"
         assert "Stress-test before agreeing" in digest
 
+    def test_digest_carries_rigor_scaling(self):
+        # rigor-and-stance Chunk 03 (digest sweep): the always-on layer carries the
+        # requirements-rigor headline and routes to the full model on-demand.
+        digest = DIGEST_SRC.read_text(encoding="utf-8")
+        assert "Calibrate Rigor" in digest, "digest must route to the full rigor model"
+        assert "volatility" in digest.lower(), "digest must name the volatility driver"
+
 
 class TestCommitAttributionDefault:
     """The framework default is NO commit/PR attribution trailers, opt-in via

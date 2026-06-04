@@ -47,7 +47,9 @@ Context: Plan authored 2026-06-04. Owner-directed pivot (infra foundation judged
 shipped, 798 tests green, develop≡main). Built sequentially in the main tree (shared files +
 coherent prose — parallel worktrees would manufacture conflicts). Design validated by two research
 passes this session. Governance: full suite + `/prawduct:critic` chunk per chunk; cumulative-final
-before any PR (PR creation waits for the owner).
+before any PR (PR creation waits for the owner). Chunks 01–03 built + committed; each Critic chunk
+clean (0 blocking). 803 tests green. Owner ratified the Chunk-03 digest edit. Cumulative Critic over
+`origin/develop...HEAD` is the remaining gate before PR; PR creation waits for the owner.
 
 ## Scaffolding
 

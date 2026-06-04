@@ -10,6 +10,11 @@ by size (trivial → build + verify; small → + update artifacts; medium → + 
 review; large → discovery + chunked build + Critic per chunk) and type (feature → coverage;
 bugfix → root cause + regression test; refactor → behavior preservation; …).
 
+Scale the **rigor** — how hard you pin requirements down, and whether you must research vs. rely
+on intrinsic knowledge — to **stakes × knowledge-confidence × volatility** (fast-moving /
+post-cutoff data must be verified, not recalled); fill what you can infer and record each
+inference as a vetoable assumption. Full model: `methodology/discovery.md` "Calibrate Rigor".
+
 **Before writing ANY code against a build plan: STOP and read the build cycle via
 `/prawduct:building`.** Proceeding straight to code without it is the #1 governance failure.
 
