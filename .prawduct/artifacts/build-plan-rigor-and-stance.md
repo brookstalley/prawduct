@@ -101,8 +101,12 @@ committed and Status updated.
   the principle(s) it operationalizes, with honesty-related stances anchored to Anthropic's
   honesty-dimension taxonomy. Stance #4 references the **AskUserQuestion** tool as the decision-prompt
   mechanism; the research/verify stance generalizes to the Chunk-1 volatility trigger (kept coherent).
-- `methodology/session-digest.md`: a CONDENSED stance section (a few lines), the always-on composable
-  home (output-style would clobber consumers — verified). Condense existing digest prose to pay for it.
+- `methodology/session-digest.md`: a CONDENSED stance section (~9 one-line directives + a pointer to
+  the full doc), the always-on composable home (a `force-for-plugin` output style would clobber a
+  consumer's own style — verified). [Decision (Chunk 02): no offsetting condensation made — the digest
+  sits at ~4770/10000 chars with ample headroom and the stance section duplicates no existing prose;
+  trimming unrelated prose to "pay" would violate Scope Discipline. The always-on stance is justified
+  growth, well under the inline-spill limit.]
 - `docs/principles.md`: cross-link to `methodology/agent-stance.md`; note which principles each stance
   operationalizes (no new principles — stance is a different register: voice/communication).
 - `skills/methodology/SKILL.md`: add `agent-stance` to the topic map + `argument-hint` + read-on-demand.

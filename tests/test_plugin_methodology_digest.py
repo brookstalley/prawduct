@@ -225,6 +225,36 @@ class TestReaderSkills:
         for phase in PHASES:
             assert f"methodology/{phase}.md" in text, f"index must route to {phase}"
         assert "docs/principles.md" in text, "index must route to the principles"
+        assert "methodology/agent-stance.md" in text, "index must route to the agent stance"
+
+
+class TestAgentStance:
+    """The agent stance (rigor-and-stance Chunk 02) operationalizes the principles
+    into communication/conduct. Its canonical home is methodology/agent-stance.md;
+    the always-on session digest carries a condensed version. The digest is the
+    carrier (not a plugin Output Style) because a force-for-plugin output style
+    HARD-OVERRIDES a consumer's own style and doesn't compose, whereas the
+    SessionStart digest is unconditional AND composable (verified against the
+    Claude Code output-styles docs during design)."""
+
+    STANCE_SRC = ROOT / "methodology" / "agent-stance.md"
+
+    def test_stance_doc_exists_and_nonempty(self):
+        assert self.STANCE_SRC.is_file(), "agent-stance.md must be bundled"
+        assert self.STANCE_SRC.read_text(encoding="utf-8").strip()
+
+    def test_stance_doc_links_to_principles(self):
+        # The stance operationalizes the principles, so it must point back at them.
+        assert "principles.md" in self.STANCE_SRC.read_text(encoding="utf-8")
+
+    def test_digest_carries_condensed_stance(self):
+        # The always-on digest is the stance's reach-every-session carrier: it must
+        # point at the full doc and carry the condensed directives (tolerant
+        # substring checks, mirroring TestCommitAttributionDefault).
+        digest = DIGEST_SRC.read_text(encoding="utf-8")
+        assert "agent-stance.md" in digest, "digest must point at the full stance doc"
+        assert "Verify, don't guess" in digest, "digest must carry the condensed stance"
+        assert "Stress-test before agreeing" in digest
 
 
 class TestCommitAttributionDefault:
