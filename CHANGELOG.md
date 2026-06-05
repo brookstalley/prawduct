@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v2.0.10
+Prawduct now notices when you skipped discovery. A repo you onboard with `/prawduct:onboard` and then work on **docs-first** — writing requirements/architecture before a discovery session — used to accumulate rich product docs while `project-state.yaml` stayed empty, and the framework said nothing (its only nudge was gated on source code existing). Now the session briefing emits a **DISCOVERY NOT CAPTURED** nudge when the state is still template-default but the repo shows real product work (code, or markdown under `docs/`/`documentation/`), routing you to `/prawduct:discovery` — which gains a documented **reconciliation mode** that reads your existing docs/code and backfills `project-state.yaml` rather than re-interviewing you. Onboarding and `/prawduct:doctor` both point at it. A freshly-onboarded empty repo stays quiet. If your repo already captured discovery, you'll notice nothing.
+
 ## v2.0.9
 Governance-tooling fix (CRT-7M2D): the `/prawduct:pr` cumulative-Critic gate now judges its review record by **commit-coverage** rather than timestamp recency — it passes when the recorded review covers HEAD (or only docs changed since), and fails when real code changed since the review. This closes a correctness hole (a stale record could pass) and removes a workflow snag where every small post-review fix forced a full ~4-10 min review re-run. No change to how product builds are governed. Internal — most plugin users won't notice beyond smoother PRs.
 

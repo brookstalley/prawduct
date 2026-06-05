@@ -524,6 +524,9 @@ scope_rollups:
   cleanup-batch:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.0.5"]
+  discovery-capture-nudge:
+    chunks: ["01", "02"]
+    releases: ["v2.0.10"]
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]

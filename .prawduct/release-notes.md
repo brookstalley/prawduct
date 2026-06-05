@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.10
+
+**Entry:** 2026-06-05: discovery-capture nudge — prawduct adapts when discovery is uncaptured (shipped v2.0.10)
+
+**Chunks shipped:** 01, 02
+
+**Scope:** discovery-capture-nudge
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.9
 
 **Entry:** 2026-06-04: CRT-7M2D — cumulative-Critic gate judges commit-coverage, not mtime-recency (shipped v2.0.9)
