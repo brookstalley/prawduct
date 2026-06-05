@@ -50,6 +50,19 @@ If you can answer all three, you have enough — capture them in the build plan'
 
 This connects directly to Principle 6 (Requirements Precede Code) and Principle 20 (Infer, Confirm, Proceed). The build cycle's `Before You Build: Confidence Check` (see `methodology/building.md`) is the same pattern at the next stage — discovery framing asks "what's the problem"; the build-side check asks "are we ready to commit code to the answer?"
 
+## Reconciling an Existing or Docs-First Product
+
+Discovery doesn't always start from a conversation. A product may arrive with material already in hand — an existing codebase, or requirements / architecture / vision documents written before (or outside) a discovery session. This is a legitimate entry path: `/prawduct:onboard` scaffolds the governance skeleton, and the user then writes specs or code directly. But onboarding leaves `project-state.yaml` template-default (classification, product definition, structural characteristics all `null`), and nothing backfills it automatically. The result is a repo with rich product thinking in `docs/` and an empty source of truth — so the Critic can't calibrate rigor, `open_questions: []` is actively false, and the build gates won't engage.
+
+When you see this — the session briefing's **DISCOVERY NOT CAPTURED** nudge fires when `project-state.yaml` is still template-default but the repo shows product-definition work (code or `docs/` markdown) — discovery's job is to **reconcile**, not re-interview:
+
+1. **Read what exists first.** Requirements docs, architecture, a VISION, an existing codebase's conventions. Treat these as the user's already-stated answers — don't ask what the docs already say (that's interrogation, and it burns trust).
+2. **Backfill the source of truth.** Populate `classification` (domain, structural characteristics, risk) and `product_definition` (vision, personas, core flows, scope) from the material. Detect the six structural characteristics from the docs exactly as you would from conversation.
+3. **Reference, don't duplicate.** Where `docs/` already holds the detailed requirements or architecture, keep it as the canonical source and have `project-state.yaml` point at it — set `open_questions` to the real open questions (often already listed in the docs) rather than copying prose into YAML, which only creates a drift-prone second copy.
+4. **Confirm the inferred frame, then fill the gaps.** Surface the classification and scope you inferred for a quick veto (the `[ASSUMPTION: … ]` form from "Calibrate Rigor" below), and run normal discovery only for what the existing material genuinely leaves open.
+
+The destination is the same `project-state.yaml` that "What Discovery Produces" describes — reached by reading rather than only asking. A docs-first or brownfield product gets governed properly, and the user isn't re-interviewed about decisions they already wrote down.
+
 ## Calibrate Rigor to Stakes, Knowledge, and Volatility
 
 Risk Calibration (above) sets discovery *depth* for a new product. Within any work — a new product, a feature, a refactor — calibrate *how hard you pin down requirements and how much you research* by asking yourself three questions. Size is a proxy; these are the real drivers, and they apply even to small work.

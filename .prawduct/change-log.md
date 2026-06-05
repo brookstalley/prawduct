@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-05: discovery-capture nudge — prawduct adapts when discovery is uncaptured (shipped v2.0.10)
+
+<!-- prawduct: chunks=01,02 | type=feature | release=v2.0.10 | status=shipped | scope=discovery-capture-nudge -->
+
+**Why:** A repo onboarded via `/prawduct:onboard` and then worked on **docs-first** (or as an
+existing codebase) accrues rich product-definition work while `project-state.yaml` stays
+template-default — and prawduct never nudged toward discovery. Root cause: `cmd_clear`'s only
+"you haven't done discovery" signal (the unfilled-`project-preferences` CRITICAL) was gated on
+`has_code`, so a no-code-yet discovery/architecture phase was silent **by construction**. prawduct
+keyed on the wrong signal (*code exists*) instead of the right one (*product-definition work exists,
+in any form*). Surfaced by the sibling Scriob repo.
+
+**What shipped (via #66 → develop, then v2.0.10):**
+- `bin/prawduct-hook` `cmd_clear`: new **DISCOVERY NOT CAPTURED** session-start nudge — fires when
+  `project-state.yaml` is template-default (`classification.domain` AND `product_definition.vision`
+  both `null`) AND the repo shows product work (source code, or markdown under `docs/`/`documentation/`),
+  routing to `/prawduct:discovery`. Conservative both-null gate → "discovery never ran" alarm, not a
+  mid-discovery nag; a freshly-onboarded empty repo stays silent. Extracted a shared `_has_product_code`
+  helper (the prefs CRITICAL stays code-gated — preferences are a code-time concern).
+- `methodology/discovery.md`: new **"Reconciling an Existing or Docs-First Product"** section — read
+  existing docs/code → backfill the source of truth → reference `docs/`, don't duplicate.
+- `skills/onboard|discovery|doctor/SKILL.md`: onboard routes to `/prawduct:discovery`; discovery names
+  the reconcile entry; doctor Health Check #6 (discovery captured).
+- `.prawduct/cross-cutting-concerns.md`: new "Discovery capture" pipeline row.
+- `tests/test_discovery_capture_nudge.py` (NEW): 19 tests — first coverage for this `cmd_clear`
+  detection family; `TestTemplateContract` pins the shipped `templates/project-state.yaml` → detector
+  contract so a sentinel reformat fails loud (guards the BLD-7P3K silent-degradation class).
+
+**Validation:** end-to-end against a real `init-product` scaffold and live Scriob (whose parallel
+reconciliation flipped the detector uncaptured→silent mid-build). Covered: docs-first,
+`documentation/`-first, brownfield-code, fresh-onboard-silent, captured-silent.
+
+**Versioning:** patch bump (2.0.9 → 2.0.10). New always-on detection + methodology; product builds
+governed identically — consumers with an uncaptured-discovery repo now get nudged.
+
+**Tests:** 832 passing. Per-chunk Critic 0 findings; cumulative Critic 0 blocking / 0 warning
+(1 NOTE → BLD-2R9X filed); independent PR review 0 findings.
+
 ## 2026-06-04: CRT-7M2D — cumulative-Critic gate judges commit-coverage, not mtime-recency (shipped v2.0.9)
 
 <!-- prawduct: type=fix | release=v2.0.9 | status=shipped -->

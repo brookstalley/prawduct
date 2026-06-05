@@ -39,3 +39,25 @@ Have them run **`/prawduct:migrate`** in the target: it commits the install refe
   On first trusted open, Claude Code prompts each developer to install the marketplace + plugin (one-time, skippable).
 - Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
 - After onboarding, run **`/prawduct:doctor`** in the repo anytime to health-check the install.
+
+## Next: capture discovery
+
+Onboarding scaffolds the *governance* skeleton — it does **not** capture what you're
+building. `project-state.yaml` ships all-`null` (classification, product definition,
+structural characteristics) and `project-preferences.md` ships as a blank template. Until
+discovery fills them, governance can't calibrate rigor and the build gates can't engage —
+and once the repo shows product work, the session briefing nudges every session
+(**DISCOVERY NOT CAPTURED**).
+
+So tell the user the first thing to do in the product's own session is **`/prawduct:discovery`**:
+
+- **New / empty repo** → a normal discovery pass captures classification, product
+  definition, and preferences into `project-state.yaml`.
+- **Existing codebase, or requirements / architecture / vision docs already written** →
+  discovery runs in **reconciliation mode**: it reads what's already there and backfills
+  `project-state.yaml` (keeping `docs/` as the detailed source) rather than starting over.
+  See `methodology/discovery.md` "Reconciling an Existing or Docs-First Product".
+
+This is the seam the docs-first onboarding path slips through if it's not named: a repo can
+accrue rich requirements/architecture with an empty source-of-truth, and prawduct only
+governs what discovery has captured.
