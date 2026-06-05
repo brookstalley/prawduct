@@ -63,6 +63,16 @@ Anyone who clones the repo gets the same governance (the plugin auto-installs on
 open). Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync
 repo? `/prawduct:onboard` routes it to [`/prawduct:migrate`](documentation/MIGRATION.md).
 
+### Turn Prawduct off in a specific repo
+
+Because the plugin installs for your whole machine, its commands and hooks load in every repo you
+open. To switch it off in one repo — `/prawduct:*` commands, hooks, and banner — run
+**`/prawduct:repo-disable`**. It writes a per-repo `enabledPlugins` override (`committed` for the
+whole team, or `local` just for you), preserving your other settings; it takes effect after
+`/reload-plugins` or a restart. There's intentionally no re-enable command — once disabled, the
+plugin's own commands no longer load — so re-enable by editing the settings file's
+`enabledPlugins` back to `"prawduct@prawduct": true` (or via Claude Code's native `/plugin` menu).
+
 ## How Prawduct Works
 
 You describe what you want to build, either a net-new product or enhancements to an existing one. Prawduct scales governance to match the work:
