@@ -221,6 +221,31 @@ class TestPluginClearBriefing:
         assert "/learnings <topic>" not in result.stdout
 
 
+class TestPluginClearNonPrawductRepo:
+    """The clear/briefing SessionStart hook fires in every repo (the plugin is
+    user-scoped). In a repo with no .prawduct/ it must emit nothing and write
+    nothing — no session briefing, no project-preferences CRITICAL, no session
+    markers — mirroring cmd_stop, which already early-returns. Skills like
+    /prawduct:onboard stay available; only the always-on briefing is silenced.
+    This is the fix for the user-scoped plugin leaking governance into unrelated
+    repos.
+    """
+
+    def test_clear_silent_and_inert_without_prawduct_dir(self, tmp_path):
+        # A real codebase (has source) that never onboarded: no .prawduct/. Before
+        # the fix this printed the project-preferences CRITICAL (gated on code).
+        (tmp_path / "app.py").write_text("print('hi')\n")
+        result = run_plugin_hook("clear", tmp_path, git_status=" M app.py")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "", (
+            f"clear hook leaked into a non-Prawduct repo: {result.stdout!r}"
+        )
+        # The loud pre-fix leak specifically: the code-gated prefs CRITICAL.
+        assert "project-preferences.md" not in result.stdout
+        # Wrote nothing — no .prawduct/ scaffolded, no session markers.
+        assert not (tmp_path / ".prawduct").exists()
+
+
 class TestPluginStopGate:
     def _active_plan_repo(self, tmp_path) -> Path:
         prawduct = tmp_path / ".prawduct"

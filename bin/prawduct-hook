@@ -1898,6 +1898,14 @@ def cmd_clear(project_dir: Path) -> int:
     """Reset session state and render the session briefing (plugin runtime: no sync)."""
     prawduct_dir = get_prawduct_dir(project_dir)
 
+    # The plugin is user-scoped, so this SessionStart hook fires in every repo the
+    # user opens. A repo that never onboarded has no .prawduct/ — emit nothing and
+    # touch nothing, mirroring cmd_stop (the Stop gate). Skills like
+    # /prawduct:onboard stay available; this only silences the always-on session
+    # briefing and its session-marker side effects in non-Prawduct repos.
+    if not prawduct_dir.is_dir():
+        return 0
+
     # Check previous session's governance gates (warn, never block)
     try:
         gate_warnings = _check_previous_session_gates(project_dir)
@@ -1948,9 +1956,8 @@ def cmd_clear(project_dir: Path) -> int:
             f.unlink()
 
     # Create session start timestamp
-    if prawduct_dir.is_dir():
-        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        (prawduct_dir / ".session-start").write_text(stamp)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (prawduct_dir / ".session-start").write_text(stamp)
 
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
@@ -2028,38 +2035,35 @@ def cmd_clear(project_dir: Path) -> int:
     # any future feature probe refreshes `.advisories.json` at session start.
     # Local + fail-soft (run_sync_advisories never raises); the broad guard is
     # belt-and-suspenders so a future feature's faulty probe can't block startup.
-    if prawduct_dir.is_dir():
-        try:
-            lib_root = _plugin_root()
-            if lib_root not in sys.path:
-                sys.path.insert(0, lib_root)
-            from lib.advisory_store import run_sync_advisories  # noqa: PLC0415 — lazy keeps top-level import cheap
-            run_sync_advisories(
-                project_dir, sync_version=_plugin_manifest_version() or ""
-            )
-        except Exception as exc:  # prawduct:allow prawduct/broad-except -- advisory probes must never block session start
-            print(f"NOTE: advisory probe step skipped: {exc}", file=sys.stderr)
+    try:
+        lib_root = _plugin_root()
+        if lib_root not in sys.path:
+            sys.path.insert(0, lib_root)
+        from lib.advisory_store import run_sync_advisories  # noqa: PLC0415 — lazy keeps top-level import cheap
+        run_sync_advisories(
+            project_dir, sync_version=_plugin_manifest_version() or ""
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advisory probes must never block session start
+        print(f"NOTE: advisory probe step skipped: {exc}", file=sys.stderr)
 
     # Capture git status baseline so session-start state doesn't trigger
     # spurious stop-hook gates (no sync runs first in the plugin runtime).
-    if prawduct_dir.is_dir():
-        baseline = git_status_output(project_dir)
-        if baseline is not None:
-            (prawduct_dir / ".session-git-baseline").write_text(baseline)
+    baseline = git_status_output(project_dir)
+    if baseline is not None:
+        (prawduct_dir / ".session-git-baseline").write_text(baseline)
 
     # v5: Staleness scan + session briefing + subagent briefing
-    if prawduct_dir.is_dir():
-        try:
-            staleness = staleness_scan(project_dir)
-            briefing = assemble_session_briefing(project_dir, staleness)
-            print(briefing)
-        except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
-            print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)
+    try:
+        staleness = staleness_scan(project_dir)
+        briefing = assemble_session_briefing(project_dir, staleness)
+        print(briefing)
+    except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)
 
-        try:
-            generate_subagent_briefing(project_dir)
-        except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
-            print(f"NOTE: Subagent briefing generation failed: {e}", file=sys.stderr)
+    try:
+        generate_subagent_briefing(project_dir)
+    except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        print(f"NOTE: Subagent briefing generation failed: {e}", file=sys.stderr)
 
     return 0
 

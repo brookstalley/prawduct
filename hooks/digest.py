@@ -53,7 +53,29 @@ def read_digest(root: Path) -> str:
     return (root.joinpath(*DIGEST_RELPATH)).read_text(encoding="utf-8").strip()
 
 
+def in_prawduct_repo() -> bool:
+    """True when the consuming repo is Prawduct-governed — i.e. has a ``.prawduct/``.
+
+    The plugin is user-scoped, so this SessionStart hook fires in *every* repo the
+    user opens. The digest is product-session governance guidance; it must stay
+    silent in repos that never onboarded. This mirrors the gate the banner
+    (``hooks/banner.py``) and the Stop hook (``prawduct-hook`` ``cmd_stop``) already
+    apply — ``.prawduct/`` is the single is-this-a-Prawduct-repo marker.
+
+    The repo is ``CLAUDE_PROJECT_DIR`` (Claude Code sets it for every hook),
+    falling back to cwd for direct invocation. Read-only: only ``.is_dir()``.
+    """
+    proj = Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
+    return (proj / ".prawduct").is_dir()
+
+
 def main() -> int:
+    # Emit the governance digest only in a Prawduct-governed repo; stay silent
+    # (and write nothing) everywhere else. Without this the user-scoped plugin
+    # injects governance context into every repo the user opens (see banner.py /
+    # cmd_stop, which already gate on .prawduct/).
+    if not in_prawduct_repo():
+        return 0
     try:
         digest = read_digest(plugin_root())
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a digest failure must never break session start
