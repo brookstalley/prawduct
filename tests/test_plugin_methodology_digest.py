@@ -53,15 +53,23 @@ def _canonical_digest_copies(root: Path = ROOT) -> list[Path]:
     )
 
 
-def _run_digest(plugin_root: Path | None) -> subprocess.CompletedProcess:
+def _run_digest(
+    plugin_root: Path | None, project_dir: Path | None = None
+) -> subprocess.CompletedProcess:
     """Invoke hooks/digest.py as Claude Code would (CLAUDE_PLUGIN_ROOT set), or
     with it absent to exercise the __file__ fallback when plugin_root is None.
+
+    CLAUDE_PROJECT_DIR is set explicitly — defaulting to the plugin repo ROOT,
+    which is itself a Prawduct repo (has .prawduct/) — so the .prawduct/ repo gate
+    is deterministic regardless of the ambient environment. Pass a project_dir
+    without a .prawduct/ to exercise the non-Prawduct-repo silence path.
 
     HOME is kept outside any repo and PYTHONDONTWRITEBYTECODE=1 so the run leaves
     no caches behind (learnings: HOME=repo leaks the pyc cache into the tree).
     """
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PLUGIN_ROOT"}
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["CLAUDE_PROJECT_DIR"] = str(project_dir if project_dir is not None else ROOT)
     if plugin_root is not None:
         env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     return subprocess.run(
@@ -155,6 +163,39 @@ class TestDigestHook:
 
     def test_hook_has_python_shebang(self):
         assert DIGEST_HOOK.read_text(encoding="utf-8").startswith("#!/usr/bin/env python3")
+
+
+class TestDigestRepoGate:
+    """The plugin is user-scoped, so the digest SessionStart hook fires in every
+    repo the user opens. It must inject the governance digest ONLY in a
+    Prawduct-governed repo (one with a .prawduct/ dir) and stay silent everywhere
+    else — mirroring the banner (hooks/banner.py) and the Stop hook (cmd_stop),
+    which already gate on .prawduct/. This is the fix for the user-scoped plugin
+    leaking governance into unrelated repos.
+    """
+
+    def test_emits_in_prawduct_repo(self, tmp_path):
+        (tmp_path / ".prawduct").mkdir()
+        result = _run_digest(ROOT, project_dir=tmp_path)
+        assert result.returncode == 0, result.stderr
+        out = json.loads(result.stdout)["hookSpecificOutput"]
+        assert out["hookEventName"] == "SessionStart"
+        assert out["additionalContext"].strip()
+
+    def test_silent_in_non_prawduct_repo(self, tmp_path):
+        # No .prawduct/ -> emit nothing (no additionalContext injected), exit 0.
+        result = _run_digest(ROOT, project_dir=tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "", (
+            "digest leaked into a non-Prawduct repo — it must stay silent without .prawduct/"
+        )
+
+    def test_silent_run_writes_nothing(self, tmp_path):
+        # The gate is read-only: a silent run must not scaffold .prawduct/ or any file.
+        before = {p for p in tmp_path.rglob("*")}
+        _run_digest(ROOT, project_dir=tmp_path)
+        assert {p for p in tmp_path.rglob("*")} == before, "gate must not write to the repo"
+        assert not (tmp_path / ".prawduct").exists()
 
 
 class TestDigestWiring:
