@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-05: /prawduct:repo-disable — turn the plugin off per-repo (shipped v2.0.12)
+
+<!-- prawduct: type=feature | release=v2.0.12 | status=shipped -->
+
+**Why:** The plugin installs at **user** scope, so its commands, hooks, and banner load in every
+repo the user opens. v2.0.11 silenced the SessionStart *hooks* in repos with no `.prawduct/`, but
+the `/prawduct:*` commands and the version banner still appear everywhere. The native lever to turn
+the plugin OFF in one repo (a project/local-scope `enabledPlugins` override that beats the
+user-scope enable) required hand-editing JSON. This ships a guided, safe command for it.
+
+**Design decision — disable only, no enable:** a disabled plugin's own skills do not load, so a
+`/prawduct:repo-enable` skill could never run in the repo where it's needed (verified against the
+Claude Code plugin model). Re-enabling is therefore a documented manual edit (set the value back to
+`true` / delete the key, then `/reload-plugins`) — the disable skill and the applied CLI output both
+spell out the exact steps. Building both commands as first requested would have shipped a dead one.
+
+**What shipped (via #69 → develop, then v2.0.12):**
+- `lib/repo_toggle.py` (NEW) — `set_repo_disabled(project_dir, *, local, apply)`: idempotent shallow
+  merge of `"enabledPlugins": {"prawduct@prawduct": false}` into `.claude/settings.json` (committed)
+  or `.claude/settings.local.json` (`--local`, Claude-Code-auto-gitignored), **preserving every
+  other key** (permissions, env, hooks, sibling plugins, and `extraKnownMarketplaces` — left intact
+  so re-enabling is one line). **Aborts without writing** on malformed/non-object JSON — unlike
+  `migrate_plugin.transform_settings`, which resets to `{}` in a migration context where that's
+  acceptable; toggling a setting in a file that holds the user's permissions + install reference is
+  not. Aligns with the learnings rule that the gentle `enabledPlugins:false` lever is preferred over
+  the cascading `marketplace remove`.
+- `bin/prawduct-hook` — `cmd_repo_disable` (dry-run default · `--apply` · `--local` · `--json`) +
+  dispatch + usage; the applied output carries the take-effect-on-`/reload-plugins` caveat and the
+  manual re-enable steps so a direct CLI caller isn't stranded either.
+- `skills/repo-disable/SKILL.md` (NEW) — manual-only (`disable-model-invocation: true`),
+  `allowed-tools` scoped to `Bash(prawduct-hook repo-disable *), Read`; frames committed-vs-local
+  scope (with an onboarded-repo caution) and relays the re-enable path.
+- `tests/test_repo_disable.py` (NEW): 13 tests — merge preservation (incl. sibling plugins +
+  marketplace), idempotency, never-clobber (malformed/non-object abort), scope routing, and the CLI
+  contract that the applied output carries the re-enable guidance.
+- `README.md`: new "Turn Prawduct off in a specific repo" section.
+
+**Validation:** full suite 849 passing (+14: 13 new + the auto-parametrized skill-frontmatter
+manifest check picking up the new skill). End-to-end against scratch repos — dry-run plan, committed
+apply preserving an existing `permissions` block + sibling plugin, local-scope routing, and
+malformed-JSON abort. Per-work Critic (cumulative) 0 blocking / 0 warning / 1 note (release-prep
+reminder); independent PR review 0 findings.
+
+**Versioning:** patch bump (2.0.11 → 2.0.12). Additive new skill + subcommand; no change to how
+existing repos are governed.
+
 ## 2026-06-05: silence SessionStart hooks in non-Prawduct repos (shipped v2.0.11)
 
 <!-- prawduct: type=fix | release=v2.0.11 | status=shipped -->

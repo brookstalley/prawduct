@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.12
+
+**Entry:** 2026-06-05: /prawduct:repo-disable — turn the plugin off per-repo (shipped v2.0.12)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.11
 
 **Entry:** 2026-06-05: silence SessionStart hooks in non-Prawduct repos (shipped v2.0.11)
