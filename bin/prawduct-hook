@@ -300,6 +300,60 @@ def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
     return rel == "tools/product-hook" or rel.startswith("tools/lib/")
 
 
+# Suffixes that count as the product's own source code. Shared by the
+# project-preferences CRITICAL and the discovery-capture nudge in cmd_clear.
+_PRODUCT_CODE_SUFFIXES = (
+    ".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt",
+    ".c", ".cpp", ".h",
+)
+
+
+def _has_product_code(project_dir: Path) -> bool:
+    """True if the repo contains the product's OWN source code — not framework
+    tooling, not ``.prawduct/`` state, not vendored deps. The single definition
+    behind both the project-preferences CRITICAL and the discovery-capture nudge.
+    """
+    return any(
+        f.suffix in _PRODUCT_CODE_SUFFIXES
+        for f in project_dir.rglob("*")
+        if f.is_file()
+        and ".prawduct" not in f.parts
+        and "node_modules" not in f.parts
+        and f.name != "conftest.py"
+        and not _is_framework_tooling(f, project_dir)
+    )
+
+
+def _has_product_definition_work(project_dir: Path) -> bool:
+    """True if the repo shows deliberate product-definition work — source code OR
+    markdown under ``docs/``. Distinguishes a repo someone has started building or
+    specifying (worth a discovery nudge) from a freshly-onboarded empty repo
+    (silent). ``docs/`` is a deliberate user creation — ``init-product`` never
+    scaffolds it — so markdown there is a real "product work happened" signal.
+    """
+    if _has_product_code(project_dir):
+        return True
+    docs = project_dir / "docs"
+    if docs.is_dir():
+        return any(p.suffix == ".md" for p in docs.rglob("*") if p.is_file())
+    return False
+
+
+def _discovery_uncaptured(state_path: Path) -> bool:
+    """True if ``project-state.yaml`` still carries BOTH template sentinels for the
+    canonical discovery outputs — ``classification.domain`` and
+    ``product_definition.vision`` both ``null``. Discovery filling either one
+    clears its sentinel, so requiring BOTH is conservative: it fires only when
+    discovery clearly never ran, never mid-discovery. Mirrors the parser-free
+    substring heuristic the project-preferences unfilled check uses.
+    """
+    try:
+        content = state_path.read_text()
+    except (OSError, UnicodeDecodeError):
+        return False
+    return "\n  domain: null\n" in content and "\n  vision: null\n" in content
+
+
 # Canonical list of session files that should be gitignored, never tracked.
 # Parallel to GITIGNORE_ENTRIES in lib/core.py — the hook keeps an inline copy so
 # its top level stays import-light on the session-start hot path. The two lists
@@ -1921,20 +1975,12 @@ def cmd_clear(project_dir: Path) -> int:
             pass
 
     if prefs_missing or prefs_unfilled:
-        # Only warn if there's source code (not a brand-new project). Framework
-        # tooling (tools/product-hook, tools/lib/*.py) is infrastructure shipped
-        # by sync, NOT the product's own code — counting it would fire this
-        # CRITICAL on a freshly-initialized empty repo.
-        has_code = any(
-            f.suffix in (".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt", ".c", ".cpp", ".h")
-            for f in project_dir.rglob("*")
-            if f.is_file()
-            and ".prawduct" not in f.parts
-            and "node_modules" not in f.parts
-            and f.name != "conftest.py"
-            and not _is_framework_tooling(f, project_dir)
-        )
-        if has_code:
+        # Only warn if there's product source code (not a brand-new project).
+        # _has_product_code excludes framework tooling and .prawduct/ so a
+        # freshly-initialized empty repo doesn't trip this CRITICAL. Preferences
+        # are a code-time concern, so this stays gated on code — the discovery
+        # nudge below covers the no-code-yet (docs-first / brownfield) case.
+        if _has_product_code(project_dir):
             print(
                 "CRITICAL: You MUST create .prawduct/artifacts/project-preferences.md before doing anything else.\n"
                 "  Infer preferences from the codebase (config files, test patterns, code style, existing conventions)\n"
@@ -1942,6 +1988,30 @@ def cmd_clear(project_dir: Path) -> int:
                 "  This file is read before writing any code — it tells every session how this project's code should be written.\n"
                 "  Do this NOW, before responding to the user."
             )
+
+    # Check whether discovery was ever captured. The canonical discovery outputs
+    # — classification.domain and product_definition.vision — start as template
+    # `null` and get filled when discovery runs. If BOTH are still null but the
+    # repo shows product-definition work (code or docs/), discovery was skipped:
+    # governance can't calibrate rigor and the build gates won't engage. This is
+    # the docs-first / brownfield-onboard gap — a repo can accrue rich docs with
+    # an all-null project-state because the project-preferences CRITICAL above is
+    # gated on code, staying silent through a no-code discovery/architecture phase.
+    if (
+        state_path.is_file()
+        and _discovery_uncaptured(state_path)
+        and _has_product_definition_work(project_dir)
+    ):
+        print(
+            "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml has no classification or\n"
+            "product definition, but this repo has product work (code and/or docs/). Until\n"
+            "discovery is captured, governance can't calibrate rigor and the build gates\n"
+            "won't engage.\n"
+            "  → Run /prawduct:discovery to capture it. If requirements, architecture, or an\n"
+            "    existing codebase are already here, discovery RECONCILES them — it reads what\n"
+            "    exists and backfills classification, structural characteristics, and product\n"
+            "    definition into project-state.yaml rather than starting over."
+        )
 
     # Advisory PROBES are purely local: they read the consumer's own
     # `.prawduct/` (backlog.md, project-state.yaml), independent of any sync.
