@@ -8,6 +8,20 @@
 ## Open
 
 
+- **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: open · related: BLD-8F2Q, BLD-5V8F`
+
+  The chunk-ref parser (`bin/prawduct-hook` `_parse_build_plan_chunk_refs` / `cmd_verify_chunk_refs`)
+  treats any backticked token containing `/` as a file_path to existence-check. A glob written in
+  prose — e.g. a Tests bullet saying ``uncaptured + `docs/requirements/*.md` present`` — is captured
+  as a literal path and reported `missing-ref: docs/requirements/*.md … file does not exist`
+  (advisory; the command still exit-0'd in the discovery-capture-nudge cumulative review, but it's
+  noise on the active plan). A literal source path never contains glob metacharacters, so the fix is
+  cheap and safe: skip backticked tokens containing `*`, `?`, or `[` (glob chars) in
+  `_parse_build_plan_chunk_refs`. Same parser family as the shipped BLD-8F2Q (`path::symbol`
+  over-match); symbol/backlog-ref verification is still deferred (BLD-5V8F). Filed from the
+  discovery-capture-nudge cumulative Critic NOTE on 2026-06-05. (critic)
+
 - **[LRN-3F8K]** Reconcile the dangling sentinel on the "Framework ownership follows the write strategy" learning
   `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open`
 
