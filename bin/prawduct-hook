@@ -324,18 +324,26 @@ def _has_product_code(project_dir: Path) -> bool:
     )
 
 
+# Conventional documentation roots prawduct recognizes — CLAUDE.md (and the
+# MIG-6B0R backlog item) both name docs/ and documentation/ as real product-doc
+# trees worth keeping on deploy-to-main.
+_DOC_ROOTS = ("docs", "documentation")
+
+
 def _has_product_definition_work(project_dir: Path) -> bool:
     """True if the repo shows deliberate product-definition work — source code OR
-    markdown under ``docs/``. Distinguishes a repo someone has started building or
-    specifying (worth a discovery nudge) from a freshly-onboarded empty repo
-    (silent). ``docs/`` is a deliberate user creation — ``init-product`` never
-    scaffolds it — so markdown there is a real "product work happened" signal.
+    markdown under a documentation root (``docs/`` or ``documentation/``).
+    Distinguishes a repo someone has started building or specifying (worth a
+    discovery nudge) from a freshly-onboarded empty repo (silent). A doc root is a
+    deliberate user creation — ``init-product`` never scaffolds one — so markdown
+    there is a real "product work happened" signal.
     """
     if _has_product_code(project_dir):
         return True
-    docs = project_dir / "docs"
-    if docs.is_dir():
-        return any(p.suffix == ".md" for p in docs.rglob("*") if p.is_file())
+    for root in _DOC_ROOTS:
+        d = project_dir / root
+        if d.is_dir() and any(p.suffix == ".md" for p in d.rglob("*") if p.is_file()):
+            return True
     return False
 
 

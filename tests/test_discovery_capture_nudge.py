@@ -132,6 +132,14 @@ class TestHasProductDefinitionWork:
         (reqs / "index.md").write_text("# Requirements\n")
         assert _hook._has_product_definition_work(tmp_path) is True
 
+    def test_documentation_dir_markdown_counts(self, tmp_path):
+        # `documentation/` is the other framework-recognized doc root (CLAUDE.md /
+        # MIG-6B0R) — a docs-first product using it must trip the signal too.
+        d = tmp_path / "documentation"
+        d.mkdir()
+        (d / "vision.md").write_text("# Vision\n")
+        assert _hook._has_product_definition_work(tmp_path) is True
+
     def test_empty_repo_is_no_work(self, tmp_path):
         (tmp_path / ".prawduct").mkdir()
         assert _hook._has_product_definition_work(tmp_path) is False
@@ -147,6 +155,26 @@ class TestHasProductDefinitionWork:
 # =============================================================================
 # Wiring — cmd_clear emits (or withholds) the nudge in the briefing
 # =============================================================================
+
+
+class TestTemplateContract:
+    """The detector is a substring match against project-state.yaml sentinels.
+    Pin the SHIPPED template (what `init-product` renders) so a reformat of the
+    `domain:` / `vision:` lines fails loud HERE instead of silently disabling the
+    docs-first discovery nudge — the exact silent-degradation class of BLD-7P3K.
+    The other tests use a hand-written `_UNCAPTURED_STATE`; this one ties the
+    contract to the real file so the two can't drift apart unnoticed.
+    """
+
+    def test_shipped_template_reads_as_uncaptured(self):
+        template = _ROOT / "templates" / "project-state.yaml"
+        assert template.is_file()
+        assert _hook._discovery_uncaptured(template) is True, (
+            "templates/project-state.yaml no longer trips _discovery_uncaptured — "
+            "the domain:/vision: sentinel format changed. Update the detection in "
+            "bin/prawduct-hook (_discovery_uncaptured) to match, or the docs-first "
+            "discovery nudge silently stops firing on freshly-onboarded repos."
+        )
 
 
 class TestNudgeWiring:
