@@ -4678,6 +4678,68 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
+    """Disable the Prawduct plugin for the current repo (``/prawduct:repo-disable``).
+
+    Writes ``"enabledPlugins": {"prawduct@prawduct": false}`` into
+    ``.claude/settings.json`` (committed; default) or ``.claude/settings.local.json``
+    (``--local``; auto-gitignored), preserving every other setting. Dry-run by
+    default; ``--apply`` writes; ``--json`` emits the structured plan/result.
+
+    There is no enable counterpart: a disabled plugin's own skills do not load, so
+    re-enabling is a documented manual edit (set the value to ``true`` or delete the
+    key). Fail-safe: if the bundled lib/ cannot be imported, print a clear message
+    and return 1 rather than crashing.
+    """
+    local = "--local" in argv
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib.repo_toggle import set_repo_disabled  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "error: repo-disable could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = set_repo_disabled(project_dir, local=local, apply=apply)
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+        return 1 if "error" in result else 0
+
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    target = result["target"]
+    if result["already_disabled"]:
+        print(f"Prawduct is already disabled for this repo in {target} — nothing to do.")
+        return 0
+
+    if not apply:
+        print(
+            f'DRY RUN: would set "enabledPlugins": {{"prawduct@prawduct": false}} in '
+            f"{target} (all other settings preserved). Re-run with --apply to write it."
+        )
+        return 0
+
+    print(
+        f'Disabled Prawduct for this repo: wrote "prawduct@prawduct": false to {target}.\n'
+        "  • Takes effect after you run /reload-plugins (this session) or restart Claude Code\n"
+        "    — until then Prawduct stays active.\n"
+        "  • Once disabled, the /prawduct:* commands won't load here. To RE-ENABLE later, edit\n"
+        f'    {target}: set "prawduct@prawduct": true (or remove the line), then /reload-plugins.'
+    )
+    return 0
+
+
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear|stop|test-status|validate-evidence|test-evidence record [-- pytest args]|"
@@ -4688,7 +4750,7 @@ _USAGE = (
     "check-pr-doc-only|check-pr-trivial|regen-views|infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
-    "audit-learnings [--apply] [--json]}"
+    "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
 )
 
 
@@ -4746,6 +4808,8 @@ def main() -> int:
         return cmd_init_product(sys.argv[2:])
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
+    elif command == "repo-disable":
+        return cmd_repo_disable(project_dir, sys.argv[2:])
     else:
         print(_USAGE, file=sys.stderr)
         return 1
