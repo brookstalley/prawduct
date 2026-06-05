@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-05: silence SessionStart hooks in non-Prawduct repos (shipped v2.0.11)
+
+<!-- prawduct: type=fix | release=v2.0.11 | status=shipped -->
+
+**Why:** Prawduct installs as a **user-scoped** plugin, so its SessionStart hooks fire in every
+repo the user opens — including repos that never onboarded. The design intent was already "be
+silent where not onboarded" (`hooks/banner.py` and the Stop hook `cmd_stop` both early-return when
+there is no `.prawduct/`), but two SessionStart paths never honored it: `hooks/digest.py` injected
+the always-on governance digest unconditionally, and `cmd_clear` printed a
+`CRITICAL: create .prawduct/artifacts/project-preferences.md` in any repo with source code (the
+prefs check is gated on `_has_product_code`, not on `.prawduct/`). Net effect: opening *any*
+code repo surfaced Prawduct governance the user never asked for there. Root cause: the
+"silent in non-Prawduct repos" invariant lived in convention, not in one shared gate — the
+banner/clear/digest hooks were written at different times and the third entry point (the digest,
+plugin chunk 6) silently drifted from it. Same silent-inconsistent-invariant class as BLD-7P3K.
+
+**What shipped (via #67 → develop, then v2.0.11):**
+- `hooks/digest.py`: new `in_prawduct_repo()` gate at the top of `main()` — resolves the consuming
+  repo via `CLAUDE_PROJECT_DIR` (cwd fallback; read-only `.is_dir()`) and emits nothing without a
+  `.prawduct/`. The cwd fallback is deliberate (and Critic-confirmed): the digest only reads, so it
+  cannot cause a wrong-repo side effect, unlike `banner.py`'s marker-write which justifies its
+  no-fallback rule.
+- `bin/prawduct-hook` `cmd_clear`: early `return 0` when no `.prawduct/`, mirroring `cmd_stop`. The
+  four now-redundant inner `if prawduct_dir.is_dir():` guards collapse into that one top-of-function
+  gate (de-indented to `cmd_stop`'s flat style). Behavior-preserving for Prawduct repos.
+- `tests/test_plugin_methodology_digest.py` (`TestDigestRepoGate`) and `tests/test_plugin_runtime.py`
+  (`TestPluginClearNonPrawductRepo`): first coverage that the SessionStart hooks are silent AND inert
+  (no output, no `.prawduct/` scaffolding, no session markers) in a non-onboarded repo with code.
+  `_run_digest` now sets `CLAUDE_PROJECT_DIR` explicitly so the gate is deterministic.
+
+**Scope:** the always-on one-line version banner (`hooks/banner.py`) is intentionally retained as
+the update-visibility safety net; `/prawduct:*` skills remain registered everywhere (inert until
+invoked). Users wanting Prawduct fully disabled in a repo (commands included) set
+`"enabledPlugins": {"prawduct@prawduct": false}` in that repo's `.claude/settings.json`.
+
+**Validation:** end-to-end against scratch repos — `digest.py` and `cmd_clear` emit 0 bytes and
+create no `.prawduct/` without the marker, and render the digest/briefing with it. Independent PR
+reviewer re-ran both hooks both ways to confirm.
+
+**Versioning:** patch bump (2.0.10 → 2.0.11). Pure read-only gating of existing hooks; product
+builds in onboarded repos are governed identically.
+
+**Tests:** 835 passing (+4). Cumulative Critic 0 blocking / 0 warning / 0 note; independent PR
+review 0 blocking / 0 warning / 1 note (scope clarification — the identity banner stays on; folded
+into the PR description).
+
 ## 2026-06-05: discovery-capture nudge — prawduct adapts when discovery is uncaptured (shipped v2.0.10)
 
 <!-- prawduct: chunks=01,02 | type=feature | release=v2.0.10 | status=shipped | scope=discovery-capture-nudge -->

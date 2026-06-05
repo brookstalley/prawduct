@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.11
+
+**Entry:** 2026-06-05: silence SessionStart hooks in non-Prawduct repos (shipped v2.0.11)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.10
 
 **Entry:** 2026-06-05: discovery-capture nudge — prawduct adapts when discovery is uncaptured (shipped v2.0.10)
