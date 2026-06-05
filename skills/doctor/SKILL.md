@@ -33,10 +33,11 @@ Plugin-native — read the consumer's OWN `.prawduct/` and `.claude/` with Read 
 3. **No stale file-sync residue** — no committed `tools/product-hook`, `tools/lib/`, framework `.claude/skills/critic/`, or `.prawduct/sync-manifest.json`. (Present → migration is incomplete; recommend `/prawduct:migrate`.)
 4. **Static governance anchor** — `CLAUDE.md` contains the `PRAWDUCT:ANCHOR` marker (the thin governed-by-plugin anchor a migrated repo keeps).
 5. **Core state present** — `.prawduct/` has `project-state.yaml`, `learnings.md`, `backlog.md`, `change-log.md`, and `artifacts/`.
+6. **Discovery captured** — if the repo shows product-definition work (source code, or markdown under `docs/`), `project-state.yaml` should have `classification` and `product_definition` filled, not template-default (`domain: null` / `vision: null`). Template-default state alongside real product work means discovery was skipped — the docs-first / brownfield onboarding gap the **DISCOVERY NOT CAPTURED** session-briefing nudge also flags. Recommend **`/prawduct:discovery`** (reconciliation mode reads the existing docs/code and backfills `project-state.yaml`). A repo with no product work yet is fine — discovery comes when building starts.
 
 Classify and report:
-- **healthy**: install reference + `distribution: plugin` + no residue + core state present → "Your prawduct plugin setup is healthy."
-- **degraded**: governance works but something is off (missing anchor, a missing non-critical file) — list each with its implication and the fix.
+- **healthy**: install reference + `distribution: plugin` + no residue + core state present + discovery captured (or no product work yet) → "Your prawduct plugin setup is healthy."
+- **degraded**: governance works but something is off (missing anchor, a missing non-critical file, or discovery uncaptured despite product work) — list each with its implication and the fix.
 - **broken**: no install reference, or file-sync residue still committed — recommend `/prawduct:migrate` (or installing the plugin first).
 
 ## Enable-Gate Flow (coverage F4 / operator-verification F10)
