@@ -8,4 +8,6 @@ Read **`${CLAUDE_SKILL_DIR}/../../methodology/discovery.md`** now — the author
 
 After reading, apply it. Ask the fewest questions that most change the outcome (Principle 7 — Bring Expertise; Principle 20 — Infer, Confirm, Proceed).
 
+If the repo already has requirements / architecture / vision docs or an existing codebase but a template-default `project-state.yaml` (the **DISCOVERY NOT CAPTURED** session-briefing nudge), run discovery in **reconciliation mode** — read the existing material and backfill `project-state.yaml` rather than re-interviewing. See the guide's "Reconciling an Existing or Docs-First Product".
+
 Related on-demand guides: `/prawduct:planning`, `/prawduct:building`; the index is `/prawduct:methodology`.
