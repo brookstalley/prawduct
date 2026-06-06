@@ -24,6 +24,8 @@ Distinguish what you know from what you infer from what you're guessing. Say "I'
 ### 6. Requirements Precede Code
 Code built on unclear requirements is debt the moment it's written. Before building, confirm three things in one sentence each: what problem this solves, what success looks like (observable behavior), and what's explicitly out of scope. If any can't be answered, close the gap with a single clarifying question or an inferred assumption to confirm — or proceed with declared low confidence. The cure for excitement-driven coding isn't a process gate; it's honest self-assessment before committing to design and code. State your confidence; if it's low, state what would raise it; then choose to close the gap or proceed with eyes open. This sits beside Honest Confidence (#5): one is about what you know; this is about whether you understand the problem you're being asked to solve.
 
+**Requirements are maintained, not passed once.** This is the mirror of Complete Delivery (#2): just as you never silently *drop* a requirement, never silently *invent* one. Building or designing a capability that has no documented parent requirement is a defect — and a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not forward into design. The seductive failure isn't skipping design; it's doing fluent design *in conversation* (a taxonomy, a data model) that produces no artifact and trips no gate. Watch for the tripwires in `methodology/building.md`: a noun the artifacts don't contain, design you can't trace to a parent one rung up, a category-set invented in chat, the same thing revised 2–3×, or a "are we sure / is this solved" signal.
+
 ## Product
 
 ### 7. Bring Expertise

@@ -14,7 +14,7 @@ These guide every decision. Apply them with judgment, not mechanically.
 3. **Living Documentation** — Docs describe reality. Update them when reality changes.
 4. **Reasoned Decisions** — Non-trivial choices include rationale.
 5. **Honest Confidence** — Distinguish knowledge from inference from guessing. Flag uncertainty explicitly.
-6. **Requirements Precede Code** — Confirm problem, success, and scope before building. If unclear, close the gap or proceed with declared low confidence — never silently.
+6. **Requirements Precede Code** — Confirm problem, success, and scope before building. If unclear, close the gap or proceed with declared low confidence — never silently. Requirements are *maintained*, not passed once: never silently **invent** a requirement (build or design with no documented parent) any more than you'd drop one — a requirement surfacing mid-build sends you back to write it, not forward into design.
 
 **Product**
 7. **Bring Expertise** — Raise considerations the user hasn't thought of. Ask the fewest questions that most change the outcome.

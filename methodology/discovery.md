@@ -73,6 +73,8 @@ Risk Calibration (above) sets discovery *depth* for a new product. Within any wo
 
 Questions 2 and 3 are different gaps with different remedies — keep them separate. A knowledge gap wants more reasoning or decomposition; a volatility gap wants research. (A design can be high on both — novel *and* fast-moving.)
 
+**Re-run this when the domain expands — not just at kickoff.** A scope expansion mid-work (a new dimension the user raises, a sub-problem you uncover) resets your knowledge-confidence for the *new* surface; being confident about the original scope says nothing about the part that just appeared. Treat the new surface as its own work and re-ask the three questions — the most common way unresearched complexity enters is a mid-build expansion that inherits the original scope's (misplaced) confidence.
+
 **Research when the inputs OR the design depend on timely data.** This covers both what you build *with* and what you decide:
 
 - **Timely facts you will assert or act on** — current library/tool versions, prices, availability, recent results or scores. Verify before relying on them, almost regardless of cost: it's cheap, and asserting stale data as current is a correctness failure.

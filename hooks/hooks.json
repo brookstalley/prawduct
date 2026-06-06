@@ -30,6 +30,28 @@
             "statusMessage": "Prawduct: preparing session…"
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook\" build-index",
+            "statusMessage": "Prawduct: indexing governing artifacts…"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook\" user-prompt-submit",
+            "statusMessage": "Prawduct: checking for undocumented requirements…"
+          }
+        ]
       }
     ],
     "Stop": [
