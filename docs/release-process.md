@@ -144,6 +144,32 @@ run it **before** clearing the pointer (clearing first makes the fallback resolv
 `scope=`/`chunks=` tag (nothing for it to flip), `regen-views` still touches no plan; the
 `release-notes.md` digest self-heals on the next release's regen (or add the entry by hand).
 
+## `/prawduct:pr` is not the release vehicle
+
+The promotion above is a **manual** tree-set — do **not** drive a `develop`→`main` release with
+`/prawduct:pr`. That skill is shaped for **feature→`develop`** PRs; its Create flow now detects a
+release/integration context (current branch is `develop` or `main`) and redirects here instead of
+running its feature-PR gates (REL-8K3M).
+
+If you nonetheless reach the cumulative-Critic gate during a release — e.g. you run `prawduct-hook
+check-cumulative-critic` by hand against the release-prep commit — a non-zero exit is **expected and
+benign**, not a gate to satisfy:
+
+- **Why it fires:** release-prep necessarily touches non-`.md` files (the `version` strings in
+  `.claude-plugin/plugin.json` + `VERSION`, and the `regen-views`-regenerated `scope_rollups` in
+  `project-state.yaml`). The CRT-7M2D coverage gate only excuses a doc-only (`.md`) delta since the
+  recorded review, so these version/derived-view edits read as "code changed since review" → exit 1.
+- **Why it's benign:** the operative pre-release reviews already happened — each feature had a clean
+  cumulative Critic at its feature→`develop` merge, and the release-readiness PR reviewer ran on each
+  feature PR. The release adds no new behavior, only version bookkeeping.
+- **What to do:** nothing for this gate. Do **not** re-run `/prawduct:critic cumulative` over version
+  bumps (zero added signal — the CRT-7M2D treadmill), and do **not** write `.gates-waived` — a waiver
+  means "this gate cannot be satisfied this session," which is false here (the gate is perfectly
+  satisfiable in a feature context; it simply isn't the release's gate). The stop hook also stands
+  down on its own: release-prep clears `active_build_plan`, so its Critic gate sees no active plan.
+  The operative pre-promotion check remains the empty `git diff --stat origin/develop HEAD`
+  content-identical invariant in step 1's mechanics.
+
 ## Why the checkboxes stay `[ ]` during development
 
 Because the Status checkboxes derive from `status=shipped` change-log entries, a chunk completed

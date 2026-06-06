@@ -8,6 +8,18 @@
 ## Open
 
 
+- **[PR-2H8N]** Key the `/pr` release-promotion guard off `resolve-base` instead of hardcoded branch names
+  `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · related: REL-8K3M`
+
+  REL-8K3M's release-promotion guard in `skills/pr/SKILL.md` hardcodes `develop`/`main`/`master` to
+  recognize a release/integration context. The skill's own merge-flow (step 7) already distinguishes
+  trunk-vs-gitflow generically via `prawduct-hook resolve-base`. A repo with a custom `base_branch`
+  name (or an unusual release-surface name) would slip past the guard. Kept a NOTE during REL-8K3M
+  because the guard is judgment-admitting prose an LLM can generalize, the doc reference is already
+  present, and REL-8K3M targets prawduct's own gitflow case. Fix-shape: have the guard compare the
+  current branch to `resolve-base`'s output (the integration base) and to the release surface, rather
+  than a fixed name list. Filed from the REL-8K3M cumulative Critic NOTE on 2026-06-06. (critic)
+
 - **[WMK-1P4Q]** Work-model parent-map injection (B2) + optional `vocabulary:` frontmatter convention
   `effort: M · impact: M · area: hooks · source: critic · added: 2026-06-06 · status: open · related: work-model`
 
@@ -263,6 +275,23 @@
   `tests/test_build_plan_resolution.py::TestVerifyChunkRefsGlobPaths` (each glob char + the per-token
   case where a real path on the same line is still captured). Statusless change-log entry on-branch;
   flips to `merged` at develop-merge, `shipped` at release, then this item archives.
+
+- **[REL-8K3M]** `/pr` cumulative-Critic gate false-positives (benign exit-1) on a develop→main RELEASE promotion
+  `effort: S · impact: S · area: release · source: reflection · added: 2026-06-06 · status: in-progress · branch: fix/pr-release-redirect · related: CRT-7M2D`
+
+  **Resolved on branch (fix-shape a+b, no gate-logic change).** `skills/pr/SKILL.md` gained a
+  release-promotion guard (on `develop`/`main` → redirect to `docs/release-process.md`, don't run the
+  feature-PR gates); `docs/release-process.md` gained a "`/prawduct:pr` is not the release vehicle"
+  section explaining the benign `check-cumulative-critic` exit-1 is neither a gate to re-satisfy (the
+  CRT-7M2D treadmill) nor a waiver case. Fix-shape (c) — broadening the CRT-7M2D allowance to version/
+  derived-view files — was rejected (weakens a correct global gate to patch a context-misuse). 2 guard
+  tests in `tests/test_pr_reviewer.py::TestPrReviewSkillContent`. Change-log entry is statusless
+  on-branch (avoids the regen-views typo-guard); gains `status=merged` at feature→develop merge and
+  `status=shipped` at the develop→main release, then this item archives.
+
+  Original report: the `/prawduct:pr` Step 2 gate is feature→develop shaped and exit-1'd during the
+  v2.0.13 release because release-prep touches non-`.md` version files (version strings +
+  `regen-views`-regenerated `scope_rollups`) outside CRT-7M2D's docs-only allowance. (reflection)
 
 ## Archive
 
