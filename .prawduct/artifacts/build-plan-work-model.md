@@ -29,12 +29,16 @@ insufficient → that is the evidence that unlocks the deferred LLM classifier).
 
 ## Status
 
-- [x] Chunk 1: Catch logic (pure, no session risk). `lib/work_model_index.py` + tests, incl. the
+*Derived view (`views_enabled`): `[x]` means **shipped**. All three chunks are **built + committed** on
+`feature/work-model` (see commits + the Context below + change-log `status=in-progress`); they flip to
+`[x]` automatically when this ships via `/prawduct:pr`.*
+
+- [ ] Chunk 1: Catch logic (pure, no session risk). `lib/work_model_index.py` + tests, incl. the
   real-scriob replay. Proves/disproves the keystone before any live-hook wiring. **Critic mode:** chunk
-- [x] Chunk 2: Wiring (touches the live runtime). `prawduct-hook build-index` + `user-prompt-submit`
-  subcommands; index at the gitignored per-repo index (.prawduct/.work-model-index.json, runtime-generated) (gitignored); `hooks.json` UserPromptSubmit
-  entry + SessionStart index build; `.prawduct/`-gate + fail-soft. **Critic mode:** chunk
-- [x] Chunk 3: Prose codification. A1–A3 — principles.md + CLAUDE.md §6 mirror clause; building.md
+- [ ] Chunk 2: Wiring (touches the live runtime). `prawduct-hook build-index` + `user-prompt-submit`
+  subcommands; index at .prawduct/.work-model-index.json (gitignored, runtime-generated); `hooks.json`
+  UserPromptSubmit entry + SessionStart index build; `.prawduct/`-gate + fail-soft. **Critic mode:** chunk
+- [ ] Chunk 3: Prose codification. A1–A3 — principles.md + CLAUDE.md §6 mirror clause; building.md
   "A Requirement Surfaced Mid-Build" tripwire callout; discovery.md scope-expansion sentence;
   bidirectional session-digest rule. **Critic mode:** final
 Deferred (confidence-gated → backlog, not pending work): parent-map injection (B2) and the optional
@@ -77,7 +81,7 @@ full suite 870 green. Next: cumulative Critic + backlog the deferred parent-map.
 
 ### Chunk 2: Wiring
 - **Deliverable:** thin `cmd_build_index` / `cmd_user_prompt_submit` in `bin/prawduct-hook` wrapping the
-  lib; write/read the gitignored per-repo index (.prawduct/.work-model-index.json, runtime-generated); gitignore it; `hooks.json` UserPromptSubmit entry +
+  lib; write/read .prawduct/.work-model-index.json (gitignored, runtime-generated); `hooks.json` UserPromptSubmit entry +
   SessionStart index build. Every new hook: gate on `.prawduct/` existence + fail-soft (try/except with
   `prawduct:allow prawduct/broad-except` — mirror `digest.py`).
 - **Self-hosted-runtime caution:** these hooks govern THIS session. Verify each change doesn't disrupt

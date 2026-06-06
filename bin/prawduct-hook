@@ -4742,7 +4742,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear|stop|test-status|validate-evidence|test-evidence record [-- pytest args]|"
+    "{clear|stop|build-index|user-prompt-submit|test-status|validate-evidence|test-evidence record [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
