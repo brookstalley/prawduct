@@ -5,10 +5,9 @@
 
 ## 2026-06-06: verify-chunk-refs skips glob patterns written as prose (BLD-2R9X)
 
-<!-- prawduct: type=bugfix -->
-<!-- Statusless on-branch (no status= avoids the regen-views typo-guard, which only
-     recognizes shipped|merged). Add status=merged at the feature→develop merge, then
-     status=shipped | release=vX.Y.Z at the develop→main release. -->
+<!-- prawduct: type=bugfix | status=merged -->
+<!-- Merged to develop (release-pending) via #73. Flip status=merged → status=shipped and add
+     release=vX.Y.Z at the develop→main release. -->
 
 **Why:** The chunk-ref verifier's path detector treated any backticked token containing `/` as a
 literal file to existence-check, so a glob written in prose (e.g. a Tests bullet's
@@ -27,10 +26,9 @@ shipped BLD-8F2Q (`path::symbol` over-match); symbol/backlog-ref verification st
 
 ## 2026-06-06: /prawduct:pr redirects a release promotion to the release process (REL-8K3M)
 
-<!-- prawduct: type=bugfix | scope=pr-release-redirect -->
-<!-- Statusless on-branch (no status= avoids the regen-views typo-guard, which only
-     recognizes shipped|merged). Add status=merged at the feature→develop merge, then
-     status=shipped | release=vX.Y.Z at the develop→main release. -->
+<!-- prawduct: type=bugfix | status=merged -->
+<!-- Merged to develop (release-pending) via #72. Flip status=merged → status=shipped and add
+     release=vX.Y.Z at the develop→main release. -->
 
 **Why:** The `/prawduct:pr` skill is shaped for **feature→`develop`** PRs, but a contributor
 naturally reaches for it to "ship" a release — and lands in Step 2's cumulative-Critic gate
