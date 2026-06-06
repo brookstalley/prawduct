@@ -31,8 +31,8 @@ insufficient → that is the evidence that unlocks the deferred LLM classifier).
 
 - [x] Chunk 1: Catch logic (pure, no session risk). `lib/work_model_index.py` + tests, incl. the
   real-scriob replay. Proves/disproves the keystone before any live-hook wiring. **Critic mode:** chunk
-- [ ] Chunk 2: Wiring (touches the live runtime). `prawduct-hook build-index` + `user-prompt-submit`
-  subcommands; index at `.prawduct/.work-model-index.json` (gitignored); `hooks.json` UserPromptSubmit
+- [x] Chunk 2: Wiring (touches the live runtime). `prawduct-hook build-index` + `user-prompt-submit`
+  subcommands; index at the gitignored per-repo index (.prawduct/.work-model-index.json, runtime-generated) (gitignored); `hooks.json` UserPromptSubmit
   entry + SessionStart index build; `.prawduct/`-gate + fail-soft. **Critic mode:** chunk
 - [ ] Chunk 3: Parent-map + prose. Extend `hooks/digest.py` with a dynamic capped parent-map; A1–A3
   prose (principles.md/CLAUDE.md §6 mirror clause, building.md tripwires, discovery.md sentence,
@@ -42,8 +42,12 @@ insufficient → that is the evidence that unlocks the deferred LLM classifier).
 Context: Chunk 1 done — catch logic built; the real-scriob replay PROVES the deterministic catch fires
 (belief/canonical/conflicting/sincerity), with honest false-positive noise documented (the evidence the
 deferred LLM classifier is gated on). Critic (chunk): 0 blocking; 3 process warnings (stale evidence,
-chunk-heading format, unset active_build_plan pointer) all addressed + verified. Next: Chunk 2 wiring,
-on path A (deterministic-only).
+chunk-heading format, unset active_build_plan pointer) all addressed + verified.
+Chunk 2 done — `build-index` + `user-prompt-submit` subcommands, hooks.json (SessionStart build-index +
+UserPromptSubmit), index gitignored; smoke-tested + 10 contract tests (nudge shape, silent-when-clean,
+lazy/stale/corrupt rebuild, non-prawduct silence, fail-soft). Critic (chunk): 0 blocking, 2 warnings
+(broad-except now logs to stderr; verify-chunk-refs false-positive fixed by de-backticking the generated
+index path) + 1 note (added staleness/corrupt tests) — all resolved. Next: Chunk 3 parent-map + prose.
 
 ## Chunk detail
 
@@ -66,7 +70,7 @@ on path A (deterministic-only).
 
 ### Chunk 2: Wiring
 - **Deliverable:** thin `cmd_build_index` / `cmd_user_prompt_submit` in `bin/prawduct-hook` wrapping the
-  lib; write/read `.prawduct/.work-model-index.json`; gitignore it; `hooks.json` UserPromptSubmit entry +
+  lib; write/read the gitignored per-repo index (.prawduct/.work-model-index.json, runtime-generated); gitignore it; `hooks.json` UserPromptSubmit entry +
   SessionStart index build. Every new hook: gate on `.prawduct/` existence + fail-soft (try/except with
   `prawduct:allow prawduct/broad-except` — mirror `digest.py`).
 - **Self-hosted-runtime caution:** these hooks govern THIS session. Verify each change doesn't disrupt
