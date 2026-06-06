@@ -33,12 +33,12 @@ insufficient → that is the evidence that unlocks the deferred LLM classifier).
 `feature/work-model` (see commits + the Context below + change-log `status=in-progress`); they flip to
 `[x]` automatically when this ships via `/prawduct:pr`.*
 
-- [ ] Chunk 1: Catch logic (pure, no session risk). `lib/work_model_index.py` + tests, incl. the
+- [x] Chunk 1: Catch logic (pure, no session risk). `lib/work_model_index.py` + tests, incl. the
   real-scriob replay. Proves/disproves the keystone before any live-hook wiring. **Critic mode:** chunk
-- [ ] Chunk 2: Wiring (touches the live runtime). `prawduct-hook build-index` + `user-prompt-submit`
+- [x] Chunk 2: Wiring (touches the live runtime). `prawduct-hook build-index` + `user-prompt-submit`
   subcommands; index at .prawduct/.work-model-index.json (gitignored, runtime-generated); `hooks.json`
   UserPromptSubmit entry + SessionStart index build; `.prawduct/`-gate + fail-soft. **Critic mode:** chunk
-- [ ] Chunk 3: Prose codification. A1–A3 — principles.md + CLAUDE.md §6 mirror clause; building.md
+- [x] Chunk 3: Prose codification. A1–A3 — principles.md + CLAUDE.md §6 mirror clause; building.md
   "A Requirement Surfaced Mid-Build" tripwire callout; discovery.md scope-expansion sentence;
   bidirectional session-digest rule. **Critic mode:** final
 Deferred (confidence-gated → backlog, not pending work): parent-map injection (B2) and the optional

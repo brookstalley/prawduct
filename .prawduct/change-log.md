@@ -3,16 +3,16 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-06-06: Work model — catch undocumented requirements (merged to develop, #71)
+## 2026-06-06: Work model — catch undocumented requirements (shipped v2.0.13)
 
-<!-- prawduct: type=feature | scope=work-model | status=merged -->
+<!-- prawduct: chunks=1,2,3 | type=feature | release=v2.0.13 | status=shipped | scope=work-model -->
 
 **Why:** Prawduct policed requirement *loss* (Complete Delivery) but not requirement *absence* — a
 fluent agent could design a new domain model in conversation and flow it into code with no
 requirements artifact, and nothing stopped it. This closes the asymmetry with an external,
 deterministic catch (motivated by a real session — the scriob fact/belief-modeling thrash).
 
-**What's built (chunks 1–3 on feature/work-model; not yet released):**
+**What's built (chunks 1–3):**
 - `lib/work_model_index.py` (NEW) — pure catch logic: a conservative vocabulary index (artifact
   headings/bold + optional `vocabulary:` frontmatter) and an orphan-term diff that surfaces salient
   prompt terms no governing artifact covers. Keystone proven by a real-scriob replay test; false-
@@ -28,7 +28,7 @@ deterministic catch (motivated by a real session — the scriob fact/belief-mode
 parent-coverage floor, the Critic pre-code plan-review, and the parent-map injection (B2) — each earns
 its way in with usage evidence. Design lineage + two independent reviews: `docs/work-model*.md`.
 
-**Release:** `status=shipped | release=vX` to be finalized when this merges via `/prawduct:pr`.
+**Release:** shipped in **v2.0.13** (develop→main promotion, 2026-06-06). Merged to develop via #71.
 
 ## 2026-06-05: /prawduct:repo-disable — turn the plugin off per-repo (shipped v2.0.12)
 
