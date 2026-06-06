@@ -377,6 +377,45 @@ class TestPrReviewSkillContent:
         # The release-pending branch must be tied to the develop base / status=merged.
         assert "release-pending" in content or "status=merged" in content
 
+    def test_create_flow_redirects_release_promotion(self):
+        """REL-8K3M: the /pr skill must detect a release/integration context
+        (current branch is the integration base or release surface, not a feature
+        branch) and redirect to the manual release process instead of running the
+        feature-PR gates. Without this, the cumulative-Critic gate (Step 2)
+        false-positives on a develop->main release because release-prep touches
+        non-.md version files the gate's docs-only allowance doesn't cover.
+        Guards the redirect against silent removal."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        assert "Release-promotion guard" in content, (
+            "the /pr skill must carry an explicit release-promotion guard"
+        )
+        assert "docs/release-process.md" in content, (
+            "the guard must redirect a release promotion to docs/release-process.md"
+        )
+        # The redirect must be tied to being on develop/main (release surfaces),
+        # not a feature branch — that's the discriminator.
+        assert "release surface" in content or "release/integration context" in content, (
+            "the guard must key off the release/integration branch context"
+        )
+
+    def test_release_process_documents_benign_cumulative_exit(self):
+        """REL-8K3M (the doc half): release-process.md must document that a
+        check-cumulative-critic exit-1 during release-prep is expected/benign and
+        is neither a gate to satisfy nor a waiver case — so a contributor doing a
+        release doesn't re-run the cumulative Critic over version bumps (the
+        CRT-7M2D treadmill) or pollute the waiver file."""
+        content = (FRAMEWORK_DIR / "docs" / "release-process.md").read_text()
+        assert "not the release vehicle" in content, (
+            "release-process.md must state /prawduct:pr is not the release vehicle"
+        )
+        assert "check-cumulative-critic" in content and "benign" in content, (
+            "release-process.md must explain the benign cumulative-Critic exit-1"
+        )
+        # Must steer away from BOTH wrong moves: re-running the Critic and waiving.
+        assert ".gates-waived" in content, (
+            "release-process.md must say the benign exit-1 is not a waiver case"
+        )
+
     def test_review_protocol_references_learnings(self):
         """PR reviewer must read learnings.md during setup."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()

@@ -265,7 +265,21 @@
 
 ## Promoted
 
-_None._
+- **[REL-8K3M]** `/pr` cumulative-Critic gate false-positives (benign exit-1) on a develop→main RELEASE promotion
+  `effort: S · impact: S · area: release · source: reflection · added: 2026-06-06 · status: in-progress · branch: fix/pr-release-redirect · related: CRT-7M2D`
+
+  **Resolved on branch (fix-shape a+b, no gate-logic change).** `skills/pr/SKILL.md` gained a
+  release-promotion guard (on `develop`/`main` → redirect to `docs/release-process.md`, don't run the
+  feature-PR gates); `docs/release-process.md` gained a "`/prawduct:pr` is not the release vehicle"
+  section explaining the benign `check-cumulative-critic` exit-1 is neither a gate to re-satisfy (the
+  CRT-7M2D treadmill) nor a waiver case. Fix-shape (c) — broadening the CRT-7M2D allowance to version/
+  derived-view files — was rejected (weakens a correct global gate to patch a context-misuse). 2 guard
+  tests in `tests/test_pr_reviewer.py::TestPrReviewSkillContent`. Change-log entry `status=in-progress`;
+  flips to `merged` at feature→develop merge and `shipped` at the develop→main release, then archives.
+
+  Original report: the `/prawduct:pr` Step 2 gate is feature→develop shaped and exit-1'd during the
+  v2.0.13 release because release-prep touches non-`.md` version files (version strings +
+  `regen-views`-regenerated `scope_rollups`) outside CRT-7M2D's docs-only allowance. (reflection)
 
 ## Archive
 
