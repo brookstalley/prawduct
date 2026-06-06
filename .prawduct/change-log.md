@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-06: verify-chunk-refs skips glob patterns written as prose (BLD-2R9X)
+
+<!-- prawduct: type=bugfix -->
+<!-- Statusless on-branch (no status= avoids the regen-views typo-guard, which only
+     recognizes shipped|merged). Add status=merged at the feature→develop merge, then
+     status=shipped | release=vX.Y.Z at the develop→main release. -->
+
+**Why:** The chunk-ref verifier's path detector treated any backticked token containing `/` as a
+literal file to existence-check, so a glob written in prose (e.g. a Tests bullet's
+`docs/requirements/*.md`) was captured and reported `missing-ref: … file does not exist` — advisory
+noise on an active build plan. (BLD-2R9X)
+
+**Fix:** `_looks_like_file_path` (`bin/prawduct-hook`, the single helper the chunk-ref parser consults)
+now returns False for any token carrying a shell-glob metacharacter (`*`, `?`, `[`). A literal source
+path never contains one, so this skips globs without risking real paths. Same parser family as the
+shipped BLD-8F2Q (`path::symbol` over-match); symbol/backlog-ref verification stays deferred
+(BLD-5V8F).
+
+**Tests:** 4 regression tests in `tests/test_build_plan_resolution.py::TestVerifyChunkRefsGlobPaths`
+(each glob metacharacter + the per-token case where a real path on the same line is still captured).
+873 passed.
+
 ## 2026-06-06: Work model — catch undocumented requirements (shipped v2.0.13)
 
 <!-- prawduct: chunks=1,2,3 | type=feature | release=v2.0.13 | status=shipped | scope=work-model -->
