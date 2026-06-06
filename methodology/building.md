@@ -44,6 +44,10 @@ Before any non-trivial work cycle, answer three questions in one sentence each:
 
 If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Fill what you can infer yourself and record each as a vetoable assumption; surface only consequential, unverifiable unknowns, and early. Don't silently build on guesses — that's how unclear requirements become debt. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode (read-only explore + interview before execution) is the native clarify-before-build vehicle. Mirrors the discovery-side self-assessment, the `[ASSUMPTION: …]` recording format, and research triggers (see `methodology/discovery.md` "Calibrate Rigor").
 
+### A Requirement Surfaced Mid-Build
+
+The Confidence Check runs at a chunk's *start*; requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently **in chat** and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2–3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume.* Never silently *invent* a requirement any more than you'd *drop* one (Principle 6, mirror of #2).
+
 ## The Build Cycle
 
 **Establish a clean baseline.** Before starting the first work cycle of a session, establish a clean state:

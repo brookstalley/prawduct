@@ -34,10 +34,12 @@ insufficient → that is the evidence that unlocks the deferred LLM classifier).
 - [x] Chunk 2: Wiring (touches the live runtime). `prawduct-hook build-index` + `user-prompt-submit`
   subcommands; index at the gitignored per-repo index (.prawduct/.work-model-index.json, runtime-generated) (gitignored); `hooks.json` UserPromptSubmit
   entry + SessionStart index build; `.prawduct/`-gate + fail-soft. **Critic mode:** chunk
-- [ ] Chunk 3: Parent-map + prose. Extend `hooks/digest.py` with a dynamic capped parent-map; A1–A3
-  prose (principles.md/CLAUDE.md §6 mirror clause, building.md tripwires, discovery.md sentence,
-  session-digest.md one-liners under `test_token_budget`=3120); `vocabulary:` frontmatter convention.
-  **Critic mode:** final
+- [x] Chunk 3: Prose codification. A1–A3 — principles.md + CLAUDE.md §6 mirror clause; building.md
+  "A Requirement Surfaced Mid-Build" tripwire callout; discovery.md scope-expansion sentence;
+  bidirectional session-digest rule. **Critic mode:** final
+Deferred (confidence-gated → backlog, not pending work): parent-map injection (B2) and the optional
+`vocabulary:` frontmatter convention — medium-confidence value over the already-shipped active nudge;
+ambient per-session token cost for uncertain benefit. Earn with usage evidence.
 
 Context: Chunk 1 done — catch logic built; the real-scriob replay PROVES the deterministic catch fires
 (belief/canonical/conflicting/sincerity), with honest false-positive noise documented (the evidence the
@@ -47,7 +49,12 @@ Chunk 2 done — `build-index` + `user-prompt-submit` subcommands, hooks.json (S
 UserPromptSubmit), index gitignored; smoke-tested + 10 contract tests (nudge shape, silent-when-clean,
 lazy/stale/corrupt rebuild, non-prawduct silence, fail-soft). Critic (chunk): 0 blocking, 2 warnings
 (broad-except now logs to stderr; verify-chunk-refs false-positive fixed by de-backticking the generated
-index path) + 1 note (added staleness/corrupt tests) — all resolved. Next: Chunk 3 parent-map + prose.
+index path) + 1 note (added staleness/corrupt tests) — all resolved.
+Chunk 3 done — prose codification: Principle 6 mirror clause (principles.md + CLAUDE.md), building.md
+"A Requirement Surfaced Mid-Build" tripwire callout (+ a justified building.md token-budget bump 4720→4850),
+discovery.md scope-expansion sentence, bidirectional session-digest rule. Parent-map (B2) DEFERRED per the
+confidence gate (medium-confidence value vs. ambient cost). FEATURE COMPLETE (ship-now core: chunks 1-3);
+full suite 870 green. Next: cumulative Critic + backlog the deferred parent-map.
 
 ## Chunk detail
 

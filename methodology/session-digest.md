@@ -23,7 +23,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Tests are contracts.** Fix the code, never weaken the test. Write tests alongside code, not after.
 - **There is no "pre-existing" exception.** If you find a problem — failing test, broad catch,
   stale artifact — fix it or explicitly flag why it can't be fixed now.
-- **Never silently drop a requirement.** Implement it or explicitly descope it.
+- **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
+  a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
+  forward into design (`/prawduct:building` "A Requirement Surfaced Mid-Build" tripwires).
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
   yourself — the independence is the whole value.
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
