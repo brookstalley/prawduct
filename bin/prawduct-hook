@@ -3118,10 +3118,19 @@ def _looks_like_file_path(token: str) -> bool:
     Slash-commands (``/prawduct:pr``, ``/prawduct:learnings``, ``/prawduct:critic``) also contain
     ``/`` but are not file paths. Exclude tokens that start with ``/``,
     have no further ``/``, and contain no ``.`` — that shape is a single
-    slash-command identifier, not a path."""
+    slash-command identifier, not a path.
+
+    Glob patterns written in prose (e.g. ``docs/requirements/*.md`` in a Tests
+    bullet) also contain ``/`` but name a *set*, not a literal file — a literal
+    source path never contains the shell-glob metacharacters ``*``, ``?``, or
+    ``[``, so a token carrying one is a glob to skip rather than a missing file
+    to flag (BLD-2R9X). Sibling of the ``path::symbol`` carveout the chunk-ref
+    parser applies before calling this."""
     if "/" not in token:
         return False
     if token.startswith("/") and "/" not in token[1:] and "." not in token:
+        return False
+    if any(ch in token for ch in "*?["):
         return False
     return True
 

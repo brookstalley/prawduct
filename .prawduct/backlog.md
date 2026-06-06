@@ -31,20 +31,6 @@
   convention in artifact templates (the lib already supports it; auto-extract is the default). See
   `docs/work-model-spec.md` Part C and `docs/work-model-enforcement.md`.
 
-- **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: open · related: BLD-8F2Q, BLD-5V8F`
-
-  The chunk-ref parser (`bin/prawduct-hook` `_parse_build_plan_chunk_refs` / `cmd_verify_chunk_refs`)
-  treats any backticked token containing `/` as a file_path to existence-check. A glob written in
-  prose — e.g. a Tests bullet saying ``uncaptured + `docs/requirements/*.md` present`` — is captured
-  as a literal path and reported `missing-ref: docs/requirements/*.md … file does not exist`
-  (advisory; the command still exit-0'd in the discovery-capture-nudge cumulative review, but it's
-  noise on the active plan). A literal source path never contains glob metacharacters, so the fix is
-  cheap and safe: skip backticked tokens containing `*`, `?`, or `[` (glob chars) in
-  `_parse_build_plan_chunk_refs`. Same parser family as the shipped BLD-8F2Q (`path::symbol`
-  over-match); symbol/backlog-ref verification is still deferred (BLD-5V8F). Filed from the
-  discovery-capture-nudge cumulative Critic NOTE on 2026-06-05. (critic)
-
 - **[LRN-3F8K]** Reconcile the dangling sentinel on the "Framework ownership follows the write strategy" learning
   `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open`
 
@@ -276,6 +262,19 @@
   Requirements/advisory-spec §8.3. At setup/health-check time, `prawduct-doctor` reports any external backlog files (`TODO.md`, `BACKLOG.md`) found in repo root + `.github/`. Redundant with the `external-backlog-detected` probe ([BKL-2F7K]); deferred with it — build both together or decide one supersedes the other. (builder)
 
 ## Promoted
+
+- **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: in-progress · branch: fix/verify-chunk-refs-globs · related: BLD-8F2Q, BLD-5V8F`
+
+  **Resolved on branch.** `_looks_like_file_path` (`bin/prawduct-hook`, the single semantic gate the
+  chunk-ref parser consults) now returns False for any backticked token carrying a shell-glob
+  metacharacter (`*`, `?`, `[`) — a literal source path never contains one, so a glob written in prose
+  (e.g. a Tests bullet's `docs/requirements/*.md`) is skipped instead of reported `missing-ref`. Same
+  parser family as the shipped BLD-8F2Q (`path::symbol`); symbol/backlog-ref verification stays
+  deferred (BLD-5V8F). 4 regression tests in
+  `tests/test_build_plan_resolution.py::TestVerifyChunkRefsGlobPaths` (each glob char + the per-token
+  case where a real path on the same line is still captured). Statusless change-log entry on-branch;
+  flips to `merged` at develop-merge, `shipped` at release, then this item archives.
 
 - **[REL-8K3M]** `/pr` cumulative-Critic gate false-positives (benign exit-1) on a develop→main RELEASE promotion
   `effort: S · impact: S · area: release · source: reflection · added: 2026-06-06 · status: in-progress · branch: fix/pr-release-redirect · related: CRT-7M2D`

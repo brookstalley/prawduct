@@ -352,3 +352,48 @@ class TestVerifyChunkRefsPathSymbol:
         )
         refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["file_paths"] == []
+
+
+# =============================================================================
+# BLD-2R9X — verify-chunk-refs skips glob patterns written as prose
+# =============================================================================
+
+
+class TestVerifyChunkRefsGlobPaths:
+    """A backticked token carrying a shell-glob metacharacter (`*`, `?`, `[`) is a
+    glob written in prose (e.g. `docs/requirements/*.md` in a Tests bullet), not a
+    literal file. The parser must skip it, not capture it as a `missing-ref`
+    (BLD-2R9X) — a literal source path never contains glob metacharacters."""
+
+    def test_star_glob_is_skipped(self, tmp_path: Path):
+        # The exact shape from the filing: a Tests bullet naming a `*.md` set.
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- Tests: uncaptured + `docs/requirements/*.md` present\n"
+        )
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        # And it produces no missing-ref at verification time.
+        assert _hook._verify_chunk_refs(project, refs) == []
+
+    def test_question_mark_glob_is_skipped(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(tmp_path, "- see `src/foo?.py`\n")
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_bracket_glob_is_skipped(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(tmp_path, "- see `src/[abc].py`\n")
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_literal_path_alongside_glob_still_captured(self, tmp_path: Path):
+        # Per-token filter: the glob is skipped while a real path on the SAME line
+        # is still existence-checked (the fix doesn't drop the whole line).
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- `lib/views.py` plus all `docs/*.md`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "views.py").write_text("x = 1\n")
+        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+        assert _hook._verify_chunk_refs(project, refs) == []
