@@ -8,6 +8,26 @@
 ## Open
 
 
+- **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
+  `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: open · related: STH-1W5N, BLD-2R9X`
+
+  `_TRIVIAL_PROTECTED_PATHS` (`bin/prawduct-hook`) bounds the `Type: trivial` / `check-pr-trivial`
+  fast-path to `{skills/, methodology/, templates/, CLAUDE.md}` — the governance *content* surfaces.
+  It does NOT include `bin/` or `lib/`, which hold the framework's executable runtime — including
+  `bin/prawduct-hook` itself (the ~4,369-line hook that *implements every gate*) and the `lib/`
+  modules. Consequence (observed firsthand merging BLD-2R9X, a `bin/prawduct-hook` bugfix):
+  `check-pr-trivial` returned exit 0 (`all fileset-eligible`), so the `/prawduct:pr` fast-path would
+  have skipped BOTH the cumulative-Critic gate AND the independent reviewer for a change to the core
+  gate-runtime. I declined the fast-path manually and ran the full review, but the next contributor
+  may not. A bug in `bin/prawduct-hook`/`lib/` can break gating itself, so it is arguably *more*
+  catastrophic-blast-radius than a `templates/` edit, not less. Fix-shape: add `("bin/", False,
+  "runtime-edited")` and `("lib/", False, "runtime-edited")` to `_TRIVIAL_PROTECTED_PATHS` (single
+  source of truth — both the stop-hook `_is_trivial_fileset_eligible` and the PR-boundary
+  `_pr_diff_is_trivial` consume it), with tests in `tests/test_trivial_fileset_gate.py`. Open
+  question: is a doc/comment-only edit to a `bin/`/`lib/` file (no logic change) worth exempting, or
+  keep the bound coarse (any `bin/`/`lib/` touch → full review)? Coarse is safer and simpler. Filed
+  from the BLD-2R9X merge on 2026-06-06. (builder)
+
 - **[PR-2H8N]** Key the `/pr` release-promotion guard off `resolve-base` instead of hardcoded branch names
   `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · related: REL-8K3M`
 
