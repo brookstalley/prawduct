@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.13
+
+**Entry:** 2026-06-06: Work model — catch undocumented requirements (shipped v2.0.13)
+
+**Chunks shipped:** 1, 2, 3
+
+**Scope:** work-model
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.12
 
 **Entry:** 2026-06-05: /prawduct:repo-disable — turn the plugin off per-repo (shipped v2.0.12)

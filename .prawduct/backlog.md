@@ -8,6 +8,17 @@
 ## Open
 
 
+- **[WMK-1P4Q]** Work-model parent-map injection (B2) + optional `vocabulary:` frontmatter convention
+  `effort: M · impact: M · area: hooks · source: critic · added: 2026-06-06 · status: open · related: work-model`
+
+  Deferred from the work-model build (confidence-gated). A SessionStart hook would inject a compact,
+  capped "parent map" (governing docs + 1-line scope) as ambient awareness, complementing the shipped
+  *active* UserPromptSubmit nudge. Deferred because its value over the active nudge is medium-confidence
+  and it adds ambient per-session tokens (review NOTE-7) — earn with usage evidence (false-positive /
+  miss data from the live nudge). Also document the optional `vocabulary:`/`governs:` frontmatter
+  convention in artifact templates (the lib already supports it; auto-extract is the default). See
+  `docs/work-model-spec.md` Part C and `docs/work-model-enforcement.md`.
+
 - **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
   `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: open · related: BLD-8F2Q, BLD-5V8F`
 

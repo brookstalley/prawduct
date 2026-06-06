@@ -152,8 +152,20 @@ class TestBuildingMethodology:
         # residual ~45 tokens are irreducible without dropping a concept;
         # trimming UNRELATED prose to fit would violate Scope Discipline. If this
         # test fails again, prefer trimming over another bump.
+        #
+        # Bumped 4720 → 4850 in work-model Chunk 3 (undocumented-requirement
+        # catch). building.md gains the "A Requirement Surfaced Mid-Build"
+        # callout — the operational tripwire list + triggered response that the
+        # session digest and principles.md §6 both point to BY NAME (so the
+        # section must exist here, its natural build-time home). Condensed hard
+        # first (bulleted list collapsed to one inline sentence, intro halved:
+        # ~230 → ~122 tokens); the file already sat at the 4720 ceiling, so the
+        # irreducible remainder cannot be absorbed by trimming itself, and
+        # trimming UNRELATED prose to fit would violate Scope Discipline (the
+        # rigor-and-stance precedent). If this test fails again, prefer trimming
+        # over another bump.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4720, f"building.md is ~{tokens} tokens, should be <4720"
+        assert tokens < 4850, f"building.md is ~{tokens} tokens, should be <4850"
 
 
 # =============================================================================

@@ -469,7 +469,9 @@ views_enabled: true
 # release-tooling (REL-4T8N + BLD-8F2Q + PR-7Q3M + TST-9K4W) SHIPPED in v2.0.6
 # (2026-06-04, #62); its build-plan file is retained as a historical artifact.
 # rigor-and-stance (owner pivot infra→methodology) SHIPPED in v2.0.7 (2026-06-04,
-# #63); its build-plan file is retained as a historical artifact. No release-pending
+# #63); its build-plan file is retained as a historical artifact. The work-model
+# feature (catch undocumented requirements, #71) SHIPPED in v2.0.13 (2026-06-06);
+# its build-plan file is retained as a historical artifact. No release-pending
 # plans remain — the pointer is cleared (unset → falls back to artifacts/build-plan.md).
 # The next in-progress plan sets it again.
 active_build_plan:
@@ -566,3 +568,6 @@ scope_rollups:
   v2.0.0:
     chunks: ["1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"]
     releases: ["v2.0.0"]
+  work-model:
+    chunks: ["1", "2", "3"]
+    releases: ["v2.0.13"]

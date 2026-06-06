@@ -3,6 +3,33 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-06: Work model — catch undocumented requirements (shipped v2.0.13)
+
+<!-- prawduct: chunks=1,2,3 | type=feature | release=v2.0.13 | status=shipped | scope=work-model -->
+
+**Why:** Prawduct policed requirement *loss* (Complete Delivery) but not requirement *absence* — a
+fluent agent could design a new domain model in conversation and flow it into code with no
+requirements artifact, and nothing stopped it. This closes the asymmetry with an external,
+deterministic catch (motivated by a real session — the scriob fact/belief-modeling thrash).
+
+**What's built (chunks 1–3):**
+- `lib/work_model_index.py` (NEW) — pure catch logic: a conservative vocabulary index (artifact
+  headings/bold + optional `vocabulary:` frontmatter) and an orphan-term diff that surfaces salient
+  prompt terms no governing artifact covers. Keystone proven by a real-scriob replay test; false-
+  positive noise characterized honestly (the gate for the deferred LLM classifier).
+- `bin/prawduct-hook` `build-index` + `user-prompt-submit` (NEW) + `hooks/hooks.json` — a
+  UserPromptSubmit hook injects a pre-turn nudge on orphan terms; SessionStart warms the per-repo
+  index (`.prawduct/.work-model-index.json`, gitignored). Fail-soft, `.prawduct/`-gated.
+- Principle 6 gains its mirror clause (principles.md + CLAUDE.md); building.md gains the "A
+  Requirement Surfaced Mid-Build" tripwire callout; discovery.md gets a scope-expansion sentence; the
+  session digest's drop-requirement rule is now bidirectional.
+
+**Deferred (confidence-gated, → backlog):** the LLM-in-hook concept classifier, the PreToolUse
+parent-coverage floor, the Critic pre-code plan-review, and the parent-map injection (B2) — each earns
+its way in with usage evidence. Design lineage + two independent reviews: `docs/work-model*.md`.
+
+**Release:** shipped in **v2.0.13** (develop→main promotion, 2026-06-06). Merged to develop via #71.
+
 ## 2026-06-05: /prawduct:repo-disable — turn the plugin off per-repo (shipped v2.0.12)
 
 <!-- prawduct: type=feature | release=v2.0.12 | status=shipped -->
