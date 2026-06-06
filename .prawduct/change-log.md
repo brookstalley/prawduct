@@ -3,9 +3,9 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-06-06: Work model — catch undocumented requirements (built, feature/work-model)
+## 2026-06-06: Work model — catch undocumented requirements (merged to develop, #71)
 
-<!-- prawduct: type=feature | scope=work-model | status=in-progress -->
+<!-- prawduct: type=feature | scope=work-model | status=merged -->
 
 **Why:** Prawduct policed requirement *loss* (Complete Delivery) but not requirement *absence* — a
 fluent agent could design a new domain model in conversation and flow it into code with no
