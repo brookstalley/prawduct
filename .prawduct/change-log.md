@@ -23,7 +23,7 @@ shipped BLD-8F2Q (`path::symbol` over-match); symbol/backlog-ref verification st
 
 **Tests:** 4 regression tests in `tests/test_build_plan_resolution.py::TestVerifyChunkRefsGlobPaths`
 (each glob metacharacter + the per-token case where a real path on the same line is still captured).
-873 passed.
+875 passed.
 
 ## 2026-06-06: /prawduct:pr redirects a release promotion to the release process (REL-8K3M)
 
