@@ -5,7 +5,10 @@
 
 ## 2026-06-06: /prawduct:pr redirects a release promotion to the release process (REL-8K3M)
 
-<!-- prawduct: type=bugfix | status=in-progress | scope=pr-release-redirect -->
+<!-- prawduct: type=bugfix | scope=pr-release-redirect -->
+<!-- Statusless on-branch (no status= avoids the regen-views typo-guard, which only
+     recognizes shipped|merged). Add status=merged at the feature→develop merge, then
+     status=shipped | release=vX.Y.Z at the develop→main release. -->
 
 **Why:** The `/prawduct:pr` skill is shaped for **feature→`develop`** PRs, but a contributor
 naturally reaches for it to "ship" a release — and lands in Step 2's cumulative-Critic gate
