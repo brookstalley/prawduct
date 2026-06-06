@@ -3,6 +3,39 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-06: /prawduct:pr redirects a release promotion to the release process (REL-8K3M)
+
+<!-- prawduct: type=bugfix | scope=pr-release-redirect -->
+<!-- Statusless on-branch (no status= avoids the regen-views typo-guard, which only
+     recognizes shipped|merged). Add status=merged at the feature→develop merge, then
+     status=shipped | release=vX.Y.Z at the develop→main release. -->
+
+**Why:** The `/prawduct:pr` skill is shaped for **feature→`develop`** PRs, but a contributor
+naturally reaches for it to "ship" a release — and lands in Step 2's cumulative-Critic gate
+(`check-cumulative-critic`), which correctly refuses because release-prep necessarily touches
+non-`.md` version files (version strings + `regen-views`-regenerated `scope_rollups`) that CRT-7M2D's
+docs-only allowance doesn't cover. The gate isn't broken — it's being run in a context it doesn't
+govern. Surfaced firsthand during the v2.0.13 (work-model) release. (REL-8K3M)
+
+**Fix (a + b — no gate-logic change):**
+- `skills/pr/SKILL.md` — a **release-promotion guard** in Context Detection: when the current branch
+  is the integration base (`develop`) or release surface (`main`/`master`) rather than a feature
+  branch, the skill recognizes a release/integration context and **redirects to
+  `docs/release-process.md`** instead of running the feature-PR gates. Stops the false-positive at the
+  source.
+- `docs/release-process.md` — a new "`/prawduct:pr` is not the release vehicle" section documenting
+  that a `check-cumulative-critic` exit-1 during release-prep is **expected and benign** — neither a
+  gate to re-satisfy (the CRT-7M2D treadmill) nor a waiver case (the gate IS satisfiable in a feature
+  context; it simply isn't the release's gate), since the stop hook also stands down once
+  `active_build_plan` is cleared.
+
+**Rejected (c):** broadening the CRT-7M2D allowance to treat version/derived-view files as
+non-substantive — it would weaken a correct, global gate for *every* repo's feature PRs to patch a
+context-misuse (a feature PR bumping a version would skip cumulative review of that change).
+
+**Tests:** 2 guards in `tests/test_pr_reviewer.py::TestPrReviewSkillContent` (the skill redirect; the
+release-doc benign-exit note). 871 passed.
+
 ## 2026-06-06: Work model — catch undocumented requirements (shipped v2.0.13)
 
 <!-- prawduct: chunks=1,2,3 | type=feature | release=v2.0.13 | status=shipped | scope=work-model -->
