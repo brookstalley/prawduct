@@ -89,15 +89,18 @@ each PR merges via `/prawduct:pr` + regen-views.*
 - [ ] Chunk 6: Extract `lib/gates.py` — stop-gate logic + test-evidence commands. **Critic mode:** chunk
 - [ ] Chunk 7: Extract `lib/briefing.py` — staleness + session/subagent briefing + handoff. **Critic mode:** final
 
-Context: Chunks 1-2 built + committed + Critic-clean (0 findings each), stacked off develop:
-`refactor/hook-decomp-lib-init` (b28cd57, ch.1 __init__ slim) → `refactor/hook-decomp-gitstate`
-(57351e2, ch.2 gitstate). Each is its own PR (one module per PR) — PR ch.1 → develop, rebase ch.2,
-PR it, then continue. Not yet PR'd (built autonomously). Full suite 884 green; both hot paths
-(clear/stop) smoke-clean. **Next: Chunk 3 (buildplan_refs)** off the gitstate branch — extract the
-chunk-ref/trivial-classification cluster AND reassign `_parse_build_plan_status` out of the briefing
-region (the cycle-break); repoint `test_build_plan_resolution.py` + `test_trivial_fileset_gate.py`.
-The proven pattern: write `lib/<mod>.py` (verbatim move) → add/extend the lazy accessor → rewire
-resident call sites → repoint coupled tests → full suite + CLI smoke → `/prawduct:critic chunk`.
+Context: Chunks 1-3 built + Critic-clean (0 findings each). Ch.1-2 merged to develop via #74; ch.3
+(`lib/buildplan_refs.py`) committed on `refactor/hook-decomp-buildplan-refs` off develop — extracted
+the chunk-ref/Type/Trivial parsers + `_classify_trivial_change` AND reassigned `_parse_build_plan_status`
+out of the briefing region (the cycle-break done). Hook now 4,226 lines (was 4,942 at plan start).
+Full suite 884 green; `verify-chunk-refs`/`clear`/`stop` smoke-clean via the real CLI. Not yet PR'd
+(built autonomously). Checkboxes stay `[ ]` until release (status=shipped); develop-merge is tracked
+by the change-log entry per ch.1/ch.2 convention. **Next: Chunk 4 (`lib/compliance.py`)** off develop
+— compliance canary + `_check_broad_exceptions`/`_check_invalid_waivers`/`_waivers_module` + the file
+classifiers (`_is_source_file`/`_is_test_file`/`_is_dependency_file`); imports `gitstate`; repoint
+`test_waivers.py`. The proven pattern: write `lib/<mod>.py` (verbatim move, AST-verify identical) →
+add the lazy accessor → rewire resident call sites → repoint coupled tests → full suite + CLI smoke
+→ `/prawduct:critic chunk`. Enabled follow-up filed: STH-2K8R (critic_mode mirror consolidation).
 
 ## Chunk detail
 

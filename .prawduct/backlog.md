@@ -8,6 +8,22 @@
 ## Open
 
 
+- **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
+  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K`
+
+  `lib/critic_mode.py` carries independent re-implementations of `_current_chunk_id_from_status`,
+  the chunk-`Type:` parser, and `_is_metadata_path` (and references `_parse_build_plan_status`),
+  whose stated rationale is "no dependency on `bin/prawduct-hook` — re-implemented to stay importable
+  from the slash-command shim" (critic_mode.py docstring ~L46). STH-9V4K ch.2–3 moved those helpers
+  into `lib/gitstate` + `lib/buildplan_refs`, which `critic_mode` *already* imports siblings from
+  (`from .core import resolve_build_plan_path`). So the mirror's reason-to-exist is now gone:
+  `critic_mode` could `from .buildplan_refs import _current_chunk_id_from_status` (etc.) and
+  `from .gitstate import _is_metadata_path`, deleting the duplicate bodies + their manual-sync
+  docstrings. Defer until the decomposition (ch.4–7) lands so the lib surface is stable. NOT a
+  behavior-preserving move (it changes critic_mode's structure + collapses a parity relationship),
+  so it needs its own tests + Critic pass — kept out of ch.3 for scope discipline. Filed from the
+  ch.3 buildplan_refs extraction on 2026-06-07. (builder)
+
 - **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
   `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · related: CRT-9V4T, PRR-4M9T, JAN-4F7M`
 

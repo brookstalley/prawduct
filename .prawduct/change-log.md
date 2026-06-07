@@ -3,6 +3,41 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: extract lib/buildplan_refs.py — build-plan ref parsing + trivial classification (STH-9V4K ch.3)
+
+<!-- prawduct: chunks=3 | type=refactor | scope=hook-decomp -->
+
+**Why:** Chunk 3 of the hook decomposition (STH-9V4K). The build-plan-parsing cluster (chunk-ref /
+`Type:` / `Trivial because:` parsers + the `Type: trivial` file-set classifier) is the next layer up
+from the ch.2 `gitstate` leaf. Moving it out also performs the **cycle-break** the plan's dependency
+analysis identified (constraint 2): `_parse_build_plan_status` was mis-homed in the briefing cluster
+(it is build-plan parsing, not briefing assembly); reassigning it here turns the six concern clusters
+into an acyclic DAG (`gitstate ← buildplan_refs ← coverage ← gates ← briefing`).
+
+**What:** New `lib/buildplan_refs.py` (524 lines) holds 8 functions + 6 constants moved **verbatim**:
+`_parse_build_plan_status`, `_looks_like_file_path`, `_parse_build_plan_chunk_refs`,
+`_parse_build_plan_chunk_type`, `_parse_build_plan_chunk_trivial_rationale`, `_classify_trivial_change`,
+`_current_chunk_id_from_status`, `_verify_chunk_refs`; constants `_BUILD_PLAN_PATH_RE` /
+`_BUILD_PLAN_NEW_QUALIFIER_RE` / `_BUILD_PLAN_TYPE_RE` / `_BUILD_PLAN_ALLOWED_TYPES` /
+`_BUILD_PLAN_TRIVIAL_RATIONALE_RE` / `_TRIVIAL_PROTECTED_PATHS`. Two sanctioned internal rewrites: the
+module reaches the canonical resolver via `from .core import resolve_build_plan_path` (the established
+lib idiom — `critic_mode`/`views` do the same; avoids a third copy of the hook's parity-pinned inline
+mirror, which stays in the hook for its import-light hot path) and `_is_metadata_path` via
+`from . import gitstate`. The hook gains a lazy `_buildplan_refs()` accessor (mirrors `_gitstate()`)
+and rewires its 11 resident call sites; its top level stays lib-free (ch.1 isolation invariant
+preserved). `_count_build_plan_chunks` / `_pr_diff_is_trivial` / `_is_trivial_fileset_eligible` /
+`cmd_verify_chunk_refs` stay in the hook (Chunk 5–6 work) and now delegate via the accessor.
+
+**Tests:** `test_build_plan_resolution.py` (`_parse_build_plan_chunk_refs`, `_verify_chunk_refs`) and
+`test_trivial_fileset_gate.py` (`_classify_trivial_change`, `_TRIVIAL_PROTECTED_PATHS`) repointed to
+`from lib import buildplan_refs` — tested where the code now lives, assertions unchanged. One stale
+doc pointer fixed (the chunk-heading-rule location in `test_build_plan_resolution.py`). Full suite 884
+passed (count unchanged — behavior-preserving); `verify-chunk-refs`/`clear`/`stop` smoke-clean via the
+real CLI (the stop `trivial-declaration` gate fired end-to-end). Critic (chunk): 0 findings —
+AST-verified all 8 moved bodies byte-identical to HEAD + 6 constants value-identical. Hook: −464 lines
+net (4,690 → 4,226). Enabled follow-up STH-2K8R filed (critic_mode could now consume buildplan_refs
+instead of mirroring it).
+
 ## 2026-06-07: extract lib/gitstate.py — read-only git/state probes (STH-9V4K ch.2)
 
 <!-- prawduct: chunks=2 | type=refactor | scope=hook-decomp -->
