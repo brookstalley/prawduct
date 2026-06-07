@@ -7,8 +7,6 @@ placement. Spec: docs/waivers.md.
 
 from __future__ import annotations
 
-import importlib.machinery
-import importlib.util
 import sys
 from pathlib import Path
 
@@ -16,16 +14,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from lib import compliance  # noqa: E402 — canary checks now live in lib/compliance (STH-9V4K ch.4)
 from lib import waivers  # noqa: E402
 from lib.waivers import Waiver  # noqa: E402
-
-# Load the extensionless hook script as a module to exercise the canary wiring.
-_hook_loader = importlib.machinery.SourceFileLoader(
-    "prawduct_hook_waivers", str(_REPO_ROOT / "bin" / "prawduct-hook")
-)
-_hook_spec = importlib.util.spec_from_loader("prawduct_hook_waivers", _hook_loader)
-_hook = importlib.util.module_from_spec(_hook_spec)
-_hook_loader.exec_module(_hook)
 
 
 class TestParseGeneral:
@@ -190,7 +181,7 @@ class TestCanaryWiring:
 
     def test_unwaived_broad_except_is_flagged(self, tmp_path: Path):
         self._write(tmp_path, "def f():\n    try:\n        g()\n    except Exception:\n        pass\n")
-        assert _hook._check_broad_exceptions(tmp_path, ["mod.py"]) == ["mod.py"]
+        assert compliance._check_broad_exceptions(tmp_path, ["mod.py"]) == ["mod.py"]
 
     def test_general_form_waiver_suppresses(self, tmp_path: Path):
         self._write(
@@ -198,7 +189,7 @@ class TestCanaryWiring:
             "def f():\n    try:\n        g()\n"
             "    except Exception:  # prawduct:allow prawduct/broad-except -- boundary\n        pass\n",
         )
-        assert _hook._check_broad_exceptions(tmp_path, ["mod.py"]) == []
+        assert compliance._check_broad_exceptions(tmp_path, ["mod.py"]) == []
 
     def test_legacy_form_waiver_still_suppresses(self, tmp_path: Path):
         self._write(
@@ -206,7 +197,7 @@ class TestCanaryWiring:
             "def f():\n    try:\n        g()\n"
             "    except Exception:  # prawduct:ok-broad-except — boundary\n        pass\n",
         )
-        assert _hook._check_broad_exceptions(tmp_path, ["mod.py"]) == []
+        assert compliance._check_broad_exceptions(tmp_path, ["mod.py"]) == []
 
     def test_reasonless_waiver_is_flagged_by_invalid_check(self, tmp_path: Path):
         self._write(
@@ -214,11 +205,11 @@ class TestCanaryWiring:
             "def f():\n    try:\n        g()\n"
             "    except Exception:  # prawduct:allow prawduct/broad-except\n        pass\n",
         )
-        assert _hook._check_invalid_waivers(tmp_path, ["mod.py"]) == ["mod.py"]
+        assert compliance._check_invalid_waivers(tmp_path, ["mod.py"]) == ["mod.py"]
 
     def test_valid_waiver_not_flagged_by_invalid_check(self, tmp_path: Path):
         self._write(
             tmp_path,
             "x = 1  # prawduct:allow prawduct/legacy-ref -- required for 1.x migration\n",
         )
-        assert _hook._check_invalid_waivers(tmp_path, ["mod.py"]) == []
+        assert compliance._check_invalid_waivers(tmp_path, ["mod.py"]) == []
