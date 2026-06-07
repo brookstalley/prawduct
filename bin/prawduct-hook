@@ -63,6 +63,18 @@ def _plugin_root() -> str:
     return str(Path(__file__).resolve().parent.parent)
 
 
+def _gitstate():
+    """Lazy-import the read-only git/state probes (lib/gitstate). Seeds sys.path
+    like the other lib accessors so the hook's top level stays lib-free; after the
+    lib/__init__ slim (ch.1) this loads only gitstate.py (~1ms, isolated)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import gitstate  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return gitstate
+
+
 # --- New-gate attribution (design §5a) -----------------------------------
 # A blocking message names the version + gate that caused it, so a surprise
 # block (e.g. a gate a recent plugin update introduced) is always traceable to
@@ -152,214 +164,11 @@ def _resolve_build_plan_path(prawduct_dir: Path) -> Path:
 
 
 # =============================================================================
-# Git helpers
+# Git session-file hygiene (read-only git/state probes → lib/gitstate.py)
 # =============================================================================
-
-
-def git_status_output(project_dir: Path) -> str | None:
-    """Return raw `git status --porcelain` output, or None on failure."""
-    try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            cwd=str(project_dir),
-            timeout=10,
-        )
-        if result.returncode != 0:
-            return None
-        return result.stdout
-    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
-        return None
-
-
-def git_has_changes(project_dir: Path) -> str:
-    """Check if there are uncommitted changes. Returns first changed file or empty string."""
-    output = git_status_output(project_dir)
-    if output is None:
-        return ""
-    lines = output.strip().splitlines()
-    return lines[0] if lines else ""
-
-
-# Paths that are framework/session metadata — changes to these should
-# never trigger reflection or Critic gates. Plugin-only: product-owned state
-# and the committed install reference. The file-sync-era entries
-# (``.claude/skills/`` for synced framework skills, ``tools/product-hook``)
-# are intentionally absent — a plugin repo never carries them, and a
-# product's *own* skill under ``.claude/skills/`` is product code that must
-# be gated, not excused. (Mirrored in ``lib/critic_mode.py``.)
-_METADATA_PREFIXES = (
-    ".prawduct/",
-    ".claude/settings.json",
-)
-
-
-def _is_metadata_path(filepath: str) -> bool:
-    """Check if a file path is framework/session metadata (not user code)."""
-    return any(filepath.startswith(p) for p in _METADATA_PREFIXES)
-
-
-def git_has_session_changes(project_dir: Path) -> str:
-    """Check if non-metadata uncommitted changes differ from session baseline.
-
-    Compares current git status to the baseline captured at session start.
-    Ignores .prawduct/ metadata and framework-managed files.
-    Returns first new changed file or empty string. Falls back to
-    git_has_changes if no baseline exists (backward compat).
-    """
-    prawduct_dir = get_prawduct_dir(project_dir)
-    baseline_path = prawduct_dir / ".session-git-baseline"
-
-    if not baseline_path.is_file():
-        return git_has_changes(project_dir)
-
-    current = git_status_output(project_dir)
-    if current is None:
-        return ""
-
-    try:
-        baseline = baseline_path.read_text()
-    except (UnicodeDecodeError, OSError):
-        return ""  # Corrupted baseline — treat as no baseline (safe: permits session end)
-    baseline_lines = set(baseline.strip().splitlines())
-    current_lines = current.strip().splitlines()
-
-    for line in current_lines:
-        if line not in baseline_lines:
-            # Extract file path from porcelain format (e.g., " M src/app.py")
-            parts = line.split()
-            if parts:
-                filepath = parts[-1]
-                if not _is_metadata_path(filepath):
-                    return line
-
-    return ""
-
-
-def _session_changes_are_doc_only(project_dir: Path) -> bool:
-    """Check if all non-metadata session changes are documentation (.md) files.
-
-    Returns True if changes exist but are all .md files — used to skip
-    the reflection gate for doc-only edits.
-    """
-    prawduct_dir = get_prawduct_dir(project_dir)
-    baseline_path = prawduct_dir / ".session-git-baseline"
-
-    current = git_status_output(project_dir)
-    if current is None:
-        return False
-
-    baseline_lines: set[str] = set()
-    if baseline_path.is_file():
-        try:
-            baseline_lines = set(baseline_path.read_text().strip().splitlines())
-        except (UnicodeDecodeError, OSError):
-            pass
-
-    has_any = False
-    for line in current.strip().splitlines():
-        if line in baseline_lines:
-            continue
-        parts = line.split()
-        if not parts:
-            continue
-        filepath = parts[-1]
-        if _is_metadata_path(filepath):
-            continue
-        has_any = True
-        if not filepath.endswith(".md"):
-            return False
-
-    return has_any
-
-
-def git_has_code_changes(project_dir: Path) -> bool:
-    """Check if non-metadata files were modified since session baseline.
-
-    Mirrors git_has_session_changes() baseline-diff logic but returns a bool.
-    Skips files that match the session baseline (pre-existing dirt) and
-    framework metadata (.prawduct/, .claude/settings.json, etc.).
-    """
-    return bool(git_has_session_changes(project_dir))
-
-
-def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
-    """True if ``f`` is Prawduct framework infrastructure shipped into a product
-    repo (``tools/product-hook`` or ``tools/lib/*``), not the product's own code.
-
-    Used by the "has product code?" heuristic so that sync-delivered tooling
-    doesn't make a freshly-initialized empty repo look like it contains source.
-    Deliberately NOT used by the compliance canary's source detection: in the
-    framework repo itself these paths ARE the source under test.
-    """
-    try:
-        rel = f.relative_to(project_dir).as_posix()
-    except ValueError:
-        return False
-    return rel == "tools/product-hook" or rel.startswith("tools/lib/")
-
-
-# Suffixes that count as the product's own source code. Shared by the
-# project-preferences CRITICAL and the discovery-capture nudge in cmd_clear.
-_PRODUCT_CODE_SUFFIXES = (
-    ".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt",
-    ".c", ".cpp", ".h",
-)
-
-
-def _has_product_code(project_dir: Path) -> bool:
-    """True if the repo contains the product's OWN source code — not framework
-    tooling, not ``.prawduct/`` state, not vendored deps. The single definition
-    behind both the project-preferences CRITICAL and the discovery-capture nudge.
-    """
-    return any(
-        f.suffix in _PRODUCT_CODE_SUFFIXES
-        for f in project_dir.rglob("*")
-        if f.is_file()
-        and ".prawduct" not in f.parts
-        and "node_modules" not in f.parts
-        and f.name != "conftest.py"
-        and not _is_framework_tooling(f, project_dir)
-    )
-
-
-# Conventional documentation roots prawduct recognizes — CLAUDE.md (and the
-# MIG-6B0R backlog item) both name docs/ and documentation/ as real product-doc
-# trees worth keeping on deploy-to-main.
-_DOC_ROOTS = ("docs", "documentation")
-
-
-def _has_product_definition_work(project_dir: Path) -> bool:
-    """True if the repo shows deliberate product-definition work — source code OR
-    markdown under a documentation root (``docs/`` or ``documentation/``).
-    Distinguishes a repo someone has started building or specifying (worth a
-    discovery nudge) from a freshly-onboarded empty repo (silent). A doc root is a
-    deliberate user creation — ``init-product`` never scaffolds one — so markdown
-    there is a real "product work happened" signal.
-    """
-    if _has_product_code(project_dir):
-        return True
-    for root in _DOC_ROOTS:
-        d = project_dir / root
-        if d.is_dir() and any(p.suffix == ".md" for p in d.rglob("*") if p.is_file()):
-            return True
-    return False
-
-
-def _discovery_uncaptured(state_path: Path) -> bool:
-    """True if ``project-state.yaml`` still carries BOTH template sentinels for the
-    canonical discovery outputs — ``classification.domain`` and
-    ``product_definition.vision`` both ``null``. Discovery filling either one
-    clears its sentinel, so requiring BOTH is conservative: it fires only when
-    discovery clearly never ran, never mid-discovery. Mirrors the parser-free
-    substring heuristic the project-preferences unfilled check uses.
-    """
-    try:
-        content = state_path.read_text()
-    except (OSError, UnicodeDecodeError):
-        return False
-    return "\n  domain: null\n" in content and "\n  vision: null\n" in content
+# The read-only probes (git_status_output, git_has_*, _has_product_*,
+# _discovery_uncaptured, _read_advisory_store, _get_session_changed_files, …)
+# moved to lib/gitstate.py (STH-9V4K ch.2); the hook calls them via _gitstate().
 
 
 # Canonical list of session files that should be gitignored, never tracked.
@@ -385,28 +194,6 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/reflections.md",
     ".prawduct/artifacts/build-plan.md",
 )
-
-
-def _read_advisory_store(prawduct_dir: Path) -> dict:
-    """Read `.prawduct/.advisories.json` (the post-sync nag log).
-
-    Dependency-light standalone reader: the briefing parses the store directly
-    rather than importing the bundled advisory_store, so the hot path stays
-    robust even on an incomplete plugin install. (cmd_clear's probe step DOES
-    import advisory_store to refresh this file before the briefing is assembled.)
-    Missing/unreadable/malformed → empty store; never raises (briefing must not
-    break on a bad file).
-    """
-    path = prawduct_dir / ".advisories.json"
-    if not path.is_file():
-        return {"schema_version": 1, "advisories": []}
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return {"schema_version": 1, "advisories": []}
-    if not isinstance(data, dict) or not isinstance(data.get("advisories"), list):
-        return {"schema_version": 1, "advisories": []}
-    return data
 
 
 def _untrack_session_files(project_dir: Path) -> list[str]:
@@ -458,23 +245,6 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
             continue
 
     return untracked
-
-
-def _git_head_sha(project_dir: Path) -> str:
-    """Return current HEAD SHA, or empty string on failure."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            cwd=str(project_dir),
-            timeout=10,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
-        pass
-    return ""
 
 
 def tests_are_current(project_dir: Path) -> tuple[bool, str]:
@@ -1243,7 +1013,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     # priority-ordered (urgent→warn→info, then newest first), capped at 5. Empty
     # active set with nothing newly resolved → omit the section entirely
     # (spec §5.2 / A5 — no "0 active" noise).
-    adv_store = _read_advisory_store(prawduct_dir)
+    adv_store = _gitstate()._read_advisory_store(prawduct_dir)
     adv_all = adv_store.get("advisories", []) if isinstance(adv_store, dict) else []
     active_adv = [a for a in adv_all if isinstance(a, dict) and a.get("state") == "active"]
     # Stable two-pass sort: newest-first within each priority band.
@@ -1596,7 +1366,7 @@ def generate_session_handoff(project_dir: Path) -> None:
         sections.append("")
 
     # 4. Files changed during session
-    changed = _get_session_changed_files(project_dir)
+    changed = _gitstate()._get_session_changed_files(project_dir)
     if changed:
         sections.append("## Files Changed This Session")
         for f in changed[:20]:  # Cap at 20 to keep handoff manageable
@@ -1626,28 +1396,6 @@ def generate_session_handoff(project_dir: Path) -> None:
 # =============================================================================
 # Compliance Canary (v5: lightweight failure detection at session end)
 # =============================================================================
-
-
-def _get_session_changed_files(project_dir: Path) -> list[str]:
-    """Get files changed since session start. Returns list of file paths."""
-    prawduct_dir = get_prawduct_dir(project_dir)
-    current = git_status_output(project_dir)
-    if current is None:
-        return []
-
-    baseline_path = prawduct_dir / ".session-git-baseline"
-    baseline_lines: set[str] = set()
-    if baseline_path.is_file():
-        baseline_lines = set(baseline_path.read_text().strip().splitlines())
-
-    changed = []
-    for line in current.strip().splitlines():
-        if line and line not in baseline_lines:
-            parts = line.split()
-            if parts:
-                filepath = parts[-1]
-                changed.append(filepath)
-    return changed
 
 
 def _is_source_file(filepath: str) -> bool:
@@ -1782,7 +1530,7 @@ def _check_invalid_waivers(project_dir: Path, source_files: list[str]) -> list[s
 def compliance_canary(project_dir: Path) -> list[str]:
     """Lightweight compliance checks at session end. Returns informational findings."""
     findings: list[str] = []
-    changed = _get_session_changed_files(project_dir)
+    changed = _gitstate()._get_session_changed_files(project_dir)
 
     if not changed:
         return findings
@@ -1843,7 +1591,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     warnings: list[str] = []
 
     # Was there a previous session with changes?
-    had_changes = git_has_session_changes(project_dir)
+    had_changes = _gitstate().git_has_session_changes(project_dir)
     if not had_changes:
         return warnings
 
@@ -1852,7 +1600,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     waivers = _read_gates_waived(prawduct_dir)
 
     # Gate 1: Reflection (skipped for doc-only changes or when waived)
-    doc_only = _session_changes_are_doc_only(project_dir)
+    doc_only = _gitstate()._session_changes_are_doc_only(project_dir)
     if not doc_only and "reflection" not in waivers:
         reflected_file = prawduct_dir / ".session-reflected"
         try:
@@ -1863,7 +1611,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
 
     # Gate 2: Critic review (only when building against an active plan)
     has_build_plan = _has_active_build_plan_file(prawduct_dir) or _has_build_plan_in_state(prawduct_dir)
-    if has_build_plan and not doc_only and "critic" not in waivers and git_has_code_changes(project_dir):
+    if has_build_plan and not doc_only and "critic" not in waivers and _gitstate().git_has_code_changes(project_dir):
         critic_findings = prawduct_dir / ".critic-findings.json"
         session_start_file = prawduct_dir / ".session-start"
         needs_review = True
@@ -1995,7 +1743,7 @@ def cmd_clear(project_dir: Path) -> int:
         # freshly-initialized empty repo doesn't trip this CRITICAL. Preferences
         # are a code-time concern, so this stays gated on code — the discovery
         # nudge below covers the no-code-yet (docs-first / brownfield) case.
-        if _has_product_code(project_dir):
+        if _gitstate()._has_product_code(project_dir):
             print(
                 "CRITICAL: You MUST create .prawduct/artifacts/project-preferences.md before doing anything else.\n"
                 "  Infer preferences from the codebase (config files, test patterns, code style, existing conventions)\n"
@@ -2014,8 +1762,8 @@ def cmd_clear(project_dir: Path) -> int:
     # gated on code, staying silent through a no-code discovery/architecture phase.
     if (
         state_path.is_file()
-        and _discovery_uncaptured(state_path)
-        and _has_product_definition_work(project_dir)
+        and _gitstate()._discovery_uncaptured(state_path)
+        and _gitstate()._has_product_definition_work(project_dir)
     ):
         print(
             "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml has no classification or\n"
@@ -2048,7 +1796,7 @@ def cmd_clear(project_dir: Path) -> int:
 
     # Capture git status baseline so session-start state doesn't trigger
     # spurious stop-hook gates (no sync runs first in the plugin runtime).
-    baseline = git_status_output(project_dir)
+    baseline = _gitstate().git_status_output(project_dir)
     if baseline is not None:
         (prawduct_dir / ".session-git-baseline").write_text(baseline)
 
@@ -2275,7 +2023,7 @@ def _compute_verify_resolutions_scope(
     # ``.session-reflected``, ``.session-git-baseline``, etc.). Symmetric
     # with ``_verify_resolutions_gate_check`` — both sides of "what
     # counts as a chunk file" agree.
-    delta_files = {f for f in delta_files if not _is_metadata_path(f)}
+    delta_files = {f for f in delta_files if not _gitstate()._is_metadata_path(f)}
 
     # Demotion: when the delta has grown well past the prior review's
     # surface, a verify pass would mislead — most of what changed wasn't
@@ -2340,8 +2088,8 @@ def _verify_resolutions_gate_check(
     scope = {f for f in files_reviewed if isinstance(f, str) and f.strip()}
 
     session_changed = {
-        f for f in _get_session_changed_files(project_dir)
-        if not _is_metadata_path(f)
+        f for f in _gitstate()._get_session_changed_files(project_dir)
+        if not _gitstate()._is_metadata_path(f)
     }
 
     out_of_scope = sorted(session_changed - scope)
@@ -2529,8 +2277,8 @@ def cmd_stop(project_dir: Path) -> int:
         pass
 
     # Check for changes (session-scoped: only new changes since session start)
-    has_changes = git_has_session_changes(project_dir)
-    doc_only = _session_changes_are_doc_only(project_dir) if has_changes else False
+    has_changes = _gitstate().git_has_session_changes(project_dir)
+    doc_only = _gitstate()._session_changes_are_doc_only(project_dir) if has_changes else False
 
     # Load agent-declared gate waivers (auto-cleared at session start).
     # The convention: a waiver is only NOTED to the user when it actually
@@ -3442,9 +3190,9 @@ def _classify_trivial_change(
     Path bounds are catastrophic-blast-radius classes regardless of
     size — size is intentionally not a bound.
     """
-    if _is_metadata_path(path):
+    if _gitstate()._is_metadata_path(path):
         return None
-    if src_path is not None and _is_metadata_path(src_path):
+    if src_path is not None and _gitstate()._is_metadata_path(src_path):
         return None
     # Unconditional path bounds — driven by the _TRIVIAL_PROTECTED_PATHS
     # constant so this gate and the PR-boundary gate share one list. The
@@ -3493,7 +3241,7 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
     identical rule set — same bounds checked at session-end and at
     PR creation.
     """
-    output = git_status_output(project_dir)
+    output = _gitstate().git_status_output(project_dir)
     if output is None:
         # No git or git error — defer to other gates; treat as eligible
         # so the trivial check doesn't fail the build when git itself is

@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: extract lib/gitstate.py — read-only git/state probes (STH-9V4K ch.2)
+
+<!-- prawduct: chunks=2 | type=refactor | scope=hook-decomp -->
+
+**Why:** Chunk 2 of the hook decomposition (STH-9V4K) — extract the leaf of the dependency DAG. The
+read-only git/state probes are the most depended-upon cluster (briefing, gates, compliance,
+buildplan_refs all sit on them), so they move first; every later extraction then imports from an
+already-extracted `lib/gitstate` rather than reaching back into the hook (a lib→bin back-import).
+
+**What:** New `lib/gitstate.py` (leaf, stdlib-only) holds 13 probes + 3 constants moved **verbatim**
+(`git_status_output`, `git_has_changes`/`_has_session_changes`/`_has_code_changes`,
+`_session_changes_are_doc_only`, `_is_metadata_path`, `_is_framework_tooling`, `_has_product_code`,
+`_has_product_definition_work`, `_discovery_uncaptured`, `_read_advisory_store`, `_git_head_sha`,
+`_get_session_changed_files`; constants `_METADATA_PREFIXES`/`_PRODUCT_CODE_SUFFIXES`/`_DOC_ROOTS`).
+A local `get_prawduct_dir` keeps the module self-contained. The hook gains a lazy `_gitstate()`
+accessor (mirrors `_waivers_module()`) and rewires its 18 resident call sites to `_gitstate().<fn>`;
+its top level stays lib-free (invariant preserved). The session-start git *mutation*
+(`_untrack_session_files` + the parity-pinned `_SESSION_GITIGNORED_PATHS` mirror) stays in the hook —
+gitstate is read-only probes only.
+
+**Tests:** `test_discovery_capture_nudge.py` repointed to `from lib import gitstate` for the 3 probes
+it exercises (`cmd_clear` stays on `_hook`). Full suite 884 passed; `clear`/`stop` hot paths
+smoke-clean via the real CLI. Critic (chunk): 0 findings — AST-verified all 16 moved symbols
+byte-identical to HEAD. Hook: −266 lines net (4,942 → ~4,676).
+
 ## 2026-06-07: lib/__init__.py lazy imports — enabling the hook decomposition (STH-9V4K ch.1)
 
 <!-- prawduct: chunks=1 | type=refactor | scope=hook-decomp -->
