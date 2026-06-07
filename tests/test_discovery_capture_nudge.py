@@ -27,6 +27,10 @@ _spec = importlib.util.spec_from_loader("prawduct_hook_discovery", _loader)
 _hook = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_hook)
 
+# The read-only probes moved to lib/gitstate.py (STH-9V4K ch.2); cmd_clear stays
+# in the hook (the integration surface exercised below via _hook.cmd_clear).
+from lib import gitstate  # noqa: E402
+
 # Stable substrings the briefing emits — pinned so a reword that drops the routing
 # target or the "reconcile" affordance is caught.
 _NUDGE = "DISCOVERY NOT CAPTURED"
@@ -75,62 +79,62 @@ class TestDiscoveryUncaptured:
     def test_both_sentinels_present_is_uncaptured(self, tmp_path):
         p = tmp_path / "state.yaml"
         p.write_text(_UNCAPTURED_STATE)
-        assert _hook._discovery_uncaptured(p) is True
+        assert gitstate._discovery_uncaptured(p) is True
 
     def test_domain_filled_is_captured(self, tmp_path):
         p = tmp_path / "state.yaml"
         p.write_text(_UNCAPTURED_STATE.replace("  domain: null\n", "  domain: content\n"))
-        assert _hook._discovery_uncaptured(p) is False
+        assert gitstate._discovery_uncaptured(p) is False
 
     def test_vision_filled_is_captured(self, tmp_path):
         p = tmp_path / "state.yaml"
         p.write_text(_UNCAPTURED_STATE.replace("  vision: null\n", '  vision: "X"\n'))
-        assert _hook._discovery_uncaptured(p) is False
+        assert gitstate._discovery_uncaptured(p) is False
 
     def test_fully_captured_is_captured(self, tmp_path):
         p = tmp_path / "state.yaml"
         p.write_text(_CAPTURED_STATE)
-        assert _hook._discovery_uncaptured(p) is False
+        assert gitstate._discovery_uncaptured(p) is False
 
     def test_missing_file_is_not_uncaptured(self, tmp_path):
         # Conservative: no file → no claim that discovery was skipped (the caller
         # also guards on state_path.is_file(), but the helper must not raise).
-        assert _hook._discovery_uncaptured(tmp_path / "nope.yaml") is False
+        assert gitstate._discovery_uncaptured(tmp_path / "nope.yaml") is False
 
 
 class TestHasProductCode:
     def test_python_source_counts(self, tmp_path):
         (tmp_path / "app.py").write_text("x = 1\n")
-        assert _hook._has_product_code(tmp_path) is True
+        assert gitstate._has_product_code(tmp_path) is True
 
     def test_prawduct_state_does_not_count(self, tmp_path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / "project-state.yaml").write_text(_UNCAPTURED_STATE)
-        assert _hook._has_product_code(tmp_path) is False
+        assert gitstate._has_product_code(tmp_path) is False
 
     def test_framework_tooling_does_not_count(self, tmp_path):
         lib = tmp_path / "tools" / "lib"
         lib.mkdir(parents=True)
         (lib / "core.py").write_text("x = 1\n")
-        assert _hook._has_product_code(tmp_path) is False
+        assert gitstate._has_product_code(tmp_path) is False
 
     def test_markdown_only_is_not_code(self, tmp_path):
         (tmp_path / "docs").mkdir()
         (tmp_path / "docs" / "vision.md").write_text("# Vision\n")
-        assert _hook._has_product_code(tmp_path) is False
+        assert gitstate._has_product_code(tmp_path) is False
 
 
 class TestHasProductDefinitionWork:
     def test_code_counts(self, tmp_path):
         (tmp_path / "app.py").write_text("x = 1\n")
-        assert _hook._has_product_definition_work(tmp_path) is True
+        assert gitstate._has_product_definition_work(tmp_path) is True
 
     def test_docs_markdown_counts(self, tmp_path):
         reqs = tmp_path / "docs" / "requirements"
         reqs.mkdir(parents=True)
         (reqs / "index.md").write_text("# Requirements\n")
-        assert _hook._has_product_definition_work(tmp_path) is True
+        assert gitstate._has_product_definition_work(tmp_path) is True
 
     def test_documentation_dir_markdown_counts(self, tmp_path):
         # `documentation/` is the other framework-recognized doc root (CLAUDE.md /
@@ -138,18 +142,18 @@ class TestHasProductDefinitionWork:
         d = tmp_path / "documentation"
         d.mkdir()
         (d / "vision.md").write_text("# Vision\n")
-        assert _hook._has_product_definition_work(tmp_path) is True
+        assert gitstate._has_product_definition_work(tmp_path) is True
 
     def test_empty_repo_is_no_work(self, tmp_path):
         (tmp_path / ".prawduct").mkdir()
-        assert _hook._has_product_definition_work(tmp_path) is False
+        assert gitstate._has_product_definition_work(tmp_path) is False
 
     def test_docs_dir_without_markdown_is_no_work(self, tmp_path):
         # A docs/ with only a .gitkeep is a scaffold, not product-definition work.
         docs = tmp_path / "docs"
         docs.mkdir()
         (docs / ".gitkeep").write_text("")
-        assert _hook._has_product_definition_work(tmp_path) is False
+        assert gitstate._has_product_definition_work(tmp_path) is False
 
 
 # =============================================================================
@@ -169,10 +173,10 @@ class TestTemplateContract:
     def test_shipped_template_reads_as_uncaptured(self):
         template = _ROOT / "templates" / "project-state.yaml"
         assert template.is_file()
-        assert _hook._discovery_uncaptured(template) is True, (
+        assert gitstate._discovery_uncaptured(template) is True, (
             "templates/project-state.yaml no longer trips _discovery_uncaptured — "
             "the domain:/vision: sentinel format changed. Update the detection in "
-            "bin/prawduct-hook (_discovery_uncaptured) to match, or the docs-first "
+            "lib/gitstate.py (_discovery_uncaptured) to match, or the docs-first "
             "discovery nudge silently stops firing on freshly-onboarded repos."
         )
 

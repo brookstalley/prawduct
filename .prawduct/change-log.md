@@ -3,6 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: extract lib/gitstate.py — read-only git/state probes (STH-9V4K ch.2)
+
+<!-- prawduct: chunks=2 | type=refactor | scope=hook-decomp -->
+
+**Why:** Chunk 2 of the hook decomposition (STH-9V4K) — extract the leaf of the dependency DAG. The
+read-only git/state probes are the most depended-upon cluster (briefing, gates, compliance,
+buildplan_refs all sit on them), so they move first; every later extraction then imports from an
+already-extracted `lib/gitstate` rather than reaching back into the hook (a lib→bin back-import).
+
+**What:** New `lib/gitstate.py` (leaf, stdlib-only) holds 13 probes + 3 constants moved **verbatim**
+(`git_status_output`, `git_has_changes`/`_has_session_changes`/`_has_code_changes`,
+`_session_changes_are_doc_only`, `_is_metadata_path`, `_is_framework_tooling`, `_has_product_code`,
+`_has_product_definition_work`, `_discovery_uncaptured`, `_read_advisory_store`, `_git_head_sha`,
+`_get_session_changed_files`; constants `_METADATA_PREFIXES`/`_PRODUCT_CODE_SUFFIXES`/`_DOC_ROOTS`).
+A local `get_prawduct_dir` keeps the module self-contained. The hook gains a lazy `_gitstate()`
+accessor (mirrors `_waivers_module()`) and rewires its 19 resident call sites to `_gitstate().<fn>`;
+its top level stays lib-free (invariant preserved). The session-start git *mutation*
+(`_untrack_session_files` + the parity-pinned `_SESSION_GITIGNORED_PATHS` mirror) stays in the hook —
+gitstate is read-only probes only.
+
+**Tests:** `test_discovery_capture_nudge.py` repointed to `from lib import gitstate` for the 3 probes
+it exercises (`cmd_clear` stays on `_hook`). Full suite 884 passed; `clear`/`stop` hot paths
+smoke-clean via the real CLI. Critic (chunk): 0 findings — AST-verified all 16 moved symbols
+byte-identical to HEAD. Hook: −252 lines net (4,942 → 4,690).
+
+## 2026-06-07: lib/__init__.py lazy imports — enabling the hook decomposition (STH-9V4K ch.1)
+
+<!-- prawduct: chunks=1 | type=refactor | scope=hook-decomp -->
+
+**Why:** `bin/prawduct-hook` is deliberately lib-independent at its top level (every `lib` import is
+lazy + `try/except ImportError`-guarded; the SessionStart briefing + the whole `cmd_stop` gate run
+inline) "so the hot path stays robust even on an incomplete plugin install." But `lib/__init__.py`
+*eager-imported* the heavy modules (advisory_store, views, operator_verification, critic_mode,
+audit_learnings_cmd) to provide a flat API, so `from lib import <anything>` cost ~34ms and coupled
+session start to every heavy module's importability. That blocks extracting the briefing/gate logic
+into `lib/` (STH-9V4K) without regressing the invariant — the enabling first chunk of the
+decomposition.
+
+**What:** Replaced the eager `from .X import (...)` re-export blocks with a PEP-562 module-level
+`__getattr__` backed by a `_FLATTENED_EXPORTS` name→submodule map (50 names) + `_SUBMODULE_EXPORTS`
+({views, waivers}), caching each resolved name into globals on first access. The flat API is
+preserved exactly (`from lib import infer_mode`, `lib.GITIGNORE_ENTRIES`, …); submodule imports
+(`from lib import views`, `from lib.advisory_store import run_sync_advisories`) resolve natively.
+Now `from lib import <leaf>` loads only that submodule (~1ms, isolated): a syntax error in `views.py`
+no longer breaks an unrelated `from lib import gitstate`.
+
+**Tests:** `tests/test_lib_lazy_imports.py` (8) — isolation pinned in a fresh-interpreter subprocess
+(`import lib` / `import lib.core` / touching a flat name drag in zero heavy modules), and the flat API
+hard-coded as a contract (a dropped export fails the test). Full suite 884 passed. Critic (chunk): 0
+blocking / 0 warning / 0 note.
+
 ## 2026-06-06: verify-chunk-refs skips glob patterns written as prose (BLD-2R9X)
 
 <!-- prawduct: type=bugfix | status=merged -->
