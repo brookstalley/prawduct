@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: critic-active session guard — `clear` refuses to mutate a session under review (CRT-3X9D)
+
+<!-- prawduct: chunks=1 | type=fix | scope=critic-session-guard -->
+
+**Why:** The Critic is documented (CLAUDE.md, `skills/critic/SKILL.md`) as structurally unable to
+run executables — review by code analysis only. But the coordinator pattern dispatches review
+subagents via the `Agent` tool, and Agent-spawned subagents do NOT inherit the skill's restricted
+`allowed-tools`; they run with the session's default Bash latitude (here: `Bash(python3:*)`,
+`Bash(bash:*)`). During the STH-9V4K ch.7 review a subagent ran `prawduct-hook clear`, which is
+destructive — it archived/deleted the builder's `.session-reflected`, rewrote `.session-start`
+(making fresh test evidence read "stale"), and recaptured the git baseline. An independent reviewer
+clobbered the very session it was reviewing; the builder had to hand-restore state. The tool
+restriction the docs promised was prose, not structure.
+
+**What:** Enforce the real invariant — *an independent reviewer must never mutate the session it is
+reviewing* — at the mutation site rather than relying on a tool restriction that doesn't bind
+subagents. New `lib/critic_marker.py` manages a `.prawduct/.critic-active` marker (`write_marker` /
+`clear_marker` / `review_active`, TTL `CRITIC_ACTIVE_TTL_SECONDS = 1800`). Two new hook subcommands —
+`critic-begin` (writes the marker, run at Critic step 1) and `critic-end` (removes it, step 8) —
+bracket a review; both are added to the Critic skill's `allowed-tools`. `cmd_clear` gains a guard at
+the top (before any mutation): a bare `clear` with an active marker refuses (exit 2) with an
+actionable override; the genuine SessionStart hook is rerouted to `clear --session-start` (always
+proceeds + sweeps the marker), and `--force` is the operator override. `.critic-active` added to
+`GITIGNORE_ENTRIES`, the inline `_SESSION_GITIGNORED_PATHS` mirror, and `.gitignore`. CLAUDE.md +
+SKILL.md prose updated to describe the backstop honestly (the old "structural constraint" claim is
+now "directed not to … + a mutation-site guard").
+
+**Resilience (the design priority).** A crashed/hung Critic that never reaches `critic-end` must not
+permanently brick `clear`. Three independent self-corrections, modeled on the waiver escape-hatch:
+(1) **TTL auto-expiry** — a marker older than 30 min stops counting as active and is swept on read;
+(2) **session-start sweep** — the next real session start deletes any marker; (3) **explicit
+override** — the refusal message names `rm .prawduct/.critic-active` and `clear --force`. The guard
+also fails OPEN on a lib import error (a broken lib means the Critic can't run, so there's no review
+to protect; session start is never blocked). A corrupt/unparseable marker falls back to file mtime,
+then to stale — failing toward availability, never toward a permanent block.
+
+**Scope / deferred.** Path B (a dedicated restricted reviewer-agent type so coordinator subagents
+genuinely can't invoke `pytest`/`clear`) is deferred as defense-in-depth. `stop` is verified
+read-only (no session mutation) and left unguarded. Tests: new `tests/test_critic_session_guard.py`
+(15 unit + behavioral cases — refuse-without-mutation, session-start/force/stale/no-marker proceed,
+TTL boundary, corrupt-marker mtime fallback, begin/end lifecycle + idempotency); two hook-command
+pinning tests updated for `clear --session-start`; `run_plugin_hook` extended to pass argv. 962
+passed. Critic `final` (plan-override): no blocking/warning findings.
+
 ## 2026-06-07: extract lib/briefing.py — SessionStart briefing + handoff assembly (STH-9V4K ch.7, final)
 
 <!-- prawduct: chunks=7 | type=refactor | scope=hook-decomp -->

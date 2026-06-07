@@ -9,7 +9,7 @@
 
 
 - **[CRT-3X9D]** Critic's no-execution constraint doesn't prevent session-mutating `prawduct-hook clear`
-  `effort: S · impact: M · area: critic · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K`
+  `effort: S · impact: M · area: critic · source: builder · added: 2026-06-07 · status: in-progress (implementation complete) · branch: fix/critic-session-guard-CRT-3X9D · plan: build-plan-critic-session-guard.md · related: STH-9V4K`
 
   The Critic skill is documented (CLAUDE.md, review-protocol) to run with restricted `allowed-tools` so
   it "cannot run test suites, builds, or executables" — review is code-analysis only. During the

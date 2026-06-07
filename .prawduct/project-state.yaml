@@ -471,10 +471,13 @@ views_enabled: true
 # rigor-and-stance (owner pivot infra→methodology) SHIPPED in v2.0.7 (2026-06-04,
 # #63); its build-plan file is retained as a historical artifact. The work-model
 # feature (catch undocumented requirements, #71) SHIPPED in v2.0.13 (2026-06-06);
-# its build-plan file is retained as a historical artifact. No release-pending
-# plans remain — the pointer is cleared (unset → falls back to artifacts/build-plan.md).
-# The next in-progress plan sets it again.
-active_build_plan: artifacts/build-plan-hook-decomposition.md
+# its build-plan file is retained as a historical artifact. The hook-decomposition
+# (STH-9V4K) is implementation-complete/release-pending — its ## Status checkboxes
+# stay [ ] until the develop→main release flips them; the release obligation is
+# tracked in backlog STH-9V4K, not by this pointer. The pointer now tracks the
+# active critic-session-guard work (CRT-3X9D); it returns to the release-pending
+# hook-decomposition plan (or unset) once that work merges.
+active_build_plan: artifacts/build-plan-critic-session-guard.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

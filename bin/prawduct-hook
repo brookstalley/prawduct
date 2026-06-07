@@ -147,6 +147,21 @@ def _briefing():
     return briefing
 
 
+def _critic_marker():
+    """Lazy-import the critic-active session-mutation guard (lib/critic_marker).
+    Same lazy idiom as _gitstate()/_briefing(). cmd_clear reads the marker through
+    here (broad-caught, so a lib import failure fails OPEN — clear proceeds — never
+    blocking session start on an incomplete install; a broken lib also means the
+    Critic can't run, so there's no review to protect). critic-begin/critic-end
+    write/remove the marker through here too. Pure stdlib, no heavy siblings."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_marker  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return critic_marker
+
+
 # --- New-gate attribution (design §5a) -----------------------------------
 # A blocking message names the version + gate that caused it, so a surprise
 # block (e.g. a gate a recent plugin update introduced) is always traceable to
@@ -253,6 +268,7 @@ def _resolve_build_plan_path(prawduct_dir: Path) -> Path:
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
+    ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
@@ -336,8 +352,19 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 # =============================================================================
 
 
-def cmd_clear(project_dir: Path) -> int:
-    """Reset session state and render the session briefing (plugin runtime: no sync)."""
+def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
+    """Reset session state and render the session briefing (plugin runtime: no sync).
+
+    Flags (argv): ``--session-start`` marks the genuine SessionStart-hook
+    invocation — it always proceeds and sweeps any critic-active marker.
+    ``--force`` is the operator override for a stale marker. A bare ``clear``
+    (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
+    while a Critic review is plausibly in progress so an independent reviewer
+    cannot clobber the session it is reviewing.
+    """
+    argv = argv or []
+    session_start = "--session-start" in argv
+    force = "--force" in argv
     prawduct_dir = get_prawduct_dir(project_dir)
 
     # The plugin is user-scoped, so this SessionStart hook fires in every repo the
@@ -347,6 +374,41 @@ def cmd_clear(project_dir: Path) -> int:
     # briefing and its session-marker side effects in non-Prawduct repos.
     if not prawduct_dir.is_dir():
         return 0
+
+    # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
+    # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
+    # the git baseline). An independent reviewer must never mutate the session it
+    # is reviewing. A genuine new session (--session-start) or an explicit
+    # --force sweeps any marker and proceeds; a bare clear refuses while a review
+    # is plausibly in progress. The check fails OPEN on a lib import error so an
+    # incomplete install never blocks session start (a broken lib also means the
+    # Critic can't run, so there is no review to protect).
+    if session_start or force:
+        try:
+            _critic_marker().clear_marker(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
+            pass
+    else:
+        try:
+            active, age_s = _critic_marker().review_active(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- guard fails open: never block session start on a lib import error
+            active, age_s = (False, None)
+        if active:
+            age_min = int((age_s or 0) // 60)
+            print(
+                "PRAWDUCT: `clear` refused — a Critic review appears to be in progress "
+                f"(marker .prawduct/.critic-active, started ~{age_min}m ago). Session-mutating "
+                "commands are blocked so an independent reviewer cannot clobber the session it is "
+                "reviewing (CRT-3X9D).\n"
+                "  If the Critic has finished or crashed and this marker is stale, clear it:\n"
+                "    rm .prawduct/.critic-active        # then retry\n"
+                "  or override this one invocation:\n"
+                "    prawduct-hook clear --force\n"
+                "  (The marker also auto-expires after 30 min and is swept at the next real "
+                "session start.)",
+                file=sys.stderr,
+            )
+            return 2
 
     # Check previous session's governance gates (warn, never block)
     try:
@@ -507,6 +569,32 @@ def cmd_clear(project_dir: Path) -> int:
     except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         print(f"NOTE: Subagent briefing generation failed: {e}", file=sys.stderr)
 
+    return 0
+
+
+# =============================================================================
+# critic-begin / critic-end commands (CRT-3X9D session-mutation guard)
+# =============================================================================
+
+
+def cmd_critic_begin(project_dir: Path) -> int:
+    """Mark a Critic review as active so session-mutating `clear` refuses to run.
+
+    Called at the start of a /prawduct:critic review. No-op (still exit 0)
+    outside an onboarded repo — there is no session to protect.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if _critic_marker().write_marker(prawduct_dir):
+        print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
+    return 0
+
+
+def cmd_critic_end(project_dir: Path) -> int:
+    """Clear the critic-active marker at the end of a review. Idempotent — exit 0
+    whether or not a marker was present (a crashed review's marker also expires
+    by TTL and is swept at the next session start)."""
+    prawduct_dir = get_prawduct_dir(project_dir)
+    _critic_marker().clear_marker(prawduct_dir)
     return 0
 
 
@@ -1718,7 +1806,8 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear|stop|build-index|user-prompt-submit|test-status|validate-evidence|test-evidence record [-- pytest args]|"
+    "{clear [--session-start|--force]|critic-begin|critic-end|"
+    "stop|build-index|user-prompt-submit|test-status|validate-evidence|test-evidence record [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
@@ -1849,7 +1938,11 @@ def main() -> int:
     project_dir = get_project_dir()
 
     if command == "clear":
-        return cmd_clear(project_dir)
+        return cmd_clear(project_dir, sys.argv[2:])
+    elif command == "critic-begin":
+        return cmd_critic_begin(project_dir)
+    elif command == "critic-end":
+        return cmd_critic_end(project_dir)
     elif command == "build-index":
         return cmd_build_index(project_dir)
     elif command == "user-prompt-submit":

@@ -98,7 +98,7 @@ These narrative guides teach the approach. **Read the relevant guide when enteri
 
 Each build plan chunk includes `/prawduct:critic` in its "Done when" steps. Follow the plan — run the Critic after acceptance criteria pass, before marking the chunk complete. The stop hook is a safety net — it blocks session end if code was modified against an active build plan and no Critic findings exist.
 
-The Critic skill runs with `context: fork` (separate context) and restricted `allowed-tools` — it can read files, search code, and inspect git state, but **cannot run test suites, builds, or executables**. This is a structural constraint, not a behavioral one. The Critic reviews through code analysis only.
+The Critic skill runs with `context: fork` (separate context) and restricted `allowed-tools` — it can read files, search code, and inspect git state, but is directed **not to run test suites, builds, or executables**. It reviews through code analysis only. The tool restriction is the first line of defense, but it does not bind the coordinator-pattern subagents the Critic dispatches via `Agent` (they run with the session's default Bash latitude — CRT-3X9D). So the load-bearing invariant — *an independent reviewer must never mutate the session it is reviewing* — is enforced at the mutation site: while a review is active (`prawduct-hook critic-begin` … `critic-end`), the session-mutating `prawduct-hook clear` refuses to run.
 
 After review, the Critic records findings to `.prawduct/.critic-findings.json`. Fix any blocking findings before proceeding to the next chunk. After resolving findings, reflect: what did the Critic surface that you missed? Capture learnings immediately — Critic reviews are the richest source of methodology insights.
 
