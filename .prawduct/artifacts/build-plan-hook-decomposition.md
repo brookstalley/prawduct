@@ -89,18 +89,23 @@ each PR merges via `/prawduct:pr` + regen-views.*
 - [ ] Chunk 6: Extract `lib/gates.py` — stop-gate logic + test-evidence commands. **Critic mode:** chunk
 - [ ] Chunk 7: Extract `lib/briefing.py` — staleness + session/subagent briefing + handoff. **Critic mode:** final
 
-Context: Chunks 1-3 built + Critic-clean (0 findings each). Ch.1-2 merged to develop via #74; ch.3
-(`lib/buildplan_refs.py`) committed on `refactor/hook-decomp-buildplan-refs` off develop — extracted
-the chunk-ref/Type/Trivial parsers + `_classify_trivial_change` AND reassigned `_parse_build_plan_status`
-out of the briefing region (the cycle-break done). Hook now 4,226 lines (was 4,942 at plan start).
-Full suite 884 green; `verify-chunk-refs`/`clear`/`stop` smoke-clean via the real CLI. Not yet PR'd
-(built autonomously). Checkboxes stay `[ ]` until release (status=shipped); develop-merge is tracked
-by the change-log entry per ch.1/ch.2 convention. **Next: Chunk 4 (`lib/compliance.py`)** off develop
-— compliance canary + `_check_broad_exceptions`/`_check_invalid_waivers`/`_waivers_module` + the file
-classifiers (`_is_source_file`/`_is_test_file`/`_is_dependency_file`); imports `gitstate`; repoint
-`test_waivers.py`. The proven pattern: write `lib/<mod>.py` (verbatim move, AST-verify identical) →
-add the lazy accessor → rewire resident call sites → repoint coupled tests → full suite + CLI smoke
-→ `/prawduct:critic chunk`. Enabled follow-up filed: STH-2K8R (critic_mode mirror consolidation).
+Context: Chunks 1-4 built + Critic-clean (0 findings each). Ch.1-2 merged to develop via #74; ch.3
+(`lib/buildplan_refs.py`) PR'd to develop as **#75** (cumulative-Critic + independent PR review both
+clean); ch.4 (`lib/compliance.py`) committed on `refactor/hook-decomp-compliance` **stacked on the ch.3
+branch** (built before #75 merged) — extracted the session-end compliance canary +
+`_check_broad_exceptions`/`_check_invalid_waivers`/`_waivers_module` + the file classifiers
+(`_is_source_file`/`_is_test_file`/`_is_dependency_file`); imports `gitstate`. Hook now 4,058 lines
+(was 4,942 at plan start). Full suite 884 green; the `stop` canary path smoke-clean via the hook's real
+`_compliance()` accessor. Checkboxes stay `[ ]` until release (status=shipped); develop-merge is tracked
+by the change-log entry per ch.1/ch.2 convention. **Next: Chunk 5 (`lib/coverage.py`)** — coverage/base
+resolution (`_read_bool_yaml_key`, `_git_ref_exists`, `_resolve_base_branch`, `_coverage_resolve_base`,
+`_coverage_changed_files`, `_pr_diff_is_doc_only`, `_pr_diff_is_trivial`) + the `cmd_verify_coverage` /
+`cmd_check_cumulative_critic` / `cmd_check_pr_doc_only` / `cmd_check_pr_trivial` bodies (hook keeps thin
+`cmd_*` wrappers); imports `gitstate` + `buildplan_refs`; repoint `test_views.py` (`_read_bool_yaml_key`)
+and the `test_plugin_runtime.py` source-inspection (`_resolve_base_branch`). The proven pattern: write
+`lib/<mod>.py` (verbatim move, AST-verify identical) → add the lazy accessor → rewire resident call
+sites → repoint coupled tests → full suite + CLI smoke → `/prawduct:critic chunk`. Enabled follow-up
+filed: STH-2K8R (critic_mode mirror consolidation). Once #75 merges, rebase the ch.4 branch onto develop.
 
 ## Chunk detail
 

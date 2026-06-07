@@ -3,6 +3,38 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: extract lib/compliance.py — session-end compliance canary + file classifiers (STH-9V4K ch.4)
+
+<!-- prawduct: chunks=4 | type=refactor | scope=hook-decomp -->
+
+**Why:** Chunk 4 of the hook decomposition (STH-9V4K). The session-end compliance canary — the
+lightweight failure-detection pass `cmd_stop` runs (code-without-tests, dependency-without-manifest,
+broad exception handling, reason-less waivers) — is its own cohesive concern sitting one layer up from
+the ch.2 `gitstate` leaf. Extracting it continues the leaf-first DAG walk
+(`gitstate ← compliance`) and removes another self-contained cluster from the monolith.
+
+**What:** New `lib/compliance.py` holds 7 functions moved **verbatim**: `compliance_canary`,
+`_check_broad_exceptions`, `_check_invalid_waivers`, `_waivers_module`, plus the file classifiers
+`_is_source_file` / `_is_test_file` / `_is_dependency_file` (their only caller is the canary). Two
+sanctioned internal rewrites, both forced by the lib→bin no-back-import rule: `compliance_canary`
+reaches the changed-file probe + prawduct-dir helper via `from . import gitstate`
+(`gitstate._get_session_changed_files` / `gitstate.get_prawduct_dir`, replacing the hook's
+`_gitstate().…` / inline `get_prawduct_dir`), and `_waivers_module` drops the now-redundant
+`_plugin_root()` sys.path seeding for a relative `from . import waivers` (the lib package is already
+importable once `compliance` loads). The fail-open posture is preserved exactly — `_waivers_module`
+still returns `None` on import failure so the canary emits no waiver-dependent finding. The hook gains
+a lazy `_compliance()` accessor (mirrors `_gitstate()`) and rewires the single `cmd_stop` call site to
+`_compliance().compliance_canary(...)`; its top level stays lib-free (ch.1 isolation invariant
+preserved — importing `compliance` pulls in only `gitstate`, with `waivers` still lazy).
+
+**Tests:** `test_waivers.py` repointed to `from lib import compliance` for the two canary helpers it
+exercises (`_check_broad_exceptions`, `_check_invalid_waivers`); the now-dead `SourceFileLoader` hook
+shim and its `importlib` imports were removed (the module no longer needs the hook). Full suite 884
+passed (count unchanged — behavior-preserving); the `stop` canary path is smoke-clean via the hook's
+real `_compliance()` accessor (broad-except flags only the unwaived file; waiver honored end-to-end).
+AST-verified: the 5 pure-move functions are byte-identical to HEAD; the 2 rewritten ones differ only
+by the sanctioned rewrites above. Hook: −168 lines net (4,226 → 4,058).
+
 ## 2026-06-07: extract lib/buildplan_refs.py — build-plan ref parsing + trivial classification (STH-9V4K ch.3)
 
 <!-- prawduct: chunks=3 | type=refactor | scope=hook-decomp -->
