@@ -13,19 +13,19 @@ literal had nothing pinning it.
 
 from __future__ import annotations
 
-import importlib.machinery
-import importlib.util
+import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
-_loader = importlib.machinery.SourceFileLoader("prawduct_hook_gate", str(_ROOT / "bin" / "prawduct-hook"))
-_spec = importlib.util.spec_from_loader("prawduct_hook_gate", _loader)
-_hook = importlib.util.module_from_spec(_spec)
-_loader.exec_module(_hook)
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+# _classify_trivial_change + _TRIVIAL_PROTECTED_PATHS moved to lib/buildplan_refs
+# (STH-9V4K ch.3); test the code where it now lives, not via the hook.
+from lib import buildplan_refs as _bpr  # noqa: E402
 
 
 def _classify(path, *, src_path=None, is_addition=False, is_deletion=False):
-    return _hook._classify_trivial_change(
+    return _bpr._classify_trivial_change(
         path=path, src_path=src_path, is_addition=is_addition, is_deletion=is_deletion
     )
 
@@ -95,19 +95,19 @@ class TestProtectedPathsConstant:
     constant (not a stale inline literal) is what the classifier consults."""
 
     def test_constant_is_non_empty_frozenset(self):
-        assert isinstance(_hook._TRIVIAL_PROTECTED_PATHS, frozenset)
-        assert _hook._TRIVIAL_PROTECTED_PATHS, "the protected-path bound list must be non-empty"
+        assert isinstance(_bpr._TRIVIAL_PROTECTED_PATHS, frozenset)
+        assert _bpr._TRIVIAL_PROTECTED_PATHS, "the protected-path bound list must be non-empty"
 
     def test_constant_contains_documented_paths(self):
         # The four catastrophic-blast-radius classes the bound has always covered.
-        paths = {entry[0] for entry in _hook._TRIVIAL_PROTECTED_PATHS}
+        paths = {entry[0] for entry in _bpr._TRIVIAL_PROTECTED_PATHS}
         assert {"skills/", "methodology/", "templates/", "CLAUDE.md"} <= paths
 
     def test_claude_md_is_exact_match_not_prefix(self):
         # CLAUDE.md is an exact-match bound (a nested foo/CLAUDE.md is ordinary
         # product doc); the others are prefix bounds. The flag in the constant
         # is what drives that distinction.
-        by_path = {entry[0]: entry[1] for entry in _hook._TRIVIAL_PROTECTED_PATHS}
+        by_path = {entry[0]: entry[1] for entry in _bpr._TRIVIAL_PROTECTED_PATHS}
         assert by_path["CLAUDE.md"] is True
         assert by_path["skills/"] is False
 
@@ -115,7 +115,7 @@ class TestProtectedPathsConstant:
         # Every entry in the constant must actually produce a violation from the
         # classifier with the constant's own reason label — proving the constant
         # is the source of truth, not a parallel copy that could drift.
-        for protected, is_exact, reason_label in _hook._TRIVIAL_PROTECTED_PATHS:
+        for protected, is_exact, reason_label in _bpr._TRIVIAL_PROTECTED_PATHS:
             sample = protected if is_exact else protected + "x.md"
             reason = _classify(sample)
             assert reason == f"{reason_label}: {sample}", (
