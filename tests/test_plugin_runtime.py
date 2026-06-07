@@ -478,10 +478,12 @@ class TestPluginRuntimeNamespacing:
         # The runtime command surface is the hook PLUS the lib modules that now
         # hold extracted command bodies + their agent-facing gate messages
         # (STH-9V4K hook decomposition — e.g. check_cumulative_critic moved to
-        # lib/gates ch.6, the PR fast-path commands to lib/coverage ch.5). Scan
-        # all of them so a bare form can't hide in a relocated command body.
+        # lib/gates ch.6, the PR fast-path commands to lib/coverage ch.5, and the
+        # session-briefing assembly — the most command-hint-dense surface, with the
+        # backlog/learnings/advisory hints — to lib/briefing ch.7). Scan all of them
+        # so a bare form can't hide in a relocated command body or briefing hint.
         runtime_sources = [HOOK]
-        for libmod in ("gates.py", "coverage.py"):
+        for libmod in ("gates.py", "coverage.py", "briefing.py"):
             p = ROOT / "lib" / libmod
             if p.is_file():
                 runtime_sources.append(p)
