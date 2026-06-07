@@ -3,6 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: extract lib/briefing.py — SessionStart briefing + handoff assembly (STH-9V4K ch.7, final)
+
+<!-- prawduct: chunks=7 | type=refactor | scope=hook-decomp -->
+
+**Why:** The final chunk of the hook decomposition (STH-9V4K). The SessionStart surface — the
+content-based staleness scan, the structured session briefing, the subagent briefing, the
+cross-`/clear` session handoff, and the previous-session governance check — was the last cohesive
+cluster in the monolith and the top of the plan's DAG (`briefing` imports `gitstate`/`gates`/
+`buildplan_refs`; nothing imports `briefing`). Extracting it leaves the hook a thin dispatcher
+(bootstrap + the parity-pinned inline mirrors + the lazy `lib` accessors + `cmd_*` wrappers +
+`cmd_clear`/`cmd_stop`/`main`). The hook drops **2,793 → 1,911 lines** (−882); across the whole
+decomposition, **4,942 → 1,911** (−61%).
+
+**What:** New `lib/briefing.py` holds 17 functions moved verbatim — `_extract_dependency_names`,
+`staleness_scan`, `_get_product_name`, `_get_current_branch`, `_parse_wip`, `_parse_all_wip_branches`,
+`_get_active_work`, `_get_work_in_progress`, `_detect_worktrees`, `_get_other_branch_wip`,
+`assemble_session_briefing`, `_extract_critical_rules`, `generate_subagent_briefing`,
+`_git_session_commits`, `_summarize_critic_findings`, `generate_session_handoff`,
+`_check_previous_session_gates`. (The 18th name the plan listed for ch.7, `_has_active_build_plan_file`,
+was already reassigned to `lib/gates` in ch.6 as a gate-used probe.) Sanctioned internal rewrites,
+identical in spirit to ch.5/ch.6: `get_prawduct_dir`→`gitstate.get_prawduct_dir`,
+`_resolve_build_plan_path`→`core.resolve_build_plan_path` (the canonical twin of the hook's
+parity-pinned inline mirror), and the `_gitstate()`/`_gates()`/`_buildplan_refs()` accessor calls →
+direct sibling references. The hook keeps `cmd_clear` resident (the inline hot-path SessionStart entry
+that orchestrates session-marker hygiene, the advisory probe, and the git baseline) plus a new lazy
+`_briefing()` accessor; its five call sites (`staleness_scan` / `assemble_session_briefing` /
+`generate_subagent_briefing` / `generate_session_handoff` / `_check_previous_session_gates`) were
+rewired to `_briefing().<fn>`.
+
+**Degradation (the chunk's one design decision).** The briefing was deliberately lib-free on the hot
+path so session start stayed robust on an incomplete plugin install. Moving it into `lib` adds an
+import that can fail. Decision: **no new degradation shim** — each of `cmd_clear`'s five `_briefing()`
+call sites is already wrapped in a broad catch, so a `lib.briefing` `ImportError` surfaces at the call
+site (not the hook's top level), degrades to a skipped briefing (a stderr NOTE), and the session still
+starts (markers + baseline written, returns 0). This is the established ch.2–6 precedent (an import
+failure surfaces at the resident call site, never at module top); a minimal-briefing fallback would be
+new behavior the behavior-preserving refactor does not call for.
+
+**Tests:** new `tests/test_briefing_extraction.py` — exercises the public surface directly from
+`lib.briefing` (the "test the code where it lives" discipline + the coverage preference; no test
+referenced these symbols before this chunk) and pins the degradation contract (`cmd_clear` survives a
+monkeypatched `_briefing()` `ImportError`: returns 0, writes `.session-start`, skips the briefing
+artifact). `test_plugin_runtime.py`'s no-bare-command-forms sweep now scans `lib/briefing` too — the
+briefing is the most command-hint-dense surface (the backlog/learnings/advisory hints), so its
+`/prawduct:*` strings must stay under the namespacing guard once they leave the hook (closing the
+leak-coverage gap the move opens). No symbol repoints were needed (the briefing was tested only
+behaviorally, via the `clear` CLI). AST-verified: all 17 functions are byte-identical to the source
+after the sanctioned rewrites; a golden compare confirms `assemble_session_briefing` renders
+byte-identical output before/after. Full suite **890 passed** (884 + 6 new; behavior-preserving);
+`clear`/`stop` smoke-clean via the real CLI through `_briefing()`.
+
 ## 2026-06-07: extract lib/gates.py — session-end gate helpers + evidence/critic validators (STH-9V4K ch.6)
 
 <!-- prawduct: chunks=6 | type=refactor | scope=hook-decomp -->

@@ -93,13 +93,13 @@ each PR merges via `/prawduct:pr` + regen-views.*
 - [ ] Chunk 6: Extract `lib/gates.py` — stop-gate logic + test-evidence commands. **Critic mode:** chunk
 - [ ] Chunk 7: Extract `lib/briefing.py` — staleness + session/subagent briefing + handoff. **Critic mode:** final
 
-Context: Chunks 1-6 built + Critic-clean. Ch.1-2 merged via #74; ch.3 (`lib/buildplan_refs.py`) #75;
-ch.4 (`lib/compliance.py`) #76; ch.5 (`lib/coverage.py`) #77 — all develop. ch.6 (`lib/gates.py`)
-committed on `refactor/hook-decomp-gates` off develop. Hook now **2,793 lines** (was 4,942 at plan
-start; ch.5 left it at 3,785 — a prior Context said 3,757, an intermediate measurement, corrected
-here + in the ch.5 change-log entry). Full suite 884 green; all gate commands
-(`stop`/`test-status`/`validate-evidence`/`verify-coverage`/`check-cumulative-critic`) smoke-clean via
-the real CLI through the new `_gates()` accessor. Checkboxes stay `[ ]` until release.
+Context: **All 7 chunks built — the decomposition is complete (pending release).** Ch.1-2 merged via
+#74; ch.3 (`lib/buildplan_refs.py`) #75; ch.4 (`lib/compliance.py`) #76; ch.5 (`lib/coverage.py`) #77;
+ch.6 (`lib/gates.py`) #78 — all develop. Ch.7 (`lib/briefing.py`) committed on
+`refactor/hook-decomp-briefing` off develop. Hook now **1,911 lines** (was 4,942 at plan start — a
+**61% reduction**; ch.6 left it at 2,793). Full suite 890 green (884 + 6 new ch.7 tests);
+`clear`/`stop` smoke-clean via the real CLI through the lazy `lib` accessors. Checkboxes stay `[ ]`
+until the develop→main release flips them via `status=shipped` change-log tags + regen-views.
 
 **Ch.6 scope (decided with the user — "helpers to gates, cmd_stop stays" — after a dependency scan
 resolved a Chunk-6-vs-Chunk-7 contradiction):** `cmd_stop`'s body **stays resident** — it is the
@@ -120,12 +120,13 @@ accessor calls→sibling imports. Resident callers (`cmd_stop`, `_check_previous
 removed); `test_plugin_runtime.py` namespacing test now scans the runtime command surface
 (hook + `lib/gates`/`lib/coverage`) so a bare command form can't hide in a relocated body.
 
-**Next: Chunk 7 (`lib/briefing.py`)** — the SessionStart briefing assembly (final chunk; `Critic mode:
-final`). Imports `gitstate`, `gates`, `buildplan_refs`. `cmd_clear` stays in the hook + must still
-produce a briefing if the import fails (decide + test the degradation). The proven pattern: write
-`lib/<mod>.py` (source-extract, AST-verify identical) → add the lazy accessor → rewire resident call
-sites → repoint coupled tests → full suite + CLI smoke → `/prawduct:critic final`. Enabled follow-up
-filed: STH-2K8R (critic_mode mirror consolidation).
+**Chunk 7 done — the decomposition is complete.** `lib/briefing.py` extracted (the proven pattern:
+source-extract → AST-verify identical → add the lazy `_briefing()` accessor → rewire `cmd_clear`'s 5
+call sites → full suite + golden briefing compare + CLI smoke → `/prawduct:critic final`). Degradation
+decided: no new shim — `cmd_clear`'s call sites are already broad-caught, so a `lib.briefing` import
+failure degrades to a skipped briefing without blocking session start (ch.2–6 precedent; pinned by a
+new test). Enabled follow-up still open: STH-2K8R (critic_mode mirror consolidation). Remaining: the
+develop→main release that flips all checkboxes `[x]` (`status=shipped` tags + regen-views).
 
 ## Chunk detail
 
@@ -250,20 +251,38 @@ moving its body to `gates` would be a `gates → bin` back-import. User chose: *
   `check-cumulative-critic` pass via the real CLI; suite green (884); `/prawduct:critic chunk`;
   committed. Hook 3,785 → 2,793.
 
-### Chunk 7: Extract `lib/briefing.py`
+### Chunk 7: Extract `lib/briefing.py` — **AS BUILT** (final chunk)
 
-- **Deliverable:** the SessionStart briefing assembly — `staleness_scan`, `_extract_dependency_names`,
-  `_get_product_name`, `_get_current_branch`, `_parse_wip`, `_parse_all_wip_branches`,
-  `_has_active_build_plan_file`, `_get_active_work`, `_get_work_in_progress`, `_detect_worktrees`,
-  `_get_other_branch_wip`, `assemble_session_briefing`, `_extract_critical_rules`,
+- **Deliverable (as built):** new `lib/briefing.py` holds **17** functions moved verbatim —
+  `_extract_dependency_names`, `staleness_scan`, `_get_product_name`, `_get_current_branch`,
+  `_parse_wip`, `_parse_all_wip_branches`, `_get_active_work`, `_get_work_in_progress`,
+  `_detect_worktrees`, `_get_other_branch_wip`, `assemble_session_briefing`, `_extract_critical_rules`,
   `generate_subagent_briefing`, `_git_session_commits`, `_summarize_critic_findings`,
-  `generate_session_handoff`, `_check_previous_session_gates`. Imports `gitstate`, `gates`,
-  `buildplan_refs`. **Hot path + lib-free today** — `cmd_clear` must still produce a briefing if the
-  `briefing` import fails (degrade to a minimal briefing, or accept a hard dep with a clear error);
-  decide + test the degradation. The hook keeps `cmd_clear`/`cmd_stop`/`main()` + the inline mirror.
-- **Done when:** moved; `prawduct-hook clear` produces an identical briefing (golden compare); the
-  hook is a thin dispatcher (~700 lines); suite green; **`/prawduct:critic final`** (last chunk —
-  Coherence/Design/Learnings/Backlog cross-checks); committed.
+  `generate_session_handoff`, `_check_previous_session_gates`. (`_has_active_build_plan_file`, the 18th
+  name this chunk originally listed, was already reassigned to `lib/gates` in ch.6 as a gate-used
+  probe.) `briefing` is the top of the DAG — imports `gitstate` / `gates` / `buildplan_refs` + `core`
+  (`resolve_build_plan_path`); nothing imports it. Sanctioned rewrites: `get_prawduct_dir`→
+  `gitstate.get_prawduct_dir`, `_resolve_build_plan_path`→`core.resolve_build_plan_path`, accessor
+  calls (`_gitstate()`/`_gates()`/`_buildplan_refs()`)→sibling imports.
+- **Degradation decided (the chunk's one design question): no new shim.** `cmd_clear` stays resident
+  and reaches the briefing via a new lazy `_briefing()` accessor; its 5 call sites are each already
+  wrapped in a broad catch, so a `lib.briefing` import failure surfaces at the call site (not the
+  hook's lib-free top level), degrades to a skipped briefing (stderr NOTE), and the session still
+  starts (markers + baseline written, returns 0) — the ch.2–6 precedent. A minimal-briefing fallback
+  would be new behavior the behavior-preserving refactor does not call for.
+- **Tests (as built):** new `tests/test_briefing_extraction.py` exercises the public surface directly
+  from `lib.briefing` (coverage preference; nothing referenced these symbols before) and pins the
+  degradation contract (`cmd_clear` survives a monkeypatched `_briefing()` `ImportError`).
+  `test_plugin_runtime.py`'s no-bare-command-forms sweep now also scans `lib/briefing` (the most
+  command-hint-dense surface) so a bare form can't hide once the `/prawduct:*` hints leave the hook. No
+  symbol repoints needed (the briefing was tested only behaviorally, via the `clear` CLI).
+- **Done when:** ✅ moved; AST-verified all 17 byte-identical after the sanctioned rewrites; golden
+  `assemble_session_briefing` output byte-identical before/after; suite green (890); `clear`/`stop`
+  smoke-clean via the real CLI; `/prawduct:critic final`; committed. Hook **2,793 → 1,911** (whole
+  decomposition: 4,942 → 1,911, −61%). The hook is now a thin dispatcher (bootstrap + parity-pinned
+  inline mirrors + lazy `lib` accessors + `cmd_*` wrappers + `cmd_clear`/`cmd_stop`/`main`); the
+  original "~700 lines" target was set before ch.5/ch.6 deliberately kept `cmd_stop`, the
+  attribution machinery, and the import-light mirrors resident.
 
 ## Verification strategy
 
