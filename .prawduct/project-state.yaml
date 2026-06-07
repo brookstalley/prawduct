@@ -474,7 +474,7 @@ views_enabled: true
 # its build-plan file is retained as a historical artifact. No release-pending
 # plans remain — the pointer is cleared (unset → falls back to artifacts/build-plan.md).
 # The next in-progress plan sets it again.
-active_build_plan:
+active_build_plan: artifacts/build-plan-hook-decomposition.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
