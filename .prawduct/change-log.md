@@ -51,8 +51,14 @@ briefing is the most command-hint-dense surface (the backlog/learnings/advisory 
 leak-coverage gap the move opens). No symbol repoints were needed (the briefing was tested only
 behaviorally, via the `clear` CLI). AST-verified: all 17 functions are byte-identical to the source
 after the sanctioned rewrites; a golden compare confirms `assemble_session_briefing` renders
-byte-identical output before/after. Full suite **890 passed** (884 + 6 new; behavior-preserving);
-`clear`/`stop` smoke-clean via the real CLI through `_briefing()`.
+byte-identical output before/after. The PR reviewer then surfaced that the briefing internals had
+only ever been exercised through the `clear` integration path, so `tests/test_briefing_functions.py`
+adds **57 per-branch characterization tests** (WIP-format detection, worktree porcelain parsing, the
+previous-session gate branches, the optional briefing sections, handoff/subagent assembly,
+critic-findings summarization) — converting that inherited residual into verified coverage. The same
+review caught a now-dead `import re` in the hook (the regex users all moved to `lib/briefing`),
+removed in a follow-up. Full suite **947 passed** (884 + 6 extraction + 57 briefing unit tests;
+behavior-preserving); `clear`/`stop` smoke-clean via the real CLI through `_briefing()`.
 
 ## 2026-06-07: extract lib/gates.py — session-end gate helpers + evidence/critic validators (STH-9V4K ch.6)
 

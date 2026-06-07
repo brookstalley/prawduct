@@ -97,7 +97,7 @@ Context: **All 7 chunks built — the decomposition is complete (pending release
 #74; ch.3 (`lib/buildplan_refs.py`) #75; ch.4 (`lib/compliance.py`) #76; ch.5 (`lib/coverage.py`) #77;
 ch.6 (`lib/gates.py`) #78 — all develop. Ch.7 (`lib/briefing.py`) committed on
 `refactor/hook-decomp-briefing` off develop. Hook now **1,911 lines** (was 4,942 at plan start — a
-**61% reduction**; ch.6 left it at 2,793). Full suite 890 green (884 + 6 new ch.7 tests);
+**61% reduction**; ch.6 left it at 2,793). Full suite 947 green (884 + 6 extraction + 57 briefing unit tests);
 `clear`/`stop` smoke-clean via the real CLI through the lazy `lib` accessors. Checkboxes stay `[ ]`
 until the develop→main release flips them via `status=shipped` change-log tags + regen-views.
 
@@ -277,7 +277,9 @@ moving its body to `gates` would be a `gates → bin` back-import. User chose: *
   command-hint-dense surface) so a bare form can't hide once the `/prawduct:*` hints leave the hook. No
   symbol repoints needed (the briefing was tested only behaviorally, via the `clear` CLI).
 - **Done when:** ✅ moved; AST-verified all 17 byte-identical after the sanctioned rewrites; golden
-  `assemble_session_briefing` output byte-identical before/after; suite green (890); `clear`/`stop`
+  `assemble_session_briefing` output byte-identical before/after; suite green (947 — incl. 57 new
+  per-branch briefing unit tests added after the PR review surfaced the inherited thin internal
+  coverage); `clear`/`stop`
   smoke-clean via the real CLI; `/prawduct:critic final`; committed. Hook **2,793 → 1,911** (whole
   decomposition: 4,942 → 1,911, −61%). The hook is now a thin dispatcher (bootstrap + parity-pinned
   inline mirrors + lazy `lib` accessors + `cmd_*` wrappers + `cmd_clear`/`cmd_stop`/`main`); the
