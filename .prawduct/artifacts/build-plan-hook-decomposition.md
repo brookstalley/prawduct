@@ -26,8 +26,12 @@ preserved. The janitor's readability pressure is resolved at the structural leve
 cohesive move requires an internal one (noted per chunk). The inline build-plan-resolution mirror
 (`_BUILD_PLAN_POINTER_KEY`, `_DEFAULT_BUILD_PLAN_REL`, `_read_str_yaml_key`,
 `_resolve_build_plan_path`) STAYS in the hook — it is a deliberate import-light/robustness mirror
-of `lib/core`, pinned by `TestProductHookMirrorParity`. Likewise `_SESSION_GITIGNORED_PATHS` +
-`_untrack_session_files` (session-start git mutation, parity-pinned mirror) stay in the hook.
+of `lib/core`, pinned by `TestProductHookMirrorParity`. **`_read_bool_yaml_key` likewise STAYS** —
+it is the same class of intentional inline import-light mirror of `lib.core.read_bool_yaml_key`,
+pinned by `TestBoolKeyCallSiteParity` (the original Chunk-5 deliverable listed it to move, but the
+code's explicit mirror contract overrides — discovered + corrected during ch.5 build). Likewise
+`_SESSION_GITIGNORED_PATHS` + `_untrack_session_files` (session-start git mutation, parity-pinned
+mirror) stay in the hook.
 
 ## Requirements Confidence
 
@@ -89,23 +93,34 @@ each PR merges via `/prawduct:pr` + regen-views.*
 - [ ] Chunk 6: Extract `lib/gates.py` — stop-gate logic + test-evidence commands. **Critic mode:** chunk
 - [ ] Chunk 7: Extract `lib/briefing.py` — staleness + session/subagent briefing + handoff. **Critic mode:** final
 
-Context: Chunks 1-4 built + Critic-clean (0 findings each). Ch.1-2 merged to develop via #74; ch.3
-(`lib/buildplan_refs.py`) PR'd to develop as **#75** (cumulative-Critic + independent PR review both
-clean); ch.4 (`lib/compliance.py`) committed on `refactor/hook-decomp-compliance` **stacked on the ch.3
-branch** (built before #75 merged) — extracted the session-end compliance canary +
-`_check_broad_exceptions`/`_check_invalid_waivers`/`_waivers_module` + the file classifiers
-(`_is_source_file`/`_is_test_file`/`_is_dependency_file`); imports `gitstate`. Hook now 4,058 lines
-(was 4,942 at plan start). Full suite 884 green; the `stop` canary path smoke-clean via the hook's real
-`_compliance()` accessor. Checkboxes stay `[ ]` until release (status=shipped); develop-merge is tracked
-by the change-log entry per ch.1/ch.2 convention. **Next: Chunk 5 (`lib/coverage.py`)** — coverage/base
-resolution (`_read_bool_yaml_key`, `_git_ref_exists`, `_resolve_base_branch`, `_coverage_resolve_base`,
-`_coverage_changed_files`, `_pr_diff_is_doc_only`, `_pr_diff_is_trivial`) + the `cmd_verify_coverage` /
-`cmd_check_cumulative_critic` / `cmd_check_pr_doc_only` / `cmd_check_pr_trivial` bodies (hook keeps thin
-`cmd_*` wrappers); imports `gitstate` + `buildplan_refs`; repoint `test_views.py` (`_read_bool_yaml_key`)
-and the `test_plugin_runtime.py` source-inspection (`_resolve_base_branch`). The proven pattern: write
-`lib/<mod>.py` (verbatim move, AST-verify identical) → add the lazy accessor → rewire resident call
-sites → repoint coupled tests → full suite + CLI smoke → `/prawduct:critic chunk`. Enabled follow-up
-filed: STH-2K8R (critic_mode mirror consolidation). Once #75 merges, rebase the ch.4 branch onto develop.
+Context: Chunks 1-5 built + Critic-clean. Ch.1-2 merged via #74; ch.3 (`lib/buildplan_refs.py`) via
+**#75**; ch.4 (`lib/compliance.py`) via **#76** — both develop. ch.5 (`lib/coverage.py`) committed on
+`refactor/hook-decomp-coverage` off develop. Hook now **3,757 lines** (was 4,942 at plan start). Full
+suite 884 green; `resolve-base`/`verify-coverage`/`check-pr-doc-only`/`check-pr-trivial` smoke-clean via
+the real CLI through the new `_coverage()` accessor. Checkboxes stay `[ ]` until release; develop-merge
+tracked by the change-log entry.
+
+**Ch.5 scope correction (two plan deviations, both validated against the code before building):**
+(1) `cmd_verify_coverage` + `cmd_check_cumulative_critic` bodies were **deferred to Chunk 6** — they
+depend on `_validate_evidence_schema` / `validate_critic_findings` / `_CRITIC_MODE_CUMULATIVE`, all
+Chunk-6 (`gates`) symbols; with the DAG running `coverage ← gates`, moving them now would be a
+`coverage → gates → bin` back-import. They stay resident, calling the moved helpers via `_coverage()`,
+and move with `gates`. (2) `_read_bool_yaml_key` **stays in the hook** — it is a parity-pinned inline
+import-light mirror of `lib.core.read_bool_yaml_key` (`TestBoolKeyCallSiteParity`), the same class as
+`_read_str_yaml_key`; the plan's deliverable listing it to move was an over-specification. Net ch.5
+move: the 6 remaining helpers (`_git_ref_exists`, `_resolve_base_branch`, `_coverage_resolve_base`,
+`_coverage_changed_files`, `_pr_diff_is_doc_only`, `_pr_diff_is_trivial`) + `_BASE_BRANCH_KEY` /
+`_DEFAULT_BASE_CANDIDATES` + the two gates-free PR fast-path commands (now `coverage.check_pr_doc_only`
+/ `coverage.check_pr_trivial`, hook keeps thin `cmd_*` wrappers). `test_views.py` needs no change
+(its `_read_bool_yaml_key` parity test still pins the hook mirror); `test_plugin_runtime.py`
+source-inspection repointed to the `_coverage()._resolve_base_branch` wiring.
+
+**Next: Chunk 6 (`lib/gates.py`)** — stop-gate logic + test-evidence commands, **plus the two deferred
+coverage/critic gate commands** (`cmd_verify_coverage`, `cmd_check_cumulative_critic`). Imports
+`gitstate`, `coverage`, `compliance`. The proven pattern: write `lib/<mod>.py` (verbatim move,
+AST-verify identical) → add the lazy accessor → rewire resident call sites → repoint coupled tests →
+full suite + CLI smoke → `/prawduct:critic chunk`. Enabled follow-up filed: STH-2K8R (critic_mode
+mirror consolidation).
 
 ## Chunk detail
 
@@ -171,18 +186,27 @@ filed: STH-2K8R (critic_mode mirror consolidation). Once #75 merges, rebase the 
 - **Done when:** moved; `cmd_stop` calls `compliance.compliance_canary` lazily; suite green;
   `/prawduct:critic chunk`; committed.
 
-### Chunk 5: Extract `lib/coverage.py`
+### Chunk 5: Extract `lib/coverage.py` — **AS BUILT** (scope corrected from the original plan)
 
-- **Deliverable:** `_read_bool_yaml_key`, `_git_ref_exists`, `_resolve_base_branch`,
-  `_coverage_resolve_base`, `_coverage_changed_files`, `_pr_diff_is_doc_only`, `_pr_diff_is_trivial`,
-  and the bodies of `cmd_verify_coverage` / `cmd_check_cumulative_critic` / `cmd_check_pr_doc_only` /
-  `cmd_check_pr_trivial` (hook keeps thin `cmd_*` wrappers). Imports `gitstate`, `buildplan_refs`
-  (`_classify_trivial_change`).
-- **Tests repoint:** `test_views.py` (`_read_bool_yaml_key`); `test_plugin_runtime.py`
-  source-inspection (`_resolve_base_branch`, `cmd_resolve_base` wiring) — update the
-  `"def _resolve_base_branch(" in src` assertion to check the wrapper/new home.
-- **Done when:** moved; `resolve-base`/`verify-coverage`/`check-cumulative-critic`/`check-pr-*`
-  subcommands still pass their tests; suite green; `/prawduct:critic chunk`; committed.
+- **Deliverable (as built):** `_git_ref_exists`, `_resolve_base_branch`, `_coverage_resolve_base`,
+  `_coverage_changed_files`, `_pr_diff_is_doc_only`, `_pr_diff_is_trivial` (+ `_BASE_BRANCH_KEY` /
+  `_DEFAULT_BASE_CANDIDATES`), and the bodies of the two **gates-free** PR fast-path commands as
+  `check_pr_doc_only` / `check_pr_trivial` (hook keeps thin `cmd_*` wrappers). Imports `buildplan_refs`
+  (`_classify_trivial_change`) and `core` (`read_str_yaml_key` — the canonical twin of the hook's
+  `_read_str_yaml_key` mirror; sanctioned rewrite). `gitstate` is **not** needed in the reduced scope.
+- **Deferred to Chunk 6 (back-import avoidance):** `cmd_verify_coverage` + `cmd_check_cumulative_critic`
+  bodies — they call `_validate_evidence_schema` / `validate_critic_findings` / `_CRITIC_MODE_CUMULATIVE`
+  (Chunk-6 `gates` symbols). DAG is `coverage ← gates`, so they move with `gates`. They stay resident
+  for now, reaching the moved helpers via `_coverage()`.
+- **Kept in hook (corrected):** `_read_bool_yaml_key` — parity-pinned inline mirror of
+  `lib.core.read_bool_yaml_key` (`TestBoolKeyCallSiteParity`), same class as `_read_str_yaml_key`.
+- **Tests repoint (as built):** `test_views.py` unchanged (its `_read_bool_yaml_key` parity test
+  still pins the hook mirror). `test_plugin_runtime.py` source-inspection repointed:
+  `"def _resolve_base_branch(" in src` → `"_coverage()._resolve_base_branch(" in src` (the wrapper
+  wiring; the resolver now lives in `lib/coverage`). The CLI behavioral tests
+  (`resolve-base`/`check-pr-*` via subprocess) are unchanged and exercise the move end-to-end.
+- **Done when:** ✅ moved; `resolve-base`/`verify-coverage`/`check-pr-*` subcommands pass; suite green
+  (884); `/prawduct:critic chunk`; committed.
 
 ### Chunk 6: Extract `lib/gates.py`
 
@@ -190,10 +214,13 @@ filed: STH-2K8R (critic_mode mirror consolidation). Once #75 merges, rebase the 
   constants), `_read_gates_waived`, `validate_critic_findings`, `_compute_verify_resolutions_scope`,
   `_verify_resolutions_gate_check`, `_count_build_plan_chunks`, `_critic_session_satisfies_gate`,
   `_has_build_plan_in_state`, and the bodies of `cmd_stop` / `cmd_test_status` /
-  `cmd_validate_evidence` / `cmd_test_evidence` (hook keeps thin wrappers). Imports `gitstate`,
-  `coverage`, `compliance`. **cmd_stop is hot-path + lib-free today** — its lazy import of `gates`
-  must degrade gracefully (a broken `gates` import must not crash session end); keep the gate's
-  fail-safe posture.
+  `cmd_validate_evidence` / `cmd_test_evidence` (hook keeps thin wrappers). **Plus the two
+  coverage/critic gate commands deferred from Chunk 5** — `cmd_verify_coverage` (needs
+  `_validate_evidence_schema`) and `cmd_check_cumulative_critic` (needs `validate_critic_findings` +
+  `_CRITIC_MODE_CUMULATIVE`); both also consume `coverage` helpers, so they belong here where
+  `gates → coverage` + gates-internal are both legal. Imports `gitstate`, `coverage`, `compliance`.
+  **cmd_stop is hot-path + lib-free today** — its lazy import of `gates` must degrade gracefully
+  (a broken `gates` import must not crash session end); keep the gate's fail-safe posture.
 - **Tests repoint:** `test_critic_gate_fallthrough.py` (`validate_critic_findings`), `test_cumulative_gate.py`,
   evidence/stop tests as needed.
 - **Done when:** moved; `stop`/`test-status`/`validate-evidence`/`test-evidence` pass; suite green;

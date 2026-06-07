@@ -3,6 +3,48 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: extract lib/coverage.py — diff-base resolution + PR fast-path gates (STH-9V4K ch.5)
+
+<!-- prawduct: chunks=5 | type=refactor | scope=hook-decomp -->
+
+**Why:** Chunk 5 of the hook decomposition (STH-9V4K). The diff-base resolution layer (honoring the
+`base_branch:` gitflow knob) and the coverage / PR fast-path inspection it feeds sit one layer above
+`buildplan_refs` in the plan's DAG (`buildplan_refs ← coverage`). Extracting it continues the
+leaf-first walk and removes another cohesive cluster from the monolith.
+
+**What:** New `lib/coverage.py` holds 6 helpers moved **verbatim** + 2 constants + the 2 gates-free PR
+fast-path commands: `_git_ref_exists`, `_resolve_base_branch`, `_coverage_resolve_base`,
+`_coverage_changed_files`, `_pr_diff_is_doc_only`, `_pr_diff_is_trivial` (+ `_BASE_BRANCH_KEY` /
+`_DEFAULT_BASE_CANDIDATES`), and `check_pr_doc_only` / `check_pr_trivial` (the bodies of the former
+`cmd_check_pr_doc_only` / `cmd_check_pr_trivial`; hook keeps thin `cmd_*` wrappers delegating via the
+new lazy `_coverage()` accessor). Three sanctioned internal rewrites: `_resolve_base_branch` reaches
+`read_str_yaml_key` from `lib.core` (the canonical twin of the hook's parity-pinned `_read_str_yaml_key`
+mirror); `_pr_diff_is_trivial` calls `buildplan_refs._classify_trivial_change` as a sibling; the two
+moved commands drop the `cmd_` prefix (lib entry-point convention, matching `migrate_plugin.run`).
+The hook gains the `_coverage()` accessor; its top level stays lib-free (ch.1 isolation invariant —
+importing `coverage` pulls in only the light `buildplan_refs`/`gitstate`/`core`). Resident callers
+rewired: `cmd_stop` (Gate 3 doc-only/trivial), `cmd_test_evidence`, `cmd_verify_coverage`,
+`cmd_resolve_base`. Hook: −301 lines net (4,058 → 3,757).
+
+**Two scope corrections (both validated against the code before building, per Validate-Before-Propagating):**
+(1) `cmd_verify_coverage` + `cmd_check_cumulative_critic` bodies were **deferred to Chunk 6** — they
+depend on `_validate_evidence_schema` / `validate_critic_findings` / `_CRITIC_MODE_CUMULATIVE` (Chunk-6
+`gates` symbols); since the DAG is `coverage ← gates`, moving them now would be a `coverage → gates →
+bin` back-import. They stay resident (calling the moved helpers via `_coverage()`) and move with
+`gates`. (2) `_read_bool_yaml_key` **stays in the hook** — the plan listed it to move, but it is a
+parity-pinned inline import-light mirror of `lib.core.read_bool_yaml_key` (`TestBoolKeyCallSiteParity`),
+the same class as `_read_str_yaml_key`; the code's explicit mirror contract overrides the plan text.
+
+**Tests:** `test_views.py` unchanged (its `_read_bool_yaml_key` parity test still pins the hook
+mirror — corrected from the plan's "repoint test_views.py"). `test_plugin_runtime.py` source-inspection
+repointed: the `"def _resolve_base_branch(" in src` hook assertion → `"_coverage()._resolve_base_branch("
+in src` (the resolver moved; the wrapper delegates). The CLI behavioral tests (`resolve-base`,
+`check-pr-doc-only`/`-trivial` via subprocess) are unchanged and exercise the move end-to-end. Full
+suite 884 passed (count unchanged — behavior-preserving). AST-verified vs the merge-base hook: 6 of
+the 8 moved bodies are byte-identical (the 4 pure helpers + the 2 PR commands, whose only change is
+the `cmd_` prefix drop on their def line); the remaining 2 (`_resolve_base_branch`,
+`_pr_diff_is_trivial`) differ only by the sanctioned internal rewrites.
+
 ## 2026-06-07: extract lib/compliance.py — session-end compliance canary + file classifiers (STH-9V4K ch.4)
 
 <!-- prawduct: chunks=4 | type=refactor | scope=hook-decomp -->

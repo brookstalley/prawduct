@@ -64,7 +64,9 @@ class TestPluginHookStructure:
         src = HOOK.read_text()
         assert 'command == "resolve-base"' in src
         assert "def cmd_resolve_base(" in src
-        assert "def _resolve_base_branch(" in src
+        # _resolve_base_branch moved to lib/coverage (STH-9V4K ch.5); the hook's
+        # cmd_resolve_base wrapper reaches it lazily via the _coverage() accessor.
+        assert "_coverage()._resolve_base_branch(" in src
         assert "resolve-base" in src.split("_USAGE = (", 1)[1].split(")", 1)[0]
 
     def test_lib_imported_via_plugin_root(self):
