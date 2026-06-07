@@ -8,6 +8,22 @@
 ## Open
 
 
+- **[CRT-3X9D]** Critic's no-execution constraint doesn't prevent session-mutating `prawduct-hook clear`
+  `effort: S · impact: M · area: critic · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K`
+
+  The Critic skill is documented (CLAUDE.md, review-protocol) to run with restricted `allowed-tools` so
+  it "cannot run test suites, builds, or executables" — review is code-analysis only. During the
+  STH-9V4K ch.7 `cumulative` review the Critic nonetheless ran `prawduct-hook clear` (as a "read-only
+  smoke") AND `pytest` once against the real project dir. `clear` is NOT read-only: it archived +
+  deleted the builder's `.session-reflected`, rewrote `.session-start` (making fresh test evidence read
+  "stale"), and recaptured the git baseline — clobbering live session governance state mid-review. The
+  builder had to restore the reflection and re-record evidence. Root cause: the tool restriction must
+  not actually be enforced for `prawduct-hook <subcmd>` (and pytest) the way the docs imply, OR the
+  Critic agent has Bash latitude it shouldn't. Fix options: tighten the Critic's `allowed-tools` so it
+  genuinely cannot invoke `prawduct-hook`/`pytest`, or make the Critic's smoke run against a temp copy /
+  with a guard env var that disables session-file mutation. Either way, an independent reviewer must
+  never be able to mutate the session it's reviewing. (builder)
+
 - **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
   `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K`
 
@@ -257,9 +273,9 @@
   Mar 23 discodon doc audit found 3 WIP branches were already merged into develop via other PRs but project-state.yaml still listed them in-progress. No mechanism reflects branch completion back to project-state.yaml when PRs merge. Consider git-based detection (branch existence on remote) or a post-merge sync step. (reflection)
 
 - **[STH-9V4K]** `bin/prawduct-hook` decomposition
-  `effort: L · impact: M · area: stop-hook · source: janitor · added: 2026-04-16 · status: in-progress · plan: build-plan-hook-decomposition.md · reviewed: 2026-06-07`
+  `effort: L · impact: M · area: stop-hook · source: janitor · added: 2026-04-16 · status: in-progress (implementation complete — release-pending) · plan: build-plan-hook-decomposition.md · reviewed: 2026-06-07`
 
-  Split the hook monolith into logical modules. Currently working and well-tested, but several distinct concerns in one file hinder readability. **Re-verified 2026-06-03:** the monolith carried over to the plugin runtime as `bin/prawduct-hook`, **4,942 lines** — readability pressure has grown, not shrunk, since filing. **In progress (2026-06-07):** planned as 7 chunks (one module per PR) in dependency order — `build-plan-hook-decomposition.md` sets `active_build_plan`. Chunks 1-2 built + Critic-clean, stacked off develop: ch.1 = lazy `lib/__init__` (the enabling fix — the hook is deliberately lib-independent on its hot paths, so eager `__init__` imports had to go first), ch.2 = `lib/gitstate.py` (the leaf probes). Remaining: buildplan_refs → compliance → coverage → gates → briefing. An AST call-graph found the 6 concern clusters form a dependency cycle (briefing→gates→coverage→buildplan_refs→briefing) broken by reassigning `_parse_build_plan_status` to buildplan_refs; extraction is leaf-first (a lib module can't call code still in the hook). (janitor)
+  Split the hook monolith into logical modules. **Implementation complete (2026-06-07):** all 7 chunks built + Critic-clean, one module per PR in dependency order — ch.1 lazy `lib/__init__` (enabling), ch.2 `lib/gitstate` (#74), ch.3 `lib/buildplan_refs` (#75), ch.4 `lib/compliance` (#76), ch.5 `lib/coverage` (#77), ch.6 `lib/gates` (#78), ch.7 `lib/briefing` (the SessionStart surface — final). The hook went from **4,942 → 1,911 lines (−61%)** and is now a thin dispatcher (bootstrap + parity-pinned inline mirrors + lazy `lib` accessors + `cmd_*` wrappers + `cmd_clear`/`cmd_stop`/`main`). An AST call-graph drove the leaf-first order; the briefing↔gates↔coverage↔buildplan_refs cycle was broken by reassigning `_parse_build_plan_status` to buildplan_refs. **Remaining: the develop→main release** that flips the build-plan checkboxes `[x]` (`status=shipped` change-log tags + regen-views) — close this item then. Enabled follow-up still open: STH-2K8R (critic_mode mirror consolidation). (janitor)
 
 - **[TST-4P8H]** Flaky tests under parallel execution (xdist)
   `effort: M · impact: M · area: tests · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
