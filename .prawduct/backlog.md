@@ -8,6 +8,25 @@
 ## Open
 
 
+- **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
+  `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · related: CRT-9V4T, PRR-4M9T, JAN-4F7M`
+
+  RFC for a FOURTH independent review agent alongside Critic / PR-reviewer / Janitor, with the
+  opposite goal — make the code *break*, not work: systematic edge-case / attack-surface generation.
+  **Opt-in per project (default disabled).** Defense-in-depth via THREE independent attack-surface
+  identification points: (1) **Planning** — build-plan chunks declare an `attack_surfaces:` field (an
+  empty list is a valid declaration; the field itself is required); (2) **Builder** — verifies the
+  actual surfaces touched at chunk-end and prompts the user for an opt-in adversarial pass when the
+  diff matches the surface taxonomy; (3) **Critic Goal 8** — independent diff inspection backstop
+  (WARNING on an undeclared touched surface, or a declared-but-undispositioned surface). Plus a
+  pre-release `/adversarial --sweep-since-last-release` sweep.
+
+  **NOTE — needs rework, not a merge:** the original RFC targeted the pre-2.0 `agents/` +
+  `templates/critic-review.md` layout (both since removed). A real implementation must be reworked
+  onto the current plugin `skills/` architecture; treat as **new feature work**, not a merge. Full
+  original design is preserved verbatim at git tag `rfc/adversarial-review` (commit `967b861`).
+  Author: Jason-Vaughan. Type: feature/methodology, size: medium-large. (user)
+
 - **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
   `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: open · related: STH-1W5N, BLD-2R9X`
 
