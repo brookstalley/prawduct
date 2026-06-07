@@ -93,34 +93,39 @@ each PR merges via `/prawduct:pr` + regen-views.*
 - [ ] Chunk 6: Extract `lib/gates.py` — stop-gate logic + test-evidence commands. **Critic mode:** chunk
 - [ ] Chunk 7: Extract `lib/briefing.py` — staleness + session/subagent briefing + handoff. **Critic mode:** final
 
-Context: Chunks 1-5 built + Critic-clean. Ch.1-2 merged via #74; ch.3 (`lib/buildplan_refs.py`) via
-**#75**; ch.4 (`lib/compliance.py`) via **#76** — both develop. ch.5 (`lib/coverage.py`) committed on
-`refactor/hook-decomp-coverage` off develop. Hook now **3,757 lines** (was 4,942 at plan start). Full
-suite 884 green; `resolve-base`/`verify-coverage`/`check-pr-doc-only`/`check-pr-trivial` smoke-clean via
-the real CLI through the new `_coverage()` accessor. Checkboxes stay `[ ]` until release; develop-merge
-tracked by the change-log entry.
+Context: Chunks 1-6 built + Critic-clean. Ch.1-2 merged via #74; ch.3 (`lib/buildplan_refs.py`) #75;
+ch.4 (`lib/compliance.py`) #76; ch.5 (`lib/coverage.py`) #77 — all develop. ch.6 (`lib/gates.py`)
+committed on `refactor/hook-decomp-gates` off develop. Hook now **2,793 lines** (was 4,942 at plan
+start; ch.5 left it at 3,785 — a prior Context said 3,757, an intermediate measurement, corrected
+here + in the ch.5 change-log entry). Full suite 884 green; all gate commands
+(`stop`/`test-status`/`validate-evidence`/`verify-coverage`/`check-cumulative-critic`) smoke-clean via
+the real CLI through the new `_gates()` accessor. Checkboxes stay `[ ]` until release.
 
-**Ch.5 scope correction (two plan deviations, both validated against the code before building):**
-(1) `cmd_verify_coverage` + `cmd_check_cumulative_critic` bodies were **deferred to Chunk 6** — they
-depend on `_validate_evidence_schema` / `validate_critic_findings` / `_CRITIC_MODE_CUMULATIVE`, all
-Chunk-6 (`gates`) symbols; with the DAG running `coverage ← gates`, moving them now would be a
-`coverage → gates → bin` back-import. They stay resident, calling the moved helpers via `_coverage()`,
-and move with `gates`. (2) `_read_bool_yaml_key` **stays in the hook** — it is a parity-pinned inline
-import-light mirror of `lib.core.read_bool_yaml_key` (`TestBoolKeyCallSiteParity`), the same class as
-`_read_str_yaml_key`; the plan's deliverable listing it to move was an over-specification. Net ch.5
-move: the 6 remaining helpers (`_git_ref_exists`, `_resolve_base_branch`, `_coverage_resolve_base`,
-`_coverage_changed_files`, `_pr_diff_is_doc_only`, `_pr_diff_is_trivial`) + `_BASE_BRANCH_KEY` /
-`_DEFAULT_BASE_CANDIDATES` + the two gates-free PR fast-path commands (now `coverage.check_pr_doc_only`
-/ `coverage.check_pr_trivial`, hook keeps thin `cmd_*` wrappers). `test_views.py` needs no change
-(its `_read_bool_yaml_key` parity test still pins the hook mirror); `test_plugin_runtime.py`
-source-inspection repointed to the `_coverage()._resolve_base_branch` wiring.
+**Ch.6 scope (decided with the user — "helpers to gates, cmd_stop stays" — after a dependency scan
+resolved a Chunk-6-vs-Chunk-7 contradiction):** `cmd_stop`'s body **stays resident** — it is the
+deliberately-inline hot-path gate (constraint 1 + Chunk 7) and uses the hook-resident gate-attribution
+machinery (`_gate_attribution`/`_load_gate_registry`/`_plugin_manifest_version`) shared with
+`cmd_clear`, so moving it would be a `gates → bin` back-import. `cmd_test_evidence` also stays (needs
+`_plugin_root`). Moved to `lib/gates.py`: the 9 gate helpers (`tests_are_current`,
+`_validate_evidence_schema`, `_read_gates_waived`, `validate_critic_findings`,
+`_compute_verify_resolutions_scope`, `_verify_resolutions_gate_check`, `_count_build_plan_chunks`,
+`_critic_session_satisfies_gate`, `_has_build_plan_in_state`) + **reassigned** `_has_active_build_plan_file`
+(gate-used, was nominally ch.7) and `_is_trivial_fileset_eligible` + 9 evidence/critic-mode constants
++ the 4 self-contained gate command bodies as `test_status`/`validate_evidence`/`check_cumulative_critic`/
+`verify_coverage` (hook keeps thin `cmd_*` wrappers). Sanctioned rewrites: `get_prawduct_dir`→`gitstate.`,
+`_resolve_build_plan_path`→`core.resolve_build_plan_path`, `_read_bool_yaml_key`→`core.read_bool_yaml_key`,
+accessor calls→sibling imports. Resident callers (`cmd_stop`, `_check_previous_session_gates`,
+`staleness_scan`, `cmd_compute_verify_resolutions_scope`) rewired to `_gates().<fn>`. Tests:
+`test_critic_mode_inference.py` repointed (`validate_critic_findings`→`lib.gates`, dead hook loader
+removed); `test_plugin_runtime.py` namespacing test now scans the runtime command surface
+(hook + `lib/gates`/`lib/coverage`) so a bare command form can't hide in a relocated body.
 
-**Next: Chunk 6 (`lib/gates.py`)** — stop-gate logic + test-evidence commands, **plus the two deferred
-coverage/critic gate commands** (`cmd_verify_coverage`, `cmd_check_cumulative_critic`). Imports
-`gitstate`, `coverage`, `compliance`. The proven pattern: write `lib/<mod>.py` (verbatim move,
-AST-verify identical) → add the lazy accessor → rewire resident call sites → repoint coupled tests →
-full suite + CLI smoke → `/prawduct:critic chunk`. Enabled follow-up filed: STH-2K8R (critic_mode
-mirror consolidation).
+**Next: Chunk 7 (`lib/briefing.py`)** — the SessionStart briefing assembly (final chunk; `Critic mode:
+final`). Imports `gitstate`, `gates`, `buildplan_refs`. `cmd_clear` stays in the hook + must still
+produce a briefing if the import fails (decide + test the degradation). The proven pattern: write
+`lib/<mod>.py` (source-extract, AST-verify identical) → add the lazy accessor → rewire resident call
+sites → repoint coupled tests → full suite + CLI smoke → `/prawduct:critic final`. Enabled follow-up
+filed: STH-2K8R (critic_mode mirror consolidation).
 
 ## Chunk detail
 
@@ -208,23 +213,42 @@ mirror consolidation).
 - **Done when:** ✅ moved; `resolve-base`/`verify-coverage`/`check-pr-*` subcommands pass; suite green
   (884); `/prawduct:critic chunk`; committed.
 
-### Chunk 6: Extract `lib/gates.py`
+### Chunk 6: Extract `lib/gates.py` — **AS BUILT** (scope decided with the user; cmd_stop stays)
 
-- **Deliverable:** `tests_are_current`, `_validate_evidence_schema` (+evidence/critic-mode
-  constants), `_read_gates_waived`, `validate_critic_findings`, `_compute_verify_resolutions_scope`,
-  `_verify_resolutions_gate_check`, `_count_build_plan_chunks`, `_critic_session_satisfies_gate`,
-  `_has_build_plan_in_state`, and the bodies of `cmd_stop` / `cmd_test_status` /
-  `cmd_validate_evidence` / `cmd_test_evidence` (hook keeps thin wrappers). **Plus the two
-  coverage/critic gate commands deferred from Chunk 5** — `cmd_verify_coverage` (needs
-  `_validate_evidence_schema`) and `cmd_check_cumulative_critic` (needs `validate_critic_findings` +
-  `_CRITIC_MODE_CUMULATIVE`); both also consume `coverage` helpers, so they belong here where
-  `gates → coverage` + gates-internal are both legal. Imports `gitstate`, `coverage`, `compliance`.
-  **cmd_stop is hot-path + lib-free today** — its lazy import of `gates` must degrade gracefully
-  (a broken `gates` import must not crash session end); keep the gate's fail-safe posture.
-- **Tests repoint:** `test_critic_gate_fallthrough.py` (`validate_critic_findings`), `test_cumulative_gate.py`,
-  evidence/stop tests as needed.
-- **Done when:** moved; `stop`/`test-status`/`validate-evidence`/`test-evidence` pass; suite green;
-  `/prawduct:critic chunk`; committed.
+A dependency scan before building surfaced a **Chunk-6-vs-Chunk-7 contradiction**: Chunk 6 said "move
+the bodies of cmd_stop … (hook keeps thin wrappers)", but Chunk 7 + constraint 1 say the hook keeps
+`cmd_stop` inline. The facts resolved it — `cmd_stop` uses the hook-resident gate-attribution machinery
+(`_gate_attribution`/`_load_gate_registry`/`_plugin_manifest_version`, shared with `cmd_clear`), so
+moving its body to `gates` would be a `gates → bin` back-import. User chose: **move the helpers, keep
+`cmd_stop` resident.**
+
+- **Deliverable (as built):** moved to `lib/gates.py` — the 9 gate helpers (`tests_are_current`,
+  `_validate_evidence_schema`, `_read_gates_waived`, `validate_critic_findings`,
+  `_compute_verify_resolutions_scope`, `_verify_resolutions_gate_check`, `_count_build_plan_chunks`,
+  `_critic_session_satisfies_gate`, `_has_build_plan_in_state`), the 9 evidence/critic-mode constants,
+  **reassigned** `_has_active_build_plan_file` (gate-used probe, was nominally ch.7) +
+  `_is_trivial_fileset_eligible`, and the 4 self-contained gate command bodies as `test_status` /
+  `validate_evidence` / `check_cumulative_critic` / `verify_coverage` (the deferred ch.5 pair +
+  test-status/validate-evidence; hook keeps thin `cmd_*` wrappers). Imports `gitstate` / `coverage` /
+  `buildplan_refs` + `core` (`read_bool_yaml_key`, `resolve_build_plan_path`). Sanctioned rewrites:
+  `get_prawduct_dir`→`gitstate.`, `_resolve_build_plan_path`→`core.resolve_build_plan_path`,
+  `_read_bool_yaml_key`→`core.read_bool_yaml_key`, accessor calls→sibling imports.
+- **Stay resident:** `cmd_stop` (hot-path gate + attribution machinery) and `cmd_test_evidence`
+  (needs `_plugin_root`). Both call the moved helpers via the new lazy `_gates()` accessor. Because
+  `cmd_stop` is reached only through `main()` dispatch and already uses sibling accessors un-wrapped
+  (ch.2–5 precedent), an import failure surfaces there, not at module top — the lib-free top-level
+  invariant is preserved; no separate degradation shim was needed.
+- **Resident callers rewired** to `_gates().<fn>`: `cmd_stop`, `_check_previous_session_gates`,
+  `staleness_scan`, `cmd_compute_verify_resolutions_scope`.
+- **Tests (as built):** `test_critic_mode_inference.py` repointed (`validate_critic_findings` →
+  `lib.gates`; now-dead `_load_prawduct_hook` helper removed). `test_plugin_runtime.py`
+  namespacing test extended to scan the runtime command surface (hook + `lib/gates` + `lib/coverage`)
+  so a bare command form can't hide in a relocated body. (The plan's `test_critic_gate_fallthrough.py`
+  / `test_cumulative_gate.py` needed no change — they drive `stop` via subprocess, exercising the
+  rewired path end-to-end.)
+- **Done when:** ✅ moved; `stop`/`test-status`/`validate-evidence`/`verify-coverage`/
+  `check-cumulative-critic` pass via the real CLI; suite green (884); `/prawduct:critic chunk`;
+  committed. Hook 3,785 → 2,793.
 
 ### Chunk 7: Extract `lib/briefing.py`
 

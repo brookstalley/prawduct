@@ -475,14 +475,24 @@ class TestPluginRuntimeNamespacing:
     )
 
     def test_hook_emits_no_bare_command_forms(self):
-        src = HOOK.read_text()
+        # The runtime command surface is the hook PLUS the lib modules that now
+        # hold extracted command bodies + their agent-facing gate messages
+        # (STH-9V4K hook decomposition — e.g. check_cumulative_critic moved to
+        # lib/gates ch.6, the PR fast-path commands to lib/coverage ch.5). Scan
+        # all of them so a bare form can't hide in a relocated command body.
+        runtime_sources = [HOOK]
+        for libmod in ("gates.py", "coverage.py"):
+            p = ROOT / "lib" / libmod
+            if p.is_file():
+                runtime_sources.append(p)
+        src = "\n".join(p.read_text() for p in runtime_sources)
         leaked = [needle for needle in self.FORBIDDEN_BARE if needle in src]
         assert not leaked, (
-            f"bin/prawduct-hook leaks bare command form(s) {leaked} — the plugin "
-            "runtime must name the /prawduct:-namespaced skills in agent-facing "
-            "output and docstrings alike (a bare form does not resolve in a plugin "
-            "repo). The frozen file-sync copies keep the bare forms; the plugin "
-            "diverges."
+            f"plugin runtime leaks bare command form(s) {leaked} — the runtime "
+            "(bin/prawduct-hook + its command-body lib modules) must name the "
+            "/prawduct:-namespaced skills in agent-facing output and docstrings "
+            "alike (a bare form does not resolve in a plugin repo). The frozen "
+            "file-sync copies keep the bare forms; the plugin diverges."
         )
         # ...and the namespaced forms ARE present (the sweep replaced, not deleted).
         assert "`/prawduct:critic`" in src, "stop-hook Critic gate must name /prawduct:critic"

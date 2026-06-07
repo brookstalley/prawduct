@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: extract lib/gates.py — session-end gate helpers + evidence/critic validators (STH-9V4K ch.6)
+
+<!-- prawduct: chunks=6 | type=refactor | scope=hook-decomp -->
+
+**Why:** Chunk 6 of the hook decomposition (STH-9V4K) — the gate-decision layer the Stop hook
+orchestrates (test-evidence currency + schema validation, critic-findings schema + cumulative /
+verify-resolutions gate logic, build-plan chunk counting, trivial/build-plan state probes). Sits atop
+`gitstate`/`coverage`/`buildplan_refs` in the DAG; the largest single extraction (the hook drops
+**3,785 → 2,793 lines**, −992).
+
+**Scope decided with the user after a dependency scan found a plan contradiction.** Chunk 6's text said
+"move the bodies of `cmd_stop` …", but Chunk 7 + design constraint 1 say the hook keeps `cmd_stop`
+inline. The scan resolved it: `cmd_stop` uses the hook-resident gate-attribution machinery
+(`_gate_attribution`/`_load_gate_registry`/`_plugin_manifest_version`, shared with `cmd_clear`), so
+moving its body to `gates` would be a `gates → bin` back-import. User chose **"helpers to gates,
+`cmd_stop` stays."**
+
+**What:** New `lib/gates.py` holds 9 gate helpers (`tests_are_current`, `_validate_evidence_schema`,
+`_read_gates_waived`, `validate_critic_findings`, `_compute_verify_resolutions_scope`,
+`_verify_resolutions_gate_check`, `_count_build_plan_chunks`, `_critic_session_satisfies_gate`,
+`_has_build_plan_in_state`) + 9 evidence/critic-mode constants + **reassigned** `_has_active_build_plan_file`
+(a gate-used probe nominally listed under ch.7, but it only depends on `buildplan_refs`) and
+`_is_trivial_fileset_eligible` + the 4 self-contained gate command bodies, renamed prefix-free as
+`test_status` / `validate_evidence` / `check_cumulative_critic` / `verify_coverage` (the two deferred
+from ch.5 plus test-status/validate-evidence; hook keeps thin `cmd_*` wrappers via a new lazy
+`_gates()` accessor). Sanctioned internal rewrites: `get_prawduct_dir`→`gitstate.get_prawduct_dir`,
+`_resolve_build_plan_path`→`core.resolve_build_plan_path`, `_read_bool_yaml_key`→`core.read_bool_yaml_key`,
+and accessor calls (`_gitstate()`/`_buildplan_refs()`/`_coverage()`)→sibling imports. **`cmd_stop` and
+`cmd_test_evidence` stay resident** (attribution machinery / `_plugin_root` deps), calling the moved
+helpers via `_gates()`; the hook's lib-free top level (ch.1 invariant) is preserved. Resident callers
+rewired: `cmd_stop`, `_check_previous_session_gates`, `staleness_scan`,
+`cmd_compute_verify_resolutions_scope`.
+
+**Tests:** `test_critic_mode_inference.py` repointed (`validate_critic_findings`→`lib.gates`; now-dead
+`_load_prawduct_hook` helper removed). `test_plugin_runtime.py`'s no-bare-command-forms test now scans
+the runtime command surface (hook + `lib/gates` + `lib/coverage`) instead of only the hook, so a bare
+form can't hide in a relocated command body — closing the leak-coverage gap the decomposition opens.
+`test_critic_gate_fallthrough.py` / `test_cumulative_gate.py` needed no change (they drive `stop` via
+subprocess). Full suite 884 passed (count unchanged — behavior-preserving). AST-verified: the 5 pure
+helpers byte-identical to the merge-base hook, the others differ only by the sanctioned rewrites.
+`stop`/`test-status`/`validate-evidence`/`verify-coverage`/`check-cumulative-critic` smoke-clean via the
+real CLI through `_gates()`.
+
+**Also:** corrected the ch.5 change-log + build-plan hook-size figures (3,757→3,785, −301→−273; the
+prior numbers were measured before the accessor + wrappers were re-added).
+
 ## 2026-06-07: extract lib/coverage.py — diff-base resolution + PR fast-path gates (STH-9V4K ch.5)
 
 <!-- prawduct: chunks=5 | type=refactor | scope=hook-decomp -->
@@ -24,7 +70,7 @@ moved commands drop the `cmd_` prefix (lib entry-point convention, matching `mig
 The hook gains the `_coverage()` accessor; its top level stays lib-free (ch.1 isolation invariant —
 importing `coverage` pulls in only the light `buildplan_refs`/`gitstate`/`core`). Resident callers
 rewired: `cmd_stop` (Gate 3 doc-only/trivial), `cmd_test_evidence`, `cmd_verify_coverage`,
-`cmd_resolve_base`. Hook: −301 lines net (4,058 → 3,757).
+`cmd_resolve_base`. Hook: −273 lines net (4,058 → 3,785).
 
 **Two scope corrections (both validated against the code before building, per Validate-Before-Propagating):**
 (1) `cmd_verify_coverage` + `cmd_check_cumulative_critic` bodies were **deferred to Chunk 6** — they
