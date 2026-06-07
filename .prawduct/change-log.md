@@ -18,7 +18,7 @@ already-extracted `lib/gitstate` rather than reaching back into the hook (a lib�
 `_has_product_definition_work`, `_discovery_uncaptured`, `_read_advisory_store`, `_git_head_sha`,
 `_get_session_changed_files`; constants `_METADATA_PREFIXES`/`_PRODUCT_CODE_SUFFIXES`/`_DOC_ROOTS`).
 A local `get_prawduct_dir` keeps the module self-contained. The hook gains a lazy `_gitstate()`
-accessor (mirrors `_waivers_module()`) and rewires its 18 resident call sites to `_gitstate().<fn>`;
+accessor (mirrors `_waivers_module()`) and rewires its 19 resident call sites to `_gitstate().<fn>`;
 its top level stays lib-free (invariant preserved). The session-start git *mutation*
 (`_untrack_session_files` + the parity-pinned `_SESSION_GITIGNORED_PATHS` mirror) stays in the hook —
 gitstate is read-only probes only.
@@ -26,7 +26,7 @@ gitstate is read-only probes only.
 **Tests:** `test_discovery_capture_nudge.py` repointed to `from lib import gitstate` for the 3 probes
 it exercises (`cmd_clear` stays on `_hook`). Full suite 884 passed; `clear`/`stop` hot paths
 smoke-clean via the real CLI. Critic (chunk): 0 findings — AST-verified all 16 moved symbols
-byte-identical to HEAD. Hook: −266 lines net (4,942 → ~4,676).
+byte-identical to HEAD. Hook: −252 lines net (4,942 → 4,690).
 
 ## 2026-06-07: lib/__init__.py lazy imports — enabling the hook decomposition (STH-9V4K ch.1)
 
