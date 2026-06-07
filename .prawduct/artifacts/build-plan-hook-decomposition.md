@@ -89,8 +89,15 @@ each PR merges via `/prawduct:pr` + regen-views.*
 - [ ] Chunk 6: Extract `lib/gates.py` — stop-gate logic + test-evidence commands. **Critic mode:** chunk
 - [ ] Chunk 7: Extract `lib/briefing.py` — staleness + session/subagent briefing + handoff. **Critic mode:** final
 
-Context: Plan written; Chunk 1 in progress on `refactor/hook-decomp-lib-init` (off develop). Each
-chunk = its own branch off develop + PR; the next session picks up the next unchecked chunk.
+Context: Chunks 1-2 built + committed + Critic-clean (0 findings each), stacked off develop:
+`refactor/hook-decomp-lib-init` (b28cd57, ch.1 __init__ slim) → `refactor/hook-decomp-gitstate`
+(57351e2, ch.2 gitstate). Each is its own PR (one module per PR) — PR ch.1 → develop, rebase ch.2,
+PR it, then continue. Not yet PR'd (built autonomously). Full suite 884 green; both hot paths
+(clear/stop) smoke-clean. **Next: Chunk 3 (buildplan_refs)** off the gitstate branch — extract the
+chunk-ref/trivial-classification cluster AND reassign `_parse_build_plan_status` out of the briefing
+region (the cycle-break); repoint `test_build_plan_resolution.py` + `test_trivial_fileset_gate.py`.
+The proven pattern: write `lib/<mod>.py` (verbatim move) → add/extend the lazy accessor → rewire
+resident call sites → repoint coupled tests → full suite + CLI smoke → `/prawduct:critic chunk`.
 
 ## Chunk detail
 
