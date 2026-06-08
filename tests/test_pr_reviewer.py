@@ -296,6 +296,48 @@ class TestStopPrReviewGate:
         assert result.returncode == 2
         assert "PR REVIEW" in result.stderr
 
+    def test_stop_blocks_fileset_eligible_code_pr_no_trivial_skip(self, tmp_path: Path):
+        """Regression for the retired `Type: trivial` PR fast-path (incoming-bug:
+        check-pr-trivial-passes-feature-clusters-that-only-touch-existing-files).
+
+        A code PR whose commits ONLY modify existing non-.md files is
+        "fileset-eligible" — the retired `check-pr-trivial` / `_pr_diff_is_trivial`
+        path reported it `trivial` and skipped BOTH the cumulative-Critic and
+        PR-reviewer gates. With that path gone, only a doc-only PR is
+        evidence-exempt at Gate 3, so this PR must BLOCK when no review evidence
+        exists.
+
+        The `git log --name-status` mock returns a fileset-eligible modification
+        (`M src/app.py`) — the exact diff the old trivial walk would have passed.
+        It is inert today (nothing consumes the commit walk), but guards against a
+        future re-introduction of a fileset-as-detector fast-path: that would make
+        this PR skip the gate again and trip the assertions below.
+        """
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" && "$2" == "--verify" && "$3" == "origin/main" ]]; then echo "abc123"; exit 0; fi',
+            'if [[ "$1" == "rev-parse" && "$2" == "--verify" ]]; then exit 1; fi',
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            # Session: uncommitted .py change → session not doc-only → Gate 3 enters.
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/app.py"; exit 0; fi',
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+            # PR diff (doc-only check): a modified existing .py → NOT doc-only.
+            'if [[ "$1" == "diff" && "$2" == "--name-only" ]]; then echo "src/app.py"; exit 0; fi',
+            # Fileset-eligible commit walk (latent re-introduction guard; see docstring).
+            'if [[ "$1" == "log" ]]; then echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"; printf "M\\tsrc/app.py\\n"; exit 0; fi',
+        ])
+
+        gh_script = "\n".join([
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook("stop", tmp_path, git_script=git_script, gh_script_body=gh_script)
+
+        assert result.returncode == 2
+        assert "PR REVIEW" in result.stderr
+
 
 # =============================================================================
 # Template content validation
