@@ -36,6 +36,10 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
   "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in
   `project-preferences.md`.
+- **Backlog goes through `/prawduct:backlog`** — pick/add/update/dedup via the skill, not
+  hand-edits. "Done" = `update status=shipped` → `## Archive` (never strikethrough, never left
+  in `## Open`). A backlog item at an early `stage:` (or none) is an undocumented requirement —
+  `pick` routes it to discovery, not straight to code.
 
 ## Principles (apply with judgment, not mechanically)
 

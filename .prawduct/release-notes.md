@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.15
+
+**Entry:** 2026-06-08: Backlog rework — claims, lifecycle stage, parser substrate, probes, triage (v0.3)
+
+**Chunks shipped:** 01, 02, 03, 04, 05, 06, 07, 08, 09, 10
+
+**Scope:** backlog-rework
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.14
 
 ### critic-session-guard

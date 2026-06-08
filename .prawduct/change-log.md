@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-08: Backlog rework — claims, lifecycle stage, parser substrate, probes, triage (v0.3)
+
+<!-- prawduct: chunks=01,02,03,04,05,06,07,08,09,10 | type=feature | release=v2.0.15 | status=shipped | scope=backlog-rework -->
+
+**Why:** Real multi-agent use in `../scriob` exposed five backlog failures (no claim/lock for
+concurrent work; completed work left stale; strikethrough instead of archive; vague items flowing
+straight to code with no requirements; no codified triage) plus the meta-failure that the backlog
+sat *beside* the work cycle — nothing routed agents to `/prawduct:backlog`, so they hand-edited.
+Root causes: not-wired-in, deferred-nudges, format-models-state-not-claim/stage, no-triage-method
+(requirements `documentation/backlog-system-requirements.md` v0.3 §0).
+
+**What (10 chunks):** (1) `lib/backlog.py` — a structured parser substrate mirroring `lib/views.py`
+(the lean core had none); the briefing's hand-rolled count now derives through it. (2) `accepted-by`
+soft claim (no auto-expiry, D10) — `pick`/`list` exclude claimed items. (3) `stage:` lifecycle
+(idea→research→requirements→design→ready, D11) — `pick` routes early-/unstaged items to discovery,
+not code, closing the requirements-precede-code hole (Principle 6). (4) `refs:` doc-links,
+`/backlog dedup`, a Triage method section. (5) Critic C-B1–C-B4 + PR-reviewer R-1/R-2 backlog
+checks (flag, never infer — D4). (6) the three §8.2 probes (external-backlog, legacy-section,
+overdue-grooming). (7) archive discipline + strikeout-cleanup sweep + archive-split + janitor
+Step 2.5 Backlog Health. (8) `/backlog import` + doctor external-file health check. (9) workflow
+wiring — the session digest (universal carrier) + building/reflection/planning/discovery +
+build-plan template route through the skill (route+flag, not gate — D13). (10) this reconciliation.
+
+**Design constraints (D10–D14):** claims don't auto-expire (stale claim = out-of-scope process
+problem); migration/cleanup = triage (additive fields, no separate subsystem); a structured parser
+is the substrate (D12); wiring is route+flag not hard-gate (D13); **derived counts are never
+persisted — always re-derived on read (D14)** (only the `backlog_last_groomed_at` timestamp +
+`backlog_format_version` are stored). §12 non-goal amended to allow the soft claim (not PM assignment).
+
+**Blast radius:** new `lib/backlog.py`, `lib/backlog_probes.py`; `lib/briefing.py` rewired;
+`bin/prawduct-hook` probe registration; `skills/backlog/SKILL.md`, `skills/critic/review-cycle.md`,
+`skills/pr/review-protocol.md`, `skills/janitor/SKILL.md`, `skills/doctor/SKILL.md`;
+`methodology/{building,reflection,planning,discovery,session-digest}.md`; `templates/{backlog,build-plan}.md`.
+New tests: `test_backlog_parser.py` (23), `test_backlog_probes.py` (16), plus presence/parity
+assertions across digest/methodology/pr-reviewer suites. 1005 tests pass; Critic per chunk
+(0 blocking throughout). Subsumes v0.2-deferred BKL-2F7K/3R8P/5H9M/1V8J/6L3Q, CRT-3K9P, JNT-7T1W.
+
 ## 2026-06-07: critic-active session guard — `clear` refuses to mutate a session under review (CRT-3X9D)
 
 <!-- prawduct: chunks=1 | type=fix | release=v2.0.14 | status=shipped | scope=critic-session-guard -->

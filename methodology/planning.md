@@ -2,6 +2,8 @@
 
 Planning bridges understanding and building. You've understood enough of the problem; now design the solution in enough detail to build it well, but not so much detail that the planning itself becomes the project. Planning isn't a one-time phase — new features, refactors, and subsystems each need their own planning scaled to their size.
 
+A `/prawduct:backlog` item at `stage: design` is a planning task: requirements are clear, architecture/detailed design is what's pending. The plan you produce advances the item — update it `stage=ready` once it's buildable. (Earlier stages — `idea`/`research`/`requirements` — route to discovery first, not here.)
+
 ## Learnings as Design Constraints
 
 Before generating artifacts, run `/prawduct:learnings [your planned work]` to surface relevant project rules and preferences. This returns only what's relevant without loading the full files. Active learnings encode architecture decisions, technology constraints, and patterns the project has been burned by. They should inform design — not as a checklist, but as context that prevents repeating known mistakes.

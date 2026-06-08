@@ -4,6 +4,48 @@
 **Scope:** Improve backlog management across all Prawduct products — creation, grooming, grouping, prioritization, and "pick what to do next" selection.
 **Out of scope:** Build plan (separate deliverable, after these requirements are approved).
 **Changes from v0.1:** §8.1 and §8.2 reconciled with the now-drafted `documentation/post-sync-advisory-spec.md` (v0.2). The previously hand-waved advisory mechanism is now concrete infrastructure; this doc references it rather than restating it. `/backlog dismiss-advisory` clarified as a per-feature alias for `/prawduct-advisory dismiss`. §12 dependency on advisory infrastructure points to the spec.
+**v0.3 status:** BUILT on branch `feature/backlog-rework` (10 chunks, 2026-06-08) — parser substrate (`lib/backlog.py`), `accepted-by`/`stage`/`refs` fields, stage routing, dedup + triage method, Critic C-B1–C-B4 + PR R-1/R-2, the three probes, archive discipline + janitor Step 2.5, `/backlog import` + doctor report, workflow wiring. Ships in the next release. The v0.2-deferred items it subsumes are reconciled in `.prawduct/backlog.md` (BKL-2F7K/3R8P/5H9M/1V8J/6L3Q, CRT-3K9P, JNT-7T1W → shipped). Still deferred: BKL-4N6X (dismiss-advisory alias — pure ergonomics, no consumer yet).
+**Changes from v0.2 (→ v0.3, 2026-06-08):** The "lean core" shipped in v1.7.0, then sat untouched while products accumulated usage. Real friction from `../scriob` (a multi-agent prawduct-consuming product) drives this revision — see §0. v0.3 (a) adds three capabilities the lean core never had (a per-actor **claim** field, a feature-**lifecycle stage** field that closes a requirements-precede-code hole, and a **doc-reference** field), (b) promotes the v0.2-deferred pieces (the four Critic checks, dedup, janitor Step 2.5, the three remaining probes, import) from "build when a product needs it" to "in scope now — a product needs it," (c) specifies a **structured parser substrate** (`lib/backlog.py`) the lean core skipped, and (d) **wires the skill into the work cycle** (the lean core left it self-serve). Two constraints fixed by the product owner: **claims do NOT auto-expire** (a durable claim is legitimate; stale-claim management is an out-of-scope process concern), and **migration/cleanup of existing projects is folded into triage** (the new fields are additive/optional; bringing a messy backlog up to standard is a triage operation, not a separate subsystem).
+
+---
+
+## 0. v0.3 release scope — the backlog rework
+
+v0.3 is one batched, multi-chunk release. It is motivated by five concrete failures observed in `../scriob` plus the meta-observation that **the backlog sits beside the work cycle rather than wired into it** (nothing routes agents to `/prawduct:backlog`, so they hand-edit the markdown). The failures reduce to four root causes:
+
+| Root cause | Observed failures it produces |
+|---|---|
+| **A. Not wired into the workflow** — nothing routes an agent to the skill | "agents aren't using `/backlog`"; completed work left stale; strikethrough instead of archive |
+| **B. D4 (never infer status) is correct, but the compensating nudges were all deferred** (C-B1–C-B4, janitor triage, grooming probe) | completed items linger as `open` with no prompt to close them |
+| **C. The format models *state* but not *who holds an item* or *what stage of thinking it is at*** | no claim/lock for multi-actor work; vague items default straight to code with no requirements |
+| **D. No codified triage *method*** — every project reinvents grooming | duplicate/overlapping items; no doc-linking convention |
+
+### 0.1 New capabilities (not in v0.2)
+
+- **`accepted-by:` claim field (root cause C).** An optional metadata field naming the actor currently holding an item — a *soft, observable, durable* claim so a second agent/user doesn't double-pick. **Does not auto-expire** (product-owner decision): the claim persists until explicitly cleared or until `status`→`shipped`/`dropped` clears it. `/backlog pick`/`list` exclude claimed items by default; `/backlog update … accepted-by=@actor` sets it, `accepted-by=` (empty) clears it. **Honest limit:** markdown-in-git is eventually-consistent — in separate worktrees two actors won't see each other's claim until commit+pull. This makes double-picks *visible and recoverable*, NOT impossible; it is explicitly **not** a mutex. A real-time lock would need a shared mutable store (out of scope — see §11). This amends non-goal §2.2 (see §3, D10).
+
+- **`stage:` lifecycle field + routing (root cause C — the keystone).** An optional field placing an item in the feature lifecycle: `idea → research → requirements → design → ready` (not every item visits every stage; many cleanup/bug items are born `ready`). The point is **changing the agent's default**: a vague item like *"stories need genre indicators and conventions"* is an **undocumented requirement** (Principle 6; the v2.0.13 work-model feature). Today the default is "write code." With `stage:`, `/backlog pick` surfaces the stage and routes early-stage (or **unspecified**) items to `/prawduct:discovery`/`/prawduct:planning` — **the next work for an `idea`/`requirements`-stage item is discovery, not implementation.** An item with no `stage:` is treated as *not yet ready to implement* (fail toward requirements, not toward code). See §5a.
+
+- **`refs:` doc-reference field (root cause D).** An optional field linking an item to the artifacts that govern it — `refs: requirements-X.md#section, arch-Y.md`. Distinct from `related:` (item→item). Lets a `requirements`-stage item point at the requirements doc once written, and lets triage cluster items around the docs they touch.
+
+- **`lib/backlog.py` parser substrate (enabling foundation).** The lean core has *no* structured backlog parser (unlike the change-log's `lib/views.py`); the only runtime reader is a textual line-count in `lib/briefing.py`. A real parser — items (ID, metadata bar, sections, body), tolerant of legacy/unstructured items — is the substrate every capability below needs (claim-filtering, stale detection, dedup, stage-aware pick, the probes). This is the thin-vertical-slice first chunk.
+
+### 0.2 Promoted from v0.2-deferred (now in scope)
+
+- The four Critic checks **C-B1–C-B4** (§7) — NOTE-level, per D1.
+- **PR-reviewer backlog reconciliation** (NEW surface, §7a) — the PR boundary is the natural "a branch of finished work is merging — did you update the items it closed?" checkpoint; the v0.2 design only put reconciliation in the Critic.
+- **`/backlog dedup`** (§4.3) and **janitor Step 2.5 backlog triage** incl. the Q2 **archive-split** (§6).
+- The three remaining probes — **`external-backlog-detected`, `legacy-section-schema`, `backlog-overdue-grooming`** (§8.2).
+- **`/backlog import`** (§4.3) + the prawduct-doctor setup-time external-file report (§8.3).
+- **Archive discipline + strikeout cleanup** (NEW, §5b): "done" = `status=shipped`/`dropped` → **move to `## Archive`**, never strikethrough and never left inline in `## Open`. A one-shot cleanup sweep (part of `/backlog migrate`/triage) converts existing strikethrough items. Resolves observed failure #3 (token growth from struck-out items).
+
+### 0.3 Workflow wiring (root cause A — cross-cutting)
+
+Methodology routes agents to the skill rather than hand-editing: `methodology/building.md` chunk-close (update affected items via `/backlog update`), `methodology/reflection.md` (capture via `/backlog add`), `methodology/planning.md`/`discovery.md` (select via `/backlog pick`, and an early-`stage:` pick routes to discovery). The Critic/PR checks above make non-canonical edits (strikethrough, stale items) **visible**. Per the original design's S6 (watch for governance fatigue) and Principle 11, this is **route + flag, not hard-gate** — no new blocking gate; the nudges are NOTE/WARNING and advisory. A framework-default behavior change that must reach already-onboarded repos rides `methodology/session-digest.md` (the only universally re-read surface — see learnings "framework-level default behavior").
+
+### 0.4 Migration / cleanup for existing projects (= triage)
+
+The new fields are additive and optional, so every existing backlog (structured or legacy) remains valid with zero forced change. Bringing an existing project up to the v0.3 standard is a **triage operation**, not a migration subsystem: `/backlog migrate` (legacy→structured, already shipped) gains the strikeout-cleanup sweep; janitor Step 2.5 surfaces stale/dup/unstaged items; `/backlog import` covers projects with an external `TODO.md`/`BACKLOG.md`. No auto-rewrite of existing items' `stage:`/`accepted-by:` — those are backfilled opt-in during triage.
 
 ---
 
@@ -48,7 +90,7 @@ The user-facing test: **can someone with 30 free minutes pick a high-value item 
 ### Non-goals
 
 1. Not an issue-tracker replacement. Production user-facing bugs belong in real trackers (GitHub Issues, Linear, Jira) — this is internal-development backlog only.
-2. Not a project management system. No assignees, no sprints, no Gantt anything.
+2. Not a project management system. No sprints, no Gantt anything. **(Amended in v0.3 — see D10):** a single optional `accepted-by:` *claim* is allowed — a "don't double-pick this" marker for multi-actor work — but it is NOT PM-style assignment: no assignment workflow, no notifications, no reassignment rules, no auto-expiry. It is a soft, observable claim, nothing more.
 3. Not a synchronization target. Backlog stays local to the product repo. No cross-repo aggregation, no central server.
 4. Not a productivity-pressure tool. Items aging out is fine and expected — the system surfaces them, it doesn't shame them.
 
@@ -69,6 +111,11 @@ These were debated and decided; documenting here so the requirements don't re-li
 | D7 | Item shape: `[PFX-XXXX]` ID (2-3 letter prefix + 4-char random alphanumeric) + one-line metadata bar + free-form body of any length | Random IDs eliminate cross-branch collisions; prefix carries work-space context; body length is author's call (one line to multi-paragraph) |
 | D8 | Migration surfaces via post-sync advisories (general infrastructure) | Not behind `prawduct-doctor` — automatic, discoverable, opt-in |
 | D9 | Backlog hygiene is a strongly-advised step in build plans (the agent updates affected items based on what actually got shipped) | Agent has full context post-implementation; mechanical scanning of plans/change-logs cannot match that judgment |
+| D10 (v0.3) | A single optional `accepted-by: @actor` claim field is allowed; it does **NOT** auto-expire and is **NOT** PM assignment | Multi-actor products (../scriob) double-pick items with no claim signal. A durable claim (an area owner may claim weeks ahead) is legitimate; a stale claim is an out-of-scope process problem. Amends non-goal §2.2. Soft/observable, not a mutex (markdown-in-git is eventually-consistent) |
+| D11 (v0.3) | An optional `stage:` field (`idea→research→requirements→design→ready`) places an item in the feature lifecycle; an item with no `stage:` (or an early stage) is treated as **not yet ready to implement** | Closes a requirements-precede-code hole (Principle 6 / work-model): a vague item must route to discovery, not default to code. Proportional — the field is optional, the vocabulary is tiny, and it only changes behavior for early/unspecified items |
+| D12 (v0.3) | The backlog gets a real structured parser (`lib/backlog.py`), mirroring `lib/views.py` for the change-log | Every v0.3 capability (claim-filter, stale-detect, dedup, stage-routing, probes) needs to parse items, not regex markdown. The lean core's textual line-count is insufficient |
+| D13 (v0.3) | Workflow wiring is **route + flag, not hard-gate** — methodology routes agents to the skill; Critic/PR/probes flag drift at NOTE/WARNING/advisory level; no new blocking gate | Preserves D4 (never infer status — flag, don't auto-update) and S6 (avoid governance fatigue, Principle 11). The lean core left the skill self-serve; v0.3 makes it the documented path without forcing it |
+| D14 (v0.3) | **Derived counts/aggregates are NEVER persisted — always re-derived on read.** No backlog count (open/pending/promoted/archived/stale) is written to any file; `lib/backlog.py` returns lists and callers count on demand. Only true *facts that cannot be re-derived* are persisted: the `backlog_last_groomed_at` **timestamp**, `backlog_format_version`, `backlog_external_imports` | Prawduct history: an active-test count stored in ~4 places drifted constantly, ~half of Critic reviews pivoted on one copy being wrong, and large effort went into keeping them in sync. A persisted count is a sync liability with no benefit — the count is cheap to re-derive and useless when stale. Applies to every count-bearing surface: the briefing (`len(pending_items())` live), the skill summary (`N open · N promoted`), the grooming probe (counts at probe-run time), the janitor Backlog Health block. A timestamp is an event marker, not a derivable aggregate, so it is exempt |
 
 ---
 
@@ -106,9 +153,13 @@ Required metadata line (one line, backticked, dot-separated):
 - `status: open | promoted | shipped | dropped`
 
 Optional metadata (extend the same line):
-- `related: PFX-XXXX, PFX-XXXX` — explicit cross-references
-- `closes: PFX-XXXX` — when this item supersedes another
-- `reviewed: YYYY-MM-DD` — last-touched-by-janitor timestamp
+- `related: PFX-XXXX, PFX-XXXX` — explicit cross-references (item → item)
+- `closes: PFX-XXXX` — when this item supersedes another (item → item)
+- `closed-by: <chunk-id|tag>` — what shipped this item, set on `status=shipped` (item → release)
+- `reviewed: YYYY-MM-DD` — last-touched timestamp (auto-set on any update)
+- **`accepted-by: @actor` (v0.3)** — soft claim that `@actor` is working this item; `pick`/`list` exclude claimed items. Does **not** auto-expire (D10); cleared by `accepted-by=` (empty) or automatically on `status`→`shipped`/`dropped`. An optional ISO timestamp may follow for information only — it does **not** drive expiry or filtering.
+- **`stage: idea | research | requirements | design | ready` (v0.3)** — where the item sits in the feature lifecycle (D11). Absent or early-stage ⇒ **treat as not-yet-implementable**: `pick` routes it to discovery/planning, not building. `ready` ⇒ requirements are clear enough to implement. Bug/cleanup items are typically born `ready`; a vague feature idea is `idea`/`requirements`.
+- **`refs: <doc#section>, <doc>` (v0.3)** — links to the governing artifacts (requirements/arch/design docs). Distinct from `related:` (which is item→item).
 
 Body: free-form markdown of any length. May be a single sentence ("BL-trivial: rename `foo` to `_foo`") or multi-paragraph analysis with file refs, fix-shape proposals, open questions, and code blocks. The agent and user choose what fits the item. Brevity is fine; richness is fine; the framework doesn't constrain either.
 
@@ -288,6 +339,28 @@ Explicit: `/backlog update PFX-XXXX status=dropped [reason=<text>]`. Item moves 
 
 ---
 
+## 5a. Lifecycle stage & requirements-precede-code routing (v0.3 — D11)
+
+The keystone of v0.3. A backlog item is often a *requirement-shaped thing at an unknown stage of clarity*. Today an agent that picks *"stories need genre indicators and conventions"* defaults to writing code — bypassing the requirements-precede-code governance (Principle 6) the framework otherwise enforces. The `stage:` field makes the item's clarity explicit and **changes the default**.
+
+**Stage vocabulary** (ordered; an item enters at whatever stage fits and may skip stages):
+- `idea` — a one-line spark; problem/success/scope all unstated.
+- `research` — problem understood; needs investigation (prior art, volatility, options) before requirements.
+- `requirements` — being scoped; problem/success/scope are being written down.
+- `design` — requirements clear; architecture/detailed-design pending.
+- `ready` — requirements and any needed design are clear enough to implement. **Only `ready` items are implementable.**
+
+**Routing behavior in `/backlog pick`:**
+- An item with `stage: ready` (or a bug/cleanup item, which is born ready) → pick presents it as buildable; normal build cycle.
+- An item with `stage: idea|research|requirements|design` → pick surfaces the stage and **routes the next action to the matching guide** (`idea`/`research`/`requirements` → `/prawduct:discovery`; `design` → `/prawduct:planning`), framed as *"this item needs <stage> work next, not implementation."* Advancing the stage is itself the work; the agent updates `stage:` via `/backlog update` as the item matures (and adds a `refs:` link to the requirements/arch doc once written).
+- **An item with NO `stage:` is treated as not-yet-`ready`** — pick does not present it as directly buildable; it prompts the picker to assess clarity first (fail toward requirements, not toward code). This is the safe default and the behavioral fix for the observed failure.
+
+This is proportional (D11): the field is optional, the vocabulary is five words, and it only diverts behavior for early/unspecified items — a `ready` cleanup item is unaffected. It ties the backlog into the work-model nudge: a vague item is an undocumented requirement, and the framework now routes it to where requirements get written.
+
+## 5b. Archive discipline & strikeout cleanup (v0.3)
+
+"Done" has exactly one representation: `status=shipped` (or `dropped`) **and the item moved to `## Archive`** via `/backlog update`. Three things are explicitly wrong and the skill/methodology say so: (1) **strikethrough** (`~~…~~`) to mark done — it leaves the item inline in `## Open` growing the file's token cost while the briefing's count silently ignores it; (2) leaving a shipped item in `## Open`/`## Promoted`; (3) deleting an item outright (archive preserves searchability — unchanged from v0.2 §5.7). A one-shot **cleanup sweep** (part of `/backlog migrate` and janitor Step 2.5) converts existing strikethrough/done-marked items in `## Open` into proper `status=shipped` archived items, preserving their bodies. Archive growth past the threshold splits to `backlog-archive.md` (§6, the Q2 decision).
+
 ## 6. Janitor integration
 
 The existing `/janitor` flow already mentions backlog triage in passing ("triage `.prawduct/backlog.md`"). This requirement formalizes it as **Step 2.5: Backlog Triage**, between Survey and Reconcile.
@@ -314,6 +387,15 @@ The Critic gains a small, soft-gated set of checks (NOTE-level only — never BL
 - **C-B4: Reference to an ID that does not exist** — if a build plan, change-log entry, or chunk body mentions `PFX-XXXX` and no such ID exists in the backlog, NOTE (not BLOCKING — could be a typo, or could be a forward reference to an item that will be filed later).
 
 The Critic does not run any backlog-specific reasoning beyond inspecting the diff and the backlog for these four signals. It does not adjudicate whether a chunk's implementation "really" closed an item — that judgment belongs to the agent doing the hygiene step (§5.2).
+
+## 7a. PR-reviewer backlog reconciliation (v0.3)
+
+The v0.2 design put reconciliation only in the Critic (per-chunk / cumulative). v0.3 adds it at the **PR boundary** — the natural "a branch's worth of finished work is about to merge; were the items it closed updated?" checkpoint, where the reviewer already reads the full `merge-base...HEAD` diff, the build plan, and the change-log. Two checks, both respecting D4 (flag, never infer/auto-update):
+
+- **R-1 (resolution candidate):** for each `## Open`/`## Promoted` item whose `area:` overlaps the branch's changed files, NOTE: *"branch work appears to resolve `[PFX-XXXX]` — verify and `/backlog update status=shipped`, or explain why it stays open."*
+- **R-2 (reference disagreement, WARNING):** if a change-log entry or commit on the branch references `closes: PFX-XXXX` / `closed-by:` but that item is still `status=open`, WARNING — this is a pure *data inconsistency* (the change-log and backlog disagree), not an inferred status, so flagging it does not violate D4.
+
+The PR reviewer never writes the backlog; it surfaces the gap for the agent's explicit call.
 
 ---
 
@@ -464,6 +546,7 @@ Items considered and explicitly deferred:
 - **Post-sync advisory infrastructure** is specified at `documentation/post-sync-advisory-spec.md` (v0.2). Per its §13 build order, the advisory infrastructure ships in Phase 1 (no-op release with empty probe roster); this backlog feature ships in Phase 2 and registers its four probes (§8.2) against the existing infrastructure. The backlog feature does NOT need to build advisory storage, lifecycle, or CLI — those are shared.
 - **`project-state.yaml` schema extension** — the backlog feature adds resolution-condition fields: `backlog_format_version: int`, `backlog_external_imports: list`, `backlog_last_groomed_at: ISO-8601`. Per advisory-spec §3.5, this committed file is the shared answer store; teammates' actions writing these fields auto-resolve advisories for everyone on next sync.
 - **Build-plan template guidance** for the backlog-hygiene step — small update to `templates/build-plan.md` and methodology prose recommending the step. No structural enforcement; documentation only.
+- **`lib/backlog.py` parser substrate (v0.3 — D12)** — new module mirroring `lib/views.py` (the change-log parser). Parses items (ID, metadata bar including the new `accepted-by`/`stage`/`refs` keys, the three sections, body), tolerant of legacy/unstructured items. Consumed by `lib/briefing.py` (replacing the textual line-count), the new probes, and the `/backlog` skill's read paths. No new committed project-state facts beyond v0.2's `backlog_format_version` / `backlog_external_imports` / `backlog_last_groomed_at` — the claim/stage/refs data lives in the item metadata bar, not the answer store.
 
 ---
 

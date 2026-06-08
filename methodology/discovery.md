@@ -38,6 +38,8 @@ The right amount of discovery is the minimum that prevents building the wrong th
 
 Discovery isn't a phase — it's a mode you enter every time the project takes on a non-trivial new piece of work — a new feature, a refactor that changes user-visible behavior, an integration with a new system. Each recurrence follows the same pattern (infer, confirm, proceed) at smaller scale.
 
+One common entry point is **a backlog item at an early `stage:`** (`idea`/`research`/`requirements`). When `/prawduct:backlog pick` surfaces such an item, the next work is discovery, *not* implementation — a vague item is an undocumented requirement (Principle 6), and writing/researching it is the task. When discovery resolves it, advance the item with `/prawduct:backlog update <id> stage=design|ready` and add a `refs:` link to the requirement/arch doc you produced.
+
 **Initial discovery** establishes the product's foundation — structural characteristics, personas, scope, success criteria — and is captured in `project-state.yaml`.
 
 **Feature-level discovery** is shorter. For each non-trivial new feature, answer three questions in one sentence each:

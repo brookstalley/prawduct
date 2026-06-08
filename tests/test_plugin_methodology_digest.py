@@ -331,3 +331,19 @@ class TestCommitAttributionDefault:
         assert toggle is not None, "Workflow section must define the Commit attribution toggle"
         assert "none" in toggle, "the documented default must be none"
         assert "co-authored" in toggle, "the toggle must document the opt-in value"
+
+
+class TestDigestCarriesBacklogDiscipline:
+    """The backlog-rework default behaviors (use the skill, archive don't
+    strikethrough, early-stage routes to discovery) must ride the always-injected
+    digest — the only surface every already-onboarded repo re-reads (the same
+    carrier rationale as the attribution default). Guards against a budget-trim
+    silently deleting the rule. Tolerant substring checks."""
+
+    def test_digest_carries_backlog_routing(self):
+        digest = DIGEST_SRC.read_text(encoding="utf-8")
+        assert "/prawduct:backlog" in digest, "digest must route backlog work to the skill"
+        assert "strikethrough" in digest, "digest must state the archive (not strikethrough) discipline"
+        assert "stage" in digest and "discovery" in digest, (
+            "digest must state early-stage items route to discovery, not code"
+        )
