@@ -106,12 +106,64 @@ class TestOverdueGroomingProbe:
         assert bp.probe_overdue_grooming(state, _cb(tmp_path)) == []
 
 
+def _legacy_backlog(n: int) -> str:
+    """A backlog of ``n`` unstructured (id-less) legacy items."""
+    items = "".join(f"- legacy item {i} (critic)\n" for i in range(n))
+    return f"# Backlog\n## Open\n{items}"
+
+
+class TestLegacyBacklogFormatProbe:
+    def test_fires_on_legacy_items(self, tmp_path):
+        _write_backlog(tmp_path, _legacy_backlog(bp.LEGACY_FORMAT_MIN_ITEMS + 1))  # > floor
+        out = bp.probe_legacy_backlog_format(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert out[0].type == "legacy-backlog-format"
+        assert out[0].recommended_action == "/prawduct:backlog migrate"
+        # Live count in the summary; evidence is count-independent (id-stable).
+        assert str(bp.LEGACY_FORMAT_MIN_ITEMS + 1) in out[0].trigger_summary
+
+    def test_resolved_by_format_version(self, tmp_path):
+        _write_backlog(tmp_path, _legacy_backlog(bp.LEGACY_FORMAT_MIN_ITEMS + 3))
+        state = ProjectState({"backlog_format_version": 2})
+        assert bp.probe_legacy_backlog_format(state, _cb(tmp_path)) == []
+
+    def test_partial_migration_no_fire(self, tmp_path):
+        # Any structured item means migration is mid-flight — backlog_format_version
+        # is the authoritative done-signal, so the id-less-count trigger stands down.
+        body = (
+            "# Backlog\n## Open\n"
+            + "".join(f"- legacy item {i} (critic)\n" for i in range(6))
+            + "- **[X-001]** a structured one\n  `area: x · status: open`\n"
+        )
+        _write_backlog(tmp_path, body)
+        assert bp.probe_legacy_backlog_format(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_small_backlog_no_fire(self, tmp_path):
+        _write_backlog(tmp_path, _legacy_backlog(bp.LEGACY_FORMAT_MIN_ITEMS))  # == floor, not >
+        assert bp.probe_legacy_backlog_format(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_no_backlog_file(self, tmp_path):
+        assert bp.probe_legacy_backlog_format(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_comment_bullets_not_counted(self, tmp_path):
+        # The header legend comment carries example bullets; parse_backlog excludes
+        # them, so they must not inflate the count past the floor on their own.
+        comment_bullets = "".join(f"- example {i}\n" for i in range(10))
+        body = (
+            f"# Backlog\n<!--\nlegend:\n{comment_bullets}-->\n## Open\n"
+            + "".join(f"- legacy item {i} (critic)\n" for i in range(3))  # 3 real ≤ floor
+        )
+        _write_backlog(tmp_path, body)
+        assert bp.probe_legacy_backlog_format(ProjectState({}), _cb(tmp_path)) == []
+
+
 class TestRegistration:
-    def test_register_adds_three_probes(self):
+    def test_register_adds_four_probes(self):
         from lib import advisory_store
         bp.register()
         keys = set(advisory_store._REGISTRY)
         assert keys == {
+            "backlog:legacy-backlog-format",
             "backlog:external-backlog-detected",
             "backlog:legacy-section-schema",
             "backlog:backlog-overdue-grooming",
@@ -123,6 +175,18 @@ class TestRegistration:
         cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
         ext = [c for c in cands if c.type == "external-backlog-detected"]
         assert ext and ext[0].feature == "backlog" and ext[0].probe_version == bp.PROBE_VERSION
+
+    def test_run_all_probes_surfaces_legacy_backlog_migrate_nudge(self, tmp_path):
+        # The regression that motivated this fix: a legacy-format backlog must
+        # surface the /prawduct:backlog migrate nudge through the *registered*
+        # roster (register() + run_all_probes), not just the probe in isolation —
+        # the original gap was the probe being absent from register().
+        _write_backlog(tmp_path, _legacy_backlog(bp.LEGACY_FORMAT_MIN_ITEMS + 2))
+        bp.register()
+        cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
+        nudge = [c for c in cands if c.type == "legacy-backlog-format"]
+        assert nudge and nudge[0].recommended_action == "/prawduct:backlog migrate"
+        assert nudge[0].feature == "backlog" and nudge[0].probe_version == bp.PROBE_VERSION
 
     def test_faulty_probe_isolation_unaffected(self, tmp_path):
         # A registered probe that raises must not block the others (run_all_probes
