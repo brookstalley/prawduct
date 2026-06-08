@@ -9,6 +9,10 @@ allowed-tools: Read, Edit, Write, Grep, Glob
 
 You manage `.prawduct/backlog.md` — the product's structured backlog. You run in a forked context, so the full backlog never pollutes the main session. Read the file, do the operation, write it back, and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
 
+**Archive discipline.** "Done" has exactly one representation: `update status=shipped` (or `dropped`), which **moves the item to `## Archive`**. Never mark done by **strikethrough** (`~~…~~`) and never leave a shipped item inline in `## Open`/`## Promoted` — a struck item still costs context tokens every session and muddies the derived counts, while archiving preserves it for search. `migrate` includes a one-shot cleanup that converts existing struck/done-marked Open items into proper archived items.
+
+**Archive split (Q2).** When `## Archive` grows past ~200 entries, move the oldest archived items into a sibling `backlog-archive.md` (same item format) to keep the working file lean — `find` already searches both, and git preserves history regardless. This is a `/prawduct:backlog` operation (the skill owns backlog.md writes); the janitor's Backlog Health step only *surfaces* when a split is due.
+
 ## The format you operate on
 
 Each item:
@@ -102,7 +106,8 @@ Convert legacy unstructured items to the structured format and fold the old sect
    Present the batch and let the user accept as-is, edit inline (e.g. supply `effort impact`), or skip individual items. When run non-interactively, apply your inferences and report what you assumed.
 3. On accept, rewrite each item to the structured shape (id + metadata bar + original body unchanged), placing it in the section matching its `status` (default `open`).
 4. **Fold sections**: map legacy headings onto the canonical three — `## Active — next up` and `## Queue` → `## Open` (use judgment if "Active" items were truly in-flight → `## Promoted`); preserve any already-`[RESOLVED]`/shipped items by moving them to `## Archive` with `status: shipped`. (`/prawduct:backlog migrate --sections` does only this heading conversion without re-touching item metadata.)
-5. **On completion** (all legacy items structured + sections folded), write `backlog_format_version: 2` as a top-level key in `.prawduct/project-state.yaml`. This records — as a committed, shared fact — that the backlog is on the structured format (and is the resolution-condition a future plugin-native `legacy-backlog-format` probe would consult). If migration is partial (user skipped items), do **not** set it yet — say how many remain.
+4b. **Strikeout cleanup sweep.** While migrating, also convert any **struck** (`~~…~~`) or otherwise done-marked items still sitting in `## Open`/`## Promoted` into proper archived items: rewrite to `status: shipped` (preserve the body), move to `## Archive`. This is idempotent and non-destructive (bodies kept) and brings a hand-edited backlog up to the archive discipline. Run it on `migrate` even when there are no *legacy* (metadata-less) items — strikeouts can exist on otherwise-structured items.
+5. **On completion** (all legacy items structured + sections folded + strikeouts cleaned), write `backlog_format_version: 2` as a top-level key in `.prawduct/project-state.yaml`. This records — as a committed, shared fact — that the backlog is on the structured format (and is the resolution-condition a future plugin-native `legacy-backlog-format` probe would consult). If migration is partial (user skipped items), do **not** set it yet — say how many remain.
 6. Report: items migrated, sections folded, whether `backlog_format_version` was set, and how many (if any) remain legacy.
 
 ### dedup

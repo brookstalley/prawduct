@@ -154,6 +154,20 @@ Work through each investigation theme (or the scoped subset), adapting your inqu
 
 **Do not fix anything during the survey.** Fixing during investigation creates tunnel vision — you optimize one area while missing systemic patterns across the codebase.
 
+### Step 2.5: Backlog Triage
+
+Survey `.prawduct/backlog.md` and emit a **Backlog Health** block in the findings report (all counts derived on read — never persist them). Surface, don't fix:
+
+1. **Group by area** — for each `area:` with several items, list them so clusters are visible.
+2. **Dedup candidates** — title/body overlap within an area → suggest a `/prawduct:backlog dedup` merge (operator confirms; never auto-merge).
+3. **Stale items** — `status: open` with `reviewed`/`added` >90d → propose re-confirm (touch `reviewed:`), update, or `status=dropped`.
+4. **Unstaged items** — `status: open` with no `stage:` → flag for a `stage:` backfill (an unstaged item won't be picked for implementation).
+5. **Neglected hygiene** — `## Promoted` items whose owning chunk appears shipped → surface "should this be `status=shipped`?" (the agent decides per the explicit-update rule; never inferred — D4).
+6. **Unstructured items** — count legacy items (no metadata bar); propose `/prawduct:backlog migrate` if many.
+7. **Archive growth (Q2 split)** — when `## Archive` exceeds ~200 entries, propose splitting it to `backlog-archive.md` (search/`find` spans both files). Keeps the working file lean without losing history.
+
+Triage *findings* feed Step 4; the backlog edits themselves run via `/prawduct:backlog` (the framework never infers status — D4).
+
 ### Step 3: Reconcile
 
 Before triaging, resolve findings where the correct resolution requires user judgment. Many findings are clear-cut — a dead branch is always cleanup, an unused import is always removal. But some findings are genuinely ambiguous, and triaging them without user input produces wrong priorities.
@@ -221,7 +235,7 @@ Review the build cycle in this project's CLAUDE.md before writing any code. Foll
 After all approved work is complete:
 - Summarize what was changed, what was deferred, and why
 - If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates. Plugin templates are read-only and there is no per-product hash store to write back — Template Currency is a live comparison against `${CLAUDE_PLUGIN_ROOT}/templates/`, so updating the product artifact is itself the resolution.
-- Triage `.prawduct/backlog.md`: resolve items addressed by maintenance, remove stale items, add any new items discovered during maintenance
+- Reconcile `.prawduct/backlog.md` via `/prawduct:backlog` (per the Step 2.5 Backlog Health findings): `update status=shipped` items maintenance resolved (moves to Archive — never delete, never strikethrough), `add` items discovered, and action the stale/dedup/stage findings. Status is always an explicit `/prawduct:backlog update` call, never inferred (D4).
 - Capture learnings in `.prawduct/learnings.md` if the maintenance surfaced patterns worth remembering
 - Reflect: did the maintenance reveal systemic issues that suggest process changes, new tooling, or methodology updates?
 
