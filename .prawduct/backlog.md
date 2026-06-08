@@ -8,6 +8,22 @@
 ## Open
 
 
+- **[CRT-3D9K]** `bin/prawduct-hook` stop-gate chunk resolution has the same views-branch blindness CRT-7B4M fixed in inference
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · stage: requirements · related: CRT-7B4M, STH-2K8R`
+
+  CRT-7B4M fixed `lib/critic_mode.py` so Critic-mode inference derives the current chunk from git
+  on a `views_enabled` feature branch (where the build-plan Status checkboxes are a derived view
+  that never flips until release). But `bin/prawduct-hook`'s stop-gate still resolves the current
+  chunk via the non-git-aware `_current_chunk_id_from_status` mirror (for chunk-`Type:` detection —
+  e.g. the trivial-rationale gate), so on a feature branch it reads Chunk 01's `Type:`, not the
+  chunk actually in progress. This was an explicit, user-vetoable scope boundary in the
+  critic-mode-branch-fix build plan (ASSUMPTION 2); it fails safe (worst case: the gate checks the
+  wrong chunk's Type, defaulting toward stricter review), so it's filed rather than fixed in that
+  PR. Fix-shape: give the hook's chunk resolver the same git-aware path (or — per STH-2K8R —
+  consolidate the mirrored helpers into `lib/` and have both the hook and inference consume one
+  implementation, which would close this by construction). Surfaced by the CRT-7B4M cumulative
+  Critic (2026-06-08). (critic)
+
 - **[MET-5C2H]** Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
   `effort: M · impact: L · area: methodology · source: user · added: 2026-06-08 · status: open · stage: research`
 
