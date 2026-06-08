@@ -3,6 +3,366 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-07: critic-active session guard — `clear` refuses to mutate a session under review (CRT-3X9D)
+
+<!-- prawduct: chunks=1 | type=fix | release=v2.0.14 | status=shipped | scope=critic-session-guard -->
+
+**Why:** The Critic is documented (CLAUDE.md, `skills/critic/SKILL.md`) as structurally unable to
+run executables — review by code analysis only. But the coordinator pattern dispatches review
+subagents via the `Agent` tool, and Agent-spawned subagents do NOT inherit the skill's restricted
+`allowed-tools`; they run with the session's default Bash latitude (here: `Bash(python3:*)`,
+`Bash(bash:*)`). During the STH-9V4K ch.7 review a subagent ran `prawduct-hook clear`, which is
+destructive — it archived/deleted the builder's `.session-reflected`, rewrote `.session-start`
+(making fresh test evidence read "stale"), and recaptured the git baseline. An independent reviewer
+clobbered the very session it was reviewing; the builder had to hand-restore state. The tool
+restriction the docs promised was prose, not structure.
+
+**What:** Enforce the real invariant — *an independent reviewer must never mutate the session it is
+reviewing* — at the mutation site rather than relying on a tool restriction that doesn't bind
+subagents. New `lib/critic_marker.py` manages a `.prawduct/.critic-active` marker (`write_marker` /
+`clear_marker` / `review_active`, TTL `CRITIC_ACTIVE_TTL_SECONDS = 1800`). Two new hook subcommands —
+`critic-begin` (writes the marker, run at Critic step 1) and `critic-end` (removes it, step 8) —
+bracket a review; both are added to the Critic skill's `allowed-tools`. `cmd_clear` gains a guard at
+the top (before any mutation): a bare `clear` with an active marker refuses (exit 2) with an
+actionable override; the genuine SessionStart hook is rerouted to `clear --session-start` (always
+proceeds + sweeps the marker), and `--force` is the operator override. `.critic-active` added to
+`GITIGNORE_ENTRIES`, the inline `_SESSION_GITIGNORED_PATHS` mirror, and `.gitignore`. CLAUDE.md +
+SKILL.md prose updated to describe the backstop honestly (the old "structural constraint" claim is
+now "directed not to … + a mutation-site guard").
+
+**Resilience (the design priority).** A crashed/hung Critic that never reaches `critic-end` must not
+permanently brick `clear`. Three independent self-corrections, modeled on the waiver escape-hatch:
+(1) **TTL auto-expiry** — a marker older than 30 min stops counting as active and is swept on read;
+(2) **session-start sweep** — the next real session start deletes any marker; (3) **explicit
+override** — the refusal message names `rm .prawduct/.critic-active` and `clear --force`. The guard
+also fails OPEN on a lib import error (a broken lib means the Critic can't run, so there's no review
+to protect; session start is never blocked). A corrupt/unparseable marker falls back to file mtime,
+then to stale — failing toward availability, never toward a permanent block.
+
+**Scope / deferred.** Path B (a dedicated restricted reviewer-agent type so coordinator subagents
+genuinely can't invoke `pytest`/`clear`) is deferred as defense-in-depth. `stop` is verified
+read-only (no session mutation) and left unguarded. Tests: new `tests/test_critic_session_guard.py`
+(15 unit + behavioral cases — refuse-without-mutation, session-start/force/stale/no-marker proceed,
+TTL boundary, corrupt-marker mtime fallback, begin/end lifecycle + idempotency); two hook-command
+pinning tests updated for `clear --session-start`; `run_plugin_hook` extended to pass argv. 962
+passed. Critic `final` (plan-override): no blocking/warning findings.
+
+## 2026-06-07: extract lib/briefing.py — SessionStart briefing + handoff assembly (STH-9V4K ch.7, final)
+
+<!-- prawduct: chunks=7 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
+
+**Why:** The final chunk of the hook decomposition (STH-9V4K). The SessionStart surface — the
+content-based staleness scan, the structured session briefing, the subagent briefing, the
+cross-`/clear` session handoff, and the previous-session governance check — was the last cohesive
+cluster in the monolith and the top of the plan's DAG (`briefing` imports `gitstate`/`gates`/
+`buildplan_refs`; nothing imports `briefing`). Extracting it leaves the hook a thin dispatcher
+(bootstrap + the parity-pinned inline mirrors + the lazy `lib` accessors + `cmd_*` wrappers +
+`cmd_clear`/`cmd_stop`/`main`). The hook drops **2,793 → 1,911 lines** (−882); across the whole
+decomposition, **4,942 → 1,911** (−61%).
+
+**What:** New `lib/briefing.py` holds 17 functions moved verbatim — `_extract_dependency_names`,
+`staleness_scan`, `_get_product_name`, `_get_current_branch`, `_parse_wip`, `_parse_all_wip_branches`,
+`_get_active_work`, `_get_work_in_progress`, `_detect_worktrees`, `_get_other_branch_wip`,
+`assemble_session_briefing`, `_extract_critical_rules`, `generate_subagent_briefing`,
+`_git_session_commits`, `_summarize_critic_findings`, `generate_session_handoff`,
+`_check_previous_session_gates`. (The 18th name the plan listed for ch.7, `_has_active_build_plan_file`,
+was already reassigned to `lib/gates` in ch.6 as a gate-used probe.) Sanctioned internal rewrites,
+identical in spirit to ch.5/ch.6: `get_prawduct_dir`→`gitstate.get_prawduct_dir`,
+`_resolve_build_plan_path`→`core.resolve_build_plan_path` (the canonical twin of the hook's
+parity-pinned inline mirror), and the `_gitstate()`/`_gates()`/`_buildplan_refs()` accessor calls →
+direct sibling references. The hook keeps `cmd_clear` resident (the inline hot-path SessionStart entry
+that orchestrates session-marker hygiene, the advisory probe, and the git baseline) plus a new lazy
+`_briefing()` accessor; its five call sites (`staleness_scan` / `assemble_session_briefing` /
+`generate_subagent_briefing` / `generate_session_handoff` / `_check_previous_session_gates`) were
+rewired to `_briefing().<fn>`.
+
+**Degradation (the chunk's one design decision).** The briefing was deliberately lib-free on the hot
+path so session start stayed robust on an incomplete plugin install. Moving it into `lib` adds an
+import that can fail. Decision: **no new degradation shim** — each of `cmd_clear`'s five `_briefing()`
+call sites is already wrapped in a broad catch, so a `lib.briefing` `ImportError` surfaces at the call
+site (not the hook's top level), degrades to a skipped briefing (a stderr NOTE), and the session still
+starts (markers + baseline written, returns 0). This is the established ch.2–6 precedent (an import
+failure surfaces at the resident call site, never at module top); a minimal-briefing fallback would be
+new behavior the behavior-preserving refactor does not call for.
+
+**Tests:** new `tests/test_briefing_extraction.py` — exercises the public surface directly from
+`lib.briefing` (the "test the code where it lives" discipline + the coverage preference; no test
+referenced these symbols before this chunk) and pins the degradation contract (`cmd_clear` survives a
+monkeypatched `_briefing()` `ImportError`: returns 0, writes `.session-start`, skips the briefing
+artifact). `test_plugin_runtime.py`'s no-bare-command-forms sweep now scans `lib/briefing` too — the
+briefing is the most command-hint-dense surface (the backlog/learnings/advisory hints), so its
+`/prawduct:*` strings must stay under the namespacing guard once they leave the hook (closing the
+leak-coverage gap the move opens). No symbol repoints were needed (the briefing was tested only
+behaviorally, via the `clear` CLI). AST-verified: all 17 functions are byte-identical to the source
+after the sanctioned rewrites; a golden compare confirms `assemble_session_briefing` renders
+byte-identical output before/after. The PR reviewer then surfaced that the briefing internals had
+only ever been exercised through the `clear` integration path, so `tests/test_briefing_functions.py`
+adds **57 per-branch characterization tests** (WIP-format detection, worktree porcelain parsing, the
+previous-session gate branches, the optional briefing sections, handoff/subagent assembly,
+critic-findings summarization) — converting that inherited residual into verified coverage. The same
+review caught a now-dead `import re` in the hook (the regex users all moved to `lib/briefing`),
+removed in a follow-up. Full suite **947 passed** (884 + 6 extraction + 57 briefing unit tests;
+behavior-preserving); `clear`/`stop` smoke-clean via the real CLI through `_briefing()`.
+
+## 2026-06-07: extract lib/gates.py — session-end gate helpers + evidence/critic validators (STH-9V4K ch.6)
+
+<!-- prawduct: chunks=6 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
+
+**Why:** Chunk 6 of the hook decomposition (STH-9V4K) — the gate-decision layer the Stop hook
+orchestrates (test-evidence currency + schema validation, critic-findings schema + cumulative /
+verify-resolutions gate logic, build-plan chunk counting, trivial/build-plan state probes). Sits atop
+`gitstate`/`coverage`/`buildplan_refs` in the DAG; the largest single extraction (the hook drops
+**3,785 → 2,793 lines**, −992).
+
+**Scope decided with the user after a dependency scan found a plan contradiction.** Chunk 6's text said
+"move the bodies of `cmd_stop` …", but Chunk 7 + design constraint 1 say the hook keeps `cmd_stop`
+inline. The scan resolved it: `cmd_stop` uses the hook-resident gate-attribution machinery
+(`_gate_attribution`/`_load_gate_registry`/`_plugin_manifest_version`, shared with `cmd_clear`), so
+moving its body to `gates` would be a `gates → bin` back-import. User chose **"helpers to gates,
+`cmd_stop` stays."**
+
+**What:** New `lib/gates.py` holds 9 gate helpers (`tests_are_current`, `_validate_evidence_schema`,
+`_read_gates_waived`, `validate_critic_findings`, `_compute_verify_resolutions_scope`,
+`_verify_resolutions_gate_check`, `_count_build_plan_chunks`, `_critic_session_satisfies_gate`,
+`_has_build_plan_in_state`) + 9 evidence/critic-mode constants + **reassigned** `_has_active_build_plan_file`
+(a gate-used probe nominally listed under ch.7, but it only depends on `buildplan_refs`) and
+`_is_trivial_fileset_eligible` + the 4 self-contained gate command bodies, renamed prefix-free as
+`test_status` / `validate_evidence` / `check_cumulative_critic` / `verify_coverage` (the two deferred
+from ch.5 plus test-status/validate-evidence; hook keeps thin `cmd_*` wrappers via a new lazy
+`_gates()` accessor). Sanctioned internal rewrites: `get_prawduct_dir`→`gitstate.get_prawduct_dir`,
+`_resolve_build_plan_path`→`core.resolve_build_plan_path`, `_read_bool_yaml_key`→`core.read_bool_yaml_key`,
+and accessor calls (`_gitstate()`/`_buildplan_refs()`/`_coverage()`)→sibling imports. **`cmd_stop` and
+`cmd_test_evidence` stay resident** (attribution machinery / `_plugin_root` deps), calling the moved
+helpers via `_gates()`; the hook's lib-free top level (ch.1 invariant) is preserved. Resident callers
+rewired: `cmd_stop`, `_check_previous_session_gates`, `staleness_scan`,
+`cmd_compute_verify_resolutions_scope`.
+
+**Tests:** `test_critic_mode_inference.py` repointed (`validate_critic_findings`→`lib.gates`; now-dead
+`_load_prawduct_hook` helper removed). `test_plugin_runtime.py`'s no-bare-command-forms test now scans
+the runtime command surface (hook + `lib/gates` + `lib/coverage`) instead of only the hook, so a bare
+form can't hide in a relocated command body — closing the leak-coverage gap the decomposition opens.
+`test_critic_gate_fallthrough.py` / `test_cumulative_gate.py` needed no change (they drive `stop` via
+subprocess). Full suite 884 passed (count unchanged — behavior-preserving). AST-verified: the 5 pure
+helpers byte-identical to the merge-base hook, the others differ only by the sanctioned rewrites.
+`stop`/`test-status`/`validate-evidence`/`verify-coverage`/`check-cumulative-critic` smoke-clean via the
+real CLI through `_gates()`.
+
+**Also:** corrected the ch.5 change-log + build-plan hook-size figures (3,757→3,785, −301→−273; the
+prior numbers were measured before the accessor + wrappers were re-added).
+
+## 2026-06-07: extract lib/coverage.py — diff-base resolution + PR fast-path gates (STH-9V4K ch.5)
+
+<!-- prawduct: chunks=5 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
+
+**Why:** Chunk 5 of the hook decomposition (STH-9V4K). The diff-base resolution layer (honoring the
+`base_branch:` gitflow knob) and the coverage / PR fast-path inspection it feeds sit one layer above
+`buildplan_refs` in the plan's DAG (`buildplan_refs ← coverage`). Extracting it continues the
+leaf-first walk and removes another cohesive cluster from the monolith.
+
+**What:** New `lib/coverage.py` holds 6 helpers moved **verbatim** + 2 constants + the 2 gates-free PR
+fast-path commands: `_git_ref_exists`, `_resolve_base_branch`, `_coverage_resolve_base`,
+`_coverage_changed_files`, `_pr_diff_is_doc_only`, `_pr_diff_is_trivial` (+ `_BASE_BRANCH_KEY` /
+`_DEFAULT_BASE_CANDIDATES`), and `check_pr_doc_only` / `check_pr_trivial` (the bodies of the former
+`cmd_check_pr_doc_only` / `cmd_check_pr_trivial`; hook keeps thin `cmd_*` wrappers delegating via the
+new lazy `_coverage()` accessor). Three sanctioned internal rewrites: `_resolve_base_branch` reaches
+`read_str_yaml_key` from `lib.core` (the canonical twin of the hook's parity-pinned `_read_str_yaml_key`
+mirror); `_pr_diff_is_trivial` calls `buildplan_refs._classify_trivial_change` as a sibling; the two
+moved commands drop the `cmd_` prefix (lib entry-point convention, matching `migrate_plugin.run`).
+The hook gains the `_coverage()` accessor; its top level stays lib-free (ch.1 isolation invariant —
+importing `coverage` pulls in only the light `buildplan_refs`/`gitstate`/`core`). Resident callers
+rewired: `cmd_stop` (Gate 3 doc-only/trivial), `cmd_test_evidence`, `cmd_verify_coverage`,
+`cmd_resolve_base`. Hook: −273 lines net (4,058 → 3,785).
+
+**Two scope corrections (both validated against the code before building, per Validate-Before-Propagating):**
+(1) `cmd_verify_coverage` + `cmd_check_cumulative_critic` bodies were **deferred to Chunk 6** — they
+depend on `_validate_evidence_schema` / `validate_critic_findings` / `_CRITIC_MODE_CUMULATIVE` (Chunk-6
+`gates` symbols); since the DAG is `coverage ← gates`, moving them now would be a `coverage → gates →
+bin` back-import. They stay resident (calling the moved helpers via `_coverage()`) and move with
+`gates`. (2) `_read_bool_yaml_key` **stays in the hook** — the plan listed it to move, but it is a
+parity-pinned inline import-light mirror of `lib.core.read_bool_yaml_key` (`TestBoolKeyCallSiteParity`),
+the same class as `_read_str_yaml_key`; the code's explicit mirror contract overrides the plan text.
+
+**Tests:** `test_views.py` unchanged (its `_read_bool_yaml_key` parity test still pins the hook
+mirror — corrected from the plan's "repoint test_views.py"). `test_plugin_runtime.py` source-inspection
+repointed: the `"def _resolve_base_branch(" in src` hook assertion → `"_coverage()._resolve_base_branch("
+in src` (the resolver moved; the wrapper delegates). The CLI behavioral tests (`resolve-base`,
+`check-pr-doc-only`/`-trivial` via subprocess) are unchanged and exercise the move end-to-end. Full
+suite 884 passed (count unchanged — behavior-preserving). AST-verified vs the merge-base hook: 6 of
+the 8 moved bodies are byte-identical (the 4 pure helpers + the 2 PR commands, whose only change is
+the `cmd_` prefix drop on their def line); the remaining 2 (`_resolve_base_branch`,
+`_pr_diff_is_trivial`) differ only by the sanctioned internal rewrites.
+
+## 2026-06-07: extract lib/compliance.py — session-end compliance canary + file classifiers (STH-9V4K ch.4)
+
+<!-- prawduct: chunks=4 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
+
+**Why:** Chunk 4 of the hook decomposition (STH-9V4K). The session-end compliance canary — the
+lightweight failure-detection pass `cmd_stop` runs (code-without-tests, dependency-without-manifest,
+broad exception handling, reason-less waivers) — is its own cohesive concern sitting one layer up from
+the ch.2 `gitstate` leaf. Extracting it continues the leaf-first DAG walk
+(`gitstate ← compliance`) and removes another self-contained cluster from the monolith.
+
+**What:** New `lib/compliance.py` holds 7 functions moved **verbatim**: `compliance_canary`,
+`_check_broad_exceptions`, `_check_invalid_waivers`, `_waivers_module`, plus the file classifiers
+`_is_source_file` / `_is_test_file` / `_is_dependency_file` (their only caller is the canary). Two
+sanctioned internal rewrites, both forced by the lib→bin no-back-import rule: `compliance_canary`
+reaches the changed-file probe + prawduct-dir helper via `from . import gitstate`
+(`gitstate._get_session_changed_files` / `gitstate.get_prawduct_dir`, replacing the hook's
+`_gitstate().…` / inline `get_prawduct_dir`), and `_waivers_module` drops the now-redundant
+`_plugin_root()` sys.path seeding for a relative `from . import waivers` (the lib package is already
+importable once `compliance` loads). The fail-open posture is preserved exactly — `_waivers_module`
+still returns `None` on import failure so the canary emits no waiver-dependent finding. The hook gains
+a lazy `_compliance()` accessor (mirrors `_gitstate()`) and rewires the single `cmd_stop` call site to
+`_compliance().compliance_canary(...)`; its top level stays lib-free (ch.1 isolation invariant
+preserved — importing `compliance` pulls in only `gitstate`, with `waivers` still lazy).
+
+**Tests:** `test_waivers.py` repointed to `from lib import compliance` for the two canary helpers it
+exercises (`_check_broad_exceptions`, `_check_invalid_waivers`); the now-dead `SourceFileLoader` hook
+shim and its `importlib` imports were removed (the module no longer needs the hook). Full suite 884
+passed (count unchanged — behavior-preserving); the `stop` canary path is smoke-clean via the hook's
+real `_compliance()` accessor (broad-except flags only the unwaived file; waiver honored end-to-end).
+AST-verified: the 5 pure-move functions are byte-identical to HEAD; the 2 rewritten ones differ only
+by the sanctioned rewrites above. Hook: −168 lines net (4,226 → 4,058).
+
+## 2026-06-07: extract lib/buildplan_refs.py — build-plan ref parsing + trivial classification (STH-9V4K ch.3)
+
+<!-- prawduct: chunks=3 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
+
+**Why:** Chunk 3 of the hook decomposition (STH-9V4K). The build-plan-parsing cluster (chunk-ref /
+`Type:` / `Trivial because:` parsers + the `Type: trivial` file-set classifier) is the next layer up
+from the ch.2 `gitstate` leaf. Moving it out also performs the **cycle-break** the plan's dependency
+analysis identified (constraint 2): `_parse_build_plan_status` was mis-homed in the briefing cluster
+(it is build-plan parsing, not briefing assembly); reassigning it here turns the six concern clusters
+into an acyclic DAG (`gitstate ← buildplan_refs ← coverage ← gates ← briefing`).
+
+**What:** New `lib/buildplan_refs.py` (524 lines) holds 8 functions + 6 constants moved **verbatim**:
+`_parse_build_plan_status`, `_looks_like_file_path`, `_parse_build_plan_chunk_refs`,
+`_parse_build_plan_chunk_type`, `_parse_build_plan_chunk_trivial_rationale`, `_classify_trivial_change`,
+`_current_chunk_id_from_status`, `_verify_chunk_refs`; constants `_BUILD_PLAN_PATH_RE` /
+`_BUILD_PLAN_NEW_QUALIFIER_RE` / `_BUILD_PLAN_TYPE_RE` / `_BUILD_PLAN_ALLOWED_TYPES` /
+`_BUILD_PLAN_TRIVIAL_RATIONALE_RE` / `_TRIVIAL_PROTECTED_PATHS`. Two sanctioned internal rewrites: the
+module reaches the canonical resolver via `from .core import resolve_build_plan_path` (the established
+lib idiom — `critic_mode`/`views` do the same; avoids a third copy of the hook's parity-pinned inline
+mirror, which stays in the hook for its import-light hot path) and `_is_metadata_path` via
+`from . import gitstate`. The hook gains a lazy `_buildplan_refs()` accessor (mirrors `_gitstate()`)
+and rewires its 11 resident call sites; its top level stays lib-free (ch.1 isolation invariant
+preserved). `_count_build_plan_chunks` / `_pr_diff_is_trivial` / `_is_trivial_fileset_eligible` /
+`cmd_verify_chunk_refs` stay in the hook (Chunk 5–6 work) and now delegate via the accessor.
+
+**Tests:** `test_build_plan_resolution.py` (`_parse_build_plan_chunk_refs`, `_verify_chunk_refs`) and
+`test_trivial_fileset_gate.py` (`_classify_trivial_change`, `_TRIVIAL_PROTECTED_PATHS`) repointed to
+`from lib import buildplan_refs` — tested where the code now lives, assertions unchanged. One stale
+doc pointer fixed (the chunk-heading-rule location in `test_build_plan_resolution.py`). Full suite 884
+passed (count unchanged — behavior-preserving); `verify-chunk-refs`/`clear`/`stop` smoke-clean via the
+real CLI (the stop `trivial-declaration` gate fired end-to-end). Critic (chunk): 0 findings —
+AST-verified all 8 moved bodies byte-identical to HEAD + 6 constants value-identical. Hook: −464 lines
+net (4,690 → 4,226). Enabled follow-up STH-2K8R filed (critic_mode could now consume buildplan_refs
+instead of mirroring it).
+
+## 2026-06-07: extract lib/gitstate.py — read-only git/state probes (STH-9V4K ch.2)
+
+<!-- prawduct: chunks=2 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
+
+**Why:** Chunk 2 of the hook decomposition (STH-9V4K) — extract the leaf of the dependency DAG. The
+read-only git/state probes are the most depended-upon cluster (briefing, gates, compliance,
+buildplan_refs all sit on them), so they move first; every later extraction then imports from an
+already-extracted `lib/gitstate` rather than reaching back into the hook (a lib→bin back-import).
+
+**What:** New `lib/gitstate.py` (leaf, stdlib-only) holds 13 probes + 3 constants moved **verbatim**
+(`git_status_output`, `git_has_changes`/`_has_session_changes`/`_has_code_changes`,
+`_session_changes_are_doc_only`, `_is_metadata_path`, `_is_framework_tooling`, `_has_product_code`,
+`_has_product_definition_work`, `_discovery_uncaptured`, `_read_advisory_store`, `_git_head_sha`,
+`_get_session_changed_files`; constants `_METADATA_PREFIXES`/`_PRODUCT_CODE_SUFFIXES`/`_DOC_ROOTS`).
+A local `get_prawduct_dir` keeps the module self-contained. The hook gains a lazy `_gitstate()`
+accessor (mirrors `_waivers_module()`) and rewires its 19 resident call sites to `_gitstate().<fn>`;
+its top level stays lib-free (invariant preserved). The session-start git *mutation*
+(`_untrack_session_files` + the parity-pinned `_SESSION_GITIGNORED_PATHS` mirror) stays in the hook —
+gitstate is read-only probes only.
+
+**Tests:** `test_discovery_capture_nudge.py` repointed to `from lib import gitstate` for the 3 probes
+it exercises (`cmd_clear` stays on `_hook`). Full suite 884 passed; `clear`/`stop` hot paths
+smoke-clean via the real CLI. Critic (chunk): 0 findings — AST-verified all 16 moved symbols
+byte-identical to HEAD. Hook: −252 lines net (4,942 → 4,690).
+
+## 2026-06-07: lib/__init__.py lazy imports — enabling the hook decomposition (STH-9V4K ch.1)
+
+<!-- prawduct: chunks=1 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
+
+**Why:** `bin/prawduct-hook` is deliberately lib-independent at its top level (every `lib` import is
+lazy + `try/except ImportError`-guarded; the SessionStart briefing + the whole `cmd_stop` gate run
+inline) "so the hot path stays robust even on an incomplete plugin install." But `lib/__init__.py`
+*eager-imported* the heavy modules (advisory_store, views, operator_verification, critic_mode,
+audit_learnings_cmd) to provide a flat API, so `from lib import <anything>` cost ~34ms and coupled
+session start to every heavy module's importability. That blocks extracting the briefing/gate logic
+into `lib/` (STH-9V4K) without regressing the invariant — the enabling first chunk of the
+decomposition.
+
+**What:** Replaced the eager `from .X import (...)` re-export blocks with a PEP-562 module-level
+`__getattr__` backed by a `_FLATTENED_EXPORTS` name→submodule map (50 names) + `_SUBMODULE_EXPORTS`
+({views, waivers}), caching each resolved name into globals on first access. The flat API is
+preserved exactly (`from lib import infer_mode`, `lib.GITIGNORE_ENTRIES`, …); submodule imports
+(`from lib import views`, `from lib.advisory_store import run_sync_advisories`) resolve natively.
+Now `from lib import <leaf>` loads only that submodule (~1ms, isolated): a syntax error in `views.py`
+no longer breaks an unrelated `from lib import gitstate`.
+
+**Tests:** `tests/test_lib_lazy_imports.py` (8) — isolation pinned in a fresh-interpreter subprocess
+(`import lib` / `import lib.core` / touching a flat name drag in zero heavy modules), and the flat API
+hard-coded as a contract (a dropped export fails the test). Full suite 884 passed. Critic (chunk): 0
+blocking / 0 warning / 0 note.
+
+## 2026-06-06: verify-chunk-refs skips glob patterns written as prose (BLD-2R9X)
+
+<!-- prawduct: type=bugfix | release=v2.0.14 | status=shipped -->
+<!-- Merged to develop (release-pending) via #73. Flip status=merged → status=shipped and add
+     release=vX.Y.Z at the develop→main release. -->
+
+**Why:** The chunk-ref verifier's path detector treated any backticked token containing `/` as a
+literal file to existence-check, so a glob written in prose (e.g. a Tests bullet's
+`docs/requirements/*.md`) was captured and reported `missing-ref: … file does not exist` — advisory
+noise on an active build plan. (BLD-2R9X)
+
+**Fix:** `_looks_like_file_path` (`bin/prawduct-hook`, the single helper the chunk-ref parser consults)
+now returns False for any token carrying a shell-glob metacharacter (`*`, `?`, `[`). A literal source
+path never contains one, so this skips globs without risking real paths. Same parser family as the
+shipped BLD-8F2Q (`path::symbol` over-match); symbol/backlog-ref verification stays deferred
+(BLD-5V8F).
+
+**Tests:** 4 regression tests in `tests/test_build_plan_resolution.py::TestVerifyChunkRefsGlobPaths`
+(each glob metacharacter + the per-token case where a real path on the same line is still captured).
+875 passed.
+
+## 2026-06-06: /prawduct:pr redirects a release promotion to the release process (REL-8K3M)
+
+<!-- prawduct: type=bugfix | release=v2.0.14 | status=shipped -->
+<!-- Merged to develop (release-pending) via #72. Flip status=merged → status=shipped and add
+     release=vX.Y.Z at the develop→main release. -->
+
+**Why:** The `/prawduct:pr` skill is shaped for **feature→`develop`** PRs, but a contributor
+naturally reaches for it to "ship" a release — and lands in Step 2's cumulative-Critic gate
+(`check-cumulative-critic`), which correctly refuses because release-prep necessarily touches
+non-`.md` version files (version strings + `regen-views`-regenerated `scope_rollups`) that CRT-7M2D's
+docs-only allowance doesn't cover. The gate isn't broken — it's being run in a context it doesn't
+govern. Surfaced firsthand during the v2.0.13 (work-model) release. (REL-8K3M)
+
+**Fix (a + b — no gate-logic change):**
+- `skills/pr/SKILL.md` — a **release-promotion guard** in Context Detection: when the current branch
+  is the integration base (`develop`) or release surface (`main`/`master`) rather than a feature
+  branch, the skill recognizes a release/integration context and **redirects to
+  `docs/release-process.md`** instead of running the feature-PR gates. Stops the false-positive at the
+  source.
+- `docs/release-process.md` — a new "`/prawduct:pr` is not the release vehicle" section documenting
+  that a `check-cumulative-critic` exit-1 during release-prep is **expected and benign** — neither a
+  gate to re-satisfy (the CRT-7M2D treadmill) nor a waiver case (the gate IS satisfiable in a feature
+  context; it simply isn't the release's gate), since the stop hook also stands down once
+  `active_build_plan` is cleared.
+
+**Rejected (c):** broadening the CRT-7M2D allowance to treat version/derived-view files as
+non-substantive — it would weaken a correct, global gate for *every* repo's feature PRs to patch a
+context-misuse (a feature PR bumping a version would skip cumulative review of that change).
+
+**Tests:** 2 guards in `tests/test_pr_reviewer.py::TestPrReviewSkillContent` (the skill redirect; the
+release-doc benign-exit note). 871 passed.
+
 ## 2026-06-06: Work model — catch undocumented requirements (shipped v2.0.13)
 
 <!-- prawduct: chunks=1,2,3 | type=feature | release=v2.0.13 | status=shipped | scope=work-model -->

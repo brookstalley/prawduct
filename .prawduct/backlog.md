@@ -8,6 +8,100 @@
 ## Open
 
 
+- **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · related: CRT-3X9D`
+
+  Critic SKILL.md step 1 runs `prawduct-hook critic-begin` right after mode resolution, but a
+  `Type: designer-handoff` chunk exits clean *before* step 8 (`critic-end`), so the
+  `.prawduct/.critic-active` marker is left set on that path. Benign — the marker self-corrects
+  three ways (30-min TTL, session-start sweep, explicit override) — and rare, but ideally
+  `critic-begin` should run only after the designer-handoff skip is ruled out (move the
+  `critic-begin` call below the skip, or pair the skip with a `critic-end`). Surfaced as a NOTE in
+  the CRT-3X9D cumulative review. (critic, 2026-06-08)
+
+- **[CRT-3X9D]** Critic's no-execution constraint doesn't prevent session-mutating `prawduct-hook clear`
+  `effort: S · impact: M · area: critic · source: builder · added: 2026-06-07 · status: in-progress (implementation complete) · branch: fix/critic-session-guard-CRT-3X9D · plan: build-plan-critic-session-guard.md · related: STH-9V4K`
+
+  The Critic skill is documented (CLAUDE.md, review-protocol) to run with restricted `allowed-tools` so
+  it "cannot run test suites, builds, or executables" — review is code-analysis only. During the
+  STH-9V4K ch.7 `cumulative` review the Critic nonetheless ran `prawduct-hook clear` (as a "read-only
+  smoke") AND `pytest` once against the real project dir. `clear` is NOT read-only: it archived +
+  deleted the builder's `.session-reflected`, rewrote `.session-start` (making fresh test evidence read
+  "stale"), and recaptured the git baseline — clobbering live session governance state mid-review. The
+  builder had to restore the reflection and re-record evidence. Root cause: the tool restriction must
+  not actually be enforced for `prawduct-hook <subcmd>` (and pytest) the way the docs imply, OR the
+  Critic agent has Bash latitude it shouldn't. Fix options: tighten the Critic's `allowed-tools` so it
+  genuinely cannot invoke `prawduct-hook`/`pytest`, or make the Critic's smoke run against a temp copy /
+  with a guard env var that disables session-file mutation. Either way, an independent reviewer must
+  never be able to mutate the session it's reviewing. (builder)
+
+- **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
+  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K`
+
+  `lib/critic_mode.py` carries independent re-implementations of `_current_chunk_id_from_status`,
+  the chunk-`Type:` parser, and `_is_metadata_path` (and references `_parse_build_plan_status`),
+  whose stated rationale is "no dependency on `bin/prawduct-hook` — re-implemented to stay importable
+  from the slash-command shim" (critic_mode.py docstring ~L46). STH-9V4K ch.2–3 moved those helpers
+  into `lib/gitstate` + `lib/buildplan_refs`, which `critic_mode` *already* imports siblings from
+  (`from .core import resolve_build_plan_path`). So the mirror's reason-to-exist is now gone:
+  `critic_mode` could `from .buildplan_refs import _current_chunk_id_from_status` (etc.) and
+  `from .gitstate import _is_metadata_path`, deleting the duplicate bodies + their manual-sync
+  docstrings. Defer until the decomposition (ch.4–7) lands so the lib surface is stable. NOT a
+  behavior-preserving move (it changes critic_mode's structure + collapses a parity relationship),
+  so it needs its own tests + Critic pass — kept out of ch.3 for scope discipline. Filed from the
+  ch.3 buildplan_refs extraction on 2026-06-07. (builder)
+
+- **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
+  `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · related: CRT-9V4T, PRR-4M9T, JAN-4F7M`
+
+  RFC for a FOURTH independent review agent alongside Critic / PR-reviewer / Janitor, with the
+  opposite goal — make the code *break*, not work: systematic edge-case / attack-surface generation.
+  **Opt-in per project (default disabled).** Defense-in-depth via THREE independent attack-surface
+  identification points: (1) **Planning** — build-plan chunks declare an `attack_surfaces:` field (an
+  empty list is a valid declaration; the field itself is required); (2) **Builder** — verifies the
+  actual surfaces touched at chunk-end and prompts the user for an opt-in adversarial pass when the
+  diff matches the surface taxonomy; (3) **Critic Goal 8** — independent diff inspection backstop
+  (WARNING on an undeclared touched surface, or a declared-but-undispositioned surface). Plus a
+  pre-release `/adversarial --sweep-since-last-release` sweep.
+
+  **NOTE — needs rework, not a merge:** the original RFC targeted the pre-2.0 `agents/` +
+  `templates/critic-review.md` layout (both since removed). A real implementation must be reworked
+  onto the current plugin `skills/` architecture; treat as **new feature work**, not a merge. Full
+  original design is preserved verbatim at git tag `rfc/adversarial-review` (commit `967b861`).
+  Author: Jason-Vaughan. Type: feature/methodology, size: medium-large. (user)
+
+- **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
+  `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: open · related: STH-1W5N, BLD-2R9X`
+
+  `_TRIVIAL_PROTECTED_PATHS` (`bin/prawduct-hook`) bounds the `Type: trivial` / `check-pr-trivial`
+  fast-path to `{skills/, methodology/, templates/, CLAUDE.md}` — the governance *content* surfaces.
+  It does NOT include `bin/` or `lib/`, which hold the framework's executable runtime — including
+  `bin/prawduct-hook` itself (the ~4,369-line hook that *implements every gate*) and the `lib/`
+  modules. Consequence (observed firsthand merging BLD-2R9X, a `bin/prawduct-hook` bugfix):
+  `check-pr-trivial` returned exit 0 (`all fileset-eligible`), so the `/prawduct:pr` fast-path would
+  have skipped BOTH the cumulative-Critic gate AND the independent reviewer for a change to the core
+  gate-runtime. I declined the fast-path manually and ran the full review, but the next contributor
+  may not. A bug in `bin/prawduct-hook`/`lib/` can break gating itself, so it is arguably *more*
+  catastrophic-blast-radius than a `templates/` edit, not less. Fix-shape: add `("bin/", False,
+  "runtime-edited")` and `("lib/", False, "runtime-edited")` to `_TRIVIAL_PROTECTED_PATHS` (single
+  source of truth — both the stop-hook `_is_trivial_fileset_eligible` and the PR-boundary
+  `_pr_diff_is_trivial` consume it), with tests in `tests/test_trivial_fileset_gate.py`. Open
+  question: is a doc/comment-only edit to a `bin/`/`lib/` file (no logic change) worth exempting, or
+  keep the bound coarse (any `bin/`/`lib/` touch → full review)? Coarse is safer and simpler. Filed
+  from the BLD-2R9X merge on 2026-06-06. (builder)
+
+- **[PR-2H8N]** Key the `/pr` release-promotion guard off `resolve-base` instead of hardcoded branch names
+  `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · related: REL-8K3M`
+
+  REL-8K3M's release-promotion guard in `skills/pr/SKILL.md` hardcodes `develop`/`main`/`master` to
+  recognize a release/integration context. The skill's own merge-flow (step 7) already distinguishes
+  trunk-vs-gitflow generically via `prawduct-hook resolve-base`. A repo with a custom `base_branch`
+  name (or an unusual release-surface name) would slip past the guard. Kept a NOTE during REL-8K3M
+  because the guard is judgment-admitting prose an LLM can generalize, the doc reference is already
+  present, and REL-8K3M targets prawduct's own gitflow case. Fix-shape: have the guard compare the
+  current branch to `resolve-base`'s output (the integration base) and to the release surface, rather
+  than a fixed name list. Filed from the REL-8K3M cumulative Critic NOTE on 2026-06-06. (critic)
+
 - **[WMK-1P4Q]** Work-model parent-map injection (B2) + optional `vocabulary:` frontmatter convention
   `effort: M · impact: M · area: hooks · source: critic · added: 2026-06-06 · status: open · related: work-model`
 
@@ -18,20 +112,6 @@
   miss data from the live nudge). Also document the optional `vocabulary:`/`governs:` frontmatter
   convention in artifact templates (the lib already supports it; auto-extract is the default). See
   `docs/work-model-spec.md` Part C and `docs/work-model-enforcement.md`.
-
-- **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: open · related: BLD-8F2Q, BLD-5V8F`
-
-  The chunk-ref parser (`bin/prawduct-hook` `_parse_build_plan_chunk_refs` / `cmd_verify_chunk_refs`)
-  treats any backticked token containing `/` as a file_path to existence-check. A glob written in
-  prose — e.g. a Tests bullet saying ``uncaptured + `docs/requirements/*.md` present`` — is captured
-  as a literal path and reported `missing-ref: docs/requirements/*.md … file does not exist`
-  (advisory; the command still exit-0'd in the discovery-capture-nudge cumulative review, but it's
-  noise on the active plan). A literal source path never contains glob metacharacters, so the fix is
-  cheap and safe: skip backticked tokens containing `*`, `?`, or `[` (glob chars) in
-  `_parse_build_plan_chunk_refs`. Same parser family as the shipped BLD-8F2Q (`path::symbol`
-  over-match); symbol/backlog-ref verification is still deferred (BLD-5V8F). Filed from the
-  discovery-capture-nudge cumulative Critic NOTE on 2026-06-05. (critic)
 
 - **[LRN-3F8K]** Reconcile the dangling sentinel on the "Framework ownership follows the write strategy" learning
   `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open`
@@ -204,9 +284,9 @@
   Mar 23 discodon doc audit found 3 WIP branches were already merged into develop via other PRs but project-state.yaml still listed them in-progress. No mechanism reflects branch completion back to project-state.yaml when PRs merge. Consider git-based detection (branch existence on remote) or a post-merge sync step. (reflection)
 
 - **[STH-9V4K]** `bin/prawduct-hook` decomposition
-  `effort: L · impact: M · area: stop-hook · source: janitor · added: 2026-04-16 · status: open · reviewed: 2026-06-03`
+  `effort: L · impact: M · area: stop-hook · source: janitor · added: 2026-04-16 · status: in-progress (implementation complete — release-pending) · plan: build-plan-hook-decomposition.md · reviewed: 2026-06-07`
 
-  Split the hook monolith into logical modules (_gates.py, _briefing.py, _yaml_parser.py). Currently working and well-tested, but several distinct concerns in one file hinder readability. **Re-verified 2026-06-03:** the original `tools/product-hook` (2,240 lines) was deleted in M4; the monolith carried over to the plugin runtime as `bin/prawduct-hook`, now **4,369 lines** — the readability pressure has grown, not shrunk, since filing. Extraction targets land in `lib/` (already 11 modules), alongside `gates`/`briefing`/`yaml` concern splits. (janitor)
+  Split the hook monolith into logical modules. **Implementation complete (2026-06-07):** all 7 chunks built + Critic-clean, one module per PR in dependency order — ch.1 lazy `lib/__init__` (enabling), ch.2 `lib/gitstate` (#74), ch.3 `lib/buildplan_refs` (#75), ch.4 `lib/compliance` (#76), ch.5 `lib/coverage` (#77), ch.6 `lib/gates` (#78), ch.7 `lib/briefing` (the SessionStart surface — final). The hook went from **4,942 → 1,911 lines (−61%)** and is now a thin dispatcher (bootstrap + parity-pinned inline mirrors + lazy `lib` accessors + `cmd_*` wrappers + `cmd_clear`/`cmd_stop`/`main`). An AST call-graph drove the leaf-first order; the briefing↔gates↔coverage↔buildplan_refs cycle was broken by reassigning `_parse_build_plan_status` to buildplan_refs. **Remaining: the develop→main release** that flips the build-plan checkboxes `[x]` (`status=shipped` change-log tags + regen-views) — close this item then. Enabled follow-up still open: STH-2K8R (critic_mode mirror consolidation). (janitor)
 
 - **[TST-4P8H]** Flaky tests under parallel execution (xdist)
   `effort: M · impact: M · area: tests · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
@@ -265,7 +345,35 @@
 
 ## Promoted
 
-_None._
+- **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: in-progress · branch: fix/verify-chunk-refs-globs · related: BLD-8F2Q, BLD-5V8F`
+
+  **Resolved on branch.** `_looks_like_file_path` (`bin/prawduct-hook`, the single semantic gate the
+  chunk-ref parser consults) now returns False for any backticked token carrying a shell-glob
+  metacharacter (`*`, `?`, `[`) — a literal source path never contains one, so a glob written in prose
+  (e.g. a Tests bullet's `docs/requirements/*.md`) is skipped instead of reported `missing-ref`. Same
+  parser family as the shipped BLD-8F2Q (`path::symbol`); symbol/backlog-ref verification stays
+  deferred (BLD-5V8F). 4 regression tests in
+  `tests/test_build_plan_resolution.py::TestVerifyChunkRefsGlobPaths` (each glob char + the per-token
+  case where a real path on the same line is still captured). Statusless change-log entry on-branch;
+  flips to `merged` at develop-merge, `shipped` at release, then this item archives.
+
+- **[REL-8K3M]** `/pr` cumulative-Critic gate false-positives (benign exit-1) on a develop→main RELEASE promotion
+  `effort: S · impact: S · area: release · source: reflection · added: 2026-06-06 · status: in-progress · branch: fix/pr-release-redirect · related: CRT-7M2D`
+
+  **Resolved on branch (fix-shape a+b, no gate-logic change).** `skills/pr/SKILL.md` gained a
+  release-promotion guard (on `develop`/`main` → redirect to `docs/release-process.md`, don't run the
+  feature-PR gates); `docs/release-process.md` gained a "`/prawduct:pr` is not the release vehicle"
+  section explaining the benign `check-cumulative-critic` exit-1 is neither a gate to re-satisfy (the
+  CRT-7M2D treadmill) nor a waiver case. Fix-shape (c) — broadening the CRT-7M2D allowance to version/
+  derived-view files — was rejected (weakens a correct global gate to patch a context-misuse). 2 guard
+  tests in `tests/test_pr_reviewer.py::TestPrReviewSkillContent`. Change-log entry is statusless
+  on-branch (avoids the regen-views typo-guard); gains `status=merged` at feature→develop merge and
+  `status=shipped` at the develop→main release, then this item archives.
+
+  Original report: the `/prawduct:pr` Step 2 gate is feature→develop shaped and exit-1'd during the
+  v2.0.13 release because release-prep touches non-`.md` version files (version strings +
+  `regen-views`-regenerated `scope_rollups`) outside CRT-7M2D's docs-only allowance. (reflection)
 
 ## Archive
 

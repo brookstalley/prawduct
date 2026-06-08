@@ -231,7 +231,8 @@ class TestDigestWiring:
         # Chunk-1 banner or the Chunk-5 clear briefing.
         cmds = [h["command"] for e in sessionstart for h in e["hooks"]]
         assert any("banner.py" in c for c in cmds)
-        assert any(c.rstrip().endswith("clear") for c in cmds)
+        # The clear briefing now carries `--session-start` (CRT-3X9D guard bypass).
+        assert any("bin/prawduct-hook" in c and "clear" in c.split() for c in cmds)
 
 
 class TestReaderSkills:

@@ -854,19 +854,6 @@ class TestInferCriticModeSubcommand:
 # ---------------------------------------------------------------------------
 
 
-def _load_prawduct_hook():
-    """Import the plugin runtime (bin/prawduct-hook) for direct helper access."""
-    import importlib.machinery
-    import importlib.util
-
-    hook_path = REPO_ROOT / "bin" / "prawduct-hook"
-    loader = importlib.machinery.SourceFileLoader("prawduct_hook", str(hook_path))
-    spec = importlib.util.spec_from_loader("prawduct_hook", loader)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
 class TestValidatorAcceptsModeChosenBy:
     """``validate_critic_findings`` must accept the new optional
     ``mode_chosen_by`` string and reject empty/non-string values
@@ -874,7 +861,11 @@ class TestValidatorAcceptsModeChosenBy:
 
     @pytest.fixture(autouse=True)
     def _module(self):
-        self.mod = _load_prawduct_hook()
+        # validate_critic_findings moved to lib.gates (STH-9V4K ch.6); test it
+        # where it now lives rather than through the hook.
+        from lib import gates  # noqa: PLC0415
+
+        self.mod = gates
 
     def _write_findings(self, path: Path, **overrides) -> Path:
         data = {

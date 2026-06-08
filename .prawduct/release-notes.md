@@ -5,6 +5,30 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.14
+
+### critic-session-guard
+
+**Entry:** 2026-06-07: critic-active session guard — `clear` refuses to mutate a session under review (CRT-3X9D)
+
+**Chunks shipped:** 1
+
+### hook-decomp
+
+**Entry:** 2026-06-07: extract lib/briefing.py — SessionStart briefing + handoff assembly (STH-9V4K ch.7, final)
+
+**Chunks shipped:** 1, 2, 3, 4, 5, 6, 7
+
+### 2026-06-06: verify-chunk-refs skips glob patterns written as prose (BLD-2R9X)
+
+**Entry:** 2026-06-06: verify-chunk-refs skips glob patterns written as prose (BLD-2R9X)
+
+### 2026-06-06: /prawduct:pr redirects a release promotion to the release process (REL-8K3M)
+
+**Entry:** 2026-06-06: /prawduct:pr redirects a release promotion to the release process (REL-8K3M)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.13
 
 **Entry:** 2026-06-06: Work model — catch undocumented requirements (shipped v2.0.13)

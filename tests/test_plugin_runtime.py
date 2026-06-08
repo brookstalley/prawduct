@@ -64,7 +64,9 @@ class TestPluginHookStructure:
         src = HOOK.read_text()
         assert 'command == "resolve-base"' in src
         assert "def cmd_resolve_base(" in src
-        assert "def _resolve_base_branch(" in src
+        # _resolve_base_branch moved to lib/coverage (STH-9V4K ch.5); the hook's
+        # cmd_resolve_base wrapper reaches it lazily via the _coverage() accessor.
+        assert "_coverage()._resolve_base_branch(" in src
         assert "resolve-base" in src.split("_USAGE = (", 1)[1].split(")", 1)[0]
 
     def test_lib_imported_via_plugin_root(self):
@@ -80,11 +82,14 @@ class TestPluginHookStructure:
         stop = data["hooks"]["Stop"]
         ss_cmds = [h["command"] for e in ss for h in e["hooks"]]
         stop_cmds = [h["command"] for e in stop for h in e["hooks"]]
-        # Briefing (clear) wired via the bundled hook, by plugin root.
+        # Briefing (clear) wired via the bundled hook, by plugin root. The clear
+        # command carries `--session-start` so the genuine SessionStart invocation
+        # bypasses the critic-active session-mutation guard and sweeps any stale
+        # marker (CRT-3X9D) — a bare reviewer-issued `clear` is the guarded path.
         assert any(
-            "${CLAUDE_PLUGIN_ROOT}" in c and "bin/prawduct-hook" in c and c.rstrip().endswith("clear")
+            "${CLAUDE_PLUGIN_ROOT}" in c and "bin/prawduct-hook" in c and c.rstrip().endswith("clear --session-start")
             for c in ss_cmds
-        ), "SessionStart must run the bundled prawduct-hook clear briefing"
+        ), "SessionStart must run the bundled prawduct-hook clear --session-start briefing"
         # Stop gate wired.
         assert any(
             "${CLAUDE_PLUGIN_ROOT}" in c and "bin/prawduct-hook" in c and c.rstrip().endswith("stop")
@@ -100,7 +105,9 @@ class TestPluginHookStructure:
         data = json.loads(HOOKS_JSON.read_text())
         for entry in data["hooks"]["SessionStart"]:
             cmds = [h["command"] for h in entry["hooks"]]
-            if any(c.rstrip().endswith("clear") for c in cmds):
+            # Identify the clear entry by the `clear` token (now followed by
+            # `--session-start`); build-index/stop/banner/digest don't carry it.
+            if any("bin/prawduct-hook" in c and "clear" in c.split() for c in cmds):
                 assert "compact" not in entry["matcher"], (
                     "the clear (state-reset) hook must not fire on compact"
                 )
@@ -135,7 +142,7 @@ def _write_mock_git(mock_bin: Path, *, status: str = "", branch: str = "main", h
 def run_plugin_hook(
     command: str,
     project_dir: Path,
-    *,
+    *args: str,
     git_status: str = "",
     branch: str = "main",
     mock_bin: Path | None = None,
@@ -143,7 +150,9 @@ def run_plugin_hook(
     """Invoke bin/prawduct-hook as Claude Code would: CLAUDE_PLUGIN_ROOT points
     at the plugin (this repo), CLAUDE_PROJECT_DIR at the consuming repo, and a
     mock git on PATH. mock_bin defaults OUTSIDE project_dir so the §2
-    write-isolation assertion can snapshot the project dir cleanly.
+    write-isolation assertion can snapshot the project dir cleanly. Extra
+    positional ``*args`` are passed through as subcommand argv (e.g.
+    ``run_plugin_hook("clear", proj, "--session-start")``).
     """
     if mock_bin is None:
         mock_bin = project_dir.parent / "_mock_bin"
@@ -161,7 +170,7 @@ def run_plugin_hook(
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), command],
+        ["python3", str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=20,
     )
 
@@ -473,14 +482,26 @@ class TestPluginRuntimeNamespacing:
     )
 
     def test_hook_emits_no_bare_command_forms(self):
-        src = HOOK.read_text()
+        # The runtime command surface is the hook PLUS the lib modules that now
+        # hold extracted command bodies + their agent-facing gate messages
+        # (STH-9V4K hook decomposition — e.g. check_cumulative_critic moved to
+        # lib/gates ch.6, the PR fast-path commands to lib/coverage ch.5, and the
+        # session-briefing assembly — the most command-hint-dense surface, with the
+        # backlog/learnings/advisory hints — to lib/briefing ch.7). Scan all of them
+        # so a bare form can't hide in a relocated command body or briefing hint.
+        runtime_sources = [HOOK]
+        for libmod in ("gates.py", "coverage.py", "briefing.py"):
+            p = ROOT / "lib" / libmod
+            if p.is_file():
+                runtime_sources.append(p)
+        src = "\n".join(p.read_text() for p in runtime_sources)
         leaked = [needle for needle in self.FORBIDDEN_BARE if needle in src]
         assert not leaked, (
-            f"bin/prawduct-hook leaks bare command form(s) {leaked} — the plugin "
-            "runtime must name the /prawduct:-namespaced skills in agent-facing "
-            "output and docstrings alike (a bare form does not resolve in a plugin "
-            "repo). The frozen file-sync copies keep the bare forms; the plugin "
-            "diverges."
+            f"plugin runtime leaks bare command form(s) {leaked} — the runtime "
+            "(bin/prawduct-hook + its command-body lib modules) must name the "
+            "/prawduct:-namespaced skills in agent-facing output and docstrings "
+            "alike (a bare form does not resolve in a plugin repo). The frozen "
+            "file-sync copies keep the bare forms; the plugin diverges."
         )
         # ...and the namespaced forms ARE present (the sweep replaced, not deleted).
         assert "`/prawduct:critic`" in src, "stop-hook Critic gate must name /prawduct:critic"

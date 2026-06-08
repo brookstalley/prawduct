@@ -471,9 +471,12 @@ views_enabled: true
 # rigor-and-stance (owner pivot infra→methodology) SHIPPED in v2.0.7 (2026-06-04,
 # #63); its build-plan file is retained as a historical artifact. The work-model
 # feature (catch undocumented requirements, #71) SHIPPED in v2.0.13 (2026-06-06);
-# its build-plan file is retained as a historical artifact. No release-pending
-# plans remain — the pointer is cleared (unset → falls back to artifacts/build-plan.md).
-# The next in-progress plan sets it again.
+# its build-plan file is retained as a historical artifact. The hook-decomposition
+# (STH-9V4K, #74–79) and critic-session-guard (CRT-3X9D, #80) both SHIPPED in
+# v2.0.14 (2026-06-08); regen-views flipped each plan's ## Status checkboxes to [x]
+# via its scope= tag (REL-4T8N). No release-pending plans remain — the pointer is
+# cleared (unset → falls back to artifacts/build-plan.md). The next in-progress
+# plan sets it again.
 active_build_plan:
 
 # =============================================================================
@@ -526,12 +529,18 @@ scope_rollups:
   cleanup-batch:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.0.5"]
+  critic-session-guard:
+    chunks: ["1"]
+    releases: ["v2.0.14"]
   discovery-capture-nudge:
     chunks: ["01", "02"]
     releases: ["v2.0.10"]
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]
+  hook-decomp:
+    chunks: ["1", "2", "3", "4", "5", "6", "7"]
+    releases: ["v2.0.14"]
   release-tooling:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.0.6"]

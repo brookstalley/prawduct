@@ -28,6 +28,8 @@ Then route:
 | PR exists, CI green, approved (or no required reviewers) | **Merge** |
 | PR exists, other state | **Status** |
 
+**Release-promotion guard — check this before routing.** If the current branch is the integration base (`develop`) or the release surface (`main`/`master`) rather than a feature branch, this is a **release/integration context, not a feature PR.** The `develop`→`main` release is a separate **manual** process (`docs/release-process.md` — the tree-set promotion), and the feature-PR gates below (the cumulative-Critic gate in Step 2, the PR reviewer in Step 3) do **not** apply to it: each feature's cumulative review and release-readiness review already happened on its feature→`develop` PR, and the release is published by setting `main`'s tree equal to `develop`'s and bumping the version — not by `/prawduct:pr`. **STOP and point the user to `docs/release-process.md`; do not run the Create/Update gates.** (A `check-cumulative-critic` exit-1 in this context is expected and benign — release-prep necessarily touches non-`.md` version files that the gate's docs-only allowance doesn't cover — so it is **not** a gate to satisfy and **not** a waiver case. See `docs/release-process.md`.)
+
 The user can override with explicit arguments: `create`, `update`, `merge`, `status`.
 
 $ARGUMENTS

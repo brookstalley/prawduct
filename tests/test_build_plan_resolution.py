@@ -28,6 +28,11 @@ read_str_yaml_key = _mod.read_str_yaml_key
 BUILD_PLAN_POINTER_KEY = _mod.BUILD_PLAN_POINTER_KEY
 DEFAULT_BUILD_PLAN_REL = _mod.DEFAULT_BUILD_PLAN_REL
 
+# chunk-ref parsing + verification moved to lib/buildplan_refs (STH-9V4K ch.3) —
+# test the parsers where they now live, not via the hook (which only keeps a
+# thin wrapper + the import-light resolver mirror, parity-tested below).
+from lib import buildplan_refs as _bpr  # noqa: E402
+
 # plugin-runtime inline mirror via SourceFileLoader (extensionless shebang script)
 _hook_loader = importlib.machinery.SourceFileLoader("prawduct_hook_res", str(_ROOT / "bin" / "prawduct-hook"))
 _hook_spec = importlib.util.spec_from_loader("prawduct_hook_res", _hook_loader)
@@ -151,9 +156,9 @@ class TestSessionGitignoreMirror:
 # verify-chunk-refs, `_parse_build_plan_chunk_type` (fail-closes the chunk
 # type to `code`), and the `lib/critic_mode.py` plan-override. Nothing errors;
 # governance just quietly stops resolving the chunk. These helpers mirror the
-# production heading rule exactly (``bin/prawduct-hook`` ~line 2910): a heading
-# counts only if it `startswith("### Chunk ")` AND carries a colon, with the
-# leading-zero-tolerant ID before the colon.
+# production heading rule exactly (``lib/buildplan_refs.py`` — moved there in
+# STH-9V4K ch.3): a heading counts only if it `startswith("### Chunk ")` AND
+# carries a colon, with the leading-zero-tolerant ID before the colon.
 
 # Status line: "- [ ] Chunk 01: ..." / "- [x] Chunk 01: ..." (checkbox + colon).
 _STATUS_CHUNK_RE = re.compile(r"^- \[[ xX]\] Chunk (\S+):")
@@ -302,19 +307,19 @@ class TestVerifyChunkRefsPathSymbol:
         )
         (project / "lib").mkdir()
         (project / "lib" / "views.py").write_text("x = 1\n")
-        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["error"] is None
         # The stored ref is the PATH portion only — not the full `path::symbol`.
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
-        assert _hook._verify_chunk_refs(project, refs) == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
 
     def test_missing_path_symbol_reports_path_portion_only(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
             tmp_path, "- touches `lib/gone.py::foo`\n"
         )
-        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
-        missing = _hook._verify_chunk_refs(project, refs)
+        missing = _bpr._verify_chunk_refs(project, refs)
         assert len(missing) == 1
         # The missing-ref message names the path, not `lib/gone.py::foo`.
         assert missing[0]["ref"] == "lib/gone.py"
@@ -324,7 +329,7 @@ class TestVerifyChunkRefsPathSymbol:
         project, prawduct = _project_with_chunk(
             tmp_path, "- creates new `lib/created.py::bar`\n"
         )
-        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["file_paths"] == []
 
     def test_path_and_path_symbol_same_line_dedup(self, tmp_path: Path):
@@ -333,7 +338,7 @@ class TestVerifyChunkRefsPathSymbol:
         )
         (project / "lib").mkdir()
         (project / "lib" / "views.py").write_text("x = 1\n")
-        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         # Both collapse to one path existence-check.
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
 
@@ -341,14 +346,59 @@ class TestVerifyChunkRefsPathSymbol:
         project, prawduct = _project_with_chunk(tmp_path, "- see `docs/x.md`\n")
         (project / "docs").mkdir()
         (project / "docs" / "x.md").write_text("doc\n")
-        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [e["ref"] for e in refs["file_paths"]] == ["docs/x.md"]
-        assert _hook._verify_chunk_refs(project, refs) == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
 
     def test_symbol_without_slashed_path_skipped(self, tmp_path: Path):
         # No `/` before `::` -> not a path reference (e.g. a bare class::method).
         project, prawduct = _project_with_chunk(
             tmp_path, "- the `SomeClass::method` helper\n"
         )
-        refs = _hook._parse_build_plan_chunk_refs(prawduct, "01")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["file_paths"] == []
+
+
+# =============================================================================
+# BLD-2R9X — verify-chunk-refs skips glob patterns written as prose
+# =============================================================================
+
+
+class TestVerifyChunkRefsGlobPaths:
+    """A backticked token carrying a shell-glob metacharacter (`*`, `?`, `[`) is a
+    glob written in prose (e.g. `docs/requirements/*.md` in a Tests bullet), not a
+    literal file. The parser must skip it, not capture it as a `missing-ref`
+    (BLD-2R9X) — a literal source path never contains glob metacharacters."""
+
+    def test_star_glob_is_skipped(self, tmp_path: Path):
+        # The exact shape from the filing: a Tests bullet naming a `*.md` set.
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- Tests: uncaptured + `docs/requirements/*.md` present\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        # And it produces no missing-ref at verification time.
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_question_mark_glob_is_skipped(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(tmp_path, "- see `src/foo?.py`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_bracket_glob_is_skipped(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(tmp_path, "- see `src/[abc].py`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_literal_path_alongside_glob_still_captured(self, tmp_path: Path):
+        # Per-token filter: the glob is skipped while a real path on the SAME line
+        # is still existence-checked (the fix doesn't drop the whole line).
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- `lib/views.py` plus all `docs/*.md`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "views.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+        assert _bpr._verify_chunk_refs(project, refs) == []
