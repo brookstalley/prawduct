@@ -30,7 +30,8 @@ last_validated: null
 ## Status
 
 - [ ] Chunk 01: Parser substrate (`lib/backlog.py`) + briefing rewire (thin vertical slice)
-- [ ] Chunk 02: `accepted-by` claim field
+- [ ] Chunk 02: `accepted-by` claim field  <!-- done 9fc5dd3+: SKILL.md pick/list exclude claimed, update set/clear + auto-clear on ship/drop; template doc. Critic 0-blocking. Doc-only (parser support landed ch.01). -->
+<!-- Inference wrinkle to file (Chunk 10): on a feature branch with views_enabled, plan checkboxes never flip (derived), so infer-critic-mode always treats Chunk 01 as current → passing explicit Critic mode per chunk for the rest of the run. -->
 - [ ] Chunk 03: `stage` field + requirements-precede-code routing (keystone)
 - [ ] Chunk 04: `refs` field + `/backlog dedup` + triage-method guidance
 - [ ] Chunk 05: Review-agent backlog checks — Critic C-B1–C-B4 + PR reviewer R-1/R-2

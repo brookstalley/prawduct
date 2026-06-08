@@ -21,7 +21,8 @@ Each item:
 ```
 
 - **ID** `[PFX-XXXX]`: `PFX` = 2–3 uppercase letters naming the work-space, *derived from the item's area* — reuse an existing prefix when one fits so related items share it. Starter set (extend freely): `STH` stop-hook, `CRT` critic, `SYN` sync, `LLM` prompt/LLM, `BKL` backlog, `MIG` migration, `JNT` janitor, `MET` methodology, `DOC` docs, `TST` tests. If `backlog_prefixes:` is declared in `project-state.yaml`, prefer those. `XXXX` = 4 random base36 chars (`A–Z`,`0–9`); generate fresh and confirm it doesn't collide with an existing ID in the file.
-- **Metadata bar**: one backticked dot-separated line. Required fields: `effort` (S/M/L), `impact` (S/M/L), `area`, `source` (builder|critic|reflection|janitor|user), `added` (YYYY-MM-DD), `status` (open|promoted|shipped|dropped). Optional: `related:` (related items), `closes:` (another backlog item this one supersedes — item→item), `closed-by:` (the chunk/release that shipped this item — item→release), `reviewed:`. Keep `closes:` and `closed-by:` straight — they point in opposite directions.
+- **Metadata bar**: one backticked dot-separated line. Required fields: `effort` (S/M/L), `impact` (S/M/L), `area`, `source` (builder|critic|reflection|janitor|user), `added` (YYYY-MM-DD), `status` (open|promoted|shipped|dropped). Optional: `related:` (related items), `closes:` (another backlog item this one supersedes — item→item), `closed-by:` (the chunk/release that shipped this item — item→release), `reviewed:`, `accepted-by:` (a soft claim — see below). Keep `closes:` and `closed-by:` straight — they point in opposite directions.
+- **`accepted-by:` claim** — `accepted-by: @actor` marks that someone is working an item so others don't double-pick it (multi-actor products). It is a *soft, observable claim*, **not** a lock: backlog.md is eventually-consistent in git (two actors in separate worktrees won't see each other's claim until commit+pull), so it makes double-picks **visible and recoverable**, not impossible. It **does not auto-expire** — a durable claim (an area owner claiming weeks ahead) is legitimate; a stale claim is an out-of-scope process matter, not something the framework reaps. `pick` and `list` exclude claimed items by default.
 - **Sections**: `## Open` (pickable), `## Promoted` (in an active build plan), `## Archive` (shipped/dropped, kept for search). Items move between sections only via explicit `update` calls — never infer status from build plans or change logs.
 - **Legacy items** (no metadata bar) are valid; treat them as `effort:? · impact:? · area:untagged · status:open` and rank them lower. Suggest `/prawduct:backlog migrate` if there are many.
 
@@ -44,10 +45,12 @@ File a new item. Accepts flags (`--title=`, `--body=`/`--body-file=`, `--area=`,
 Plaintext + tag search across title, metadata, and body of **all** sections (and `backlog-archive.md` if it exists). Return matching `[ID] title — one-line summary`, most-relevant first. Keep it tight (a handful of results).
 
 ### list [--filter=...]
-Tabular view: `ID · title · effort · impact · area · status`. **Default filter: `status=open` AND `added` within 90 days** (so a 200-item backlog doesn't dump). `--all` overrides; filter on any metadata field (`--area=`, `--status=`, `--effort=`, etc.). Sort by status then recency.
+Tabular view: `ID · title · effort · impact · area · status`. **Default filter: `status=open` AND `added` within 90 days** (so a 200-item backlog doesn't dump). `--all` overrides; filter on any metadata field (`--area=`, `--status=`, `--effort=`, etc.). Sort by status then recency. **Claimed items** (non-empty `accepted-by:`) are excluded by default; show them with `--include-claimed`, and when shown, display the claim holder in the row.
 
 ### update PFX-XXXX <field=value> [...]
 Change metadata or body of one item. Common: `status=promoted|shipped|dropped` (moves the item to the matching section — `promoted`→`## Promoted`, `shipped`/`dropped`→`## Archive`), `area=`, `effort=`, `reviewed=`. On `status=shipped`, accept an optional `closed-by=<change-log tag or chunk id>` and write it into the **metadata bar** as `closed-by: <ref>` (not the body) for traceability. Always set `reviewed:` to today on any touch. Confirm the item exists first; if the ID isn't found, say so and suggest `/prawduct:backlog find`.
+
+**Claims (`accepted-by`):** `update PFX-XXXX accepted-by=@actor` records a claim; `accepted-by=` (empty value) clears it. When you set `status=shipped` or `status=dropped`, **auto-clear** `accepted-by` (a finished item is not claimed) — the work is over, the claim is moot. Never auto-clear on any other transition (a `promoted` or still-`open` item may legitimately stay claimed). Do not touch a claim you didn't set unless the user explicitly asks — reassignment is a human call, not the skill's.
 
 ### pick [filters / free-text]
 Return **1–3 ranked candidates** with a one-line rationale each — the answer to "what should I work on right now?" Most invocations carry context; the bare call is the fallback.
@@ -62,7 +65,7 @@ Accept flag form for machine callers (`--area=sync --budget=30m --type=quick-win
 **Confirm-back ceiling (Q3).** If the query carries constraints beyond area/budget/type, or your interpretation is uncertain, echo the filter you parsed and ask before running — e.g. *"I read this as: area=stop-hook, budget≈1h. Continue, or refine?"* Don't silently guess on ambiguous input.
 
 **Ranking.**
-1. **Exclude** `status: promoted` (already in flight) and archived items by default.
+1. **Exclude** `status: promoted` (already in flight), archived items, and **claimed items** (non-empty `accepted-by:` — someone else is on it) by default.
 2. **Apply** the parsed filters as the candidate pool. If filters empty too small a pool, widen and say so.
 3. **Score** each candidate: `impact / effort` (map `S=1, M=2, L=3`; missing → treat as `2`, i.e. unknown-middle), nudged up by recency (newer `added`/`reviewed` ranks slightly higher) and **down** for untagged/legacy items (no metadata bar). This is a deliberately simple heuristic — don't over-engineer it before there's usage data to tune it.
 4. **Return** the top 1–3 as `[ID] title` + a one-line *why* (e.g. *"high-impact sync fix, ~2h, no dependencies"*).
