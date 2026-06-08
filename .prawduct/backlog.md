@@ -8,6 +8,11 @@
 ## Open
 
 
+- **[CRT-7B4M]** infer-critic-mode pins to Chunk 01 on a feature branch with views_enabled (derived checkboxes never flip)
+  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-08 · status: open · stage: requirements`
+
+  On a feature branch with views_enabled, build-plan ## Status checkboxes are a derived view that only flips at release, so they stay [ ] for every chunk during branch development. prawduct-hook infer-critic-mode reads the first unchecked [ ] as the current chunk → always resolves to Chunk 01, so a multi-chunk plan's later chunks all inherit Chunk 01's declared Critic mode (final, in backlog-rework) regardless of the chunk's own declared mode. Observed across all 10 backlog-rework chunks: passing an explicit /prawduct:critic <mode> arg was the workaround. Not harmful (final is the safe direction) but it makes per-chunk Critic-mode declarations inert on a branch and the mode_chosen_by rationale misleading. Research-stage: investigate whether inference should consult git-committed-chunk-count or the plan's own chunk ordering rather than the derived checkboxes. Surfaced during backlog-rework (2026-06-08).
+
 - **[MET-5C2H]** Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
   `effort: M · impact: L · area: methodology · source: user · added: 2026-06-08 · status: open · stage: research`
 
@@ -335,45 +340,10 @@
      post-sync-advisory-spec.md §8.2) held back on proportionality grounds: low-risk internal markdown tool,
      no current consumer. Add each when a real product needs it. Filed from the v1.7.0 release chunk (2026-05-29). -->
 
-- **[BKL-2F7K]** Ship the three remaining §8.2 backlog probes (`external-backlog-detected`, `legacy-section-schema`, `backlog-overdue-grooming`)
-  `effort: L · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: open`
-
-  v1.7.0 shipped only `legacy-backlog-format` (the first production probe). The other three §8.2 probes are deferred — no product today has an external backlog file, an old-section-schema backlog, or a stale-grooming signal worth nagging. Build when one does. Each registers against the v1.6.0 advisory infrastructure via `register_probe("backlog", …)` in a new `lib/` probe module via `lib/advisory_store.register_probe` (the file-sync `tools/lib/backlog_probes.py` was deleted in M4) and resolves off a `project-state.yaml` fact: `external-backlog-detected` → `backlog_external_imports` (set by `/backlog import`); `legacy-section-schema` → reuse `backlog_format_version: 2` (migration folds the old `## Active`/`## Queue` headings); `backlog-overdue-grooming` → `backlog_last_groomed_at` + the 90-day window (spec §8.2). Tune the >5-item / >20-item / 90-day thresholds against a real product's backlog before shipping. (builder)
-
-- **[BKL-5H9M]** `/backlog import <path>` — convert an external TODO/BACKLOG file into structured items
-  `effort: M · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: open`
-
-  Requirements §4.3/§8.4. Resolves the `external-backlog-detected` probe ([BKL-2F7K]) by writing `backlog_external_imports` to `project-state.yaml`. Heuristically converts each bullet/list item in the named file into a `[PFX-XXXX]` entry (`source: user`, `status: open`, area inferred), always confirming before writing. Deferred with its probe — this repo has no external file to import. Build alongside [BKL-2F7K]'s `external-backlog-detected`. (builder)
-
-- **[BKL-3R8P]** `/backlog dedup` — surface and merge near-duplicate items
-  `effort: M · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: open`
-
-  Requirements §4.3. A subcommand that finds candidate duplicate items (title/area/keyword overlap) and proposes merges, preserving both bodies. Not on the path to the §1 user-facing test ("pick a high-value item in 30 min"), so deferred from lean core. The `add` subcommand already does inline dedup-on-create; this is the after-the-fact sweep. (builder)
-
-- **[JNT-7T1W]** Janitor Step 2.5 — Backlog Triage (incl. Q2 archive-split)
-  `effort: M · impact: M · area: janitor · source: builder · added: 2026-05-29 · status: open`
-
-  Requirements §6. Add a backlog-triage step to the janitor: flag stale `status: open` items (`reviewed`/`added` >90d), surface neglected `## Promoted` items whose owning chunk shipped, and — the Q2 decision — when `## Archive` exceeds ~200 entries, propose splitting it to `backlog-archive.md` (with `/backlog find` spanning both files). Deferred from lean core; build when a product's backlog is large enough that grooming friction is real. (builder)
-
-- **[CRT-3K9P]** The four backlog Critic checks C-B1–C-B4
-  `effort: M · impact: S · area: critic · source: builder · added: 2026-05-29 · status: open`
-
-  Requirements §7. Four soft NOTE-level Critic checks for backlog hygiene (e.g. C-B3: a chunk touches an area with open backlog items but its Done-when has no backlog-hygiene step). Decision D1 made them NOTE-level; deferred because adding governance friction to *every* product's Critic run before there's evidence of need is the least proportional piece of the feature (success criterion S6 watches for fatigue). Build when backlog-hygiene drift actually shows up in reviews. (builder)
-
 - **[BKL-4N6X]** `/backlog dismiss-advisory` per-feature alias
   `effort: S · impact: S · area: backlog · source: builder · added: 2026-05-29 · status: open`
 
   Requirements §8.2. A convenience alias that forwards to the existing unified `/prawduct-advisory dismiss`. The unified command already works, so this is pure ergonomics — deferred until the alias's discoverability is worth the extra surface. (builder)
-
-- **[BKL-6L3Q]** Build-plan hygiene-step guidance in `templates/build-plan.md` + `methodology/building.md`
-  `effort: S · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: open`
-
-  Requirements §5.3, decision D9. Document the backlog-hygiene step (at chunk close, review open items in the chunk's area and update status explicitly — the framework never infers status from plans/change-logs, per D4) in the build-plan template's Done-when prose and in `methodology/building.md`. Cheap, but no probe or check depends on it in lean core, so filed rather than shipped. The v1.7.0 plan already dogfoods the step informally (chunk close-out includes "backlog hygiene"); this makes it a documented standard. (builder)
-
-- **[BKL-1V8J]** prawduct-doctor setup-time external-backlog report
-  `effort: S · impact: S · area: backlog · source: builder · added: 2026-05-29 · status: open`
-
-  Requirements/advisory-spec §8.3. At setup/health-check time, `prawduct-doctor` reports any external backlog files (`TODO.md`, `BACKLOG.md`) found in repo root + `.github/`. Redundant with the `external-backlog-detected` probe ([BKL-2F7K]); deferred with it — build both together or decide one supersedes the other. (builder)
 
 ## Promoted
 
@@ -409,6 +379,41 @@
 
 ## Archive
 
+
+- **[BKL-2F7K]** Ship the three remaining §8.2 backlog probes (`external-backlog-detected`, `legacy-section-schema`, `backlog-overdue-grooming`)
+  `effort: L · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: shipped · closed-by: backlog-rework (Chunk 06) · reviewed: 2026-06-08`
+
+  v1.7.0 shipped only `legacy-backlog-format` (the first production probe). The other three §8.2 probes are deferred — no product today has an external backlog file, an old-section-schema backlog, or a stale-grooming signal worth nagging. Build when one does. Each registers against the v1.6.0 advisory infrastructure via `register_probe("backlog", …)` in a new `lib/` probe module via `lib/advisory_store.register_probe` (the file-sync `tools/lib/backlog_probes.py` was deleted in M4) and resolves off a `project-state.yaml` fact: `external-backlog-detected` → `backlog_external_imports` (set by `/backlog import`); `legacy-section-schema` → reuse `backlog_format_version: 2` (migration folds the old `## Active`/`## Queue` headings); `backlog-overdue-grooming` → `backlog_last_groomed_at` + the 90-day window (spec §8.2). Tune the >5-item / >20-item / 90-day thresholds against a real product's backlog before shipping. (builder)
+
+- **[BKL-3R8P]** `/backlog dedup` — surface and merge near-duplicate items
+  `effort: M · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: shipped · closed-by: backlog-rework (Chunk 04) · reviewed: 2026-06-08`
+
+  Requirements §4.3. A subcommand that finds candidate duplicate items (title/area/keyword overlap) and proposes merges, preserving both bodies. Not on the path to the §1 user-facing test ("pick a high-value item in 30 min"), so deferred from lean core. The `add` subcommand already does inline dedup-on-create; this is the after-the-fact sweep. (builder)
+
+- **[BKL-5H9M]** `/backlog import <path>` — convert an external TODO/BACKLOG file into structured items
+  `effort: M · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: shipped · closed-by: backlog-rework (Chunk 08) · reviewed: 2026-06-08`
+
+  Requirements §4.3/§8.4. Resolves the `external-backlog-detected` probe ([BKL-2F7K]) by writing `backlog_external_imports` to `project-state.yaml`. Heuristically converts each bullet/list item in the named file into a `[PFX-XXXX]` entry (`source: user`, `status: open`, area inferred), always confirming before writing. Deferred with its probe — this repo has no external file to import. Build alongside [BKL-2F7K]'s `external-backlog-detected`. (builder)
+
+- **[BKL-1V8J]** prawduct-doctor setup-time external-backlog report
+  `effort: S · impact: S · area: backlog · source: builder · added: 2026-05-29 · status: shipped · closed-by: backlog-rework (Chunk 08) · reviewed: 2026-06-08`
+
+  Requirements/advisory-spec §8.3. At setup/health-check time, `prawduct-doctor` reports any external backlog files (`TODO.md`, `BACKLOG.md`) found in repo root + `.github/`. Redundant with the `external-backlog-detected` probe ([BKL-2F7K]); deferred with it — build both together or decide one supersedes the other. (builder)
+
+- **[BKL-6L3Q]** Build-plan hygiene-step guidance in `templates/build-plan.md` + `methodology/building.md`
+  `effort: S · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: shipped · closed-by: backlog-rework (Chunk 09) · reviewed: 2026-06-08`
+
+  Requirements §5.3, decision D9. Document the backlog-hygiene step (at chunk close, review open items in the chunk's area and update status explicitly — the framework never infers status from plans/change-logs, per D4) in the build-plan template's Done-when prose and in `methodology/building.md`. Cheap, but no probe or check depends on it in lean core, so filed rather than shipped. The v1.7.0 plan already dogfoods the step informally (chunk close-out includes "backlog hygiene"); this makes it a documented standard. (builder)
+
+- **[CRT-3K9P]** The four backlog Critic checks C-B1–C-B4
+  `effort: M · impact: S · area: critic · source: builder · added: 2026-05-29 · status: shipped · closed-by: backlog-rework (Chunk 05) · reviewed: 2026-06-08`
+
+  Requirements §7. Four soft NOTE-level Critic checks for backlog hygiene (e.g. C-B3: a chunk touches an area with open backlog items but its Done-when has no backlog-hygiene step). Decision D1 made them NOTE-level; deferred because adding governance friction to *every* product's Critic run before there's evidence of need is the least proportional piece of the feature (success criterion S6 watches for fatigue). Build when backlog-hygiene drift actually shows up in reviews. (builder)
+
+- **[JNT-7T1W]** Janitor Step 2.5 — Backlog Triage (incl. Q2 archive-split)
+  `effort: M · impact: M · area: janitor · source: builder · added: 2026-05-29 · status: shipped · closed-by: backlog-rework (Chunk 07) · reviewed: 2026-06-08`
+
+  Requirements §6. Add a backlog-triage step to the janitor: flag stale `status: open` items (`reviewed`/`added` >90d), surface neglected `## Promoted` items whose owning chunk shipped, and — the Q2 decision — when `## Archive` exceeds ~200 entries, propose splitting it to `backlog-archive.md` (with `/backlog find` spanning both files). Deferred from lean core; build when a product's backlog is large enough that grooming friction is real. (builder)
 
 - **[CRT-7M2D]** Cumulative-Critic gate judges commit-coverage, not mtime-recency
   `effort: M · impact: M · area: critic · source: builder · added: 2026-06-04 · status: shipped · closed-by: #65 (v2.0.9) · related: STH-6B4R`
