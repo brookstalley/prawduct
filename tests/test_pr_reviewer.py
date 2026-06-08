@@ -348,6 +348,14 @@ class TestPrReviewSkillContent:
                 f"skills/pr/review-protocol.md still has dropped goal heading: {heading}"
             )
 
+    def test_review_protocol_has_backlog_reconciliation(self):
+        """R-1/R-2 backlog reconciliation (spec §7a) must stay in the PR review
+        protocol — guards against a silent trim deleting the checks."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        assert "Backlog reconciliation" in content
+        assert "R-1" in content and "R-2" in content
+        assert "closes:" in content  # the R-2 data-inconsistency signal
+
     def test_pr_skill_has_all_flows(self):
         """The /pr skill should cover all 4 flows."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()

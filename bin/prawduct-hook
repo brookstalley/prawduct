@@ -544,6 +544,8 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         if lib_root not in sys.path:
             sys.path.insert(0, lib_root)
         from lib.advisory_store import run_sync_advisories  # noqa: PLC0415 — lazy keeps top-level import cheap
+        from lib.backlog_probes import register as _register_backlog_probes  # noqa: PLC0415
+        _register_backlog_probes()  # register the backlog feature's probes before the roster runs
         run_sync_advisories(
             project_dir, sync_version=_plugin_manifest_version() or ""
         )

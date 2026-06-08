@@ -83,7 +83,7 @@ Before ending a work cycle, verify two things:
 
 **Persistence**: Were any plans, roadmaps, chunk definitions, or significant decisions created during this work cycle but not yet written to an artifact? If so, persist them now. Conversation context does not survive across sessions — anything not in a file is lost.
 
-**Deferred work**: Were any items identified as out-of-scope during this work cycle? Add them to `.prawduct/backlog.md` with a source marker: `(builder)` for work you identified, `(critic)` for Critic NOTEs that warrant future investigation, `(reflection)` for ideas surfaced during reflection. One bullet per item with enough context to be actionable later. These items are surfaced in the next session's briefing and triaged during `/prawduct:janitor` runs.
+**Deferred work**: Were any items identified as out-of-scope during this work cycle? Add them via `/prawduct:backlog add` (it stamps `source:` — `builder` for work you identified, `critic` for Critic NOTEs that warrant future investigation, `reflection` for ideas surfaced during reflection — rather than a hand-edit). One bullet per item with enough context to be actionable later. These items are surfaced in the next session's briefing and triaged during `/prawduct:janitor` runs.
 
 **Earn the backlog entry — don't let it inflate.** The backlog is for work with a *real, near-term consumer*, not a graveyard for every observation. Before filing, apply this bar:
 - **File it** when the item has a user-facing payoff or a concrete pending need (a bug a product hits, a feature someone is waiting on, a refactor blocking other work).

@@ -110,7 +110,7 @@ Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades
 
 When you've completed 2-3 chunks, or the user switches tasks, it's time for `/clear`. Before signaling, complete in order:
 
-1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** deferred work to `.prawduct/backlog.md`. 5. **Update build plan Status** in `build-plan.md` (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a one-paragraph synthesis only if a cross-cutting pattern emerged.
+1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** in `build-plan.md` (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a one-paragraph synthesis only if a cross-cutting pattern emerged.
 
 End your chunk-complete message with a line like *"Chunk N complete — Critic passed, reflection captured, build plan updated. Safe to `/clear` when you're ready."* Do NOT signal completion until steps 1–6 are done — "ready for next session" and "safe to /clear" both imply handoff is finished. If a required step genuinely cannot be completed (e.g., Critic agent failed), say so explicitly and flag the gap for the user.
 

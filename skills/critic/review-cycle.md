@@ -128,7 +128,15 @@ Scan your findings against active learnings. If a change reintroduces a pattern 
 
 ### Backlog Reconciliation
 
-Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly (the item was the work) or incidentally (other work addressed the underlying issue). For each resolved item, emit a **NOTE** finding: "Backlog item appears resolved: [item text]. Verify and remove from backlog." This keeps the backlog reflecting reality. Do not remove items yourself — the builder verifies and removes.
+Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly (the item was the work) or incidentally (other work addressed the underlying issue). For each resolved item, emit a **NOTE** finding: "Backlog item appears resolved: [item text]. Verify and `/prawduct:backlog update <id> status=shipped`." This keeps the backlog reflecting reality. Do not change status yourself — the framework never infers status (D4); the builder makes the explicit call.
+
+**Backlog hygiene checks (C-B1–C-B4 — all NOTE-level, never BLOCKING)** — inspect the diff + backlog for four soft signals (`/prawduct:backlog` is the fix path for each):
+- **C-B1 — missing metadata:** a new backlog item in the diff with no metadata bar → NOTE the structured format.
+- **C-B2 — no dedup evidence:** a new item whose `area:` already has ≥3 items → NOTE "check [the existing IDs] for overlap (`/prawduct:backlog dedup`)."
+- **C-B3 — missing hygiene step:** the cycle's diff touches an area with open items but no chunk reviewed/updated them → NOTE "open items in area X — assess whether any are affected and update status."
+- **C-B4 — dangling ID:** a build plan / change-log / chunk body references `PFX-XXXX` with no such item → NOTE (could be a typo or a not-yet-filed forward reference).
+
+These flag; they never adjudicate whether an item "really" closed (the builder's call, D4) and never block.
 
 ## Directional Change Review
 

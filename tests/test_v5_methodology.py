@@ -70,6 +70,11 @@ class TestBuildingMethodology:
         assert "Nothing Is Broken" in self.content
         assert "Design Is Sound" in self.content
 
+    def test_chunk_close_routes_backlog_to_skill(self):
+        """The chunk-close sequence routes backlog work through /prawduct:backlog
+        (not hand-edits) — workflow wiring, Chunk 09. Guards the routing."""
+        assert "/prawduct:backlog" in self.content
+
     def test_token_budget(self):
         # Bumped from 3900 → 4100 in v1.3.13 (proportional Critic / chunk vs.
         # final modes). The Modes subsection, mode-aware Critic invocation, and
@@ -344,6 +349,14 @@ class TestReviewCycle:
             assert level in content
         assert "goal-based" in content.lower() or "Goal" in content
         assert ".critic-findings.json" in content
+
+    def test_backlog_hygiene_checks_present(self):
+        """The four backlog-hygiene checks (CRT-3K9P) must stay in Backlog
+        Reconciliation — guards against a silent trim deleting them (the same
+        regression-guard pattern as the PR-reviewer dropped-goal test)."""
+        content = read_file("skills/critic/review-cycle.md")
+        for check in ("C-B1", "C-B2", "C-B3", "C-B4"):
+            assert check in content, f"review-cycle.md missing backlog check {check}"
 
 
 # =============================================================================
