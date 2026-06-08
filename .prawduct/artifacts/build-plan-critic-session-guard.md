@@ -68,7 +68,7 @@ STH-9V4K + its unflipped checkboxes). No PR unless the user asks.
     the start of its run via a new `prawduct-hook critic-begin`, and removes it at the end via
     `prawduct-hook critic-end`. Both are added to the Critic skill's `allowed-tools`.
   - Session-mutating `clear` consults the marker. "Active" = marker present AND age ≤ TTL
-    (`_CRITIC_ACTIVE_TTL_SECONDS = 1800`). Age = `now − started_at` if parseable, else file
+    (`CRITIC_ACTIVE_TTL_SECONDS = 1800`). Age = `now − started_at` if parseable, else file
     mtime; if neither is readable → treated as **stale** (fail toward availability).
   - **Three independent ways a stale marker self-corrects** (resilience, per user):
     1. **TTL auto-expiry** — a crashed/hung Critic's marker stops counting as active after 30 min.
