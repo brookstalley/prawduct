@@ -3,11 +3,14 @@ build-plan state so the builder doesn't have to declare it at every chunk.
 
 Explicit ``$ARGUMENTS`` always wins (the per-invocation override path).
 Below it sits the **plan-level override**: when the active build plan's
-CURRENT chunk (the first unchecked ``- [ ]`` item in the Status section)
-declares a valid ``**Critic mode:**`` field, that mode is honored as a
-successive override (rationale ``"plan-override: <mode>"``) — the
-methodology has always called this field a "successive override," and
-this is where it is read (CRT-3M8Q). Only when neither override fires
+CURRENT chunk declares a valid ``**Critic mode:**`` field, that mode is
+honored as a successive override (rationale ``"plan-override: <mode>"``).
+"Current" is normally the first unchecked ``- [ ]`` item, but on a
+``views_enabled`` feature branch the Status checkboxes are a derived view
+that only flips at release (so "first unchecked" is always Chunk 01) — there
+the current chunk is derived from git instead (CRT-7B4M, see
+:func:`_git_aware_progress`). The methodology has always called this field
+a "successive override," and this is where it is read (CRT-3M8Q). Only when neither override fires
 does :func:`infer_mode` walk four inference rules in precedence order and
 return the first that fires:
 
@@ -55,7 +58,8 @@ import re
 import subprocess
 from pathlib import Path
 
-from .core import resolve_build_plan_path
+from .core import resolve_build_plan_path, read_bool_yaml_key
+from .coverage import _resolve_base_branch
 
 # Verbose-string mode constants — used to recognize prior findings'
 # ``mode`` field. Must stay in lockstep with ``bin/prawduct-hook``'s
@@ -88,7 +92,10 @@ _BUILD_PLAN_CRITIC_MODE_RE = re.compile(
 # Candidate base branches probed in order — first one that resolves wins.
 # Mirrors the convention used by ``/pr`` and the cumulative-Critic gate
 # (typically ``main``; ``develop`` for gitflow projects).
-_DEFAULT_BASE_BRANCHES = ("main", "master", "develop")
+# A commit subject that references a build-plan chunk, e.g. "feat: … (Chunk 03)".
+# Capital-C + digits matches the "Chunk NN" commit convention without
+# false-matching prose like "10-chunk plan" (CRT-7B4M).
+_CHUNK_COMMIT_RE = re.compile(r"Chunk\s+(\d+)")
 
 # Mirrors ``_METADATA_PREFIXES`` in ``bin/prawduct-hook``. Kept in sync
 # manually — duplication is acceptable for this small set; extracting to
@@ -140,13 +147,32 @@ def infer_mode(
 
     prawduct_dir = project_dir / ".prawduct"
 
-    # Plan-level override: the active build plan's CURRENT chunk may declare
-    # a ``**Critic mode:**`` field. The methodology calls this a "successive
-    # override" — honor it here (above inference, below explicit args) so a
+    # Resolve chunk progress ONCE. The build-plan Status checkboxes are the
+    # default signal, but with ``views_enabled`` they are a *derived view* that
+    # only flips at release — so on a pre-release feature branch they never flip
+    # and "first unchecked" is always Chunk 01, which would pin every chunk's
+    # mode to Chunk 01's declaration. When that's the case, derive progress from
+    # git instead (CRT-7B4M); otherwise use the checkboxes.
+    total, checkbox_complete = _count_build_plan_chunks(prawduct_dir)
+    git_progress = _git_aware_progress(project_dir, prawduct_dir, total)
+    if git_progress is not None:
+        complete, current_chunk_id = git_progress
+    else:
+        complete = checkbox_complete
+        current_chunk_id = _current_chunk_id_from_status(prawduct_dir)
+
+    # Plan-level override: the CURRENT chunk may declare a ``**Critic mode:**``
+    # field. Honor it here (above inference, below explicit args) so a
     # plan-mandated ``final`` is no longer silently demoted to the inferred
-    # ``chunk`` (CRT-3M8Q). Only a recognized token overrides; an absent /
+    # ``chunk`` (CRT-3M8Q). "Current" is the git-aware chunk above, so on a
+    # feature branch the override reads the chunk actually in progress, not
+    # always Chunk 01 (CRT-7B4M). Only a recognized token overrides; an absent /
     # blank / unrecognized field falls through to ordinary inference.
-    plan_mode = _current_chunk_critic_mode(prawduct_dir)
+    plan_mode = (
+        _critic_mode_for_chunk(prawduct_dir, current_chunk_id)
+        if current_chunk_id is not None
+        else None
+    )
     if plan_mode is not None:
         return plan_mode, f"plan-override: {plan_mode}"
 
@@ -162,7 +188,7 @@ def infer_mode(
     if cumulative_reason:
         return "cumulative", f"rule-2 cumulative: {cumulative_reason}"
 
-    final_reason = _rule_final_fires(prawduct_dir, project_dir)
+    final_reason = _rule_final_fires(project_dir, total, complete)
     if final_reason:
         return "final", f"rule-3 final: {final_reason}"
 
@@ -171,7 +197,6 @@ def infer_mode(
     # documented in the SKILL files). Without a plan there's no "chunk"
     # for chunk-mode to scope to — defaulting to ``final`` matches the
     # rule "missing/unrecognized → final" the SKILL has always promised.
-    total, _complete = _count_build_plan_chunks(prawduct_dir)
     if total > 0:
         return "chunk", (
             "rule-4 chunk: active build plan, prior chunks committed, "
@@ -248,7 +273,7 @@ def _rule_cumulative_fires(
     if _get_uncommitted_code_files(project_dir):
         return ""
 
-    base_branch = _detect_base_branch(project_dir)
+    base_branch, _ = _resolve_base_branch(project_dir)
     if not base_branch:
         return ""
 
@@ -277,12 +302,14 @@ def _rule_cumulative_fires(
     )
 
 
-def _rule_final_fires(prawduct_dir: Path, project_dir: Path) -> str:
-    """Rule 3: last unchecked chunk in progress, or no-plan medium+ work.
+def _rule_final_fires(project_dir: Path, total: int, complete: int) -> str:
+    """Rule 3: last chunk in progress, or no-plan medium+ work.
 
-    Returns rationale string when the rule fires, empty string otherwise.
+    Takes the chunk counts resolved by :func:`infer_mode` (``complete`` may be
+    git-derived on a views-enabled feature branch — CRT-7B4M — not the raw
+    checkbox count). Returns a rationale string when the rule fires, ``""``
+    otherwise.
     """
-    total, complete = _count_build_plan_chunks(prawduct_dir)
     if total > 0:
         # Active build plan.
         unchecked = total - complete
@@ -361,21 +388,6 @@ def _commit_resolves(project_dir: Path, sha: str) -> bool:
     return proc.returncode == 0
 
 
-def _detect_base_branch(project_dir: Path) -> str:
-    """First ``_DEFAULT_BASE_BRANCHES`` candidate that resolves, or ``""``."""
-    for candidate in _DEFAULT_BASE_BRANCHES:
-        proc = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", candidate],
-            cwd=str(project_dir),
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if proc.returncode == 0:
-            return candidate
-    return ""
-
-
 def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
     """Number of commits on HEAD since merge-base with ``base``. ``-1`` on failure."""
     proc = subprocess.run(
@@ -405,6 +417,112 @@ def _git_head_sha(project_dir: Path) -> str:
     if proc.returncode != 0:
         return ""
     return proc.stdout.strip()
+
+
+def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
+    """Normalized chunk ids referenced in commit subjects on ``base..HEAD``.
+
+    The branch-robust progress signal for CRT-7B4M: when the build-plan Status
+    checkboxes are a non-flipping derived view (``views_enabled`` on a feature
+    branch), git commits are the only record of which chunks are done. Counts
+    distinct chunk numbers (``Chunk <n>`` in a commit subject), leading-zero-
+    normalized to match Status ids. Returns ``set()`` on git failure.
+    """
+    proc = subprocess.run(
+        ["git", "log", "--format=%s", f"{base}..HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if proc.returncode != 0:
+        return set()
+    ids: set[str] = set()
+    for subject in proc.stdout.splitlines():
+        for m in _CHUNK_COMMIT_RE.finditer(subject):
+            ids.add(m.group(1).lstrip("0") or "0")
+    return ids
+
+
+def _chunk_ids_in_status_order(prawduct_dir: Path) -> list[str]:
+    """Raw chunk ids (e.g. ``"01"``) in build-plan Status order, both states.
+
+    Parses the ``## Status`` section like :func:`_count_build_plan_chunks` but
+    returns the ordered ``Chunk <id>:`` ids (for ``- [ ]`` and ``- [x]`` alike),
+    so a git-derived progress count can map to the right current chunk.
+    """
+    plan_path = resolve_build_plan_path(prawduct_dir)
+    if not plan_path.is_file():
+        return []
+    try:
+        content = plan_path.read_text()
+    except OSError:
+        return []
+    ids: list[str] = []
+    in_status = False
+    in_comment = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped == "## Status":
+            in_status = True
+            continue
+        if not in_status:
+            continue
+        if stripped.startswith("## ") and stripped != "## Status":
+            break
+        if "<!--" in stripped:
+            in_comment = True
+        if "-->" in stripped:
+            in_comment = False
+            continue
+        if in_comment:
+            continue
+        for marker in ("- [ ]", "- [x]", "- [X]"):
+            if stripped.startswith(marker):
+                rest = stripped[len(marker):].strip()
+                if rest.startswith("Chunk "):
+                    cid = rest[len("Chunk "):].split(":", 1)[0].strip()
+                    if cid:
+                        ids.append(cid)
+                break
+    return ids
+
+
+def _git_aware_progress(
+    project_dir: Path, prawduct_dir: Path, total: int
+) -> tuple[int, str | None] | None:
+    """Git-derived ``(complete, current_chunk_id)``, or ``None`` to use checkboxes.
+
+    Applies ONLY when the Status checkboxes can't be trusted as the progress
+    signal (CRT-7B4M): (a) ``views_enabled`` (checkboxes derive from
+    ``status=shipped`` change-log entries and won't flip until release),
+    (b) a base branch resolves and HEAD is ahead of it (a pre-release feature
+    branch), and (c) at least one chunk is referenced by a commit since base.
+    ``complete`` = Status chunks whose id has a commit; ``current_chunk_id`` =
+    the first Status chunk with NO commit (``None`` when all are committed).
+    Returns ``None`` whenever any condition fails — the caller then uses the
+    checkbox count, so behavior on non-views / non-branch / convention-free
+    repos is exactly as before (never worse).
+    """
+    if total <= 0:
+        return None
+    if not read_bool_yaml_key(prawduct_dir / "project-state.yaml", "views_enabled"):
+        return None
+    base, _ = _resolve_base_branch(project_dir)
+    if not base:
+        return None
+    if _commits_ahead_of_base(project_dir, base) <= 0:
+        return None
+    committed = _committed_chunk_ids(project_dir, base)
+    if not committed:
+        return None
+    status_ids = _chunk_ids_in_status_order(prawduct_dir)
+    complete = sum(1 for cid in status_ids if (cid.lstrip("0") or "0") in committed)
+    current = next(
+        (cid for cid in status_ids if (cid.lstrip("0") or "0") not in committed),
+        None,
+    )
+    return complete, current
 
 
 def _current_chunk_id_from_status(prawduct_dir: Path) -> str | None:
@@ -452,24 +570,23 @@ def _current_chunk_id_from_status(prawduct_dir: Path) -> str | None:
     return None
 
 
-def _current_chunk_critic_mode(prawduct_dir: Path) -> str | None:
-    """Return the current chunk's declared ``**Critic mode:**`` token, or
-    ``None``.
+def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | None:
+    """Return ``chunk_id``'s declared ``**Critic mode:**`` token, or ``None``.
 
-    Resolves the current chunk via :func:`_current_chunk_id_from_status`,
-    finds that chunk's ``### Chunk <id>:`` detail section, and reads its
+    Finds that chunk's ``### Chunk <id>:`` detail section and reads its
     ``- **Critic mode:** <value>`` field. Returns the short-token value
     only when it is one of the recognized modes; an absent, blank, or
     unrecognized value yields ``None`` (fall through to inference rather
     than honoring a typo as a mode override — same fail-open-to-inference
     posture the methodology's "optional field" contract implies).
 
-    Section discovery mirrors ``bin/prawduct-hook``'s
-    ``_parse_build_plan_chunk_type``: name-anchored on
+    ``chunk_id`` is resolved by the caller — git-aware on a views-enabled
+    feature branch (CRT-7B4M), otherwise the first ``- [ ]`` chunk via
+    :func:`_current_chunk_id_from_status`. Section discovery mirrors
+    ``bin/prawduct-hook``'s ``_parse_build_plan_chunk_type``: name-anchored on
     ``### Chunk <id>:`` with leading-zero tolerance, fenced code blocks
     skipped, stop at the next sibling chunk or top-level section.
     """
-    chunk_id = _current_chunk_id_from_status(prawduct_dir)
     if chunk_id is None:
         return None
 

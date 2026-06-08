@@ -8,10 +8,21 @@
 ## Open
 
 
-- **[CRT-7B4M]** infer-critic-mode pins to Chunk 01 on a feature branch with views_enabled (derived checkboxes never flip)
-  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-08 · status: open · stage: requirements`
+- **[CRT-3D9K]** `bin/prawduct-hook` stop-gate chunk resolution has the same views-branch blindness CRT-7B4M fixed in inference
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · stage: requirements · related: CRT-7B4M, STH-2K8R`
 
-  On a feature branch with views_enabled, build-plan ## Status checkboxes are a derived view that only flips at release, so they stay [ ] for every chunk during branch development. prawduct-hook infer-critic-mode reads the first unchecked [ ] as the current chunk → always resolves to Chunk 01, so a multi-chunk plan's later chunks all inherit Chunk 01's declared Critic mode (final, in backlog-rework) regardless of the chunk's own declared mode. Observed across all 10 backlog-rework chunks: passing an explicit /prawduct:critic <mode> arg was the workaround. Not harmful (final is the safe direction) but it makes per-chunk Critic-mode declarations inert on a branch and the mode_chosen_by rationale misleading. Research-stage: investigate whether inference should consult git-committed-chunk-count or the plan's own chunk ordering rather than the derived checkboxes. Surfaced during backlog-rework (2026-06-08).
+  CRT-7B4M fixed `lib/critic_mode.py` so Critic-mode inference derives the current chunk from git
+  on a `views_enabled` feature branch (where the build-plan Status checkboxes are a derived view
+  that never flips until release). But `bin/prawduct-hook`'s stop-gate still resolves the current
+  chunk via the non-git-aware `_current_chunk_id_from_status` mirror (for chunk-`Type:` detection —
+  e.g. the trivial-rationale gate), so on a feature branch it reads Chunk 01's `Type:`, not the
+  chunk actually in progress. This was an explicit, user-vetoable scope boundary in the
+  critic-mode-branch-fix build plan (ASSUMPTION 2); it fails safe (worst case: the gate checks the
+  wrong chunk's Type, defaulting toward stricter review), so it's filed rather than fixed in that
+  PR. Fix-shape: give the hook's chunk resolver the same git-aware path (or — per STH-2K8R —
+  consolidate the mirrored helpers into `lib/` and have both the hook and inference consume one
+  implementation, which would close this by construction). Surfaced by the CRT-7B4M cumulative
+  Critic (2026-06-08). (critic)
 
 - **[MET-5C2H]** Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
   `effort: M · impact: L · area: methodology · source: user · added: 2026-06-08 · status: open · stage: research`
@@ -379,6 +390,11 @@
 
 ## Archive
 
+
+- **[CRT-7B4M]** infer-critic-mode pins to Chunk 01 on a feature branch with views_enabled (derived checkboxes never flip)
+  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-08 · status: shipped · closed-by: critic-mode-branch-fix · reviewed: 2026-06-08 · stage: requirements`
+
+  On a feature branch with views_enabled, build-plan ## Status checkboxes are a derived view that only flips at release, so they stay [ ] for every chunk during branch development. prawduct-hook infer-critic-mode reads the first unchecked [ ] as the current chunk → always resolves to Chunk 01, so a multi-chunk plan's later chunks all inherit Chunk 01's declared Critic mode (final, in backlog-rework) regardless of the chunk's own declared mode. Observed across all 10 backlog-rework chunks: passing an explicit /prawduct:critic <mode> arg was the workaround. Not harmful (final is the safe direction) but it makes per-chunk Critic-mode declarations inert on a branch and the mode_chosen_by rationale misleading. Research-stage: investigate whether inference should consult git-committed-chunk-count or the plan's own chunk ordering rather than the derived checkboxes. Surfaced during backlog-rework (2026-06-08).
 
 - **[BKL-2F7K]** Ship the three remaining §8.2 backlog probes (`external-backlog-detected`, `legacy-section-schema`, `backlog-overdue-grooming`)
   `effort: L · impact: M · area: backlog · source: builder · added: 2026-05-29 · status: shipped · closed-by: backlog-rework (Chunk 06) · reviewed: 2026-06-08`
