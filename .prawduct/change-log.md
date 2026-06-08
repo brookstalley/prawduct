@@ -5,7 +5,7 @@
 
 ## 2026-06-08: Backlog rework — claims, lifecycle stage, parser substrate, probes, triage (v0.3)
 
-<!-- prawduct: chunks=1,2,3,4,5,6,7,8,9,10 | type=feature | scope=backlog-rework -->
+<!-- prawduct: chunks=01,02,03,04,05,06,07,08,09,10 | type=feature | release=v2.0.15 | status=shipped | scope=backlog-rework -->
 
 **Why:** Real multi-agent use in `../scriob` exposed five backlog failures (no claim/lock for
 concurrent work; completed work left stale; strikethrough instead of archive; vague items flowing
