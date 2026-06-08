@@ -328,6 +328,11 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   1. Acceptance criteria met and tests pass
   2. `/critic <mode>` run (using the mode declared above) and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
+  <!-- Backlog hygiene (strongly advised): at chunk close, review open
+       `.prawduct/backlog.md` items whose `area:` overlaps this chunk and update
+       affected ones via `/prawduct:backlog` (shipped → status=shipped; partly
+       addressed → note + leave open; obsolete → dropped). The framework never
+       infers status (D4); this explicit pass is what keeps the backlog honest. -->
   <!-- If `Foreign API:` is declared above, add as step 0 (runs before tests
        and implementation):
          0. `verify-api` — read foreign source or run discovery probes; capture

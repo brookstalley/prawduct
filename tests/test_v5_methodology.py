@@ -70,6 +70,11 @@ class TestBuildingMethodology:
         assert "Nothing Is Broken" in self.content
         assert "Design Is Sound" in self.content
 
+    def test_chunk_close_routes_backlog_to_skill(self):
+        """The chunk-close sequence routes backlog work through /prawduct:backlog
+        (not hand-edits) — workflow wiring, Chunk 09. Guards the routing."""
+        assert "/prawduct:backlog" in self.content
+
     def test_token_budget(self):
         # Bumped from 3900 → 4100 in v1.3.13 (proportional Critic / chunk vs.
         # final modes). The Modes subsection, mode-aware Critic invocation, and
