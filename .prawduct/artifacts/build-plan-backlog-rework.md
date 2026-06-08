@@ -32,7 +32,7 @@ last_validated: null
 - [ ] Chunk 01: Parser substrate (`lib/backlog.py`) + briefing rewire (thin vertical slice)
 - [ ] Chunk 02: `accepted-by` claim field  <!-- done 9fc5dd3+: SKILL.md pick/list exclude claimed, update set/clear + auto-clear on ship/drop; template doc. Critic 0-blocking. Doc-only (parser support landed ch.01). -->
 <!-- Inference wrinkle to file (Chunk 10): on a feature branch with views_enabled, plan checkboxes never flip (derived), so infer-critic-mode always treats Chunk 01 as current → passing explicit Critic mode per chunk for the rest of the run. -->
-- [ ] Chunk 03: `stage` field + requirements-precede-code routing (keystone)
+- [ ] Chunk 03: `stage` field + requirements-precede-code routing (keystone)  <!-- done: SKILL.md stage field + Stage-aware routing (early→discovery, design→planning, none→not-ready); template; discovery.md + planning.md hooks. Critic final 0-blocking, 2 notes (is_implementable descoped+recorded; refs doc forward-pulled). -->
 - [ ] Chunk 04: `refs` field + `/backlog dedup` + triage-method guidance
 - [ ] Chunk 05: Review-agent backlog checks — Critic C-B1–C-B4 + PR reviewer R-1/R-2
 - [ ] Chunk 06: Advisory probes (external-backlog / legacy-section / overdue-grooming)
@@ -93,7 +93,7 @@ Per chunk: run the targeted test module, then the full suite at chunk close. Bey
   2. `templates/backlog.md` — document `stage:` + the vocabulary.
   3. `methodology/planning.md` — a line: an early-`stage:` pick is a discovery/planning task, not a build task.
   4. `methodology/discovery.md` — reconciliation entry-point note: discovery can be entered *from* a backlog item; on completion, update the item's `stage:` + add `refs:`.
-  5. `lib/backlog.py` — `stage` accessor + an `is_implementable(item)` helper (`stage == ready`).
+  5. `lib/backlog.py` — `stage` accessor (already shipped in Chunk 01). **DESCOPED:** the planned `is_implementable(item)` helper was *not* built — it would be unused code, because `/prawduct:backlog` is LLM-interpreted prose and the readiness/routing decision lives there (reading `item.stage`), not in a Python call site. Recorded per Principle 2 (no silent descope); re-add if a future Python consumer needs it. `refs:` documentation landed in `templates/backlog.md` here (forward-pull, closes the discovery.md `refs` mention) — Chunk 04 should not re-document it in the template.
   6. tests: parser stage cases + any methodology token-budget guardrails (plan the trim).
 - **Depends-on note:** the full methodology wiring (building/reflection/digest) is Chunk 09; this chunk lands only the *pick-routing* behavior + the minimal planning/discovery hooks it needs.
 - **Tests:** parser `stage`/`is_implementable`; budget guardrails on touched methodology files.

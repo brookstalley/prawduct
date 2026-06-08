@@ -48,6 +48,13 @@
                                     double-pick; pick/list exclude claimed items.
                                     Does NOT auto-expire; auto-cleared on ship/drop.
                                     Not a lock (backlog.md is eventually-consistent).
+    stage: <lifecycle>              idea | research | requirements | design | ready.
+                                    Where the item sits in the feature lifecycle;
+                                    only `ready` is implementable. Absent/early =>
+                                    pick routes to discovery/planning, not code.
+    refs: <doc#section>, <doc>      links to governing artifacts (requirements /
+                                    arch / design docs). Distinct from `related:`
+                                    (which is item -> item).
 
   Legacy items (no metadata) remain valid — tools treat them as
   `effort: ? · impact: ? · area: untagged · status: open` and rank them lower.
