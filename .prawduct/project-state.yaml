@@ -475,10 +475,12 @@ views_enabled: true
 # (STH-9V4K, #74–79) and critic-session-guard (CRT-3X9D, #80) both SHIPPED in
 # v2.0.14 (2026-06-08). The backlog rework (v0.3, #81) SHIPPED in v2.0.15
 # (2026-06-08); regen-views flipped each plan's ## Status checkboxes to [x] via its
-# scope= tag (REL-4T8N). No release-pending plans remain — the pointer is cleared
-# (unset → falls back to artifacts/build-plan.md). The next in-progress plan sets
-# it again.
-active_build_plan: artifacts/build-plan-retire-pr-trivial-fast-path.md
+# scope= tag (REL-4T8N). Two plans are release-pending for the next version
+# (v2.0.17): retire-pr-trivial-fast-path (merged to develop via #84) and
+# legacy-backlog-format-probe (in progress). regen-views flips BOTH at release via
+# their scope= change-log tags (REL-4T8N), independent of this single pointer; the
+# pointer tracks the in-progress plan and is cleared at the release-prep commit.
+active_build_plan: artifacts/build-plan-legacy-backlog-format-probe.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
