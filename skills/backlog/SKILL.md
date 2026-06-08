@@ -49,6 +49,8 @@ Plaintext + tag search across title, metadata, and body of **all** sections (and
 ### list [--filter=...]
 Tabular view: `ID · title · effort · impact · area · status`. **Default filter: `status=open` AND `added` within 90 days** (so a 200-item backlog doesn't dump). `--all` overrides; filter on any metadata field (`--area=`, `--status=`, `--effort=`, etc.). Sort by status then recency. **Claimed items** (non-empty `accepted-by:`) are excluded by default; show them with `--include-claimed`, and when shown, display the claim holder in the row.
 
+**Grooming timestamp:** `list` and `pick` both stamp `backlog_last_groomed_at: <today>` (top-level scalar) in `project-state.yaml` on invocation — this is the fact that resolves the `backlog-overdue-grooming` advisory. It's a *timestamp*, not a count (counts are always re-derived, never persisted — D14).
+
 ### update PFX-XXXX <field=value> [...]
 Change metadata or body of one item. Common: `status=promoted|shipped|dropped` (moves the item to the matching section — `promoted`→`## Promoted`, `shipped`/`dropped`→`## Archive`), `area=`, `effort=`, `reviewed=`. On `status=shipped`, accept an optional `closed-by=<change-log tag or chunk id>` and write it into the **metadata bar** as `closed-by: <ref>` (not the body) for traceability. Always set `reviewed:` to today on any touch. Confirm the item exists first; if the ID isn't found, say so and suggest `/prawduct:backlog find`.
 
