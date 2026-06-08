@@ -54,7 +54,7 @@ current `parse_backlog` API and the plugin-namespaced action string.
 
 ## Status
 
-- [ ] Chunk 01: Register the legacy-backlog-format probe (probe + register + doc reconcile + regression tests)
+- [x] Chunk 01: Register the legacy-backlog-format probe (probe + register + doc reconcile + regression tests)
 
 ## Build Chunks
 

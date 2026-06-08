@@ -44,7 +44,7 @@ risk, removes the unsound predicate, aligns with Governance-Is-Structural.
 
 ## Status
 
-- [ ] Chunk 01: Remove the PR-boundary trivial fast-path (runtime + skill + regression test)
+- [x] Chunk 01: Remove the PR-boundary trivial fast-path (runtime + skill + regression test)
 Context: **Done on branch** (`fix/retire-pr-trivial-fast-path`, commit subject `Chunk 01:`). Removed `_pr_diff_is_trivial`/`check_pr_trivial` (`lib/coverage.py`), `cmd_check_pr_trivial` + dispatch + usage token + the stop-hook Gate-3 `pr_is_trivial` branch (`bin/prawduct-hook`), Step 1c + gate-summary bullet + allowed-tool (`skills/pr/SKILL.md`); re-anchored the `_classify_trivial_change` co-consumer doc-comments (`lib/gates.py`, `lib/buildplan_refs.py`). Regression test added (`tests/test_pr_reviewer.py::test_stop_blocks_fileset_eligible_code_pr_no_trivial_skip`). Critic `final`: **0 blocking**, 1 warning (stale evidence — resolved by `test-evidence record`, 1013 pass), 2 backlog notes (PR-9T4M shipped; PR-5K8D re-anchored, stays open). Checkbox stays `[ ]` (derived view; flips at release). **Next:** `/prawduct:critic cumulative` + change-log entry (`status=merged`) + `regen-views` happen at PR-merge — awaiting user decision on PR.
 
 ## Build Chunks

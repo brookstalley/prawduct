@@ -5,6 +5,22 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.17
+
+### legacy-backlog-format-probe
+
+**Entry:** 2026-06-08: register the missing legacy-backlog-format advisory probe
+
+**Chunks shipped:** 01
+
+### retire-pr-trivial-fast-path
+
+**Entry:** 2026-06-08: retire the PR-boundary trivial fast-path (unsound fileset-as-detector skip-gate)
+
+**Chunks shipped:** 01
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.16
 
 ### backlog-legend-refresh
