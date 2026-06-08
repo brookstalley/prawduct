@@ -683,10 +683,10 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
     Uses session-baseline filtering so pre-session dirt doesn't count
     against the chunk (mirrors ``git_has_session_changes``).
 
-    Path-bound rules are delegated to ``_classify_trivial_change`` so
-    the PR-boundary helper (``_pr_diff_is_trivial``) applies an
-    identical rule set — same bounds checked at session-end and at
-    PR creation.
+    Path-bound rules are delegated to ``_classify_trivial_change`` (now
+    this gate's sole consumer — the PR-boundary ``_pr_diff_is_trivial``
+    fast-path that once shared it was retired). This gate enforces a
+    *declared* ``Type: trivial`` chunk; it is not a triviality detector.
     """
     output = gitstate.git_status_output(project_dir)
     if output is None:
@@ -727,8 +727,8 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
 
         # v1.5.1 Chunk 04(b): metadata-path filtering lives inside
         # `_classify_trivial_change` (returns None for both src and dst
-        # metadata paths). Single check site = no drift between this gate
-        # and `_pr_diff_is_trivial`.
+        # metadata paths) — now reached only from this gate (the
+        # `_pr_diff_is_trivial` co-consumer was retired).
         is_addition = status[0] == "A" or status == "??"
         is_deletion = "D" in status
         violation = buildplan_refs._classify_trivial_change(

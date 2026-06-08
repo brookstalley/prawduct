@@ -439,11 +439,13 @@ def _classify_trivial_change(
 ) -> str | None:
     """Single-file path-rule check for the ``Type: trivial`` file-set
     bounds. Returns the violation reason or ``None`` when the change
-    is eligible. Shared by ``_is_trivial_fileset_eligible`` (Chunk 04 —
-    working-tree porcelain) and ``_pr_diff_is_trivial`` (Chunk 05 —
-    per-commit name-status diff). Centralizing the rule set prevents
-    the stop-hook gate and the PR-boundary gate from drifting apart
-    silently.
+    is eligible. Used by ``_is_trivial_fileset_eligible`` (Chunk 04 —
+    working-tree porcelain) to enforce a *declared* ``Type: trivial``
+    chunk at session-end. (The ``_pr_diff_is_trivial`` PR-boundary
+    co-consumer was retired — it used these bounds as a triviality
+    *detector* at the bundle boundary, with no link to a ``Type: trivial``
+    declaration, so multi-chunk feature work that only touched existing
+    files skipped both review gates.)
 
     The unconditional path bounds live in the module-level
     ``_TRIVIAL_PROTECTED_PATHS`` constant (STH-1W5N — single source of
