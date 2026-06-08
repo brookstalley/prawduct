@@ -33,7 +33,7 @@ last_validated: null
 - [ ] Chunk 02: `accepted-by` claim field  <!-- done 9fc5dd3+: SKILL.md pick/list exclude claimed, update set/clear + auto-clear on ship/drop; template doc. Critic 0-blocking. Doc-only (parser support landed ch.01). -->
 <!-- Inference wrinkle to file (Chunk 10): on a feature branch with views_enabled, plan checkboxes never flip (derived), so infer-critic-mode always treats Chunk 01 as current → passing explicit Critic mode per chunk for the rest of the run. -->
 - [ ] Chunk 03: `stage` field + requirements-precede-code routing (keystone)  <!-- done: SKILL.md stage field + Stage-aware routing (early→discovery, design→planning, none→not-ready); template; discovery.md + planning.md hooks. Critic final 0-blocking, 2 notes (is_implementable descoped+recorded; refs doc forward-pulled). -->
-- [ ] Chunk 04: `refs` field + `/backlog dedup` + triage-method guidance
+- [ ] Chunk 04: `refs` field + `/backlog dedup` + triage-method guidance  <!-- done: SKILL.md refs field + dedup subcommand + Triage method section + menu/derived-count note. Skill prose (no lib code — dedup is agent reasoning, not a Python call site; lib dedup-helper descoped like is_implementable). Critic 0-blocking. -->
 - [ ] Chunk 05: Review-agent backlog checks — Critic C-B1–C-B4 + PR reviewer R-1/R-2
 - [ ] Chunk 06: Advisory probes (external-backlog / legacy-section / overdue-grooming)
 - [ ] Chunk 07: Archive discipline + strikeout cleanup + archive-split + janitor Step 2.5

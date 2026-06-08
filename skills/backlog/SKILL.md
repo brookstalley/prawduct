@@ -24,6 +24,7 @@ Each item:
 - **Metadata bar**: one backticked dot-separated line. Required fields: `effort` (S/M/L), `impact` (S/M/L), `area`, `source` (builder|critic|reflection|janitor|user), `added` (YYYY-MM-DD), `status` (open|promoted|shipped|dropped). Optional: `related:` (related items), `closes:` (another backlog item this one supersedes — item→item), `closed-by:` (the chunk/release that shipped this item — item→release), `reviewed:`, `accepted-by:` (a soft claim — see below). Keep `closes:` and `closed-by:` straight — they point in opposite directions.
 - **`accepted-by:` claim** — `accepted-by: @actor` marks that someone is working an item so others don't double-pick it (multi-actor products). It is a *soft, observable claim*, **not** a lock: backlog.md is eventually-consistent in git (two actors in separate worktrees won't see each other's claim until commit+pull), so it makes double-picks **visible and recoverable**, not impossible. It **does not auto-expire** — a durable claim (an area owner claiming weeks ahead) is legitimate; a stale claim is an out-of-scope process matter, not something the framework reaps. `pick` and `list` exclude claimed items by default.
 - **`stage:` lifecycle** — `stage: idea | research | requirements | design | ready` records where the item sits in the feature lifecycle, so the framework can tell "this needs thinking" from "this is buildable." **Only `ready` is implementable.** An item with **no `stage:`** is treated as *not yet ready* — clarity has to be assessed before code. Bug/cleanup items are typically born `ready`; a vague feature idea is `idea`/`requirements`. `pick` uses this to route (see below). Advance an item with `update PFX-XXXX stage=...` as it matures.
+- **`refs:` doc links** — `refs: requirements-x.md#section, arch-y.md` links an item to the governing artifacts (requirements / arch / design docs). Distinct from `related:` (item→item). Set it when an item's requirement/design gets written (often as a `stage:` advances), so triage can cluster items around the docs they touch and a reader can jump to the source of truth.
 - **Sections**: `## Open` (pickable), `## Promoted` (in an active build plan), `## Archive` (shipped/dropped, kept for search). Items move between sections only via explicit `update` calls — never infer status from build plans or change logs.
 - **Legacy items** (no metadata bar) are valid; treat them as `effort:? · impact:? · area:untagged · status:open` and rank them lower. Suggest `/prawduct:backlog migrate` if there are many.
 
@@ -34,7 +35,7 @@ For today's date when stamping `added:`/`reviewed:`, use the current date from y
 Parse `$ARGUMENTS`: the first token is the subcommand (default to the no-arg summary if empty). Everything after is arguments — accept both `--flag=value` form (for machine callers like the Critic or reflection) and natural-language prose (for humans).
 
 ### (no args) — summary + menu
-Read the file, then print: counts per section (`N open · N promoted · N archived`), the top 3 `area:` tags by item count, a count of stale items (`status: open` and `added`/`reviewed` >90 days ago), and the action menu (`pick`, `add`, `find`, `list`, `update`, `migrate`).
+Read the file, then print: counts per section (`N open · N promoted · N archived`), the top 3 `area:` tags by item count, a count of stale items (`status: open` and `added`/`reviewed` >90 days ago), and the action menu (`pick`, `add`, `find`, `list`, `update`, `dedup`, `migrate`). All counts are **derived on read** — never persist a count to any file (a stored count drifts and becomes a sync liability; re-deriving is cheap).
 
 ### add
 File a new item. Accepts flags (`--title=`, `--body=`/`--body-file=`, `--area=`, `--effort=`, `--impact=`, `--source=`, `--prefix=`) or interactive prompts for anything missing.
@@ -101,5 +102,22 @@ Convert legacy unstructured items to the structured format and fold the old sect
 4. **Fold sections**: map legacy headings onto the canonical three — `## Active — next up` and `## Queue` → `## Open` (use judgment if "Active" items were truly in-flight → `## Promoted`); preserve any already-`[RESOLVED]`/shipped items by moving them to `## Archive` with `status: shipped`. (`/prawduct:backlog migrate --sections` does only this heading conversion without re-touching item metadata.)
 5. **On completion** (all legacy items structured + sections folded), write `backlog_format_version: 2` as a top-level key in `.prawduct/project-state.yaml`. This records — as a committed, shared fact — that the backlog is on the structured format (and is the resolution-condition a future plugin-native `legacy-backlog-format` probe would consult). If migration is partial (user skipped items), do **not** set it yet — say how many remain.
 6. Report: items migrated, sections folded, whether `backlog_format_version` was set, and how many (if any) remain legacy.
+
+### dedup
+Surface likely-duplicate / overlapping items and propose merges. Idempotent and **never destructive** (bodies preserved; nothing deleted — a merge archives the superseded item via `closes:`).
+1. Group `## Open` (and `## Promoted`) items by `area:`; within each group, find candidate pairs by title-keyword + body overlap. (The `add` subcommand already does dedup-on-create; this is the after-the-fact sweep.)
+2. Present each candidate pair/cluster with both titles + IDs and a one-line "why these look related." Ask which to merge, keep separate, or skip.
+3. On a confirmed merge: pick the surviving item, fold the other's body into it (preserve both — append the merged-in body under a `— merged from PFX-XXXX —` marker), set `related:`/`refs:` as appropriate, and `update <superseded> status=dropped` with `closes: <survivor>` recorded on the survivor. Report what merged.
+
+## Triage method
+
+GREAT triage so each project doesn't reinvent it. Run periodically (the janitor's Backlog Health step automates the surfacing). The moves, in order:
+1. **Converge duplicates/overlaps** — run `dedup`; merge or cross-link (`related:`) near-duplicates so one canonical item carries the work.
+2. **Link to the source of truth** — for any item whose requirement/arch/design is written down, set `refs:` to that doc; for item→item relationships, set `related:`/`closes:`. A linked backlog is navigable; an unlinked one is a pile.
+3. **Set the stage** — give each item a `stage:` (a vague item without one defaults to *not-ready* and won't be picked for implementation). Backfill `stage: ready` on bug/cleanup items, early stages on feature ideas. This is the single highest-value backfill on an existing backlog.
+4. **Staleness review** — for `status: open` items unmoved >90d, decide: re-confirm (touch `reviewed:`), update with current context, or `status=dropped`. Aging out is fine; silting is not.
+5. **Reconcile shipped work** — move items whose work actually shipped to `status=shipped` (Archive). Never infer this from build plans/change-logs (D4) — it's an explicit human/agent call; the Critic/PR checks only *surface* candidates.
+
+Triage is also how an existing project adopts new format features: the new fields are additive, so `migrate` (legacy→structured + strikeout cleanup) plus the steps above bring a messy backlog up to standard — no separate migration subsystem.
 
 $ARGUMENTS
