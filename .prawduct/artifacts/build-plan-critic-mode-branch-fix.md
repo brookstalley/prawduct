@@ -31,7 +31,7 @@ Context: **Done** (Critic final: 0 blocking, 3 warnings — all resolved, + 3 no
 - **Description:** When the build-plan Status checkboxes are a non-flipping derived view (`views_enabled` true) and HEAD is on a pre-release feature branch (a base branch resolves and HEAD is ahead of it), determine "completed chunks" and "current chunk" from **git** instead of the `[ ]`/`[x]` checkboxes. This makes the plan-override read the *current* chunk's `Critic mode:` (not always Chunk 01's) and lets rule-3 detect the genuine last chunk. Degrades to the existing checkbox behavior whenever the git signal doesn't apply (no `views_enabled`, no base, not ahead, or no chunk-referencing commits) — never worse than today.
 - **Deliverables:**
   - `lib/critic_mode.py`:
-    - new `_count_chunk_commits(project_dir, base)` — count commits on `base..HEAD` whose subject references a chunk (`Chunk <n>`).
+    - new `_committed_chunk_ids(project_dir, base)` — the (normalized) chunk ids referenced by `Chunk <n>` in commit subjects on `base..HEAD` (a set, so multi-commit-per-chunk and out-of-order are handled).
     - new `_chunk_ids_in_status_order(prawduct_dir)` — all chunk ids in Status order (both states).
     - new `_git_aware_progress(project_dir, prawduct_dir, total)` — returns `(complete, current_chunk_id)` from git when applicable, else `None`.
     - refactor `_current_chunk_critic_mode` to resolve the current chunk id via the git-aware progress (fall back to first-`[ ]`); `_rule_final_fires` to consume the git-aware `complete`.
