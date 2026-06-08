@@ -37,7 +37,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import buildplan_refs, gates, gitstate
+from . import backlog, buildplan_refs, gates, gitstate
 from .core import resolve_build_plan_path
 
 
@@ -617,33 +617,17 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
         except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             pass
 
-    # Backlog — show items inline so resolved ones are naturally noticed
+    # Backlog — surface the count of outstanding items. Parsed via lib.backlog so
+    # the count tracks the structured item format (Open + Promoted, minus struck /
+    # resolved) rather than a hand-rolled line scan.
     backlog_path = prawduct_dir / "backlog.md"
     if backlog_path.is_file():
         try:
-            backlog_content = backlog_path.read_text()
-            in_code_block = False
-            in_resolved = False
-            pending_items: list[str] = []
-            for bl in backlog_content.splitlines():
-                stripped_bl = bl.strip()
-                if stripped_bl.startswith("```"):
-                    in_code_block = not in_code_block
-                elif not in_code_block and stripped_bl.startswith("#"):
-                    # Track resolved/done sections
-                    header_lower = stripped_bl.lower()
-                    in_resolved = any(w in header_lower for w in ("resolved", "done", "completed", "archive"))
-                elif not in_code_block and not in_resolved and bl.startswith("- "):
-                    # Only count top-level items (no leading spaces) outside resolved sections
-                    if "~~" not in stripped_bl:  # Skip strikethrough items
-                        # Strip leading "- " for display
-                        item_text = stripped_bl[2:].strip()
-                        if item_text:
-                            pending_items.append(item_text)
-            if pending_items:
+            pending = backlog.parse_backlog(backlog_path.read_text()).pending_items()
+            if pending:
                 # One count line, not a 5-item dump every session. /prawduct:backlog
                 # is the triage path; dumping arbitrary items here was tax.
-                lines.append(f"Backlog: {len(pending_items)} pending (/prawduct:backlog to triage)")
+                lines.append(f"Backlog: {len(pending)} pending (/prawduct:backlog to triage)")
         except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             pass
 

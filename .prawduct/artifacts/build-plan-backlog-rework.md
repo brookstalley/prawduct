@@ -39,7 +39,7 @@ last_validated: null
 - [ ] Chunk 08: `/backlog import` + prawduct-doctor external-file report
 - [ ] Chunk 09: Workflow wiring (methodology + session-digest + build-plan template)
 - [ ] Chunk 10: Reconciliation + cumulative review (requirements status, change-log, deferred-item reconcile)
-Context: Not started. Branch `feature/backlog-rework` off develop. Spec: `documentation/backlog-system-requirements.md` v0.3 (§0 is the scope map). Ships as ONE PR to develop, then batched into a release.
+Context: **Chunk 01 done** (Critic final: 0 blocking, 1 NOTE — fixed in-chunk: body code-fence truncation). `lib/backlog.py` parser + `lib/briefing.py` rewired to it (count parity verified: old & new both = 41 on live backlog, 91 items parsed losslessly). `tests/test_backlog_parser.py` (23 cases). Spec gained D14 (never persist derived counts). 985 tests pass. Checkboxes stay `[ ]` until release (derived view); one change-log entry with `chunks=1..10` is written at Chunk 10 (ships as ONE PR, like work-model). **Next: Chunk 02 (`accepted-by` claim field).** Stage vocabulary locked = 5-stage (idea→research→requirements→design→ready) for Chunk 03. Branch `feature/backlog-rework` off develop.
 
 ## Scaffolding
 
