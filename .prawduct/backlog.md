@@ -8,6 +8,23 @@
 ## Open
 
 
+- **[REL-2N8K]** Release-prep silently drops statusless change-log entries — step 3 only flips `status=merged`
+  `effort: S · impact: M · area: methodology · source: builder · added: 2026-06-08 · status: open · related: REL-4T8N`
+
+  `docs/release-process.md` step 3 instructs the release author to flip entries "from `status=merged`
+  to `status=shipped`." But the documented two-state lifecycle (set `status=merged` at the
+  feature→develop merge) is manual and the `/prawduct:pr` merge flow never applies it, so most entries
+  arrive at release-prep **statusless**. A literal reading of step 3 flips only the `status=merged`
+  entries and silently omits every statusless one — and since `regen-views` acts only on
+  `status ∈ {shipped, merged}`, those scopes' build-plan `## Status` checkboxes never flip and they
+  vanish from `release-notes.md` + `scope_rollups`, with no warning. At v2.0.14, 8 of 10 unreleased
+  entries were statusless (hook-decomp ch.1–7 + critic-session-guard); the release was correct only
+  because the author enumerated ALL entries above the prior `release=` boundary by hand. Two fix
+  options: (a) reword step 3 to "flip every unreleased entry — statusless OR `status=merged` — to
+  `status=shipped`," and/or (b) make the `/prawduct:pr` feature→develop merge reliably stamp
+  `status=merged` on the merged entry so the lifecycle the learnings describe actually holds. Either
+  closes the silent-omission hole. (builder, from the v2.0.14 release)
+
 - **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set
   `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · related: CRT-3X9D`
 
