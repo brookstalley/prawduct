@@ -1,11 +1,19 @@
 """Post-sync advisory probes for the backlog feature (requirements §8.2).
 
-Three probes registered against the shared advisory infrastructure
+Four probes registered against the shared advisory infrastructure
 (:mod:`lib.advisory_store`). Each is a pure ``ProbeFn(state, codebase)`` that
 reads the consumer's own ``.prawduct/`` and returns at most one
 :class:`~lib.advisory_store.AdvisoryCandidate`. They never write — resolution is
 a *fact* the consumer records in ``project-state.yaml`` (the answer store), which
 resolves the advisory for everyone on next sync.
+
+``legacy-backlog-format`` is the primary one — the nudge a repo hits right after
+adopting a new prawduct version with an unmigrated backlog (``/prawduct:backlog
+migrate``). It was the single production probe in framework v1.7.0
+(``tools/lib/backlog_probes.py``), deleted with the file-sync engine in M4, and
+re-ported here. The other three (``external-backlog-detected``,
+``legacy-section-schema``, ``backlog-overdue-grooming``) were the v0.2-deferred
+roster.
 
 Registration is wired at the runtime composition root (``bin/prawduct-hook``
 ``cmd_clear``), not at ``advisory_store`` import time, so the infrastructure stays
@@ -40,6 +48,10 @@ LEGACY_SECTION_HEADINGS = ("## Active — next up", "## Queue")
 # Overdue-grooming thresholds (requirements §8.2 — tune against real products).
 GROOMING_MIN_OPEN_ITEMS = 20
 GROOMING_STALE_DAYS = 90
+
+# Legacy-format trigger floor (requirements §8.2): fire when the backlog carries
+# MORE than this many items and none is structured.
+LEGACY_FORMAT_MIN_ITEMS = 5
 
 
 def _backlog_path(codebase: Codebase) -> Path:
@@ -154,8 +166,48 @@ def probe_overdue_grooming(state: ProjectState, codebase: Codebase):
     ]
 
 
+def probe_legacy_backlog_format(state: ProjectState, codebase: Codebase):
+    """Fire when backlog.md has >5 items and none carries a ``[PFX-XXXX]`` id.
+
+    The primary "your backlog predates the structured format" nudge — the one a
+    repo hits right after adopting a new prawduct version with an unmigrated
+    backlog. Resolution: ``backlog_format_version: 2`` recorded by
+    ``/prawduct:backlog migrate`` (the shared answer store — a teammate's
+    committed migration resolves the advisory for everyone on next sync).
+
+    Partial migration does **not** fire: once *any* item carries a structured id
+    the file is mid-flight, and ``backlog_format_version`` is the authoritative
+    "done" signal. ``parse_backlog`` already excludes HTML-comment and
+    code-fence bullets, so template example bullets are not miscounted.
+    """
+    if str(state.get("backlog_format_version", "")) == "2":
+        return []
+    text = _read_text(_backlog_path(codebase))
+    if not text:
+        return []
+    items = parse_backlog(text).items
+    if len(items) <= LEGACY_FORMAT_MIN_ITEMS or any(i.item_id for i in items):
+        return []
+    # Evidence is qualitative and count-independent (it is hashed into the
+    # advisory id) so the id stays put as items come and go; the live count
+    # lives in the summary.
+    return [
+        AdvisoryCandidate(
+            type="legacy-backlog-format",
+            evidence=(".prawduct/backlog.md contains items without [PFX-XXXX] structured ids",),
+            trigger_summary=(
+                f"{len(items)} backlog items lack [PFX-XXXX] structured ids — run "
+                "/prawduct:backlog migrate to add metadata and enable pick/find/list filtering"
+            ),
+            recommended_action="/prawduct:backlog migrate",
+            priority="info",
+        )
+    ]
+
+
 def register() -> None:
-    """Register the three backlog probes. Idempotent (register_probe overwrites)."""
+    """Register the four backlog probes. Idempotent (register_probe overwrites)."""
+    register_probe(FEATURE, "legacy-backlog-format", PROBE_VERSION, probe_legacy_backlog_format)
     register_probe(FEATURE, "external-backlog-detected", PROBE_VERSION, probe_external_backlog)
     register_probe(FEATURE, "legacy-section-schema", PROBE_VERSION, probe_legacy_section_schema)
     register_probe(FEATURE, "backlog-overdue-grooming", PROBE_VERSION, probe_overdue_grooming)

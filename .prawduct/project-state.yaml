@@ -474,10 +474,11 @@ views_enabled: true
 # its build-plan file is retained as a historical artifact. The hook-decomposition
 # (STH-9V4K, #74–79) and critic-session-guard (CRT-3X9D, #80) both SHIPPED in
 # v2.0.14 (2026-06-08). The backlog rework (v0.3, #81) SHIPPED in v2.0.15
-# (2026-06-08); regen-views flipped each plan's ## Status checkboxes to [x] via its
-# scope= tag (REL-4T8N). No release-pending plans remain — the pointer is cleared
-# (unset → falls back to artifacts/build-plan.md). The next in-progress plan sets
-# it again.
+# (2026-06-08). v2.0.17 (2026-06-08) shipped two fixes — retire-pr-trivial-fast-path
+# (#84) and legacy-backlog-format-probe (#85); regen-views flipped each plan's
+# ## Status checkboxes to [x] via its scope= change-log tag (REL-4T8N). No
+# release-pending plans remain — the pointer is cleared (unset → falls back to
+# artifacts/build-plan.md). The next in-progress plan sets it again.
 active_build_plan:
 
 # =============================================================================
@@ -551,9 +552,15 @@ scope_rollups:
   hook-decomp:
     chunks: ["1", "2", "3", "4", "5", "6", "7"]
     releases: ["v2.0.14"]
+  legacy-backlog-format-probe:
+    chunks: ["01"]
+    releases: ["v2.0.17"]
   release-tooling:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.0.6"]
+  retire-pr-trivial-fast-path:
+    chunks: ["01"]
+    releases: ["v2.0.17"]
   rigor-and-stance:
     chunks: ["01", "02", "03"]
     releases: ["v2.0.7"]

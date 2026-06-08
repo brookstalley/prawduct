@@ -649,10 +649,11 @@ def run_sync_advisories(product_dir, *, now: str | None = None, sync_version: st
     now = now or _utcnow_iso()
     state = load_project_state(product)
     codebase = make_codebase(product)
-    # The probe roster is empty: the sole legacy probe (legacy-backlog-format)
-    # was retired with the file-sync engine (M4). The infrastructure stays —
-    # register_probe/run_all_probes host future feature probes, which register
-    # themselves here before the roster runs.
+    # Run whatever probes the composition root registered before calling in. The
+    # infrastructure is feature-agnostic: features register themselves via
+    # register_probe (see bin/prawduct-hook cmd_clear, which registers the four
+    # backlog probes — including legacy-backlog-format, the /prawduct:backlog
+    # migrate nudge — before the roster runs).
     candidates = run_all_probes(state, codebase)
     store = read_store(product)
     reconciled = reconcile(store, candidates, now=now, sync_version=sync_version)

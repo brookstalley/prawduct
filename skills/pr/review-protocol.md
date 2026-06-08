@@ -13,7 +13,7 @@ The Critic ensures work quality per-chunk. The cumulative-mode Critic (`/prawduc
 5. Read `.prawduct/learnings.md` for project-specific patterns.
 6. Review against the goals below.
 
-**You may be skipped.** Two PR-boundary fast-paths in `/prawduct:pr create` skip this reviewer when the cumulative pass would add no signal: doc-only (every file in `merge-base...HEAD` is `.md`) and trivial-code (every commit is fileset-eligible per the `Type: trivial` path bounds — no `skills/`/`methodology/`/`templates/`/`CLAUDE.md` edits, no test deletions, no new files; per-chunk Critic Goal 3 rationale-vs-diff review is the judgment backstop). If `/prawduct:pr create` invoked you anyway under one of these fast-paths, run the full review — the fast-path is a caller-side optimization, not a reviewer-side waiver. Fail closed in both directions.
+**You may be skipped.** One PR-boundary fast-path in `/prawduct:pr create` skips this reviewer when the cumulative pass would add no signal: doc-only (every file in `merge-base...HEAD` is `.md`). (There is no trivial-code fast-path: fileset-eligibility — only touching existing files — is a necessary but not sufficient signal of triviality, so a multi-chunk feature touching only existing files would otherwise have skipped both core review gates; the trivial fast-path was retired for that unsoundness. The chunk-level `Type: trivial` declaration is still enforced per-chunk at session end but does not waive this PR-boundary review.) If `/prawduct:pr create` invoked you anyway under the doc-only fast-path, run the full review — the fast-path is a caller-side optimization, not a reviewer-side waiver. Fail closed: when in doubt, review.
 
 ## Review Goals
 

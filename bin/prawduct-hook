@@ -896,22 +896,22 @@ def cmd_stop(project_dir: Path) -> int:
                         pass
 
                 if has_pr:
-                    # Symmetry with `/prawduct:pr create` Steps 1b/1c: when the PR diff
-                    # is doc-only (all .md) or trivial (every commit fileset-
-                    # eligible per Chunk 04 bounds), the cumulative-Critic and
-                    # PR-reviewer gates were legitimately skipped at create-
-                    # time and no evidence file was written. Gate 3 would
-                    # otherwise block session end with a misleading "no review
-                    # evidence" error for a PR that doesn't need one. If a
-                    # later session adds non-.md or fileset-violating commits,
-                    # both checks return False and the gate fires as intended
-                    # — matching the create-flow contract.
+                    # Symmetry with `/prawduct:pr create` Step 1b: when the PR diff
+                    # is doc-only (all .md), the cumulative-Critic and PR-reviewer
+                    # gates were legitimately skipped at create-time and no
+                    # evidence file was written. Gate 3 would otherwise block
+                    # session end with a misleading "no review evidence" error for
+                    # a PR that doesn't need one. If a later session adds a non-.md
+                    # commit, the check returns False and the gate fires as
+                    # intended — matching the create-flow contract. (The parallel
+                    # `Type: trivial` fast-path was retired — fileset-eligibility
+                    # was standing in for a per-chunk `Type: trivial` declaration,
+                    # so feature clusters that only touched existing files skipped
+                    # both review gates. A trivial code PR now gets the full
+                    # review like any other code change.)
                     pr_is_doc_only, _ = _coverage()._pr_diff_is_doc_only(project_dir)
-                    pr_is_trivial, _ = (
-                        (False, "") if pr_is_doc_only else _coverage()._pr_diff_is_trivial(project_dir)
-                    )
-                    if pr_is_doc_only or pr_is_trivial:
-                        pass  # Fast-path eligible — no evidence required
+                    if pr_is_doc_only:
+                        pass  # Doc-only fast-path — no evidence required
                     else:
                         # Check for review evidence with content validation
                         branch_file = current_branch.replace("/", "--") + ".json"
@@ -1147,8 +1147,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 # parsers, _looks_like_file_path, _classify_trivial_change, and the
 # _TRIVIAL_PROTECTED_PATHS / _BUILD_PLAN_* constants. Resident callers below
 # (cmd_verify_chunk_refs, the stop gate) reach them via _buildplan_refs().<fn>();
-# lib.coverage's _pr_diff_is_trivial (ch.5) and lib.gates' _is_trivial_fileset_eligible
-# (ch.6) reach them as sibling imports.
+# lib.gates' _is_trivial_fileset_eligible (ch.6) reaches them as a sibling import.
+# (The PR-boundary _pr_diff_is_trivial consumer was retired — see lib/coverage.py.)
 
 
 # _current_chunk_id_from_status + _verify_chunk_refs moved to
@@ -1459,13 +1459,6 @@ def cmd_check_pr_doc_only(project_dir: Path) -> int:
     the body lives in ``lib.coverage.check_pr_doc_only`` (STH-9V4K ch.5),
     reached lazily so the hook's top level stays lib-free."""
     return _coverage().check_pr_doc_only(project_dir)
-
-
-def cmd_check_pr_trivial(project_dir: Path) -> int:
-    """Trivial-code PR fast-path gate for `/prawduct:pr create`. Thin wrapper —
-    the body lives in ``lib.coverage.check_pr_trivial`` (STH-9V4K ch.5),
-    reached lazily so the hook's top level stays lib-free."""
-    return _coverage().check_pr_trivial(project_dir)
 
 
 def cmd_test_status(project_dir: Path) -> int:
@@ -1814,7 +1807,7 @@ _USAGE = (
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
-    "check-pr-doc-only|check-pr-trivial|regen-views|infer-critic-mode [args]|"
+    "check-pr-doc-only|regen-views|infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
     "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
@@ -1974,8 +1967,6 @@ def main() -> int:
         return cmd_verify_operator_verification(project_dir, vrf_id)
     elif command == "check-pr-doc-only":
         return cmd_check_pr_doc_only(project_dir)
-    elif command == "check-pr-trivial":
-        return cmd_check_pr_trivial(project_dir)
     elif command == "regen-views":
         return cmd_regen_views(project_dir)
     elif command == "infer-critic-mode":

@@ -8,6 +8,45 @@
 ## Open
 
 
+- **[REL-6C3W]** Flag a code-changing branch that merges with no change-log entry
+  `effort: M · impact: M · area: release/change-log · source: reflection · added: 2026-06-08 · status: open · related: REL-2N8K · refs: docs/release-process.md`
+
+  A non-doc-only feature branch can merge to develop with NO `.prawduct/change-log.md` entry at all,
+  and nothing flags it — CRT-7B4M (#82) did exactly this, and it only surfaced at the v2.0.16
+  release-prep, where the entry had to be reconstructed from the build plan to ship release-notes /
+  flip the plan's Status / clear the pointer. This is a worse sibling of REL-2N8K (statusless entries
+  silently dropped at release): there the entry exists but lacks a status; here there's no entry.
+  Candidate fix: a PR/merge gate (parallel to check-pr-doc-only/trivial) or a release-prep probe that
+  flags when `merge-base...HEAD` is not doc-only/trivial yet adds no new change-log entry. Filed from
+  the v2.0.16 release (2026-06-08). (reflection)
+
+- **[PR-5K8D]** check-pr-doc-only should exclude skills/ (and methodology/templates) — align with `_classify_trivial_change`'s bounds
+  `effort: S · impact: M · area: pr/governance · source: reflection · added: 2026-06-08 · status: open · reviewed: 2026-06-08 · related: PR-9T4M · refs: skills/pr/SKILL.md, lib/buildplan_refs.py, lib/coverage.py`
+
+  The two PR fast-path classifiers disagreed on skill files. On the backlog-legend-refresh PR (#83),
+  `check-pr-doc-only` returned exit 0 (all 4 files `.md` → "gates may be skipped"), which per the
+  `/pr` Step 1b instruction would skip the independent PR reviewer entirely — but `check-pr-trivial`
+  correctly returned "not-trivial: skill-file-edited: skills/backlog/SKILL.md. Full review required."
+  A fork-skill's SKILL.md IS behavior/logic (per the existing learning "when a feature's logic lives
+  in a context:fork skill, lib/ holds DATA not LOGIC"), so an extension-only doc-only classification
+  under-reads a behavioral skill change and can skip review.
+
+  Re-anchored 2026-06-08 (branch fix/retire-pr-trivial-fast-path): `check-pr-trivial` /
+  `_pr_diff_is_trivial` were DELETED when the PR-boundary trivial fast-path was retired (see
+  PR-9T4M). The original fix-shape pointed at `check-pr-trivial` as the model to copy; that
+  classifier is gone. The canonical exclusion bounds still live in `lib/buildplan_refs.py`
+  (`_classify_trivial_change` / `_TRIVIAL_PROTECTED_PATHS` — `{skills/, methodology/, templates/,
+  CLAUDE.md}`), now consumed only by the chunk-level `_is_trivial_fileset_eligible` gate
+  (`lib/gates.py`). This item is now MORE relevant, not less: with the trivial fast-path retired,
+  `check-pr-doc-only` (`lib/coverage.py`, hook `cmd_check_pr_doc_only`) is the ONLY remaining
+  PR-boundary gate-skip path, and it still under-reads behavioral `skills/*.md` changes. Candidate
+  fix (re-anchored): align `check-pr-doc-only`'s fileset bounds with `_classify_trivial_change` —
+  exclude `skills/`, `methodology/`, `templates/`, and `CLAUDE.md` from the doc-only fast-path so a
+  behavioral-prose change still gets the reviewer; consume the shared `_TRIVIAL_PROTECTED_PATHS`
+  rather than re-listing the bounds. refs: skills/pr/SKILL.md (Step 1b/1c), lib/coverage.py
+  (check_pr_doc_only), lib/buildplan_refs.py (_classify_trivial_change). Filed from the v2.0.16
+  release (2026-06-08). (reflection)
+
 - **[CRT-3D9K]** `bin/prawduct-hook` stop-gate chunk resolution has the same views-branch blindness CRT-7B4M fixed in inference
   `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · stage: requirements · related: CRT-7B4M, STH-2K8R`
 
@@ -118,25 +157,6 @@
   original design is preserved verbatim at git tag `rfc/adversarial-review` (commit `967b861`).
   Author: Jason-Vaughan. Type: feature/methodology, size: medium-large. (user)
 
-- **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
-  `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: open · related: STH-1W5N, BLD-2R9X`
-
-  `_TRIVIAL_PROTECTED_PATHS` (`bin/prawduct-hook`) bounds the `Type: trivial` / `check-pr-trivial`
-  fast-path to `{skills/, methodology/, templates/, CLAUDE.md}` — the governance *content* surfaces.
-  It does NOT include `bin/` or `lib/`, which hold the framework's executable runtime — including
-  `bin/prawduct-hook` itself (the ~4,369-line hook that *implements every gate*) and the `lib/`
-  modules. Consequence (observed firsthand merging BLD-2R9X, a `bin/prawduct-hook` bugfix):
-  `check-pr-trivial` returned exit 0 (`all fileset-eligible`), so the `/prawduct:pr` fast-path would
-  have skipped BOTH the cumulative-Critic gate AND the independent reviewer for a change to the core
-  gate-runtime. I declined the fast-path manually and ran the full review, but the next contributor
-  may not. A bug in `bin/prawduct-hook`/`lib/` can break gating itself, so it is arguably *more*
-  catastrophic-blast-radius than a `templates/` edit, not less. Fix-shape: add `("bin/", False,
-  "runtime-edited")` and `("lib/", False, "runtime-edited")` to `_TRIVIAL_PROTECTED_PATHS` (single
-  source of truth — both the stop-hook `_is_trivial_fileset_eligible` and the PR-boundary
-  `_pr_diff_is_trivial` consume it), with tests in `tests/test_trivial_fileset_gate.py`. Open
-  question: is a doc/comment-only edit to a `bin/`/`lib/` file (no logic change) worth exempting, or
-  keep the bound coarse (any `bin/`/`lib/` touch → full review)? Coarse is safer and simpler. Filed
-  from the BLD-2R9X merge on 2026-06-06. (builder)
 
 - **[PR-2H8N]** Key the `/pr` release-promotion guard off `resolve-base` instead of hardcoded branch names
   `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · related: REL-8K3M`
@@ -390,6 +410,34 @@
 
 ## Archive
 
+
+- **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
+  `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: shipped · closed-by: retire-pr-trivial-fast-path · reviewed: 2026-06-08 · related: STH-1W5N, BLD-2R9X`
+
+  `_TRIVIAL_PROTECTED_PATHS` (`bin/prawduct-hook`) bounds the `Type: trivial` / `check-pr-trivial`
+  fast-path to `{skills/, methodology/, templates/, CLAUDE.md}` — the governance *content* surfaces.
+  It does NOT include `bin/` or `lib/`, which hold the framework's executable runtime — including
+  `bin/prawduct-hook` itself (the ~4,369-line hook that *implements every gate*) and the `lib/`
+  modules. Consequence (observed firsthand merging BLD-2R9X, a `bin/prawduct-hook` bugfix):
+  `check-pr-trivial` returned exit 0 (`all fileset-eligible`), so the `/prawduct:pr` fast-path would
+  have skipped BOTH the cumulative-Critic gate AND the independent reviewer for a change to the core
+  gate-runtime. I declined the fast-path manually and ran the full review, but the next contributor
+  may not. A bug in `bin/prawduct-hook`/`lib/` can break gating itself, so it is arguably *more*
+  catastrophic-blast-radius than a `templates/` edit, not less. Fix-shape: add `("bin/", False,
+  "runtime-edited")` and `("lib/", False, "runtime-edited")` to `_TRIVIAL_PROTECTED_PATHS` (single
+  source of truth — both the stop-hook `_is_trivial_fileset_eligible` and the PR-boundary
+  `_pr_diff_is_trivial` consume it), with tests in `tests/test_trivial_fileset_gate.py`. Open
+  question: is a doc/comment-only edit to a `bin/`/`lib/` file (no logic change) worth exempting, or
+  keep the bound coarse (any `bin/`/`lib/` touch → full review)? Coarse is safer and simpler. Filed
+  from the BLD-2R9X merge on 2026-06-06. (builder)
+
+  — Resolved 2026-06-08 (branch fix/retire-pr-trivial-fast-path) — Closed by retiring the entire
+  PR-boundary trivial fast-path (`check-pr-trivial` / `_pr_diff_is_trivial` removed) rather than the
+  narrower proposed fix (adding `bin/`/`lib/` to `_TRIVIAL_PROTECTED_PATHS`). With the whole
+  PR-boundary fast-path gone, there is no longer any path where fileset-eligibility skips BOTH review
+  gates — retiring the unsound predicate supersedes the narrower patch. Note: the chunk-level
+  `Type: trivial` fileset bounds still omit `bin/`/`lib/`, but `Type: trivial` does NOT skip the
+  Critic gate at the chunk level, so no gate-skip risk remains there.
 
 - **[CRT-7B4M]** infer-critic-mode pins to Chunk 01 on a feature branch with views_enabled (derived checkboxes never flip)
   `effort: S · impact: S · area: critic · source: builder · added: 2026-06-08 · status: shipped · closed-by: critic-mode-branch-fix · reviewed: 2026-06-08 · stage: requirements`

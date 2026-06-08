@@ -3,6 +3,77 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-08: register the missing legacy-backlog-format advisory probe
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.0.17 | status=shipped | scope=legacy-backlog-format-probe -->
+
+**Why:** A repo that adopted a new prawduct version with an **unmigrated backlog**
+got **no advisory** nudging `/prawduct:backlog migrate`. Root cause:
+`lib/backlog_probes.py::register()` registered three probes
+(`external-backlog-detected`, `legacy-section-schema`, `backlog-overdue-grooming`)
+but **not** `legacy-backlog-format` — the *primary* probe whose action is
+`/prawduct:backlog migrate` and whose resolution is `backlog_format_version: 2`.
+That probe was the single **production** probe shipped in framework v1.7.0
+(`tools/lib/backlog_probes.py::legacy_backlog_format_probe`). M4 (v2.0.3) deleted
+the file-sync `tools/lib/backlog_probes.py` with the engine; the v0.3 backlog
+rework (v2.0.15) built a *new* plugin-native module scoped to `[BKL-2F7K]` — "ship
+the three *remaining* §8.2 probes" — a framing that silently assumed the primary
+probe still existed. It didn't, so it was registered nowhere. The roster itself was
+alive (the grooming probe fires in real briefings), which is exactly why the gap
+looked fine — the channel worked, one member was just missing. This is the second
+chapter of the M4 advisory-excision saga (learning #206 re-homed the
+*infrastructure*; this restores the *member* it was always about).
+
+**What:** Re-port `probe_legacy_backlog_format` faithfully (trigger floor: `>5`
+items none carrying a `[PFX-XXXX]` id; partial-migration guard: any structured id
+stands the trigger down; count-independent evidence; `priority="info"`) using
+`parse_backlog`, which already excludes HTML-comment / code-fence bullets; register
+it in `register()`. Reconcile the two stale artifacts that documented it as absent
+(the `lib/advisory_store.py` "roster is empty" comment and two
+`skills/backlog/SKILL.md` notes). New `TestLegacyBacklogFormatProbe` + a
+**registered-roster** end-to-end nudge test (the gap was *registration*, so the
+regression drives `register()` + `run_all_probes`, not the probe in isolation).
+
+**Blast radius:** `lib/backlog_probes.py` (+probe +register), `lib/advisory_store.py`
+(comment), `skills/backlog/SKILL.md` (two notes), `tests/test_backlog_probes.py`
+(+7 tests), `.prawduct/learnings.md` (the spec-roster-vs-open-work-list lesson).
+1020 pass. Merged to develop via #85.
+
+## 2026-06-08: retire the PR-boundary trivial fast-path (unsound fileset-as-detector skip-gate)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.0.17 | status=shipped | scope=retire-pr-trivial-fast-path -->
+
+**Why:** The PR-boundary trivial fast-path (`check-pr-trivial` /
+`_pr_diff_is_trivial`) decided trivial-eligibility from the **fileset alone** —
+every commit on `merge-base..HEAD` clearing the `Type: trivial` path bounds — with
+**no link to any `Type: trivial` declaration**. Exit 0 made `/prawduct:pr` skip
+**both** the cumulative-Critic gate and the independent PR reviewer. So a
+substantial multi-chunk **feature** that only modified existing files (the common
+case) was reported `trivial` and skipped the two core review gates. The fileset
+bounds were designed to *enforce* a per-chunk declaration (the stop hook checks them
+only when `chunk_type == "trivial"`), not to *detect* triviality at the bundle
+boundary — a necessary condition standing in for a sufficient one. And the fast-path
+shipped with **zero** test coverage at the PR boundary, which is why it slipped: a
+skip-gate (a gate whose job is to waive other gates) needs the *most* adversarial
+coverage, not the least.
+
+**What:** Retire the fast-path entirely (user-chosen over gating it on the
+declaration). Remove `_pr_diff_is_trivial` + `check_pr_trivial` (`lib/coverage.py`),
+`cmd_check_pr_trivial` + dispatch + usage token + the stop-hook Gate-3
+`pr_is_trivial` branch (`bin/prawduct-hook`) — only a **doc-only** PR is
+evidence-exempt now — and Step 1c + the gate-summary bullet + the `allowed-tools`
+entry (`skills/pr/SKILL.md`); reconcile the reviewer's own
+`skills/pr/review-protocol.md` "You may be skipped" section to one fast-path; re-anchor
+the co-consumer doc-comments (`lib/gates.py`, `lib/buildplan_refs.py`). New
+regression test: a fileset-eligible code PR now BLOCKS at Gate 3 for missing review
+evidence (the test the retired fast-path never had). The sound **doc-only**
+fast-path and the **chunk-level `Type: trivial`** enforcement are untouched.
+
+**Blast radius:** `lib/coverage.py`, `bin/prawduct-hook`, `skills/pr/SKILL.md`,
+`skills/pr/review-protocol.md`, `lib/gates.py`, `lib/buildplan_refs.py`,
+`tests/test_pr_reviewer.py` (+regression test). 1013 pass at merge. Surfaced as an
+incoming bug from `../scriob`. Merged to develop via #84.
+
 ## 2026-06-08: `/backlog migrate` refreshes the schema legend, not just item metadata
 
 <!-- prawduct: type=fix | release=v2.0.16 | status=shipped | scope=backlog-legend-refresh -->

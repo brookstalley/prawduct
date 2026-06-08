@@ -19,9 +19,13 @@ The two coverage/critic *gate commands* that consume this layer
 now: their bodies also depend on the evidence-schema / critic-findings validators
 slated for Chunk 6 (``gates``), and the plan's DAG runs ``coverage`` ← ``gates``
 — so they move with ``gates`` (where ``gates`` → ``coverage`` is legal) rather
-than pulling gates logic forward into this module. The two *PR fast-path* gate
-commands (``check_pr_doc_only`` / ``check_pr_trivial``) are gates-free and move
-here; the hook keeps thin ``cmd_*`` wrappers delegating to them.
+than pulling gates logic forward into this module. The *PR fast-path* gate
+command (``check_pr_doc_only``) is gates-free and moves here; the hook keeps a
+thin ``cmd_*`` wrapper delegating to it. (The parallel ``check_pr_trivial`` /
+``_pr_diff_is_trivial`` fast-path was retired — fileset-eligibility was being used
+as a *detector* of triviality rather than the *enforcement* of a per-chunk
+``Type: trivial`` declaration, so feature clusters that only touch existing files
+skipped both review gates.)
 """
 
 from __future__ import annotations
@@ -165,109 +169,6 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     return True, f"doc-only: {len(files)} file(s) in {base}...HEAD all .md"
 
 
-def _pr_diff_is_trivial(project_dir: Path) -> tuple[bool, str]:
-    """Shared helper: is every commit on ``merge-base...HEAD`` fileset-
-    eligible per Chunk 04's ``Type: trivial`` path bounds?
-
-    Returns ``(is_trivial, status_message)``. ``is_trivial`` is True only
-    when at least one commit exists ahead of base AND every commit's
-    file changes satisfy ``_classify_trivial_change``. The first
-    violating commit short-circuits with a reason naming the SHA and
-    the specific bound (e.g.
-    ``"not-trivial: commit a1b2c3d skill-file-edited: skills/foo.md"``).
-
-    Mirrors ``_pr_diff_is_doc_only`` at the PR boundary — same base
-    resolution via ``_coverage_resolve_base``, same fail-closed posture
-    on missing base / git failure / empty diff. Does NOT re-validate
-    rationale fit; that's the per-chunk Critic's job at chunk-mode
-    review time. This helper trusts that every chunk's rationale was
-    Critic-passed and only checks the structural file-set bounds.
-
-    Per-commit (not cumulative) walk: a PR that adds an ``skills/``
-    file in commit 1 and removes it in commit 2 has an empty cumulative
-    diff but is NOT fast-path eligible — the commit 1 violation is
-    real signal that the work crossed a catastrophic-blast-radius
-    boundary at least once during the build.
-    """
-    base, base_note = _coverage_resolve_base(project_dir)
-    if base is None:
-        return False, f"no-base: {base_note}"
-
-    # `git log --name-status --format=%H` emits one commit SHA per line
-    # followed by one tab-separated <status>\t<path> (or
-    # <status>\t<src>\t<dst> for renames) line per changed file, with
-    # a blank line between commits. Reverse order is irrelevant — we
-    # short-circuit on first violation regardless.
-    proc = subprocess.run(
-        [
-            "git",
-            "log",
-            "--name-status",
-            "-M",  # enable rename detection so test-renamed-out-of-tests/ trips
-            "--format=%H",
-            f"{base}..HEAD",
-        ],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if proc.returncode != 0:
-        return False, f"git-failed: git log {base}..HEAD failed: {proc.stderr.strip()}"
-
-    lines = proc.stdout.splitlines()
-    if not any(line.strip() for line in lines):
-        return False, f"empty-diff: no commits ahead of {base}"
-
-    current_sha: str | None = None
-    commits_seen = 0
-    for raw in lines:
-        line = raw.rstrip()
-        if not line:
-            continue
-        # A bare 40-hex line is a commit header.
-        if len(line) == 40 and all(c in "0123456789abcdef" for c in line):
-            current_sha = line
-            commits_seen += 1
-            continue
-        # Otherwise it's a name-status entry for the current commit.
-        if current_sha is None:
-            continue
-        parts = line.split("\t")
-        if len(parts) < 2:
-            continue
-        status = parts[0].strip()
-        if not status:
-            continue
-        # R<score> / C<score> rows are: <status>\t<src>\t<dst>
-        src_path: str | None = None
-        if status[0] in ("R", "C") and len(parts) >= 3:
-            src_path = parts[1].strip()
-            path = parts[2].strip()
-        else:
-            path = parts[-1].strip()
-        if not path:
-            continue
-        # v1.5.1 Chunk 04(b): metadata-path filtering lives inside
-        # `_classify_trivial_change` (handles both src and dst). Single
-        # check site = no drift between this PR-boundary gate and the
-        # stop-hook gate in `_is_trivial_fileset_eligible`.
-        is_addition = status == "A"
-        is_deletion = status == "D"
-        violation = buildplan_refs._classify_trivial_change(
-            path=path,
-            src_path=src_path,
-            is_addition=is_addition,
-            is_deletion=is_deletion,
-        )
-        if violation is not None:
-            return False, f"not-trivial: commit {current_sha[:7]} {violation}"
-
-    return True, (
-        f"trivial: {commits_seen} commit(s) ahead of {base} all fileset-eligible"
-    )
-
-
 def check_pr_doc_only(project_dir: Path) -> int:
     """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 
@@ -291,40 +192,6 @@ def check_pr_doc_only(project_dir: Path) -> int:
         return 0
     suffix = (
         ". Doc-only fast-path is not applicable."
-        if status.startswith("empty-diff")
-        else ". Falling back to full review path."
-        if status.startswith(("no-base", "git-failed"))
-        else ". Full review required."
-    )
-    print(f"{status}{suffix}", file=sys.stderr)
-    return 1
-
-
-def check_pr_trivial(project_dir: Path) -> int:
-    """Fast-path gate for `/prawduct:pr create`: report whether every commit in
-    ``merge-base...HEAD`` is fileset-eligible per Chunk 04's
-    ``Type: trivial`` path bounds.
-
-    Exit 0 when at least one commit exists ahead of base AND every
-    commit clears the bounds — the `/prawduct:pr` skill skips the cumulative-
-    Critic and PR-reviewer gates in this case. This is the PR-boundary
-    parallel to the doc-only fast-path: same fail-closed shape, same
-    Gate-3 alignment at session end.
-
-    Exit 1 otherwise (any commit touches ``skills/``/``methodology/``/
-    ``templates/``/``CLAUDE.md``, adds a new file, removes a test
-    file, empty diff, no resolvable base, or git failure). Fails
-    closed: when the gate cannot be evaluated, fall through to the
-    full review path rather than silently skipping it.
-    """
-    is_trivial, status = _pr_diff_is_trivial(project_dir)
-    if is_trivial:
-        print(
-            f"{status} — cumulative-Critic and PR-reviewer gates may be skipped."
-        )
-        return 0
-    suffix = (
-        ". Trivial fast-path is not applicable."
         if status.startswith("empty-diff")
         else ". Falling back to full review path."
         if status.startswith(("no-base", "git-failed"))
