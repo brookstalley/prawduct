@@ -21,7 +21,7 @@ last_validated: null
 
 ## Status
 
-- [ ] Chunk 01: Git-derived chunk progress when Status checkboxes are an unflipped derived view
+- [x] Chunk 01: Git-derived chunk progress when Status checkboxes are an unflipped derived view
 Context: **Done** (Critic final: 0 blocking, 3 warnings — all resolved, + 3 notes). `lib/critic_mode.py`: git-aware `_git_aware_progress` + `_committed_chunk_ids` + `_chunk_ids_in_status_order`; `_current_chunk_critic_mode`→`_critic_mode_for_chunk(id)`; `_rule_final_fires` threaded `(total,complete)`. **Critic WARNING-1 fix (scope-expanded, deliberate):** replaced the main-first `_detect_base_branch` with the canonical `_resolve_base_branch` (honors `base_branch:`) at BOTH call sites (my new code AND the pre-existing rule-cumulative use — same gitflow bug class), and removed `_detect_base_branch`. Docstring drift fixed. Gitflow divergence test added. `tests/test_critic_mode_inference.py` +7 (TestBranchProgressCRT7B4M). 1012 tests pass. NOTE: total/complete desync (left — safe, degrades to chunk); STH-2K8R parity (net-reduced — removed a mirrored helper).
 
 ## Build Chunks

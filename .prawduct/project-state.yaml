@@ -478,7 +478,7 @@ views_enabled: true
 # scope= tag (REL-4T8N). No release-pending plans remain — the pointer is cleared
 # (unset → falls back to artifacts/build-plan.md). The next in-progress plan sets
 # it again.
-active_build_plan: artifacts/build-plan-critic-mode-branch-fix.md
+active_build_plan:
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -527,12 +527,18 @@ deprecated_terms:
 # overwritten on next regen.
 
 scope_rollups:
+  backlog-legend-refresh:
+    chunks: []
+    releases: ["v2.0.16"]
   backlog-rework:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
     releases: ["v2.0.15"]
   cleanup-batch:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.0.5"]
+  critic-mode-branch-fix:
+    chunks: ["01"]
+    releases: ["v2.0.16"]
   critic-session-guard:
     chunks: ["1"]
     releases: ["v2.0.14"]

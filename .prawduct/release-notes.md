@@ -5,6 +5,20 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.0.16
+
+### backlog-legend-refresh
+
+**Entry:** 2026-06-08: `/backlog migrate` refreshes the schema legend, not just item metadata
+
+### critic-mode-branch-fix
+
+**Entry:** 2026-06-08: infer-critic-mode derives chunk progress from git on a views-enabled branch (CRT-7B4M)
+
+**Chunks shipped:** 01
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.15
 
 **Entry:** 2026-06-08: Backlog rework — claims, lifecycle stage, parser substrate, probes, triage (v0.3)
