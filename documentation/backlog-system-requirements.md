@@ -450,7 +450,8 @@ On `prawduct-doctor` initial setup:
    - Inferred metadata from context (source tag from existing parenthetical markers, area inferred from title keywords)
    - Effort/impact left as `?` if not inferable
 5. User accepts batch (with optional inline edits) → tool writes metadata, assigns `PFX-XXXX` if missing.
-6. Idempotent — re-runnable; only touches unstructured items.
+6. **Legend refresh** — reconciles the header legend (the `<!-- … -->` schema comment, authored once at scaffold time) to the current canonical field set, so a backlog onboarded before a field existed doesn't carry backfilled items (e.g. `stage:`) behind a legend that never documents them. Additive and non-destructive: fills missing canonical-field descriptions, never removes a project-local extension's docs (e.g. a repo's own `kind:` facet). Runs even when there are no legacy items.
+7. Idempotent — re-runnable; only touches unstructured items (and a legend already covering the canonical set is left untouched).
 
 `/backlog import <path>`:
 1. Reads the source file.
