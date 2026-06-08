@@ -58,6 +58,11 @@ def probe_external_backlog(state: ProjectState, codebase: Codebase):
 
     Resolution: the file is gone, OR its name appears in the
     ``backlog_external_imports`` fact (recorded by ``/prawduct:backlog import``).
+
+    Resolution contract: the check is ``bare_filename not in recorded`` — a
+    substring test on the bare name (``TODO.md``), so it resolves whether
+    ``import`` recorded the bare name or the full path (``.github/TODO.md``).
+    Both forms contain the bare filename, so the skill and probe stay in step.
     """
     recorded = str(state.get("backlog_external_imports", "") or "")
     found: list[str] = []

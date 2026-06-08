@@ -39,7 +39,7 @@ For today's date when stamping `added:`/`reviewed:`, use the current date from y
 Parse `$ARGUMENTS`: the first token is the subcommand (default to the no-arg summary if empty). Everything after is arguments — accept both `--flag=value` form (for machine callers like the Critic or reflection) and natural-language prose (for humans).
 
 ### (no args) — summary + menu
-Read the file, then print: counts per section (`N open · N promoted · N archived`), the top 3 `area:` tags by item count, a count of stale items (`status: open` and `added`/`reviewed` >90 days ago), and the action menu (`pick`, `add`, `find`, `list`, `update`, `dedup`, `migrate`). All counts are **derived on read** — never persist a count to any file (a stored count drifts and becomes a sync liability; re-deriving is cheap).
+Read the file, then print: counts per section (`N open · N promoted · N archived`), the top 3 `area:` tags by item count, a count of stale items (`status: open` and `added`/`reviewed` >90 days ago), and the action menu (`pick`, `add`, `find`, `list`, `update`, `dedup`, `import`, `migrate`). All counts are **derived on read** — never persist a count to any file (a stored count drifts and becomes a sync liability; re-deriving is cheap).
 
 ### add
 File a new item. Accepts flags (`--title=`, `--body=`/`--body-file=`, `--area=`, `--effort=`, `--impact=`, `--source=`, `--prefix=`) or interactive prompts for anything missing.
@@ -109,6 +109,13 @@ Convert legacy unstructured items to the structured format and fold the old sect
 4b. **Strikeout cleanup sweep.** While migrating, also convert any **struck** (`~~…~~`) or otherwise done-marked items still sitting in `## Open`/`## Promoted` into proper archived items: rewrite to `status: shipped` (preserve the body), move to `## Archive`. This is idempotent and non-destructive (bodies kept) and brings a hand-edited backlog up to the archive discipline. Run it on `migrate` even when there are no *legacy* (metadata-less) items — strikeouts can exist on otherwise-structured items.
 5. **On completion** (all legacy items structured + sections folded + strikeouts cleaned), write `backlog_format_version: 2` as a top-level key in `.prawduct/project-state.yaml`. This records — as a committed, shared fact — that the backlog is on the structured format (and is the resolution-condition a future plugin-native `legacy-backlog-format` probe would consult). If migration is partial (user skipped items), do **not** set it yet — say how many remain.
 6. Report: items migrated, sections folded, whether `backlog_format_version` was set, and how many (if any) remain legacy.
+
+### import <path>
+Convert an external backlog file (`TODO.md`, `BACKLOG.md`, `ROADMAP.md`, `IDEAS.md`, a GitHub issue export, etc.) into structured items. **Always confirm before writing.**
+1. Read the source file. Identify items by structure (markdown bullets, headings, issue-template fields).
+2. For each, draft a `[PFX-XXXX]` entry: `source: user`, `status: open`, `area:` inferred from content, `stage:` inferred where possible (a vague one-liner → `idea`; a clearly-scoped bug → `ready`; leave unset if unclear → treated as not-ready). Effort/impact `?` when not inferable.
+3. Show the preview; user confirms or edits. On confirm, append under `## Open` (optionally beneath a `<!-- Imported from <path> on <date> -->` marker), and **record `<path>` in the top-level `backlog_external_imports` fact** in `project-state.yaml` — this resolves the `external-backlog-detected` advisory for everyone on next sync.
+4. Do not delete the source file (the user decides whether to remove it); recording it as imported is what stops the nag.
 
 ### dedup
 Surface likely-duplicate / overlapping items and propose merges. Idempotent and **never destructive** (bodies preserved; nothing deleted — a merge archives the superseded item via `closes:`).
