@@ -3,6 +3,58 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-08: `/backlog migrate` refreshes the schema legend, not just item metadata
+
+<!-- prawduct: type=fix | release=v2.0.16 | status=shipped | scope=backlog-legend-refresh -->
+
+**Why:** Adopting a new backlog format field (v2.0.15's `stage:`/`refs:`/`accepted-by:`) has **two**
+propagation surfaces that drift independently — the per-item backfill (triage/`migrate`) and the
+file's **schema legend** (the `<!-- … -->` header comment). The legend is authored **once** at
+scaffold time from `templates/backlog.md` and never re-applied, so a repo that adopts a field ends
+up with backfilled items behind a legend that never documents them (a reader hits `stage: ready`
+with no key). Surfaced by `../scriob`, which backfilled `stage:` during grooming but had to
+hand-add `accepted-by`/`refs:` to its legend afterward.
+
+**What:** `/backlog migrate` gains **step 4c — Legend refresh**: reconcile the header legend to the
+current canonical field set (the fields in "The format you operate on"). **Additive &
+non-destructive** — fill any missing canonical-field description; never remove a repo's local
+extension (e.g. a `kind:` facet); idempotent; runs even when there are no legacy items (like the
+strikeout sweep). Threaded through migrate completion (step 5) + report (step 6) and the triage
+adoption note. Also fixed the `SKILL.md` optional-fields **enumeration**, which listed
+`accepted-by:` but omitted `stage:` and `refs:` (both documented in their own bullets — the list
+just lagged the schema). `documentation/backlog-system-requirements.md` §8.4 updated to match.
+
+**Blast radius:** `skills/backlog/SKILL.md` (migrate step 4c + enumeration), `documentation/
+backlog-system-requirements.md` (§8.4), `.prawduct/learnings.md` (the scaffold-only-legend lesson).
+Docs/skill-prose only — no code, no test change (1012 pass).
+
+## 2026-06-08: infer-critic-mode derives chunk progress from git on a views-enabled branch (CRT-7B4M)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.0.16 | status=shipped | scope=critic-mode-branch-fix -->
+
+**Why:** On a `views_enabled` feature branch the build-plan `## Status` checkboxes are a *derived
+view* that only flips at release, so they stay all-`[ ]` during development. `infer-critic-mode`
+read the current chunk from those checkboxes — so `_current_chunk_id_from_status` always returned
+the first chunk and `_count_build_plan_chunks` always reported `complete=0`. The plan-override then
+read **Chunk 01's** `Critic mode:` for *every* chunk, and rule-3's last-chunk detection could never
+fire — the Critic ran the wrong mode on a views-enabled branch (the common case).
+
+**What:** When the Status checkboxes are an unflipped derived view (`views_enabled` true, HEAD ahead
+of a resolved base branch), `lib/critic_mode.py` now derives committed-chunk progress from **git** —
+`_committed_chunk_ids` (chunk ids referenced by `Chunk <n>` in commit subjects on `base..HEAD`),
+`_chunk_ids_in_status_order`, and `_git_aware_progress` returning `(complete, current_chunk_id)`;
+`_current_chunk_critic_mode` resolves the current chunk via this (falling back to the first `[ ]`),
+and `_rule_final_fires` consumes the git-aware `complete`. Degrades to the existing checkbox
+behavior whenever the git signal doesn't apply (no views, no base, not ahead, no chunk-referencing
+commits) — never worse than before. Critic WARNING-1 fix (scope-expanded, deliberate): replaced the
+main-first `_detect_base_branch` with the canonical `_resolve_base_branch` (honors `base_branch:`)
+at both call sites and removed the duplicate.
+
+**Blast radius:** `lib/critic_mode.py` (+201/-49); `tests/test_critic_mode_inference.py` (+7,
+`TestBranchProgressCRT7B4M` incl. a gitflow-divergence case); `skills/critic/SKILL.md`,
+`skills/critic/review-cycle.md` (doc touch). Merged to develop via #82, released in v2.0.16.
+1012 tests pass.
+
 ## 2026-06-08: Backlog rework — claims, lifecycle stage, parser substrate, probes, triage (v0.3)
 
 <!-- prawduct: chunks=01,02,03,04,05,06,07,08,09,10 | type=feature | release=v2.0.15 | status=shipped | scope=backlog-rework -->

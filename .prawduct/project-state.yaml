@@ -527,12 +527,18 @@ deprecated_terms:
 # overwritten on next regen.
 
 scope_rollups:
+  backlog-legend-refresh:
+    chunks: []
+    releases: ["v2.0.16"]
   backlog-rework:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
     releases: ["v2.0.15"]
   cleanup-batch:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.0.5"]
+  critic-mode-branch-fix:
+    chunks: ["01"]
+    releases: ["v2.0.16"]
   critic-session-guard:
     chunks: ["1"]
     releases: ["v2.0.14"]
