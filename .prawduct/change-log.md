@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-08: `/backlog migrate` refreshes the schema legend, not just item metadata
+
+<!-- prawduct: type=fix | scope=backlog-legend-refresh -->
+
+**Why:** Adopting a new backlog format field (v2.0.15's `stage:`/`refs:`/`accepted-by:`) has **two**
+propagation surfaces that drift independently — the per-item backfill (triage/`migrate`) and the
+file's **schema legend** (the `<!-- … -->` header comment). The legend is authored **once** at
+scaffold time from `templates/backlog.md` and never re-applied, so a repo that adopts a field ends
+up with backfilled items behind a legend that never documents them (a reader hits `stage: ready`
+with no key). Surfaced by `../scriob`, which backfilled `stage:` during grooming but had to
+hand-add `accepted-by`/`refs:` to its legend afterward.
+
+**What:** `/backlog migrate` gains **step 4c — Legend refresh**: reconcile the header legend to the
+current canonical field set (the fields in "The format you operate on"). **Additive &
+non-destructive** — fill any missing canonical-field description; never remove a repo's local
+extension (e.g. a `kind:` facet); idempotent; runs even when there are no legacy items (like the
+strikeout sweep). Threaded through migrate completion (step 5) + report (step 6) and the triage
+adoption note. Also fixed the `SKILL.md` optional-fields **enumeration**, which listed
+`accepted-by:` but omitted `stage:` and `refs:` (both documented in their own bullets — the list
+just lagged the schema). `documentation/backlog-system-requirements.md` §8.4 updated to match.
+
+**Blast radius:** `skills/backlog/SKILL.md` (migrate step 4c + enumeration), `documentation/
+backlog-system-requirements.md` (§8.4), `.prawduct/learnings.md` (the scaffold-only-legend lesson).
+Docs/skill-prose only — no code, no test change (1012 pass).
+
 ## 2026-06-08: Backlog rework — claims, lifecycle stage, parser substrate, probes, triage (v0.3)
 
 <!-- prawduct: chunks=01,02,03,04,05,06,07,08,09,10 | type=feature | release=v2.0.15 | status=shipped | scope=backlog-rework -->
