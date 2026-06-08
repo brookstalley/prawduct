@@ -345,6 +345,14 @@ class TestReviewCycle:
         assert "goal-based" in content.lower() or "Goal" in content
         assert ".critic-findings.json" in content
 
+    def test_backlog_hygiene_checks_present(self):
+        """The four backlog-hygiene checks (CRT-3K9P) must stay in Backlog
+        Reconciliation — guards against a silent trim deleting them (the same
+        regression-guard pattern as the PR-reviewer dropped-goal test)."""
+        content = read_file("skills/critic/review-cycle.md")
+        for check in ("C-B1", "C-B2", "C-B3", "C-B4"):
+            assert check in content, f"review-cycle.md missing backlog check {check}"
+
 
 # =============================================================================
 # Cross-cutting concerns

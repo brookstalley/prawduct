@@ -34,7 +34,7 @@ last_validated: null
 <!-- Inference wrinkle to file (Chunk 10): on a feature branch with views_enabled, plan checkboxes never flip (derived), so infer-critic-mode always treats Chunk 01 as current → passing explicit Critic mode per chunk for the rest of the run. -->
 - [ ] Chunk 03: `stage` field + requirements-precede-code routing (keystone)  <!-- done: SKILL.md stage field + Stage-aware routing (early→discovery, design→planning, none→not-ready); template; discovery.md + planning.md hooks. Critic final 0-blocking, 2 notes (is_implementable descoped+recorded; refs doc forward-pulled). -->
 - [ ] Chunk 04: `refs` field + `/backlog dedup` + triage-method guidance  <!-- done: SKILL.md refs field + dedup subcommand + Triage method section + menu/derived-count note. Skill prose (no lib code — dedup is agent reasoning, not a Python call site; lib dedup-helper descoped like is_implementable). Critic 0-blocking. -->
-- [ ] Chunk 05: Review-agent backlog checks — Critic C-B1–C-B4 + PR reviewer R-1/R-2
+- [ ] Chunk 05: Review-agent backlog checks — Critic C-B1–C-B4 + PR reviewer R-1/R-2  <!-- done: C-B1–4 in review-cycle.md Backlog Reconciliation (review-protocol.md untouched — at 3112/3120 ceiling); R-1/R-2 under PR Merge Hygiene (not a new goal). Presence-assertion tests added (resolved Critic WARNING). Filed MET-5C2H (holistic context-budget audit, stage=research) per user. Critic final 0-blocking after fix. -->
 - [ ] Chunk 06: Advisory probes (external-backlog / legacy-section / overdue-grooming)
 - [ ] Chunk 07: Archive discipline + strikeout cleanup + archive-split + janitor Step 2.5
 - [ ] Chunk 08: `/backlog import` + prawduct-doctor external-file report

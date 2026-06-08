@@ -8,6 +8,21 @@
 ## Open
 
 
+- **[MET-5C2H]** Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
+  `effort: M · impact: L · area: methodology · source: user · added: 2026-06-08 · status: open · stage: research`
+
+  The per-file token-budget tests (`building.md` <4850, critic `review-protocol.md` <3120) are proxies for
+  context-window cost, but they (a) don't measure the *whole* always-loaded surface (session digest +
+  product CLAUDE.md anchor + whatever methodology gets read on demand per work cycle), and (b) invite a
+  "we hit a ceiling, put the tokens in a file with headroom" reflex that optimizes the wrong thing —
+  content lands in a less-natural home to dodge a budget instead of asking whether the budget should rise.
+  Surfaced during backlog-rework Chunk 05 (placing C-B checks in `review-cycle.md`): there the file *was*
+  the natural home, but the heuristic itself is a smell. **Research-stage** — investigate before designing:
+  enumerate every always-on / per-cycle context surface and its size; estimate per-token ROI (is every
+  existing token earning its place?); decide whether budgets should be holistic (a total always-on ceiling)
+  rather than per-file; and only raise a per-file budget when every existing token is high-ROI. Output: a
+  recommendation + (likely) a revised budget model. Then it can advance to `design`/`ready`. (user)
+
 - **[REL-2N8K]** Release-prep silently drops statusless change-log entries — step 3 only flips `status=merged`
   `effort: S · impact: M · area: methodology · source: builder · added: 2026-06-08 · status: open · related: REL-4T8N`
 
