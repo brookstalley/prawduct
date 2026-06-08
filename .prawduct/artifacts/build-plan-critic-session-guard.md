@@ -45,7 +45,7 @@ user explicitly chose (Path A, crash-resilient, waiver-style override).
 
 ## Status
 
-- [ ] Chunk 1: Critic-active session guard (`.critic-active` marker + `clear` guard + `critic-begin`/`critic-end`)
+- [x] Chunk 1: Critic-active session guard (`.critic-active` marker + `clear` guard + `critic-begin`/`critic-end`)
 
 **Context:** Branch `fix/critic-session-guard-CRT-3X9D` off `develop`. Single-chunk plan.
 Baseline green (947 passed) before work. `active_build_plan` repointed here from the

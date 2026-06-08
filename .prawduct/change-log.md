@@ -5,7 +5,7 @@
 
 ## 2026-06-07: critic-active session guard — `clear` refuses to mutate a session under review (CRT-3X9D)
 
-<!-- prawduct: chunks=1 | type=fix | scope=critic-session-guard -->
+<!-- prawduct: chunks=1 | type=fix | release=v2.0.14 | status=shipped | scope=critic-session-guard -->
 
 **Why:** The Critic is documented (CLAUDE.md, `skills/critic/SKILL.md`) as structurally unable to
 run executables — review by code analysis only. But the coordinator pattern dispatches review
@@ -49,7 +49,7 @@ passed. Critic `final` (plan-override): no blocking/warning findings.
 
 ## 2026-06-07: extract lib/briefing.py — SessionStart briefing + handoff assembly (STH-9V4K ch.7, final)
 
-<!-- prawduct: chunks=7 | type=refactor | scope=hook-decomp -->
+<!-- prawduct: chunks=7 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
 
 **Why:** The final chunk of the hook decomposition (STH-9V4K). The SessionStart surface — the
 content-based staleness scan, the structured session briefing, the subagent briefing, the
@@ -106,7 +106,7 @@ behavior-preserving); `clear`/`stop` smoke-clean via the real CLI through `_brie
 
 ## 2026-06-07: extract lib/gates.py — session-end gate helpers + evidence/critic validators (STH-9V4K ch.6)
 
-<!-- prawduct: chunks=6 | type=refactor | scope=hook-decomp -->
+<!-- prawduct: chunks=6 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
 
 **Why:** Chunk 6 of the hook decomposition (STH-9V4K) — the gate-decision layer the Stop hook
 orchestrates (test-evidence currency + schema validation, critic-findings schema + cumulative /
@@ -152,7 +152,7 @@ prior numbers were measured before the accessor + wrappers were re-added).
 
 ## 2026-06-07: extract lib/coverage.py — diff-base resolution + PR fast-path gates (STH-9V4K ch.5)
 
-<!-- prawduct: chunks=5 | type=refactor | scope=hook-decomp -->
+<!-- prawduct: chunks=5 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
 
 **Why:** Chunk 5 of the hook decomposition (STH-9V4K). The diff-base resolution layer (honoring the
 `base_branch:` gitflow knob) and the coverage / PR fast-path inspection it feeds sit one layer above
@@ -194,7 +194,7 @@ the `cmd_` prefix drop on their def line); the remaining 2 (`_resolve_base_branc
 
 ## 2026-06-07: extract lib/compliance.py — session-end compliance canary + file classifiers (STH-9V4K ch.4)
 
-<!-- prawduct: chunks=4 | type=refactor | scope=hook-decomp -->
+<!-- prawduct: chunks=4 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
 
 **Why:** Chunk 4 of the hook decomposition (STH-9V4K). The session-end compliance canary — the
 lightweight failure-detection pass `cmd_stop` runs (code-without-tests, dependency-without-manifest,
@@ -226,7 +226,7 @@ by the sanctioned rewrites above. Hook: −168 lines net (4,226 → 4,058).
 
 ## 2026-06-07: extract lib/buildplan_refs.py — build-plan ref parsing + trivial classification (STH-9V4K ch.3)
 
-<!-- prawduct: chunks=3 | type=refactor | scope=hook-decomp -->
+<!-- prawduct: chunks=3 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
 
 **Why:** Chunk 3 of the hook decomposition (STH-9V4K). The build-plan-parsing cluster (chunk-ref /
 `Type:` / `Trivial because:` parsers + the `Type: trivial` file-set classifier) is the next layer up
@@ -261,7 +261,7 @@ instead of mirroring it).
 
 ## 2026-06-07: extract lib/gitstate.py — read-only git/state probes (STH-9V4K ch.2)
 
-<!-- prawduct: chunks=2 | type=refactor | scope=hook-decomp -->
+<!-- prawduct: chunks=2 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
 
 **Why:** Chunk 2 of the hook decomposition (STH-9V4K) — extract the leaf of the dependency DAG. The
 read-only git/state probes are the most depended-upon cluster (briefing, gates, compliance,
@@ -286,7 +286,7 @@ byte-identical to HEAD. Hook: −252 lines net (4,942 → 4,690).
 
 ## 2026-06-07: lib/__init__.py lazy imports — enabling the hook decomposition (STH-9V4K ch.1)
 
-<!-- prawduct: chunks=1 | type=refactor | scope=hook-decomp -->
+<!-- prawduct: chunks=1 | type=refactor | release=v2.0.14 | status=shipped | scope=hook-decomp -->
 
 **Why:** `bin/prawduct-hook` is deliberately lib-independent at its top level (every `lib` import is
 lazy + `try/except ImportError`-guarded; the SessionStart briefing + the whole `cmd_stop` gate run
@@ -312,7 +312,7 @@ blocking / 0 warning / 0 note.
 
 ## 2026-06-06: verify-chunk-refs skips glob patterns written as prose (BLD-2R9X)
 
-<!-- prawduct: type=bugfix | status=merged -->
+<!-- prawduct: type=bugfix | release=v2.0.14 | status=shipped -->
 <!-- Merged to develop (release-pending) via #73. Flip status=merged → status=shipped and add
      release=vX.Y.Z at the develop→main release. -->
 
@@ -333,7 +333,7 @@ shipped BLD-8F2Q (`path::symbol` over-match); symbol/backlog-ref verification st
 
 ## 2026-06-06: /prawduct:pr redirects a release promotion to the release process (REL-8K3M)
 
-<!-- prawduct: type=bugfix | status=merged -->
+<!-- prawduct: type=bugfix | release=v2.0.14 | status=shipped -->
 <!-- Merged to develop (release-pending) via #72. Flip status=merged → status=shipped and add
      release=vX.Y.Z at the develop→main release. -->
 

@@ -85,13 +85,13 @@ Chunk 1, that import is cheap and isolated.
 its own PR (one module per PR, per the decomposition decision). Checkboxes flip automatically when
 each PR merges via `/prawduct:pr` + regen-views.*
 
-- [ ] Chunk 1: Slim `lib/__init__.py` to lazy `__getattr__` (enabling; no module extraction). **Critic mode:** chunk
-- [ ] Chunk 2: Extract `lib/gitstate.py` — read-only git/state probes (leaf). **Critic mode:** chunk
-- [ ] Chunk 3: Extract `lib/buildplan_refs.py` — chunk-ref parsing + trivial classification (+ `_parse_build_plan_status`). **Critic mode:** chunk
-- [ ] Chunk 4: Extract `lib/compliance.py` — compliance canary + file classifiers. **Critic mode:** chunk
-- [ ] Chunk 5: Extract `lib/coverage.py` — coverage/base/cumulative + PR doc-only/trivial gates. **Critic mode:** chunk
-- [ ] Chunk 6: Extract `lib/gates.py` — stop-gate logic + test-evidence commands. **Critic mode:** chunk
-- [ ] Chunk 7: Extract `lib/briefing.py` — staleness + session/subagent briefing + handoff. **Critic mode:** final
+- [x] Chunk 1: Slim `lib/__init__.py` to lazy `__getattr__` (enabling; no module extraction). **Critic mode:** chunk
+- [x] Chunk 2: Extract `lib/gitstate.py` — read-only git/state probes (leaf). **Critic mode:** chunk
+- [x] Chunk 3: Extract `lib/buildplan_refs.py` — chunk-ref parsing + trivial classification (+ `_parse_build_plan_status`). **Critic mode:** chunk
+- [x] Chunk 4: Extract `lib/compliance.py` — compliance canary + file classifiers. **Critic mode:** chunk
+- [x] Chunk 5: Extract `lib/coverage.py` — coverage/base/cumulative + PR doc-only/trivial gates. **Critic mode:** chunk
+- [x] Chunk 6: Extract `lib/gates.py` — stop-gate logic + test-evidence commands. **Critic mode:** chunk
+- [x] Chunk 7: Extract `lib/briefing.py` — staleness + session/subagent briefing + handoff. **Critic mode:** final
 
 Context: **All 7 chunks built — the decomposition is complete (pending release).** Ch.1-2 merged via
 #74; ch.3 (`lib/buildplan_refs.py`) #75; ch.4 (`lib/compliance.py`) #76; ch.5 (`lib/coverage.py`) #77;
