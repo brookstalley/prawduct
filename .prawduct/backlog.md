@@ -8,6 +8,32 @@
 ## Open
 
 
+- **[REL-6C3W]** Flag a code-changing branch that merges with no change-log entry
+  `effort: M · impact: M · area: release/change-log · source: reflection · added: 2026-06-08 · status: open · related: REL-2N8K · refs: docs/release-process.md`
+
+  A non-doc-only feature branch can merge to develop with NO `.prawduct/change-log.md` entry at all,
+  and nothing flags it — CRT-7B4M (#82) did exactly this, and it only surfaced at the v2.0.16
+  release-prep, where the entry had to be reconstructed from the build plan to ship release-notes /
+  flip the plan's Status / clear the pointer. This is a worse sibling of REL-2N8K (statusless entries
+  silently dropped at release): there the entry exists but lacks a status; here there's no entry.
+  Candidate fix: a PR/merge gate (parallel to check-pr-doc-only/trivial) or a release-prep probe that
+  flags when `merge-base...HEAD` is not doc-only/trivial yet adds no new change-log entry. Filed from
+  the v2.0.16 release (2026-06-08). (reflection)
+
+- **[PR-5K8D]** check-pr-doc-only should exclude skills/ (and methodology/templates) like check-pr-trivial does
+  `effort: S · impact: M · area: pr/governance · source: reflection · added: 2026-06-08 · status: open · related: PR-9T4M · refs: skills/pr/SKILL.md`
+
+  The two PR fast-path classifiers disagree on skill files. On the backlog-legend-refresh PR (#83),
+  `check-pr-doc-only` returned exit 0 (all 4 files `.md` → "gates may be skipped"), which per the
+  `/pr` Step 1b instruction would skip the independent PR reviewer entirely — but `check-pr-trivial`
+  correctly returned "not-trivial: skill-file-edited: skills/backlog/SKILL.md. Full review required."
+  A fork-skill's SKILL.md IS behavior/logic (per the existing learning "when a feature's logic lives
+  in a context:fork skill, lib/ holds DATA not LOGIC"), so an extension-only doc-only classification
+  under-reads a behavioral skill change and can skip review. Candidate fix: align check-pr-doc-only's
+  fileset bounds with check-pr-trivial — exclude `skills/`, `methodology/`, `templates/`, and
+  `CLAUDE.md` from the doc-only fast-path so a behavioral-prose change still gets the reviewer.
+  refs: skills/pr/SKILL.md (Step 1b/1c). Filed from the v2.0.16 release (2026-06-08). (reflection)
+
 - **[CRT-3D9K]** `bin/prawduct-hook` stop-gate chunk resolution has the same views-branch blindness CRT-7B4M fixed in inference
   `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · stage: requirements · related: CRT-7B4M, STH-2K8R`
 
