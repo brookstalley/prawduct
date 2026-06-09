@@ -48,6 +48,81 @@
   `TestTestEvidenceKnobs` coverage. Filed from the cumulative Critic NOTE on the gate-soundness
   bundle, 2026-06-10. (critic)
 
+- **[CRT-5Q8W]** Skill prose clarity micro-fixes from the 2026-06-09 review (critic protocol wording, designer-handoff note, backlog pick defaults, framework-checks example)
+  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md`
+
+  Batch of small wording fixes from the skills review agent, none changing behavior: (1) critic
+  review-protocol.md 'Decide checks from signals below' is vague — state that the resolved MODE
+  determines which goals apply, with a pointer to review-cycle.md. (2) critic SKILL.md Getting
+  Started: add a one-line note that Type: designer-handoff chunks exit early without a findings
+  file, so an agent that skips the protocol read still knows the special case. (3) review-cycle.md
+  learnings cross-check: note that if a later learning revokes/softens the original, the latest
+  learning wins (currently assumes learnings are infallible). (4) framework-checks.md Check 7: add
+  a concrete avoid/prefer example for 'strengthening the dynamic generation system'. (5) backlog
+  SKILL pick: document the combined effect of missing effort/impact defaults (2/2 = 1.0 score)
+  explicitly; drop the stale Q6 label. (builder)
+
+- **[MET-6W3J]** learnings.md compaction: restore When-X-do-Y-because-Z brevity, move narrative to learnings-detail.md, add a size nudge
+  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · related: MET-5C2H, MET-7R4J · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md`
+
+  From the 2026-06-09 framework review. learnings.md is ~28k tokens for 23 entries — individual
+  entries run 300-600 words, drifting from the file's own stated format (rule in learnings.md, full
+  context in learnings-detail.md). Every /prawduct:learnings lookup and Critic learnings cross-check
+  pays this. Fix-shape: (1) compact each entry to the When/do/because rule plus a pointer into
+  learnings-detail.md (move the narrative there — never delete it); (2) add a mechanical size check
+  per this repo's own 'growing files need structural nudges to prune' learning (e.g. session-start
+  warn when learnings.md exceeds a threshold, like the existing project-state.yaml 40KB warning).
+  (builder)
+
+- **[PR-3J6W]** PR skill control-flow clarity: pre-flight guard placement, named retry entry points, Step 1b addressee, evidence retention
+  `effort: S · impact: M · area: pr · source: builder · added: 2026-06-09 · status: open · related: PR-5K8D, PR-2H8N · refs: skills/pr/SKILL.md, skills/pr/review-protocol.md`
+
+  From the 2026-06-09 framework review (skills agent). (1) The release-promotion guard sits
+  mid-prose after the Context Detection heading but must fire before routing — extract it as an
+  explicit Pre-flight section before the routing table. (2) The three sequential STOPs (steps 2,
+  2b, 3) never name their retry entry point; an agent may re-run Step 1 after fixing a Step 3
+  block — add 'fix, re-run THIS gate, continue' to each. (3) Step 1b's doc-only fast-path
+  instruction reads as if addressed to the Critic; rephrase as imperative to the skill executor.
+  (4) Decide evidence-file retention: 'delete the evidence file with the branch' loses the audit
+  trail if a PR is reverted — archive to .prawduct/.pr-reviews-archive/ or document why deletion
+  is intended. Note: the doc-only fileset bug itself (skills/ treated as docs) is PR-5K8D,
+  promoted into the review-fixes plan Chunk 3 — this item is the prose/control-flow cleanup only.
+  (builder)
+
+- **[STH-4F7C]** Extract the duplicated Critic-freshness gate (cmd_stop vs briefing) to lib/gates.py — copies have already diverged
+  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-9V4K, STH-6B4R, STH-2K8R · refs: bin/prawduct-hook, lib/briefing.py, lib/gates.py`
+
+  From the 2026-06-09 framework review. The mtime-vs-session-start freshness check is duplicated
+  nearly verbatim (including the same STH-6B4R comment block) in cmd_stop (bin/prawduct-hook) and
+  briefing._check_previous_session_gates (lib/briefing.py). Unlike the hook's intentional inline
+  mirrors, this pair has no parity test and has already diverged: cmd_stop gained the
+  verify-resolutions scope check; the briefing copy did not. The briefing copy lives in lib/
+  already, so the import-light hot-path rationale does not apply — extract to lib/gates.py and add
+  a parity/regression test. (builder)
+
+- **[STH-8M3V]** Atomic writes for .prawduct state files + guard unguarded hot-path I/O in cmd_clear
+  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-6Q9D, ADV-9K2T · refs: bin/prawduct-hook, lib/advisory_store.py, lib/gitstate.py`
+
+  From the 2026-06-09 framework review. Only .test-evidence.json gets tmp + os.replace;
+  .advisories.json (lib/advisory_store.py), .work-model-index.json, .session-start,
+  .session-git-baseline, and .session-handoff.md are plain write_text — two concurrent sessions on
+  the same repo (worktrees) can tear them. Readers fail open, so blast radius is a misfired gate,
+  not a crash — still worth one shared atomic_write_text helper. Same pass: three unguarded I/O
+  sites in cmd_clear (session-file unlink loop, .session-start write, baseline write) can traceback
+  the SessionStart hook on an OSError, unlike the meticulously best-effort code around them;
+  gitstate's _get_session_changed_files also lacks the (UnicodeDecodeError, OSError) guard its
+  siblings have. (builder)
+
+- **[STH-6Q9D]** Batch git subprocess fan-out on SessionStart/Stop hot paths
+  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: bin/prawduct-hook, lib/gitstate.py`
+
+  From the 2026-06-09 framework review. cmd_clear runs ~20+ serial subprocesses (~940ms here; 5-10s
+  risk on monorepos): _untrack_session_files issues 1 + up to 14 git ls-files --error-unmatch calls
+  every session start (replace with one batched 'git ls-files -- <paths>'); 'git status --porcelain'
+  is re-run 4-5x per clear and >=3x per stop (capture once per invocation and pass down);
+  _has_product_code (lib/gitstate.py) walks the full tree via rglob including node_modules/.git
+  before filtering (use pruned os.walk or git ls-files). (builder)
+
 - **[REL-6C3W]** Flag a code-changing branch that merges with no change-log entry
   `effort: M · impact: M · area: release/change-log · source: reflection · added: 2026-06-08 · status: open · related: REL-2N8K · refs: docs/release-process.md`
 
@@ -59,33 +134,6 @@
   Candidate fix: a PR/merge gate (parallel to check-pr-doc-only/trivial) or a release-prep probe that
   flags when `merge-base...HEAD` is not doc-only/trivial yet adds no new change-log entry. Filed from
   the v2.0.16 release (2026-06-08). (reflection)
-
-- **[PR-5K8D]** check-pr-doc-only should exclude skills/ (and methodology/templates) — align with `_classify_trivial_change`'s bounds
-  `effort: S · impact: M · area: pr/governance · source: reflection · added: 2026-06-08 · status: open · reviewed: 2026-06-08 · related: PR-9T4M · refs: skills/pr/SKILL.md, lib/buildplan_refs.py, lib/coverage.py`
-
-  The two PR fast-path classifiers disagreed on skill files. On the backlog-legend-refresh PR (#83),
-  `check-pr-doc-only` returned exit 0 (all 4 files `.md` → "gates may be skipped"), which per the
-  `/pr` Step 1b instruction would skip the independent PR reviewer entirely — but `check-pr-trivial`
-  correctly returned "not-trivial: skill-file-edited: skills/backlog/SKILL.md. Full review required."
-  A fork-skill's SKILL.md IS behavior/logic (per the existing learning "when a feature's logic lives
-  in a context:fork skill, lib/ holds DATA not LOGIC"), so an extension-only doc-only classification
-  under-reads a behavioral skill change and can skip review.
-
-  Re-anchored 2026-06-08 (branch fix/retire-pr-trivial-fast-path): `check-pr-trivial` /
-  `_pr_diff_is_trivial` were DELETED when the PR-boundary trivial fast-path was retired (see
-  PR-9T4M). The original fix-shape pointed at `check-pr-trivial` as the model to copy; that
-  classifier is gone. The canonical exclusion bounds still live in `lib/buildplan_refs.py`
-  (`_classify_trivial_change` / `_TRIVIAL_PROTECTED_PATHS` — `{skills/, methodology/, templates/,
-  CLAUDE.md}`), now consumed only by the chunk-level `_is_trivial_fileset_eligible` gate
-  (`lib/gates.py`). This item is now MORE relevant, not less: with the trivial fast-path retired,
-  `check-pr-doc-only` (`lib/coverage.py`, hook `cmd_check_pr_doc_only`) is the ONLY remaining
-  PR-boundary gate-skip path, and it still under-reads behavioral `skills/*.md` changes. Candidate
-  fix (re-anchored): align `check-pr-doc-only`'s fileset bounds with `_classify_trivial_change` —
-  exclude `skills/`, `methodology/`, `templates/`, and `CLAUDE.md` from the doc-only fast-path so a
-  behavioral-prose change still gets the reviewer; consume the shared `_TRIVIAL_PROTECTED_PATHS`
-  rather than re-listing the bounds. refs: skills/pr/SKILL.md (Step 1b/1c), lib/coverage.py
-  (check_pr_doc_only), lib/buildplan_refs.py (_classify_trivial_change). Filed from the v2.0.16
-  release (2026-06-08). (reflection)
 
 - **[CRT-3D9K]** `bin/prawduct-hook` stop-gate chunk resolution has the same views-branch blindness CRT-7B4M fixed in inference
   `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · stage: requirements · related: CRT-7B4M, STH-2K8R`
@@ -134,17 +182,6 @@
   `status=shipped`," and/or (b) make the `/prawduct:pr` feature→develop merge reliably stamp
   `status=merged` on the merged entry so the lifecycle the learnings describe actually holds. Either
   closes the silent-omission hole. (builder, from the v2.0.14 release)
-
-- **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set
-  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · related: CRT-3X9D`
-
-  Critic SKILL.md step 1 runs `prawduct-hook critic-begin` right after mode resolution, but a
-  `Type: designer-handoff` chunk exits clean *before* step 8 (`critic-end`), so the
-  `.prawduct/.critic-active` marker is left set on that path. Benign — the marker self-corrects
-  three ways (30-min TTL, session-start sweep, explicit override) — and rare, but ideally
-  `critic-begin` should run only after the designer-handoff skip is ruled out (move the
-  `critic-begin` call below the skip, or pair the skip with a `critic-end`). Surfaced as a NOTE in
-  the CRT-3X9D cumulative review. (critic, 2026-06-08)
 
 - **[CRT-3X9D]** Critic's no-execution constraint doesn't prevent session-mutating `prawduct-hook clear`
   `effort: S · impact: M · area: critic · source: builder · added: 2026-06-07 · status: in-progress (implementation complete) · branch: fix/critic-session-guard-CRT-3X9D · plan: build-plan-critic-session-guard.md · related: STH-9V4K`
@@ -442,7 +479,65 @@
   the pointer) but the in-flight pointer remains single-slot. Filed from fable test-reviewer NOTE on
   the gate-soundness bundle, 2026-06-10. (critic)
 
+- **[MET-7R4J]** Methodology/CLAUDE.md redundancy and prompt-quality pass — hard rules stated 4-6x across always-loaded surfaces
+  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · related: MET-5C2H · refs: CLAUDE.md, docs/principles.md, methodology/building.md, methodology/planning.md, methodology/session-digest.md`
+
+  From the 2026-06-09 framework review (methodology-as-prompts agent). For Opus/Fable-class models, restating a rule with varied phrasing creates interference, not reinforcement. (1) Consolidate to one canonical statement + cross-refs: Tests Are Contracts appears 6x (CLAUDE.md, principles.md, agent-stance.md, building.md 2x, session-digest.md); the mid-build-requirement rule has 8+ phrasings; the Critic mandate appears 6x with escalating emphasis. (2) Remove emphasis escalation: CLAUDE.md 'STOP. Read this before writing ANY code' caps — prompt-rot pattern that also misstates Critic timing (Critic runs after code). (3) Compress planning.md Foreign API Verification (~40 lines to ~15: rule + when-to-apply + one worked example; move match mechanics to the Critic protocol). (4) Add one sentence to building.md Before You Build: re-review the plan's Open assumptions as code reveals new facts (assumptions are recorded at plan time but never checkpointed mid-build). Note: digest-vs-CLAUDE.md duplication is handled separately by the review-fixes plan Chunk 4 (slim framework-repo digest); this item is the within-file redundancy pass. Token-budget guardrail tests on methodology files will need adjusting downward, not up. (builder)
+
+- **[JNT-9R2K]** Janitor SKILL: move the investigation-theme taxonomy to a companion reference file; close the Step 2.5 to Step 7 backlog loop
+  `effort: S · impact: S · area: janitor · source: builder · added: 2026-06-09 · status: open · refs: skills/janitor/SKILL.md`
+
+  From the 2026-06-09 framework review (skills agent). (1) The nine investigation themes (~100 lines, ~50% of the skill) read once per janitor run — move theme details to a bundled companion file (the pattern the Critic already uses with review-protocol.md etc.) and keep SKILL.md as dispatcher + process. (2) Clarify that Step 2.5 Backlog Health emits read-only NOTE findings and Step 7 Reconcile is where those findings drive /prawduct:backlog update calls — the linkage is currently implicit. (3) Reframe the 'fresh eyes' line toward pattern-detection + infer-and-confirm, and say what to do when the user cannot confirm a preference divergence (file a backlog item rather than resolving unilaterally). (builder)
+
+- **[WMK-7D3R]** Work-model index never rebuilds on artifact deletion — retired vocabulary lingers
+  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · related: WMK-1P4Q · refs: bin/prawduct-hook, lib/work_model_index.py`
+
+  From the 2026-06-09 framework review. The staleness check (bin/prawduct-hook, build-index path) compares
+  remaining artifact mtimes to the index mtime, so deleting an artifact never triggers a rebuild and its
+  vocabulary lingers between sessions. Mostly masked by build-index force=True at SessionStart — decide
+  whether to fix (include the artifact file-set in the staleness fingerprint) or document the SessionStart
+  rebuild as the intended guarantee. Note: probe precision (false positives on common English) is separate,
+  covered by the review-fixes plan Chunk 2. (builder)
+
 ## Promoted
+
+- **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: promoted · reviewed: 2026-06-09 · related: CRT-3X9D`
+
+  Critic SKILL.md step 1 runs `prawduct-hook critic-begin` right after mode resolution, but a
+  `Type: designer-handoff` chunk exits clean *before* step 8 (`critic-end`), so the
+  `.prawduct/.critic-active` marker is left set on that path. Benign — the marker self-corrects
+  three ways (30-min TTL, session-start sweep, explicit override) — and rare, but ideally
+  `critic-begin` should run only after the designer-handoff skip is ruled out (move the
+  `critic-begin` call below the skip, or pair the skip with a `critic-end`). Surfaced as a NOTE in
+  the CRT-3X9D cumulative review. (critic, 2026-06-08)
+
+- **[PR-5K8D]** check-pr-doc-only should exclude skills/ (and methodology/templates) — align with `_classify_trivial_change`'s bounds
+  `effort: S · impact: M · area: pr/governance · source: reflection · added: 2026-06-08 · status: promoted · reviewed: 2026-06-09 · related: PR-9T4M · refs: skills/pr/SKILL.md, lib/buildplan_refs.py, lib/coverage.py`
+
+  The two PR fast-path classifiers disagreed on skill files. On the backlog-legend-refresh PR (#83),
+  `check-pr-doc-only` returned exit 0 (all 4 files `.md` → "gates may be skipped"), which per the
+  `/pr` Step 1b instruction would skip the independent PR reviewer entirely — but `check-pr-trivial`
+  correctly returned "not-trivial: skill-file-edited: skills/backlog/SKILL.md. Full review required."
+  A fork-skill's SKILL.md IS behavior/logic (per the existing learning "when a feature's logic lives
+  in a context:fork skill, lib/ holds DATA not LOGIC"), so an extension-only doc-only classification
+  under-reads a behavioral skill change and can skip review.
+
+  Re-anchored 2026-06-08 (branch fix/retire-pr-trivial-fast-path): `check-pr-trivial` /
+  `_pr_diff_is_trivial` were DELETED when the PR-boundary trivial fast-path was retired (see
+  PR-9T4M). The original fix-shape pointed at `check-pr-trivial` as the model to copy; that
+  classifier is gone. The canonical exclusion bounds still live in `lib/buildplan_refs.py`
+  (`_classify_trivial_change` / `_TRIVIAL_PROTECTED_PATHS` — `{skills/, methodology/, templates/,
+  CLAUDE.md}`), now consumed only by the chunk-level `_is_trivial_fileset_eligible` gate
+  (`lib/gates.py`). This item is now MORE relevant, not less: with the trivial fast-path retired,
+  `check-pr-doc-only` (`lib/coverage.py`, hook `cmd_check_pr_doc_only`) is the ONLY remaining
+  PR-boundary gate-skip path, and it still under-reads behavioral `skills/*.md` changes. Candidate
+  fix (re-anchored): align `check-pr-doc-only`'s fileset bounds with `_classify_trivial_change` —
+  exclude `skills/`, `methodology/`, `templates/`, and `CLAUDE.md` from the doc-only fast-path so a
+  behavioral-prose change still gets the reviewer; consume the shared `_TRIVIAL_PROTECTED_PATHS`
+  rather than re-listing the bounds. refs: skills/pr/SKILL.md (Step 1b/1c), lib/coverage.py
+  (check_pr_doc_only), lib/buildplan_refs.py (_classify_trivial_change). Filed from the v2.0.16
+  release (2026-06-08). (reflection)
 
 - **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
   `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: in-progress · branch: fix/verify-chunk-refs-globs · related: BLD-8F2Q, BLD-5V8F`

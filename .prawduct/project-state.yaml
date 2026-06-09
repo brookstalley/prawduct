@@ -478,7 +478,15 @@ views_enabled: true
 # (#84) and legacy-backlog-format-probe (#85); regen-views flipped each plan's
 # ## Status checkboxes to [x] via its scope= change-log tag (REL-4T8N). No
 # release-pending plans remained after v2.0.17, so the pointer was cleared;
-# 2026-06-10 repointed it at the in-progress gate-soundness plan.
+# 2026-06-10 repointed it at the in-progress gate-soundness plan, whose work
+# merged to develop the same day (#86) — RELEASE-PENDING, so the pointer stays
+# here until the next develop→main release flips its Status (planning.md "Plan
+# lifecycle on gitflow"). NOTE (BLD-7W2J, live instance): review-fixes
+# (build-plan-review-fixes.md, authored 2026-06-09 — highest-value fixes from
+# the full-framework review) is a parallel in-flight plan on feature/review-fixes
+# that also wants this single-slot pointer; its branch sessions must invoke
+# /prawduct:critic per its chunk Done-whens explicitly (the side-plan
+# convention) until BLD-7W2J models multi-plan state.
 active_build_plan: artifacts/build-plan-gate-soundness.md
 
 # =============================================================================
