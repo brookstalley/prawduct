@@ -47,6 +47,18 @@
   the same clean exit-2 path; add a non-executable-target case alongside the existing
   `TestTestEvidenceKnobs` coverage. Filed from the cumulative Critic NOTE on the gate-soundness
   bundle, 2026-06-10. (critic)
+- **[STH-5P2W]** Loud guard when a set active_build_plan pointer resolves to no file
+  `effort: S · impact: M · area: stop-hook · source: critic · added: 2026-06-09 · status: open · stage: ready · related: REL-4T8N · refs: lib/core.py, bin/prawduct-hook`
+
+  From review-fixes Chunk 1 Critic (2026-06-09). The active_build_plan pointer is
+  .prawduct/-relative; a repo-relative value (the natural way to write it) mis-resolves and the
+  resolvers (lib/core.py resolve_build_plan_path + the hook's inline mirror) silently fall back to
+  the default plan path — disabling the Critic gate, plan-aware mode inference, and
+  verify-chunk-refs with no signal. Happened live: the review-fixes planning commit shipped the
+  mis-resolving form and the gates were blind for one work cycle until the Critic caught it.
+  Fix-shape: when the pointer is SET but resolves to a nonexistent file, warn loudly in the session
+  briefing (and/or accept repo-relative forms by stripping a leading .prawduct/) + test.
+  Escape-hatches-create-silent-failures shape. (critic)
 
 - **[CRT-5Q8W]** Skill prose clarity micro-fixes from the 2026-06-09 review (critic protocol wording, designer-handoff note, backlog pick defaults, framework-checks example)
   `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md`
@@ -200,7 +212,7 @@
   never be able to mutate the session it's reviewing. (builder)
 
 - **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
-  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K`
+  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K · reviewed: 2026-06-09`
 
   `lib/critic_mode.py` carries independent re-implementations of `_current_chunk_id_from_status`,
   the chunk-`Type:` parser, and `_is_metadata_path` (and references `_parse_build_plan_status`),
@@ -214,6 +226,10 @@
   behavior-preserving move (it changes critic_mode's structure + collapses a parity relationship),
   so it needs its own tests + Critic pass — kept out of ch.3 for scope discipline. Filed from the
   ch.3 buildplan_refs extraction on 2026-06-07. (builder)
+
+  Critic note (review-fixes Chunk 1, 2026-06-09): lib/critic_mode.py contains a third porcelain
+  parser that near-duplicates the new shared gitstate.parse_porcelain_line (quoted paths, renames);
+  fold it onto the shared helper when consolidating this item's lib/critic_mode mirrors.
 
 - **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
   `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · related: CRT-9V4T, PRR-4M9T, JAN-4F7M`

@@ -465,6 +465,45 @@ the listing itself is producer-attested, same trust model as
 `tests/test_verify_coverage_gate.py` (new). Critic (chunk mode): 0 blocking,
 1 warning (stale `_looks_like_python` docstring — fixed), 1 note
 (informational line now echoes `coverage_level` — adopted).
+## 2026-06-09: hot-path correctness fixes (core.py depth, Gate 3 network call, porcelain parsing)
+
+<!-- prawduct: chunks=1 | type=fix | scope=review-fixes -->
+
+**Why:** Three verified bugs from the 2026-06-09 full-framework review, all on
+hooks hot paths. (1) `lib/core.py`'s `FRAMEWORK_DIR = parent.parent.parent` was a
+byte-parity holdover from the retired file-sync three-level tools layout — from
+top-level `lib/` it resolved one level ABOVE the plugin root, so `TEMPLATES_DIR`
+pointed at a nonexistent path and `PRAWDUCT_VERSION` silently read `"dev"` (the
+Chunk-14 Critic had called this "inert"; learnings.md already documents why that
+verdict didn't hold). (2) The stop-hook's Gate 3 ran `gh pr list` — a
+300-800ms network call, 15s timeout worst case — on EVERY turn-end of any
+feature-branch session, even with zero session changes, because its only guard
+was `not doc_only` and `doc_only` is False when `has_changes` is False. (3) All
+three porcelain parsers in `lib/gitstate.py` used `line.split()[-1]`, which
+mangles git-quoted space-paths (` M "my doc.md"` → `doc.md"`) and renames — a
+doc-only session touching a space-path was falsely blocked by the
+Critic/reflection gates.
+
+**What:** Fixed the `FRAMEWORK_DIR` depth and removed `init_product.py`'s
+now-dead resolution workaround (it routes through `core` again). Gate 3 now
+short-circuits on `not has_changes` (merge-time enforcement stays in
+`/prawduct:pr`). Added shared `gitstate.parse_porcelain_line` (quoted paths,
+renames; caveats documented), adopted at all three gitstate sites AND the
+trivial-gate's previously-duplicated inline parse in `lib/gates.py`; dropped the
+whole-output `.strip()` that corrupted the first porcelain line's fixed-offset
+status; added the corrupted-baseline guard `_get_session_changed_files` was
+missing. Synced `pyproject.toml` 2.0.15→2.0.17. Renegotiated the Gate 3 test
+contract in the open (the old tests pinned the always-probe behavior with empty
+status; they now carry a code diff, and a recording-mock test pins the ABSENCE
+of the `gh` call on a no-change session — 0.29s wall empirically). 17 new
+regression tests; 1037 pass.
+
+**Blast radius:** `lib/core.py`, `lib/init_product.py`, `lib/gitstate.py`,
+`lib/gates.py`, `bin/prawduct-hook` (Gate 3 condition), `pyproject.toml`,
+`tests/test_gitstate_porcelain.py` (new), `tests/test_plugin_init.py`,
+`tests/test_pr_reviewer.py`. Critic (final + 2× verify-resolutions) caught the
+plan's own `active_build_plan` pointer mis-resolution — fixed in
+`.prawduct/project-state.yaml` (pointer is `.prawduct/`-relative).
 
 ## 2026-06-08: register the missing legacy-backlog-format advisory probe
 

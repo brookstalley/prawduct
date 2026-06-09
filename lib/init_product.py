@@ -61,33 +61,8 @@ _LEARNINGS_REL = ".prawduct/learnings.md"
 _LEARNINGS_STARTER = "# Learnings\n\nAccumulated wisdom from building this product.\n"
 
 
-def _plugin_root() -> Path:
-    """The plugin root — ``<root>/lib/init_product.py`` → ``<root>``.
-
-    Resolve ``templates/`` and ``VERSION`` from the plugin root directly rather
-    than via ``core.TEMPLATES_DIR`` / ``core.PRAWDUCT_VERSION``: ``core.py``'s
-    ``FRAMEWORK_DIR = __file__.parent.parent.parent`` assumed the file-sync
-    ``tools/lib/`` depth — in the plugin's top-level ``lib/`` it lands one level
-    too high (``…/source`` instead of ``…/<plugin>``). The plugin always resolves
-    its own resources from the plugin root (as ``bin/`` and ``hooks/`` do); this is
-    the first plugin code to render ``templates/`` at runtime, so it does the same.
-    """
-    return Path(__file__).resolve().parent.parent
-
-
-def _templates_dir() -> Path:
-    return _plugin_root() / "templates"
-
-
-def _prawduct_version() -> str:
-    try:
-        return (_plugin_root() / "VERSION").read_text(encoding="utf-8").strip()
-    except OSError:
-        return core.PRAWDUCT_VERSION  # best-effort fallback
-
-
 def _subs(name: str) -> dict[str, str]:
-    return {"{{PRODUCT_NAME}}": name, "{{PRAWDUCT_VERSION}}": _prawduct_version()}
+    return {"{{PRODUCT_NAME}}": name, "{{PRAWDUCT_VERSION}}": core.PRAWDUCT_VERSION}
 
 
 def already_scaffolded(project_dir: Path) -> bool:
@@ -165,7 +140,7 @@ def init_product(project_dir: str | Path, name: str, *, apply: bool = False) -> 
             created.append(rel)
             if apply:
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                core.write_template(_templates_dir() / tmpl, dst, subs)
+                core.write_template(core.TEMPLATES_DIR / tmpl, dst, subs)
 
     # Learnings starter (no template — a one-line seed, mirroring file-sync init).
     learnings = project_dir / _LEARNINGS_REL

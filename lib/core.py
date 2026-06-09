@@ -17,7 +17,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-FRAMEWORK_DIR = Path(__file__).resolve().parent.parent.parent
+# The plugin root: ``<root>/lib/core.py`` → ``<root>``. The previous
+# ``parent.parent.parent`` was a byte-parity holdover from the file-sync
+# ``tools/lib/`` depth — it resolved one level ABOVE the plugin root, so
+# ``TEMPLATES_DIR`` pointed at a nonexistent path and ``PRAWDUCT_VERSION``
+# silently read ``"dev"``. Fixed in review-fixes Chunk 1 (the file-sync
+# engine, the parity constraint's reason, was removed in M4).
+FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = FRAMEWORK_DIR / "templates"
 
 

@@ -826,23 +826,10 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
     for line in output.splitlines():
         if not line or line in baseline_lines:
             continue
-        if len(line) < 4:
+        parsed = gitstate.parse_porcelain_line(line)
+        if parsed is None:
             continue
-        status = line[:2]
-        raw = line[3:].strip()
-        src_path: str | None = None
-        if " -> " in raw:
-            src_raw, dst_raw = raw.split(" -> ", 1)
-            src_path = src_raw.strip()
-            if src_path.startswith('"') and src_path.endswith('"'):
-                src_path = src_path[1:-1]
-            path = dst_raw.strip()
-        else:
-            path = raw
-        if path.startswith('"') and path.endswith('"'):
-            path = path[1:-1]
-        if not path:
-            continue
+        status, src_path, path = parsed
 
         # v1.5.1 Chunk 04(b): metadata-path filtering lives inside
         # `_classify_trivial_change` (returns None for both src and dst

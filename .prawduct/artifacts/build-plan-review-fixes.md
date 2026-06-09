@@ -33,7 +33,7 @@ last_validated: 2026-06-09
 - [ ] Chunk 2: Work-model probe precision
 - [ ] Chunk 3: Review-gate soundness (PR-5K8D fileset + Critic marker placement)
 - [ ] Chunk 4: Always-loaded context dedup (framework-repo slim digest)
-Context: Plan created 2026-06-09 from the framework review. Nothing built yet. Build on a feature branch off develop (e.g. `feature/review-fixes`). Backlog items for the deferred findings were filed the same session; PR-5K8D and CRT-6F2N are promoted into Chunk 3.
+Context: Chunk 1 built on `feature/review-fixes` (2026-06-09): all four fixes in, 1037 tests pass, 17 new regression tests. Timing evidence for the Gate 3 short-circuit: a no-change `stop` on a feature branch in a scratch repo completes in 0.29s wall with no `gh` invocation (recording-mock test pins the absence of the call). Critic (final) found one BLOCKING — the `active_build_plan` pointer in project-state.yaml was written repo-relative but resolves `.prawduct/`-relative, silently disabling plan governance; fixed, and the un-blinded ref-verifier then caught a backticked retired-path mention in this plan (also fixed). Next: Chunk 2 (work-model probe precision). PR-5K8D and CRT-6F2N are promoted into Chunk 3.
 
 ## Scaffolding
 
@@ -52,7 +52,7 @@ Unchanged — fixes land in existing modules (`lib/`, `bin/prawduct-hook`, `hook
 ### Chunk 1: Hot-path correctness fixes
 
 - **Description:** Fix the three verified bugs in the enforcement layer, plus the version-drift one-liner.
-  1. **`lib/core.py` path depth** — `FRAMEWORK_DIR` uses `parent.parent.parent` (pre-plugin `tools/lib/` depth) and resolves one level above the repo; `TEMPLATES_DIR` points at a nonexistent path and `PRAWDUCT_VERSION` silently reads `"dev"` (verified). Fix to `parent.parent`; remove the now-dead workaround/fallback in `lib/init_product.py` (its `except OSError` fallback currently falls back to the broken value); keep the flat-API exports working (`lib/__init__.py`, contract-pinned by `tests/test_lib_lazy_imports.py`).
+  1. **`lib/core.py` path depth** — `FRAMEWORK_DIR` uses `parent.parent.parent` (the retired file-sync three-level tools layout's depth) and resolves one level above the repo; `TEMPLATES_DIR` points at a nonexistent path and `PRAWDUCT_VERSION` silently reads `"dev"` (verified). Fix to `parent.parent`; remove the now-dead workaround/fallback in `lib/init_product.py` (its `except OSError` fallback currently falls back to the broken value); keep the flat-API exports working (`lib/__init__.py`, contract-pinned by `tests/test_lib_lazy_imports.py`).
   2. **Stop-hook Gate 3 network call** — `bin/prawduct-hook` cmd_stop runs `gh pr list` on every assistant turn on any feature branch even with zero session changes, because the gate is conditioned only on `not doc_only` and `doc_only` is False when `has_changes` is False (verified). Short-circuit Gate 3 on `not has_changes`.
   3. **Porcelain quoted-path parsing** — `lib/gitstate.py` parses `git status --porcelain` with `line.split()[-1]`, mangling git-quoted paths containing spaces and rename (`R old -> new`) lines; a doc-only session touching `my doc.md` fails the doc-only classification and can be falsely blocked by the Critic/reflection gates. The correct parsing (quote-stripping, `->` handling) already exists in `lib/gates.py` (`_classify_trivial_change` area) — extract a shared helper and use it in all three `gitstate.py` parse sites.
   4. **`pyproject.toml`** version `2.0.15` → sync with `VERSION` (2.0.17).

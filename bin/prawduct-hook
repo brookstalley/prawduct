@@ -873,12 +873,18 @@ def cmd_stop(project_dir: Path) -> int:
             print(f"NOTE: {mode_reason}", file=sys.stderr)
 
     # Gate 3: PR review evidence (when a PR exists for the current branch).
-    # Skipped for doc-only changes. The waiver is only noted when the gate
-    # would have actually blocked (real PR exists with no valid evidence).
+    # Skipped for doc-only changes AND for sessions with no changes at all:
+    # a session that changed nothing incurred no new review obligation, and
+    # the `gh pr list` probe below is a network call (300-800ms typical,
+    # 15s timeout worst case) that used to fire on EVERY turn-end of a pure
+    # Q&A session on a feature branch (review-fixes Chunk 1). Merge-time
+    # enforcement lives in `/prawduct:pr` regardless. The waiver is only
+    # noted when the gate would have actually blocked (real PR exists with
+    # no valid evidence).
     pr_reviews_dir = prawduct_dir / ".pr-reviews"
     pr_would_block = False
     pr_block_branch = ""
-    if not doc_only:
+    if has_changes and not doc_only:
         try:
             branch_result = subprocess.run(
                 ["git", "branch", "--show-current"],

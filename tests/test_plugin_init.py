@@ -4,9 +4,11 @@ The scaffolder lives in the plugin's ``lib/init_product.py`` and is driven throu
 ``bin/prawduct-hook init-product``. These tests invoke it as a subprocess
 (CLAUDE_PLUGIN_ROOT set), the established plugin-test pattern (mirrors
 ``test_plugin_migrate.py``), so they exercise the real CLI + plugin-root path
-resolution — including that the scaffolder reads ``templates/`` from the plugin
-root, not via ``core``'s parity-locked (and at this depth mis-resolving)
-``FRAMEWORK_DIR``.
+resolution. The scaffolder reads ``templates/`` and ``VERSION`` via ``core``'s
+``TEMPLATES_DIR`` / ``PRAWDUCT_VERSION``; their ``FRAMEWORK_DIR`` depth was
+fixed in review-fixes Chunk 1 (the prior ``parent.parent.parent`` was a
+file-sync parity holdover that resolved one level ABOVE the plugin root and
+silently read version ``"dev"`` — ``TestCoreResolution`` pins the fix).
 
 The contract: scaffold creates ONLY the design-§3 "what STAYS in the repo" set
 (product-owned ``.prawduct/`` state + the thin CLAUDE.md anchor + the committed
@@ -48,6 +50,27 @@ FORBIDDEN = [
     ".prawduct/pr-review.md",
     ".prawduct/build-governance.md",
 ]
+
+
+class TestCoreResolution:
+    """``lib/core.py`` resolves the plugin root from ``lib/`` (review-fixes
+    Chunk 1). Regression guard for the ``parent.parent.parent`` depth bug:
+    ``FRAMEWORK_DIR`` pointed one level ABOVE the repo, ``TEMPLATES_DIR`` at a
+    nonexistent path, and ``PRAWDUCT_VERSION`` silently fell back to ``"dev"``."""
+
+    def test_framework_dir_is_plugin_root(self):
+        from lib import core
+        assert core.FRAMEWORK_DIR == ROOT
+
+    def test_templates_dir_exists(self):
+        from lib import core
+        assert core.TEMPLATES_DIR.is_dir()
+        assert (core.TEMPLATES_DIR / "project-state.yaml").is_file()
+
+    def test_version_is_real_not_dev_fallback(self):
+        from lib import core
+        assert core.PRAWDUCT_VERSION == (ROOT / "VERSION").read_text().strip()
+        assert core.PRAWDUCT_VERSION != "dev"
 
 
 def _env(target: Path) -> dict:

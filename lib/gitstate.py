@@ -66,6 +66,42 @@ def _is_metadata_path(filepath: str) -> bool:
     return any(filepath.startswith(p) for p in _METADATA_PREFIXES)
 
 
+def parse_porcelain_line(line: str) -> tuple[str, str | None, str] | None:
+    """Parse one ``git status --porcelain`` line into ``(status, src_path, path)``.
+
+    Git QUOTES paths containing spaces or special characters (`` M "my doc.md"``)
+    and renders renames as ``R  old -> new`` — a naive ``line.split()[-1]`` returns
+    ``doc.md"`` for the quoted form, which made the doc-only classification fail on
+    the trailing quote and falsely block doc-only sessions at the Critic/reflection
+    gates (review-fixes Chunk 1). ``src_path`` is the rename source (None for
+    non-renames); ``path`` is the current/destination path, quote-stripped.
+    Returns None for blank or malformed lines. Two accepted caveats, both
+    classification-only impact: octal escapes inside quoted paths (non-ASCII
+    filenames) are left as-is — quote-stripping is sufficient for path
+    *classification* by prefix/suffix, which is all the callers do; and a
+    quoted rename SOURCE itself containing ``" -> "`` mis-splits at the first
+    arrow (vanishingly rare, still strictly better than the ``split()[-1]``
+    parse this replaced).
+    """
+    if len(line) < 4:
+        return None
+    status = line[:2]
+    raw = line[3:].strip()
+    src_path: str | None = None
+    if " -> " in raw:
+        src_raw, dst_raw = raw.split(" -> ", 1)
+        src_path = src_raw.strip()
+        if src_path.startswith('"') and src_path.endswith('"'):
+            src_path = src_path[1:-1]
+        raw = dst_raw.strip()
+    path = raw
+    if path.startswith('"') and path.endswith('"'):
+        path = path[1:-1]
+    if not path:
+        return None
+    return status, src_path, path
+
+
 def git_has_session_changes(project_dir: Path) -> str:
     """Check if non-metadata uncommitted changes differ from session baseline.
 
@@ -88,17 +124,17 @@ def git_has_session_changes(project_dir: Path) -> str:
         baseline = baseline_path.read_text()
     except (UnicodeDecodeError, OSError):
         return ""  # Corrupted baseline — treat as no baseline (safe: permits session end)
-    baseline_lines = set(baseline.strip().splitlines())
-    current_lines = current.strip().splitlines()
+    # No whole-output .strip(): it eats the FIRST line's leading status space
+    # (" M x" → "M x"), corrupting the fixed-offset porcelain parse. Both sides
+    # unstripped, matching the trivial gate's reads (review-fixes Chunk 1).
+    baseline_lines = set(baseline.splitlines())
+    current_lines = current.splitlines()
 
     for line in current_lines:
         if line not in baseline_lines:
-            # Extract file path from porcelain format (e.g., " M src/app.py")
-            parts = line.split()
-            if parts:
-                filepath = parts[-1]
-                if not _is_metadata_path(filepath):
-                    return line
+            parsed = parse_porcelain_line(line)
+            if parsed and not _is_metadata_path(parsed[2]):
+                return line
 
     return ""
 
@@ -119,18 +155,19 @@ def _session_changes_are_doc_only(project_dir: Path) -> bool:
     baseline_lines: set[str] = set()
     if baseline_path.is_file():
         try:
-            baseline_lines = set(baseline_path.read_text().strip().splitlines())
+            # Unstripped on both sides — see git_has_session_changes.
+            baseline_lines = set(baseline_path.read_text().splitlines())
         except (UnicodeDecodeError, OSError):
             pass
 
     has_any = False
-    for line in current.strip().splitlines():
+    for line in current.splitlines():
         if line in baseline_lines:
             continue
-        parts = line.split()
-        if not parts:
+        parsed = parse_porcelain_line(line)
+        if parsed is None:
             continue
-        filepath = parts[-1]
+        filepath = parsed[2]
         if _is_metadata_path(filepath):
             continue
         has_any = True
@@ -277,13 +314,15 @@ def _get_session_changed_files(project_dir: Path) -> list[str]:
     baseline_path = prawduct_dir / ".session-git-baseline"
     baseline_lines: set[str] = set()
     if baseline_path.is_file():
-        baseline_lines = set(baseline_path.read_text().strip().splitlines())
-
+        try:
+            # Unstripped on both sides — see git_has_session_changes.
+            baseline_lines = set(baseline_path.read_text().splitlines())
+        except (UnicodeDecodeError, OSError):
+            pass  # Corrupted baseline — same stance as the sibling readers above
     changed = []
-    for line in current.strip().splitlines():
+    for line in current.splitlines():
         if line and line not in baseline_lines:
-            parts = line.split()
-            if parts:
-                filepath = parts[-1]
-                changed.append(filepath)
+            parsed = parse_porcelain_line(line)
+            if parsed:
+                changed.append(parsed[2])
     return changed
