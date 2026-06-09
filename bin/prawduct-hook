@@ -2003,7 +2003,8 @@ _USAGE = (
 # undocumented. The catch logic is the pure lib/work_model_index.py (Chunk 1);
 # these are the thin runtime wrappers (Chunk 2). Per the plugin invariant, the
 # derived index is per-repo state in ``.prawduct/.work-model-index.json`` (NOT
-# plugin-bundled state), rebuilt from the repo's governing artifacts. Both
+# plugin-bundled state), rebuilt from the repo's governing corpus (artifacts,
+# CLAUDE.md, docs/, methodology/ — review-fixes Chunk 2). Both
 # commands gate on ``.prawduct/`` (the user-scoped plugin fires in every repo)
 # and are fail-soft — a hook error must never break session start or, above all,
 # prompt submission.
@@ -2021,11 +2022,26 @@ def _work_model_load_lib():
     return work_model_index
 
 
-def _work_model_artifact_texts(prawduct_dir: Path) -> list[str]:
-    """The governing-artifact corpus the vocabulary index is built from:
-    every markdown artifact under ``.prawduct/artifacts/``."""
+def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path]:
+    """The governing corpus the vocabulary index is built from: every markdown
+    artifact under ``.prawduct/artifacts/``, plus the repo's CLAUDE.md and any
+    top-level ``docs/`` / ``methodology/`` markdown (review-fixes Chunk 2:
+    framework-domain words in those files must not read as orphans). Missing
+    directories simply contribute nothing — product repos rarely have all of
+    them. Top-level globs are deliberate: subdirectories (docs/examples/, …)
+    hold samples and archives, not governing vocabulary."""
+    paths = sorted((prawduct_dir / "artifacts").glob("*.md"))
+    claude_md = project_dir / "CLAUDE.md"
+    if claude_md.is_file():
+        paths.append(claude_md)
+    for sub in ("docs", "methodology"):
+        paths.extend(sorted((project_dir / sub).glob("*.md")))
+    return paths
+
+
+def _work_model_corpus_texts(project_dir: Path, prawduct_dir: Path) -> list[str]:
     texts: list[str] = []
-    for path in sorted((prawduct_dir / "artifacts").glob("*.md")):
+    for path in _work_model_corpus_paths(project_dir, prawduct_dir):
         try:
             texts.append(path.read_text(encoding="utf-8", errors="replace"))
         except OSError:
@@ -2033,21 +2049,23 @@ def _work_model_artifact_texts(prawduct_dir: Path) -> list[str]:
     return texts
 
 
-def _work_model_ensure_index(prawduct_dir: Path, wmi, *, force: bool = False) -> dict:
-    """Return the vocabulary index, rebuilding from artifacts when missing,
-    stale (an artifact is newer than the index), corrupt, or ``force``."""
+def _work_model_ensure_index(
+    project_dir: Path, prawduct_dir: Path, wmi, *, force: bool = False
+) -> dict:
+    """Return the vocabulary index, rebuilding from the corpus when missing,
+    stale (a corpus file is newer than the index), corrupt, or ``force``."""
     index_path = prawduct_dir / _WORK_MODEL_INDEX_RELPATH
-    artifacts = sorted((prawduct_dir / "artifacts").glob("*.md"))
+    corpus = _work_model_corpus_paths(project_dir, prawduct_dir)
 
     if not force and index_path.exists():
         idx_mtime = index_path.stat().st_mtime
-        if all(p.stat().st_mtime <= idx_mtime for p in artifacts):
+        if all(p.stat().st_mtime <= idx_mtime for p in corpus):
             try:
                 return json.loads(index_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 pass  # corrupt -> rebuild below
 
-    index = wmi.build_index(_work_model_artifact_texts(prawduct_dir))
+    index = wmi.build_index(_work_model_corpus_texts(project_dir, prawduct_dir))
     try:
         index_path.write_text(json.dumps(index), encoding="utf-8")
     except OSError:
@@ -2057,14 +2075,14 @@ def _work_model_ensure_index(prawduct_dir: Path, wmi, *, force: bool = False) ->
 
 def cmd_build_index(project_dir: Path) -> int:
     """Rebuild the work-model vocabulary index from the repo's governing
-    artifacts (wired on SessionStart to warm the index). Best-effort: a build
+    corpus (wired on SessionStart to warm the index). Best-effort: a build
     failure must never break session start."""
     prawduct_dir = get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
         return 0  # not a Prawduct-governed repo — stay silent (mirrors digest.py)
     try:
         wmi = _work_model_load_lib()
-        _work_model_ensure_index(prawduct_dir, wmi, force=True)
+        _work_model_ensure_index(project_dir, prawduct_dir, wmi, force=True)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- index build is best-effort; must never break session start
         print(f"NOTE: Prawduct could not build the work-model index: {exc}", file=sys.stderr)
         return 0
@@ -2085,8 +2103,8 @@ def cmd_user_prompt_submit(project_dir: Path) -> int:
         if not prompt.strip():
             return 0
         wmi = _work_model_load_lib()
-        index = _work_model_ensure_index(prawduct_dir, wmi)
-        nudge = wmi.format_nudge(wmi.find_orphan_terms(prompt, index))
+        index = _work_model_ensure_index(project_dir, prawduct_dir, wmi)
+        nudge = wmi.nudge_for(prompt, index)
         if nudge:
             print(
                 json.dumps(

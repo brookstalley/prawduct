@@ -108,11 +108,17 @@ def test_user_prompt_submit_failsoft_on_empty_stdin(repo: Path):
 
 def test_index_rebuilds_when_an_artifact_is_newer(repo: Path):
     """Staleness: an artifact modified after the index forces a rebuild, so new
-    vocabulary is picked up without a manual build-index."""
+    vocabulary is picked up without a manual build-index.
+
+    Prompt is requirement-shaped ("add ...") since review-fixes Chunk 2: the
+    firing threshold silences single-orphan non-imperative prompts, and this
+    test pins staleness mechanics, not the threshold."""
     _run("build-index", repo)
     index_path = repo / ".prawduct" / ".work-model-index.json"
     # "provenance" is not yet covered -> currently an orphan.
-    assert "provenance" in _run("user-prompt-submit", repo, '{"prompt":"the provenance"}').stdout
+    assert "provenance" in _run(
+        "user-prompt-submit", repo, '{"prompt":"add provenance tracking"}'
+    ).stdout
     # Add it to a governing artifact and age the index so the artifact is newer.
     (repo / ".prawduct" / "artifacts" / "spec.md").write_text(
         SPEC + "\n## Provenance\nThe **provenance** of each claim.\n", encoding="utf-8"
@@ -120,17 +126,19 @@ def test_index_rebuilds_when_an_artifact_is_newer(repo: Path):
     old = index_path.stat().st_mtime - 100
     os.utime(index_path, (old, old))
     # The rebuilt index now covers it -> silent.
-    res = _run("user-prompt-submit", repo, '{"prompt":"the provenance"}')
+    res = _run("user-prompt-submit", repo, '{"prompt":"add provenance tracking"}')
     assert res.returncode == 0
     assert res.stdout.strip() == "", f"expected silence after rebuild, got {res.stdout!r}"
 
 
 def test_corrupt_index_recovers_by_rebuilding(repo: Path):
-    """A corrupt index file is transparently rebuilt from artifacts, not fatal."""
+    """A corrupt index file is transparently rebuilt from artifacts, not fatal.
+    (Requirement-shaped prompt per the Chunk 2 firing threshold — this test
+    pins corruption recovery, not the threshold.)"""
     _run("build-index", repo)
     index_path = repo / ".prawduct" / ".work-model-index.json"
     index_path.write_text("}{ not json", encoding="utf-8")
-    res = _run("user-prompt-submit", repo, '{"prompt":"the sincerity"}')
+    res = _run("user-prompt-submit", repo, '{"prompt":"add doxastic sincerity"}')
     assert res.returncode == 0
     assert "sincerity" in res.stdout  # rebuilt index still detects the orphan
     json.loads(index_path.read_text())  # corrupt file was replaced with valid JSON
@@ -139,3 +147,44 @@ def test_corrupt_index_recovers_by_rebuilding(repo: Path):
 def test_index_is_gitignored():
     gitignore = (ROOT / ".gitignore").read_text()
     assert ".prawduct/.work-model-index.json" in gitignore
+
+
+# --- Corpus widening (review-fixes Chunk 2) ---------------------------------
+# CLAUDE.md, docs/, and methodology/ feed the index alongside
+# .prawduct/artifacts/, so framework-domain words stop reading as orphans.
+
+
+def test_index_covers_claude_md_docs_and_methodology(repo: Path):
+    (repo / "CLAUDE.md").write_text("# Repo\n## Doxastic budgeting\n", encoding="utf-8")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "notes.md").write_text("## Telemetry provenance\n", encoding="utf-8")
+    (repo / "methodology").mkdir()
+    (repo / "methodology" / "m.md").write_text("## Reflection cadence\n", encoding="utf-8")
+
+    _run("build-index", repo)
+    vocab = set(json.loads((repo / ".prawduct" / ".work-model-index.json").read_text())["vocab"])
+    assert {"doxastic", "telemetry", "provenance", "cadence"} <= vocab
+
+    # Covered by the widened corpus -> silent, even though requirement-shaped.
+    res = _run("user-prompt-submit", repo, '{"prompt":"extend the telemetry provenance"}')
+    assert res.returncode == 0
+    assert res.stdout.strip() == "", f"expected silence, got {res.stdout!r}"
+
+
+def test_index_rebuilds_when_a_docs_file_is_newer(repo: Path):
+    """Staleness must track the WIDENED corpus, not just .prawduct/artifacts/."""
+    (repo / "docs").mkdir()
+    docs_file = repo / "docs" / "notes.md"
+    docs_file.write_text("## Notes\n", encoding="utf-8")
+    _run("build-index", repo)
+    index_path = repo / ".prawduct" / ".work-model-index.json"
+
+    assert "attestation" in _run(
+        "user-prompt-submit", repo, '{"prompt":"add attestation support"}'
+    ).stdout
+    docs_file.write_text("## Notes\n## Attestation\n", encoding="utf-8")
+    old = index_path.stat().st_mtime - 100
+    os.utime(index_path, (old, old))
+    res = _run("user-prompt-submit", repo, '{"prompt":"add attestation support"}')
+    assert res.returncode == 0
+    assert res.stdout.strip() == "", f"expected silence after docs rebuild, got {res.stdout!r}"

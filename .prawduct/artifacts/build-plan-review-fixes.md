@@ -29,11 +29,11 @@ last_validated: 2026-06-09
 
 ## Status
 
-- [ ] Chunk 1: Hot-path correctness fixes (core.py path, Gate 3 network call, porcelain parsing)
-- [ ] Chunk 2: Work-model probe precision
+- [x] Chunk 1: Hot-path correctness fixes (core.py path, Gate 3 network call, porcelain parsing)
+- [x] Chunk 2: Work-model probe precision
 - [ ] Chunk 3: Review-gate soundness (PR-5K8D fileset + Critic marker placement)
 - [ ] Chunk 4: Always-loaded context dedup (framework-repo slim digest)
-Context: Chunk 1 built on `feature/review-fixes` (2026-06-09): all four fixes in, 1037 tests pass, 17 new regression tests. Timing evidence for the Gate 3 short-circuit: a no-change `stop` on a feature branch in a scratch repo completes in 0.29s wall with no `gh` invocation (recording-mock test pins the absence of the call). Critic (final) found one BLOCKING — the `active_build_plan` pointer in project-state.yaml was written repo-relative but resolves `.prawduct/`-relative, silently disabling plan governance; fixed, and the un-blinded ref-verifier then caught a backticked retired-path mention in this plan (also fixed). Next: Chunk 2 (work-model probe precision). PR-5K8D and CRT-6F2N are promoted into Chunk 3.
+Context: Chunk 1 built on `feature/review-fixes` (2026-06-09): all four fixes in, 1037 tests pass, 17 new regression tests. Timing evidence for the Gate 3 short-circuit: a no-change `stop` on a feature branch in a scratch repo completes in 0.29s wall with no `gh` invocation (recording-mock test pins the absence of the call). Critic (final) found one BLOCKING — the `active_build_plan` pointer in project-state.yaml was written repo-relative but resolves `.prawduct/`-relative, silently disabling plan governance; fixed, and the un-blinded ref-verifier then caught a backticked retired-path mention in this plan (also fixed). Chunk 2 built same day (Critic chunk-mode x2: pass, then 1 warning + 2 notes, all resolved — count drift fixed, sentence-boundary determiner reset added, wordlist license posture recorded in `lib/common_words.py`): frequency floor is the top-4,000 of the google-10000-english list (not "a few KB" — the observed false-positive term *efficiency* ranks #3283, forcing the cutoff; 30KB accepted and documented in `lib/common_words.py`), plus firing threshold and corpus widening; 14 new tests, 1051 pass; all four observed false-positive prompt classes verified silent live against this repo's hook, "add OAuth login to the settings page" still fires. Two extra precision bugs found and fixed during build: contraction tokens minting orphan non-words ("let's" -> "let'"), and requirement verbs reporting themselves as the orphan ("extend X" flagging *extend*). Next: Chunk 3 (review-gate soundness; PR-5K8D + CRT-6F2N promoted in).
 
 ## Scaffolding
 
