@@ -61,9 +61,13 @@ planning.
 - [ ] Chunk 02: test-evidence configurability — `test_command:` + `tests_dirs:`
 - [ ] Chunk 03: Build plans are tracked artifacts
 - [ ] Chunk 04: Cumulative-gate ordering guidance + plan-lifecycle note
-Context: Plan authored 2026-06-10 from the scriob friction analysis (session feedback +
-learnings + scripts/test-evidence.sh). Branch feature/gate-soundness off origin/develop
-(ed2dcb6). Baseline: 1019 passed, 1 skipped.
+Context: ALL FOUR CHUNKS BUILT AND CUMULATIVE-REVIEWED 2026-06-10 (checkboxes flip at
+release via scope=gate-soundness change-log tags). Branch feature/gate-soundness off
+origin/develop (ed2dcb6), 6 commits, cumulative Critic at b14f7b9: 0 blocking / 1 warning
+(resolved doc-only post-review, gate re-verified satisfied) / 3 notes (1 fixed doc-only,
+1 filed as TST-3E8V, 1 closed by reassessing CRT-8D2W). 1047 tests pass. PR-ready
+(feature/gate-soundness → develop) — PR not yet created. Two declared deviations recorded
+in ch.2 (shlex, not shell) and ch.3 (update-gitignore subcommand).
 
 ## Chunks
 
