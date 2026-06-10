@@ -1093,6 +1093,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         "coverage_level": "referenced",
         "tests_executed": [],
         "changes_referenced": [],
+        "changes_unjudged": [],
     }
     # Atomic write — the freshness gate must never observe a half-written file.
     prawduct_dir.mkdir(parents=True, exist_ok=True)

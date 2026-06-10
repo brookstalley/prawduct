@@ -88,9 +88,9 @@ def mini_repo(tmp_path: Path) -> Path:
 
 
 class TestEvidenceShape:
-    """The verifier always emits the four F4a fields, in any execution path."""
+    """The verifier always emits the five F4a fields, in any execution path."""
 
-    def test_default_run_prints_all_four_fields(self, mini_repo: Path):
+    def test_default_run_prints_all_evidence_fields(self, mini_repo: Path):
         result = _run_verifier(mini_repo)
 
         assert result.returncode == 0, result.stderr
@@ -100,6 +100,7 @@ class TestEvidenceShape:
             "coverage_level",
             "tests_executed",
             "changes_referenced",
+            "changes_unjudged",
         }
 
     def test_coverage_level_is_referenced_floor(self, mini_repo: Path):
@@ -231,11 +232,13 @@ class TestSymbolExtraction:
         evidence = json.loads(result.stdout)
         assert "tools_cli" in evidence["changes_referenced"]
 
-    def test_non_python_file_uses_stem(self, mini_repo: Path):
-        """A non-Python changed file is "referenced" iff some test mentions
-        the filename stem. This is the floor heuristic; products with
-        non-trivial config-file coverage concerns plug in a stronger
-        verifier."""
+    def test_non_python_file_is_unjudged_not_stem_matched(self, mini_repo: Path):
+        """Renegotiated contract (gate-soundness ch.1): non-Python files are
+        classified `changes_unjudged`, NOT stem-matched into
+        `changes_referenced`. The old stem fallback was noise in both
+        directions — a test mentioning the word "config" vouched for
+        `config.yaml` — and its false-negative half made `verify-coverage`
+        structurally unsatisfiable on doc/config branches."""
         (mini_repo / "config.yaml").write_text("key: value\n")
         (mini_repo / "tests" / "test_config.py").write_text(
             "def test_config_loads():\n"
@@ -245,7 +248,54 @@ class TestSymbolExtraction:
         result = _run_verifier(mini_repo, "--base", "main")
 
         evidence = json.loads(result.stdout)
-        assert "config.yaml" in evidence["changes_referenced"]
+        assert "config.yaml" not in evidence["changes_referenced"]
+        assert "config.yaml" in evidence["changes_unjudged"]
+
+
+class TestUnjudgedClassification:
+    """`changes_unjudged` (gate-soundness ch.1): files the symbol-grep
+    mechanism structurally cannot judge are declared, not silently dropped —
+    so `verify-coverage` can report them instead of false-blocking on them.
+    """
+
+    def test_markdown_file_is_unjudged(self, mini_repo: Path):
+        (mini_repo / "README.md").write_text("# Docs\n")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "README.md" in evidence["changes_unjudged"]
+        assert "README.md" not in evidence["changes_referenced"]
+
+    def test_symbol_less_python_file_is_unjudged(self, mini_repo: Path):
+        """A re-export-only/constants-only Python file declares no def/class —
+        there is no symbol to grep for, so it can never be referenced. It is
+        unjudged, not a permanent coverage gap."""
+        (mini_repo / "src" / "constants.py").write_text("LIMIT = 10\n")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "src/constants.py" in evidence["changes_unjudged"]
+        assert "src/constants.py" not in evidence["changes_referenced"]
+
+    def test_deleted_file_is_unjudged(self, mini_repo: Path):
+        """A file deleted on the branch has nothing on disk to test."""
+        _git(mini_repo, "rm", "-q", "src/core.py")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "src/core.py" in evidence["changes_unjudged"]
+        assert "src/core.py" not in evidence["changes_referenced"]
+
+    def test_unreferenced_python_with_symbols_is_in_neither_list(
+        self, mini_repo: Path
+    ):
+        """A judged Python file with no test reference is the legitimate gap
+        the gate exists to catch — it must stay out of BOTH lists so
+        `verify-coverage` flags it."""
+        (mini_repo / "src" / "untested.py").write_text(
+            "def lonely_function():\n    return None\n"
+        )
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "src/untested.py" not in evidence["changes_referenced"]
+        assert "src/untested.py" not in evidence["changes_unjudged"]
 
 
 class TestOutputModes:

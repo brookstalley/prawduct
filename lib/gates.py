@@ -47,6 +47,14 @@ _EVIDENCE_COVERAGE_FIELDS: dict[str, tuple[type, ...]] = {
     "coverage_level": (str,),
 }
 _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
+# Optional fields — validated when present, never required. ``changes_unjudged``
+# (gate-soundness ch.1) lists changed files the evidence producer structurally
+# cannot judge (non-Python, symbol-less, deleted); absent means empty, so
+# product-authored evidence and ``executed``-level verifiers that predate the
+# field keep their existing gate behavior.
+_EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
+    "changes_unjudged": (list,),
+}
 
 
 def tests_are_current(project_dir: Path) -> tuple[bool, str]:
@@ -156,6 +164,13 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
                 f"{field} must be {' | '.join(t.__name__ for t in allowed_types)}, "
                 f"got {type(value).__name__}"
             )
+    for field, allowed_types in _EVIDENCE_OPTIONAL_FIELDS.items():
+        if field in evidence and not isinstance(evidence[field], allowed_types):
+            wrong_type.append(
+                f"{field} must be {' | '.join(t.__name__ for t in allowed_types)}, "
+                f"got {type(evidence[field]).__name__}"
+            )
+
     if missing:
         return False, f"evidence missing required field(s): {', '.join(sorted(missing))}"
     if wrong_type:
@@ -955,9 +970,18 @@ def verify_coverage(project_dir: Path) -> int:
     Exit codes:
       0 — check passed, or skipped (``coverage_required: false`` — the v1.4
           default; opt-in by design).
-      1 — at least one changed file is missing from ``changes_referenced``,
-          or a precondition failed (evidence missing/invalid, schema lacks
-          F4a fields, git base unresolved).
+      1 — at least one changed file the evidence can judge is missing from
+          ``changes_referenced``, or a precondition failed (evidence
+          missing/invalid, schema lacks F4a fields, git base unresolved).
+
+    Gate-soundness ch.1: the gate only blocks on files its evidence producer
+    can vouch for. Files listed in ``changes_unjudged`` (non-Python, symbol-less,
+    deleted — see ``bin/test-reference-verify``) and files absent from the
+    working tree (deleted on the branch) are reported informationally on
+    stdout, never as ``missing-coverage``. Before this split, the whole-branch
+    comparison guaranteed false blockers on docs/config changes, which trained
+    products to neutralize the gate (scriob 4ca5bd3) — an unsatisfiable gate
+    is worse than no gate.
 
     stderr lists each missing file with language scaled to the declared
     ``coverage_level`` — ``referenced`` (floor) vs ``executed`` (real
@@ -1003,6 +1027,7 @@ def verify_coverage(project_dir: Path) -> int:
 
     coverage_level = evidence["coverage_level"]
     referenced = set(evidence.get("changes_referenced", []))
+    unjudged = set(evidence.get("changes_unjudged", []))
 
     base, base_reason = coverage._coverage_resolve_base(project_dir)
     if base is None:
@@ -1015,10 +1040,26 @@ def verify_coverage(project_dir: Path) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    missing = [f for f in changed if f not in referenced]
+    # A file the evidence declares unjudgeable, or one no longer on disk
+    # (deleted on the branch — nothing to test), is outside the gate's
+    # jurisdiction: reported, never blocked on.
+    skipped = [
+        f for f in changed
+        if f in unjudged or not (project_dir / f).is_file()
+    ]
+    missing = [
+        f for f in changed
+        if f not in referenced and f not in skipped
+    ]
+    if skipped:
+        print(
+            f"note: {len(skipped)} changed file(s) outside the verifier's "
+            f"judgment (changes_unjudged / deleted) — reported, not gated "
+            f"(level: {coverage_level})."
+        )
     if not missing:
         print(
-            f"ok: {len(changed)} changed file(s) covered "
+            f"ok: {len(changed) - len(skipped)} judged changed file(s) covered "
             f"(level: {coverage_level})"
         )
         return 0

@@ -3,6 +3,38 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: coverage gate honesty — `changes_unjudged` (gate-soundness ch.1)
+
+<!-- prawduct: chunks=01 | type=fix | scope=gate-soundness -->
+
+**Why:** The F4a producer (`bin/test-reference-verify`) symbol-greps Python only,
+but the F4b consumer (`verify_coverage`) compared the WHOLE branch diff +
+untracked files against `changes_referenced` — so docs, configs, fixtures,
+symbol-less `__init__.py`, and deletions failed the gate by construction.
+scriob hit this three times (learnings `confirmations=3`) and then neutralized
+the gate by unioning the full branch diff into `changes_referenced` (4ca5bd3) —
+an unsatisfiable gate trained the product to make it vacuous.
+
+**What:** The verifier now classifies each changed file: judged (Python with
+≥1 def/class symbol) vs unjudged (non-Python, symbol-less Python, deleted) —
+new evidence field `changes_unjudged`; the filename-stem fallback is dropped
+(noise both directions; contract renegotiated in the open —
+`test_non_python_file_is_unjudged_not_stem_matched`). The gate skips files
+listed unjudged or absent from disk, reporting them in one informational
+stdout line, and still exits 1 with BLOCKING `missing-coverage:` for judged
+Python files no test references — severity language untouched, no
+blocking→warning demotion anywhere. Legacy/product evidence without the field
+keeps the old contract (absent ⇒ empty). First direct test module for the
+F4b gate (`tests/test_verify_coverage_gate.py`), including the adversarial
+"unjudged listing cannot hide a judged gap" case. 1030 pass.
+
+**Blast radius:** `bin/test-reference-verify`, `lib/gates.py`
+(`_EVIDENCE_OPTIONAL_FIELDS`, `verify_coverage`), `bin/prawduct-hook`
+(placeholder record), `tests/test_reference_verifier.py`,
+`tests/test_verify_coverage_gate.py` (new). Critic (chunk mode): 0 blocking,
+1 warning (stale `_looks_like_python` docstring — fixed), 1 note
+(informational line now echoes `coverage_level` — adopted).
+
 ## 2026-06-08: register the missing legacy-backlog-format advisory probe
 
 <!-- prawduct: chunks=01 | type=fix | release=v2.0.17 | status=shipped | scope=legacy-backlog-format-probe -->

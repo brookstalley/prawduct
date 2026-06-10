@@ -6,6 +6,13 @@ Produces the F4a fields of `.test-evidence.json`:
     - `coverage_level`     — always `referenced` (floor)
     - `changes_referenced` — changed files whose symbols appear textually in
                              at least one test file
+    - `changes_unjudged`   — changed files the symbol-grep mechanism cannot
+                             meaningfully judge: non-Python files, Python files
+                             declaring no def/class symbols, and files deleted
+                             in the diff. `verify-coverage` reports these
+                             informationally instead of gating on them — a
+                             gate must never block on a file its evidence
+                             producer structurally cannot vouch for.
     - `tests_executed`     — test files discovered under the tests directory
 
 The mechanism is deliberately naive: extract function/class names from each
@@ -117,9 +124,9 @@ def _looks_like_python(path: Path) -> bool:
     """Detect Python shebang scripts that lack a `.py` suffix.
 
     Catches the common `tools/foo` pattern where the file is Python but its
-    name is a CLI verb. Without this, the verifier would fall back to
-    filename-stem matching for these files — a much weaker floor that misses
-    real `def`/`class` references.
+    name is a CLI verb. Without this, a Python CLI script would be classified
+    `changes_unjudged` and escape the gate entirely, even though its
+    `def`/`class` symbols are perfectly greppable.
     """
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -129,25 +136,29 @@ def _looks_like_python(path: Path) -> bool:
     return first.startswith("#!") and "python" in first
 
 
+def _is_python_file(path: Path) -> bool:
+    """True for `.py` files and python-shebang scripts — the only files the
+    symbol-grep mechanism can judge."""
+    return path.suffix == ".py" or _looks_like_python(path)
+
+
 def _extract_symbols(path: Path) -> set[str]:
-    """Return Python defs/classes declared in `path`.
+    """Return Python defs/classes declared in `path` (a Python file).
 
-    Non-Python files fall back to the filename stem so any test that names
-    the file (e.g. `open('config.yaml')`) still counts as a reference.
-
-    Floor caveat: Python files with no `def`/`class` (re-export-only
-    `__init__.py`, constants-only module) return an empty set, so they
-    can never appear in `changes_referenced` — even if tests legitimately
-    use their constants. Products that care about non-callable surfaces
-    should plug in a stronger verifier.
+    An empty set means the file declares no symbols (re-export-only
+    `__init__.py`, constants-only module) — the caller classifies it as
+    unjudged rather than letting it sit permanently unreferenced. The old
+    filename-stem fallback for non-Python files was dropped with the
+    `changes_unjudged` split: stem matching was noise in both directions
+    (a test mentioning the word "config" vouched for `config.yaml`; a
+    doc rename broke the match), and non-Python files are now honestly
+    reported as outside this verifier's judgment.
     """
-    if path.suffix == ".py" or _looks_like_python(path):
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return set()
-        return set(_PY_SYMBOL_RE.findall(text))
-    return {path.stem} if path.stem else set()
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set()
+    return set(_PY_SYMBOL_RE.findall(text))
 
 
 def _discover_tests(tests_dir: Path) -> list[Path]:
@@ -207,20 +218,33 @@ def _build_evidence_fields(
     test_texts = _read_test_texts(test_files)
 
     referenced: list[str] = []
+    unjudged: list[str] = []
     for f in changed:
         fp = cwd / f
         if not fp.is_file():
-            # File was deleted in the diff — nothing for tests to reference.
+            # Deleted in the diff — nothing on disk to test, nothing to judge.
+            unjudged.append(f)
+            continue
+        if not _is_python_file(fp):
+            # Symbol-grep has no signal for non-Python files.
+            unjudged.append(f)
             continue
         symbols = _extract_symbols(fp)
+        if not symbols:
+            # Symbol-less Python (re-export __init__, constants module).
+            unjudged.append(f)
+            continue
         if _has_reference(test_texts, symbols):
             referenced.append(f)
+        # else: a judged Python file with no test reference — the legitimate
+        # gap `verify-coverage` exists to catch. It stays out of both lists.
 
     return {
         "verifier": VERIFIER_NAME,
         "coverage_level": "referenced",
         "tests_executed": test_file_paths,
         "changes_referenced": referenced,
+        "changes_unjudged": sorted(unjudged),
     }
 
 
