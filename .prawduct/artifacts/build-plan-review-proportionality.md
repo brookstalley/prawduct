@@ -33,9 +33,14 @@ finding rate of every mode. Bundles touching declared risk surfaces get a deeper
 automatically; bundles that don't, don't. No review is skipped that today's rules require —
 every change removes *duplicate* assurance or adds *missing* depth, never loosens severity.
 
-**Out of scope.** (a) Cross-project telemetry aggregation — filed as its own backlog item
-(`/prawduct:backlog`, this session); chunk 03 only guarantees the per-project record schema it
-needs. (b) Adaptive/sampled review depth from telemetry (revisit only WITH telemetry evidence,
+**Out of scope.** (a) Cross-project telemetry aggregation — filed as TEL-7A4X
+(`/prawduct:backlog`, this session); chunk 03 only guarantees the per-project event schema and
+`--json` contract it needs. (a2) Phase-instrumentation event PRODUCERS (`build.chunk`,
+`plan.authored`, `discovery.session` — data requirement 3's wall-clock-per-phase): the
+envelope accommodates them by design, but emitting them honestly needs hook instrumentation
+with real open questions (when does "research" start/end? build time ≠ session time across
+interleaved chunks) — deferred deliberately, not silently; extend TEL-7A4X or file separately
+when chunks 02-03 are live. (b) Adaptive/sampled review depth from telemetry (revisit only WITH telemetry evidence,
 explicitly rejected for now: clean streaks say nothing about builder blind spots). (c) Any
 severity-semantics change (warnings stay effectively blocking). (d) Async/background reviews
 (STH-3W7F territory; separate design). (e) Skipping the PR reviewer (settled: independence is
@@ -52,17 +57,42 @@ side-plan precedent).
 
 ## Requirements Confidence
 
-**Level:** High for chunks 01-03 (every requirement traces to a concretely observed cost this
-week, with the defective rule/file identified); Medium for 04-05 (design decisions below are
-inferences awaiting veto, not confirmed requirements).
+**Level:** High for chunks 01-03; Medium for 04-05 (design decisions below are inferences
+awaiting veto, not confirmed requirements).
+
+**Confidence history (kept deliberately):** ch.02-03 were FIRST marked High while the ledger
+was designed mechanism-first ("append review records") without eliciting what questions the
+data must answer; the user's analytics requirements (2026-06-10) restructured the schema to
+the event envelope. High now means *requirements-elicited* High — the "Ledger data
+requirements" section IS the elicitation. The framework fix (schema-lock-in tripwire) ships
+in ch.01 so the next persisted format starts with the questions.
+
+**Ledger data requirements (user-elicited 2026-06-10 — the questions the data must answer).**
+These are the schema's requirements; fields exist to serve them. v1 implements the recording
+and the review-scoped reporting; the schema must accommodate ALL of them without migration:
+1. Which reviewer model is most efficient per ROLE — builder vs Critic vs PR reviewer
+   (cost/duration vs actionable-finding yield, by model, by role)?
+2. Which areas of the codebase are most risky (findings density per path over time —
+   requires finding-level file attribution, not summary-string parsing)?
+3. Wall clock across PHASES — research / plan / build / review — per FEATURE (requires every
+   event to carry the build-plan `scope` as the feature key, and an envelope that later
+   event kinds — `build.chunk`, `plan.authored`, `discovery.session` — can join without
+   schema change).
+4. Cross-project aggregation (TEL-7A4X): stable per-line `schema_version` + `project`;
+   consumers skip unknown event kinds and unknown fields.
 
 **Open assumptions / unknowns:**
 - [ASSUMPTION: the ledger is ADDITIVE — `.prawduct/.critic-findings.json` stays the canonical
   "latest record" all 19 existing code references keep reading; the Critic additionally
-  appends each record as one line to `.prawduct/.critic-reviews.jsonl`; only the PR gate
-  learns to scan the ledger. Rationale: relocating the record would churn lib/gates.py,
+  appends one EVENT line to `.prawduct/.governance-ledger.jsonl`; only the PR gate learns to
+  scan the ledger. Rationale: relocating the record would churn lib/gates.py,
   critic_mode.py, core.py, briefing.py, the hook, 4 skills, and ~10 test files for zero
   soundness gain | HIGH impact | user can override]
+- [ASSUMPTION: envelope/payload split — every event shares
+  `{schema_version, event, ts, duration_seconds, project, scope, chunk, actor:{role,model},
+  git:{head,base}}`; the event-kind payload (`review: {...}` for v1) nests beneath.
+  Aggregators key on the envelope without understanding every payload; v1 emits ONLY
+  `review.critic` and `review.pr` events | HIGH impact | user can override]
 - [ASSUMPTION: ledger-fallback applies ONLY to `check-cumulative-critic`: when the latest
   findings file doesn't qualify (wrong mode), the gate scans the ledger newest-first for a
   cumulative/chain record and evaluates it under ALL existing checks (commit coverage, chain
@@ -96,11 +126,15 @@ ordering below deliberately enables that, but does not require it.
 - [ ] Chunk 03: Review telemetry — `prawduct-hook review-stats`
 - [ ] Chunk 04: Risk-surface reviewer escalation
 - [ ] Chunk 05: PR-reviewer scoping — consume the record, audit it, review the release
-Context: PLAN AUTHORED 2026-06-10 (designed from the post-CRT-4J8W proportionality
-assessment; user approved all five + requested the cross-project-telemetry backlog item).
-NOT STARTED. Prerequisite: merge feature/gate-soundness → develop, then branch
-feature/review-proportionality. Session plan: S1 = ch.01+02 → /clear; S2 = ch.03+04 →
-/clear; S3 = ch.05 + ONE cumulative (which IS ch.05's review, per the rule ch.01 ships) + PR.
+Context: PLAN AUTHORED 2026-06-10, REVISED same day after user requirements-elicitation for
+the ledger (event-envelope schema, structural ledger-append writer, finding-level file
+attribution, PR-review events; see "Ledger data requirements" + Confidence history) and a
+pause-and-review the user requested (which surfaced the structural writer + side-plan scope
+attribution). NOT STARTED. Prerequisite: merge feature/gate-soundness → develop, then branch
+feature/review-proportionality. PR strategy (user-confirmed direction pending): PR-1 after
+S1 (ch.01+02 — keystone reviewed in the smallest bundle), PR-2 after S3 (ch.03-05).
+Session plan: S1 = ch.01+02 → PR-1 → /clear; S2 = ch.03+04 → /clear; S3 = ch.05 + ONE
+cumulative (which IS ch.05's review, per the rule ch.01 ships) + PR-2.
 
 ## Chunks
 
@@ -120,6 +154,14 @@ cumulative` once; no separate `final`.
   `cumulative-final` description; drop "in addition to the chunk's own `final` review".
 - `methodology/building.md`: one-line touch where `cumulative-final` semantics are implied
   (token budget <4850 — displace, don't stack).
+- **Schema-lock-in tripwire** (framework fix from this plan's own near-miss, 2026-06-10):
+  `methodology/building.md` "Decision Research" + `methodology/planning.md` — one sentence
+  each: *a persisted format/schema is ALWAYS a lock-in decision regardless of implementation
+  size (reversal cost, not LOC); a chunk introducing one must enumerate the questions the
+  data must answer — its consumers' future queries are its requirements — before designing
+  fields.* Root cause it fixes: this plan's ch.02 was first designed mechanism-first
+  ("append review records") with High confidence; the user's analytics questions then
+  restructured the schema (event envelope). Budgets apply — displace, don't stack.
 - Enforcement check: confirm the stop-hook's "all chunks `[x]` but last review ran Goals 1-3
   only" advisory accepts a cumulative record (it should by construction — pin it with a test
   in `tests/test_critic_gate_fallthrough.py` or the hook-gate tests if no pin exists).
@@ -135,35 +177,54 @@ cumulative` once; no separate `final`.
   2. `/prawduct:critic` (inference: `chunk` mid-plan) run; blocking findings resolved.
   3. Committed; tagged change-log entry (`chunks=01 | scope=review-proportionality`).
 
-### Chunk 02: Findings ledger — append-only history + PR-gate ledger fallback
+### Chunk 02: Governance-event ledger — append-only history + PR-gate ledger fallback
 
 The single-slot findings file forces a choice between reviewing new work and preserving the
-PR-gate record (observed twice on 2026-06-10). Additive design (see Open assumptions —
-HIGH-impact assumption #1):
+PR-gate record (observed twice on 2026-06-10) — and review history is unmeasurable because
+each record overwrites the last. The ledger is a **governance-event** ledger shaped by the
+"Ledger data requirements" above (NOT a review-findings dump): envelope/payload split,
+`.prawduct/.governance-ledger.jsonl`, one event per line. v1 emits `review.critic` events
+only (`review.pr` arrives in ch.05; build/plan/discovery event kinds are accommodated by the
+envelope and explicitly NOT built — see Out of scope).
 
-- **Producer** (`skills/critic/SKILL.md` step 7 + `review-protocol.md` Output Format): after
-  writing `.critic-findings.json`, append the SAME record as one line to
-  `.prawduct/.critic-reviews.jsonl`. Records gain `model` (the reviewer model actually used)
-  and `schema_version: 1`. Protocol budget <3120 — plan the displacement before writing.
-- **Schema** (`lib/gates.py::validate_critic_findings`): `model`/`schema_version` optional,
-  validated-when-present (the established optional-field pattern).
+- **Structural writer** (`bin/prawduct-hook ledger-append`): the agent never hand-authors
+  JSONL. The Critic runs `prawduct-hook ledger-append --event review.critic
+  [--scope <scope>] [--chunk <id>] [--model <id>]`; the helper reads the just-written
+  `.critic-findings.json`, validates it, computes the envelope itself (`ts`, `project` =
+  repo dirname, `git.head`/`git.base`, `schema_version: 1`), nests the record as the
+  `review` payload, and appends one line (single `O_APPEND` write). `--scope` is passed
+  EXPLICITLY by the reviewer from the plan it reviewed against — `active_build_plan` is only
+  the fallback, because side-plans (this very plan, pre-repoint) would otherwise
+  mis-attribute the feature key. `duration_seconds` and `actor.model` come from the findings
+  record / `--model`; both nullable — never invented.
+- **Producer prose** (`skills/critic/SKILL.md` step 7 + `review-protocol.md` Output Format):
+  one added instruction — run `ledger-append` after writing findings. Records gain `model`
+  in the findings file too (the reviewer knows what it ran as). Findings entries gain an
+  optional structured `files` list (which files each finding is about) — data requirement 2
+  (risky areas) needs attribution, not summary-string parsing. Protocol budget <3120 — plan
+  the displacement before writing.
+- **Schema** (`lib/gates.py::validate_critic_findings`): `model` optional at record level,
+  `files` optional list-of-str per finding, validated-when-present (the established
+  optional-field pattern). Envelope validation lives in `ledger-append` (the single writer).
 - **PR-gate fallback** (`lib/gates.py::check_cumulative_critic`): when the latest record's
-  mode is neither cumulative nor a chained verify-resolutions, scan `.critic-reviews.jsonl`
-  newest-first for the first cumulative/chain record and evaluate THAT under the existing
-  checks unchanged (commit coverage, chain scope ⊆, 0 blocking). Unparseable ledger lines are
-  skipped with a stderr note, never crash the gate; no qualifying record → today's failure
-  messages. This dissolves the deferred-review problem: a chunk review after the cumulative
-  no longer destroys the PR gate's evidence.
-- **Hygiene**: ledger is gitignored alongside `.critic-findings.json` (confirm the
-  `init-product`/`update_gitignore` entry set covers `.critic-reviews.jsonl`; add if not);
-  `docs/project-structure.md` + `skills/critic/review-cycle.md` "Recording Reviews" mention
-  the ledger; size is unbounded-but-tiny (one JSON line per review) — note a future-prune
-  escape hatch in prose, build nothing.
-- **Tests**: append-on-review (record equality with the latest file), gate-fallback accept
-  (latest=chunk record, ledger holds qualifying cumulative@HEAD → exit 0), fallback honesty
-  (ledger cumulative stale over code → exit 1 with today's message), corrupt-line tolerance,
-  schema accepts/rejects `model`/`schema_version` shapes. Real-git fixtures per
-  `tests/test_cumulative_gate.py` conventions (HOME outside repo — pyc-cache learning).
+  mode is neither cumulative nor a chained verify-resolutions, scan the ledger newest-first
+  for the first `review.critic` event whose payload qualifies and evaluate THAT under the
+  existing checks unchanged (commit coverage, chain scope ⊆, 0 blocking). Unparseable lines
+  are skipped with a stderr note, never crash the gate; no qualifying event → today's
+  failure messages. This dissolves the deferred-review problem: a chunk review after the
+  cumulative no longer destroys the PR gate's evidence.
+- **Hygiene**: ledger gitignored alongside `.critic-findings.json` (confirm the
+  `init-product`/`update_gitignore` entry set covers `.governance-ledger.jsonl`; add if
+  not); `docs/project-structure.md` + `skills/critic/review-cycle.md` "Recording Reviews"
+  document the event shape; size is unbounded-but-tiny (one line per event) — note a
+  future-prune escape hatch in prose, build nothing.
+- **Tests**: `ledger-append` envelope correctness (event/ts/project/git/scope fallback
+  order, nullable duration/model), append-after-review payload equality with the latest
+  file, gate-fallback accept (latest=chunk record, ledger holds qualifying cumulative@HEAD →
+  exit 0), fallback honesty (ledger cumulative stale over code → exit 1 with today's
+  message), corrupt-line tolerance, schema accepts/rejects `model`/`files` shapes. Real-git
+  fixtures per `tests/test_cumulative_gate.py` conventions (HOME outside repo — pyc-cache
+  learning).
 
 - **Type:** code
 - **Critic mode:** final
@@ -180,14 +241,18 @@ HIGH-impact assumption #1):
 Visible Costs applied to the framework: aggregate the ledger so proportionality arguments
 become evidence. New subcommand `prawduct-hook review-stats [--json]`:
 
-- Reads `.prawduct/.critic-reviews.jsonl`; tolerates missing file (exit 0, "no review
-  history") and skips corrupt lines with a count.
-- Reports per mode (and overall): review count, total/median `duration_seconds`, findings by
-  severity, **actionable rate** (% of reviews with ≥1 blocking/warning), findings-per-review,
-  by `model` when present. Human table on stdout; `--json` emits a stable machine shape
-  (top-level `schema_version`, `project` = repo dirname, `generated_at`) — this JSON is the
-  contract the cross-project aggregation backlog item builds on; document it in
-  `docs/` (new `docs/review-telemetry.md`, small).
+- Reads `.prawduct/.governance-ledger.jsonl`; tolerates missing file (exit 0, "no review
+  history"), skips corrupt lines and UNKNOWN event kinds with a count (forward-compat:
+  v1 reports on `review.*` events only).
+- Reports per `actor.role` × `actor.model` × review mode (and overall): event count,
+  total/median `duration_seconds`, findings by severity, **actionable rate** (% of reviews
+  with ≥1 blocking/warning), findings-per-review — data requirement 1. Plus a
+  findings-by-file rollup from finding-level `files` (top-N paths by actionable findings) —
+  data requirement 2's first cut. Per-`scope` rollups group everything by feature — the seam
+  data requirement 3's phase events will join later. Human table on stdout; `--json` emits a
+  stable machine shape (top-level `schema_version`, `project`, `generated_at`) — the
+  contract TEL-7A4X builds on; document the event schema + report shape in a new
+  `docs/governance-telemetry.md` (small).
 - Surfacing: `/prawduct:janitor` gains a one-line pointer (run `review-stats` during
   maintenance); no automatic nagging — telemetry is pulled, not pushed.
 - **Tests**: aggregation math against a synthetic ledger (mixed modes/severities/models),
@@ -246,8 +311,10 @@ The PR reviewer keeps its independence and loses its duplication. Rewrite
   honesty (still walks the diff for THIS), version/changelog coherence, branch hygiene,
   migration/rollback notes, the "would a maintainer merge this" judgment.
 - **Output contract unchanged** (severities, `.prawduct/.pr-reviews/` evidence), plus a
-  `record_consumed`/`spot_checks` note so telemetry can later distinguish scoped from full
-  runs.
+  `record_consumed`/`spot_checks` note so telemetry distinguishes scoped from full runs.
+- **Ledger event**: the PR reviewer (or the `/prawduct:pr` skill on its behalf) runs
+  `prawduct-hook ledger-append --event review.pr ...` so role-vs-role model-efficiency
+  comparisons (data requirement 1) have both review roles in the data from day one.
 - **Tests**: protocol-structure pins (audit duty present, void-fallback present), pr-skill
   step-3 dispatch prose pin (`tests/test_pr_reviewer.py` conventions).
 
