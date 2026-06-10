@@ -9,7 +9,7 @@ Three review layers are explicitly distinct (table at the end): the per-chunk Cr
 1. Read `.prawduct/project-state.yaml` for context (current work description, work size/type).
 2. Resolve the base branch with `prawduct-hook resolve-base` (it honors a configured `base_branch:` in `project-state.yaml`, falling back to `main`; the **same base the PR/coverage gates use**, so the reviewer and gates never diff different ranges). Then read the full diff from that base: `git diff <base>...HEAD`. Record it as `base` in your evidence.
 3. Read the commit log: `git log --oneline <base>..HEAD`
-4. **Locate the gate-qualifying Critic record** — your code-soundness input. The caller names its source; if it didn't, resolve it the same way the PR gate does: `.prawduct/.critic-findings.json` when its `mode` is `cumulative` (or `verify-resolutions` carrying an `extends_cumulative` anchor); otherwise the newest `review.critic` event in `.prawduct/.governance-ledger.jsonl` whose `review` payload qualifies.
+4. **Locate the gate-qualifying Critic record** — your code-soundness input. The caller names its source; if it didn't, resolve it the same way the PR gate does: `.prawduct/.critic-findings.json` when its `mode` is `cumulative` (or `verify-resolutions` carrying an `extends_cumulative` anchor); otherwise the newest `review.critic` event in `.prawduct/.governance-ledger.jsonl` whose `review` payload qualifies and whose envelope `ts` is `>= .prawduct/.session-start` (older events never satisfy the gate — CRT-8W3F).
 5. Read relevant artifacts in `.prawduct/artifacts/` (especially any spec or build plan for the current work).
 6. Read `.prawduct/learnings.md` for project-specific patterns.
 7. Review against the goals below.

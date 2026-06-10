@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: PR-gate ledger fallback requires same-session freshness (CRT-8W3F)
+
+<!-- prawduct: chunks=01 | type=fix | scope=do-next -->
+
+**Why:** `check_cumulative_critic`'s ledger fallback accepted the newest
+kind-qualifying `review.critic` event with only commit-coverage — no freshness
+bound. The findings file is a single overwritten slot, but the ledger keeps
+every review forever, so a days-old cumulative from prior work could satisfy
+the PR gate whenever only `.md` changed since (gate-soundness hole, flagged by
+the 2026-06-10 governance audit of the v2.1.0 chain-gate code).
+
+**What:** `_ledger_fallback_record` (lib/gates.py) now accepts a qualifying
+event only when its envelope `ts >= .prawduct/.session-start` (the
+`tests_are_current` ISO-string model, via a shared `_read_session_start`
+helper). Fail closed: missing/unreadable marker or a ts-less qualifying event
+yields no fallback — the gate's honest wrong-mode / chain-missing-anchor
+message stands, and each skip is taught on stderr. Contract renegotiation in
+the open: fallback-accept tests now declare a `.session-start` marker; new
+`TestGateLedgerFallbackFreshness` pins the reject family. Prose surfaces
+(`skills/pr/review-protocol.md` step 4, `skills/critic/review-cycle.md` ledger
+section) state the bound.
+
 ## 2026-06-10: change-log lifecycle hardening — close the silent-drop family
 
 <!-- prawduct: chunks=01,02,03 | type=fix | release=v2.1.1 | status=shipped | scope=changelog-lifecycle -->
