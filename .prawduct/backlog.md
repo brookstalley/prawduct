@@ -8,6 +8,23 @@
 ## Open
 
 
+- **[TEL-7A4X]** Cross-project review-telemetry aggregation — aggregate and review review-cost/value stats across all Prawduct-governed products
+  `effort: M · impact: L · area: governance/telemetry · source: user · added: 2026-06-10 · status: open · stage: requirements · refs: build-plan-review-proportionality.md`
+
+  Builds on the per-project foundation in `build-plan-review-proportionality.md` (chunk 02 ledger
+  `.prawduct/.critic-reviews.jsonl` with schema_version/model fields; chunk 03 `prawduct-hook
+  review-stats --json` stable machine shape with top-level schema_version/project/generated_at —
+  that JSON contract is the integration point). Fix-shape sketch (requirements still open): an
+  aggregator that scans known product directories (the same discovery the "reviewing product
+  feedback" CLAUDE.md route uses for learnings.md), collects each repo's `review-stats --json`, and
+  renders a cross-project view: review wall-clock and actionable-finding rate by mode/model/project,
+  so proportionality tuning (e.g. which products' chunk reviews yield nothing, where escalation
+  pays) is evidence-driven framework-wide. Open requirements: where the aggregate view lives (skill
+  vs doc vs janitor section), product opt-in/privacy posture (ledgers are gitignored local state),
+  and whether product plugin versions skew comparability. **Blocked until review-proportionality
+  chunks 02–03 ship.** User request 2026-06-10 ("grab a backlog to enable telemetry aggregation and
+  review across projects"). (user)
+
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end)`
 
