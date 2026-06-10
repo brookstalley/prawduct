@@ -155,6 +155,11 @@ release-spanning artifact — not session state.
 - Remove the entry from this repo's own `.gitignore`.
 - Prose touchpoints: `methodology/planning.md` "Where Artifacts Live" (plans are tracked) only
   if it currently implies otherwise; scriob-shaped repos heal on next `doctor` run.
+  **Deviation (declared at build, Critic ch.3):** "heal on next doctor run" required a new thin
+  `prawduct-hook update-gitignore` subcommand — `init-product` early-exits on already-scaffolded
+  repos, and session hooks must never edit a tracked file (the no-noise guarantee), so on-demand
+  repair was the only sound delivery path. Doctor health-check 8 + onboard step 4 surface the
+  `unignored` advice; `init_product.run` prints it in both text and `--json` modes.
 
 - **Type:** code
 - **Done when:**

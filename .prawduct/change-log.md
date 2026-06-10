@@ -3,6 +3,41 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: build plans are tracked artifacts (gate-soundness ch.3)
+
+<!-- prawduct: chunks=03 | type=fix | scope=gate-soundness -->
+
+**Why:** The framework gitignored `.prawduct/artifacts/build-plan.md`
+(`GITIGNORE_ENTRIES`) while tracked `project-state.yaml` pointed
+`active_build_plan:` at it and `/prawduct:pr` step 7 retains the plan through
+a gitflow release-pending window — so every multi-clone repo carried a tracked
+pointer to a file the other clones don't have (scriob PR #43: broken
+verify-chunk-refs + views error, invisible locally). Worse,
+`_untrack_session_files` force-`git rm --cached`'d a tracked plan at every
+session start, actively reverting the product's fix. A build plan is a
+durable, multi-session, release-spanning artifact — not session state; the
+ignore default also made resumed sessions blind to committed decompositions
+(scriob's "plan invisible to git status" learning).
+
+**What:** Entry removed from both `GITIGNORE_ENTRIES` and the hook's
+`_SESSION_GITIGNORED_PATHS` (mirror-parity test pins them together); new
+`RETIRED_GITIGNORE_ENTRIES` list that `update_gitignore` strips from existing
+repos, reported via `unignored` and plumbed through `init_product` (text +
+json output) so onboard advises `git add`. Declared deviation: a new thin
+`prawduct-hook update-gitignore` subcommand is the doctor repair path
+(init-product early-exits on onboarded repos; session hooks must never edit a
+tracked file). Doctor health-check 8 covers the gitignore contract; doctor's
+F4 wording aligned with ch.1. This repo's own `.gitignore` line removed.
+First behavioral tests for `update_gitignore` (previously untested guard).
+1047 pass.
+
+**Blast radius:** `lib/core.py`, `lib/init_product.py`, `bin/prawduct-hook`,
+`.gitignore`, `skills/doctor/SKILL.md`, `skills/onboard/SKILL.md`,
+`tests/test_gitignore_management.py` (new). Critic (chunk ×2): 0 blocking;
+ch.3-pass-1 warning (unignored report had no consumer) and pass-2 warning
+(onboard text-mode never printed it) both fixed; note (declare the subcommand
+deviation in the plan) adopted.
+
 ## 2026-06-10: test-evidence configurability — `test_command:` + `tests_dirs:` (gate-soundness ch.2)
 
 <!-- prawduct: chunks=02 | type=feature | scope=gate-soundness -->

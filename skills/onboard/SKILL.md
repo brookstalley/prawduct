@@ -21,7 +21,7 @@ Onboarding under the plugin model is plugin-native — there is no file-sync set
 1. Confirm the target directory with the user (it should be a git repo).
 2. **Dry-run** the scaffold and present the plan: `prawduct-hook init-product <target> --name "<Product Name>" --json` (no `--apply`). Surface that it creates only product-owned state + the install reference.
 3. **Confirm**, then apply: `prawduct-hook init-product <target> --name "<Product Name>" --apply`.
-4. Tell the user to commit the result.
+4. Tell the user to commit the result. If the result's `unignored` list is non-empty (stale ignore lines stripped — e.g. a gitignored build plan, now a tracked artifact), name those paths and advise `git add` on any that exist on disk.
 
 ### B. Existing pre-2.0 file-sync repo (committed `tools/product-hook`, framework `.claude/skills/`, `.prawduct/sync-manifest.json`) → **migrate it**
 
