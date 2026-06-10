@@ -490,6 +490,10 @@ views_enabled: true
 # flipped all four plans' ## Status checkboxes via their scope= change-log tags
 # (REL-4T8N batched pass) and the pointer is cleared again — no release-pending
 # plans remain. All four build-plan files are retained as historical artifacts.
+# 2026-06-10: repointed at the in-progress do-next plan (CRT-8W3F + STH-5P2W +
+# MET-6W3J, branch feature/do-next).
+
+active_build_plan: artifacts/build-plan-do-next.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
