@@ -141,6 +141,8 @@ Also read `project-preferences.md` (if present in `.prawduct/artifacts/`) to und
 
 **Framework health pre-check.** Confirm the plugin runtime is reachable — `${CLAUDE_PLUGIN_ROOT}` is set and `${CLAUDE_PLUGIN_ROOT}/templates/` is readable. The plugin ships templates read-only; there is no per-product sync manifest. If the plugin root or its templates are unreachable, the janitor is running outside the plugin runtime — advise checking the plugin install (and `/prawduct:doctor`) before relying on Template Currency checks.
 
+Run `prawduct-hook review-stats` for the project's review cost / actionable-finding history (`docs/governance-telemetry.md`) — findings-dense paths and low-yield review tiers are maintenance signals.
+
 This context shapes how you interpret every theme. "Structural clarity" means something different for a 500-line CLI tool than for a multi-service platform. "Controllability" means something different for firmware with a hardware simulator than for a web app with a dev server.
 
 ### Step 2: Survey

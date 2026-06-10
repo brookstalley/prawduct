@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: review telemetry — `prawduct-hook review-stats`
+
+<!-- prawduct: chunks=03 | type=feature | scope=review-proportionality -->
+
+**Why:** The ledger (ch.02) records review history but nothing aggregates it —
+"is review worth it" stays a vibe. Visible Costs (Principle 9) applied to the
+framework: proportionality arguments need cost and actionable-finding-yield
+numbers, per reviewer role × model × mode (data requirement 1), per code path
+(requirement 2), per feature scope (requirement 3's join seam).
+
+**What:** New subcommand `prawduct-hook review-stats [--json]` (new
+`lib/telemetry.py`; thin hook wrapper per the established lazy-import
+pattern). Reads `.prawduct/.governance-ledger.jsonl` oldest-first; reports on
+`review.*` events only, skipping corrupt lines / unknown event kinds (a
+future `build.chunk` producer) / unusable payloads each WITH A COUNT, never
+silently. Missing ledger → "no review history", exit 0 (an answer, not an
+error); exit 1 only on bad args. Per grouping (overall, role×model×mode,
+per-scope): review count, total/median duration, findings by severity
+(blocking/warning/note + `other` so unexpected severities stay visible),
+actionable rate (share of reviews with ≥1 blocking/warning),
+findings-per-review. Findings-by-file rollup from per-finding `files`
+attribution — top 10 by actionable findings, with `files_attributed_total`
+alongside so the cap is visible. `--json` emits the stable machine shape
+(top-level `schema_version`/`project`/`generated_at`) that TEL-7A4X builds
+on; keys pinned by tests so a change must consciously bump
+REPORT_SCHEMA_VERSION. The reader deliberately does NOT reuse
+`ledger.iter_events_newest_first` (different contract: quiet counts vs the
+gate's newest-first stderr notes). Surfacing: one orient-step pointer in
+`/prawduct:janitor` — telemetry is pulled, not pushed. Documented in new
+`docs/governance-telemetry.md` (event schema + report contract). Dogfood:
+runs clean on this repo's real 2-event ledger — the first genuine
+cost/actionable-rate numbers.
+
+**Blast radius:** New: `lib/telemetry.py`, `tests/test_review_stats.py`
+(12 tests), `docs/governance-telemetry.md`. Modified: `bin/prawduct-hook`
+(wrapper + dispatch + usage), `skills/janitor/SKILL.md` (one line). 1137
+total.
+
 ## 2026-06-10: governance-event ledger — append-only review history + PR-gate fallback
 
 <!-- prawduct: chunks=02 | type=feature | scope=review-proportionality -->
