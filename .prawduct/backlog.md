@@ -8,6 +8,17 @@
 ## Open
 
 
+- **[VWS-4D8J]** regen-views silently honors only the FIRST `<!-- prawduct: ... -->` tag line when an entry section carries several
+  `effort: S · impact: M · area: governance/views · source: reflection · added: 2026-06-10 · status: open · stage: ready · related: REL-2N8K, VWS-3K7P · refs: lib/views.py, .prawduct/change-log.md`
+
+  Observed live at the v2.1.0 release (2026-06-10): the reviewer-model-tiering change-log entry had
+  two `<!-- prawduct: ... -->` tag lines under one `##` header (chunks=01 and chunks=02);
+  regen-views flipped only chunk 01 and the only signal was the per-scope rollup count printing
+  "1 chunk(s)". Same silent-drop family as REL-2N8K (statusless entries) and the shipped VWS-3K7P
+  (status-value typos). Fix-shape: lib/views.py warns on stderr when an entry section contains more
+  than one prawduct: tag comment (suggesting a merged chunks= list), or unions the chunk lists.
+  (reflection)
+
 - **[TEL-7A4X]** Cross-project review-telemetry aggregation — aggregate and review review-cost/value stats across all Prawduct-governed products
   `effort: M · impact: L · area: governance/telemetry · source: user · added: 2026-06-10 · status: open · stage: requirements · refs: build-plan-review-proportionality.md`
 
