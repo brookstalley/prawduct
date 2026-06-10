@@ -14,6 +14,11 @@ product_identity:
 # by the legacy-backlog-format post-sync advisory probe.
 backlog_format_version: 2
 
+# Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
+# Timestamp, not a count — counts are always re-derived (D14). Resolves the
+# backlog-overdue-grooming advisory.
+backlog_last_groomed_at: 2026-06-10
+
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
 # own plugin. Governance runs via the plugin (`bin/`, `lib/`, `skills/`,
