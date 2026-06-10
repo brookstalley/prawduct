@@ -8,26 +8,6 @@
 ## Open
 
 
-- **[REL-9F2T]** Change-log lifecycle hardening — close the silent-drop family (statusless entries, missing entries, multi-tag entries, orphaned scopes)
-  `effort: M · impact: L · area: governance/change-log · source: reflection · added: 2026-06-10 · status: open · stage: ready · closes: REL-2N8K, REL-6C3W, VWS-4D8J · related: VWS-3K7P, REL-4T8N, CRT-7B4M · refs: lib/views.py, skills/pr/SKILL.md, docs/release-process.md · reviewed: 2026-06-10`
-
-  The change-log state machine (statusless → merged → shipped) is broken at three transitions, all
-  silent, all observed live: (a) the /prawduct:pr merge flow is documented to stamp `status=merged`
-  but never does, so most entries reach release-prep statusless, and docs/release-process.md step 3
-  literally says flip "`status=merged`" → statusless entries silently dropped (v2.0.14: 8 of 10)
-  [REL-2N8K]; (b) a code-changing branch can merge with NO entry at all and nothing flags it
-  (CRT-7B4M/#82, reconstructed at the v2.0.16 release) [REL-6C3W]; (c) lib/views.py
-  parse_change_log stops at the FIRST `prawduct:` tag line per entry section, silently dropping
-  later ones (v2.1.0 live: the reviewer-model-tiering chunks=02 tag nearly shipped unflipped)
-  [VWS-4D8J]; (d) NEW from the 2026-06-10 audit: diagnose_scope_plan_coverage validates the
-  scope=→plan mapping only for `status=merged` entries, so a statusless entry with a bad `scope=`
-  is undetected until release. Fix as one scope: stamp `status=merged` in the /prawduct:pr merge
-  step + reword release-process step 3 to "every unreleased entry, statusless OR merged"; add a
-  release-prep/merge probe for code-changing diffs with no new entry; warn (or union) on multiple
-  tag lines per entry; extend scope validation to statusless entries. Priority: do-next — this is
-  the top release-integrity hole. Merged 2026-06-10 from REL-2N8K + REL-6C3W + VWS-4D8J; the three
-  original bodies are preserved verbatim on the archived items. (reflection)
-
 - **[CRT-8W3F]** PR-gate ledger fallback accepts an arbitrarily old cumulative — no freshness/session check
   `effort: S · impact: M · area: governance/gates · source: critic · added: 2026-06-10 · status: open · stage: ready · related: CRT-4J8W, CRT-7M2D · refs: lib/gates.py (_ledger_fallback_record ~L1094-1121) · reviewed: 2026-06-10`
 
@@ -530,6 +510,31 @@
   handling. (builder)
 
 ## Promoted
+
+- **[REL-9F2T]** Change-log lifecycle hardening — close the silent-drop family (statusless entries, missing entries, multi-tag entries, orphaned scopes)
+  `effort: M · impact: L · area: governance/change-log · source: reflection · added: 2026-06-10 · status: promoted · stage: ready · closes: REL-2N8K, REL-6C3W, VWS-4D8J · related: VWS-3K7P, REL-4T8N, CRT-7B4M · refs: lib/views.py, skills/pr/SKILL.md, docs/release-process.md, .prawduct/artifacts/build-plan-changelog-lifecycle.md · reviewed: 2026-06-10`
+
+  The change-log state machine (statusless → merged → shipped) is broken at three transitions, all
+  silent, all observed live: (a) the /prawduct:pr merge flow is documented to stamp `status=merged`
+  but never does, so most entries reach release-prep statusless, and docs/release-process.md step 3
+  literally says flip "`status=merged`" → statusless entries silently dropped (v2.0.14: 8 of 10)
+  [REL-2N8K]; (b) a code-changing branch can merge with NO entry at all and nothing flags it
+  (CRT-7B4M/#82, reconstructed at the v2.0.16 release) [REL-6C3W]; (c) lib/views.py
+  parse_change_log stops at the FIRST `prawduct:` tag line per entry section, silently dropping
+  later ones (v2.1.0 live: the reviewer-model-tiering chunks=02 tag nearly shipped unflipped)
+  [VWS-4D8J]; (d) NEW from the 2026-06-10 audit: diagnose_scope_plan_coverage validates the
+  scope=→plan mapping only for `status=merged` entries, so a statusless entry with a bad `scope=`
+  is undetected until release. Fix as one scope: stamp `status=merged` in the /prawduct:pr merge
+  step + reword release-process step 3 to "every unreleased entry, statusless OR merged"; add a
+  release-prep/merge probe for code-changing diffs with no new entry; warn (or union) on multiple
+  tag lines per entry; extend scope validation to statusless entries. Priority: do-next — this is
+  the top release-integrity hole. Merged 2026-06-10 from REL-2N8K + REL-6C3W + VWS-4D8J; the three
+  original bodies are preserved verbatim on the archived items. (reflection)
+
+  Promoted 2026-06-10 — build plan authored at
+  .prawduct/artifacts/build-plan-changelog-lifecycle.md (3 chunks: multi-tag-line union+warning,
+  stamp-merged + statusless scope validation, missing-entry probe at PR create); branch
+  feature/changelog-lifecycle.
 
 ## Archive
 

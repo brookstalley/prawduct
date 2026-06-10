@@ -63,11 +63,16 @@ When `develop` is ready to release as `vX.Y.Z`:
 1. **Merge `develop` → `main`.**
 2. **Bump the version** in `.claude-plugin/plugin.json` `version` **and** the `VERSION` file
    (they mirror each other). This is the release trigger — without it, nothing ships.
-3. **Flip the change-log entries** for the shipped work from `status=merged` to
-   `status=shipped`, and add the `release=vX.Y.Z` and `scope=vX.Y.Z` tags to the entry's
-   tag line:
+3. **Flip the change-log entries** for the shipped work to `status=shipped` — **every
+   unreleased entry, statusless OR `status=merged`**, not just the `merged` ones. The
+   `/prawduct:pr` merge flow stamps `status=merged` (step 6, `prawduct-hook stamp-merged`),
+   but a missed stamp leaves an entry statusless, and a statusless entry silently skipped
+   here never flips its checkboxes and never reaches release notes (v2.0.14 shipped 8 of 10
+   entries that way — REL-2N8K). Enumerate ALL tagged entries above the prior `release=vX`
+   boundary; also add the `release=vX.Y.Z` tag (the `scope=` tag normally already exists
+   from the build):
    ```
-   <!-- prawduct: chunks=01,02,… | release=vX.Y.Z | status=shipped | scope=vX.Y.Z -->
+   <!-- prawduct: chunks=01,02,… | release=vX.Y.Z | status=shipped | scope=<plan-scope> -->
    ```
 4. **Regenerate derived views:** `prawduct-hook regen-views`. With `views_enabled`, the build
    plans' `## Status` checkboxes, release notes, and `scope_rollups` are a *derived view* of
@@ -89,21 +94,25 @@ When `develop` is ready to release as `vX.Y.Z`:
 Two values are meaningful to the release flow:
 
 - **`status=merged`** — the work is merged to `develop` but **not yet in a tagged release**
-  (release-pending). `regen-views` does **not** flip checkboxes for `merged` entries, so the
+  (release-pending). The `/prawduct:pr` merge flow applies this stamp mechanically
+  (merge-flow step 6 runs `prawduct-hook stamp-merged` on the integration branch); a
+  **statusless tagged entry on the integration branch therefore means the stamp was
+  missed**, not that the work is unmerged — step 3 flips it to `shipped` all the same, and
+  `regen-views` warns when such an entry's `scope=` resolves to no plan file.
+  `regen-views` does **not** flip checkboxes for `merged` entries, so the
   build plan's `## Status` stays `[ ]` and the `active_build_plan` pointer is retained until the
   release (see "KEEP the build plan" in `learnings.md` and the `active_build_plan` note in
   `project-state.yaml`). This is the develop-phase intermediate that step 3 flips to `shipped`.
   The `/prawduct:pr` merge flow honors this: a feature→`develop` merge **retains** the plan and
-  pointer (merge-flow step 7), while a merge whose base is the release surface deletes them.
+  pointer (merge-flow step 8), while a merge whose base is the release surface deletes them.
 - **`status=shipped`** — the work is in a tagged release. This is the **only** value that
   `regen-views` flips to `[x]` (in `## Status`, release notes, and `scope_rollups`).
 
-Any other `status=` value (including a typo) is currently treated like "not shipped" — the entry
-is silently ignored by the derived views with no warning. Authors editing tag lines by hand should
-double-check the spelling; a misspelled `status=shipped` will never flip its checkboxes. (The
-`lib/views.py` docstring's legacy `in-progress`/`deferred` names predate the `merged` convention
-and are not emitted today; reconciling the docstring + adding a typo-guard warning is tracked in
-the backlog.)
+Any other `status=` value (including a typo) is treated like "not shipped" — the entry never
+flips its checkboxes — but `regen-views` surfaces it as a stderr WARNING (the VWS-3K7P
+typo-guard), alongside warnings for entries with multiple tag lines (unioned, VWS-4D8J) and for
+unreleased entries whose `scope=` resolves to no plan file. Treat any `regen-views` WARNING at
+release time as a release-process error to fix before tagging.
 
 ## Step 1 mechanics — promoting when `develop` and `main` have diverged
 

@@ -183,6 +183,100 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     return True, f"doc-only: {len(files)} file(s) in {base}...HEAD all .md"
 
 
+_CHANGE_LOG_REL_PATH = ".prawduct/change-log.md"
+
+
+def check_change_log_entry(project_dir: Path) -> int:
+    """PR-boundary probe: a code-changing branch must add a change-log entry.
+
+    A branch whose ``merge-base...HEAD`` diff touches any non-``.md`` file is
+    code-changing work that the release flow can only ship if a change-log
+    entry exists for it — historically nothing checked this, so a branch could
+    merge with NO entry and the gap surfaced only at release reconstruction
+    (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16 release). The
+    `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs on failure.
+
+    Exit 0 when:
+      * the diff is empty or all-``.md`` (doc-only work needs no entry), or
+      * a non-``.md`` diff includes ``.prawduct/change-log.md`` AND that diff
+        ADDS at least one entry header (a ``+## `` line) — merely editing an
+        existing entry's text does not vouch for new work.
+
+    Exit 1 otherwise, with a named reason on stderr (``no-entry``,
+    ``entry-edited-not-added``, ``no-base``, ``git-failed``). Un-evaluable
+    git state fails closed — the caller falls back to manual judgment rather
+    than silently skipping the probe (same posture as ``check_pr_doc_only``).
+    """
+    base, base_note = _coverage_resolve_base(project_dir)
+    if base is None:
+        print(f"no-base: {base_note}. Check the change-log by hand.", file=sys.stderr)
+        return 1
+
+    proc = subprocess.run(
+        ["git", "diff", "--name-only", f"{base}...HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        print(
+            f"git-failed: git diff {base}...HEAD failed: {proc.stderr.strip()}."
+            " Check the change-log by hand.",
+            file=sys.stderr,
+        )
+        return 1
+
+    files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    non_md = [f for f in files if not f.endswith(".md")]
+    if not files:
+        print(f"empty-diff: no files changed in {base}...HEAD — no entry required.")
+        return 0
+    if not non_md:
+        print(f"doc-only: all {len(files)} changed file(s) are .md — no entry required.")
+        return 0
+
+    if _CHANGE_LOG_REL_PATH not in files:
+        sample = ", ".join(non_md[:3])
+        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
+        print(
+            f"no-entry: branch changes code ({sample}{more}) but "
+            f"{_CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "
+            f"this work before opening the PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    proc2 = subprocess.run(
+        ["git", "diff", f"{base}...HEAD", "--", _CHANGE_LOG_REL_PATH],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc2.returncode != 0:
+        print(
+            f"git-failed: git diff of {_CHANGE_LOG_REL_PATH} failed: "
+            f"{proc2.stderr.strip()}. Check the change-log by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    added_header = any(
+        line.startswith("+## ") for line in proc2.stdout.splitlines()
+    )
+    if not added_header:
+        print(
+            f"entry-edited-not-added: {_CHANGE_LOG_REL_PATH} changed but no new "
+            f"entry header (+## ...) was added — editing an existing entry does "
+            f"not vouch for this branch's code changes.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"entry-present: {_CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD.")
+    return 0
+
+
 def check_pr_doc_only(project_dir: Path) -> int:
     """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 

@@ -56,6 +56,13 @@ class ChangeLogEntry:
     title: str
     tags: dict[str, object] = field(default_factory=dict)
     line_number: int = 0  # 1-indexed line of the H2 header
+    # How many `<!-- prawduct: ... -->` lines headed this entry. The canonical
+    # format is exactly one; >1 means the tags above are a union (VWS-4D8J) and
+    # validate_tag_line_multiplicity will warn.
+    tag_line_count: int = 0
+    # Scalar keys that appeared on a later tag line with a DIFFERENT value than
+    # an earlier one — first-wins, the losing value recorded here for the warning.
+    tag_conflicts: list[str] = field(default_factory=list)
 
     @property
     def shipped_chunks(self) -> list[str]:
@@ -92,12 +99,40 @@ def parse_tag_line(tag_body: str) -> dict[str, object]:
     return tags
 
 
+def _merge_tag_line(entry: ChangeLogEntry, new_tags: dict[str, object]) -> None:
+    """Merge a subsequent tag line's pairs into an entry, union semantics.
+
+    ``chunks`` lists are concatenated with order-preserving dedup; a key not
+    yet present is adopted; a scalar key already present with a *different*
+    value is first-wins, the ignored value recorded in ``tag_conflicts`` so
+    :func:`validate_tag_line_multiplicity` can surface it.
+    """
+    for k, v in new_tags.items():
+        if k not in entry.tags:
+            entry.tags[k] = v
+            continue
+        existing = entry.tags[k]
+        if k == "chunks" and isinstance(existing, list) and isinstance(v, list):
+            entry.tags[k] = existing + [c for c in v if c not in existing]
+        elif existing != v:
+            entry.tag_conflicts.append(f"{k}: kept {existing!r}, ignored {v!r}")
+
+
 def parse_change_log(content: str) -> list[ChangeLogEntry]:
     """Parse change-log markdown into a list of entries.
 
     An entry is ``## YYYY-MM-DD: title`` followed (after up to a few blank
-    lines) by ``<!-- prawduct: key=value | ... -->``. The tag line, if present,
-    must appear before the next non-blank content line under the H2.
+    lines) by ``<!-- prawduct: key=value | ... -->``. The tag block, if
+    present, must begin before the next non-blank content line under the H2.
+
+    The canonical format is ONE tag line per entry, but **all consecutive**
+    tag lines at the head of the body are consumed (blank lines between them
+    tolerated, the same leniency as before the first one) — the historical
+    first-line-only parse silently dropped the later lines' ``chunks=`` at
+    release time (VWS-4D8J). Multiple lines are unioned per
+    :func:`_merge_tag_line`, ``tag_line_count`` records how many were seen,
+    and :func:`validate_tag_line_multiplicity` warns on >1. A tag line after
+    intervening prose is still later body content, never entry metadata.
     """
     entries: list[ChangeLogEntry] = []
     lines = content.splitlines()
@@ -115,10 +150,16 @@ def parse_change_log(content: str) -> list[ChangeLogEntry]:
                 j += 1
                 continue
             tag_match = TAG_LINE_RE.search(lines[j])
-            if tag_match:
-                entry.tags = parse_tag_line(tag_match.group(1))
-            # First non-blank line settles the question — tag line or not.
-            break
+            if not tag_match:
+                # First non-blank non-tag line ends the tag block.
+                break
+            new_tags = parse_tag_line(tag_match.group(1))
+            entry.tag_line_count += 1
+            if entry.tag_line_count == 1:
+                entry.tags = new_tags
+            else:
+                _merge_tag_line(entry, new_tags)
+            j += 1
         entries.append(entry)
         i += 1
     return entries
@@ -152,6 +193,86 @@ def validate_status_values(entries: list[ChangeLogEntry]) -> list[str]:
                 f"checkbox. Likely a typo."
             )
     return warnings
+
+
+def validate_tag_line_multiplicity(entries: list[ChangeLogEntry]) -> list[str]:
+    """Return a warning string for each entry parsed from >1 tag line.
+
+    The canonical change-log format is one ``<!-- prawduct: ... -->`` line per
+    entry. :func:`parse_change_log` now unions consecutive tag lines rather
+    than silently dropping the later ones (VWS-4D8J — a second line's
+    ``chunks=`` nearly shipped unflipped at v2.1.0), but the union is a repair,
+    not a blessing: this pure helper (mirroring :func:`validate_status_values`)
+    surfaces each multi-tag entry as a non-fatal warning so the author merges
+    the lines. Conflicting scalar keys were kept first-wins; the warning names
+    the ignored values.
+
+    Returns ``[]`` when every entry has at most one tag line.
+    """
+    warnings: list[str] = []
+    for entry in entries:
+        if entry.tag_line_count <= 1:
+            continue
+        msg = (
+            f"change-log entry {entry.title!r} (line {entry.line_number}) has "
+            f"{entry.tag_line_count} prawduct tag lines — the canonical format "
+            f"is one per entry; chunks= lists were unioned across them"
+        )
+        if entry.tag_conflicts:
+            msg += (
+                "; conflicting keys kept first-wins ("
+                + "; ".join(entry.tag_conflicts)
+                + ")"
+            )
+        msg += ". Merge them into a single tag line."
+        warnings.append(msg)
+    return warnings
+
+
+def stamp_merged(content: str) -> tuple[str, list[str]]:
+    """Stamp ``status=merged`` onto every statusless *tagged* entry.
+
+    The change-log lifecycle is statusless (feature branch) → ``merged``
+    (integrated) → ``shipped`` (released), but the merge flow historically
+    never applied the middle stamp, so most entries reached release-prep
+    statusless and a literal reading of the release checklist silently dropped
+    them (REL-2N8K — v2.0.14 shipped 8 of 10 entries unflipped). This pure
+    function is the stamping mechanism the ``stamp-merged`` hook command (and
+    `/prawduct:pr` merge-flow step 6) applies on the integration branch.
+
+    Semantics — deliberately convergent and idempotent: EVERY entry that has a
+    tag line and no ``status=`` key is stamped, not only the just-merged
+    branch's, so a previously missed stamp is repaired by the next merge.
+    Entries with no tag line at all (historical, pre-convention) are never
+    touched; entries already carrying any ``status=`` (including typos — the
+    typo-guard owns those) are left alone. The stamp is appended to the FIRST
+    tag line, preserving the existing pairs verbatim.
+
+    Returns ``(new_content, stamped_titles)``; ``new_content is content`` is
+    not guaranteed, but the text is unchanged when ``stamped_titles`` is empty.
+    """
+    lines = content.splitlines(keepends=True)
+    stamped: list[str] = []
+    for entry in parse_change_log(content):
+        if entry.tag_line_count == 0 or "status" in entry.tags:
+            continue
+        # Locate the entry's first tag line: scan forward from the H2,
+        # skipping blanks (the same leniency parse_change_log applies).
+        for j in range(entry.line_number, len(lines)):
+            if not lines[j].strip():
+                continue
+            m = TAG_LINE_RE.search(lines[j])
+            # parse_change_log said tag_line_count > 0, so the first non-blank
+            # line IS a tag line; the guard keeps a parser/scan drift from
+            # corrupting a prose line.
+            if m:
+                body = m.group(1)
+                lines[j] = lines[j].replace(
+                    m.group(0), f"<!-- prawduct: {body} | status=merged -->", 1
+                )
+                stamped.append(entry.title)
+            break
+    return "".join(lines), stamped
 
 
 def collect_shipped_chunks(
@@ -401,9 +522,12 @@ def diagnose_scope_plan_coverage(
     Pure diagnostic (mirrors :func:`validate_status_values`): the caller
     (``cmd_regen_views``) prints the returned strings on stderr. Two cases:
 
-    * A ``status=merged`` (release-pending) scope with NO matching build-plan
-      file — its ``## Status`` cannot be regenerated, a real release-process
-      error. A ``status=shipped`` scope with no file is deliberately NOT flagged:
+    * An unreleased scope with NO matching build-plan file — its ``## Status``
+      cannot be regenerated, a real release-process error. "Unreleased" covers
+      both ``status=merged`` (release-pending) and **statusless tagged**
+      entries (the merge-flow stamp was missed — REL-9F2T audit finding: a
+      statusless entry with a bad ``scope=`` was undetected until release).
+      A ``status=shipped`` scope with no file is deliberately NOT flagged:
       its plan is a retired historical artifact or predates the ``scope:``
       frontmatter convention, so the absence is expected, not an error.
     * Two ``artifacts/*.md`` files declaring the same ``scope:`` — ambiguous; the
@@ -433,7 +557,17 @@ def diagnose_scope_plan_coverage(
     plan_map = build_scope_to_plan_map(artifacts_dir)
     seen: set[str] = set()
     for entry in parse_change_log(change_log_content):
-        if entry.tags.get("status") != "merged":
+        status = entry.tags.get("status")
+        if status == "merged":
+            label = "release-pending (status=merged)"
+        elif status is None and entry.tag_line_count > 0:
+            # A statusless TAGGED entry is unreleased work whose merge-flow
+            # status=merged stamp was missed — same release-integrity stakes,
+            # previously invisible to this diagnostic (REL-9F2T).
+            label = "unreleased (statusless — merge stamp missed?)"
+        else:
+            # shipped (retired plan is expected), typos (typo-guard owns
+            # those), and untagged historical entries.
             continue
         scope = entry.tags.get("scope")
         if not (isinstance(scope, str) and scope) or scope in seen:
@@ -441,7 +575,7 @@ def diagnose_scope_plan_coverage(
         seen.add(scope)
         if scope not in plan_map:
             warnings.append(
-                f"change-log scope={scope!r} is release-pending (status=merged) "
+                f"change-log scope={scope!r} is {label} "
                 f"but has no matching build-plan file in artifacts/ — its "
                 f"## Status cannot be regenerated."
             )
