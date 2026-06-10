@@ -1552,6 +1552,14 @@ def cmd_check_pr_doc_only(project_dir: Path) -> int:
     return _coverage().check_pr_doc_only(project_dir)
 
 
+def cmd_check_change_log_entry(project_dir: Path) -> int:
+    """Missing-change-log-entry probe for `/prawduct:pr create` Step 1c
+    (REL-6C3W). Thin wrapper — the body lives in
+    ``lib.coverage.check_change_log_entry``, reached lazily so the hook's top
+    level stays lib-free."""
+    return _coverage().check_change_log_entry(project_dir)
+
+
 def cmd_test_status(project_dir: Path) -> int:
     """Report whether ``.test-evidence.json`` covers the current tree. Thin
     wrapper — body lives in ``lib.gates.test_status`` (STH-9V4K ch.6)."""
@@ -2078,7 +2086,8 @@ _USAGE = (
     "review-stats [--json]|classify-diff-risk [<base>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
-    "check-pr-doc-only|regen-views|stamp-merged|infer-critic-mode [args]|"
+    "check-pr-doc-only|check-change-log-entry|regen-views|stamp-merged|"
+    "infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
     "update-gitignore|"
@@ -2261,6 +2270,8 @@ def main() -> int:
     elif command == "verify-operator-verification":
         vrf_id = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_verify_operator_verification(project_dir, vrf_id)
+    elif command == "check-change-log-entry":
+        return cmd_check_change_log_entry(project_dir)
     elif command == "check-pr-doc-only":
         return cmd_check_pr_doc_only(project_dir)
     elif command == "stamp-merged":

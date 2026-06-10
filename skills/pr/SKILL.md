@@ -53,6 +53,13 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 > existing files would otherwise have skipped both core review gates. Code PRs
 > always go through the full review below.
 
+### Step 1c: Change-log entry probe
+**Run `prawduct-hook check-change-log-entry`.** A code-changing branch (any non-`.md` file in `merge-base...HEAD`) must ADD a change-log entry — a branch merged with no entry is invisible to the release flow and surfaces only at release reconstruction (REL-6C3W). Doc-only and empty diffs are exempt (exit 0).
+
+- **Exit 0**: proceed.
+- **Exit 1 with `no-entry` or `entry-edited-not-added`**: **STOP** — write the change-log entry for this branch's work (statusless on the feature branch; tag line with `type=`/`chunks=`/`scope=`), commit it, then re-run the probe.
+- **Exit 1 with `no-base` or `git-failed`**: the probe couldn't evaluate — check the change-log by hand and note the manual check in the PR description.
+
 ### Step 2: Cumulative-Critic gate — MANDATORY
 **Run `prawduct-hook check-cumulative-critic`.** This gate requires a blocking-free Critic record that vouches for HEAD: a HEAD-covering `cumulative`-mode record (reviewed over `merge-base...HEAD`; "HEAD-covering" = its `commit_reviewed` is HEAD, or only docs changed since — CRT-7M2D), OR a `verify-resolutions` **chain record** extending one (`extends_cumulative` anchor X, record at HEAD, all non-`.md` changes in `X..HEAD` within its reviewed scope — CRT-4J8W). If it exits non-zero, **STOP**: produce the missing record (stderr says which: `/prawduct:critic cumulative` for the first review, `verify-resolutions` for the chain path below), resolve any blocking findings, then re-check. Do NOT proceed to Step 3 until this gate passes.
 

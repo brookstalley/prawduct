@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: change-log lifecycle hardening — close the silent-drop family
+
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=changelog-lifecycle -->
+
+**Why:** The change-log state machine (statusless → merged → shipped) was
+broken at three transitions, all silent, all observed live (REL-9F2T): the
+merge flow never stamped `status=merged`, so most entries reached release-prep
+statusless and a literal reading of release-process step 3 dropped them
+(v2.0.14: 8 of 10); a code-changing branch could merge with NO entry at all
+(found at the v2.0.16 release reconstruction); and `parse_change_log` honored
+only the FIRST tag line per entry, silently dropping later ones (a `chunks=02`
+tag nearly shipped unflipped at v2.1.0). A fourth, from the 2026-06-10 audit:
+scope→plan validation skipped statusless entries entirely.
+
+**What:** (01) `parse_change_log` consumes all consecutive tag lines —
+`chunks=` unioned order-preserving, scalar keys first-wins with conflicts
+recorded — and `validate_tag_line_multiplicity` surfaces multi-tag entries as
+regen-views stderr WARNINGs. (02) New `prawduct-hook stamp-merged` (convergent,
+idempotent, integration-branch-guarded) applies the statusless→merged stamp;
+`/prawduct:pr` merge flow runs it as step 6; release-process step 3 now flips
+"every unreleased entry, statusless OR merged"; `diagnose_scope_plan_coverage`
+also flags statusless tagged scopes with no plan file. (03) New `prawduct-hook
+check-change-log-entry` probe at `/prawduct:pr` Create Step 1c: a non-`.md`
+branch diff must ADD a change-log entry header, fail-closed on un-evaluable
+git state.
+
 ## 2026-06-10: framework-repo slim session digest — always-loaded context dedup
 
 <!-- prawduct: chunks=4 | type=feature | release=v2.1.0 | status=shipped | scope=review-fixes -->

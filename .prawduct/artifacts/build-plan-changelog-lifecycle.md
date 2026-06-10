@@ -57,8 +57,10 @@ tagged entries; PR merge flow gains step 6 = stamp + commit, old steps 6-7 now
 step 3 reworded to "every unreleased entry, statusless OR merged". Critic: 2
 NOTEs, 0 blocking — stale step-7 test label fixed in test_pr_reviewer.py; the
 guard's literal-"main" fallback divergence from _resolve_base_branch is
-deliberate and on record in the findings). Next: Chunk 03 (missing-entry probe,
-Type: cumulative-final).
+deliberate and on record in the findings). Chunk 03 done 2026-06-10 (check_change_log_entry in lib/coverage.py + hook
+wrapper + PR-create Step 1c wiring + 7-case git-fixture test file; branch's own
+change-log entry written statusless, the probe's first live consumer). All
+chunks built; cumulative Critic = the PR gate.
 
 ## Scaffolding
 
