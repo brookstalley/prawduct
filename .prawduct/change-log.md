@@ -5,7 +5,7 @@
 
 ## 2026-06-10: change-log lifecycle hardening — close the silent-drop family
 
-<!-- prawduct: chunks=01,02,03 | type=fix | scope=changelog-lifecycle -->
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=changelog-lifecycle | status=merged -->
 
 **Why:** The change-log state machine (statusless → merged → shipped) was
 broken at three transitions, all silent, all observed live (REL-9F2T): the
