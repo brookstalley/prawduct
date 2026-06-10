@@ -42,9 +42,16 @@ IDs, `inherit`); Agent-tool calls take a per-call `model` param; subagent resolu
 
 - [ ] Chunk 01: Captured A/B/C experiment — same review input, sonnet/opus/fable
 - [ ] Chunk 02: Mechanism — Critic fork + PR-reviewer model defaults
-Context: Plan authored 2026-06-10 mid-session on user request, while gate-soundness is
-PR-pending (active_build_plan stays on gate-soundness per planning.md "Plan lifecycle on
-gitflow").
+Context: BOTH CHUNKS BUILT 2026-06-10 (same session that authored the plan; checkboxes flip
+at release via scope=reviewer-model-tiering change-log tags). Ch.01 artifact:
+reviewer-model-ab-2026-06-10.md (sonnet ruled out; opus = efficiency frontier; fable found 2
+warnings opus missed at the cumulative tier — n=1). User decided default = opus, all reviewer
+legs. Ch.02 deviation (declared): its own Critic review is DEFERRED — running the Critic again
+this session would overwrite the clean cumulative record that satisfies gate-soundness's PR
+gate (single-slot .critic-findings.json). The .md-only diff rides the gate-soundness PR and
+gets the independent PR-reviewer pass there; first post-merge /prawduct:critic run also
+live-verifies the opus frontmatter. Escalation follow-up: CRT-4J8W (P0, stage ready) — the
+cumulative+verify-resolutions chain gate that kills the full-re-review treadmill.
 
 ## Chunks
 

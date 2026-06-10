@@ -73,7 +73,7 @@ If the user did NOT supply the override flag and pending entries exist, **STOP**
 ### Step 3: Independent review — MANDATORY
 **STOP. Do NOT proceed to step 4 until the reviewer agent has completed and written its evidence file.**
 
-Spawn a **separate agent** (via the Task tool) for independent review. The reviewer must run in its own context — it has NOT seen your reasoning, and that independence is the point.
+Spawn a **separate agent** (via the Task tool) for independent review, passing `model: opus` on the call — review work doesn't need the session's top tier (evidence: `.prawduct/artifacts/reviewer-model-ab-2026-06-10.md`). The reviewer must run in its own context — it has NOT seen your reasoning, and that independence is the point.
 
 First, compute the evidence file path: take the current branch name, replace every `/` with `--`, append `.json`. For example, `feature/add-auth` becomes `feature--add-auth.json`. The full path is `.prawduct/.pr-reviews/<computed-filename>`.
 

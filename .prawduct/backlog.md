@@ -8,6 +8,32 @@
 ## Open
 
 
+- **[CRT-4J8W]** P0 — review-phase wall clock: accept a cumulative + verify-resolutions CHAIN at the PR gate
+  `effort: M · impact: L · area: governance/gates · source: user · added: 2026-06-10 · status: open · stage: ready · related: CRT-7M2D · refs: lib/gates.py (check_cumulative_critic), skills/critic/SKILL.md, skills/critic/review-protocol.md, tests/test_cumulative_gate.py`
+
+  User escalation 2026-06-10: review phase ran 30+ min wall clock for ~5 min of work. Two cost
+  drivers: unit cost per review (fixed same day — reviewers default to model opus, ~4x faster per
+  the reviewer-model-ab-2026-06-10.md experiment) and the **re-review treadmill**: every non-.md fix
+  after a cumulative review re-stales `check-cumulative-critic` and costs a FULL bundle re-review
+  even when only 2 files changed. Structural fix (the option deferred in gate-soundness ch.4 as
+  "build if it recurs" — it recurred the same session):
+  1. When `/prawduct:critic verify-resolutions` runs while the existing `.critic-findings.json` is a
+     clean cumulative record, embed an `extends_cumulative: {commit_reviewed: <X>}` anchor in the
+     new record.
+  2. `check_cumulative_critic` accepts EITHER a HEAD-covering cumulative record (today's rule) OR a
+     chain: `mode=verify-resolutions`, 0 blocking, `commit_reviewed==HEAD`, `extends_cumulative`
+     present, AND files changed in `X..HEAD` ⊆ the record's `files_reviewed` (fail closed on any
+     gap, same as today).
+
+  Soundness argument: cumulative@X vouches for the bundle; a clean delta review whose scope covers
+  `X..HEAD` extends that vouching to HEAD — same shape as the existing doc-only allowance, with
+  scope verification. Surfaces: `lib/gates.py` (`check_cumulative_critic` + findings schema optional
+  field), `skills/critic/SKILL.md` + `review-protocol.md` (record the anchor),
+  `tests/test_cumulative_gate.py` (chain accept/reject cases incl. scope-gap fail-closed),
+  `methodology/building.md` + `skills/pr/SKILL.md` sequencing prose (update: the fix-after-cumulative
+  path becomes a cheap delta review, not a full re-run). Priority P0. Related: CRT-7M2D (the
+  coverage-not-mtime gate this extends — archived/shipped). (user)
+
 - **[TST-3E8V]** `cmd_test_evidence` catches only FileNotFoundError for a declared test_command — widen to OSError
   `effort: S · impact: S · area: tests/runtime · source: critic · added: 2026-06-10 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_test_evidence), tests/test_plugin_runtime.py (TestTestEvidenceKnobs)`
 

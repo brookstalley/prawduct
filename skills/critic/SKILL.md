@@ -3,6 +3,12 @@ description: Independent Critic review — quality governance for product and fr
 user-invocable: true
 disable-model-invocation: false
 context: fork
+# Reviewer tier: opus — the efficiency frontier in the 2026-06-10 A/B/C
+# experiment (.prawduct/artifacts/reviewer-model-ab-2026-06-10.md): ~4x faster
+# and ~40% cheaper than top-tier with strong novel-finding recall. Bump if
+# bundle-boundary misses recur (the experiment's n=1 showed the top tier
+# catching 2 warnings opus missed on a cumulative pass).
+model: opus
 allowed-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git branch --show-current), Bash(git for-each-ref *), Bash(wc *), Bash(prawduct-hook test-status), Bash(prawduct-hook verify-chunk-refs *), Bash(prawduct-hook infer-critic-mode *), Bash(prawduct-hook compute-verify-resolutions-scope), Bash(prawduct-hook resolve-base), Bash(prawduct-hook critic-begin), Bash(prawduct-hook critic-end), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---

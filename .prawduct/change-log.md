@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: reviewer model tiering — A/B/C experiment + opus default
+
+<!-- prawduct: chunks=01 | type=feature | scope=reviewer-model-tiering -->
+<!-- prawduct: chunks=02 | type=feature | scope=reviewer-model-tiering -->
+
+**Why:** Independent reviewers (Critic fork, PR reviewer, coordinator
+subagents) inherited the main session's model — top-tier cost and latency
+(5-10 min per review) for every review. User escalated review-phase wall
+clock to P0 (30+ min of review for ~5 min of work this session).
+
+**What:** Ch.01 — captured A/B/C: three parallel agents, identical prompt
+(recorded verbatim in `artifacts/reviewer-model-ab-2026-06-10.md`), identical
+tree, models sonnet/opus/fable. Result: sonnet found nothing novel at higher
+cost than opus (ruled out); opus = efficiency frontier (1m53s, 74k tokens,
+one novel real finding); fable = deepest (2 real warnings opus missed) at
+~4x opus wall clock. Ch.02 — per the user's decision, all three reviewer
+legs default to `opus`: critic SKILL frontmatter `model: opus` (applies to
+the fork), coordinator dispatch declares `model: opus` per Agent call, PR
+skill Step 3 passes `model: opus`. Declared deviation: ch.02's own Critic
+review is deferred (a re-run would overwrite the cumulative record that
+satisfies the open PR gate — single-slot findings file); the diff is .md-only
+and rides the gate-soundness PR's independent review. The treadmill half of
+the P0 is designed and filed ready-to-build as CRT-4J8W (cumulative +
+verify-resolutions chain at the PR gate).
+
+**Blast radius:** `skills/critic/SKILL.md`, `skills/critic/review-protocol.md`
+(within token budget after trim), `skills/pr/SKILL.md`,
+`.prawduct/artifacts/reviewer-model-ab-2026-06-10.md` (new),
+`.prawduct/artifacts/build-plan-reviewer-model-tiering.md` (new),
+`.prawduct/backlog.md` (CRT-4J8W).
+
 ## 2026-06-10: pre-PR hardening from the reviewer-model A/B/C experiment (gate-soundness)
 
 <!-- prawduct: type=fix | scope=gate-soundness -->

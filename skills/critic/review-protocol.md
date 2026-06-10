@@ -143,7 +143,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed).
 
-2. **Dispatch** three parallel review subagents via the Agent tool. Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
+2. **Dispatch** three parallel review subagents via the Agent tool, `model: opus` per call (`reviewer-model-ab-2026-06-10.md`). Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
 
    > "Critic review subagent (`<NAME>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. NO tests — code analysis only. Report using the Critic output format."
 
