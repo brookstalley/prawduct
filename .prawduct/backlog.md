@@ -61,18 +61,22 @@
   Escape-hatches-create-silent-failures shape. (critic)
 
 - **[CRT-5Q8W]** Skill prose clarity micro-fixes from the 2026-06-09 review (critic protocol wording, designer-handoff note, backlog pick defaults, framework-checks example)
-  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md`
+  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md · reviewed: 2026-06-10`
 
   Batch of small wording fixes from the skills review agent, none changing behavior: (1) critic
   review-protocol.md 'Decide checks from signals below' is vague — state that the resolved MODE
-  determines which goals apply, with a pointer to review-cycle.md. (2) critic SKILL.md Getting
+  determines which goals apply, with a pointer to review-cycle.md. (2) ~~critic SKILL.md Getting
   Started: add a one-line note that Type: designer-handoff chunks exit early without a findings
-  file, so an agent that skips the protocol read still knows the special case. (3) review-cycle.md
+  file, so an agent that skips the protocol read still knows the special case.~~ **Resolved** by
+  review-fixes ch.3's CRT-6F2N fix (2026-06-10, feature/review-fixes). (3) review-cycle.md
   learnings cross-check: note that if a later learning revokes/softens the original, the latest
   learning wins (currently assumes learnings are infallible). (4) framework-checks.md Check 7: add
   a concrete avoid/prefer example for 'strengthening the dynamic generation system'. (5) backlog
   SKILL pick: document the combined effect of missing effort/impact defaults (2/2 = 1.0 score)
   explicitly; drop the stale Q6 label. (builder)
+
+  2026-06-10: sub-item (2) resolved by review-fixes ch.3's CRT-6F2N fix; sub-items (1), (3), (4),
+  (5) remain open.
 
 - **[MET-6W3J]** learnings.md compaction: restore When-X-do-Y-because-Z brevity, move narrative to learnings-detail.md, add a size nudge
   `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · related: MET-5C2H, MET-7R4J · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md`

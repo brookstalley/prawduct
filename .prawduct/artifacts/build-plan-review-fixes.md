@@ -29,11 +29,15 @@ last_validated: 2026-06-09
 
 ## Status
 
-- [x] Chunk 1: Hot-path correctness fixes (core.py path, Gate 3 network call, porcelain parsing)
-- [x] Chunk 2: Work-model probe precision
-- [x] Chunk 3: Review-gate soundness (PR-5K8D fileset + Critic marker placement)
-- [x] Chunk 4: Always-loaded context dedup (framework-repo slim digest)
-Context: ALL FOUR CHUNKS BUILT. 2026-06-10: branch rebased onto develop (post
+<!-- views_enabled: checkboxes are derived from scope=review-fixes change-log entries by
+     regen-views at release; do not hand-edit. -->
+
+- [ ] Chunk 1: Hot-path correctness fixes (core.py path, Gate 3 network call, porcelain parsing)
+- [ ] Chunk 2: Work-model probe precision
+- [ ] Chunk 3: Review-gate soundness (PR-5K8D fileset + Critic marker placement)
+- [ ] Chunk 4: Always-loaded context dedup (framework-repo slim digest)
+Context: ALL FOUR CHUNKS BUILT (checkboxes flip at release via scope=review-fixes
+change-log tags — PR-reviewer warning: hand-flipped boxes would be reverted by regen-views). 2026-06-10: branch rebased onto develop (post
 #86/#87/#88 — metadata conflicts resolved by union; develop's dedup'd pr/SKILL prose kept,
 ch.3's protected-paths substance survives in Step 1b + code; 1219 tests green post-rebase),
 then Chunk 4 built per the user-confirmed slim-digest assumption: new canonical
