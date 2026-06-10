@@ -479,7 +479,7 @@ views_enabled: true
 # ## Status checkboxes to [x] via its scope= change-log tag (REL-4T8N). No
 # release-pending plans remain — the pointer is cleared (unset → falls back to
 # artifacts/build-plan.md). The next in-progress plan sets it again.
-active_build_plan:
+active_build_plan: artifacts/build-plan-gate-soundness.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
