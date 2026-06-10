@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.1.2
+
+**Entry:** 2026-06-10: learnings.md compaction + size nudge (MET-6W3J)
+
+**Chunks shipped:** 01, 02, 03
+
+**Scope:** do-next
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.1.1
 
 **Entry:** 2026-06-10: change-log lifecycle hardening — close the silent-drop family

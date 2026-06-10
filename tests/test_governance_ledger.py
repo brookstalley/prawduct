@@ -142,6 +142,17 @@ def _append_ledger_event(
         fh.write(line + "\n")
 
 
+def _write_session_start(repo: Path, ts: str = "2026-06-09T00:00:00Z") -> None:
+    """Mark a governed session as started at ``ts`` (default: before the
+    fixture ledger events' ``2026-06-10T00:00:00Z`` envelope ts, so those
+    events read as same-session). CRT-8W3F: the ledger fallback requires the
+    selected event's ``ts >= .session-start`` and fails closed without the
+    marker — fallback tests that expect acceptance must declare the marker."""
+    prawduct = repo / ".prawduct"
+    prawduct.mkdir(parents=True, exist_ok=True)
+    (prawduct / ".session-start").write_text(ts + "\n")
+
+
 def _cumulative_payload(commit_reviewed: str, *, blocking: bool = False) -> dict:
     return {
         "mode": CUMULATIVE_MODE,
@@ -463,6 +474,7 @@ class TestGateLedgerFallbackAccepts:
         _init_repo(repo)
         head = _commit_file(repo, "app.py", "print(1)\n", "init")
         _append_ledger_event(repo, _cumulative_payload(head))
+        _write_session_start(repo)
         _write_findings(repo, mode=CHUNK_MODE)  # latest slot = chunk review
         r = _run_gate(repo)
         assert r.returncode == 0, r.stderr
@@ -478,6 +490,7 @@ class TestGateLedgerFallbackAccepts:
         head = _commit_file(repo, "core.py", "x = 2\n", "more code")
         _append_ledger_event(repo, _cumulative_payload(old))
         _append_ledger_event(repo, _cumulative_payload(head))
+        _write_session_start(repo)
         _write_findings(repo, mode=CHUNK_MODE)
         r = _run_gate(repo)
         assert r.returncode == 0, r.stderr
@@ -491,6 +504,7 @@ class TestGateLedgerFallbackAccepts:
         with open(path, "a", encoding="utf-8") as fh:
             fh.write("{not json\n")
             fh.write('"a bare string"\n')
+        _write_session_start(repo)
         _write_findings(repo, mode=CHUNK_MODE)
         r = _run_gate(repo)
         assert r.returncode == 0, r.stderr
@@ -504,6 +518,7 @@ class TestGateLedgerFallbackAccepts:
         head = _commit_file(repo, "app.py", "print(1)\n", "init")
         _append_ledger_event(repo, _cumulative_payload(head))
         _append_ledger_event(repo, {"anything": True}, event="build.chunk")
+        _write_session_start(repo)
         _write_findings(repo, mode=CHUNK_MODE)
         r = _run_gate(repo)
         assert r.returncode == 0, r.stderr
@@ -519,6 +534,7 @@ class TestGateLedgerFallbackStaysHonest:
         reviewed = _commit_file(repo, "app.py", "print(1)\n", "init")
         _append_ledger_event(repo, _cumulative_payload(reviewed))
         _commit_file(repo, "core.py", "x = 2\n", "code after review")  # HEAD moves
+        _write_session_start(repo)
         _write_findings(repo, mode=CHUNK_MODE)
         r = _run_gate(repo)
         assert r.returncode == 1
@@ -529,6 +545,7 @@ class TestGateLedgerFallbackStaysHonest:
         _init_repo(repo)
         head = _commit_file(repo, "app.py", "print(1)\n", "init")
         _append_ledger_event(repo, _cumulative_payload(head, blocking=True))
+        _write_session_start(repo)
         _write_findings(repo, mode=CHUNK_MODE)
         r = _run_gate(repo)
         assert r.returncode == 1
@@ -573,6 +590,7 @@ class TestGateLedgerFallbackStaysHonest:
         _init_repo(repo)
         head = _commit_file(repo, "app.py", "print(1)\n", "init")
         _append_ledger_event(repo, _cumulative_payload(head))
+        _write_session_start(repo)
         _write_findings(repo, mode=VERIFY_MODE, commit_reviewed=head)
         r = _run_gate(repo)
         assert r.returncode == 0, r.stderr
@@ -607,6 +625,80 @@ class TestGateLedgerFallbackStaysHonest:
         assert r.returncode == 1
         assert "stale" in r.stderr
         assert "ledger-fallback" not in r.stderr
+
+
+class TestGateLedgerFallbackFreshness:
+    """CRT-8W3F: the fallback only rescues evidence from THIS session.
+
+    The findings file is a single slot constantly overwritten by the live
+    flow, but the ledger keeps every review forever — without a freshness
+    bound, a days-old cumulative from prior work satisfies the PR gate
+    whenever only ``.md`` changed since. The fallback record's envelope
+    ``ts`` must be ``>= .prawduct/.session-start`` (the ``tests_are_current``
+    session model); a missing marker or a ts-less event fails closed to the
+    gate's honest wrong-mode message.
+    """
+
+    def test_record_predating_session_fails_closed(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _append_ledger_event(repo, _cumulative_payload(head))  # ts 06-10T00:00
+        _write_session_start(repo, ts="2026-06-10T12:00:00Z")  # session after
+        _write_findings(repo, mode=CHUNK_MODE)
+        r = _run_gate(repo)
+        assert r.returncode == 1
+        assert "wrong-mode" in r.stderr
+        assert "predates session" in r.stderr  # the skip is taught, not silent
+        assert "ledger-fallback" not in r.stderr
+
+    def test_missing_session_start_marker_fails_closed(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _append_ledger_event(repo, _cumulative_payload(head))
+        _write_findings(repo, mode=CHUNK_MODE)  # no .session-start written
+        r = _run_gate(repo)
+        assert r.returncode == 1
+        assert "wrong-mode" in r.stderr
+        assert "ledger-fallback" not in r.stderr
+
+    def test_event_without_ts_is_skipped(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        # Hand-build an envelope with no ts at all — freshness unverifiable.
+        line = json.dumps({
+            "schema_version": 1, "event": "review.critic",
+            "review": _cumulative_payload(head),
+        })
+        path = repo / LEDGER_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(line + "\n")
+        _write_session_start(repo)
+        _write_findings(repo, mode=CHUNK_MODE)
+        r = _run_gate(repo)
+        assert r.returncode == 1
+        assert "wrong-mode" in r.stderr
+        assert "skipping" in r.stderr
+
+    def test_fresh_record_behind_stale_one_still_wins(self, tmp_path):
+        # Newest-first scan + freshness filter compose: a stale qualifying
+        # event in front of (newer than) nothing, behind a fresh one — the
+        # fresh event is newest, the stale one is never reached. The inverse
+        # layering (stale NEWER than fresh) cannot occur: ledger ts is
+        # append-ordered. So the meaningful composition is: history holds
+        # old prior-work reviews AND this session's cumulative — gate passes.
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        old = _commit_file(repo, "app.py", "print(1)\n", "init")
+        head = _commit_file(repo, "core.py", "x = 2\n", "more code")
+        _append_ledger_event(repo, _cumulative_payload(old))   # prior work
+        _append_ledger_event(repo, _cumulative_payload(head))  # this session
+        _write_session_start(repo, ts="2026-06-09T00:00:00Z")
+        _write_findings(repo, mode=CHUNK_MODE)
+        r = _run_gate(repo)
+        assert r.returncode == 0, r.stderr
 
 
 # ---------------------------------------------------------------------------

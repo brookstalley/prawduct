@@ -105,21 +105,27 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     if not isinstance(evidence_ts, str) or not evidence_ts:
         return False, "no timestamp in evidence"
 
-    session_start_path = prawduct_dir / ".session-start"
-    if session_start_path.is_file():
-        try:
-            session_start = session_start_path.read_text().strip()
-        except OSError:
-            session_start = ""
-        if session_start and evidence_ts >= session_start:
+    session_start = _read_session_start(prawduct_dir)
+    if session_start:
+        if evidence_ts >= session_start:
             return True, f"evidence from this session ({evidence_ts})"
-        if session_start:
-            return False, f"evidence predates session ({evidence_ts} < {session_start})"
+        return False, f"evidence predates session ({evidence_ts} < {session_start})"
 
     # No session-start marker — fall back to recency check.
     # Evidence exists with passing tests and a timestamp, but we can't verify
     # it's from this session. Accept it with a note.
     return True, f"evidence has passing tests ({evidence_ts}, no session marker to verify)"
+
+
+def _read_session_start(prawduct_dir: Path) -> str:
+    """Content of the ``.session-start`` marker, or ``""`` when the marker is
+    missing or unreadable. Shared by the test-evidence freshness check
+    (:func:`tests_are_current`) and the PR gate's ledger-fallback freshness
+    bound (CRT-8W3F) — both compare ISO-8601 UTC strings against it."""
+    try:
+        return (prawduct_dir / ".session-start").read_text().strip()
+    except OSError:
+        return ""
 
 
 def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
@@ -996,8 +1002,11 @@ def check_cumulative_critic(project_dir: Path) -> int:
     ``.prawduct/.governance-ledger.jsonl`` newest-first for the first
     qualifying ``review.critic`` payload and evaluates THAT under the same
     checks unchanged — a stale or blocking ledger record still fails
-    honestly. Corrupt lines are skipped with a stderr note; no qualifying
-    event → the original wrong-mode / chain-missing-anchor message.
+    honestly. The fallback record must additionally be from THIS session
+    (envelope ``ts >= .session-start``; fail closed without the marker —
+    CRT-8W3F, see :func:`_ledger_fallback_record`). Corrupt lines are
+    skipped with a stderr note; no qualifying event → the original
+    wrong-mode / chain-missing-anchor message.
 
     Exit 1 otherwise. stderr names the specific check that failed so the
     caller (`/prawduct:pr` skill) can present an actionable message to the user.
@@ -1096,10 +1105,22 @@ def _ledger_fallback_record(prawduct_dir: Path):
     as ``(lineno, payload, ledger_path)`` — or ``None``. Skips corrupt lines
     (the reader emits stderr notes), non-review events, schema-invalid
     payloads, and payloads of the wrong kind. Never raises — the gate must
-    fail with its own honest message, not a fallback crash."""
+    fail with its own honest message, not a fallback crash.
+
+    **Freshness bound (CRT-8W3F).** Unlike the single-slot findings file,
+    the ledger keeps every review forever — so "newest qualifying" alone
+    would let a days-old cumulative from prior work satisfy the PR gate
+    whenever only ``.md`` changed since. A qualifying event is therefore
+    accepted only when its envelope ``ts`` is ``>= .session-start`` (the
+    same ISO-8601 string comparison :func:`tests_are_current` uses). Fail
+    closed: a missing/unreadable session marker, or a qualifying event with
+    no usable ``ts``, yields no fallback — the gate's own wrong-mode /
+    chain-missing-anchor message stands, and the skip is taught on stderr.
+    """
     try:
         from . import ledger  # noqa: PLC0415 — lazy keeps gates' import DAG light
 
+        session_start = _read_session_start(prawduct_dir)
         for lineno, event in ledger.iter_events_newest_first(prawduct_dir):
             if event.get("event") != "review.critic":
                 continue
@@ -1114,6 +1135,32 @@ def _ledger_fallback_record(prawduct_dir: Path):
                 )
                 continue
             if not _pr_gate_record_qualifies(payload):
+                continue
+            # Freshness — judged only for records that would otherwise be
+            # selected, so the notes below never fire for unrelated events.
+            ts = event.get("ts")
+            if not isinstance(ts, str) or not ts:
+                print(
+                    f"ledger: skipping line {lineno} (no envelope ts — "
+                    "freshness unverifiable, CRT-8W3F)",
+                    file=sys.stderr,
+                )
+                continue
+            if not session_start:
+                print(
+                    f"ledger: line {lineno} qualifies but there is no "
+                    ".session-start marker to verify it is from this "
+                    "session — failing closed (CRT-8W3F)",
+                    file=sys.stderr,
+                )
+                return None
+            if ts < session_start:
+                print(
+                    f"ledger: skipping line {lineno} (predates session: "
+                    f"{ts} < {session_start} — run /prawduct:critic "
+                    "cumulative this session, CRT-8W3F)",
+                    file=sys.stderr,
+                )
                 continue
             return lineno, payload, ledger.ledger_path(prawduct_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- fallback is best-effort; the gate's own message stands

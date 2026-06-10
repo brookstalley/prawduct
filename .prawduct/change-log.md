@@ -3,6 +3,73 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: learnings.md compaction + size nudge (MET-6W3J)
+
+<!-- prawduct: chunks=03 | type=fix | release=v2.1.2 | status=shipped | scope=do-next -->
+
+**Why:** learnings.md had grown to ~80KB / 58 entries with 300–600-word
+narrative bodies, drifting from its own stated format (rule here, full context
+in learnings-detail.md). Every `/prawduct:learnings` lookup and Critic
+learnings cross-check pays the whole file, and nothing nudged it back down —
+the prior 8KB clear-hook warning was retired when the fork-skill lookup
+landed, but at 80KB the lookup itself became the cost.
+
+**What:** (1) 48 of 58 entries compacted to their When-X-do-Y-because-Z rule;
+all 48 narrative bodies moved VERBATIM to learnings-detail.md (79.5KB →
+32.3KB; headings byte-identical, audit-learnings parse unchanged). Navigation
+is by CONVENTION, stated once in the preamble: narrative lives in
+learnings-detail.md under the SAME heading (the one historical heading
+mismatch was aligned). Per-entry `Detail: § <heading>` pointers were built
+first, but repeating 57 long headings cost ~8KB and pushed the file back over
+its own threshold — the convention replaces them. (2) Session briefing nudges
+when learnings.md exceeds 40KB (the project-state threshold/pattern),
+teaching the compaction fix. (3) Found while landing the nudge: the
+briefing's "Learnings (N rules)" line counted only `- ` bullets, reporting 0
+and silently vanishing on entry-format files — now counts `## ` entries with
+bullet-count fallback for legacy files.
+
+## 2026-06-10: build-plan pointer — repo-relative acceptance + loud missing-file guard (STH-5P2W)
+
+<!-- prawduct: chunks=02 | type=fix | release=v2.1.2 | status=shipped | scope=do-next -->
+
+**Why:** A SET `active_build_plan` pointer that resolves to no file silently
+disables the Critic gate, plan-aware mode inference, and chunk-ref
+verification — governance sees "no active plan" with zero signal. Happened
+live: the review-fixes planning commit wrote the natural repo-relative
+spelling (`.prawduct/artifacts/…`) and the gates were blind for one work
+cycle. The field was also undocumented in the project-state template
+(escape-hatches-create-silent-failures shape).
+
+**What:** (1) Both resolvers (`lib/core.py::resolve_build_plan_path` and the
+parity-pinned `bin/prawduct-hook::_resolve_build_plan_path` mirror) accept the
+repo-relative spelling by stripping one leading `.prawduct/` — parity tests
+extended. (2) The session briefing (`lib/briefing.py`) warns loudly when the
+pointer is set but the resolved file is missing, naming the pointer, the
+resolved path, and the consequence. (3) `templates/project-state.yaml` gains
+an ACTIVE BUILD PLAN section documenting the field's schema and failure mode.
+
+## 2026-06-10: PR-gate ledger fallback requires same-session freshness (CRT-8W3F)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.2 | status=shipped | scope=do-next -->
+
+**Why:** `check_cumulative_critic`'s ledger fallback accepted the newest
+kind-qualifying `review.critic` event with only commit-coverage — no freshness
+bound. The findings file is a single overwritten slot, but the ledger keeps
+every review forever, so a days-old cumulative from prior work could satisfy
+the PR gate whenever only `.md` changed since (gate-soundness hole, flagged by
+the 2026-06-10 governance audit of the v2.1.0 chain-gate code).
+
+**What:** `_ledger_fallback_record` (lib/gates.py) now accepts a qualifying
+event only when its envelope `ts >= .prawduct/.session-start` (the
+`tests_are_current` ISO-string model, via a shared `_read_session_start`
+helper). Fail closed: missing/unreadable marker or a ts-less qualifying event
+yields no fallback — the gate's honest wrong-mode / chain-missing-anchor
+message stands, and each skip is taught on stderr. Contract renegotiation in
+the open: fallback-accept tests now declare a `.session-start` marker; new
+`TestGateLedgerFallbackFreshness` pins the reject family. Prose surfaces
+(`skills/pr/review-protocol.md` step 4, `skills/critic/review-cycle.md` ledger
+section) state the bound.
+
 ## 2026-06-10: change-log lifecycle hardening — close the silent-drop family
 
 <!-- prawduct: chunks=01,02,03 | type=fix | release=v2.1.1 | status=shipped | scope=changelog-lifecycle -->
