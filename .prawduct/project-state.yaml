@@ -491,9 +491,10 @@ views_enabled: true
 # (REL-4T8N batched pass) and the pointer is cleared again — no release-pending
 # plans remain. All four build-plan files are retained as historical artifacts.
 # 2026-06-10: repointed at the in-progress do-next plan (CRT-8W3F + STH-5P2W +
-# MET-6W3J, branch feature/do-next).
-
-active_build_plan: artifacts/build-plan-do-next.md
+# MET-6W3J, branch feature/do-next); do-next SHIPPED in v2.1.2 (#91, same day),
+# regen-views flipped its ## Status via the scope=do-next tags and the pointer
+# is cleared — no release-pending plans remain. The build-plan file is retained
+# as a historical artifact.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -563,6 +564,9 @@ scope_rollups:
   discovery-capture-nudge:
     chunks: ["01", "02"]
     releases: ["v2.0.10"]
+  do-next:
+    chunks: ["01", "02", "03"]
+    releases: ["v2.1.2"]
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]

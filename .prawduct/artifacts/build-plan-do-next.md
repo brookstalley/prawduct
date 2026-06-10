@@ -67,9 +67,9 @@ file and line; two have observed live failures.
 <!-- views_enabled: checkboxes are derived from scope=do-next change-log entries by
      regen-views at release; do not hand-edit. -->
 
-- [ ] Chunk 01: CRT-8W3F — ledger-fallback freshness at the PR gate
-- [ ] Chunk 02: STH-5P2W — build-plan pointer: repo-relative acceptance + loud missing-file guard
-- [ ] Chunk 03: MET-6W3J — learnings.md compaction + size nudge
+- [x] Chunk 01: CRT-8W3F — ledger-fallback freshness at the PR gate
+- [x] Chunk 02: STH-5P2W — build-plan pointer: repo-relative acceptance + loud missing-file guard
+- [x] Chunk 03: MET-6W3J — learnings.md compaction + size nudge
 Context: ALL THREE CHUNKS BUILT 2026-06-10 — ch.01 59258bd, ch.02 a5305c0, ch.03 b5439e1
 (+ doc follow-up commit). Cumulative Critic at b5439e1: 0 blocking / 1 warning (evidence
 currency — resolved by re-recording at HEAD) / 3 notes (learnings pointer NOTE resolved by

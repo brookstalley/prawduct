@@ -5,7 +5,7 @@
 
 ## 2026-06-10: learnings.md compaction + size nudge (MET-6W3J)
 
-<!-- prawduct: chunks=03 | type=fix | scope=do-next | status=merged -->
+<!-- prawduct: chunks=03 | type=fix | release=v2.1.2 | status=shipped | scope=do-next -->
 
 **Why:** learnings.md had grown to ~80KB / 58 entries with 300–600-word
 narrative bodies, drifting from its own stated format (rule here, full context
@@ -30,7 +30,7 @@ bullet-count fallback for legacy files.
 
 ## 2026-06-10: build-plan pointer — repo-relative acceptance + loud missing-file guard (STH-5P2W)
 
-<!-- prawduct: chunks=02 | type=fix | scope=do-next | status=merged -->
+<!-- prawduct: chunks=02 | type=fix | release=v2.1.2 | status=shipped | scope=do-next -->
 
 **Why:** A SET `active_build_plan` pointer that resolves to no file silently
 disables the Critic gate, plan-aware mode inference, and chunk-ref
@@ -50,7 +50,7 @@ an ACTIVE BUILD PLAN section documenting the field's schema and failure mode.
 
 ## 2026-06-10: PR-gate ledger fallback requires same-session freshness (CRT-8W3F)
 
-<!-- prawduct: chunks=01 | type=fix | scope=do-next | status=merged -->
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.2 | status=shipped | scope=do-next -->
 
 **Why:** `check_cumulative_critic`'s ledger fallback accepted the newest
 kind-qualifying `review.critic` event with only commit-coverage — no freshness
