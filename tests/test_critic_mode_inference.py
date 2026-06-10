@@ -1345,3 +1345,63 @@ class TestBranchProgressCRT7B4M:
         _write(tmp_path, "src/wip.py", "# wip\n")  # chunk 02 in progress
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "chunk", rationale
+
+
+# ---------------------------------------------------------------------------
+# CRT-4J8W chain-anchor parity — gates vs critic_mode mirrors
+# ---------------------------------------------------------------------------
+
+
+class TestChainAnchorParity:
+    """``lib.gates._chain_anchor`` and ``lib.critic_mode._chain_extendable_anchor``
+    are deliberate mirrors (importing ``gates`` from ``critic_mode`` would widen
+    the slash-command shim's import surface), and the "kept in lockstep" comments
+    alone don't enforce it — every other mirror in this repo is test-pinned.
+    Drift would desync what inference *recommends* (a chain verify pass) from
+    what the PR gate *accepts* (the chain record) — a governance-soundness
+    divergence flagged by the 2026-06-10 cumulative review (warning 2)."""
+
+    _CUM = "cumulative (bundle review, ready for merge)"
+    _VER = "verify-resolutions (delta review, prior findings only)"
+    _A, _B = "a" * 40, "b" * 40
+
+    RECORD_SHAPES = [
+        {},
+        {"mode": _CUM, "commit_reviewed": _A},
+        {"mode": _CUM},
+        {"mode": _CUM, "commit_reviewed": "   "},
+        {"mode": _CUM, "commit_reviewed": 42},
+        {"mode": _VER, "commit_reviewed": _A},
+        {"mode": _VER, "commit_reviewed": _A,
+         "extends_cumulative": {"commit_reviewed": _B}},
+        {"mode": _VER, "commit_reviewed": _A,
+         "extends_cumulative": {"commit_reviewed": ""}},
+        {"mode": _VER, "commit_reviewed": _A,
+         "extends_cumulative": {"commit_reviewed": None}},
+        {"mode": _VER, "commit_reviewed": _A, "extends_cumulative": _B},
+        {"mode": _VER, "commit_reviewed": _A, "extends_cumulative": None},
+        {"mode": _VER, "extends_cumulative": {"commit_reviewed": _B}},
+        {"mode": "chunk (lighter pass, not ready for push)", "commit_reviewed": _A},
+        {"mode": "final (full review, ready for push)", "commit_reviewed": _A},
+    ]
+
+    def test_helpers_agree_on_every_record_shape(self):
+        from lib import critic_mode, gates  # noqa: PLC0415
+
+        for record in self.RECORD_SHAPES:
+            assert (
+                gates._chain_anchor(record)
+                == critic_mode._chain_extendable_anchor(record)
+            ), f"mirror drift on record shape: {record!r}"
+
+    def test_verbose_mode_constants_in_lockstep(self):
+        from lib import critic_mode, gates  # noqa: PLC0415
+
+        assert (
+            gates._CRITIC_MODE_CUMULATIVE
+            == critic_mode._MODE_CUMULATIVE_VERBOSE
+        )
+        assert (
+            gates._CRITIC_MODE_VERIFY_RESOLUTIONS
+            == critic_mode._MODE_VERIFY_RESOLUTIONS_VERBOSE
+        )
