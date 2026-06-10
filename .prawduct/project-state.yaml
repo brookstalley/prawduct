@@ -34,6 +34,10 @@ distribution: plugin
 # preferred over the bare `develop` for a stable remote-tracking merge-base.
 base_branch: develop
 
+# Active build plan (.prawduct/-relative). Drives the Critic gate, plan-aware
+# mode inference, and verify-chunk-refs. Cleared at the develop→main release.
+active_build_plan: artifacts/build-plan-changelog-lifecycle.md
+
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
