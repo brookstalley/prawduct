@@ -331,6 +331,122 @@ class TestLedgerAppendRejects:
 
 
 # ---------------------------------------------------------------------------
+# ledger-append --event review.pr (review-proportionality ch.05)
+# ---------------------------------------------------------------------------
+
+
+PR_EVIDENCE_REL = ".prawduct/.pr-reviews/feature--example.json"
+
+
+def _write_pr_evidence(repo: Path, **overrides) -> dict:
+    data: dict = {
+        "timestamp": "2026-06-10T00:00:00Z",
+        "branch": "feature/example",
+        "base": "develop",
+        "pr_number": None,
+        "mode": "pr-scoped",
+        "record_consumed": True,
+        "spot_checks": [{"claim": "x pinned by test y", "verified": True}],
+        "findings": [],
+        "summary": "No issues found. PR is ready to create.",
+    }
+    data.update(overrides)
+    path = repo / PR_EVIDENCE_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data))
+    return data
+
+
+class TestLedgerAppendReviewPr:
+    """``review.pr`` events: the PR reviewer's evidence joins the same ledger
+    so role-vs-role model-efficiency comparisons (data requirement 1) have
+    both review roles. The evidence source is the caller-computed
+    ``--findings`` path — required for ``review.pr``, rejected for
+    ``review.critic`` (whose only trusted source stays the canonical file)."""
+
+    def test_envelope_role_pr_and_payload_equality(self, tmp_path):
+        repo = tmp_path / "myproject"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        record = _write_pr_evidence(repo, duration_seconds=240, model="opus")
+        r = _run_hook(
+            repo, "ledger-append", "--event", "review.pr",
+            "--findings", PR_EVIDENCE_REL, "--scope", "my-feature",
+        )
+        assert r.returncode == 0, r.stderr
+        events = _ledger_events(repo)
+        assert len(events) == 1
+        ev = events[0]
+        assert ev["event"] == "review.pr"
+        assert ev["actor"] == {"role": "pr", "model": "opus"}
+        assert ev["duration_seconds"] == 240
+        assert ev["scope"] == "my-feature"
+        assert ev["git"]["head"] == head
+        # Same family-named payload key as review.critic — review-stats
+        # aggregates both roles without a telemetry change.
+        assert ev["review"] == record
+
+    def test_explicit_model_flag_wins(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo, model="opus")
+        r = _run_hook(repo, "ledger-append", "--event", "review.pr",
+                      "--findings", PR_EVIDENCE_REL, "--model", "fable")
+        assert r.returncode == 0, r.stderr
+        assert _ledger_events(repo)[0]["actor"]["model"] == "fable"
+
+    def test_review_pr_requires_findings_path(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "review.pr")
+        assert r.returncode == 1
+        assert "--findings" in r.stderr
+        assert not (repo / LEDGER_REL).exists()
+
+    def test_review_critic_rejects_findings_path(self, tmp_path):
+        # The canonical-source property: an arbitrary file must never enter
+        # the history the PR gate trusts as a review.critic payload.
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic",
+                      "--findings", ".prawduct/.critic-findings.json")
+        assert r.returncode == 1
+        assert "only valid for review.pr" in r.stderr
+        assert not (repo / LEDGER_REL).exists()
+
+    def test_missing_evidence_file_rejected(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        r = _run_hook(repo, "ledger-append", "--event", "review.pr",
+                      "--findings", PR_EVIDENCE_REL)
+        assert r.returncode == 1
+        assert "no findings record" in r.stderr
+        assert not (repo / LEDGER_REL).exists()
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [{"findings": "not-a-list"}, {"summary": ""}, {"summary": 7}],
+        ids=["findings_not_list", "summary_empty", "summary_not_str"],
+    )
+    def test_invalid_evidence_rejected_nothing_appended(self, tmp_path, overrides):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo, **overrides)
+        r = _run_hook(repo, "ledger-append", "--event", "review.pr",
+                      "--findings", PR_EVIDENCE_REL)
+        assert r.returncode == 1
+        assert "PR-evidence validation" in r.stderr
+        assert not (repo / LEDGER_REL).exists()
+
+
+# ---------------------------------------------------------------------------
 # check-cumulative-critic: the ledger fallback
 # ---------------------------------------------------------------------------
 
@@ -460,6 +576,22 @@ class TestGateLedgerFallbackStaysHonest:
         _write_findings(repo, mode=VERIFY_MODE, commit_reviewed=head)
         r = _run_gate(repo)
         assert r.returncode == 0, r.stderr
+
+    def test_review_pr_event_never_satisfies_the_critic_gate(self, tmp_path):
+        # ch.05: review.pr events share the ledger, but the cumulative-Critic
+        # gate's evidence is review.critic ONLY — a PR-review payload (even
+        # one dressed in a cumulative-looking mode) must not vouch for code
+        # soundness.
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _append_ledger_event(
+            repo, _cumulative_payload(head), event="review.pr",
+        )
+        _write_findings(repo, mode=CHUNK_MODE, commit_reviewed=head)
+        r = _run_gate(repo)
+        assert r.returncode == 1
+        assert "wrong-mode" in r.stderr
 
     def test_qualifying_latest_record_never_consults_ledger(self, tmp_path):
         # The fallback is for the wrong-kind case ONLY: a stale cumulative in

@@ -32,9 +32,13 @@ kind-named key (`review` for `review.*`):
 - `scope` is the build-plan feature key (passed explicitly by the reviewer;
   the `active_build_plan` pointer is only the fallback).
 - `duration_seconds` and `actor.model` are nullable — recorded, never invented.
-- v1 emits `review.critic` (`review.pr` arrives with PR-reviewer scoping).
-  `build.chunk` / `plan.authored` / `discovery.session` are accommodated by
-  the envelope and deliberately not yet produced.
+- v1 emits `review.critic` (the Critic, after writing its findings file) and
+  `review.pr` (the `/prawduct:pr` skill after the PR review, via
+  `--findings <evidence-path>` — required for `review.pr`, rejected for
+  `review.critic`, whose only trusted source is the canonical
+  `.critic-findings.json`). `build.chunk` / `plan.authored` /
+  `discovery.session` are accommodated by the envelope and deliberately not
+  yet produced.
 - **Consumers skip unknown event kinds and unknown fields** — that contract is
   what lets producers grow without migrating the ledger.
 
@@ -76,4 +80,7 @@ Stat block: `reviews`, `duration_total_seconds`, `duration_median_seconds`
 `actionable_rate` (0–1).
 
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
-`verify-resolutions`), derived from the persisted verbose strings.
+`verify-resolutions`), derived from the persisted verbose strings. PR-review
+events carry `pr-scoped` (the Critic record survived the audit and was
+consumed) or `pr-full` (record voided or absent — full code-soundness pass),
+so scoped and full runs aggregate as distinct modes.

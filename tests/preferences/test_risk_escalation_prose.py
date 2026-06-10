@@ -64,3 +64,15 @@ def test_critic_allowed_tools_can_run_the_classifier() -> None:
         "`Bash(prawduct-hook classify-diff-risk)` — the forked Critic cannot "
         "resolve the reviewer tier."
     )
+
+
+def test_pr_skill_allowed_tools_can_run_the_classifier() -> None:
+    # Step 3's dispatch prose runs the classifier, so the declared tool list
+    # must carry the subcommand too (ch.04 wired the prose but missed the
+    # frontmatter — found and fixed in ch.05).
+    frontmatter = _PR_SKILL.read_text().split("---", 2)[1]
+    assert "Bash(prawduct-hook classify-diff-risk)" in frontmatter, (
+        "skills/pr/SKILL.md allowed-tools is missing "
+        "`Bash(prawduct-hook classify-diff-risk)` — the /pr skill cannot "
+        "resolve the reviewer tier its Step 3 prose calls for."
+    )

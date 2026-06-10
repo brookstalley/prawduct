@@ -3,7 +3,7 @@ description: PR lifecycle management — create, update, merge, or check status 
 argument-hint: "[create|update|merge|status]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(gh *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook resolve-base), Read, Write, Agent
+allowed-tools: Bash(gh *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook resolve-base), Bash(prawduct-hook classify-diff-risk), Bash(prawduct-hook ledger-append *), Read, Write, Agent
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -79,7 +79,9 @@ First, compute the evidence file path: take the current branch name, replace eve
 
 Create the `.prawduct/.pr-reviews/` directory if it doesn't exist.
 
-Tell the reviewer agent: "You are the PR reviewer. Read `${CLAUDE_SKILL_DIR}/review-protocol.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. Review the changes on the current branch. Write your findings to the exact path: `.prawduct/.pr-reviews/[computed-filename]` — use this path exactly as given, do not compute your own filename."
+Tell the reviewer agent: "You are the PR reviewer. Read `${CLAUDE_SKILL_DIR}/review-protocol.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. The gate-qualifying Critic record is at `[record source]` — consume it per the protocol's audit duty. Review the changes on the current branch. Write your findings to the exact path: `.prawduct/.pr-reviews/[computed-filename]` — use this path exactly as given, do not compute your own filename."
+
+For `[record source]`, name what Step 2's gate actually evaluated: `.prawduct/.critic-findings.json` normally, or the ledger file + line when the gate's stderr reported `ledger-fallback`. The reviewer audits the record (≥2 adversarial spot-checks) instead of re-deriving code soundness — that scoping is the protocol's design, not a shortcut.
 
 **Pass the exact full path — do not ask the reviewer to compute the filename.** The reviewer's own instructions reinforce this: "Write to the exact file path provided by the caller."
 
@@ -96,6 +98,8 @@ Before creating the PR, confirm:
 
 If any check fails, STOP. Do not create the PR.
 
+Then append the review to the governance ledger (role-vs-role telemetry needs both review roles): `prawduct-hook ledger-append --event review.pr --findings .prawduct/.pr-reviews/[computed-filename] --scope [the build-plan scope this PR ships] --model [the model Step 3 dispatched]`.
+
 ### Step 5: Create PR
 Push branch with `-u`. Draft title and description from work context + review findings summary. Create via `gh pr create`. Update `pr_number` in the evidence file.
 
@@ -104,7 +108,7 @@ Push branch with `-u`. Draft title and description from work context + review fi
 1. Push new commits to remote
 2. If substantive changes (not just formatting/comments), re-run the reviewer on the delta
 3. Update PR description if scope changed
-4. Update evidence file
+4. Update evidence file; if the reviewer re-ran, append a fresh `review.pr` ledger event (as in Create Step 4)
 
 ## Merge Flow
 
@@ -133,9 +137,8 @@ PR review evidence is stored in `.prawduct/.pr-reviews/<branch-name>.json` (with
 - The PR reviewer runs as a **separate agent** — it must have independent context
 - The reviewer reads `${CLAUDE_SKILL_DIR}/review-protocol.md` for its instructions
 - Run the full test suite before creating a PR — but check `prawduct-hook test-status` first; skip the run if it reports `current`
-- **Doc-only fast-path (Step 1b):** when `check-pr-doc-only` reports the entire `merge-base...HEAD` diff is `.md`, the cumulative-Critic and PR-reviewer gates are skipped. The gate fails closed — any error in evaluation falls through to the full review path. Mirrors the stop hook's `_session_changes_are_doc_only` exemption at the PR boundary. There is **no** code-side trivial fast-path — fileset-eligibility (only touching existing files) is a necessary but not sufficient signal of triviality, so code PRs always get the full review.
-- **Run `prawduct-hook check-cumulative-critic` before creating a PR** — this gate refuses to open a PR without a blocking-free, HEAD-covering `cumulative`-mode Critic record or a `verify-resolutions` chain record extending one (see Step 2, CRT-4J8W). The cumulative review (`merge-base...HEAD`) catches cross-chunk integration cracks per-chunk reviews can't see.
-- **Run `prawduct-hook check-operator-verification`** — when `operator_verification_required: true`, the gate refuses to open a PR if `.prawduct/operator-verification.md` has any pending entries. Drain via `prawduct-hook verify-operator-verification <VRF-id>` or override per-PR with `--accept-pending-verification "rationale"` (see Step 2b).
+- **The doc-only fast-path (Step 1b) is the only review-gate skip.** It fails closed, and there is no code-side trivial fast-path (rationale in Step 1b's note).
+- **The cumulative-Critic gate (Step 2) and operator-verification gate (Step 2b) are mandatory** — never open a PR without a blocking-free record vouching for HEAD, or with pending verification entries (full mechanics in those steps).
 - Include review findings summary in the PR description
 - **No attribution trailers by default** — do not add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to commit messages or the PR body unless `project-preferences.md` sets `Commit attribution` to opt in
 - **Never run `gh pr create` without a valid evidence file on disk**

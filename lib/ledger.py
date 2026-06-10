@@ -11,21 +11,26 @@ cross-project aggregation (TEL-7A4X). Fields exist to serve those questions.
 **Envelope/payload split.** Every event shares the envelope —
 ``{schema_version, event, ts, duration_seconds, project, scope, chunk,
 actor: {role, model}, git: {head, base}}`` — and nests its kind-specific
-payload beneath a kind-named key (``review`` for v1's ``review.critic``).
-Aggregators key on the envelope without understanding every payload;
-consumers skip unknown event kinds and unknown fields. v1 emits only
-``review.critic`` (``review.pr`` arrives with the PR-reviewer scoping chunk;
-``build.chunk`` / ``plan.authored`` / ``discovery.session`` are accommodated
-by the envelope and deliberately NOT built — see the build plan's Out of
-scope).
+payload beneath a family-named key (``review`` for both ``review.critic``
+and ``review.pr``). Aggregators key on the envelope without understanding
+every payload; consumers skip unknown event kinds and unknown fields. v1
+emits ``review.critic`` and ``review.pr`` (``build.chunk`` /
+``plan.authored`` / ``discovery.session`` are accommodated by the envelope
+and deliberately NOT built — see the build plan's Out of scope).
 
 **Structural writer.** The agent never hand-authors JSONL: ``prawduct-hook
-ledger-append`` reads the just-written findings file, validates it
-(``lib.gates.validate_critic_findings`` — the same schema the gates trust),
+ledger-append`` reads the just-written findings file, validates it,
 computes the envelope itself, and appends ONE line in a single
 ``O_APPEND``-mode write. Validation lives at the append boundary because this
-is the only writer. ``duration_seconds`` and ``actor.model`` come from the
-findings record / ``--model`` — both nullable, never invented.
+is the only writer — ``review.critic`` payloads through
+``lib.gates.validate_critic_findings`` (the schema the gates trust),
+``review.pr`` payloads through the same bar the stop-hook PR gate applies
+(``findings`` list + non-empty ``summary``). ``review.critic`` always reads
+the canonical ``.critic-findings.json``; ``review.pr`` requires the caller
+to pass ``--findings <path>`` (the branch-derived evidence path the
+``/prawduct:pr`` skill already computed). ``duration_seconds`` and
+``actor.model`` come from the findings record / ``--model`` — both
+nullable, never invented.
 
 **Scope attribution.** ``--scope`` is passed EXPLICITLY by the reviewer from
 the plan it reviewed against; the ``active_build_plan`` pointer is only the
@@ -53,8 +58,7 @@ LEDGER_SCHEMA_VERSION = 1
 
 # Event kind -> actor role. Fail-closed: unknown kinds are rejected at append
 # (learnings: "Escape hatches in classification create silent failures").
-# ``review.pr`` joins when the PR-reviewer scoping chunk defines what it reads.
-_EVENT_ROLES = {"review.critic": "critic"}
+_EVENT_ROLES = {"review.critic": "critic", "review.pr": "pr"}
 
 
 def ledger_path(prawduct_dir: Path) -> Path:
@@ -102,22 +106,38 @@ def _scope_from_plan(prawduct_dir: Path) -> str | None:
     return None
 
 
+def _validate_pr_evidence(record) -> bool:
+    """The stop-hook PR gate's bar, applied at the append boundary:
+    a dict with a ``findings`` list and a non-empty string ``summary``."""
+    return (
+        isinstance(record, dict)
+        and isinstance(record.get("findings"), list)
+        and isinstance(record.get("summary"), str)
+        and bool(record["summary"].strip())
+    )
+
+
 def ledger_append(project_dir: Path, argv: list[str]) -> int:
     """Body of ``prawduct-hook ledger-append`` — see module docstring.
 
-    Usage: ``ledger-append --event review.critic [--scope <scope>]
-    [--chunk <id>] [--model <id>]``. Exit 0 on append; exit 1 with a stderr
-    reason on bad args, unknown event kind, or a missing/invalid findings
-    file (an invalid record must not enter the history the PR gate trusts).
+    Usage: ``ledger-append --event review.critic|review.pr
+    [--findings <path>] [--scope <scope>] [--chunk <id>] [--model <id>]``.
+    ``--findings`` is required for ``review.pr`` (the branch-derived evidence
+    path the caller computed) and rejected for ``review.critic`` (the
+    canonical ``.critic-findings.json`` is the only trusted source). Exit 0
+    on append; exit 1 with a stderr reason on bad args, unknown event kind,
+    or a missing/invalid findings file (an invalid record must not enter the
+    history the PR gate trusts).
     """
     event_kind: str | None = None
     scope: str | None = None
     chunk: str | None = None
     model: str | None = None
+    findings_arg: str | None = None
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("--event", "--scope", "--chunk", "--model"):
+        if arg in ("--event", "--scope", "--chunk", "--model", "--findings"):
             if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
                 print(f"ledger-append: {arg} requires a value", file=sys.stderr)
                 return 1
@@ -128,6 +148,8 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
                 scope = value
             elif arg == "--chunk":
                 chunk = value
+            elif arg == "--findings":
+                findings_arg = value
             else:
                 model = value
             i += 2
@@ -148,7 +170,27 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    findings_path = prawduct_dir / ".critic-findings.json"
+    if event_kind == "review.pr":
+        if findings_arg is None:
+            print(
+                "ledger-append: --findings <path> is required for review.pr "
+                "(the .prawduct/.pr-reviews/<branch>.json path the caller "
+                "computed).",
+                file=sys.stderr,
+            )
+            return 1
+        findings_path = Path(findings_arg)
+        if not findings_path.is_absolute():
+            findings_path = project_dir / findings_path
+    else:
+        if findings_arg is not None:
+            print(
+                "ledger-append: --findings is only valid for review.pr — "
+                "review.critic reads the canonical .critic-findings.json.",
+                file=sys.stderr,
+            )
+            return 1
+        findings_path = prawduct_dir / ".critic-findings.json"
     if not findings_path.is_file():
         print(
             f"ledger-append: no findings record at {findings_path} — write "
@@ -157,16 +199,31 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
-    from . import gates  # noqa: PLC0415 — lazy; avoids a gates<->ledger import cycle
+    if event_kind == "review.pr":
+        try:
+            record = json.loads(findings_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"ledger-append: {findings_path} unreadable ({exc})", file=sys.stderr)
+            return 1
+        if not _validate_pr_evidence(record):
+            print(
+                f"ledger-append: {findings_path} failed PR-evidence "
+                "validation (findings list + non-empty summary) — an invalid "
+                "record must not enter the ledger.",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        from . import gates  # noqa: PLC0415 — lazy; avoids a gates<->ledger import cycle
 
-    if not gates.validate_critic_findings(findings_path):
-        print(
-            f"ledger-append: {findings_path} failed schema validation — an "
-            "invalid record must not enter the ledger the PR gate trusts.",
-            file=sys.stderr,
-        )
-        return 1
-    record = json.loads(findings_path.read_text())
+        if not gates.validate_critic_findings(findings_path):
+            print(
+                f"ledger-append: {findings_path} failed schema validation — an "
+                "invalid record must not enter the ledger the PR gate trusts.",
+                file=sys.stderr,
+            )
+            return 1
+        record = json.loads(findings_path.read_text())
 
     duration = record.get("duration_seconds")
     if not isinstance(duration, (int, float)) or isinstance(duration, bool):

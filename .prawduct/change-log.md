@@ -3,6 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: PR-reviewer scoping — consume the Critic record, audit it, review the release
+
+<!-- prawduct: chunks=05 | type=feature | scope=review-proportionality -->
+
+**Why:** The PR reviewer re-derived code soundness over the same
+`merge-base...HEAD` the cumulative-Critic gate had just certified — the
+third structural tax this plan removes. Independence is preserved by
+*auditing* the record, not repeating its work.
+
+**What:** `skills/pr/review-protocol.md` rewritten around the
+consume-and-audit design: the gate-qualifying Critic record is an input
+(resolved the same way `check-cumulative-critic` resolves it — latest
+findings file when its kind qualifies, else the newest qualifying
+`review.critic` ledger event), consumed as **evidence, not truth**. Audit
+duty: adversarially spot-check ≥2 substantive claims against the code; ANY
+failure (or no qualifying record) voids the record → full code-soundness
+pass, declared in the output. Evidence gains `mode`
+(`pr-scoped`/`pr-full`), `model`, `duration_seconds`, `record_consumed`,
+`spot_checks` — telemetry separates scoped from full runs with zero
+telemetry-code change (mode flows through the existing grouping). Release
+focus sharpened: migration/rollback notes + version/changelog coherence
+bullets added to Merge Hygiene. `skills/pr/SKILL.md`: Step 3 hands the
+record source to the reviewer; Step 4 (and Update flow re-reviews) append
+`review.pr` to the governance ledger so role-vs-role model-efficiency
+(data requirement 1) has both review roles. `lib/ledger.py`: `review.pr`
+event kind (role `pr`) — requires the caller-computed `--findings <path>`,
+rejected for `review.critic` (canonical-source property preserved);
+payload validated at the stop-hook PR-gate bar (findings list + non-empty
+summary). The cumulative-Critic gate ignores `review.pr` events (pinned —
+a PR review must never vouch for code soundness).
+
+In-cycle fixes (no pre-existing exception): ch.04 wired
+`classify-diff-risk` into pr/SKILL step-3 prose but missed the
+`allowed-tools` frontmatter — added (with a structural pin, parallel to
+the Critic's). Deduplication (user-directed critical eye): the layering
+rationale was stated 3× in review-protocol.md (intro ¶ + goals preamble +
+table) → now intro + table; the retired-trivial-fast-path history was
+restated in full 3× across the two files → full rationale lives in SKILL
+Step 1b, the other two point at it; the `## Important` bullets restating
+Steps 1b/2/2b verbatim → one-line pointers.
+
+**Blast radius:** Modified: `skills/pr/review-protocol.md` (rewrite),
+`skills/pr/SKILL.md` (allowed-tools, Steps 3/4, Update flow, Important
+trim), `lib/ledger.py` (review.pr), `skills/critic/review-cycle.md` +
+`docs/governance-telemetry.md` (event-kind docs current). Tests:
+`tests/test_governance_ledger.py` (+9: TestLedgerAppendReviewPr + gate
+honesty), `tests/test_pr_reviewer.py` (+7: TestPrReviewerScoping),
+`tests/test_review_stats.py` (+1: pr-scoped/pr-full distinct modes),
+`tests/preferences/test_risk_escalation_prose.py` (+1: pr allowed-tools).
+1181 total.
+
 ## 2026-06-10: risk-surface reviewer escalation — `classify-diff-risk`
 
 <!-- prawduct: chunks=04 | type=feature | scope=review-proportionality -->
