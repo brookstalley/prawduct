@@ -70,10 +70,11 @@ file and line; two have observed live failures.
 - [ ] Chunk 01: CRT-8W3F — ledger-fallback freshness at the PR gate
 - [ ] Chunk 02: STH-5P2W — build-plan pointer: repo-relative acceptance + loud missing-file guard
 - [ ] Chunk 03: MET-6W3J — learnings.md compaction + size nudge
-Context: Chunk 01 built 2026-06-10 (59258bd) — ledger-fallback freshness landed, Critic
-0B/0W/1N (chain pass extending 3c4b627; explicit-mode-override bug observed and filed as
-CRT-2N7V, cross-bundle rule-1b chaining filed as CRT-6J4P). Checkboxes flip at release via
-scope=do-next change-log tags. Next: Chunk 02 (pointer guard).
+Context: Chunks 01 (59258bd) + 02 (a5305c0) built 2026-06-10. Ch.01 Critic 0B/0W/1N
+(chain pass; explicit-mode-override bug filed CRT-2N7V, cross-bundle rule-1b chaining filed
+CRT-6J4P). Ch.02 Critic (chunk mode) zero findings. Checkboxes flip at release via
+scope=do-next change-log tags. Next: Chunk 03 (learnings compaction + size nudge,
+Type: cumulative-final — its review is the branch cumulative).
 
 ## Scaffolding
 

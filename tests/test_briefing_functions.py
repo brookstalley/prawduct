@@ -542,6 +542,31 @@ class TestAssembleSessionBriefingSections:
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "Backlog: 1 pending" in out
 
+    def test_learnings_entry_format_counts_headings(self, tmp_path):
+        # The documented format is one rule per `## ` entry; bullet counting
+        # alone reported 0 rules and silently dropped the Learnings line.
+        pr = self._state(tmp_path, "")
+        (pr / "learnings.md").write_text(
+            "# L\n\n## Rule one\n\nBody.\n\n## Rule two\n\nBody with\n- an inner bullet\n"
+        )
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "Learnings (2 rules)" in out  # headings win; inner bullet not counted
+
+    def test_learnings_size_nudge_over_threshold(self, tmp_path):
+        # MET-6W3J: every lookup reads the whole file — nudge when oversized.
+        pr = self._state(tmp_path, "")
+        big = "# L\n" + ("- rule\n" + "x" * 100 + "\n") * 500  # > 40KB
+        (pr / "learnings.md").write_text(big)
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "learnings.md is large" in out
+        assert "learnings-detail.md" in out  # the fix is taught, not just the size
+
+    def test_learnings_size_nudge_silent_under_threshold(self, tmp_path):
+        pr = self._state(tmp_path, "")
+        (pr / "learnings.md").write_text("# L\n- rule one\n- rule two\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "learnings.md is large" not in out
+
     def test_claude_md_size_warning_over_threshold(self, tmp_path):
         self._state(tmp_path, "")
         (tmp_path / "CLAUDE.md").write_text("\n".join(f"line {i}" for i in range(260)))

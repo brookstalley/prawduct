@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: learnings.md compaction + size nudge (MET-6W3J)
+
+<!-- prawduct: chunks=03 | type=fix | scope=do-next -->
+
+**Why:** learnings.md had grown to ~80KB / 58 entries with 300–600-word
+narrative bodies, drifting from its own stated format (rule here, full context
+in learnings-detail.md). Every `/prawduct:learnings` lookup and Critic
+learnings cross-check pays the whole file, and nothing nudged it back down —
+the prior 8KB clear-hook warning was retired when the fork-skill lookup
+landed, but at 80KB the lookup itself became the cost.
+
+**What:** (1) 48 of 58 entries compacted to their When-X-do-Y-because-Z rule
+plus a `Detail: learnings-detail.md § <heading>` pointer; all 48 narrative
+bodies moved VERBATIM to learnings-detail.md under a dated move-marker (79.5KB
+→ 39.4KB; headings byte-identical, audit-learnings parse unchanged; ~39KB is
+near the floor — new entries must put narrative straight into the detail
+file). (2) Session briefing nudges when learnings.md exceeds 40KB (the
+project-state threshold/pattern), teaching the compaction fix. (3) Found
+while landing the nudge: the briefing's "Learnings (N rules)" line counted
+only `- ` bullets, reporting 0 and silently vanishing on entry-format files —
+now counts `## ` entries with bullet-count fallback for legacy files.
+
 ## 2026-06-10: build-plan pointer — repo-relative acceptance + loud missing-file guard (STH-5P2W)
 
 <!-- prawduct: chunks=02 | type=fix | scope=do-next -->
