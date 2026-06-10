@@ -97,13 +97,22 @@ class TestStopPrReviewGate:
         assert result.returncode == 0
 
     def test_stop_with_pr_no_evidence_blocks(self, tmp_path: Path):
-        """When a PR exists but no review evidence, stop should BLOCK."""
+        """When the session changed code and a PR exists with no review
+        evidence, stop should BLOCK.
+
+        Contract renegotiated in review-fixes Chunk 1: the gate now requires
+        session changes (the fixture's code diff). The original test used an
+        empty `git status` and pinned the old always-probe behavior, which made
+        every turn-end of a pure Q&A session on a feature branch pay a
+        `gh pr list` network call — see
+        `test_stop_no_session_changes_skips_pr_gate` for the new short-circuit.
+        """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
 
@@ -121,8 +130,41 @@ class TestStopPrReviewGate:
         assert "PR REVIEW" in result.stderr
         assert "PR exists for branch" in result.stderr or "no review evidence" in result.stderr
 
+    def test_stop_no_session_changes_skips_pr_gate(self, tmp_path: Path):
+        """A session with NO changes incurs no review obligation: Gate 3 must
+        exit clean AND never invoke `gh` (the probe is a network call that used
+        to fire on every turn-end of a no-change session on a feature branch —
+        review-fixes Chunk 1). The recording mock pins the absence of the call,
+        not just the absence of the blocker."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        gh_log = tmp_path.parent / "gh_calls.log"
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',  # no session changes
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+        ])
+        gh_script = "\n".join([
+            f'echo "$@" >> "{gh_log}"',
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook(
+            "stop", tmp_path,
+            git_script=git_script,
+            gh_script_body=gh_script,
+        )
+        assert result.returncode == 0
+        assert "PR REVIEW" not in result.stderr
+        assert not gh_log.exists(), (
+            f"gh was invoked on a no-change session: {gh_log.read_text() if gh_log.exists() else ''}"
+        )
+
     def test_stop_with_pr_and_evidence_no_warning(self, tmp_path: Path):
-        """When PR exists AND review evidence exists, no warning."""
+        """When the session changed code, a PR exists AND review evidence
+        exists, no warning. (Code diff per the renegotiated Gate 3 contract —
+        see test_stop_with_pr_no_evidence_blocks.)"""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         reviews_dir = prawduct / ".pr-reviews"
@@ -139,7 +181,7 @@ class TestStopPrReviewGate:
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
 
@@ -167,7 +209,7 @@ class TestStopPrReviewGate:
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
         gh_script = "\n".join([
@@ -189,7 +231,7 @@ class TestStopPrReviewGate:
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
         gh_script = "\n".join([
@@ -211,7 +253,7 @@ class TestStopPrReviewGate:
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
         gh_script = "\n".join([
@@ -223,13 +265,15 @@ class TestStopPrReviewGate:
         assert "PR REVIEW" in result.stderr
 
     def test_stop_on_main_branch_skips_pr_check(self, tmp_path: Path):
-        """PR review check should skip main/master/develop branches."""
+        """PR review check should skip main/master/develop branches. (The
+        fixture carries a code diff so the branch condition — not the
+        no-session-changes short-circuit — is what's exercised.)"""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "main"; exit 0; fi',
         ])
 

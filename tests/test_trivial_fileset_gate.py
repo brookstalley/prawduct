@@ -121,3 +121,14 @@ class TestProtectedPathsConstant:
             assert reason == f"{reason_label}: {sample}", (
                 f"constant entry {protected!r} did not drive the classifier"
             )
+
+    def test_protected_path_violation_helper_shared_with_pr_gate(self):
+        # PR-5K8D: the extracted helper is the seam the PR doc-only gate
+        # consults — same labels, same exact/prefix semantics.
+        assert (
+            _bpr.protected_path_violation("skills/pr/SKILL.md")
+            == "skill-file-edited: skills/pr/SKILL.md"
+        )
+        assert _bpr.protected_path_violation("CLAUDE.md") == "claude-md-edited: CLAUDE.md"
+        assert _bpr.protected_path_violation("foo/CLAUDE.md") is None
+        assert _bpr.protected_path_violation("docs/notes.md") is None

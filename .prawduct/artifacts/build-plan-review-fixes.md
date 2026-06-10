@@ -29,11 +29,27 @@ last_validated: 2026-06-09
 
 ## Status
 
+<!-- views_enabled: checkboxes are derived from scope=review-fixes change-log entries by
+     regen-views at release; do not hand-edit. -->
+
 - [ ] Chunk 1: Hot-path correctness fixes (core.py path, Gate 3 network call, porcelain parsing)
 - [ ] Chunk 2: Work-model probe precision
 - [ ] Chunk 3: Review-gate soundness (PR-5K8D fileset + Critic marker placement)
 - [ ] Chunk 4: Always-loaded context dedup (framework-repo slim digest)
-Context: Plan created 2026-06-09 from the framework review. Nothing built yet. Build on a feature branch off develop (e.g. `feature/review-fixes`). Backlog items for the deferred findings were filed the same session; PR-5K8D and CRT-6F2N are promoted into Chunk 3.
+Context: ALL FOUR CHUNKS BUILT (checkboxes flip at release via scope=review-fixes
+change-log tags — PR-reviewer warning: hand-flipped boxes would be reverted by regen-views). 2026-06-10: branch rebased onto develop (post
+#86/#87/#88 — metadata conflicts resolved by union; develop's dedup'd pr/SKILL prose kept,
+ch.3's protected-paths substance survives in Step 1b + code; 1219 tests green post-rebase),
+then Chunk 4 built per the user-confirmed slim-digest assumption: new canonical
+`methodology/session-digest-slim.md` (~40% of full, budget-pinned ≤50%), `hooks/digest.py`
+`is_framework_repo` manifest detection (`.claude-plugin/plugin.json` name=prawduct at the
+governed repo root; every anomaly fails safe to full, missing slim file falls back to
+full), +11 tests, `test_additional_context_matches_source` renegotiated in the open. Live
+acceptance verified: this repo emits slim (2,189 chars), product fixture gets full
+verbatim. Declared deviation: two-variant documentation lives in digest.py's docstring +
+the slim file's header, not inside session-digest.md (whose body is injected verbatim into
+product sessions). Next: Critic final + cumulative (ch.4 is Type: cumulative-final), then
+/prawduct:pr. Chunks 1–3 build notes (2026-06-09): Chunk 1 built on `feature/review-fixes`: all four fixes in, 1037 tests pass, 17 new regression tests. Timing evidence for the Gate 3 short-circuit: a no-change `stop` on a feature branch in a scratch repo completes in 0.29s wall with no `gh` invocation (recording-mock test pins the absence of the call). Critic (final) found one BLOCKING — the `active_build_plan` pointer in project-state.yaml was written repo-relative but resolves `.prawduct/`-relative, silently disabling plan governance; fixed, and the un-blinded ref-verifier then caught a backticked retired-path mention in this plan (also fixed). Chunk 2 built same day (Critic chunk-mode x2: pass, then 1 warning + 2 notes, all resolved — count drift fixed, sentence-boundary determiner reset added, wordlist license posture recorded in `lib/common_words.py`): frequency floor is the top-4,000 of the google-10000-english list (not "a few KB" — the observed false-positive term *efficiency* ranks #3283, forcing the cutoff; 30KB accepted and documented in `lib/common_words.py`), plus firing threshold and corpus widening; 14 new tests, 1051 pass; all four observed false-positive prompt classes verified silent live against this repo's hook, "add OAuth login to the settings page" still fires. Two extra precision bugs found and fixed during build: contraction tokens minting orphan non-words ("let's" -> "let'"), and requirement verbs reporting themselves as the orphan ("extend X" flagging *extend*). Chunk 3 built same day (Critic chunk-mode: 1 blocking — a backticked placeholder path `skills/x/SKILL.md` in this plan's own Tests bullet failed verify-chunk-refs, fixed to the real path, gate re-verified green; 1 note — `status=shipped` pre-merge is plan-mandated here but diverges from the in-progress→shipped-at-release convention siblings use, accepted for this branch): PR-5K8D fixed by extracting `protected_path_violation` from the trivial gate's bound list and consulting it in the PR doc-only gate (a `skills/*.md` PR now exits 1 `not-doc-only`; nested `foo/CLAUDE.md` stays doc-only — exact-match semantics preserved); CRT-6F2N fixed by moving the designer-handoff early exit BEFORE `critic-begin` in the critic SKILL step 1 (no marker for a review that never happens), pinned by a prose-ordering test in the session-guard module. 7 new tests, 1058 pass; both backlog items shipped/archived via /prawduct:backlog. Next: Chunk 4 (framework-repo slim digest — MED vetoable assumption still open for user).
 
 ## Scaffolding
 
@@ -52,7 +68,7 @@ Unchanged — fixes land in existing modules (`lib/`, `bin/prawduct-hook`, `hook
 ### Chunk 1: Hot-path correctness fixes
 
 - **Description:** Fix the three verified bugs in the enforcement layer, plus the version-drift one-liner.
-  1. **`lib/core.py` path depth** — `FRAMEWORK_DIR` uses `parent.parent.parent` (pre-plugin `tools/lib/` depth) and resolves one level above the repo; `TEMPLATES_DIR` points at a nonexistent path and `PRAWDUCT_VERSION` silently reads `"dev"` (verified). Fix to `parent.parent`; remove the now-dead workaround/fallback in `lib/init_product.py` (its `except OSError` fallback currently falls back to the broken value); keep the flat-API exports working (`lib/__init__.py`, contract-pinned by `tests/test_lib_lazy_imports.py`).
+  1. **`lib/core.py` path depth** — `FRAMEWORK_DIR` uses `parent.parent.parent` (the retired file-sync three-level tools layout's depth) and resolves one level above the repo; `TEMPLATES_DIR` points at a nonexistent path and `PRAWDUCT_VERSION` silently reads `"dev"` (verified). Fix to `parent.parent`; remove the now-dead workaround/fallback in `lib/init_product.py` (its `except OSError` fallback currently falls back to the broken value); keep the flat-API exports working (`lib/__init__.py`, contract-pinned by `tests/test_lib_lazy_imports.py`).
   2. **Stop-hook Gate 3 network call** — `bin/prawduct-hook` cmd_stop runs `gh pr list` on every assistant turn on any feature branch even with zero session changes, because the gate is conditioned only on `not doc_only` and `doc_only` is False when `has_changes` is False (verified). Short-circuit Gate 3 on `not has_changes`.
   3. **Porcelain quoted-path parsing** — `lib/gitstate.py` parses `git status --porcelain` with `line.split()[-1]`, mangling git-quoted paths containing spaces and rename (`R old -> new`) lines; a doc-only session touching `my doc.md` fails the doc-only classification and can be falsely blocked by the Critic/reflection gates. The correct parsing (quote-stripping, `->` handling) already exists in `lib/gates.py` (`_classify_trivial_change` area) — extract a shared helper and use it in all three `gitstate.py` parse sites.
   4. **`pyproject.toml`** version `2.0.15` → sync with `VERSION` (2.0.17).
@@ -91,7 +107,7 @@ Unchanged — fixes land in existing modules (`lib/`, `bin/prawduct-hook`, `hook
 - **Depends on:** none
 - **Artifacts consumed:** this plan; backlog item PR-5K8D (refs: `skills/pr/SKILL.md`, `lib/coverage.py`); `skills/critic/review-cycle.md` (designer-handoff contract)
 - **Deliverables:** edits to `lib/coverage.py` (or wherever `check-pr-doc-only` resolves), `skills/pr/SKILL.md`, `skills/critic/SKILL.md`; tests
-- **Tests:** doc-only check returns non-doc-only for a diff touching `skills/x/SKILL.md`; still doc-only for `docs/*.md`-only diffs; marker-lifecycle test if the critic-begin ordering is testable at the hook layer (else the skill prose change is pinned by the existing metadata tests)
+- **Tests:** doc-only check returns non-doc-only for a diff touching `skills/critic/SKILL.md`; still doc-only for `docs/*.md`-only diffs; marker-lifecycle test if the critic-begin ordering is testable at the hook layer (else the skill prose change is pinned by the existing metadata tests)
 - **Acceptance criteria:** a `skills/`-touching branch can no longer take the doc-only fast path (gate exercised in test); designer-handoff invocation leaves no `.critic-active` marker; full suite passes; backlog updated at chunk close via `/prawduct:backlog update PR-5K8D status=shipped closed-by=review-fixes-ch3` and `update CRT-6F2N status=shipped closed-by=review-fixes-ch3`
 - **Done when:**
   1. Acceptance criteria met and tests pass

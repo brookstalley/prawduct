@@ -72,7 +72,7 @@ Default `Type:` is `code` — fail-closed. A missing or unrecognized `Type:` is 
 
 The `Type:` field defaults to `code` when omitted. Declare `Type:` only when it deviates from `code`; minimal-declaration is the v1.4 convention. **The `Type:` axis is the proportional-effort knob (P11) — under-declaring is safe (worst case: redundant Critic time), over-declaring is unsafe (designer-handoff on a code chunk silently skips review).**
 
-When chunk type is `designer-handoff` and the Critic is invoked anyway, output a single line: `Review skipped — Type: designer-handoff (visual handoff; review-by-human)` and exit clean. No findings file is required; the stop-hook gate skip is the structural enforcement.
+When chunk type is `designer-handoff` and the Critic is invoked anyway, output a single line: `Review skipped — Type: designer-handoff (visual handoff; review-by-human)` and exit clean. The exit happens BEFORE `prawduct-hook critic-begin` (SKILL step 1, CRT-6F2N) so no critic-active marker is left to block `clear` until its 30-minute TTL. No findings file is required; the stop-hook gate skip is the structural enforcement.
 
 ### Cumulative-mode diff scope and PR gate
 

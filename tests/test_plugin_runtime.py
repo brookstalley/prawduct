@@ -842,6 +842,57 @@ class TestGitflowBaseResolution:
         assert "nonexistent-branch" in r.stderr
 
 
+class TestDocOnlyProtectedPaths:
+    """PR-5K8D: governance-protected paths are never doc-only, even as .md.
+
+    Fork-skill prose is behavioral logic in this framework, so a PR touching
+    `skills/*.md` (or methodology/, templates/, root CLAUDE.md) must not take
+    the doc-only fast path past the cumulative-Critic and PR-reviewer gates.
+    Bound list shared with the `Type: trivial` gate (_TRIVIAL_PROTECTED_PATHS).
+    """
+
+    @staticmethod
+    def _use_develop_base(repo):
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_format_version: 2\nbase_branch: develop\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("relpath", "label"),
+        [
+            ("skills/critic/SKILL.md", "skill-file-edited"),
+            ("methodology/building.md", "methodology-edited"),
+            ("templates/spec.md", "template-edited"),
+            ("CLAUDE.md", "claude-md-edited"),
+        ],
+    )
+    def test_protected_md_in_pr_is_not_doc_only(self, gitflow_repo, relpath, label):
+        self._use_develop_base(gitflow_repo)
+        target = gitflow_repo / relpath
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# governance prose\n")
+        _git(gitflow_repo, "add", relpath)
+        _git(gitflow_repo, "commit", "-m", f"F3 governance edit: {relpath}")
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        out = r.stdout + r.stderr
+        assert label in out and relpath in out
+
+    def test_nested_claude_md_is_still_doc_only(self, gitflow_repo):
+        # The CLAUDE.md bound is exact-match: a nested foo/CLAUDE.md is
+        # ordinary product doc (mirrors the trivial gate's semantics).
+        self._use_develop_base(gitflow_repo)
+        nested = gitflow_repo / "subpkg" / "CLAUDE.md"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("# nested instructions\n")
+        _git(gitflow_repo, "add", "subpkg/CLAUDE.md")
+        _git(gitflow_repo, "commit", "-m", "F3 nested claude md")
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+
+
 class TestVerifyOperatorVerificationSubcommand:
     """`prawduct-hook verify-operator-verification <VRF-id>` (Chunk 11) is the
     plugin-native replacement for the legacy `prawduct-setup.py verify` path,
