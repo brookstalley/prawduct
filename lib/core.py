@@ -191,8 +191,15 @@ def resolve_build_plan_path(prawduct_dir: Path) -> Path:
     Kept in sync with the inline mirror in ``bin/prawduct-hook``
     (``_resolve_build_plan_path``), which cannot import this module in product
     repos — a parity test pins the two together.
+
+    The pointer is ``.prawduct/``-relative, but the natural repo-relative
+    spelling (``.prawduct/artifacts/x-plan.md``) is accepted by stripping the
+    prefix — that spelling once shipped and silently disabled the gates for a
+    work cycle (STH-5P2W).
     """
     pointer = read_str_yaml_key(prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY)
+    if pointer and pointer.startswith(".prawduct/"):
+        pointer = pointer[len(".prawduct/"):]
     if pointer:
         return prawduct_dir / pointer
     return prawduct_dir / DEFAULT_BUILD_PLAN_REL

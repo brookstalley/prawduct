@@ -203,6 +203,21 @@ build_state:
   source_root: null           # Where source code lives (e.g., "src/")
 
 # =============================================================================
+# ACTIVE BUILD PLAN (optional)
+# =============================================================================
+# Names the in-progress build plan when it isn't the conventional
+# `artifacts/build-plan.md` — scope-named plans (`artifacts/build-plan-<scope>.md`)
+# keep release-pending plans distinct under gitflow. The value is a path
+# relative to `.prawduct/` (a repo-relative `.prawduct/...` spelling is
+# tolerated). The Critic gate, plan-aware mode inference, regen-views, and
+# chunk-ref verification all resolve the plan through this pointer; unset →
+# `artifacts/build-plan.md`. A pointer to a file that doesn't exist means
+# governance sees NO active plan — the session briefing warns loudly until
+# it's fixed (STH-5P2W).
+#
+# active_build_plan: artifacts/build-plan-my-scope.md
+
+# =============================================================================
 # DERIVED VIEWS (enabled by default, v1.4+)
 # =============================================================================
 # When true (default), three derived views are regenerated from change-log.md

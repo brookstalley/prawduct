@@ -491,6 +491,35 @@ class TestAssembleSessionBriefingSections:
         out = briefing.assemble_session_briefing(tmp_path, ["thing A", "thing B"])
         assert "Stale: thing A" in out and "Stale: thing B" in out
 
+    def test_dangling_build_plan_pointer_warns_loudly(self, tmp_path):
+        # STH-5P2W: a SET pointer resolving to no file = governance is blind;
+        # the briefing must say so (this failure shipped silently once).
+        self._state(tmp_path, "active_build_plan: artifacts/gone-plan.md\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "active_build_plan" in out and "MISSING" in out
+        assert "gone-plan.md" in out
+        assert "no active plan" in out  # the consequence is taught
+
+    def test_pointer_to_existing_plan_no_warning(self, tmp_path):
+        pr = self._state(tmp_path, "active_build_plan: artifacts/x-plan.md\n")
+        (pr / "artifacts").mkdir(exist_ok=True)
+        (pr / "artifacts" / "x-plan.md").write_text("# plan\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "MISSING" not in out
+
+    def test_repo_relative_pointer_to_existing_plan_no_warning(self, tmp_path):
+        # The repo-relative spelling now RESOLVES (stripped prefix) — no warning.
+        pr = self._state(tmp_path, "active_build_plan: .prawduct/artifacts/x-plan.md\n")
+        (pr / "artifacts").mkdir(exist_ok=True)
+        (pr / "artifacts" / "x-plan.md").write_text("# plan\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "MISSING" not in out
+
+    def test_unset_pointer_no_warning(self, tmp_path):
+        self._state(tmp_path, "")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "active_build_plan" not in out
+
     def test_handoff_pointer_when_present(self, tmp_path):
         pr = self._state(tmp_path, "")
         (pr / ".session-handoff.md").write_text("prior")

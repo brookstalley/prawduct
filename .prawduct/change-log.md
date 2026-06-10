@@ -3,6 +3,26 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: build-plan pointer — repo-relative acceptance + loud missing-file guard (STH-5P2W)
+
+<!-- prawduct: chunks=02 | type=fix | scope=do-next -->
+
+**Why:** A SET `active_build_plan` pointer that resolves to no file silently
+disables the Critic gate, plan-aware mode inference, and chunk-ref
+verification — governance sees "no active plan" with zero signal. Happened
+live: the review-fixes planning commit wrote the natural repo-relative
+spelling (`.prawduct/artifacts/…`) and the gates were blind for one work
+cycle. The field was also undocumented in the project-state template
+(escape-hatches-create-silent-failures shape).
+
+**What:** (1) Both resolvers (`lib/core.py::resolve_build_plan_path` and the
+parity-pinned `bin/prawduct-hook::_resolve_build_plan_path` mirror) accept the
+repo-relative spelling by stripping one leading `.prawduct/` — parity tests
+extended. (2) The session briefing (`lib/briefing.py`) warns loudly when the
+pointer is set but the resolved file is missing, naming the pointer, the
+resolved path, and the consequence. (3) `templates/project-state.yaml` gains
+an ACTIVE BUILD PLAN section documenting the field's schema and failure mode.
+
 ## 2026-06-10: PR-gate ledger fallback requires same-session freshness (CRT-8W3F)
 
 <!-- prawduct: chunks=01 | type=fix | scope=do-next -->

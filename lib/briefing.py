@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import backlog, buildplan_refs, gates, gitstate
-from .core import resolve_build_plan_path
+from .core import BUILD_PLAN_POINTER_KEY, read_str_yaml_key, resolve_build_plan_path
 
 
 # =============================================================================
@@ -451,6 +451,29 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     current_branch = _get_current_branch(project_dir)
     work_desc = _get_work_in_progress(prawduct_dir)
     lines.append(f"Project: {project_name} | Branch: {current_branch} | Work: {work_desc}")
+
+    # Dangling build-plan pointer guard (STH-5P2W). A SET pointer that resolves
+    # to no file means governance treats the repo as having NO active plan —
+    # the Critic gate, plan-aware mode inference, and chunk-ref verification
+    # all go silently blind (this happened live for a full work cycle). Say so
+    # at the top of the briefing, every session, until the pointer is fixed.
+    try:
+        pointer = read_str_yaml_key(
+            prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY
+        )
+        if pointer:
+            pointed = resolve_build_plan_path(prawduct_dir)
+            if not pointed.is_file():
+                rel = pointed.relative_to(prawduct_dir).as_posix()
+                lines.append(
+                    f"⚠ active_build_plan points at a MISSING file: '{pointer}' "
+                    f"resolved to .prawduct/{rel}. Governance sees no active plan "
+                    "(Critic gate, mode inference, and chunk-ref checks are blind). "
+                    "Fix the pointer in project-state.yaml — it is .prawduct/-relative "
+                    "(e.g. artifacts/build-plan-<scope>.md) — or unset it."
+                )
+    except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        pass
 
     # Work context and current chunk (prefer build plan Status, fall back to WIP)
     wip = _get_active_work(prawduct_dir)

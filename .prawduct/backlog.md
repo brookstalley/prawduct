@@ -521,6 +521,27 @@
   chunk-02 Critic findings). Source: PR #90 reviewer NOTE (fable, escalate tier), same family as
   PR-2H8N. (critic)
 
+- **[CRT-2N7V]** /prawduct:critic explicit mode argument not honored — mode_chosen_by records inference rationale instead of explicit-args
+  `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-3M8Q, CRT-7B4M, CRT-6J4P · refs: skills/critic/SKILL.md`
+
+  Observed 2026-06-10 on feature/do-next chunk 01: invoked the skill with args "chunk" but the
+  forked Critic ran rule-1b verify-resolutions and recorded mode_chosen_by as the verbatim inference
+  string, not "explicit-args" as skills/critic/SKILL.md documents. The $ARGUMENTS override path
+  appears not to reach or not to be honored by the forked skill. Review validity was unaffected
+  (superset scope) but the documented override contract is broken; investigate whether Skill-tool
+  args reach $ARGUMENTS in forked execution. Possible regression/recurrence of CRT-3M8Q (shipped
+  v2.0-era, closed-by #58), which fixed the same Skill-tool-args-don't-thread-to-$ARGUMENTS gap —
+  verify whether that fix covers explicit args or only the plan-field override. (builder)
+
+- **[CRT-6J4P]** infer-critic-mode rule-1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
+  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V · refs: lib/critic_mode.py, skills/critic/SKILL.md`
+
+  Observed 2026-06-10: on a brand-new branch/plan (feature/do-next, first chunk), inference picked
+  verify-resolutions extending the PREVIOUS released bundle's cumulative (3c4b627,
+  changelog-lifecycle v2.1.1) instead of chunk mode. Commit-coverage keeps the record sound, but
+  cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
+  active plan scope. (reflection)
+
 ## Promoted
 
 ## Archive

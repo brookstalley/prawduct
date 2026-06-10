@@ -241,10 +241,14 @@ def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
 
 def _resolve_build_plan_path(prawduct_dir: Path) -> Path:
     """Resolve the active build plan via the ``active_build_plan:`` pointer
-    (relative to ``.prawduct/``); fall back to ``artifacts/build-plan.md`` when
-    unset, so repos without the pointer are unchanged. May not exist — callers
-    treat a missing plan as no active build plan."""
+    (relative to ``.prawduct/``; a repo-relative ``.prawduct/...`` spelling is
+    accepted by stripping the prefix — STH-5P2W); fall back to
+    ``artifacts/build-plan.md`` when unset, so repos without the pointer are
+    unchanged. May not exist — callers treat a missing plan as no active
+    build plan."""
     pointer = _read_str_yaml_key(prawduct_dir / "project-state.yaml", _BUILD_PLAN_POINTER_KEY)
+    if pointer and pointer.startswith(".prawduct/"):
+        pointer = pointer[len(".prawduct/"):]
     if pointer:
         return prawduct_dir / pointer
     return prawduct_dir / _DEFAULT_BUILD_PLAN_REL
