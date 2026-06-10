@@ -72,6 +72,25 @@ class TestResolveBuildPlanPath:
         assert resolved == prawduct / "artifacts" / "gone-plan.md"
         assert not resolved.is_file()
 
+    def test_repo_relative_pointer_accepted(self, tmp_path: Path):
+        # STH-5P2W: the natural repo-relative spelling (".prawduct/artifacts/…")
+        # resolves to the same file as the canonical .prawduct/-relative form —
+        # it once shipped and silently disabled the gates for a work cycle.
+        prawduct = _prawduct(
+            tmp_path, "active_build_plan: .prawduct/artifacts/v1.6.0-foo-plan.md\n"
+        )
+        resolved = resolve_build_plan_path(prawduct)
+        assert resolved == prawduct / "artifacts" / "v1.6.0-foo-plan.md"
+
+    def test_prefix_stripped_only_at_start(self, tmp_path: Path):
+        # The strip is a leading-prefix fix, not a path rewrite — an interior
+        # ".prawduct/" segment is preserved verbatim.
+        prawduct = _prawduct(
+            tmp_path, "active_build_plan: artifacts/.prawduct/odd-plan.md\n"
+        )
+        resolved = resolve_build_plan_path(prawduct)
+        assert resolved == prawduct / "artifacts" / ".prawduct" / "odd-plan.md"
+
     def test_default_constant(self):
         assert DEFAULT_BUILD_PLAN_REL == "artifacts/build-plan.md"
         assert BUILD_PLAN_POINTER_KEY == "active_build_plan"
@@ -117,6 +136,14 @@ class TestProductHookMirrorParity:
     def test_pointer_absent_parity(self, tmp_path: Path):
         prawduct = _prawduct(tmp_path, "views_enabled: true\n")
         assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
+
+    def test_repo_relative_pointer_parity(self, tmp_path: Path):
+        # STH-5P2W: both resolvers strip the leading ".prawduct/" identically.
+        prawduct = _prawduct(
+            tmp_path, "active_build_plan: .prawduct/artifacts/v1.6.0-foo-plan.md\n"
+        )
+        assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
+        assert _hook._resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "v1.6.0-foo-plan.md"
 
     def test_str_key_parity(self, tmp_path: Path):
         p = tmp_path / "s.yaml"

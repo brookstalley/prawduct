@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import backlog, buildplan_refs, gates, gitstate
-from .core import resolve_build_plan_path
+from .core import BUILD_PLAN_POINTER_KEY, read_str_yaml_key, resolve_build_plan_path
 
 
 # =============================================================================
@@ -452,6 +452,29 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     work_desc = _get_work_in_progress(prawduct_dir)
     lines.append(f"Project: {project_name} | Branch: {current_branch} | Work: {work_desc}")
 
+    # Dangling build-plan pointer guard (STH-5P2W). A SET pointer that resolves
+    # to no file means governance treats the repo as having NO active plan —
+    # the Critic gate, plan-aware mode inference, and chunk-ref verification
+    # all go silently blind (this happened live for a full work cycle). Say so
+    # at the top of the briefing, every session, until the pointer is fixed.
+    try:
+        pointer = read_str_yaml_key(
+            prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY
+        )
+        if pointer:
+            pointed = resolve_build_plan_path(prawduct_dir)
+            if not pointed.is_file():
+                rel = pointed.relative_to(prawduct_dir).as_posix()
+                lines.append(
+                    f"⚠ active_build_plan points at a MISSING file: '{pointer}' "
+                    f"resolved to .prawduct/{rel}. Governance sees no active plan "
+                    "(Critic gate, mode inference, and chunk-ref checks are blind). "
+                    "Fix the pointer in project-state.yaml — it is .prawduct/-relative "
+                    "(e.g. artifacts/build-plan-<scope>.md) — or unset it."
+                )
+    except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        pass
+
     # Work context and current chunk (prefer build plan Status, fall back to WIP)
     wip = _get_active_work(prawduct_dir)
     if wip.get("current_chunk"):
@@ -604,16 +627,37 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     if learnings_path.is_file():
         try:
             learnings_content = learnings_path.read_text()
-            rule_count = 0
-            for line in learnings_content.splitlines():
-                # Count bullet-point rules
-                if line.strip().startswith("- "):
-                    rule_count += 1
+            # One rule per `## ` entry (the documented learnings format). The
+            # bullet count is a fallback for legacy bullet-list files — counting
+            # bullets FIRST under-reported entry-format files as 0 rules, which
+            # silently dropped this line on any repo using the real format
+            # (found while landing the MET-6W3J size nudge below).
+            heading_count = sum(
+                1 for line in learnings_content.splitlines() if line.startswith("## ")
+            )
+            bullet_count = sum(
+                1 for line in learnings_content.splitlines() if line.strip().startswith("- ")
+            )
+            rule_count = heading_count or bullet_count
             # Collapse to a count + pointer. The full topic index re-printed
             # unchanged every session — a static table of contents is tax; the
             # /prawduct:learnings skill is the intended lookup path.
             if rule_count > 0:
                 lines.append(f"Learnings ({rule_count} rules): /prawduct:learnings <topic> or read .prawduct/learnings.md")
+            # Size nudge (MET-6W3J): every /prawduct:learnings lookup and
+            # Critic learnings cross-check reads the whole file, so size is a
+            # recurring per-session cost — same 40KB threshold and mechanical-
+            # check pattern as the project-state.yaml warning. (An earlier 8KB
+            # clear-hook warning was retired when the fork-skill lookup landed;
+            # at ~80KB the lookup itself became the cost, so the nudge returns
+            # at the project-state threshold.)
+            size = learnings_path.stat().st_size
+            if size > 40000:  # ~10K tokens ≈ ~40KB
+                lines.append(
+                    f"learnings.md is large ({size // 1024}KB > 40KB) — compact: keep each "
+                    "entry's When-X-do-Y-because-Z rule here, move narrative to "
+                    "learnings-detail.md (never delete it)"
+                )
         except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             pass
 
