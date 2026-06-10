@@ -1014,6 +1014,22 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``).
+
+    Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
+    one-repo-shape assumption that forced products (scriob) into wrapper
+    scripts:
+
+    * ``test_command:`` — the project's canonical suite invocation, run
+      shlex-split from the repo root instead of ``sys.executable -m pytest``
+      (whose interpreter cannot import a uv/venv-managed product package). It
+      MUST contain a ``{junit_xml}`` literal; the hook substitutes its report
+      path there. Shell operators are not supported — point the command at a
+      script for compound invocations. Extra CLI pytest args are rejected when
+      the knob is set — the declared command IS the invocation (scriob's "run
+      the exact command CI runs" learning, made structural).
+    * ``tests_dirs:`` — whitespace-separated test trees (default ``tests``),
+      forwarded to the F4a overlay as repeated ``--tests-dir`` so one verifier
+      run covers a monorepo's components.
     """
     import tempfile  # noqa: PLC0415 — only this command needs them
     import xml.etree.ElementTree as ET  # noqa: PLC0415
@@ -1030,6 +1046,30 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     prawduct_dir = get_prawduct_dir(project_dir)
     evidence_path = prawduct_dir / ".test-evidence.json"
+    state_path = prawduct_dir / "project-state.yaml"
+
+    test_command = _read_str_yaml_key(state_path, "test_command")
+    tests_dirs_raw = _read_str_yaml_key(state_path, "tests_dirs")
+    tests_dirs = tests_dirs_raw.split() if tests_dirs_raw else []
+
+    if test_command:
+        if extra:
+            print(
+                "error: extra pytest args are not allowed when "
+                "project-state.yaml declares test_command — the declared "
+                "command IS the canonical invocation. Edit test_command "
+                "instead.",
+                file=sys.stderr,
+            )
+            return 2
+        if "{junit_xml}" not in test_command:
+            print(
+                "error: test_command must contain the {junit_xml} placeholder "
+                "(the hook substitutes its JUnit XML report path there, e.g. "
+                "test_command: uv run pytest --junit-xml={junit_xml} -q).",
+                file=sys.stderr,
+            )
+            return 2
 
     # Run the suite with a JUnit XML report — built into pytest (no plugin) and
     # parse-robust where the terminal summary line is not (xdist, warnings, and
@@ -1037,9 +1077,33 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
     os.close(fd)
     junit = Path(junit_name)
-    cmd = [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *extra]
     try:
-        proc = subprocess.run(cmd, cwd=str(project_dir))
+        if test_command:
+            # shlex list-form, not shell=True (injection surface; banned by
+            # tests/preferences). Wrappers like `uv run pytest …` split fine;
+            # compound invocations (&&, pipes, env vars) belong in a script
+            # the command points at. Split BEFORE substituting so a report
+            # path containing spaces/quotes lands as one intact token.
+            import shlex  # noqa: PLC0415 — only this branch needs it
+            argv = [
+                tok.replace("{junit_xml}", str(junit))
+                for tok in shlex.split(test_command)
+            ]
+            try:
+                proc = subprocess.run(argv, cwd=str(project_dir))
+            except FileNotFoundError:
+                print(
+                    f"error: test_command executable not found: {argv[0]!r} "
+                    "— check the test_command in project-state.yaml.",
+                    file=sys.stderr,
+                )
+                return 2
+        else:
+            cmd = [
+                sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q",
+                *extra,
+            ]
+            proc = subprocess.run(cmd, cwd=str(project_dir))
         try:
             root = ET.parse(junit).getroot()
         except (ET.ParseError, OSError) as exc:
@@ -1084,7 +1148,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     record = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "git_sha": git_sha,
-        "command": " ".join(["python3 -m pytest -q", *extra]).strip(),
+        "command": (
+            test_command
+            if test_command
+            else " ".join(["python3 -m pytest -q", *extra]).strip()
+        ),
         "passed": passed,
         "failed": failed,
         "skipped": skipped,
@@ -1114,6 +1182,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             "--repo",
             str(project_dir),
         ]
+        for tests_dir in tests_dirs:
+            merge_cmd += ["--tests-dir", tests_dir]
         if base:
             merge_cmd += ["--base", base]
         mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)

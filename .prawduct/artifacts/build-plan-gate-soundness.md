@@ -111,9 +111,14 @@ multi-tree test layouts (scriob's entire wrapper exists for this).
 
 - **Knobs** (top-level scalars in `project-state.yaml`, read via the existing column-0 reader):
   - `test_command:` — full canonical invocation containing `{junit_xml}`; when set, the hook
-    runs it (`shell=True`, repo root) instead of `sys.executable -m pytest`; missing placeholder
+    runs it from the repo root instead of `sys.executable -m pytest`; missing placeholder
     → exit 2 with a message naming the contract. Extra CLI pytest args are rejected (exit 2)
     when `test_command` is set — the declared command IS the invocation.
+    **Deviation (declared at build, Critic ch.2):** execution is `shlex.split` list-form, NOT
+    `shell=True` as originally planned — the repo's subprocess-safety guardrail bans the shell
+    (injection surface), and the contract is cleaner: shell composition belongs in a script the
+    command points at. Substitution happens per-token after splitting; a missing executable is
+    a clean exit-2.
   - `tests_dirs:` — whitespace-separated dirs (default `tests`); passed through to the verifier
     overlay.
 - **Verifier** (`bin/test-reference-verify`): `--tests-dir` repeatable (`action="append"`,

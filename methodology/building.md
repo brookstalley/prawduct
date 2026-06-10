@@ -81,7 +81,7 @@ Add observability alongside features, not after. If the observability strategy c
 
 **Verify.** Two layers:
 
-- *Code:* Run the full suite. First check `prawduct-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. After running tests, write `.prawduct/.test-evidence.json` with the timestamp and results.
+- *Code:* Run the full suite. First check `prawduct-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. Record via `prawduct-hook test-evidence record` (non-default suites: `test_command:`/`tests_dirs:`).
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -197,7 +197,7 @@ Tests are the most important artifact you produce during building. They're contr
 
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively — proportionality applies to strategies too.
 
-**Idiomatic tooling, honest coverage.** Use language-native incremental/cached runners to skip re-runs when nothing changed. The framework asserts the *contract* (every change appears in `.test-evidence.json`'s `changes_referenced`), not a specific verifier. `bin/test-reference-verify` is a **floor**: symbol-grep catches untested new code but cannot prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`; the Critic's `verify-coverage` scales finding language accordingly.
+**Idiomatic tooling, honest coverage.** Use language-native incremental/cached runners to skip re-runs when nothing changed. The framework asserts the *contract* (judged changes appear in `.test-evidence.json`'s `changes_referenced`; the rest in `changes_unjudged`, ungated), not a specific verifier. `bin/test-reference-verify` is a **floor**: symbol-grep catches untested new code but cannot prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`; the Critic's `verify-coverage` scales finding language accordingly.
 
 ## The Critic
 

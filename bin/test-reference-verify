@@ -24,8 +24,11 @@ their own verifier (language-native coverage, test-impact analysis) and emit
 language to the declared `coverage_level`.
 
 Usage:
-    python3 tools/test-reference-verify [--base REV] [--tests-dir DIR]
+    python3 tools/test-reference-verify [--base REV] [--tests-dir DIR]...
                                         [--output PATH] [--merge-into PATH]
+
+`--tests-dir` is repeatable — monorepo layouts pass each test tree once and
+discovery unions across them (default: the single `tests` dir).
 
 Without --output and --merge-into, prints the F4a fields as JSON to stdout.
 With --output, writes a coverage-fields-only JSON file at PATH.
@@ -207,11 +210,18 @@ def _has_reference(test_texts: list[str], symbols: set[str]) -> bool:
 def _build_evidence_fields(
     cwd: Path,
     base: str,
-    tests_dir: Path,
+    tests_dirs: list[Path],
 ) -> dict:
-    """Compute the F4a coverage fields for the current diff."""
+    """Compute the F4a coverage fields for the current diff.
+
+    ``tests_dirs`` may name several trees (monorepo layouts — gate-soundness
+    ch.2): discovery unions across all of them, so ONE run covers every
+    component and no multi-pass merge dance is needed.
+    """
     changed = _changed_files(cwd, base)
-    test_files = _discover_tests(tests_dir)
+    test_files = sorted(
+        {t for d in tests_dirs for t in _discover_tests(d)}
+    )
     test_file_paths = [str(t.relative_to(cwd)) for t in test_files]
     # Read every test file ONCE, then match all changed files against the
     # cached text — O(changed + tests) reads instead of O(changed × tests).
@@ -271,8 +281,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--tests-dir",
-        default="tests",
-        help="Directory to search for test files (default: tests).",
+        action="append",
+        default=None,
+        help=(
+            "Directory to search for test files. Repeatable for monorepo "
+            "layouts (e.g. --tests-dir engine/tests --tests-dir server/tests); "
+            "discovery unions across all given dirs. Default: tests."
+        ),
     )
     parser.add_argument(
         "--repo",
@@ -296,7 +311,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     repo = Path(args.repo).resolve()
-    tests_dir = (repo / args.tests_dir).resolve()
+    # argparse appends onto a list default, so default via None-coalescing.
+    tests_dirs = [(repo / d).resolve() for d in (args.tests_dir or ["tests"])]
 
     base, base_reason = _resolve_base(repo, args.base)
     if base is None:
@@ -304,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        fields = _build_evidence_fields(repo, base, tests_dir)
+        fields = _build_evidence_fields(repo, base, tests_dirs)
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

@@ -224,15 +224,35 @@ scope_rollups: {}
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
 # =============================================================================
-# When true, the Critic requires every changed file to appear in
-# `.test-evidence.json`'s `changes_referenced` list and scales severity
-# language to the declared `coverage_level` (`referenced` floor vs.
-# `executed` real). The reference verifier at `bin/test-reference-verify`
-# emits the floor; products with non-trivial coverage concerns should plug
-# in a stronger verifier. See `/prawduct:building` "Coverage Evidence".
+# When true, the Critic requires every changed file the verifier can judge to
+# appear in `.test-evidence.json`'s `changes_referenced` list (files it can't
+# judge — non-code, symbol-less, deleted — are declared in `changes_unjudged`
+# and reported, not gated) and scales severity language to the declared
+# `coverage_level` (`referenced` floor vs. `executed` real). The reference
+# verifier at `bin/test-reference-verify` emits the floor; products with
+# non-trivial coverage concerns should plug in a stronger verifier. See
+# `/prawduct:building` "Coverage Evidence".
 # Default off in v1.4 — schema is checked but content is not enforced.
 
 coverage_required: false
+
+# =============================================================================
+# TEST EXECUTION (optional, gate-soundness)
+# =============================================================================
+# `prawduct-hook test-evidence record` defaults to running
+# `sys.executable -m pytest` from the repo root and grepping a single `tests/`
+# dir. When the repo's real shape differs (uv/venv-managed interpreter, no
+# root pytest config, monorepo test trees), declare it — don't wrap it:
+#
+# test_command: uv run pytest --junit-xml={junit_xml} -q
+#   The canonical suite invocation (the exact command CI runs), shlex-split
+#   and run from the repo root. Must contain the `{junit_xml}` literal — the
+#   hook substitutes its report path there. Shell operators (&&, |, FOO=1)
+#   are not supported; point the command at a script for compound runs.
+#
+# tests_dirs: engine/tests server/tests
+#   Whitespace-separated test trees for the coverage verifier (default:
+#   `tests`). One verifier run unions discovery across all of them.
 
 # =============================================================================
 # OPERATOR VERIFICATION (opt-in, v1.4+)

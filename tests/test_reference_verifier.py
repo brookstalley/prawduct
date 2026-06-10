@@ -298,6 +298,50 @@ class TestUnjudgedClassification:
         assert "src/untested.py" not in evidence["changes_unjudged"]
 
 
+class TestMultipleTestsDirs:
+    """`--tests-dir` is repeatable (gate-soundness ch.2): one verifier run
+    unions discovery across monorepo test trees, replacing the per-tree
+    multi-pass merge dance whose `--merge-into` overwrites clobbered each
+    pass's fields."""
+
+    def test_two_trees_discovered_in_one_run(self, mini_repo: Path):
+        (mini_repo / "engine" / "tests").mkdir(parents=True)
+        (mini_repo / "server" / "tests").mkdir(parents=True)
+        (mini_repo / "engine" / "core2.py").write_text(
+            "def engine_helper():\n    return 1\n"
+        )
+        (mini_repo / "engine" / "tests" / "test_core2.py").write_text(
+            "def test_engine_helper():\n    assert 'engine_helper'\n"
+        )
+        (mini_repo / "server" / "api.py").write_text(
+            "def serve():\n    return 1\n"
+        )
+        (mini_repo / "server" / "tests" / "test_api.py").write_text(
+            "def test_serve():\n    assert 'serve'\n"
+        )
+
+        result = _run_verifier(
+            mini_repo, "--base", "main",
+            "--tests-dir", "engine/tests", "--tests-dir", "server/tests",
+        )
+
+        assert result.returncode == 0, result.stderr
+        evidence = json.loads(result.stdout)
+        assert "engine/core2.py" in evidence["changes_referenced"]
+        assert "server/api.py" in evidence["changes_referenced"]
+        executed = set(evidence["tests_executed"])
+        assert "engine/tests/test_core2.py" in executed
+        assert "server/tests/test_api.py" in executed
+
+    def test_default_remains_single_tests_dir(self, mini_repo: Path):
+        """No --tests-dir: the single `tests` default is unchanged."""
+        result = _run_verifier(mini_repo, "--base", "main")
+
+        assert result.returncode == 0, result.stderr
+        evidence = json.loads(result.stdout)
+        assert evidence["tests_executed"] == ["tests/test_core.py"]
+
+
 class TestOutputModes:
     """--output and --merge-into write modes."""
 
@@ -466,7 +510,7 @@ class TestReferenceCache:
         monkeypatch.setattr(Path, "read_text", counting_read_text)
 
         fields = trv._build_evidence_fields(
-            mini_repo.resolve(), "main", test_dir
+            mini_repo.resolve(), "main", [test_dir]
         )
 
         # The single baseline test file must be read exactly once despite the

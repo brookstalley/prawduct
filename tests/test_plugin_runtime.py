@@ -1055,3 +1055,101 @@ class TestTestEvidenceRecord:
         res = _run_in(repo, "test-evidence", "bogus")
         assert res.returncode == 2
         assert "usage" in res.stderr.lower()
+
+
+class TestTestEvidenceKnobs:
+    """Gate-soundness ch.2: `test_command:` / `tests_dirs:` in
+    project-state.yaml replace the hardcoded `sys.executable -m pytest`-from-
+    repo-root assumption that forced non-default repo shapes (uv venvs,
+    monorepo test trees) into wrapper scripts around the recorder.
+    """
+
+    def _repo(self, tmp_path, state: str, test_body: str = "def test_ok():\n    assert True\n") -> Path:
+        repo = tmp_path / "ev"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / "project-state.yaml").write_text(state)
+        (repo / "test_sample.py").write_text(test_body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def test_declared_test_command_is_run(self, tmp_path):
+        """The declared command runs (shlex-split list-form — never a shell —
+        from the repo root) and its JUnit output feeds the evidence counts,
+        proving the hook executed IT, not its own pytest guess."""
+        repo = self._repo(
+            tmp_path,
+            f"test_command: {sys.executable} -m pytest --junit-xml={{junit_xml}} -q test_sample.py\n",
+        )
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 1 and ev["failed"] == 0
+        # The evidence records the DECLARED command, placeholder intact.
+        assert "{junit_xml}" in ev["command"]
+
+    def test_test_command_without_placeholder_is_an_error(self, tmp_path):
+        repo = self._repo(tmp_path, "test_command: pytest -q\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 2
+        assert "{junit_xml}" in res.stderr
+
+    def test_extra_args_rejected_when_test_command_declared(self, tmp_path):
+        """The declared command IS the invocation — ad-hoc arg injection would
+        recreate the scoped-subset trap the knob exists to close."""
+        repo = self._repo(
+            tmp_path,
+            f"test_command: {sys.executable} -m pytest --junit-xml={{junit_xml}} -q\n",
+        )
+        res = _run_in(repo, "test-evidence", "record", "--", "-k", "ok")
+        assert res.returncode == 2
+        assert "test_command" in res.stderr
+
+    def test_missing_executable_is_a_clean_error(self, tmp_path):
+        """A typo'd test_command executable exits 2 with an actionable
+        message, not a raw FileNotFoundError traceback."""
+        repo = self._repo(
+            tmp_path,
+            "test_command: no-such-binary-xyz --junit-xml={junit_xml}\n",
+        )
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 2
+        assert "no-such-binary-xyz" in res.stderr
+        assert "Traceback" not in res.stderr
+
+    def test_tests_dirs_forwarded_to_coverage_overlay(self, tmp_path):
+        """A monorepo shape: tests live in component trees, not root `tests/`.
+        With `tests_dirs:` declared, the F4a overlay discovers them and the
+        changed source file is referenced — the exact false "missing-coverage"
+        scriob's wrapper existed to fix."""
+        repo = self._repo(
+            tmp_path,
+            "tests_dirs: engine/tests server/tests\n",
+        )
+        (repo / "engine" / "tests").mkdir(parents=True)
+        (repo / "server" / "tests").mkdir(parents=True)
+        (repo / "engine" / "core.py").write_text("def engine_fn():\n    return 1\n")
+        (repo / "engine" / "tests" / "test_core.py").write_text(
+            "def test_engine_fn():\n    assert 'engine_fn'\n"
+        )
+        (repo / "server" / "tests" / "test_api.py").write_text(
+            "def test_api():\n    assert True\n"
+        )
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "engine/core.py" in ev["changes_referenced"]
+        executed = set(ev["tests_executed"])
+        assert "engine/tests/test_core.py" in executed
+        assert "server/tests/test_api.py" in executed
+
+    def test_absent_knobs_keep_default_behavior(self, tmp_path):
+        """No knobs declared: the recorder behaves exactly as before."""
+        repo = self._repo(tmp_path, "views_enabled: false\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 1
+        assert ev["command"].startswith("python3 -m pytest")

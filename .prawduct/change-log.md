@@ -3,6 +3,39 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: test-evidence configurability — `test_command:` + `tests_dirs:` (gate-soundness ch.2)
+
+<!-- prawduct: chunks=02 | type=feature | scope=gate-soundness -->
+
+**Why:** `test-evidence record` hardcoded `sys.executable -m pytest` from the
+repo root with a single `tests/` grep dir. On a uv-managed venv the hook's
+interpreter can't import the product package; on a monorepo there's no root
+pytest config and tests live in component trees; the verifier took ONE
+`--tests-dir` and `--merge-into` overwrote, so multi-tree products needed a
+multi-pass temp-file union. scriob's 90-line `scripts/test-evidence.sh`
+wrapper is the requirements doc this chunk implements.
+
+**What:** Two optional `project-state.yaml` knobs. `test_command:` — the
+canonical suite invocation (the exact command CI runs), shlex-split (never a
+shell — the subprocess-safety guardrail caught the originally-planned
+`shell=True`; deviation declared in the build plan) and run from the repo
+root; must contain `{junit_xml}` (substituted per-token after splitting);
+extra CLI args rejected; missing executable is a clean exit-2. `tests_dirs:`
+— whitespace-separated trees forwarded to the verifier, whose `--tests-dir`
+is now repeatable with union discovery (one run covers all trees; no merge
+dance). No knobs ⇒ behavior unchanged (regression-pinned). Also fixed ch.1
+coherence drift in `methodology/building.md`/`templates/project-state.yaml`
+("every change" → judged/unjudged contract), trimming within the building.md
+token budget. 8 new tests; 1038 pass.
+
+**Blast radius:** `bin/prawduct-hook` (`cmd_test_evidence`),
+`bin/test-reference-verify` (`--tests-dir` append), `templates/project-state.yaml`,
+`methodology/building.md`, `tests/test_plugin_runtime.py`,
+`tests/test_reference_verifier.py`. Critic (chunk mode): 0 blocking, 1 warning
+(plan-vs-code shell-semantics drift — plan deviation declared, docstring
+fixed), 2 notes (FileNotFoundError handling, substitute-after-split — both
+adopted).
+
 ## 2026-06-10: coverage gate honesty — `changes_unjudged` (gate-soundness ch.1)
 
 <!-- prawduct: chunks=01 | type=fix | scope=gate-soundness -->
