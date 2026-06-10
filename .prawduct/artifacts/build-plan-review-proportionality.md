@@ -121,11 +121,11 @@ ordering below deliberately enables that, but does not require it.
 
 ## Status
 
-- [ ] Chunk 01: Cumulative-as-final — one full review per plan, not two
-- [ ] Chunk 02: Findings ledger — append-only history + PR-gate ledger fallback
-- [ ] Chunk 03: Review telemetry — `prawduct-hook review-stats`
-- [ ] Chunk 04: Risk-surface reviewer escalation
-- [ ] Chunk 05: PR-reviewer scoping — consume the record, audit it, review the release
+- [x] Chunk 01: Cumulative-as-final — one full review per plan, not two
+- [x] Chunk 02: Findings ledger — append-only history + PR-gate ledger fallback
+- [x] Chunk 03: Review telemetry — `prawduct-hook review-stats`
+- [x] Chunk 04: Risk-surface reviewer escalation
+- [x] Chunk 05: PR-reviewer scoping — consume the record, audit it, review the release
 Context: ALL FIVE CHUNKS BUILT 2026-06-10 (checkboxes flip at release via change-log tags
 `chunks=NN | scope=review-proportionality`). PR-1 (ch.01+02) MERGED to develop as #87
 (squash c7981c3). S2: ch.03 (2482552) review-stats telemetry; ch.04 (c04882c + 2d41303)

@@ -59,11 +59,11 @@ planning.
 <!-- views_enabled: checkboxes are derived from scope=gate-soundness change-log entries by
      regen-views at release; do not hand-edit. -->
 
-- [ ] Chunk 01: Coverage gate honesty — `changes_unjudged`
-- [ ] Chunk 02: test-evidence configurability — `test_command:` + `tests_dirs:`
-- [ ] Chunk 03: Build plans are tracked artifacts
-- [ ] Chunk 04: Cumulative-gate ordering guidance + plan-lifecycle note
-- [ ] Chunk 05: Chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
+- [x] Chunk 01: Coverage gate honesty — `changes_unjudged`
+- [x] Chunk 02: test-evidence configurability — `test_command:` + `tests_dirs:`
+- [x] Chunk 03: Build plans are tracked artifacts
+- [x] Chunk 04: Cumulative-gate ordering guidance + plan-lifecycle note
+- [x] Chunk 05: Chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
 Context: ALL FIVE CHUNKS BUILT 2026-06-10 (checkboxes flip at release via
 scope=gate-soundness change-log tags). Branch feature/gate-soundness off origin/develop
 (ed2dcb6), 11 commits incl. the reviewer-model-tiering side-plan. Chunk 05 (chain gate,

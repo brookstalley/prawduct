@@ -5,7 +5,7 @@
 
 ## 2026-06-10: framework-repo slim session digest — always-loaded context dedup
 
-<!-- prawduct: chunks=4 | type=feature | scope=review-fixes -->
+<!-- prawduct: chunks=4 | type=feature | release=v2.1.0 | status=shipped | scope=review-fixes -->
 
 **Why:** In the prawduct framework repo the always-injected session digest
 (~5.4k chars, re-injected on every compaction) duplicated 40–50% of the
@@ -43,7 +43,7 @@ variant (2,189 chars); a product fixture gets the full digest verbatim.
 
 ## 2026-06-10: PR-reviewer scoping — consume the Critic record, audit it, review the release
 
-<!-- prawduct: chunks=05 | type=feature | scope=review-proportionality -->
+<!-- prawduct: chunks=05 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
 
 **Why:** The PR reviewer re-derived code soundness over the same
 `merge-base...HEAD` the cumulative-Critic gate had just certified — the
@@ -94,7 +94,7 @@ honesty), `tests/test_pr_reviewer.py` (+7: TestPrReviewerScoping),
 
 ## 2026-06-10: risk-surface reviewer escalation — `classify-diff-risk`
 
-<!-- prawduct: chunks=04 | type=feature | scope=review-proportionality -->
+<!-- prawduct: chunks=04 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
 
 **Why:** Proportionality only ran one way — review depth scaled by size/type,
 never by diff RISK — yet the reviewer A/B/C experiment
@@ -146,7 +146,7 @@ Modified: `bin/prawduct-hook` (wrapper + dispatch + usage),
 
 ## 2026-06-10: review telemetry — `prawduct-hook review-stats`
 
-<!-- prawduct: chunks=03 | type=feature | scope=review-proportionality -->
+<!-- prawduct: chunks=03 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
 
 **Why:** The ledger (ch.02) records review history but nothing aggregates it —
 "is review worth it" stays a vibe. Visible Costs (Principle 9) applied to the
@@ -184,7 +184,7 @@ total.
 
 ## 2026-06-10: governance-event ledger — append-only review history + PR-gate fallback
 
-<!-- prawduct: chunks=02 | type=feature | scope=review-proportionality -->
+<!-- prawduct: chunks=02 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
 
 **Why:** The single-slot `.critic-findings.json` forces a choice between
 reviewing new work and preserving the PR-gate record (observed twice on
@@ -235,7 +235,7 @@ own review — first real event, correctly scope-attributed.
 
 ## 2026-06-10: cumulative-as-final — one full review per plan, not two
 
-<!-- prawduct: chunks=01 | type=feature | scope=review-proportionality -->
+<!-- prawduct: chunks=01 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
 
 **Why:** `Type: cumulative-final` was *defined* as the last chunk's `final`
 review PLUS a cumulative — two 4-10 min full reviews over nearly the same
@@ -275,7 +275,7 @@ mode-list/inference-default lines collapsed.
 
 ## 2026-06-10: chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
 
-<!-- prawduct: chunks=05 | type=feature | scope=gate-soundness -->
+<!-- prawduct: chunks=05 | type=feature | release=v2.1.0 | status=shipped | scope=gate-soundness -->
 
 **Why:** Review cost = unit-cost × run-count. Reviewer-model tiering fixed
 unit cost; run-count was still gate design: every non-`.md` fix after the one
@@ -315,8 +315,7 @@ accept/reject + scope-helper chain cases), `tests/test_critic_mode_inference.py`
 
 ## 2026-06-10: reviewer model tiering — A/B/C experiment + opus default
 
-<!-- prawduct: chunks=01 | type=feature | scope=reviewer-model-tiering -->
-<!-- prawduct: chunks=02 | type=feature | scope=reviewer-model-tiering -->
+<!-- prawduct: chunks=01,02 | type=feature | release=v2.1.0 | status=shipped | scope=reviewer-model-tiering -->
 
 **Why:** Independent reviewers (Critic fork, PR reviewer, coordinator
 subagents) inherited the main session's model — top-tier cost and latency
@@ -346,7 +345,7 @@ verify-resolutions chain at the PR gate).
 
 ## 2026-06-10: pre-PR hardening from the reviewer-model A/B/C experiment (gate-soundness)
 
-<!-- prawduct: type=fix | scope=gate-soundness -->
+<!-- prawduct: type=fix | release=v2.1.0 | status=shipped | scope=gate-soundness -->
 
 **Why:** The reviewer-model-tiering experiment (chunk 01 of that plan) ran
 three identical independent reviews of this bundle on sonnet/opus/fable. The
@@ -378,7 +377,7 @@ pointer) filed via /prawduct:backlog. 1050 pass.
 
 ## 2026-06-10: cumulative-gate ordering guidance + plan-lifecycle note (gate-soundness ch.4)
 
-<!-- prawduct: chunks=04 | type=fix | scope=gate-soundness -->
+<!-- prawduct: chunks=04 | type=fix | release=v2.1.0 | status=shipped | scope=gate-soundness -->
 
 **Why:** The natural review loop (cumulative → fix findings → verify-resolutions)
 can never satisfy `check-cumulative-critic` — the gate accepts only a
@@ -404,7 +403,7 @@ semantics changed — guidance and error-message teaching only. 1047 pass.
 
 ## 2026-06-10: build plans are tracked artifacts (gate-soundness ch.3)
 
-<!-- prawduct: chunks=03 | type=fix | scope=gate-soundness -->
+<!-- prawduct: chunks=03 | type=fix | release=v2.1.0 | status=shipped | scope=gate-soundness -->
 
 **Why:** The framework gitignored `.prawduct/artifacts/build-plan.md`
 (`GITIGNORE_ENTRIES`) while tracked `project-state.yaml` pointed
@@ -439,7 +438,7 @@ deviation in the plan) adopted.
 
 ## 2026-06-10: test-evidence configurability — `test_command:` + `tests_dirs:` (gate-soundness ch.2)
 
-<!-- prawduct: chunks=02 | type=feature | scope=gate-soundness -->
+<!-- prawduct: chunks=02 | type=feature | release=v2.1.0 | status=shipped | scope=gate-soundness -->
 
 **Why:** `test-evidence record` hardcoded `sys.executable -m pytest` from the
 repo root with a single `tests/` grep dir. On a uv-managed venv the hook's
@@ -472,7 +471,7 @@ adopted).
 
 ## 2026-06-10: coverage gate honesty — `changes_unjudged` (gate-soundness ch.1)
 
-<!-- prawduct: chunks=01 | type=fix | scope=gate-soundness -->
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.0 | status=shipped | scope=gate-soundness -->
 
 **Why:** The F4a producer (`bin/test-reference-verify`) symbol-greps Python only,
 but the F4b consumer (`verify_coverage`) compared the WHOLE branch diff +
@@ -506,7 +505,7 @@ the listing itself is producer-attested, same trust model as
 
 ## 2026-06-09: work-model probe precision — frequency floor, firing threshold, widened corpus
 
-<!-- prawduct: chunks=2 | type=fix | scope=review-fixes -->
+<!-- prawduct: chunks=2 | type=fix | release=v2.1.0 | status=shipped | scope=review-fixes -->
 
 **Why:** The work-model probe (terms-not-in-artifacts tripwire) fired on
 ordinary prompts — acknowledgments, questions, noun-homographs ("the build
@@ -531,7 +530,7 @@ wordlist license posture).
 
 ## 2026-06-09: review-gate soundness — PR doc-only protected paths + Critic marker ordering
 
-<!-- prawduct: chunks=3 | type=fix | scope=review-fixes -->
+<!-- prawduct: chunks=3 | type=fix | release=v2.1.0 | status=shipped | scope=review-fixes -->
 
 **Why:** PR-5K8D: `check-pr-doc-only` treated `skills/*.md` as docs, so
 governance-logic changes could skip the independent PR reviewer — the only
@@ -558,7 +557,7 @@ items shipped/archived via `/prawduct:backlog`.
 
 ## 2026-06-09: hot-path correctness fixes (core.py depth, Gate 3 network call, porcelain parsing)
 
-<!-- prawduct: chunks=1 | type=fix | scope=review-fixes -->
+<!-- prawduct: chunks=1 | type=fix | release=v2.1.0 | status=shipped | scope=review-fixes -->
 
 **Why:** Three verified bugs from the 2026-06-09 full-framework review, all on
 hooks hot paths. (1) `lib/core.py`'s `FRAMEWORK_DIR = parent.parent.parent` was a

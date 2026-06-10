@@ -40,8 +40,8 @@ IDs, `inherit`); Agent-tool calls take a per-call `model` param; subagent resolu
 
 ## Status
 
-- [ ] Chunk 01: Captured A/B/C experiment — same review input, sonnet/opus/fable
-- [ ] Chunk 02: Mechanism — Critic fork + PR-reviewer model defaults
+- [x] Chunk 01: Captured A/B/C experiment — same review input, sonnet/opus/fable
+- [x] Chunk 02: Mechanism — Critic fork + PR-reviewer model defaults
 Context: BOTH CHUNKS BUILT 2026-06-10 (same session that authored the plan; checkboxes flip
 at release via scope=reviewer-model-tiering change-log tags). Ch.01 artifact:
 reviewer-model-ab-2026-06-10.md (sonnet ruled out; opus = efficiency frontier; fable found 2
