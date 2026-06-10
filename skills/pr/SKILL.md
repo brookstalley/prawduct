@@ -53,6 +53,13 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 > existing files would otherwise have skipped both core review gates. Code PRs
 > always go through the full review below.
 
+### Step 1c: Change-log entry probe
+**Run `prawduct-hook check-change-log-entry`.** A code-changing branch (any non-`.md` file in `merge-base...HEAD`) must ADD a change-log entry — a branch merged with no entry is invisible to the release flow and surfaces only at release reconstruction (REL-6C3W). Doc-only and empty diffs are exempt (exit 0).
+
+- **Exit 0**: proceed.
+- **Exit 1 with `no-entry` or `entry-edited-not-added`**: **STOP** — write the change-log entry for this branch's work (statusless on the feature branch; tag line with `type=`/`chunks=`/`scope=`), commit it, then re-run the probe.
+- **Exit 1 with `no-base` or `git-failed`**: the probe couldn't evaluate — check the change-log by hand and note the manual check in the PR description.
+
 ### Step 2: Cumulative-Critic gate — MANDATORY
 **Run `prawduct-hook check-cumulative-critic`.** This gate requires a blocking-free Critic record that vouches for HEAD: a HEAD-covering `cumulative`-mode record (reviewed over `merge-base...HEAD`; "HEAD-covering" = its `commit_reviewed` is HEAD, or only docs changed since — CRT-7M2D), OR a `verify-resolutions` **chain record** extending one (`extends_cumulative` anchor X, record at HEAD, all non-`.md` changes in `X..HEAD` within its reviewed scope — CRT-4J8W). If it exits non-zero, **STOP**: produce the missing record (stderr says which: `/prawduct:critic cumulative` for the first review, `verify-resolutions` for the chain path below), resolve any blocking findings, then re-check. Do NOT proceed to Step 3 until this gate passes.
 
@@ -119,8 +126,9 @@ Push branch with `-u`. Draft title and description from work context + review fi
 3. Verify PR review evidence exists for this branch — if missing, run the reviewer first
 4. Merge using squash strategy (or project-configured strategy from project-preferences.md)
 5. Delete remote branch, switch to base branch, pull, delete local branch
-6. Clean up evidence file
-7. **Clean up the build plan — but only when this merge IS the release.** Run `prawduct-hook resolve-base` to learn the integration base, then branch:
+6. **Stamp the change-log:** run `prawduct-hook stamp-merged` — it adds `status=merged` to every statusless tagged entry (convergent: a stamp missed by an earlier merge is repaired now; the branch guard refuses to run anywhere but the integration branch). If it stamped anything, commit the change-log with a small `chore:` commit (no attribution trailers). This is the statusless→merged transition the release flow depends on — skipping it is how entries reach release-prep statusless and get dropped by a literal reading of the release checklist (REL-2N8K).
+7. Clean up evidence file
+8. **Clean up the build plan — but only when this merge IS the release.** Run `prawduct-hook resolve-base` to learn the integration base, then branch:
    - **Base is the release surface** (the `main` family — `resolve-base` prints `main`, `origin/main`, or the `HEAD~1` fallback; i.e. a trunk repo, or any repo whose base is the deployed branch): this merge ships the work now. Delete the active build plan — resolve it via the `active_build_plan` pointer in `project-state.yaml` (fall back to `artifacts/build-plan.md`), **not** a hardcoded path, so a scope-named plan is matched — and clear the `active_build_plan` pointer so no dangling reference remains. Git preserves full plan history.
    - **Base is `develop`** (gitflow, ahead of a batched `develop→main` release): the work is release-pending — its change-log entry is `status=merged`, not yet `shipped`. **RETAIN** both the plan file and the `active_build_plan` pointer. The `develop→main` release flips the change-log to `status=shipped` and runs `regen-views` ON the plan to flip its `## Status` (see `docs/release-process.md` "Change-log `status=` values" and the "KEEP the build plan" learning); deleting now would leave the release nothing to regenerate. A non-blocking "consider deleting idle plan" advisory may surface in the briefing during this window — ignore it until the release ships.
 

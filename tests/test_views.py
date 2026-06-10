@@ -156,6 +156,162 @@ class TestParseChangeLog:
         assert entries[0].tags["status"] == "in-progress"
 
 
+class TestParseChangeLogMultiTagLines:
+    """Multiple consecutive tag lines per entry are unioned, not dropped.
+
+    VWS-4D8J: the historical parse settled tag-vs-no-tag at the FIRST non-blank
+    line, so a second `<!-- prawduct: ... -->` line was silently ignored — at
+    the v2.1.0 release the reviewer-model-tiering `chunks=02` tag nearly
+    shipped unflipped. Consecutive tag lines now merge (chunks union,
+    first-wins scalars) and the multiplicity is recorded for the validator.
+    """
+
+    def test_consecutive_tag_lines_union_chunks(self):
+        content = textwrap.dedent(
+            """\
+            ## 2026-06-09: Reviewer model tiering
+            <!-- prawduct: chunks=01 | status=shipped | scope=tiering -->
+            <!-- prawduct: chunks=02 | status=shipped | scope=tiering -->
+
+            Body.
+            """
+        )
+        entries = views.parse_change_log(content)
+        assert entries[0].tags["chunks"] == ["01", "02"]
+        assert entries[0].shipped_chunks == ["01", "02"]
+        assert entries[0].tag_line_count == 2
+        assert entries[0].tag_conflicts == []
+
+    def test_duplicate_chunk_ids_deduped_order_preserving(self):
+        content = (
+            "## X\n"
+            "<!-- prawduct: chunks=02,01 -->\n"
+            "<!-- prawduct: chunks=01,03 -->\n"
+        )
+        entries = views.parse_change_log(content)
+        assert entries[0].tags["chunks"] == ["02", "01", "03"]
+
+    def test_conflicting_scalar_keeps_first_and_records_conflict(self):
+        content = (
+            "## X\n"
+            "<!-- prawduct: chunks=01 | status=shipped -->\n"
+            "<!-- prawduct: chunks=02 | status=merged -->\n"
+        )
+        entries = views.parse_change_log(content)
+        assert entries[0].tags["status"] == "shipped"
+        assert entries[0].tags["chunks"] == ["01", "02"]
+        assert entries[0].tag_conflicts == ["status: kept 'shipped', ignored 'merged'"]
+
+    def test_same_scalar_value_on_both_lines_is_not_a_conflict(self):
+        content = (
+            "## X\n"
+            "<!-- prawduct: chunks=01 | scope=v9 -->\n"
+            "<!-- prawduct: chunks=02 | scope=v9 -->\n"
+        )
+        entries = views.parse_change_log(content)
+        assert entries[0].tag_conflicts == []
+
+    def test_new_key_on_second_line_adopted(self):
+        content = (
+            "## X\n"
+            "<!-- prawduct: chunks=01 | status=shipped -->\n"
+            "<!-- prawduct: release=v2.1.0 -->\n"
+        )
+        entries = views.parse_change_log(content)
+        assert entries[0].tags["release"] == "v2.1.0"
+
+    def test_blank_line_between_tag_lines_tolerated(self):
+        content = textwrap.dedent(
+            """\
+            ## X
+
+            <!-- prawduct: chunks=01 -->
+
+            <!-- prawduct: chunks=02 -->
+
+            Body.
+            """
+        )
+        entries = views.parse_change_log(content)
+        assert entries[0].tags["chunks"] == ["01", "02"]
+        assert entries[0].tag_line_count == 2
+
+    def test_tag_line_after_prose_still_not_consumed(self):
+        content = textwrap.dedent(
+            """\
+            ## X
+            <!-- prawduct: chunks=01 -->
+
+            **Why:** body prose.
+
+            <!-- prawduct: chunks=99 -->
+            """
+        )
+        entries = views.parse_change_log(content)
+        assert entries[0].tags["chunks"] == ["01"]
+        assert entries[0].tag_line_count == 1
+
+    def test_tag_line_count_zero_for_untagged_entry(self):
+        entries = views.parse_change_log("## X\n\nBody only.\n")
+        assert entries[0].tag_line_count == 0
+
+    def test_next_h2_ends_the_tag_block(self):
+        content = (
+            "## Newer\n"
+            "<!-- prawduct: chunks=01 -->\n"
+            "## Older\n"
+            "<!-- prawduct: chunks=02 -->\n"
+        )
+        entries = views.parse_change_log(content)
+        assert len(entries) == 2
+        assert entries[0].tags["chunks"] == ["01"]
+        assert entries[1].tags["chunks"] == ["02"]
+
+
+class TestValidateTagLineMultiplicity:
+    def test_single_tag_line_silent(self):
+        entries = views.parse_change_log(
+            "## X\n<!-- prawduct: chunks=01 | status=shipped -->\n"
+        )
+        assert views.validate_tag_line_multiplicity(entries) == []
+
+    def test_untagged_entry_silent(self):
+        entries = views.parse_change_log("## X\n\nBody.\n")
+        assert views.validate_tag_line_multiplicity(entries) == []
+
+    def test_multi_tag_entry_warns_with_title_and_count(self):
+        entries = views.parse_change_log(
+            "## 2026-06-09: Tiering\n"
+            "<!-- prawduct: chunks=01 -->\n"
+            "<!-- prawduct: chunks=02 -->\n"
+        )
+        warnings = views.validate_tag_line_multiplicity(entries)
+        assert len(warnings) == 1
+        assert "2026-06-09: Tiering" in warnings[0]
+        assert "2 prawduct tag lines" in warnings[0]
+        assert "unioned" in warnings[0]
+
+    def test_conflicts_named_in_warning(self):
+        entries = views.parse_change_log(
+            "## X\n"
+            "<!-- prawduct: status=shipped -->\n"
+            "<!-- prawduct: status=merged -->\n"
+        )
+        warnings = views.validate_tag_line_multiplicity(entries)
+        assert len(warnings) == 1
+        assert "first-wins" in warnings[0]
+        assert "ignored 'merged'" in warnings[0]
+
+    def test_one_warning_per_multi_tag_entry(self):
+        entries = views.parse_change_log(
+            "## A\n<!-- prawduct: chunks=01 -->\n<!-- prawduct: chunks=02 -->\n"
+            "## B\n<!-- prawduct: chunks=03 -->\n"
+            "## C\n<!-- prawduct: chunks=04 -->\n<!-- prawduct: chunks=05 -->\n"
+        )
+        warnings = views.validate_tag_line_multiplicity(entries)
+        assert len(warnings) == 2
+
+
 class TestCollectShippedChunks:
     def test_aggregates_across_entries(self):
         entries = [
@@ -1423,6 +1579,147 @@ class TestDiagnoseScopePlanCoverage:
         warnings = views.diagnose_scope_plan_coverage("", artifacts)
         assert any("duplicate scope" in w and "dup" in w for w in warnings)
 
+    # --- statusless extension (REL-9F2T audit finding d) ---
+
+    def test_statusless_tagged_scope_without_plan_file_warns(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        change_log = (
+            "## 2026-06-04: unstamped\n"
+            "<!-- prawduct: chunks=01 | scope=orphan -->\n"
+        )
+        warnings = views.diagnose_scope_plan_coverage(change_log, artifacts)
+        assert len(warnings) == 1
+        assert "orphan" in warnings[0]
+        assert "statusless" in warnings[0]
+
+    def test_statusless_tagged_scope_with_plan_file_is_clean(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        _write_scoped_plan(artifacts, "build-plan-ok.md", "ok", ["01"])
+        change_log = (
+            "## 2026-06-04: unstamped\n"
+            "<!-- prawduct: chunks=01 | scope=ok -->\n"
+        )
+        assert views.diagnose_scope_plan_coverage(change_log, artifacts) == []
+
+    def test_typo_status_scope_without_plan_file_is_silent(self, tmp_path: Path):
+        """A typoed status= is the typo-guard's finding, not this diagnostic's —
+        one warning per failure, no double-reporting."""
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        change_log = (
+            "## 2026-06-04: typoed\n"
+            "<!-- prawduct: chunks=01 | status=shippd | scope=orphan -->\n"
+        )
+        assert views.diagnose_scope_plan_coverage(change_log, artifacts) == []
+
+    def test_statusless_and_merged_same_scope_warn_once(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        change_log = (
+            "## 2026-06-04: merged half\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=orphan -->\n"
+            "## 2026-06-03: unstamped half\n"
+            "<!-- prawduct: chunks=02 | scope=orphan -->\n"
+        )
+        warnings = views.diagnose_scope_plan_coverage(change_log, artifacts)
+        assert len(warnings) == 1
+
+
+class TestStampMerged:
+    """stamp_merged: the statusless→merged transition, applied mechanically.
+
+    REL-2N8K: the lifecycle documents the stamp but nothing applied it, so
+    most entries reached release-prep statusless and a literal reading of
+    release-process step 3 silently dropped them (v2.0.14: 8 of 10).
+    """
+
+    def test_statusless_tagged_entry_stamped_preserving_tags(self):
+        content = (
+            "## 2026-06-04: new work\n"
+            "<!-- prawduct: type=fix | chunks=01,02 | scope=alpha -->\n"
+            "\n"
+            "**Why:** body.\n"
+        )
+        new_content, stamped = views.stamp_merged(content)
+        assert stamped == ["2026-06-04: new work"]
+        assert (
+            "<!-- prawduct: type=fix | chunks=01,02 | scope=alpha | status=merged -->"
+            in new_content
+        )
+        assert "**Why:** body.\n" in new_content
+
+    def test_untagged_entry_untouched(self):
+        content = "## 2026-04-01: historical\n\n**Why:** pre-tagging era.\n"
+        new_content, stamped = views.stamp_merged(content)
+        assert stamped == []
+        assert new_content == content
+
+    def test_shipped_and_merged_entries_untouched(self):
+        content = (
+            "## A\n<!-- prawduct: chunks=01 | status=shipped | scope=x -->\n"
+            "## B\n<!-- prawduct: chunks=02 | status=merged | scope=x -->\n"
+        )
+        new_content, stamped = views.stamp_merged(content)
+        assert stamped == []
+        assert new_content == content
+
+    def test_typoed_status_untouched(self):
+        """A present-but-typoed status= belongs to the typo-guard; stamping
+        over it would mask the typo instead of surfacing it."""
+        content = "## A\n<!-- prawduct: chunks=01 | status=shippd -->\n"
+        new_content, stamped = views.stamp_merged(content)
+        assert stamped == []
+        assert new_content == content
+
+    def test_idempotent(self):
+        content = "## A\n<!-- prawduct: chunks=01 | scope=x -->\n"
+        once, stamped_once = views.stamp_merged(content)
+        twice, stamped_twice = views.stamp_merged(once)
+        assert stamped_once == ["A"]
+        assert stamped_twice == []
+        assert twice == once
+
+    def test_stamps_every_statusless_entry_convergent(self):
+        content = (
+            "## newest\n<!-- prawduct: chunks=03 | scope=c -->\n"
+            "## already merged\n<!-- prawduct: chunks=02 | status=merged -->\n"
+            "## missed by an earlier merge\n<!-- prawduct: chunks=01 | scope=a -->\n"
+        )
+        new_content, stamped = views.stamp_merged(content)
+        assert stamped == ["newest", "missed by an earlier merge"]
+        assert new_content.count("status=merged") == 3
+
+    def test_multi_tag_entry_stamped_on_first_line_only(self):
+        content = (
+            "## A\n"
+            "<!-- prawduct: chunks=01 -->\n"
+            "<!-- prawduct: chunks=02 -->\n"
+        )
+        new_content, stamped = views.stamp_merged(content)
+        assert stamped == ["A"]
+        assert "<!-- prawduct: chunks=01 | status=merged -->" in new_content
+        assert "<!-- prawduct: chunks=02 -->" in new_content
+
+    def test_multi_tag_entry_with_status_on_second_line_untouched(self):
+        content = (
+            "## A\n"
+            "<!-- prawduct: chunks=01 -->\n"
+            "<!-- prawduct: chunks=02 | status=shipped -->\n"
+        )
+        new_content, stamped = views.stamp_merged(content)
+        assert stamped == []
+        assert new_content == content
+
+    def test_tag_after_prose_is_body_content_not_stamped(self):
+        content = (
+            "## A\n\nProse first.\n\n<!-- prawduct: chunks=01 -->\n"
+        )
+        new_content, stamped = views.stamp_merged(content)
+        assert stamped == []
+        assert new_content == content
+
 
 class TestMultiScopePlanRegen:
     def _prawduct_dir(self, tmp_path: Path, change_log: str) -> Path:
@@ -1829,3 +2126,153 @@ class TestRegenViewsStatusTypoWarning:
         result = _run_regen(product)
         assert result.returncode == 0, result.stderr
         assert "WARNING" not in result.stderr
+
+
+class TestRegenViewsMultiTagLineWarning:
+    """VWS-4D8J end-to-end: an entry with two tag lines is unioned (both
+    chunks flip) AND surfaced on stderr as a NON-fatal warning telling the
+    author to merge the lines — regen still succeeds (exit 0)."""
+
+    def test_multi_tag_entry_warns_on_stderr_and_unions(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-06-04: two-line entry\n"
+                "<!-- prawduct: chunks=00 | status=shipped -->\n"
+                "<!-- prawduct: chunks=01 | status=shipped -->\n"
+            ),
+            build_plan=(
+                "## Status\n"
+                "- [ ] Chunk 00: A\n"
+                "- [ ] Chunk 01: B\n"
+                "- [ ] Chunk 02: C\n"
+            ),
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stderr
+        assert "warning" in result.stderr.lower()
+        assert "2 prawduct tag lines" in result.stderr
+        new_plan = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+        # The union is the fix: BOTH lines' chunks flip (the second was
+        # silently dropped by the historical first-line-only parse).
+        assert "- [x] Chunk 00: A" in new_plan
+        assert "- [x] Chunk 01: B" in new_plan
+        assert "- [ ] Chunk 02: C" in new_plan
+
+
+# =============================================================================
+# Integration tests — prawduct-hook stamp-merged subcommand
+# =============================================================================
+
+
+def _make_git_product_repo(
+    tmp_path: Path, *, branch: str, base_branch: str | None, change_log: str
+) -> Path:
+    """Minimal git-backed product repo for stamp-merged's branch guard."""
+    repo = tmp_path / "repo"
+    (repo / ".prawduct").mkdir(parents=True)
+    state = f"base_branch: {base_branch}\n" if base_branch else "views_enabled: true\n"
+    (repo / ".prawduct" / "project-state.yaml").write_text(state)
+    (repo / ".prawduct" / "change-log.md").write_text(change_log)
+    subprocess.run(
+        ["git", "init", "-q", "-b", branch], cwd=repo, check=True, timeout=20
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "init",
+        ],
+        cwd=repo,
+        check=True,
+        timeout=20,
+    )
+    return repo
+
+
+def _run_stamp_merged(product_dir: Path) -> subprocess.CompletedProcess:
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(product_dir)}
+    return subprocess.run(
+        ["python3", str(HOOK_PATH), "stamp-merged"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(product_dir),
+        timeout=20,
+    )
+
+
+class TestStampMergedCommand:
+    _CHANGE_LOG = (
+        "## 2026-06-04: new work\n"
+        "<!-- prawduct: chunks=01 | scope=alpha -->\n"
+    )
+
+    def test_stamps_on_configured_integration_branch(self, tmp_path: Path):
+        repo = _make_git_product_repo(
+            tmp_path, branch="develop", base_branch="develop",
+            change_log=self._CHANGE_LOG,
+        )
+        result = _run_stamp_merged(repo)
+        assert result.returncode == 0, result.stderr
+        assert "stamped status=merged: 2026-06-04: new work" in result.stdout
+        assert (
+            "status=merged"
+            in (repo / ".prawduct" / "change-log.md").read_text()
+        )
+
+    def test_refuses_on_feature_branch(self, tmp_path: Path):
+        repo = _make_git_product_repo(
+            tmp_path, branch="feature/x", base_branch="develop",
+            change_log=self._CHANGE_LOG,
+        )
+        result = _run_stamp_merged(repo)
+        assert result.returncode == 1
+        assert "refusing" in result.stderr
+        assert "feature/x" in result.stderr
+        # Change-log untouched.
+        assert (
+            "status=merged"
+            not in (repo / ".prawduct" / "change-log.md").read_text()
+        )
+
+    def test_defaults_to_main_when_knob_unset(self, tmp_path: Path):
+        repo = _make_git_product_repo(
+            tmp_path, branch="main", base_branch=None,
+            change_log=self._CHANGE_LOG,
+        )
+        result = _run_stamp_merged(repo)
+        assert result.returncode == 0, result.stderr
+        assert "stamped status=merged" in result.stdout
+
+    def test_nothing_to_stamp_is_a_clean_no_op(self, tmp_path: Path):
+        repo = _make_git_product_repo(
+            tmp_path, branch="develop", base_branch="develop",
+            change_log=(
+                "## A\n<!-- prawduct: chunks=01 | status=merged -->\n"
+            ),
+        )
+        before = (repo / ".prawduct" / "change-log.md").read_text()
+        result = _run_stamp_merged(repo)
+        assert result.returncode == 0, result.stderr
+        assert "nothing to stamp" in result.stdout
+        assert (repo / ".prawduct" / "change-log.md").read_text() == before
+
+    def test_refuses_outside_a_git_repo(self, tmp_path: Path):
+        product = tmp_path / "plain"
+        (product / ".prawduct").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "base_branch: develop\n"
+        )
+        (product / ".prawduct" / "change-log.md").write_text(self._CHANGE_LOG)
+        result = _run_stamp_merged(product)
+        assert result.returncode == 1
+        assert "refusing" in result.stderr

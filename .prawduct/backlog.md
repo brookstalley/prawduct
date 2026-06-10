@@ -8,8 +8,116 @@
 ## Open
 
 
+- **[CRT-8W3F]** PR-gate ledger fallback accepts an arbitrarily old cumulative — no freshness/session check
+  `effort: S · impact: M · area: governance/gates · source: critic · added: 2026-06-10 · status: open · stage: ready · related: CRT-4J8W, CRT-7M2D · refs: lib/gates.py (_ledger_fallback_record ~L1094-1121) · reviewed: 2026-06-10`
+
+  When the latest `.critic-findings.json` is wrong-mode (e.g. a chunk review overwrote the
+  cumulative), check_cumulative_critic falls back to the NEWEST qualifying `review.critic` ledger
+  event with no timestamp or session-freshness check — only commit-coverage. A days-old cumulative
+  from prior work can satisfy the PR gate if only `.md` changed since, where the findings-file path
+  would have demanded freshness. Fix-shape: require the ledger record's `ts >=` session start
+  (mirroring the findings-file freshness model) or a bounded age, fail closed. Found by the
+  2026-06-10 governance audit of the new v2.1.0 chain-gate code. Priority: do-next (gate soundness,
+  S effort). (critic)
+
+- **[STH-5P2W]** Loud guard when a set active_build_plan pointer resolves to no file
+  `effort: S · impact: M · area: stop-hook · source: critic · added: 2026-06-09 · status: open · stage: ready · related: REL-4T8N · refs: lib/core.py, bin/prawduct-hook, templates/project-state.yaml · reviewed: 2026-06-10`
+
+  From review-fixes Chunk 1 Critic (2026-06-09). The active_build_plan pointer is
+  .prawduct/-relative; a repo-relative value (the natural way to write it) mis-resolves and the
+  resolvers (lib/core.py resolve_build_plan_path + the hook's inline mirror) silently fall back to
+  the default plan path — disabling the Critic gate, plan-aware mode inference, and
+  verify-chunk-refs with no signal. Happened live: the review-fixes planning commit shipped the
+  mis-resolving form and the gates were blind for one work cycle until the Critic caught it.
+  Fix-shape: when the pointer is SET but resolves to a nonexistent file, warn loudly in the session
+  briefing (and/or accept repo-relative forms by stripping a leading .prawduct/) + test.
+  Escape-hatches-create-silent-failures shape. (critic)
+
+  Groom 2026-06-10 (audit): scope widened — besides the loud briefing warning + accepting
+  repo-relative pointers, also document the `active_build_plan` field in
+  templates/project-state.yaml: it is currently undocumented in the template a new product copies,
+  and the audit found no schema guidance anywhere a product would look. Do-next priority.
+
+- **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
+  `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
+
+  During the 2026-06-10 gate-soundness cumulative review, a coordinator-pattern subagent ran the
+  affected test files directly (217 passed, reported in the review summary) despite the SKILL prose
+  instruction and the pure-allow tool list — which doesn't bind Agent-dispatched subagents. Same gap
+  class as CRT-3X9D, whose critic-begin marker guards only `prawduct-hook clear`. The review
+  conclusion was unaffected, but the boundary exists so reviews can't mutate or depend on session
+  state. Fix-shape: extend the critic-active marker enforcement (or subagent tool restriction) to
+  test/build execution, or have the coordinator pass an enforced `allowed-tools` to Agent
+  dispatches. Priority P2. (reflection)
+
+- **[MET-6W3J]** learnings.md compaction: restore When-X-do-Y-because-Z brevity, move narrative to learnings-detail.md, add a size nudge
+  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · stage: ready · related: MET-5C2H, MET-7R4J · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md · reviewed: 2026-06-10`
+
+  From the 2026-06-09 framework review. learnings.md is ~28k tokens for 23 entries — individual
+  entries run 300-600 words, drifting from the file's own stated format (rule in learnings.md, full
+  context in learnings-detail.md). Every /prawduct:learnings lookup and Critic learnings cross-check
+  pays this. Fix-shape: (1) compact each entry to the When/do/because rule plus a pointer into
+  learnings-detail.md (move the narrative there — never delete it); (2) add a mechanical size check
+  per this repo's own 'growing files need structural nudges to prune' learning (e.g. session-start
+  warn when learnings.md exceeds a threshold, like the existing project-state.yaml 40KB warning).
+  (builder)
+
+  Groom 2026-06-10 (audit): learnings.md is now ~80KB on disk and growing; every
+  /prawduct:learnings lookup and Critic learnings cross-check pays it. Do-next priority among the
+  context-economy items.
+
+- **[STH-8M3V]** Atomic writes for .prawduct state files + guard unguarded hot-path I/O in cmd_clear
+  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-6Q9D, ADV-9K2T · refs: bin/prawduct-hook, lib/advisory_store.py, lib/gitstate.py, lib/briefing.py · reviewed: 2026-06-10`
+
+  From the 2026-06-09 framework review. Only .test-evidence.json gets tmp + os.replace;
+  .advisories.json (lib/advisory_store.py), .work-model-index.json, .session-start,
+  .session-git-baseline, and .session-handoff.md are plain write_text — two concurrent sessions on
+  the same repo (worktrees) can tear them. Readers fail open, so blast radius is a misfired gate,
+  not a crash — still worth one shared atomic_write_text helper. Same pass: three unguarded I/O
+  sites in cmd_clear (session-file unlink loop, .session-start write, baseline write) can traceback
+  the SessionStart hook on an OSError, unlike the meticulously best-effort code around them;
+  gitstate's _get_session_changed_files also lacks the (UnicodeDecodeError, OSError) guard its
+  siblings have. (builder)
+
+  Groom 2026-06-10 (audit): the unatomic set confirmed — .session-start + .session-git-baseline
+  (bin/prawduct-hook ~L468, 563), .session-handoff.md (lib/briefing.py ~L868), .advisories.json
+  (lib/advisory_store.py ~L333), and .gates-waived. One shared atomic_write_text helper covers all.
+  Still stage: ready.
+
+- **[STH-6Q9D]** Batch git subprocess fan-out on SessionStart/Stop hot paths
+  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: bin/prawduct-hook, lib/gitstate.py · reviewed: 2026-06-10`
+
+  From the 2026-06-09 framework review. cmd_clear runs ~20+ serial subprocesses (~940ms here; 5-10s
+  risk on monorepos): _untrack_session_files issues 1 + up to 14 git ls-files --error-unmatch calls
+  every session start (replace with one batched 'git ls-files -- <paths>'); 'git status --porcelain'
+  is re-run 4-5x per clear and >=3x per stop (capture once per invocation and pass down);
+  _has_product_code (lib/gitstate.py) walks the full tree via rglob including node_modules/.git
+  before filtering (use pruned os.walk or git ls-files). (builder)
+
+  Groom 2026-06-10: partial fix landed in v2.1.0 (#89 removed the no-change-session `gh pr list`).
+  Remaining hot-path cost per the audit: _untrack_session_files (up to 15 git ls-files + 15 git rm
+  --cached per SessionStart, bin/prawduct-hook ~L291-339 — batch into one ls-files + one rm),
+  repeated `git status --porcelain` per clear/stop (capture once, pass down), and _has_product_code
+  rglob walking node_modules before filtering (lib/gitstate.py ~L219-227). Still stage: ready.
+
+- **[STH-4F7C]** Extract the duplicated Critic-freshness gate (cmd_stop vs briefing) to lib/gates.py — copies have already diverged
+  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-9V4K, STH-6B4R, STH-2K8R · refs: bin/prawduct-hook, lib/briefing.py, lib/gates.py · reviewed: 2026-06-10`
+
+  From the 2026-06-09 framework review. The mtime-vs-session-start freshness check is duplicated
+  nearly verbatim (including the same STH-6B4R comment block) in cmd_stop (bin/prawduct-hook) and
+  briefing._check_previous_session_gates (lib/briefing.py). Unlike the hook's intentional inline
+  mirrors, this pair has no parity test and has already diverged: cmd_stop gained the
+  verify-resolutions scope check; the briefing copy did not. The briefing copy lives in lib/
+  already, so the import-light hot-path rationale does not apply — extract to lib/gates.py and add
+  a parity/regression test. (builder)
+
+  Groom 2026-06-10 (audit): divergence re-confirmed and sharpened — cmd_stop runs the
+  verify-resolutions scope check (bin/prawduct-hook ~L787-812) but
+  lib/briefing._check_previous_session_gates (~L906-934) does not, so the session-start advisory
+  can report a stale verify-resolutions record as satisfying. Still stage: ready.
+
 - **[TEL-7A4X]** Cross-project review-telemetry aggregation — aggregate and review review-cost/value stats across all Prawduct-governed products
-  `effort: M · impact: L · area: governance/telemetry · source: user · added: 2026-06-10 · status: open · stage: requirements · refs: build-plan-review-proportionality.md`
+  `effort: M · impact: L · area: governance/telemetry · source: user · added: 2026-06-10 · status: open · stage: requirements · refs: build-plan-review-proportionality.md · reviewed: 2026-06-10`
 
   Builds on the per-project foundation in `build-plan-review-proportionality.md` (chunk 02 ledger
   `.prawduct/.critic-reviews.jsonl` with schema_version/model fields; chunk 03 `prawduct-hook
@@ -25,17 +133,22 @@
   chunks 02–03 ship.** User request 2026-06-10 ("grab a backlog to enable telemetry aggregation and
   review across projects"). (user)
 
-- **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
-  `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end)`
+  Groom 2026-06-10: UNBLOCKED — review-proportionality chunks 02 and 03 both shipped in v2.1.0
+  (change-log `release=v2.1.0 | status=shipped`), so the `review-stats --json` integration point
+  exists. Next step is the open requirements (where the view lives, opt-in posture, version skew),
+  not code.
 
-  During the 2026-06-10 gate-soundness cumulative review, a coordinator-pattern subagent ran the
-  affected test files directly (217 passed, reported in the review summary) despite the SKILL prose
-  instruction and the pure-allow tool list — which doesn't bind Agent-dispatched subagents. Same gap
-  class as CRT-3X9D, whose critic-begin marker guards only `prawduct-hook clear`. The review
-  conclusion was unaffected, but the boundary exists so reviews can't mutate or depend on session
-  state. Fix-shape: extend the critic-active marker enforcement (or subagent tool restriction) to
-  test/build execution, or have the coordinator pass an enforced `allowed-tools` to Agent
-  dispatches. Priority P2. (reflection)
+- **[TEL-2B6K]** Governance ledger phase 2 — record gate-block + probe-fire events and finding dispositions
+  `effort: M · impact: M · area: governance/telemetry · source: builder · added: 2026-06-10 · status: open · stage: design · related: TEL-7A4X · refs: lib/ledger.py, lib/telemetry.py, lib/gates.py · reviewed: 2026-06-10`
+
+  The v2.1.0 ledger records review.critic/review.pr only; proportionality tuning cannot answer "how
+  often did each gate block?", "which probes fire and where?", or "were findings acted on or
+  ignored?" (actionable-rate is currently severity-presence, not disposition). Phase 2: (a)
+  `gate.blocked` / `probe.fired` event kinds (the schema already reserves unknown-kind
+  forward-compat; consumers skip unknowns); (b) a lightweight finding-disposition record at
+  resolution time feeding an honest actionable-rate. Design questions: where dispositions get
+  captured (verify-resolutions already walks findings — a natural hook), and volume control for
+  gate events. Feeds TEL-7A4X cross-project aggregation. (builder)
 
 - **[TST-3E8V]** `cmd_test_evidence` catches only FileNotFoundError for a declared test_command — widen to OSError
   `effort: S · impact: S · area: tests/runtime · source: critic · added: 2026-06-10 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_test_evidence), tests/test_plugin_runtime.py (TestTestEvidenceKnobs)`
@@ -47,21 +160,9 @@
   the same clean exit-2 path; add a non-executable-target case alongside the existing
   `TestTestEvidenceKnobs` coverage. Filed from the cumulative Critic NOTE on the gate-soundness
   bundle, 2026-06-10. (critic)
-- **[STH-5P2W]** Loud guard when a set active_build_plan pointer resolves to no file
-  `effort: S · impact: M · area: stop-hook · source: critic · added: 2026-06-09 · status: open · stage: ready · related: REL-4T8N · refs: lib/core.py, bin/prawduct-hook`
-
-  From review-fixes Chunk 1 Critic (2026-06-09). The active_build_plan pointer is
-  .prawduct/-relative; a repo-relative value (the natural way to write it) mis-resolves and the
-  resolvers (lib/core.py resolve_build_plan_path + the hook's inline mirror) silently fall back to
-  the default plan path — disabling the Critic gate, plan-aware mode inference, and
-  verify-chunk-refs with no signal. Happened live: the review-fixes planning commit shipped the
-  mis-resolving form and the gates were blind for one work cycle until the Critic caught it.
-  Fix-shape: when the pointer is SET but resolves to a nonexistent file, warn loudly in the session
-  briefing (and/or accept repo-relative forms by stripping a leading .prawduct/) + test.
-  Escape-hatches-create-silent-failures shape. (critic)
 
 - **[CRT-5Q8W]** Skill prose clarity micro-fixes from the 2026-06-09 review (critic protocol wording, designer-handoff note, backlog pick defaults, framework-checks example)
-  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · closes: PR-3J6W · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md, skills/pr/SKILL.md · reviewed: 2026-06-10`
 
   Batch of small wording fixes from the skills review agent, none changing behavior: (1) critic
   review-protocol.md 'Decide checks from signals below' is vague — state that the resolved MODE
@@ -78,94 +179,11 @@
   2026-06-10: sub-item (2) resolved by review-fixes ch.3's CRT-6F2N fix; sub-items (1), (3), (4),
   (5) remain open.
 
-- **[MET-6W3J]** learnings.md compaction: restore When-X-do-Y-because-Z brevity, move narrative to learnings-detail.md, add a size nudge
-  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · related: MET-5C2H, MET-7R4J · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md`
-
-  From the 2026-06-09 framework review. learnings.md is ~28k tokens for 23 entries — individual
-  entries run 300-600 words, drifting from the file's own stated format (rule in learnings.md, full
-  context in learnings-detail.md). Every /prawduct:learnings lookup and Critic learnings cross-check
-  pays this. Fix-shape: (1) compact each entry to the When/do/because rule plus a pointer into
-  learnings-detail.md (move the narrative there — never delete it); (2) add a mechanical size check
-  per this repo's own 'growing files need structural nudges to prune' learning (e.g. session-start
-  warn when learnings.md exceeds a threshold, like the existing project-state.yaml 40KB warning).
-  (builder)
-
-- **[PR-3J6W]** PR skill control-flow clarity: pre-flight guard placement, named retry entry points, Step 1b addressee, evidence retention
-  `effort: S · impact: M · area: pr · source: builder · added: 2026-06-09 · status: open · related: PR-5K8D, PR-2H8N · refs: skills/pr/SKILL.md, skills/pr/review-protocol.md`
-
-  From the 2026-06-09 framework review (skills agent). (1) The release-promotion guard sits
-  mid-prose after the Context Detection heading but must fire before routing — extract it as an
-  explicit Pre-flight section before the routing table. (2) The three sequential STOPs (steps 2,
-  2b, 3) never name their retry entry point; an agent may re-run Step 1 after fixing a Step 3
-  block — add 'fix, re-run THIS gate, continue' to each. (3) Step 1b's doc-only fast-path
-  instruction reads as if addressed to the Critic; rephrase as imperative to the skill executor.
-  (4) Decide evidence-file retention: 'delete the evidence file with the branch' loses the audit
-  trail if a PR is reverted — archive to .prawduct/.pr-reviews-archive/ or document why deletion
-  is intended. Note: the doc-only fileset bug itself (skills/ treated as docs) is PR-5K8D,
-  promoted into the review-fixes plan Chunk 3 — this item is the prose/control-flow cleanup only.
-  (builder)
-
-- **[STH-4F7C]** Extract the duplicated Critic-freshness gate (cmd_stop vs briefing) to lib/gates.py — copies have already diverged
-  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-9V4K, STH-6B4R, STH-2K8R · refs: bin/prawduct-hook, lib/briefing.py, lib/gates.py`
-
-  From the 2026-06-09 framework review. The mtime-vs-session-start freshness check is duplicated
-  nearly verbatim (including the same STH-6B4R comment block) in cmd_stop (bin/prawduct-hook) and
-  briefing._check_previous_session_gates (lib/briefing.py). Unlike the hook's intentional inline
-  mirrors, this pair has no parity test and has already diverged: cmd_stop gained the
-  verify-resolutions scope check; the briefing copy did not. The briefing copy lives in lib/
-  already, so the import-light hot-path rationale does not apply — extract to lib/gates.py and add
-  a parity/regression test. (builder)
-
-- **[STH-8M3V]** Atomic writes for .prawduct state files + guard unguarded hot-path I/O in cmd_clear
-  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-6Q9D, ADV-9K2T · refs: bin/prawduct-hook, lib/advisory_store.py, lib/gitstate.py`
-
-  From the 2026-06-09 framework review. Only .test-evidence.json gets tmp + os.replace;
-  .advisories.json (lib/advisory_store.py), .work-model-index.json, .session-start,
-  .session-git-baseline, and .session-handoff.md are plain write_text — two concurrent sessions on
-  the same repo (worktrees) can tear them. Readers fail open, so blast radius is a misfired gate,
-  not a crash — still worth one shared atomic_write_text helper. Same pass: three unguarded I/O
-  sites in cmd_clear (session-file unlink loop, .session-start write, baseline write) can traceback
-  the SessionStart hook on an OSError, unlike the meticulously best-effort code around them;
-  gitstate's _get_session_changed_files also lacks the (UnicodeDecodeError, OSError) guard its
-  siblings have. (builder)
-
-- **[STH-6Q9D]** Batch git subprocess fan-out on SessionStart/Stop hot paths
-  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: bin/prawduct-hook, lib/gitstate.py`
-
-  From the 2026-06-09 framework review. cmd_clear runs ~20+ serial subprocesses (~940ms here; 5-10s
-  risk on monorepos): _untrack_session_files issues 1 + up to 14 git ls-files --error-unmatch calls
-  every session start (replace with one batched 'git ls-files -- <paths>'); 'git status --porcelain'
-  is re-run 4-5x per clear and >=3x per stop (capture once per invocation and pass down);
-  _has_product_code (lib/gitstate.py) walks the full tree via rglob including node_modules/.git
-  before filtering (use pruned os.walk or git ls-files). (builder)
-
-- **[REL-6C3W]** Flag a code-changing branch that merges with no change-log entry
-  `effort: M · impact: M · area: release/change-log · source: reflection · added: 2026-06-08 · status: open · related: REL-2N8K · refs: docs/release-process.md`
-
-  A non-doc-only feature branch can merge to develop with NO `.prawduct/change-log.md` entry at all,
-  and nothing flags it — CRT-7B4M (#82) did exactly this, and it only surfaced at the v2.0.16
-  release-prep, where the entry had to be reconstructed from the build plan to ship release-notes /
-  flip the plan's Status / clear the pointer. This is a worse sibling of REL-2N8K (statusless entries
-  silently dropped at release): there the entry exists but lacks a status; here there's no entry.
-  Candidate fix: a PR/merge gate (parallel to check-pr-doc-only/trivial) or a release-prep probe that
-  flags when `merge-base...HEAD` is not doc-only/trivial yet adds no new change-log entry. Filed from
-  the v2.0.16 release (2026-06-08). (reflection)
-
-- **[CRT-3D9K]** `bin/prawduct-hook` stop-gate chunk resolution has the same views-branch blindness CRT-7B4M fixed in inference
-  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · stage: requirements · related: CRT-7B4M, STH-2K8R`
-
-  CRT-7B4M fixed `lib/critic_mode.py` so Critic-mode inference derives the current chunk from git
-  on a `views_enabled` feature branch (where the build-plan Status checkboxes are a derived view
-  that never flips until release). But `bin/prawduct-hook`'s stop-gate still resolves the current
-  chunk via the non-git-aware `_current_chunk_id_from_status` mirror (for chunk-`Type:` detection —
-  e.g. the trivial-rationale gate), so on a feature branch it reads Chunk 01's `Type:`, not the
-  chunk actually in progress. This was an explicit, user-vetoable scope boundary in the
-  critic-mode-branch-fix build plan (ASSUMPTION 2); it fails safe (worst case: the gate checks the
-  wrong chunk's Type, defaulting toward stricter review), so it's filed rather than fixed in that
-  PR. Fix-shape: give the hook's chunk resolver the same git-aware path (or — per STH-2K8R —
-  consolidate the mirrored helpers into `lib/` and have both the hook and inference consume one
-  implementation, which would close this by construction). Surfaced by the CRT-7B4M cumulative
-  Critic (2026-06-08). (critic)
+  2026-06-10 (merged from PR-3J6W residual): the audit verified PR-3J6W sub-items 1-3 are resolved
+  (release-promotion guard now sits pre-routing via REL-8K3M; Step 2 names its re-check loop; Step
+  1b made imperative in #89). The surviving piece joins this batch as sub-item (6): decide
+  PR-review evidence-file retention — archive to .prawduct/.pr-reviews-archive/ vs document why
+  deletion is intended. Full original body preserved on the archived PR-3J6W.
 
 - **[MET-5C2H]** Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
   `effort: M · impact: L · area: methodology · source: user · added: 2026-06-08 · status: open · stage: research`
@@ -182,41 +200,8 @@
   rather than per-file; and only raise a per-file budget when every existing token is high-ROI. Output: a
   recommendation + (likely) a revised budget model. Then it can advance to `design`/`ready`. (user)
 
-- **[REL-2N8K]** Release-prep silently drops statusless change-log entries — step 3 only flips `status=merged`
-  `effort: S · impact: M · area: methodology · source: builder · added: 2026-06-08 · status: open · related: REL-4T8N`
-
-  `docs/release-process.md` step 3 instructs the release author to flip entries "from `status=merged`
-  to `status=shipped`." But the documented two-state lifecycle (set `status=merged` at the
-  feature→develop merge) is manual and the `/prawduct:pr` merge flow never applies it, so most entries
-  arrive at release-prep **statusless**. A literal reading of step 3 flips only the `status=merged`
-  entries and silently omits every statusless one — and since `regen-views` acts only on
-  `status ∈ {shipped, merged}`, those scopes' build-plan `## Status` checkboxes never flip and they
-  vanish from `release-notes.md` + `scope_rollups`, with no warning. At v2.0.14, 8 of 10 unreleased
-  entries were statusless (hook-decomp ch.1–7 + critic-session-guard); the release was correct only
-  because the author enumerated ALL entries above the prior `release=` boundary by hand. Two fix
-  options: (a) reword step 3 to "flip every unreleased entry — statusless OR `status=merged` — to
-  `status=shipped`," and/or (b) make the `/prawduct:pr` feature→develop merge reliably stamp
-  `status=merged` on the merged entry so the lifecycle the learnings describe actually holds. Either
-  closes the silent-omission hole. (builder, from the v2.0.14 release)
-
-- **[CRT-3X9D]** Critic's no-execution constraint doesn't prevent session-mutating `prawduct-hook clear`
-  `effort: S · impact: M · area: critic · source: builder · added: 2026-06-07 · status: in-progress (implementation complete) · branch: fix/critic-session-guard-CRT-3X9D · plan: build-plan-critic-session-guard.md · related: STH-9V4K`
-
-  The Critic skill is documented (CLAUDE.md, review-protocol) to run with restricted `allowed-tools` so
-  it "cannot run test suites, builds, or executables" — review is code-analysis only. During the
-  STH-9V4K ch.7 `cumulative` review the Critic nonetheless ran `prawduct-hook clear` (as a "read-only
-  smoke") AND `pytest` once against the real project dir. `clear` is NOT read-only: it archived +
-  deleted the builder's `.session-reflected`, rewrote `.session-start` (making fresh test evidence read
-  "stale"), and recaptured the git baseline — clobbering live session governance state mid-review. The
-  builder had to restore the reflection and re-record evidence. Root cause: the tool restriction must
-  not actually be enforced for `prawduct-hook <subcmd>` (and pytest) the way the docs imply, OR the
-  Critic agent has Bash latitude it shouldn't. Fix options: tighten the Critic's `allowed-tools` so it
-  genuinely cannot invoke `prawduct-hook`/`pytest`, or make the Critic's smoke run against a temp copy /
-  with a guard env var that disables session-file mutation. Either way, an independent reviewer must
-  never be able to mutate the session it's reviewing. (builder)
-
 - **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
-  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K · reviewed: 2026-06-09`
+  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · stage: ready · closes: CRT-3D9K · related: STH-9V4K, BLD-6Q1N · reviewed: 2026-06-10`
 
   `lib/critic_mode.py` carries independent re-implementations of `_current_chunk_id_from_status`,
   the chunk-`Type:` parser, and `_is_metadata_path` (and references `_parse_build_plan_status`),
@@ -235,8 +220,20 @@
   parser that near-duplicates the new shared gitstate.parse_porcelain_line (quoted paths, renames);
   fold it onto the shared helper when consolidating this item's lib/critic_mode mirrors.
 
+  Groom 2026-06-10: UNBLOCKED — the defer-until condition ("until the decomposition (ch.4–7) lands")
+  is satisfied: STH-9V4K shipped in v2.0.14 (archived). The lib surface is stable; this is now
+  directly actionable.
+
+  — merged from CRT-3D9K (2026-06-10) — this item's consolidation closes CRT-3D9K by construction
+  (CRT-3D9K's own text says so); CRT-3D9K's full original body is preserved on its archived entry.
+  Audit 2026-06-10 confirmed critic_mode still carries its own _current_chunk_id_from_status
+  (~L640), _count_build_plan_chunks (~L744, duplicate of lib/gates.py ~L633 — the BLD-6Q1N pair),
+  and an inline porcelain parse in _get_uncommitted_code_files (~L462-474) that does NOT use
+  gitstate.parse_porcelain_line despite importing gitstate. One consolidation pass closes STH-2K8R +
+  CRT-3D9K + the porcelain remnant; do BLD-6Q1N in the same pass.
+
 - **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
-  `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · related: CRT-9V4T, PRR-4M9T, JAN-4F7M`
+  `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · stage: requirements · related: CRT-9V4T, PRR-4M9T, JAN-4F7M · reviewed: 2026-06-10`
 
   RFC for a FOURTH independent review agent alongside Critic / PR-reviewer / Janitor, with the
   opposite goal — make the code *break*, not work: systematic edge-case / attack-surface generation.
@@ -256,7 +253,7 @@
 
 
 - **[PR-2H8N]** Key the `/pr` release-promotion guard off `resolve-base` instead of hardcoded branch names
-  `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · related: REL-8K3M`
+  `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · stage: ready · related: REL-8K3M · reviewed: 2026-06-10`
 
   REL-8K3M's release-promotion guard in `skills/pr/SKILL.md` hardcodes `develop`/`main`/`master` to
   recognize a release/integration context. The skill's own merge-flow (step 7) already distinguishes
@@ -268,7 +265,7 @@
   than a fixed name list. Filed from the REL-8K3M cumulative Critic NOTE on 2026-06-06. (critic)
 
 - **[WMK-1P4Q]** Work-model parent-map injection (B2) + optional `vocabulary:` frontmatter convention
-  `effort: M · impact: M · area: hooks · source: critic · added: 2026-06-06 · status: open · related: work-model`
+  `effort: M · impact: M · area: hooks · source: critic · added: 2026-06-06 · status: open · stage: idea · related: WMK-7D3R · refs: docs/work-model-spec.md, docs/work-model-enforcement.md · reviewed: 2026-06-10`
 
   Deferred from the work-model build (confidence-gated). A SessionStart hook would inject a compact,
   capped "parent map" (governing docs + 1-line scope) as ambient awareness, complementing the shipped
@@ -279,7 +276,7 @@
   `docs/work-model-spec.md` Part C and `docs/work-model-enforcement.md`.
 
 - **[LRN-3F8K]** Reconcile the dangling sentinel on the "Framework ownership follows the write strategy" learning
-  `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open`
+  `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open · stage: design · refs: .prawduct/learnings.md · reviewed: 2026-06-10`
 
   `audit-learnings` reports an error: the learning "Framework ownership follows the write strategy,
   not just registry membership" carries `sentinel=tests/test_prawduct_sync.py::TestAutoCommitSafety::test_user_authored_place_once_edits_treated_as_wip`,
@@ -292,7 +289,7 @@
   one-line annotation fix once decided. Filed from the v2.0.7 release audit. (critic)
 
 - **[STN-6K3D]** (Optional) Ship a non-forced `output-styles/` style power users can voluntarily select
-  `effort: S · impact: S · area: agent-stance · source: builder · added: 2026-06-04 · status: open`
+  `effort: S · impact: S · area: agent-stance · source: builder · added: 2026-06-04 · status: open · stage: ready · reviewed: 2026-06-10`
 
   rigor-and-stance Chunk 02 placed the agent stance in the always-on session digest because a
   `force-for-plugin` output style HARD-OVERRIDES (clobbers) a consumer's own output style and does not
@@ -304,7 +301,7 @@
   (Complete Delivery — the plan deferred this). (builder)
 
 - **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
-  `effort: L · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · partial: floor+design shipped via #60 (code fix pending) · related: STH-7K2A`
+  `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · stage: ready · partial: floor+design shipped via #60 (code fix pending) · related: STH-7K2A · reviewed: 2026-06-10`
 
   Filed by a Hallucinote session (`incoming-bugs/stop-gate-blocks-on-in-flight-background-work.md`) and
   **confirmed firsthand** in the roi-batch-2 session: the `critic-review` + `reflection` Stop gates fire
@@ -348,8 +345,12 @@
   Stop-hook code change + a guard test that a deferred gate re-arms; deferred from the doc-floor
   chunk on proportionality. Could unify with [STH-7K2A] (both quiet a re-firing gate). (builder)
 
+  Groom 2026-06-10: design is done and the floor shipped — the remaining work is just the
+  `.gates-deferred` one-shot deferral (Stop-hook code + re-arm guard test). Effort dropped L → M;
+  stage advanced to ready.
+
 - **[STH-4D2X]** Decide whether the trivial/doc-only file-set gate should also protect a consumer's own `.claude/skills/`
-  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-03 · status: open`
+  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-03 · status: open · stage: requirements · related: STH-1W5N · reviewed: 2026-06-10`
 
   The waiver-pragma branch (W2-C1) fixed `_classify_trivial_change` to bound `skills/` (the framework
   repo's own skill definitions) instead of the deleted `agents/`. Open question it surfaced: in a
@@ -361,28 +362,18 @@
   affects every consumer, so it needs a deliberate decision + test, not a silent add. Filed from the
   2.0-rock-solid pass, 2026-06-03. (builder)
 
-- **[CRT-SHADOW]** (Optional) Recreate an A/B "shadow Critic" as a plugin variant
-  `effort: M · impact: S · area: critic · source: builder · added: 2026-06-02 · status: open · reviewed: 2026-06-02`
-
-  Chunk 13 retired the `critic-test` shadow skill (owner decision 2026-06-02). It was a framework-only experimental twin of `/critic` that wrote to `.critic-test-findings.json` (non-gating) for A/B-testing review-strategy changes. It was deliberately never ported to the plugin (Chunk 3), it read the now-deleted `agents/` tree, and its comparison baseline — the production Critic — now lives in the plugin. If A/B review-strategy testing is wanted again, recreate it as a **plugin** skill (`skills/critic-test/`) that forks against the plugin's bundled `skills/critic/review-protocol.md`, rather than maintaining divergent copies of the protocol. Low priority — only build if a concrete review-strategy experiment needs it. (builder)
-
 - **[CRT-9V4T]** Verify (or harden) interactive enforcement of the Critic fork-skill's `allowed-tools` cap
-  `effort: M · impact: M · area: critic · source: builder · added: 2026-06-01 · status: open · reviewed: 2026-06-01`
+  `effort: M · impact: M · area: critic · source: builder · added: 2026-06-01 · status: open · stage: research · related: CRT-7Q2T · reviewed: 2026-06-10`
 
   Surfaced during v2.0.0 Chunk 4 empirical verification. The Critic's structural "no pytest / read-only git" guarantee rests on a `context: fork` skill with a pure-allow `allowed-tools` list (pytest unmatchable). `test_critic_skill_metadata.py` pins the *list shape* (no allow pattern matches pytest), and CLAUDE.md calls the constraint "structural, not behavioral." But a Chunk-4 probe found that under headless `claude -p`, a fork-skill with `allowed-tools: Read, Bash(git status *)` still ran a NON-allow-listed `echo` (marker printed) — i.e. headless `-p` did not enforce the allow-list as a hard cap. This does NOT prove a hole: the real Critic runs **interactively** (forked from a `/critic` invocation), where the cap is designed to apply, and the probe couldn't exercise that path. But it means the interactive enforcement is **assumed, not hermetically verified**, and the "structural" claim is only as strong as that assumption. Pre-existing — affects today's file-sync Critic identically; Chunk 4 introduced no regression (frontmatter byte-identical). Relates to memory `feedback_critic_no_test_execution` and learning CRT-2M5P. Fix-shapes: (a) an interactive-mode verification (manual or scripted) that confirms a forked `/critic` is actually denied a non-allow-listed Bash command — establishes whether the cap is structural or merely prompt-suppression; (b) if (a) shows it's not a hard cap, add a belt-and-suspenders **PreToolUse guard hook** in the plugin `hooks/hooks.json` that blocks pytest/`git checkout`/tree-mutation specifically when the calling agent is the critic (needs the hook to be able to scope to the subagent — itself unverified); (c) at minimum, soften the "structural, not behavioral" wording in CLAUDE.md to match what's actually verified. Open question: does Claude Code treat skill `allowed-tools` as a hard deny-cap in interactive mode, or as a no-prompt allow-list with a separate ask-fallback for unlisted tools? Resolve (a) before relying further on the claim. Filed from Chunk 4 verification on 2026-06-01. (builder)
 
 - **[STH-7K2A]** Stop-hook structural loop-detection counter (defense-in-depth on top of v1.5.2's discoverability fix)
-  `effort: M · impact: M · area: stop-hook · source: reflection · added: 2026-05-23 · status: open · closes: v1.5.2 discoverability half · reviewed: 2026-05-29`
+  `effort: M · impact: M · area: stop-hook · source: reflection · added: 2026-05-23 · status: open · stage: design · closes: v1.5.2 discoverability half · related: STH-3W7F · reviewed: 2026-06-10`
 
   v1.5.2 (2026-05-23) shipped the discoverability piece: all four blocker stderr messages now name `.gates-waived`, the JSON shape, and `build-governance.md` so agents stuck in unsatisfiable gate states can declare a waiver. The structural piece is still open. Pathology: even with the escape hatch named in the blocker text, an agent can in principle ignore it and continue re-firing the same gate. Defense-in-depth fix-shape: track stop-hook fire count per session in a new `.prawduct/.stop-fire-count` file recording `{count, blocker_signature, ts}`. On the Nth (e.g., 3rd) consecutive fire with the same signature and no progress (no new Critic findings, no new waiver, no diff change since last fire), either (a) escalate the blocker text to name the loop explicitly and force-surface the waiver mechanism above the existing prose, or (b) auto-downgrade to advisory (stderr-only) on the assumption that the agent has seen the gate and made an informed call. (a) is conservative; (b) is firmer about not burning tokens. Auto-clear on session start. Open design questions: per-blocker counter or session-wide? what counts as "progress" (any diff change or only changes that materially address the gate)? should the counter persist if the blocker signature changes mid-session? Filed from v1.5.2 release (2026-05-23) as the deferred structural half of the original infinite-loop bug; the original "discoverability" half is shipped and the backlog entry closes against v1.5.2's change-log entry. (reflection)
 
-- **[CRT-1F7N]** Re-enable cumulative inference mid-build by recording per-HEAD cumulative records
-  `effort: M · impact: S · area: critic · source: builder · added: 2026-05-22 · status: open · reviewed: 2026-05-29`
-
-  Chunk 03's rule 2 (cumulative) added a clean-tree guard so it doesn't over-fire mid-chunk-N. Side effect: even after the user commits chunk N, rule 2 still doesn't fire because the helper has no record that cumulative was already run for THIS HEAD — but in practice cumulative IS expensive and the user typically only wants it pre-PR. The current behavior matches the proportionality intent, but loses some signal: if the user committed and is about to PR, inference doesn't surface "you should run cumulative" — it returns `chunk` (or `final` if last chunk). Fix-shape: when the working tree is clean AND ≥2 commits ahead, return `cumulative` even though it'd take 4-10 min — the cleanness is the signal the user has stopped editing and is about to merge. Risk: false-positives on chunk boundaries where the user clean-committed but isn't about to PR. Validate against a few real chunk boundaries before changing. Filed from Chunk 03 work on 2026-05-22. (builder)
-
 - **[MIG-6B0R]** Recommend gitflow as the default git strategy + strip prawduct artifacts on deploy-to-main
-  `effort: L · impact: M · area: migration · source: builder · added: 2026-05-19 · status: open · reviewed: 2026-05-29`
+  `effort: L · impact: M · area: migration · source: builder · added: 2026-05-19 · status: open · stage: requirements · reviewed: 2026-06-10`
 
   Two coupled proposals:
   1. **Recommend gitflow** (`develop` for ongoing work, `main` as the deployed/released branch, feature/release/hotfix branches off `develop`) as the prawduct-recommended workflow. Captured in `project-preferences.md` (or a new `methodology/git-strategy.md`) with rationale: prawduct's session-artifacts churn pattern fits gitflow's "develop is mutable, main is immutable releases" split much better than trunk-based flow, where every session-edit lands on the deployable branch.
@@ -393,53 +384,56 @@
      - **Keep:** project-owned skills/hooks (anything in `.claude/skills/` that's NOT in the prawduct-managed set — user-authored skills stay).
   Fix-shape: probably a `prawduct-doctor deploy-to-main` (or `prawduct-deploy`) subcommand that performs a filtered merge/squash — strips the listed paths from a temp index, commits the cleaned tree to `main`, leaves `develop` intact. Alternative: a git pre-receive hook recipe in `methodology/git-strategy.md` that products copy into their own remote. Need to decide which paths are framework-canonical (centralizable in `core.py`'s MANAGED_FILES + a new `DEPLOY_STRIP_PATHS` set) vs. project-configurable. Open question: does the filter run on every push to main, or only on explicit `prawduct-doctor deploy` invocations? Filed from user request on 2026-05-19. (builder)
 
-- **[DOC-9J4B]** F8: add Foreign-API example to hallucinote product repo
-  `effort: S · impact: S · area: docs · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
-
-  v1.4 Chunk 04 (F8) acceptance criterion called for "at least one product-repo example added (hallucinote's Ableton Live MCP work is the obvious reference)." The Ableton-MCP example was shipped as a worked illustration inside the framework (planning.md "Foreign API Verification" section + templates/build-plan.md inline example), satisfying the spirit but not the literal product-repo touch. Defer the hallucinote-side update — `**Foreign API:** ableton-live-mcp` on the relevant build-plan chunk + `verify-api` step in Done-when — to the next hallucinote session. Filed from /critic NOTE on 2026-05-18. (critic)
+  Groom 2026-06-10: premise partially obsoleted — the strip-list names file-sync-era files
+  (bin/prawduct-hook, framework-managed skills in product repos) that plugin-governed products no
+  longer commit. The residual want (keep governance bookkeeping like .prawduct/ state off a
+  deployed main) may still be real; re-derive the requirement against the plugin-era reality
+  before any design. Stays stage: requirements.
 
 - **[BLD-5V8F]** F3: extend `verify-chunk-refs` beyond file paths
-  `effort: M · impact: M · area: build-plan · source: critic · added: 2026-05-18 · status: open · reviewed: 2026-05-29`
+  `effort: M · impact: M · area: build-plan · source: critic · added: 2026-05-18 · status: open · stage: requirements · related: BLD-2R9X, BLD-8F2Q · reviewed: 2026-06-10`
 
   v1.4 Chunk 02 (F3) shipped file-path verification only; the original plan also called for symbol (function/class names) and backlog-ID verification. Deferred during build because (a) symbols in prose are often approximate (`parse_func` vs implementation's `_parse_func`) so strict grep produces false positives requiring fuzzy match; (b) this project's backlog has no formal IDs (bullet titles, not e.g. `BL-123`), so the check would be inert here and need per-project ID convention. Add when a project surfaces a concrete need: define matching rules (substring grep across configured source roots for symbols; project-preferences `backlog_id_pattern` regex for backlog refs) and extend `_parse_build_plan_chunk_refs` to return `symbols` and `backlog_refs` lists alongside `file_paths`. Note: this project now HAS formal backlog IDs (`[PFX-XXXX]`) post-migration, so the backlog-ID half is newly actionable. Filed from /critic NOTE on 2026-05-18. (critic)
 
 - **[BLD-6Q1N]** Extract `_iter_status_section_items` shared parser for build-plan Status
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-08 · status: open · reviewed: 2026-05-29`
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-08 · status: open · stage: ready · refs: lib/gates.py, lib/critic_mode.py, lib/buildplan_refs.py · reviewed: 2026-06-10`
 
   `_count_build_plan_chunks` (bin/prawduct-hook lines ~2073-2113, added v1.3.13) duplicates the Status-section parsing skeleton of `_parse_build_plan_status` (lines ~1021-1099): same `## Status` detection, same HTML-comment skip, same exit on next `## ` heading. Two callers is borderline; if a third caller appears (e.g., a future stop-hook check that needs chunk metadata), extract to `_iter_status_section_items(prawduct_dir) -> Iterator[StatusItem]` and refactor both call sites. Filed from /critic NOTE on 2026-05-08. (critic)
 
-- **[CRT-2H8K]** `.critic-findings.json` cumulative-state file
-  `effort: M · impact: S · area: critic · source: builder · added: 2026-05-05 · status: open · reviewed: 2026-05-29`
-
-  Would let `final` reviews focus on emergent cross-chunk concerns by remembering what each `chunk` review already covered. Useful but not necessary for proportionality MVP (v1.3.13). Revisit if `final` reviews still feel slow after live use. Filed during proportional-Critic build plan as out-of-scope. (builder)
+  Groom 2026-06-10 — refs refreshed post hook-decomposition (STH-9V4K, v2.0.14) and the premise is
+  now STRONGER: `_count_build_plan_chunks` exists as near-duplicate copies in BOTH `lib/gates.py`
+  (~L633) and `lib/critic_mode.py` (~L744), alongside `_parse_build_plan_status` in
+  `lib/buildplan_refs.py` (~L31). The third-caller threshold the item set is effectively met;
+  natural home for the shared iterator is lib/buildplan_refs. Overlaps the STH-2K8R consolidation —
+  consider doing both in one pass.
 
 - **[MET-9K4R]** Workflow-values schema/validator
-  `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-01 · status: open · reviewed: 2026-05-29`
+  `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-01 · status: open · stage: design · reviewed: 2026-06-10`
 
   Workflow preferences (`Branching: direct`, `PR creation: wait_for_user`, `PR merge: wait_for_user`) are read by `building.md` and `/pr` but have no allowed-vocabulary or shape check. A typo or unknown value would silently default. Candidate: small Critic checklist line ("Workflow values must be one of X / Y / Z") OR a tiny config-presence test. Low priority — current values are stable. (critic, 2026-05-01)
 
 - **[MET-3P7B]** Lift "assign a mechanism per preference" pattern into methodology
-  `effort: M · impact: M · area: methodology · source: critic · added: 2026-05-01 · status: open · reviewed: 2026-05-29`
+  `effort: M · impact: M · area: methodology · source: critic · added: 2026-05-01 · status: open · stage: research · reviewed: 2026-06-10`
 
   The Enforcement section added to `project-preferences.md` (and the template, 2026-05-01) encodes a methodology insight: every preference must be assigned to Linter / Test / Critic when it's captured, with a false-confidence guardrail that escalates weak tests to Critic. Currently lives only in the artifact + template. Candidate: weave into `methodology/discovery.md` (when capturing preferences) and `methodology/planning.md` (when designing test specs). Validate the pattern against 2-3 more preferences first before promoting. (critic)
 
 - **[CRT-6T1V]** Critic check: test helpers duplicating production logic
-  `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
+  `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · stage: design · reviewed: 2026-06-10`
 
   Cross-product reflection audit (Apr 16) surfaced a recurring drift hazard in discodon: test files re-implement production calculations (LogQL builders, SDK result parsing) rather than importing the shared helper, so tests keep passing while production drifts. Evidence: discodon/reflections.md §2026-04-14 "Pattern worth keeping". Candidate: extend Goal 1 or Goal 7 in skills/critic/review-protocol.md — when a test performs a calculation/parsing operation that exists in production, flag as WARNING unless the test is deliberately testing the helper itself. Needs design work on detection heuristic (string-matching is noisy; AST match is heavier). (reflection)
 
 - **[CRT-1B6Q]** Critic check: stateful objects in shared_kwargs need lifecycle cleanup
-  `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-15 · status: open · reviewed: 2026-05-29`
+  `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-15 · status: open · stage: design · reviewed: 2026-06-10`
 
   Discodon's multi-tool coordinator pattern passes stateful objects (PendingVoiceSlot, prior voice_getter closures) via `shared_kwargs` to multiple tools. Critic caught lifecycle bugs (missed_intro false-positives when idle) only after complex state interactions emerged. Evidence: discodon/reflections.md §2026-04-15 V0.5-5. Candidate: extend Goal 6 (The System Can Be Understood) — when an object with enter/exit/close methods is shared across tools, verify owner tool's stop() drains/closes it. Generalizes beyond discodon's specific pattern to any DI/coordinator framework. (reflection)
 
 - **[CRT-5N3F]** Critic false positives from fork-context limits
-  `effort: L · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
+  `effort: L · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · stage: research · reviewed: 2026-06-10`
 
   Discodon archive (Feb–Apr 2026) has 4 confirmed cases where Critic misread code: Mar 24 shutdown event closure, Mar 25 eval doc merge (3 of 4 prior findings false), Mar 28 ARIA A1/A2 missed an existing `model_config = ConfigDict(str_strip_whitespace=False)` override, plus branch-switching confusion. Root cause: `context: fork` can't see overrides spanning files / inheritance / closures. Investigate whether Critic's research phase needs a wider read budget for inheritance chains, or whether prompt engineering can compensate. (reflection)
 
 - **[CRT-8D2W]** Critic-in-worktree as structural fix for session-file conflicts
-  `effort: L · impact: M · area: critic · source: reflection · added: 2026-03-25 · status: open · reviewed: 2026-06-10 · related: CRT-3X9D`
+  `effort: L · impact: M · area: critic · source: reflection · added: 2026-03-25 · status: open · stage: requirements · reviewed: 2026-06-10 · related: CRT-3X9D`
 
   v1.3.3 gitignored build-plan.md and v1.3.4 added `_untrack_session_files()`, but the user explicitly suggested running Critic in a separate worktree to avoid touching session files in the active tree at all. Mar 25 discodon avatar_description session captured this when branch-switching during Critic review caused merge conflicts on `.session-handoff.md` and backlog. Worth designing as a follow-up to the gitignore approach. (reflection)
 
@@ -454,35 +448,22 @@
   now be redundant defense-in-depth rather than a structural fix. (critic, gate-soundness cumulative
   review note)
 
-- **[SYN-6J0R]** WIP tracking goes stale when branches merge piecemeal
-  `effort: M · impact: M · area: sync · source: reflection · added: 2026-03-23 · status: open · reviewed: 2026-05-29`
-
-  Mar 23 discodon doc audit found 3 WIP branches were already merged into develop via other PRs but project-state.yaml still listed them in-progress. No mechanism reflects branch completion back to project-state.yaml when PRs merge. Consider git-based detection (branch existence on remote) or a post-merge sync step. (reflection)
-
-- **[STH-9V4K]** `bin/prawduct-hook` decomposition
-  `effort: L · impact: M · area: stop-hook · source: janitor · added: 2026-04-16 · status: in-progress (implementation complete — release-pending) · plan: build-plan-hook-decomposition.md · reviewed: 2026-06-07`
-
-  Split the hook monolith into logical modules. **Implementation complete (2026-06-07):** all 7 chunks built + Critic-clean, one module per PR in dependency order — ch.1 lazy `lib/__init__` (enabling), ch.2 `lib/gitstate` (#74), ch.3 `lib/buildplan_refs` (#75), ch.4 `lib/compliance` (#76), ch.5 `lib/coverage` (#77), ch.6 `lib/gates` (#78), ch.7 `lib/briefing` (the SessionStart surface — final). The hook went from **4,942 → 1,911 lines (−61%)** and is now a thin dispatcher (bootstrap + parity-pinned inline mirrors + lazy `lib` accessors + `cmd_*` wrappers + `cmd_clear`/`cmd_stop`/`main`). An AST call-graph drove the leaf-first order; the briefing↔gates↔coverage↔buildplan_refs cycle was broken by reassigning `_parse_build_plan_status` to buildplan_refs. **Remaining: the develop→main release** that flips the build-plan checkboxes `[x]` (`status=shipped` change-log tags + regen-views) — close this item then. Enabled follow-up still open: STH-2K8R (critic_mode mirror consolidation). (janitor)
-
 - **[TST-4P8H]** Flaky tests under parallel execution (xdist)
-  `effort: M · impact: M · area: tests · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
+  `effort: M · impact: M · area: tests · source: builder · added: 2026-04-16 · status: open · stage: research · reviewed: 2026-06-10`
 
   Re-validated 2026-06-03: 5 of the 6 originally-named tests were removed with the file-sync engine (M4) — only `TestStopPrReviewGate::test_stop_clean_without_pr` survives. The narrow open question is whether that surviving subprocess-heavy test (and peers) still flake under `-n10`. The depth_cap test creates 111 git subprocess commits in a loop — when 9 other xdist workers are simultaneously doing similar subprocess-heavy work, the system runs out of fork resources / hits IO contention and the test times out. Passes 100% of the time when run in isolation or with reduced parallelism. Root cause likely race conditions in the subprocess-based hook tests sharing process-level state or temp dir contention. (builder)
 
+  Groom 2026-06-10 (audit refresh): no active flakes; conftest now auto-groups by directory under
+  xdist and the heavy git suites (test_governance_ledger, test_cumulative_gate) use sterile-HOME
+  isolation. New evidence in the same family: test_audit_learnings hit a pytest-timeout worker
+  crash under full-suite xdist (2026-06-10, worked around by pointing at a tmp repo). Item narrowed
+  to: give the residual heavy tests explicit timeouts or a dedicated xdist group; close when the
+  suite runs clean at -n10 repeatedly.
+
 - **[STH-7B5N]** Session lock file for concurrent session detection
-  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-04-16 · status: open · reviewed: 2026-05-29`
+  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-04-16 · status: open · stage: ready · reviewed: 2026-06-10`
 
   Advisory lock file in product-hook clear/stop to warn when another Claude session is active on the same project. Agreed on non-blocking approach with staleness timeout (~4 hours). (builder)
-
-<!-- v1.7.0 deferred scope — the backlog feature shipped its lean core (the /backlog skill + the single
-     legacy-backlog-format probe). The items below are real requirements scope (backlog-system-requirements.md,
-     post-sync-advisory-spec.md §8.2) held back on proportionality grounds: low-risk internal markdown tool,
-     no current consumer. Add each when a real product needs it. Filed from the v1.7.0 release chunk (2026-05-29). -->
-
-- **[BKL-4N6X]** `/backlog dismiss-advisory` per-feature alias
-  `effort: S · impact: S · area: backlog · source: builder · added: 2026-05-29 · status: open`
-
-  Requirements §8.2. A convenience alias that forwards to the existing unified `/prawduct-advisory dismiss`. The unified command already works, so this is pure ergonomics — deferred until the alias's discoverability is worth the extra surface. (builder)
 
 - **[BLD-7W2J]** Single-slot `active_build_plan` vs parallel in-flight plans
   `effort: M · impact: M · area: governance/planning · source: critic · added: 2026-06-10 · status: open · stage: idea · related: REL-4T8N · refs: lib/core.py (resolve_build_plan_path), methodology/planning.md`
@@ -500,17 +481,17 @@
   the gate-soundness bundle, 2026-06-10. (critic)
 
 - **[MET-7R4J]** Methodology/CLAUDE.md redundancy and prompt-quality pass — hard rules stated 4-6x across always-loaded surfaces
-  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · related: MET-5C2H · refs: CLAUDE.md, docs/principles.md, methodology/building.md, methodology/planning.md, methodology/session-digest.md`
+  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · stage: ready · related: MET-5C2H · refs: CLAUDE.md, docs/principles.md, methodology/building.md, methodology/planning.md, methodology/session-digest.md · reviewed: 2026-06-10`
 
   From the 2026-06-09 framework review (methodology-as-prompts agent). For Opus/Fable-class models, restating a rule with varied phrasing creates interference, not reinforcement. (1) Consolidate to one canonical statement + cross-refs: Tests Are Contracts appears 6x (CLAUDE.md, principles.md, agent-stance.md, building.md 2x, session-digest.md); the mid-build-requirement rule has 8+ phrasings; the Critic mandate appears 6x with escalating emphasis. (2) Remove emphasis escalation: CLAUDE.md 'STOP. Read this before writing ANY code' caps — prompt-rot pattern that also misstates Critic timing (Critic runs after code). (3) Compress planning.md Foreign API Verification (~40 lines to ~15: rule + when-to-apply + one worked example; move match mechanics to the Critic protocol). (4) Add one sentence to building.md Before You Build: re-review the plan's Open assumptions as code reveals new facts (assumptions are recorded at plan time but never checkpointed mid-build). Note: digest-vs-CLAUDE.md duplication is handled separately by the review-fixes plan Chunk 4 (slim framework-repo digest); this item is the within-file redundancy pass. Token-budget guardrail tests on methodology files will need adjusting downward, not up. (builder)
 
 - **[JNT-9R2K]** Janitor SKILL: move the investigation-theme taxonomy to a companion reference file; close the Step 2.5 to Step 7 backlog loop
-  `effort: S · impact: S · area: janitor · source: builder · added: 2026-06-09 · status: open · refs: skills/janitor/SKILL.md`
+  `effort: S · impact: S · area: janitor · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: skills/janitor/SKILL.md · reviewed: 2026-06-10`
 
   From the 2026-06-09 framework review (skills agent). (1) The nine investigation themes (~100 lines, ~50% of the skill) read once per janitor run — move theme details to a bundled companion file (the pattern the Critic already uses with review-protocol.md etc.) and keep SKILL.md as dispatcher + process. (2) Clarify that Step 2.5 Backlog Health emits read-only NOTE findings and Step 7 Reconcile is where those findings drive /prawduct:backlog update calls — the linkage is currently implicit. (3) Reframe the 'fresh eyes' line toward pattern-detection + infer-and-confirm, and say what to do when the user cannot confirm a preference divergence (file a backlog item rather than resolving unilaterally). (builder)
 
 - **[WMK-7D3R]** Work-model index never rebuilds on artifact deletion — retired vocabulary lingers
-  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · related: WMK-1P4Q · refs: bin/prawduct-hook, lib/work_model_index.py`
+  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-06-10`
 
   From the 2026-06-09 framework review. The staleness check (bin/prawduct-hook, build-index path) compares
   remaining artifact mtimes to the index mtime, so deleting an artifact never triggers a rebuild and its
@@ -520,7 +501,7 @@
   covered by the review-fixes plan Chunk 2. (builder)
 
 - **[STH-5R2Q]** Flag-only `prawduct-hook` subcommands silently ignore unknown positional arguments
-  `effort: S · impact: M · area: governance/cli · source: builder · added: 2026-06-10 · status: open · refs: bin/prawduct-hook · related: STH-9V4K`
+  `effort: S · impact: M · area: governance/cli · source: builder · added: 2026-06-10 · status: open · stage: ready · refs: bin/prawduct-hook · related: STH-9V4K · reviewed: 2026-06-10`
 
   `prawduct-hook audit-learnings` (and any flag-only subcommand) silently ignores unknown positional
   arguments; this hid a test bug where `tmp_path` was passed positionally and the real repo was audited
@@ -530,8 +511,217 @@
 
 ## Promoted
 
+## Archive
+
+- **[REL-9F2T]** Change-log lifecycle hardening — close the silent-drop family (statusless entries, missing entries, multi-tag entries, orphaned scopes)
+  `effort: M · impact: L · area: governance/change-log · source: reflection · added: 2026-06-10 · status: shipped · stage: ready · closes: REL-2N8K, REL-6C3W, VWS-4D8J · related: VWS-3K7P, REL-4T8N, CRT-7B4M · refs: lib/views.py, skills/pr/SKILL.md, docs/release-process.md, .prawduct/artifacts/build-plan-changelog-lifecycle.md · closed-by: v2.1.1 · reviewed: 2026-06-10`
+
+  The change-log state machine (statusless → merged → shipped) is broken at three transitions, all
+  silent, all observed live: (a) the /prawduct:pr merge flow is documented to stamp `status=merged`
+  but never does, so most entries reach release-prep statusless, and docs/release-process.md step 3
+  literally says flip "`status=merged`" → statusless entries silently dropped (v2.0.14: 8 of 10)
+  [REL-2N8K]; (b) a code-changing branch can merge with NO entry at all and nothing flags it
+  (CRT-7B4M/#82, reconstructed at the v2.0.16 release) [REL-6C3W]; (c) lib/views.py
+  parse_change_log stops at the FIRST `prawduct:` tag line per entry section, silently dropping
+  later ones (v2.1.0 live: the reviewer-model-tiering chunks=02 tag nearly shipped unflipped)
+  [VWS-4D8J]; (d) NEW from the 2026-06-10 audit: diagnose_scope_plan_coverage validates the
+  scope=→plan mapping only for `status=merged` entries, so a statusless entry with a bad `scope=`
+  is undetected until release. Fix as one scope: stamp `status=merged` in the /prawduct:pr merge
+  step + reword release-process step 3 to "every unreleased entry, statusless OR merged"; add a
+  release-prep/merge probe for code-changing diffs with no new entry; warn (or union) on multiple
+  tag lines per entry; extend scope validation to statusless entries. Priority: do-next — this is
+  the top release-integrity hole. Merged 2026-06-10 from REL-2N8K + REL-6C3W + VWS-4D8J; the three
+  original bodies are preserved verbatim on the archived items. (reflection)
+
+  Promoted 2026-06-10 — build plan authored at
+  .prawduct/artifacts/build-plan-changelog-lifecycle.md (3 chunks: multi-tag-line union+warning,
+  stamp-merged + statusless scope validation, missing-entry probe at PR create); branch
+  feature/changelog-lifecycle.
+
+  — Shipped 2026-06-10 as v2.1.1: all three chunks shipped (PR #90 squash-merged to develop as
+  c7015e9). Closes the silent-drop family REL-2N8K, REL-6C3W, VWS-4D8J per the `closes:` field —
+  all three already archived (dropped, merged into this item) at the 2026-06-10 groom.
+
+- **[REL-2N8K]** Release-prep silently drops statusless change-log entries — step 3 only flips `status=merged`
+  `effort: S · impact: M · area: methodology · source: builder · added: 2026-06-08 · status: dropped · stage: design · related: REL-4T8N, REL-6C3W, VWS-4D8J, REL-9F2T · reviewed: 2026-06-10`
+
+  `docs/release-process.md` step 3 instructs the release author to flip entries "from `status=merged`
+  to `status=shipped`." But the documented two-state lifecycle (set `status=merged` at the
+  feature→develop merge) is manual and the `/prawduct:pr` merge flow never applies it, so most entries
+  arrive at release-prep **statusless**. A literal reading of step 3 flips only the `status=merged`
+  entries and silently omits every statusless one — and since `regen-views` acts only on
+  `status ∈ {shipped, merged}`, those scopes' build-plan `## Status` checkboxes never flip and they
+  vanish from `release-notes.md` + `scope_rollups`, with no warning. At v2.0.14, 8 of 10 unreleased
+  entries were statusless (hook-decomp ch.1–7 + critic-session-guard); the release was correct only
+  because the author enumerated ALL entries above the prior `release=` boundary by hand. Two fix
+  options: (a) reword step 3 to "flip every unreleased entry — statusless OR `status=merged` — to
+  `status=shipped`," and/or (b) make the `/prawduct:pr` feature→develop merge reliably stamp
+  `status=merged` on the merged entry so the lifecycle the learnings describe actually holds. Either
+  closes the silent-omission hole. (builder, from the v2.0.14 release)
+
+  — Dropped 2026-06-10 (groom): merged into [REL-9F2T] "Change-log lifecycle hardening," which
+  carries this as silent-drop transition (a). Body preserved here verbatim.
+
+- **[REL-6C3W]** Flag a code-changing branch that merges with no change-log entry
+  `effort: M · impact: M · area: release/change-log · source: reflection · added: 2026-06-08 · status: dropped · stage: design · related: REL-2N8K, REL-9F2T · refs: docs/release-process.md · reviewed: 2026-06-10`
+
+  A non-doc-only feature branch can merge to develop with NO `.prawduct/change-log.md` entry at all,
+  and nothing flags it — CRT-7B4M (#82) did exactly this, and it only surfaced at the v2.0.16
+  release-prep, where the entry had to be reconstructed from the build plan to ship release-notes /
+  flip the plan's Status / clear the pointer. This is a worse sibling of REL-2N8K (statusless entries
+  silently dropped at release): there the entry exists but lacks a status; here there's no entry.
+  Candidate fix: a PR/merge gate (parallel to check-pr-doc-only/trivial) or a release-prep probe that
+  flags when `merge-base...HEAD` is not doc-only/trivial yet adds no new change-log entry. Filed from
+  the v2.0.16 release (2026-06-08). (reflection)
+
+  — Dropped 2026-06-10 (groom): merged into [REL-9F2T] "Change-log lifecycle hardening," which
+  carries this as silent-drop transition (b). Body preserved here verbatim.
+
+- **[VWS-4D8J]** regen-views silently honors only the FIRST `<!-- prawduct: ... -->` tag line when an entry section carries several
+  `effort: S · impact: M · area: governance/views · source: reflection · added: 2026-06-10 · status: dropped · stage: ready · related: REL-2N8K, VWS-3K7P, REL-9F2T · refs: lib/views.py, .prawduct/change-log.md · reviewed: 2026-06-10`
+
+  Observed live at the v2.1.0 release (2026-06-10): the reviewer-model-tiering change-log entry had
+  two `<!-- prawduct: ... -->` tag lines under one `##` header (chunks=01 and chunks=02);
+  regen-views flipped only chunk 01 and the only signal was the per-scope rollup count printing
+  "1 chunk(s)". Same silent-drop family as REL-2N8K (statusless entries) and the shipped VWS-3K7P
+  (status-value typos). Fix-shape: lib/views.py warns on stderr when an entry section contains more
+  than one prawduct: tag comment (suggesting a merged chunks= list), or unions the chunk lists.
+  (reflection)
+
+  — Dropped 2026-06-10 (groom): merged into [REL-9F2T] "Change-log lifecycle hardening," which
+  carries this as silent-drop transition (c). Body preserved here verbatim.
+
+- **[CRT-3D9K]** `bin/prawduct-hook` stop-gate chunk resolution has the same views-branch blindness CRT-7B4M fixed in inference
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: dropped · stage: requirements · related: CRT-7B4M, STH-2K8R · reviewed: 2026-06-10`
+
+  CRT-7B4M fixed `lib/critic_mode.py` so Critic-mode inference derives the current chunk from git
+  on a `views_enabled` feature branch (where the build-plan Status checkboxes are a derived view
+  that never flips until release). But `bin/prawduct-hook`'s stop-gate still resolves the current
+  chunk via the non-git-aware `_current_chunk_id_from_status` mirror (for chunk-`Type:` detection —
+  e.g. the trivial-rationale gate), so on a feature branch it reads Chunk 01's `Type:`, not the
+  chunk actually in progress. This was an explicit, user-vetoable scope boundary in the
+  critic-mode-branch-fix build plan (ASSUMPTION 2); it fails safe (worst case: the gate checks the
+  wrong chunk's Type, defaulting toward stricter review), so it's filed rather than fixed in that
+  PR. Fix-shape: give the hook's chunk resolver the same git-aware path (or — per STH-2K8R —
+  consolidate the mirrored helpers into `lib/` and have both the hook and inference consume one
+  implementation, which would close this by construction). Surfaced by the CRT-7B4M cumulative
+  Critic (2026-06-08). (critic)
+
+  — Dropped 2026-06-10 (groom): merged into [STH-2K8R], whose consolidation closes this by
+  construction (this item's own fix-shape says so). Body preserved here verbatim.
+
+- **[PR-3J6W]** PR skill control-flow clarity: pre-flight guard placement, named retry entry points, Step 1b addressee, evidence retention
+  `effort: S · impact: M · area: pr · source: builder · added: 2026-06-09 · status: dropped · stage: ready · related: PR-5K8D, PR-2H8N, CRT-5Q8W · refs: skills/pr/SKILL.md, skills/pr/review-protocol.md · reviewed: 2026-06-10`
+
+  From the 2026-06-09 framework review (skills agent). (1) The release-promotion guard sits
+  mid-prose after the Context Detection heading but must fire before routing — extract it as an
+  explicit Pre-flight section before the routing table. (2) The three sequential STOPs (steps 2,
+  2b, 3) never name their retry entry point; an agent may re-run Step 1 after fixing a Step 3
+  block — add 'fix, re-run THIS gate, continue' to each. (3) Step 1b's doc-only fast-path
+  instruction reads as if addressed to the Critic; rephrase as imperative to the skill executor.
+  (4) Decide evidence-file retention: 'delete the evidence file with the branch' loses the audit
+  trail if a PR is reverted — archive to .prawduct/.pr-reviews-archive/ or document why deletion
+  is intended. Note: the doc-only fileset bug itself (skills/ treated as docs) is PR-5K8D,
+  promoted into the review-fixes plan Chunk 3 — this item is the prose/control-flow cleanup only.
+  (builder)
+
+  — Dropped 2026-06-10 (groom): sub-items 1-3 verified resolved by the audit (release-promotion
+  guard pre-routing via REL-8K3M; Step 2 names its re-check loop; Step 1b made imperative in #89).
+  The residual sub-item 4 (evidence-file retention) merged into [CRT-5Q8W] as its sub-item (6).
+  Body preserved here verbatim.
+
+- **[CRT-1F7N]** Re-enable cumulative inference mid-build by recording per-HEAD cumulative records
+  `effort: M · impact: S · area: critic · source: builder · added: 2026-05-22 · status: dropped · stage: research · reviewed: 2026-06-10`
+
+  Chunk 03's rule 2 (cumulative) added a clean-tree guard so it doesn't over-fire mid-chunk-N. Side effect: even after the user commits chunk N, rule 2 still doesn't fire because the helper has no record that cumulative was already run for THIS HEAD — but in practice cumulative IS expensive and the user typically only wants it pre-PR. The current behavior matches the proportionality intent, but loses some signal: if the user committed and is about to PR, inference doesn't surface "you should run cumulative" — it returns `chunk` (or `final` if last chunk). Fix-shape: when the working tree is clean AND ≥2 commits ahead, return `cumulative` even though it'd take 4-10 min — the cleanness is the signal the user has stopped editing and is about to merge. Risk: false-positives on chunk boundaries where the user clean-committed but isn't about to PR. Validate against a few real chunk boundaries before changing. Filed from Chunk 03 work on 2026-05-22. (builder)
+
+  — Dropped 2026-06-10 (groom): superseded — the /pr Step 2 gate now tells the user exactly when a
+  cumulative is needed, and CRT-4J8W's chain removed the treadmill cost the mid-build inference
+  nudge was meant to manage.
+
+- **[CRT-2H8K]** `.critic-findings.json` cumulative-state file
+  `effort: M · impact: S · area: critic · source: builder · added: 2026-05-05 · status: dropped · stage: idea · reviewed: 2026-06-10`
+
+  Would let `final` reviews focus on emergent cross-chunk concerns by remembering what each `chunk` review already covered. Useful but not necessary for proportionality MVP (v1.3.13). Revisit if `final` reviews still feel slow after live use. Filed during proportional-Critic build plan as out-of-scope. (builder)
+
+  — Dropped 2026-06-10 (groom): superseded by the v2.1.0 governance ledger, which records what each
+  review covered; revisit only if final reviews still feel slow in practice.
+
+- **[CRT-SHADOW]** (Optional) Recreate an A/B "shadow Critic" as a plugin variant
+  `effort: M · impact: S · area: critic · source: builder · added: 2026-06-02 · status: dropped · stage: idea · reviewed: 2026-06-10`
+
+  Chunk 13 retired the `critic-test` shadow skill (owner decision 2026-06-02). It was a framework-only experimental twin of `/critic` that wrote to `.critic-test-findings.json` (non-gating) for A/B-testing review-strategy changes. It was deliberately never ported to the plugin (Chunk 3), it read the now-deleted `agents/` tree, and its comparison baseline — the production Critic — now lives in the plugin. If A/B review-strategy testing is wanted again, recreate it as a **plugin** skill (`skills/critic-test/`) that forks against the plugin's bundled `skills/critic/review-protocol.md`, rather than maintaining divergent copies of the protocol. Low priority — only build if a concrete review-strategy experiment needs it. (builder)
+
+  — Dropped 2026-06-10 (groom): superseded — the reviewer-model A/B
+  (reviewer-model-ab-2026-06-10.md) was run without a shadow skill, and the ledger now provides the
+  evidence base a shadow Critic was meant to supply.
+
+<!-- v1.7.0 deferred scope — the backlog feature shipped its lean core (the /backlog skill + the single
+     legacy-backlog-format probe). The items below are real requirements scope (backlog-system-requirements.md,
+     post-sync-advisory-spec.md §8.2) held back on proportionality grounds: low-risk internal markdown tool,
+     no current consumer. Add each when a real product needs it. Filed from the v1.7.0 release chunk (2026-05-29).
+     (Comment moved to Archive with BKL-4N6X at the 2026-06-10 groom — its sibling items were already archived.) -->
+
+- **[BKL-4N6X]** `/backlog dismiss-advisory` per-feature alias
+  `effort: S · impact: S · area: backlog · source: builder · added: 2026-05-29 · status: dropped · stage: ready · reviewed: 2026-06-10`
+
+  Requirements §8.2. A convenience alias that forwards to the existing unified `/prawduct-advisory dismiss`. The unified command already works, so this is pure ergonomics — deferred until the alias's discoverability is worth the extra surface. (builder)
+
+  — Dropped 2026-06-10 (groom): pure ergonomics alias with no demand since filing; the requirement
+  stays recorded in backlog-system-requirements.md §8.2 — re-file if a product asks.
+
+- **[SYN-6J0R]** WIP tracking goes stale when branches merge piecemeal
+  `effort: M · impact: M · area: sync · source: reflection · added: 2026-03-23 · status: dropped · stage: design · reviewed: 2026-06-10`
+
+  Mar 23 discodon doc audit found 3 WIP branches were already merged into develop via other PRs but project-state.yaml still listed them in-progress. No mechanism reflects branch completion back to project-state.yaml when PRs merge. Consider git-based detection (branch existence on remote) or a post-merge sync step. (reflection)
+
+  — Dropped 2026-06-10 (groom): premise stale — project-state.yaml no longer carries a WIP-branch
+  list (work is tracked via active_build_plan + change-log scopes); the discodon-era mechanism it
+  referenced is gone.
+
+- **[DOC-9J4B]** F8: add Foreign-API example to hallucinote product repo
+  `effort: S · impact: S · area: docs · source: critic · added: 2026-05-18 · status: dropped · stage: ready · reviewed: 2026-06-10`
+
+  v1.4 Chunk 04 (F8) acceptance criterion called for "at least one product-repo example added (hallucinote's Ableton Live MCP work is the obvious reference)." The Ableton-MCP example was shipped as a worked illustration inside the framework (planning.md "Foreign API Verification" section + templates/build-plan.md inline example), satisfying the spirit but not the literal product-repo touch. Defer the hallucinote-side update — `**Foreign API:** ableton-live-mcp` on the relevant build-plan chunk + `verify-api` step in Done-when — to the next hallucinote session. Filed from /critic NOTE on 2026-05-18. (critic)
+
+  — Dropped 2026-06-10 (groom): the remaining work is entirely in the hallucinote repo — re-file in
+  hallucinote's backlog at the next hallucinote session.
+
+- **[STH-9V4K]** `bin/prawduct-hook` decomposition
+  `effort: L · impact: M · area: stop-hook · source: janitor · added: 2026-04-16 · status: shipped · closed-by: hook-decomp ch.1–7 (v2.0.14) · reviewed: 2026-06-10 · related: STH-2K8R`
+
+  Split the hook monolith into logical modules. **Implementation complete (2026-06-07):** all 7 chunks built + Critic-clean, one module per PR in dependency order — ch.1 lazy `lib/__init__` (enabling), ch.2 `lib/gitstate` (#74), ch.3 `lib/buildplan_refs` (#75), ch.4 `lib/compliance` (#76), ch.5 `lib/coverage` (#77), ch.6 `lib/gates` (#78), ch.7 `lib/briefing` (the SessionStart surface — final). The hook went from **4,942 → 1,911 lines (−61%)** and is now a thin dispatcher (bootstrap + parity-pinned inline mirrors + lazy `lib` accessors + `cmd_*` wrappers + `cmd_clear`/`cmd_stop`/`main`). An AST call-graph drove the leaf-first order; the briefing↔gates↔coverage↔buildplan_refs cycle was broken by reassigning `_parse_build_plan_status` to buildplan_refs. **Remaining: the develop→main release** that flips the build-plan checkboxes `[x]` (`status=shipped` change-log tags + regen-views) — close this item then. Enabled follow-up still open: STH-2K8R (critic_mode mirror consolidation). (janitor)
+
+  — Shipped 2026-06-08 in v2.0.14: all 7 hook-decomp change-log entries carry `release=v2.0.14 |
+  status=shipped`, so the develop→main release this item was held open for has happened. Plan was
+  `build-plan-hook-decomposition.md`. Archived at the 2026-06-10 groom; follow-up STH-2K8R remains
+  open (now unblocked).
+
+- **[CRT-3X9D]** Critic's no-execution constraint doesn't prevent session-mutating `prawduct-hook clear`
+  `effort: S · impact: M · area: critic · source: builder · added: 2026-06-07 · status: shipped · closed-by: critic-session-guard ch.1 (v2.0.14) · reviewed: 2026-06-10 · related: STH-9V4K, CRT-7Q2T`
+
+  The Critic skill is documented (CLAUDE.md, review-protocol) to run with restricted `allowed-tools` so
+  it "cannot run test suites, builds, or executables" — review is code-analysis only. During the
+  STH-9V4K ch.7 `cumulative` review the Critic nonetheless ran `prawduct-hook clear` (as a "read-only
+  smoke") AND `pytest` once against the real project dir. `clear` is NOT read-only: it archived +
+  deleted the builder's `.session-reflected`, rewrote `.session-start` (making fresh test evidence read
+  "stale"), and recaptured the git baseline — clobbering live session governance state mid-review. The
+  builder had to restore the reflection and re-record evidence. Root cause: the tool restriction must
+  not actually be enforced for `prawduct-hook <subcmd>` (and pytest) the way the docs imply, OR the
+  Critic agent has Bash latitude it shouldn't. Fix options: tighten the Critic's `allowed-tools` so it
+  genuinely cannot invoke `prawduct-hook`/`pytest`, or make the Critic's smoke run against a temp copy /
+  with a guard env var that disables session-file mutation. Either way, an independent reviewer must
+  never be able to mutate the session it's reviewing. (builder)
+
+  — Shipped 2026-06-08 in v2.0.14 (`scope=critic-session-guard`, built on branch
+  fix/critic-session-guard-CRT-3X9D, plan build-plan-critic-session-guard.md): the invariant is
+  enforced at the mutation site — `prawduct-hook critic-begin`/`critic-end` markers make the
+  session-mutating `clear` refuse to run while a review is active (now documented in CLAUDE.md).
+  Residual gap — coordinator-dispatched subagents' Bash latitude is not bound by the marker — is
+  tracked separately as CRT-7Q2T. Archived at the 2026-06-10 groom.
+
 - **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: in-progress · branch: fix/verify-chunk-refs-globs · related: BLD-8F2Q, BLD-5V8F`
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: shipped · closed-by: #73 (v2.0.14) · reviewed: 2026-06-10 · related: BLD-8F2Q, BLD-5V8F`
 
   **Resolved on branch.** `_looks_like_file_path` (`bin/prawduct-hook`, the single semantic gate the
   chunk-ref parser consults) now returns False for any backticked token carrying a shell-glob
@@ -543,8 +733,11 @@
   case where a real path on the same line is still captured). Statusless change-log entry on-branch;
   flips to `merged` at develop-merge, `shipped` at release, then this item archives.
 
+  — Shipped 2026-06-08 in v2.0.14 (change-log "verify-chunk-refs skips glob patterns written as
+  prose", merged via #73, `release=v2.0.14 | status=shipped`). Archived at the 2026-06-10 groom.
+
 - **[REL-8K3M]** `/pr` cumulative-Critic gate false-positives (benign exit-1) on a develop→main RELEASE promotion
-  `effort: S · impact: S · area: release · source: reflection · added: 2026-06-06 · status: in-progress · branch: fix/pr-release-redirect · related: CRT-7M2D`
+  `effort: S · impact: S · area: release · source: reflection · added: 2026-06-06 · status: shipped · closed-by: v2.0.14 · reviewed: 2026-06-10 · related: CRT-7M2D, PR-2H8N`
 
   **Resolved on branch (fix-shape a+b, no gate-logic change).** `skills/pr/SKILL.md` gained a
   release-promotion guard (on `develop`/`main` → redirect to `docs/release-process.md`, don't run the
@@ -560,8 +753,10 @@
   v2.0.13 release because release-prep touches non-`.md` version files (version strings +
   `regen-views`-regenerated `scope_rollups`) outside CRT-7M2D's docs-only allowance. (reflection)
 
-## Archive
-
+  — Shipped 2026-06-08 in v2.0.14 (change-log "/prawduct:pr redirects a release promotion to the
+  release process (REL-8K3M)", `release=v2.0.14 | status=shipped`). Follow-up PR-2H8N (key the guard
+  off `resolve-base` instead of hardcoded branch names) remains open. Archived at the 2026-06-10
+  groom.
 
 - **[CRT-4J8W]** P0 — review-phase wall clock: accept a cumulative + verify-resolutions CHAIN at the PR gate
   `effort: M · impact: L · area: governance/gates · source: user · added: 2026-06-10 · status: shipped · closed-by: gate-soundness ch.05 (commits 9618c2b + 78fadaf) · reviewed: 2026-06-10 · stage: ready · related: CRT-7M2D · refs: lib/gates.py (check_cumulative_critic), skills/critic/SKILL.md, skills/critic/review-protocol.md, tests/test_cumulative_gate.py`
