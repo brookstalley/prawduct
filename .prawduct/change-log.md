@@ -3,6 +3,56 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: risk-surface reviewer escalation — `classify-diff-risk`
+
+<!-- prawduct: chunks=04 | type=feature | scope=review-proportionality -->
+
+**Why:** Proportionality only ran one way — review depth scaled by size/type,
+never by diff RISK — yet the reviewer A/B/C experiment
+(`reviewer-model-ab-2026-06-10.md`) showed the top-tier reviewer catching 2
+real warnings opus missed precisely on a governance-gate bundle. That bundle
+class should buy depth; everything else stays on the efficiency-frontier
+default.
+
+**What:** New classifier `prawduct-hook classify-diff-risk [<base>]` (new
+`lib/risk.py`). Resolution order: explicit `risk_surfaces:` list in
+`project-state.yaml` (product-ownable; EXCLUSIVE when present — an empty
+list is a deliberate opt-out) → else derived defaults (`skills/`,
+`lib/gates*`, `bin/*hook*`) plus literal backticked contract paths from
+`boundary-patterns.md` (globs/slash-commands excluded via the shared
+`_looks_like_file_path` rule). Scope = committed `merge-base(base)...HEAD`
+paths + working-tree changed/untracked paths
+(`--untracked-files=all` — the porcelain default collapses untracked dirs
+to one line, silently hiding files from glob surfaces; caught by the new
+tests). Verdict is a single stdout token `escalate`/`standard`; matched
+files teach on stderr. Failure asymmetry: fail-OPEN to `standard` only when
+no surfaces are declared; fail-CLOSED to `escalate` when surfaces are
+declared but git evaluation fails — declared risk with an unverifiable diff
+never gets the cheap reviewer. Dispatch wiring: Critic coordinator
+(`review-protocol.md` — `final`/`cumulative` dispatch `model: fable` on
+`escalate`, else `opus`; `chunk`/`verify-resolutions` always default-tier),
+Critic SKILL step 6 + allowed-tools, PR reviewer dispatch (`pr/SKILL.md`
+step 3). The findings `model` field records what actually ran, so ch.03's
+telemetry will show whether escalation pays. Protocol token budget held
+<3120 by displacement (mode-resolution + ledger-append paragraphs now point
+at SKILL.md instead of restating it). Live check: this branch classifies
+`escalate` (5 matched paths). New prose pins:
+`tests/preferences/test_risk_escalation_prose.py`.
+
+In-cycle fix (no pre-existing exception): the audit-learnings CLI smoke test
+passed `tmp_path` as a positional arg the CLI ignores, silently auditing the
+REAL repo (~13s) — this chunk's added parallel load pushed it past the 30s
+pytest-timeout, killing the xdist worker. Now targets its tmp repo via
+`CLAUDE_PROJECT_DIR` (same assertions, <1s, deterministic); the
+ignored-unknown-args wart filed to backlog.
+
+**Blast radius:** New: `lib/risk.py`, `tests/test_classify_diff_risk.py`
+(10 tests), `tests/preferences/test_risk_escalation_prose.py` (6 tests).
+Modified: `bin/prawduct-hook` (wrapper + dispatch + usage),
+`skills/critic/SKILL.md`, `skills/critic/review-protocol.md`,
+`skills/pr/SKILL.md`, `tests/test_audit_learnings.py` (env-target fix).
+1155 total.
+
 ## 2026-06-10: review telemetry — `prawduct-hook review-stats`
 
 <!-- prawduct: chunks=03 | type=feature | scope=review-proportionality -->

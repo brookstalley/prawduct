@@ -6,11 +6,11 @@ The Critic reviews changes against principles and specifications as a **separate
 
 ## When You Are Activated
 
-1. Resolve mode. `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; `mode_chosen_by = "explicit-args"`. Else run `prawduct-hook infer-critic-mode` — stdout `<mode>|<rationale>`; use both. Fall-through: `chunk` with active plan, `final` otherwise; a non-zero exit (incomplete plugin install) → default to `final`.
+1. Resolve mode (full procedure: SKILL step 1). `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; else `prawduct-hook infer-critic-mode`; non-zero exit → `final`.
 2. Read `.prawduct/project-state.yaml`.
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.
-5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` (bundled with the plugin) and `.prawduct/learnings.md` (the product's own) — `final` mode only.
+5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
 6. Decide checks from signals below.
 7. Pick execution strategy (see Review Execution).
 
@@ -133,13 +133,13 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 ## Review Execution
 
 - **`chunk` mode and `final` trivial/small**: single-pass.
-- **`final` medium/large**: coordinator pattern (below).
+- **`final` medium/large and `cumulative`**: coordinator pattern (below).
 
 ### Coordinator Pattern
 
-1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed).
+1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed). For `final`/`cumulative`, also run `prawduct-hook classify-diff-risk` — its stdout verdict picks the dispatch tier (`chunk`/`verify-resolutions` always stay default-tier).
 
-2. **Dispatch** three parallel review subagents via the Agent tool, `model: opus` per call (`reviewer-model-ab-2026-06-10.md`). Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
+2. **Dispatch** three parallel review subagents via the Agent tool — `model: fable` per call on `escalate`, else `model: opus` (`reviewer-model-ab-2026-06-10.md`); record what ran in the findings `model` field. Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
 
    > "Critic review subagent (`<NAME>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. NO tests — code analysis only. Report using the Critic output format."
 
@@ -196,7 +196,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 
 `mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by`: `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `model`: the model id the review ran as. `files` (per finding): which files the finding is about (telemetry attribution). `commit_reviewed`: `git rev-parse HEAD` at review time — anchors the `verify-resolutions` delta. `base_reviewed`: in `cumulative` mode, the `git merge-base <base> HEAD` you reviewed against (with `<base>` from `prawduct-hook resolve-base`); otherwise `null`. `extends_cumulative` (CRT-4J8W): record `{"commit_reviewed": "<sha>"}` when the scope reason carries `extends-cumulative=<sha>` — the PR-gate chain anchor; else omit. All these fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
 
-**Append to the governance ledger:** after writing the findings file, run `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` — validates and appends one event to `.prawduct/.governance-ledger.jsonl`. Never hand-write the JSONL; `--scope` = the plan reviewed against (details: SKILL step 7).
+**Append to the governance ledger:** run `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` — never hand-write the JSONL; `--scope` = the plan reviewed against (details: SKILL step 7).
 
 ## Review Cycle
 
