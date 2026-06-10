@@ -70,11 +70,13 @@ file and line; two have observed live failures.
 - [ ] Chunk 01: CRT-8W3F — ledger-fallback freshness at the PR gate
 - [ ] Chunk 02: STH-5P2W — build-plan pointer: repo-relative acceptance + loud missing-file guard
 - [ ] Chunk 03: MET-6W3J — learnings.md compaction + size nudge
-Context: Chunks 01 (59258bd) + 02 (a5305c0) built 2026-06-10. Ch.01 Critic 0B/0W/1N
-(chain pass; explicit-mode-override bug filed CRT-2N7V, cross-bundle rule-1b chaining filed
-CRT-6J4P). Ch.02 Critic (chunk mode) zero findings. Checkboxes flip at release via
-scope=do-next change-log tags. Next: Chunk 03 (learnings compaction + size nudge,
-Type: cumulative-final — its review is the branch cumulative).
+Context: ALL THREE CHUNKS BUILT 2026-06-10 — ch.01 59258bd, ch.02 a5305c0, ch.03 b5439e1
+(+ doc follow-up commit). Cumulative Critic at b5439e1: 0 blocking / 1 warning (evidence
+currency — resolved by re-recording at HEAD) / 3 notes (learnings pointer NOTE resolved by
+switching to the same-heading convention, recorded in plan + change-log; backlog items
+CRT-8W3F/STH-5P2W/MET-6W3J archived shipped). Side-captures: CRT-2N7V (explicit Critic-mode
+arg not honored), CRT-6J4P (rule-1b chains across bundles). Checkboxes flip at release via
+scope=do-next change-log tags. PR-ready (feature/do-next → develop) — PR not yet created.
 
 ## Scaffolding
 
@@ -158,10 +160,13 @@ Two parts, per the item's fix-shape:
 - **Compaction** — for each of the 58 entries in `.prawduct/learnings.md`: keep the heading and
   a 1–3 sentence When-X-do-Y-because-Z rule (preserving the `[[...]]` cross-links and principle
   refs); move the narrative body (discovery story, line-level evidence, session context) to
-  `.prawduct/learnings-detail.md` under a matching heading — **moved, never deleted**; end each
-  compacted entry with a `Detail: learnings-detail.md § <heading>` pointer. Target: rules file
-  well under the nudge threshold. Entry count must be exactly 58 before and after; spot-check
-  that every compacted rule still states When/do/because.
+  `.prawduct/learnings-detail.md` under the SAME heading — **moved, never deleted**. Navigation
+  is by convention, stated once in the preamble: narrative lives in learnings-detail.md under
+  the same heading. **(Revised at build: per-entry `Detail: § <heading>` pointers were the
+  original design, but repeating 57 long headings cost ~8KB and pushed the file back over its
+  own 40KB threshold — the one-line convention replaces them.)** Target: rules file well under
+  the nudge threshold. Entry count must be exactly 58 before and after; spot-check that every
+  compacted rule still states When/do/because.
 - **Size nudge** — in `lib/briefing.py`, next to the existing learnings rule-count line: when
   `learnings.md` exceeds 40KB on disk, append a warning line advising compaction (rule here,
   narrative to `learnings-detail.md`), mirroring the CLAUDE.md size-check pattern (same

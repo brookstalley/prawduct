@@ -16,7 +16,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Principle**: Relates to Living Documentation (#3), Coherent Artifacts (#13).
 
-## Structural gates must match natural workflow, not prescribed workflow
+## Structural gates must match natural workflow
 
 **Pattern**: The stop hook checked for `artifacts/build-plan.md` to trigger the Critic gate. The methodology said to put the build plan there. But the natural workflow for discodon put the build plan in `project-state.yaml` (alongside status tracking). Result: the Critic structural gate never fired for 40+ build sessions. The Critic was invoked purely through behavioral compliance (Claude following CLAUDE.md instructions).
 

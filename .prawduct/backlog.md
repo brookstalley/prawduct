@@ -8,36 +8,6 @@
 ## Open
 
 
-- **[CRT-8W3F]** PR-gate ledger fallback accepts an arbitrarily old cumulative — no freshness/session check
-  `effort: S · impact: M · area: governance/gates · source: critic · added: 2026-06-10 · status: open · stage: ready · related: CRT-4J8W, CRT-7M2D · refs: lib/gates.py (_ledger_fallback_record ~L1094-1121) · reviewed: 2026-06-10`
-
-  When the latest `.critic-findings.json` is wrong-mode (e.g. a chunk review overwrote the
-  cumulative), check_cumulative_critic falls back to the NEWEST qualifying `review.critic` ledger
-  event with no timestamp or session-freshness check — only commit-coverage. A days-old cumulative
-  from prior work can satisfy the PR gate if only `.md` changed since, where the findings-file path
-  would have demanded freshness. Fix-shape: require the ledger record's `ts >=` session start
-  (mirroring the findings-file freshness model) or a bounded age, fail closed. Found by the
-  2026-06-10 governance audit of the new v2.1.0 chain-gate code. Priority: do-next (gate soundness,
-  S effort). (critic)
-
-- **[STH-5P2W]** Loud guard when a set active_build_plan pointer resolves to no file
-  `effort: S · impact: M · area: stop-hook · source: critic · added: 2026-06-09 · status: open · stage: ready · related: REL-4T8N · refs: lib/core.py, bin/prawduct-hook, templates/project-state.yaml · reviewed: 2026-06-10`
-
-  From review-fixes Chunk 1 Critic (2026-06-09). The active_build_plan pointer is
-  .prawduct/-relative; a repo-relative value (the natural way to write it) mis-resolves and the
-  resolvers (lib/core.py resolve_build_plan_path + the hook's inline mirror) silently fall back to
-  the default plan path — disabling the Critic gate, plan-aware mode inference, and
-  verify-chunk-refs with no signal. Happened live: the review-fixes planning commit shipped the
-  mis-resolving form and the gates were blind for one work cycle until the Critic caught it.
-  Fix-shape: when the pointer is SET but resolves to a nonexistent file, warn loudly in the session
-  briefing (and/or accept repo-relative forms by stripping a leading .prawduct/) + test.
-  Escape-hatches-create-silent-failures shape. (critic)
-
-  Groom 2026-06-10 (audit): scope widened — besides the loud briefing warning + accepting
-  repo-relative pointers, also document the `active_build_plan` field in
-  templates/project-state.yaml: it is currently undocumented in the template a new product copies,
-  and the audit found no schema guidance anywhere a product would look. Do-next priority.
-
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
 
@@ -49,22 +19,6 @@
   state. Fix-shape: extend the critic-active marker enforcement (or subagent tool restriction) to
   test/build execution, or have the coordinator pass an enforced `allowed-tools` to Agent
   dispatches. Priority P2. (reflection)
-
-- **[MET-6W3J]** learnings.md compaction: restore When-X-do-Y-because-Z brevity, move narrative to learnings-detail.md, add a size nudge
-  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · stage: ready · related: MET-5C2H, MET-7R4J · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md · reviewed: 2026-06-10`
-
-  From the 2026-06-09 framework review. learnings.md is ~28k tokens for 23 entries — individual
-  entries run 300-600 words, drifting from the file's own stated format (rule in learnings.md, full
-  context in learnings-detail.md). Every /prawduct:learnings lookup and Critic learnings cross-check
-  pays this. Fix-shape: (1) compact each entry to the When/do/because rule plus a pointer into
-  learnings-detail.md (move the narrative there — never delete it); (2) add a mechanical size check
-  per this repo's own 'growing files need structural nudges to prune' learning (e.g. session-start
-  warn when learnings.md exceeds a threshold, like the existing project-state.yaml 40KB warning).
-  (builder)
-
-  Groom 2026-06-10 (audit): learnings.md is now ~80KB on disk and growing; every
-  /prawduct:learnings lookup and Critic learnings cross-check pays it. Do-next priority among the
-  context-economy items.
 
 - **[STH-8M3V]** Atomic writes for .prawduct state files + guard unguarded hot-path I/O in cmd_clear
   `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-6Q9D, ADV-9K2T · refs: bin/prawduct-hook, lib/advisory_store.py, lib/gitstate.py, lib/briefing.py · reviewed: 2026-06-10`
@@ -545,6 +499,67 @@
 ## Promoted
 
 ## Archive
+
+- **[CRT-8W3F]** PR-gate ledger fallback accepts an arbitrarily old cumulative — no freshness/session check
+  `effort: S · impact: M · area: governance/gates · source: critic · added: 2026-06-10 · status: shipped · stage: ready · related: CRT-4J8W, CRT-7M2D · refs: lib/gates.py (_ledger_fallback_record ~L1094-1121) · closed-by: feature/do-next ch.01 (59258bd) · reviewed: 2026-06-10`
+
+  When the latest `.critic-findings.json` is wrong-mode (e.g. a chunk review overwrote the
+  cumulative), check_cumulative_critic falls back to the NEWEST qualifying `review.critic` ledger
+  event with no timestamp or session-freshness check — only commit-coverage. A days-old cumulative
+  from prior work can satisfy the PR gate if only `.md` changed since, where the findings-file path
+  would have demanded freshness. Fix-shape: require the ledger record's `ts >=` session start
+  (mirroring the findings-file freshness model) or a bounded age, fail closed. Found by the
+  2026-06-10 governance audit of the new v2.1.0 chain-gate code. Priority: do-next (gate soundness,
+  S effort). (critic)
+
+  Shipped 2026-06-10 on feature/do-next (scope=do-next, chunk 01, commit 59258bd); cumulative
+  Critic passed with 0 blocking. Ledger fallback now requires envelope `ts >= .session-start`,
+  failing closed on a missing marker or ts-less events.
+
+- **[STH-5P2W]** Loud guard when a set active_build_plan pointer resolves to no file
+  `effort: S · impact: M · area: stop-hook · source: critic · added: 2026-06-09 · status: shipped · stage: ready · related: REL-4T8N · refs: lib/core.py, bin/prawduct-hook, templates/project-state.yaml · closed-by: feature/do-next ch.02 (a5305c0) · reviewed: 2026-06-10`
+
+  From review-fixes Chunk 1 Critic (2026-06-09). The active_build_plan pointer is
+  .prawduct/-relative; a repo-relative value (the natural way to write it) mis-resolves and the
+  resolvers (lib/core.py resolve_build_plan_path + the hook's inline mirror) silently fall back to
+  the default plan path — disabling the Critic gate, plan-aware mode inference, and
+  verify-chunk-refs with no signal. Happened live: the review-fixes planning commit shipped the
+  mis-resolving form and the gates were blind for one work cycle until the Critic caught it.
+  Fix-shape: when the pointer is SET but resolves to a nonexistent file, warn loudly in the session
+  briefing (and/or accept repo-relative forms by stripping a leading .prawduct/) + test.
+  Escape-hatches-create-silent-failures shape. (critic)
+
+  Groom 2026-06-10 (audit): scope widened — besides the loud briefing warning + accepting
+  repo-relative pointers, also document the `active_build_plan` field in
+  templates/project-state.yaml: it is currently undocumented in the template a new product copies,
+  and the audit found no schema guidance anywhere a product would look. Do-next priority.
+
+  Shipped 2026-06-10 on feature/do-next (scope=do-next, chunk 02, commit a5305c0); cumulative
+  Critic passed with 0 blocking. Repo-relative pointer now accepted (leading-prefix strip in both
+  parity-pinned resolvers), loud briefing guard added for a set-but-missing pointer, and
+  active_build_plan documented in templates/project-state.yaml.
+
+- **[MET-6W3J]** learnings.md compaction: restore When-X-do-Y-because-Z brevity, move narrative to learnings-detail.md, add a size nudge
+  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: shipped · stage: ready · related: MET-5C2H, MET-7R4J · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md · closed-by: feature/do-next ch.03 (b5439e1) · reviewed: 2026-06-10`
+
+  From the 2026-06-09 framework review. learnings.md is ~28k tokens for 23 entries — individual
+  entries run 300-600 words, drifting from the file's own stated format (rule in learnings.md, full
+  context in learnings-detail.md). Every /prawduct:learnings lookup and Critic learnings cross-check
+  pays this. Fix-shape: (1) compact each entry to the When/do/because rule plus a pointer into
+  learnings-detail.md (move the narrative there — never delete it); (2) add a mechanical size check
+  per this repo's own 'growing files need structural nudges to prune' learning (e.g. session-start
+  warn when learnings.md exceeds a threshold, like the existing project-state.yaml 40KB warning).
+  (builder)
+
+  Groom 2026-06-10 (audit): learnings.md is now ~80KB on disk and growing; every
+  /prawduct:learnings lookup and Critic learnings cross-check pays it. Do-next priority among the
+  context-economy items.
+
+  Shipped 2026-06-10 on feature/do-next (scope=do-next, chunk 03, commit b5439e1); cumulative
+  Critic passed with 0 blocking. learnings.md 79.5KB → 32.3KB: 48 of 58 entries compacted,
+  narratives moved verbatim to learnings-detail.md, navigation by same-heading convention; briefing
+  size nudge added at 40KB. Drive-by fix: the briefing "Learnings (N rules)" line counted only
+  bullets and reported 0 on entry-format files — now counts `##` entries.
 
 - **[REL-9F2T]** Change-log lifecycle hardening — close the silent-drop family (statusless entries, missing entries, multi-tag entries, orphaned scopes)
   `effort: M · impact: L · area: governance/change-log · source: reflection · added: 2026-06-10 · status: shipped · stage: ready · closes: REL-2N8K, REL-6C3W, VWS-4D8J · related: VWS-3K7P, REL-4T8N, CRT-7B4M · refs: lib/views.py, skills/pr/SKILL.md, docs/release-process.md, .prawduct/artifacts/build-plan-changelog-lifecycle.md · closed-by: v2.1.1 · reviewed: 2026-06-10`

@@ -1,118 +1,96 @@
 # Learnings
 
-Active rules from this project's development. Surfaced via the `/learnings [topic]` skill — topic headers shown in the session briefing for ambient context. Entries use "When X, do Y because Z" format. Full context in `learnings-detail.md`.
+Active rules from this project's development. Surfaced via the `/learnings [topic]` skill — topic headers shown in the session briefing for ambient context. Entries use "When X, do Y because Z" format. Each entry's full narrative lives in `learnings-detail.md` under the same heading — keep narrative THERE, not here.
 
 ---
 
 ## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
 
 When creating a build plan, set the frontmatter `scope:` to a unique slug (matching the change-log entry's `scope=` tag) from the start — a `scope: null` plan is "legacy unfiltered" to regen-views, so EVERY `status=shipped` entry's chunk IDs flip its `## Status` checkboxes. Verify with `regen-views --check`. Relates to Coherent Artifacts (#13), [[new change-log entries on a feature branch are statusless]], and Validate Before Propagating (#15).
-Detail: learnings-detail.md § A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
 
 ## New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
 
 When adding a change-log entry for work still on a feature branch, leave `status=` OFF entirely (carry only `type=`/`scope=`) — `status=in-progress` is deprecated and trips the regen-views typo-guard (valid: `{shipped, merged}`). Lifecycle: `status=merged` at the feature→develop merge; `status=shipped` + `release=vX.Y.Z` at the develop→main release. Relates to Coherent Artifacts (#13), Escape hatches create silent failures (#22), Honest Confidence (#5), and Living Documentation (#3).
-Detail: learnings-detail.md § New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
 
 ## A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
 
 When tagging a multi-chunk change-log entry, `chunks=` must use the SAME numbering format as the plan's `## Status` headings, zero-padding included — `regen-views` matches chunk IDs as literal strings (`chunks=1` ≠ `Chunk 01`) and the failure is partial and silent. Confirm regen-views' flipped-count equals the chunk count; if fewer, align the tag to the headings (don't renumber the plan). Relates to Coherent Artifacts (#13), Validate Before Propagating (#15), and [[At release, flip statusless unreleased change-log entries]].
-Detail: learnings-detail.md § A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
 
 ## When a feature's logic lives in a `context:fork` skill (no Bash), `lib/` holds the DATA, not the LOGIC — logic helpers nothing imports are dead code
 
 When planning a feature whose logic lives in a `context:fork` skill (no Bash), put the DATA layer (parser + pure query accessors) in `lib/` for the runtime and the LOGIC in the skill prose — a fork skill cannot import `lib/`, so a `lib/` "logic helper" no Python path calls is dead code; descope it and RECORD the descope. Relates to The Design Is Sound (#7 — no dead code), Complete Delivery (#2 — record descopes), Scope Discipline (#12), and [[fine-grained tool restriction needs a fork-skill, not a named subagent]].
-Detail: learnings-detail.md § When a feature's logic lives in a `context:fork` skill (no Bash), `lib/` holds the DATA, not the LOGIC — logic helpers nothing imports are dead code
 
 ## At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
 
 At release-prep, enumerate ALL change-log entries above the prior `release=vX` boundary and flip each — statusless OR `status=merged` — to `status=shipped` + `release=vX.Y.Z`; a literal "merged→shipped" reading silently drops statusless entries (most of them) from checkboxes, release-notes, and scope_rollups, with no warning. Confirm via `regen-views --check`; deeper fix filed ([[backlog]] REL-2N8K). Relates to Complete Delivery (#2), Living Documentation (#3), [[new change-log entries on a feature branch are statusless]], and Validate Before Propagating (#15).
-Detail: learnings-detail.md § At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
 
 ## "I'm just codifying their guidance" is not an exemption from the research trigger — and volatility is a separate axis from knowledge-confidence
 
 Before declaring "no research needed," check volatility against the DESIGN and its INPUTS, not just the stated requirements — "I'm just codifying their guidance" conflates owner-specified content with the volatile design/placement choices around it. Rigor has TWO independent research axes — knowledge-confidence and volatility/recency (`methodology/discovery.md` "Calibrate Rigor") — and a volatility miss can coexist with high confidence. Relates to Honest Confidence (#5), Bring Expertise (#7), Validate Before Propagating (#15).
-Detail: learnings-detail.md § "I'm just codifying their guidance" is not an exemption from the research trigger — and volatility is a separate axis from knowledge-confidence
 
 ## The "canonical" mechanism for a capability can be disqualified by a plugin's composability + always-on constraints — verify the constraint before adopting the recommendation
 
 When research names a "first-class / canonical" mechanism for a capability, verify it against the consumer's structural constraints (single active slot? clobbers? composes?) before adopting — a governance plugin needs always-on AND non-clobbering behavior, which disqualified Output Styles (`force-for-plugin: true` hard-overrides the user's own style) in favor of the composable SessionStart digest. Relates to Validate Before Propagating (#15), Reasoned Decisions (#4), Visible Costs (#9).
-Detail: learnings-detail.md § The "canonical" mechanism for a capability can be disqualified by a plugin's composability + always-on constraints — verify the constraint before adopting the recommendation
 
 ## When a fan-out render keys on a field that isn't unique, test the collision case — and a self-authored adversarial pass inherits the author's blind spots
 
 When a renderer or fan-out groups by a field, add an explicit test for the field-COLLISION case (≥2 inputs sharing the key; usually "group by the key first" is the model). A self-authored adversarial pass inherits your blind spots — the durable catch is an independent reviewer working from real artifacts. Relates to Independent Review (#14), Tests Are Contracts (#1), and Validate Before Propagating (#15).
-Detail: learnings-detail.md § When a fan-out render keys on a field that isn't unique, test the collision case — and a self-authored adversarial pass inherits the author's blind spots
 
 ## When fanning out a batch build to parallel worktree-isolated workflow agents, partition by disjoint file ownership (integrator owns shared files) and force-clean leftover worktrees before the integration suite
 
 When fanning out a batch build to parallel worktree-isolated agents, partition so each agent OWNS a disjoint file-set, reserving shared files for the integrator (agents only REPORT needed changes there); governance stays in the main session (full suite, evidence, cumulative Critic). Force-clean leftover `.claude/worktrees/wf_*/` before the integration suite — dirty worktrees don't auto-remove and trip structural tests. Relates to Independent Review (#14), Scope Discipline (#12), and Proportional Effort (#11).
-Detail: learnings-detail.md § When fanning out a batch build to parallel worktree-isolated workflow agents, partition by disjoint file ownership (integrator owns shared files) and force-clean leftover worktrees before the integration suite
 
 ## When a fresh-eyes review's advice about a CONVENTION conflicts with a durable learning + the process doc, the documented convention wins — re-verify before acting
 
 When a forked Critic / PR reviewer makes a claim about how this project does bookkeeping, treat it as a reading of the CURRENT tree, not institutional authority — it hasn't read `learnings.md` or `docs/release-process.md` and can over-generalize. When its claim diverges from a durable learning + the process doc, RE-READ those and follow them. Relates to Validate Before Propagating (#15), Independent Review (#14), and Close the Learning Loop (#18).
-Detail: learnings-detail.md § When a fresh-eyes review's advice about a CONVENTION conflicts with a durable learning + the process doc, the documented convention wins — re-verify before acting
 
 ## A reviewer's NOTE/severity is a prior, not a verdict — re-scope any "harmless" change that touches a governance-gate input
 
 When a review rates a change low-severity ("harmless"), treat the label as a prior, not a verdict — for any edit to a governance-gate's input set (allowlists, prefix tables, fileset bounds), grep the predicate's call sites, decide whether behavior actually changes, and add a test when it does. Relates to Tests Are Contracts (#1), Root Cause Discipline (#16), Independent Review (#14), and Honest Confidence (#5).
-Detail: learnings-detail.md § A reviewer's NOTE/severity is a prior, not a verdict — re-scope any "harmless" change that touches a governance-gate input
 
 ## A new framework-wide DEFAULT must land in the session digest — place-once preferences and the thin anchor don't reach migrated repos
 
 When changing a framework-level default every product (any vintage) should pick up, the carrier must be `methodology/session-digest.md` — the only surface injected into every product session unconditionally; `templates/project-preferences.md` is place-once (never regenerated) and a migrated repo's CLAUDE.md is only the thin anchor. Ask "which surface does an *already-onboarded* repo actually re-read?" Relates to Coherent Artifacts (#13), Visible Costs (#9), and Proportional Effort (#11).
-Detail: learnings-detail.md § A new framework-wide DEFAULT must land in the session digest — place-once preferences and the thin anchor don't reach migrated repos
 
 ## Single-repo plugin+marketplace: the marketplace entry's plugin `source` must be `"./"`, not `{source:github,ref}`
 
 When a plugin and its `.claude-plugin/marketplace.json` live in the SAME repo, the plugin `source` must be the relative `"./"` — the `{source:github,repo,ref}` form re-clones over SSH and fails without SSH keys even for a public repo; `"./"` reuses the marketplace's own HTTPS checkout. (The consumer's `extraKnownMarketplaces` github source is a different, valid surface.) Relates to Validate Before Propagating (#15) and Visible Costs (#9).
-Detail: learnings-detail.md § Single-repo plugin+marketplace: the marketplace entry's plugin `source` must be `"./"`, not `{source:github,ref}`
 
 ## Release-bound work merged feature→develop under gitflow: KEEP the build plan — it's a live release artifact, not spent
 
 When a feature branch merges to develop but ships at a LATER develop→main release (gitflow batched-release), KEEP the build plan and the `active_build_plan` pointer until the release — the release step runs `regen-views` on the plan to flip its `## Status` checkboxes; delete at merge only when the develop-merge is itself the release. Relates to Coherent Artifacts (#13), Living Documentation (#3), and Proportional Effort (#11).
-Detail: learnings-detail.md § Release-bound work merged feature→develop under gitflow: KEEP the build plan — it's a live release artifact, not spent
 
 ## A `--plugin-dir` read-block is a dev-flag artifact, not a self-containment bug — pair it with `--add-dir`
 
 When a `--plugin-dir <path-outside-the-project>` test shows a skill unable to read its OWN bundled file, that's the working-dir read sandbox, not a self-containment bug — pair it with `--add-dir <plugin-path>` (a marketplace install grants plugin-tree reads automatically); do NOT "fix" the skill's paths. Relates to Honest Confidence (#5) and Validate Before Propagating (#15).
-Detail: learnings-detail.md § A `--plugin-dir` read-block is a dev-flag artifact, not a self-containment bug — pair it with `--add-dir`
 
 ## Test subprocesses: HOME=tmp_path leaks Python's pyc cache into the test repo
 
 When a test's Python subprocess runs with `HOME` inside the test's git repo, the interpreter writes pyc caches under `$HOME/Library/Caches/com.apple.python/`, polluting `git ls-files --others` and triggering scope/status false failures — set `HOME` to a directory OUTSIDE the repo. Relates to Structural Awareness (#21).
-Detail: learnings-detail.md § Test subprocesses: HOME=tmp_path leaks Python's pyc cache into the test repo
 
 ## "Structurally enforced" requires verifying the harness actually enforces it
 
 When claiming a constraint is "structurally enforced" by a config/sandbox/permission system, verify with a negative-path probe (a test asserting the forbidden invocation is actually blocked) before claiming it — a broader allow pattern (project-level `Bash(python3:*)`) can override a skill-level `!`-deny. Relates to Honest Confidence (#5) and Validate Before Propagating (#15).
-Detail: learnings-detail.md § "Structurally enforced" requires verifying the harness actually enforces it
 
 ## Tool-restricted reviewer agents must be context:fork SKILLS, not named plugin subagents
 
 When an agent needs fine-grained tool restriction, implement it as a `context: fork` skill with a pure-allow `allowed-tools` list — NOT a named plugin subagent, whose frontmatter is bare-tool-names-only (listing `Bash` grants unrestricted Bash) and which a delegating skill's `allowed-tools` does not bind. Relates to Reasoned Decisions (#4) and safety constraint CRT-2M5P; headless-vs-interactive enforcement of the fork-skill cap is still open (backlog CRT-9V4T).
-Detail: learnings-detail.md § Tool-restricted reviewer agents must be context:fork SKILLS, not named plugin subagents
 
 ## When a deliberate change turns a passing test red, renegotiate the contract in the open
 
 When you deliberately change documented behavior and an existing test fails because it encoded the OLD behavior, don't silently relax or delete the assertion — rename the test to the new contract, invert the assertion, record the rationale, and keep any still-valid invariant asserted. "Fix the code, not the test" assumes the test encodes CORRECT behavior; a test encoding the thing you're removing is a contract to renegotiate transparently. Relates to Tests Are Contracts (#1) and Reasoned Decisions (#4).
-Detail: learnings-detail.md § When a deliberate change turns a passing test red, renegotiate the contract in the open
 
 ## A behavior change isn't done until every artifact that DESCRIBES it is updated
 
 When you change behavior that a synced/templated/documented artifact describes, grep for every place that DESCRIBES it, not just the code implementing it — the independent cumulative review is the fresh-eyes pass that catches doc-vs-behavior drift the builder is blind to. Relates to Living Documentation (#3) and Independent Review (#14).
-Detail: learnings-detail.md § A behavior change isn't done until every artifact that DESCRIBES it is updated
 
 ## A decision reversed mid-chunk leaves stale rationale in prose you just wrote
 
 When you reverse a design decision partway through a chunk, re-grep your OWN new comments/docstrings for the abandoned rationale before handing to the Critic — code follows the new decision, but prose written under the old one keeps asserting it, and it feels trustworthy precisely because it's fresh. Relates to Living Documentation (#3) and Reasoned Decisions (#4).
-Detail: learnings-detail.md § A decision reversed mid-chunk leaves stale rationale in prose you just wrote
 
 ## Editing a runtime that governs the current session: check your own signals first
 
 When you modify a runtime that ALSO governs the session you're editing in, run the new detection against the repo root and confirm the expected value BEFORE relying on the edit — a wrong signal can silently disable the very gate enforcing the current session, with no test failure to warn you ("am I standing on the branch I'm sawing?"). Relates to Structural Awareness (#21) and Validate Before Propagating (#15).
-Detail: learnings-detail.md § Editing a runtime that governs the current session: check your own signals first
 
 ## Session-end signals must come AFTER handoff
 
@@ -158,131 +136,105 @@ When classifying inputs with an "unknown" or "other" bucket, default to blocked,
 ## Cumulative-Critic finds first-use regressions chunk-Critic can't
 
 When wrapping a multi-chunk bundle, expect the cumulative-Critic pass to surface ≥1 finding the chunk passes missed — it diffs `merge-base...HEAD` and catches helper-vs-prose interactions invisible at chunk scope — so plan a remediation slot before `/pr create` rather than treating it as a formality. Relates to Independent Review (#14).
-Detail: learnings-detail.md § Cumulative-Critic finds first-use regressions chunk-Critic can't
 
 ## Auto-enable belongs with visibility, not with enforcement
 
 When deciding whether a new opt-in feature should silently auto-enable, ask whether flipping it ON would BLOCK the next PR: visibility surfaces auto-enable safely; enforcement surfaces must be explicitly invoked so the workflow commitment is visible before it bites. Owner override (v2.0.0 §5a): with governance modeled AS CI, an update MAY ship an immediately-blocking gate if the block is ATTRIBUTED (banner + message name the version and gate) — visibility as attribution, not opt-in. Relates to Visible Costs (#9) and Governance Is Structural (#22).
-Detail: learnings-detail.md § Auto-enable belongs with visibility, not with enforcement
 
 ## Removing a mechanism requires removing its name too
 
 When removing a mechanism, grep for its NAME in active prose in the SAME change and update each hit — lingering names send readers hunting for code that doesn't exist. Caveat: only remove the name from a path the mechanism has actually LEFT — a mechanism kept alive for un-migrated consumers is a live service; verify nothing reaches back at runtime before deleting. Relates to Living Documentation (#3), Close the Learning Loop (#18), and Unnecessary Backwards Compatibility.
-Detail: learnings-detail.md § Removing a mechanism requires removing its name too
 
 ## Build-plan fields use `**Title Case:**`, not snake_case
 
 When adding a build-plan field, format the label `**Title Case:**` (matching `**Type:**`, `**Done when:**`) — snake_case is the `project-state.yaml` YAML-key namespace, a different surface — and keep the methodology's prose form string-identical to the template's label (minus bolding) so the Critic's substring-match finds real plans. Relates to Coherent Artifacts (#13).
-Detail: learnings-detail.md § Build-plan fields use `**Title Case:**`, not snake_case
 
 ## Build-plan chunk headings must use `### Chunk N:` colon form — em-dash fails the parsers silently
 
 Build-plan chunk headings and `## Status` lines must use the colon form (`### Chunk N: Name` / `- [ ] Chunk N: Name`) — the chunk-id parsers split on `:`, so an em-dash separator silently disables ref verification and per-chunk scoping for the WHOLE plan (chunk-type fail-closes to `code`). Leading zeros are tolerated; add a guard test that the active plan's headings parse — build-plan text is a contract with the parsers. Relates to Coherent Artifacts (#13), Escape hatches create silent failures (#22), and Honest Confidence (#5).
-Detail: learnings-detail.md § Build-plan chunk headings must use `### Chunk N:` colon form — em-dash fails the parsers silently
 
 ## Submodule and same-name function in __init__ shadow each other
 
 When a `lib/__init__.py` re-exports a function whose name matches its submodule (`from .foo import foo`), attribute access returns the function while `sys.modules` holds the module — `import lib.foo as alias` resolves to either depending on context and monkeypatching breaks. Use the `_cmd.py` suffix convention; it exists to prevent this collision. Relates to Coherent Artifacts (#13) and Reasoned Decisions (#4).
-Detail: learnings-detail.md § Submodule and same-name function in __init__ shadow each other
 
 ## Detection of structural characteristics should not rely on mechanistic surface markers
 
 When classifying whether a project has a structural characteristic (LLM inference, human interface, unattended, sensitive data, multi-process), answer "what does correctness depend on?" first and use surface markers (imports, hostnames, filenames) only as evidence — mechanistic markers miss variant manifestations of the same structural feature. Relates to Structural Awareness (#21), Honest Confidence (#5), and Bring Expertise (#7).
-Detail: learnings-detail.md § Detection of structural characteristics should not rely on mechanistic surface markers
 
 ## Shared "answer" state and personal "nag" state belong in separate stores
 
 When designing state about ongoing concerns (advisories, follow-ups, todos), keep the committed team-shared ANSWER (e.g. `project-state.yaml`) separate from the gitignored per-clone "have I dealt with this nag?" state (e.g. `.advisories.json`) — conflating them either leaks personal dismissals across clones or stops a teammate's committed answer from auto-clearing everyone's nag. Relates to Coherent Artifacts (#13) and Structural Awareness (#21).
-Detail: learnings-detail.md § Shared "answer" state and personal "nag" state belong in separate stores
 
 ## Framework ownership follows the write strategy, not just registry membership
 <!-- prawduct-learning: confirmations=1; created=2026-05-19; sentinel=tests/test_prawduct_sync.py::TestAutoCommitSafety::test_user_authored_place_once_edits_treated_as_wip -->
 
 When defining "the framework owns this file" sets, the discriminator is whether the framework OVERWRITES the file on every run, not registry membership — overwrite-each-sync and place-once strategies have opposite ownership semantics after first creation, so derive the sets from the strategies that overwrite (the manifest's `files` dict), never from every path the framework ever placed. Relates to Reasoned Decisions (#4) and Coherent Artifacts (#13).
-Detail: learnings-detail.md § Framework ownership follows the write strategy, not just registry membership
 
 ## A leftover marker is not an in-progress signal — and a test using the canonical marker leaves the real-world branch untested
 
 When detecting external-tool state from filesystem markers, check whether the tool REMOVES each marker when the condition ends (git leaves `REBASE_HEAD` behind) — prefer the tool's own authoritative test (the `rebase-merge`/`rebase-apply` dir check). Also: test EACH detector input path with messy real-world leftovers, not just the canonical marker; never cache a derived blocker without re-evaluation — a transient false positive becomes permanent. Relates to Tests Are Contracts (#1), Root Cause Discipline (#16), and Honest Confidence (#5).
-Detail: learnings-detail.md § A leftover marker is not an in-progress signal — and a test using the canonical marker leaves the real-world branch untested
 
 ## A near-verbatim file PORT carries the source's prose — adapt the docs, not just the logic
 
 When creating a file by copying and adapting an existing one, treat the port as TWO passes — logic-adapt, then a doc-sweep grepping the copy for docstrings/comments/messages true only of the SOURCE's world. EXCEPTION: leave verbatim any string that is a cross-file CONTRACT a consumer matches on — renaming it silently breaks the consumer. Relates to Living Documentation (#3), Coherent Artifacts (#13), and The System Can Be Understood (#6, accurate diagnostics).
-Detail: learnings-detail.md § A near-verbatim file PORT carries the source's prose — adapt the docs, not just the logic
 
 ## A subagent's reported COUNT or LIST is a lead, not ground truth — verify before a blanket edit
 
 When a subagent reports an enumeration you'll act on mechanically ("N occurrences", "these call sites"), re-derive the set with a direct `grep -c`/`grep -n` right before any `replace_all` or uniform sweep — an undercount leaves a site on the old form as a silent miss. Relates to Validate Before Propagating (#15) and Honest Confidence (#5).
-Detail: learnings-detail.md § A subagent's reported COUNT or LIST is a lead, not ground truth — verify before a blanket edit
 
 ## Verify the platform's copy/packaging boundary before duplicating a shared bundled file — a prior "duplicate into each consumer" choice may be an unverified-constraint workaround
 
 Before duplicating a shared file into each consumer dir vs. referencing one canonical copy, verify the platform's packaging boundary — and don't cargo-cult an earlier duplication made when it was unverified: a marketplace install copies the WHOLE plugin tree, so one canonical source at plugin root beats a parity-tested copy. Relates to Validate Before Propagating (#15), Reasoned Decisions (#4), and the DRY design goal (Critic Goal 7).
-Detail: learnings-detail.md § Verify the platform's copy/packaging boundary before duplicating a shared bundled file — a prior "duplicate into each consumer" choice may be an unverified-constraint workaround
 
 ## A plugin skill with unparseable YAML frontmatter loads with ALL metadata silently dropped — validate it in CI
 <!-- prawduct-learning: confirmations=1; created=2026-06-02; sentinel=tests/test_plugin_manifest.py::TestAllPluginSkillFrontmatter -->
 
 A frontmatter YAML parse error in a plugin skill does NOT fail loud — the loader drops EVERY field and the skill loads unusable while the unit suite (which never exercises the loader) stays green. Parse every `skills/*/SKILL.md` frontmatter with `yaml.safe_load` in a test AND run `claude plugin validate`; quote scalars containing `:` / `#` / `|`. Relates to Validate Before Propagating (#15) and Tests Are Contracts (#1).
-Detail: learnings-detail.md § A plugin skill with unparseable YAML frontmatter loads with ALL metadata silently dropped — validate it in CI
 
 ## Dogfooding the generator on its own output masks output-relative bugs the real consumer would hit
 
 A generator running its OWN output (e.g. `--plugin-dir .`) can't prove self-containment — tree-relative paths resolve because the generator's checkout has them. Prove "no external files needed" by a STATIC audit for tree-relative reads plus a run against a tree that genuinely lacks the generator's source. Relates to Validate Before Propagating (#15) and Honest Confidence (#5).
-Detail: learnings-detail.md § Dogfooding the generator on its own output masks output-relative bugs the real consumer would hit
 
 ## Relocating a source file: sweep every READER of the old path, not just the data-key references
 
 When moving a source file, sweep EVERY reader of the old path — grep it for `read_text` / `open` / fixture writes, not just the path string used as a data key; content-assertions and fixtures that touch the old path surface only on the full-suite run. Relates to Validate Before Propagating (#15) and Living Documentation (#3).
-Detail: learnings-detail.md § Relocating a source file: sweep every READER of the old path, not just the data-key references
 
 ## A review's "inert / harmless" verdict on a latent bug is conditional on the current call graph
 
 A review's "inert / harmless" verdict on a latent defect is conditional on the current call graph — the next feature touching the dormant path makes it live, so when new code touches a path a prior review called inert, re-check the verdict's premise first. Relates to Honest Confidence (#5) and Root Cause Discipline (#16).
-Detail: learnings-detail.md § A review's "inert / harmless" verdict on a latent bug is conditional on the current call graph
 
 ## Excising a subsystem silently kills the incidental work it happened to host — re-home the orphaned call, and test the positive
 
 When removing subsystem X, list everything X DID and split "X's actual job" from "work X merely hosted" — co-located incidental work dies silently, and tests asserting X is GONE never catch it. Re-home orphaned work to a surviving call site and add a regression test that the re-homed behavior STILL happens (test the POSITIVE). Relates to Root Cause Discipline (#16), Validate Before Propagating (#15), and Complete Delivery (#2).
-Detail: learnings-detail.md § Excising a subsystem silently kills the incidental work it happened to host — re-home the orphaned call, and test the positive
 
 ## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
 
 When output names something that won't resolve in the current context (a bare `/backlog` in a plugin repo), fix every command-bearing line in the SAME renderer in one pass — grep the whole renderer (leaving its frozen-context twin untouched) — and pin with BOTH assert-present and assert-absent tests — a presence-only assertion passes while a sibling line still leaks. Relates to Coherent Artifacts (#13), Validate Before Propagating (#15), and Complete Delivery (#2).
-Detail: learnings-detail.md § A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
 
 ## An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
 
 Before declaring a namespace/rename sweep done, enumerate every SPELLING the frozen vocabulary uses (bare `/cmd`, hyphenated `/prawduct-cmd`, legacy CLI `prawduct-setup`) and grep each — every spelling is a distinct regex the others won't match — then bake the full spelling-set into the absent-assertion's FORBIDDEN list. Extends the renderer-surface rule above. Relates to Validate Before Propagating (#15) and Complete Delivery (#2).
-Detail: learnings-detail.md § An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
 
 ## An untested governance bound rots silently across a migration — sweep the guards (with tests), not just the prose
 
 When a migration removes or relocates a mechanism, enumerate the GUARDS that referenced the old shape (path bounds, allowlists, parity tests, prefix tables) and repoint them, add the missing regression test, or RESTORE a deleted guard rather than deleting its dangling references — a guard with no test is the likeliest carrier of a stale literal through a cutover. Relates to Tests Are Contracts (#1), Root Cause Discipline (#16), and "Removing a mechanism requires removing its name too".
-Detail: learnings-detail.md § An untested governance bound rots silently across a migration — sweep the guards (with tests), not just the prose
 
 ## In a leaf-first decomposition, dependency-scan a chunk's COMMAND bodies against later-chunk symbols before moving — and never move a parity-pinned mirror just because a deliverable lists it
 
 In a leaf-first module extraction, before moving a chunk's symbols: (a) AST-scan each moved COMMAND body for references to symbols slated for LATER chunks — a command body can reach UP the DAG even when its helpers move down it — and defer that body to the owning chunk; (b) grep each moved def's comments + the test suite for `mirror` / `*Parity*` / `import-light` — a parity-pinned mirror stays put even if the deliverable lists it. Relates to Validate Before Propagating (#15), Requirements Precede Code (#6 — the plan is the parent; correct it openly), and Reasoned Decisions (#4).
-Detail: learnings-detail.md § In a leaf-first decomposition, dependency-scan a chunk's COMMAND bodies against later-chunk symbols before moving — and never move a parity-pinned mirror just because a deliverable lists it
 
 ## A format's schema legend lives in `templates/` (scaffold-only) — adding an optional field reaches already-onboarded repos only via a migrate/triage *refresh* step, not the template
 
 When adding an optional field to a structured-file format, wire BOTH propagation surfaces: the per-item backfill (triage/`migrate`) AND a `migrate` legend-refresh reconciling the file's schema-legend header to the canonical field set (additive-only); anything living only in `templates/` is scaffold-only and never reaches onboarded repos. Relates to Living Documentation (#3), Coherent Artifacts (#13), Complete Delivery (#2), and [[a new build plan with scope null inherits another scope's shipped checkbox flips]].
-Detail: learnings-detail.md § A format's schema legend lives in `templates/` (scaffold-only) — adding an optional field reaches already-onboarded repos only via a migrate/triage *refresh* step, not the template
 
 ## A structural bound that ENFORCES a declaration is not a DETECTOR of the declared property — reusing it at a new boundary silently drops its justification
 
 When reusing a structural predicate at a second boundary, re-derive why it's valid THERE — a NECESSARY condition that enforces a declaration is not a SUFFICIENT detector of the declared property, and reused without the declaration it silently waives gates; confirm the predicate establishes the new decision's sufficient condition, and give every skip-gate a regression test that a non-eligible case still BLOCKS. Relates to Reasoned Decisions (#4), Validate Before Propagating (#15), Governance Is Structural (#22), Tests Are Contracts (#1), and [[an untested governance bound rots silently across a migration]].
-Detail: learnings-detail.md § A structural bound that ENFORCES a declaration is not a DETECTOR of the declared property — reusing it at a new boundary silently drops its justification
 
 ## A rebuild scoped to a subsystem's "remaining / deferred" parts silently omits an already-shipped part that was deleted in between — re-port against the spec roster, not the open-work list
 
 When rebuilding/porting a subsystem, enumerate its members from the SPEC roster and diff against what the new module actually registers — a "remaining N" open-work framing assumes the already-shipped part still exists, and a deletion in between makes the rebuild silently omit it — re-confirm the assumed baseline and add an end-to-end test driving the REGISTERED roster. Second chapter of [[excising a subsystem silently kills the incidental work it happened to host]]. Relates to Complete Delivery (#2), Root Cause Discipline (#16), Validate Before Propagating (#15), and [[removing a mechanism requires removing its name too]].
-Detail: learnings-detail.md § A rebuild scoped to a subsystem's "remaining / deferred" parts silently omits an already-shipped part that was deleted in between — re-port against the spec roster, not the open-work list
 
 ## A persisted schema's requirements are its consumers' future queries — lock-in is reversal cost, not LOC, so "small format" never exempts it from decision research
 
 A chunk introducing any persisted format/schema/ledger must enumerate, in the plan, the questions the data must answer over time — elicited from its future consumers, not inferred from the mechanism — before designing fields; judge lock-in by REVERSAL cost, never LOC; user endorsement of a diagnosis is not requirements confirmation for the artifacts implementing it. Relates to Requirements Precede Code (#6), Reasoned Decisions (#4), Bring Expertise (#7), and Honest Confidence (#5 — mechanism-confidence is not requirements-confidence).
-Detail: learnings-detail.md § A persisted schema's requirements are its consumers' future queries — lock-in is reversal cost, not LOC, so "small format" never exempts it from decision research
