@@ -64,14 +64,17 @@ planning.
 - [ ] Chunk 03: Build plans are tracked artifacts
 - [ ] Chunk 04: Cumulative-gate ordering guidance + plan-lifecycle note
 - [ ] Chunk 05: Chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
-Context: Chunks 01-04 BUILT AND CUMULATIVE-REVIEWED 2026-06-10 (checkboxes flip at
-release via scope=gate-soundness change-log tags). Branch feature/gate-soundness off
-origin/develop (ed2dcb6), 9 commits incl. the reviewer-model-tiering side-plan (opus
-reviewer default + A/B/C experiment artifact). Chunk 05 (the chain gate, P0 CRT-4J8W —
-the Out-of-scope (a) recurrence trigger fired) added 2026-06-10, IN PROGRESS. Prior
-cumulative at 2d74be9 (0 blocking / 1 warning — resolved by 03bd7c5's experiment
-artifact); chunk 05 will re-stale it; ONE fresh cumulative at HEAD closes the chunk, and
-any post-cumulative fix dogfoods the new verify-resolutions chain. 1050 tests pass.
+Context: ALL FIVE CHUNKS BUILT 2026-06-10 (checkboxes flip at release via
+scope=gate-soundness change-log tags). Branch feature/gate-soundness off origin/develop
+(ed2dcb6), 11 commits incl. the reviewer-model-tiering side-plan. Chunk 05 (chain gate,
+P0 CRT-4J8W) built at 9618c2b; cumulative at 9618c2b returned 0 blocking / 2 warnings;
+both fixed in 78fadaf (evidence re-anchored at HEAD; chain-anchor mirror parity-pinned)
+and the fix flow DOGFOODED THE CHAIN END-TO-END: stale-gate message taught the sequence,
+no-args inference picked rule-1b, the verify pass embedded extends_cumulative=9618c2b,
+and check-cumulative-critic exited 0 via the chain (one ~1-min delta review replaced a
+second full bundle run). CRT-4J8W shipped/archived; CRT-7Q2T filed (Critic coordinator
+subagent ran tests — no-test-execution rule not structurally enforced). 1085 tests pass.
+PR-ready (feature/gate-soundness → develop) — PR not yet created.
 
 ## Chunks
 

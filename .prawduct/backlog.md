@@ -8,31 +8,17 @@
 ## Open
 
 
-- **[CRT-4J8W]** P0 — review-phase wall clock: accept a cumulative + verify-resolutions CHAIN at the PR gate
-  `effort: M · impact: L · area: governance/gates · source: user · added: 2026-06-10 · status: open · stage: ready · related: CRT-7M2D · refs: lib/gates.py (check_cumulative_critic), skills/critic/SKILL.md, skills/critic/review-protocol.md, tests/test_cumulative_gate.py`
+- **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
+  `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end)`
 
-  User escalation 2026-06-10: review phase ran 30+ min wall clock for ~5 min of work. Two cost
-  drivers: unit cost per review (fixed same day — reviewers default to model opus, ~4x faster per
-  the reviewer-model-ab-2026-06-10.md experiment) and the **re-review treadmill**: every non-.md fix
-  after a cumulative review re-stales `check-cumulative-critic` and costs a FULL bundle re-review
-  even when only 2 files changed. Structural fix (the option deferred in gate-soundness ch.4 as
-  "build if it recurs" — it recurred the same session):
-  1. When `/prawduct:critic verify-resolutions` runs while the existing `.critic-findings.json` is a
-     clean cumulative record, embed an `extends_cumulative: {commit_reviewed: <X>}` anchor in the
-     new record.
-  2. `check_cumulative_critic` accepts EITHER a HEAD-covering cumulative record (today's rule) OR a
-     chain: `mode=verify-resolutions`, 0 blocking, `commit_reviewed==HEAD`, `extends_cumulative`
-     present, AND files changed in `X..HEAD` ⊆ the record's `files_reviewed` (fail closed on any
-     gap, same as today).
-
-  Soundness argument: cumulative@X vouches for the bundle; a clean delta review whose scope covers
-  `X..HEAD` extends that vouching to HEAD — same shape as the existing doc-only allowance, with
-  scope verification. Surfaces: `lib/gates.py` (`check_cumulative_critic` + findings schema optional
-  field), `skills/critic/SKILL.md` + `review-protocol.md` (record the anchor),
-  `tests/test_cumulative_gate.py` (chain accept/reject cases incl. scope-gap fail-closed),
-  `methodology/building.md` + `skills/pr/SKILL.md` sequencing prose (update: the fix-after-cumulative
-  path becomes a cheap delta review, not a full re-run). Priority P0. Related: CRT-7M2D (the
-  coverage-not-mtime gate this extends — archived/shipped). (user)
+  During the 2026-06-10 gate-soundness cumulative review, a coordinator-pattern subagent ran the
+  affected test files directly (217 passed, reported in the review summary) despite the SKILL prose
+  instruction and the pure-allow tool list — which doesn't bind Agent-dispatched subagents. Same gap
+  class as CRT-3X9D, whose critic-begin marker guards only `prawduct-hook clear`. The review
+  conclusion was unaffected, but the boundary exists so reviews can't mutate or depend on session
+  state. Fix-shape: extend the critic-active marker enforcement (or subagent tool restriction) to
+  test/build execution, or have the coordinator pass an enforced `allowed-tools` to Agent
+  dispatches. Priority P2. (reflection)
 
 - **[TST-3E8V]** `cmd_test_evidence` catches only FileNotFoundError for a declared test_command — widen to OSError
   `effort: S · impact: S · area: tests/runtime · source: critic · added: 2026-06-10 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_test_evidence), tests/test_plugin_runtime.py (TestTestEvidenceKnobs)`
@@ -473,6 +459,35 @@
 
 ## Archive
 
+
+- **[CRT-4J8W]** P0 — review-phase wall clock: accept a cumulative + verify-resolutions CHAIN at the PR gate
+  `effort: M · impact: L · area: governance/gates · source: user · added: 2026-06-10 · status: shipped · closed-by: gate-soundness ch.05 (commits 9618c2b + 78fadaf) · reviewed: 2026-06-10 · stage: ready · related: CRT-7M2D · refs: lib/gates.py (check_cumulative_critic), skills/critic/SKILL.md, skills/critic/review-protocol.md, tests/test_cumulative_gate.py`
+
+  User escalation 2026-06-10: review phase ran 30+ min wall clock for ~5 min of work. Two cost
+  drivers: unit cost per review (fixed same day — reviewers default to model opus, ~4x faster per
+  the reviewer-model-ab-2026-06-10.md experiment) and the **re-review treadmill**: every non-.md fix
+  after a cumulative review re-stales `check-cumulative-critic` and costs a FULL bundle re-review
+  even when only 2 files changed. Structural fix (the option deferred in gate-soundness ch.4 as
+  "build if it recurs" — it recurred the same session):
+  1. When `/prawduct:critic verify-resolutions` runs while the existing `.critic-findings.json` is a
+     clean cumulative record, embed an `extends_cumulative: {commit_reviewed: <X>}` anchor in the
+     new record.
+  2. `check_cumulative_critic` accepts EITHER a HEAD-covering cumulative record (today's rule) OR a
+     chain: `mode=verify-resolutions`, 0 blocking, `commit_reviewed==HEAD`, `extends_cumulative`
+     present, AND files changed in `X..HEAD` ⊆ the record's `files_reviewed` (fail closed on any
+     gap, same as today).
+
+  Soundness argument: cumulative@X vouches for the bundle; a clean delta review whose scope covers
+  `X..HEAD` extends that vouching to HEAD — same shape as the existing doc-only allowance, with
+  scope verification. Surfaces: `lib/gates.py` (`check_cumulative_critic` + findings schema optional
+  field), `skills/critic/SKILL.md` + `review-protocol.md` (record the anchor),
+  `tests/test_cumulative_gate.py` (chain accept/reject cases incl. scope-gap fail-closed),
+  `methodology/building.md` + `skills/pr/SKILL.md` sequencing prose (update: the fix-after-cumulative
+  path becomes a cheap delta review, not a full re-run). Priority P0. Related: CRT-7M2D (the
+  coverage-not-mtime gate this extends — archived/shipped). (user)
+
+  — Shipped 2026-06-10 — Built as gate-soundness chunk 05 (commits 9618c2b + 78fadaf). Dogfooded on
+  its own PR bundle: the chain record satisfied `check-cumulative-critic` live.
 
 - **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
   `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: shipped · closed-by: retire-pr-trivial-fast-path · reviewed: 2026-06-08 · related: STH-1W5N, BLD-2R9X`
