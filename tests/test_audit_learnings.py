@@ -556,10 +556,18 @@ class TestAuditLearningsCLI:
 
     def test_json_output_contains_expected_keys(self, tmp_path: Path):
         (tmp_path / ".prawduct").mkdir()
+        # Target the tmp repo via CLAUDE_PROJECT_DIR — the CLI takes no
+        # positional dir. The original form passed tmp_path as an (ignored)
+        # argument and inherited the env, silently auditing the REAL repo:
+        # ~13s against its large learnings.md, which crossed the 30s
+        # pytest-timeout under full-suite xdist load and killed the worker
+        # ("worker crashed", 2026-06-10).
+        env = {"CLAUDE_PROJECT_DIR": str(tmp_path), "PATH": "/usr/bin:/bin"}
         result = subprocess.run(
-            ["python3", str(_HOOK_PATH), "audit-learnings", str(tmp_path), "--json"],
+            ["python3", str(_HOOK_PATH), "audit-learnings", "--json"],
             capture_output=True,
             text=True,
+            env=env,
         )
         assert result.returncode == 0
         payload = json.loads(result.stdout)

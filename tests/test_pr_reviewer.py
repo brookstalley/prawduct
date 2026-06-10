@@ -477,6 +477,76 @@ class TestPrReviewSkillContent:
         assert "Learnings Cross-Check" in content
 
 
+class TestPrReviewerScoping:
+    """PR-reviewer scoping (review-proportionality ch.05): the reviewer
+    consumes the gate-qualifying Critic record as evidence, audits it with
+    adversarial spot-checks, and falls back to a full code-soundness pass
+    when the audit fails. Losing any one of these silently reverts the
+    reviewer to re-deriving what the cumulative already certified — the
+    duplication this chunk removed — or, worse, to trusting the record
+    blindly (the independence this chunk preserved)."""
+
+    @property
+    def protocol(self) -> str:
+        return (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+
+    @property
+    def skill(self) -> str:
+        return (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+
+    def test_protocol_has_audit_duty(self):
+        """The record is audited (≥2 adversarial spot-checks), never trusted
+        blindly — the independence-preserving half of the scoping."""
+        content = self.protocol
+        assert "Evidence, Not Truth" in content
+        assert "at least 2 substantive claims" in content
+        assert "adversarial" in content.lower()
+
+    def test_protocol_has_void_fallback(self):
+        """Any failed spot-check voids the record → full code-soundness pass,
+        stated in the output. Without this, a wrong record scopes the review
+        anyway."""
+        content = self.protocol
+        assert "voids the record" in content
+        assert "full code-soundness pass" in content
+        assert "record_consumed" in content
+
+    def test_protocol_resolves_record_like_the_gate(self):
+        """The reviewer's record resolution mirrors check-cumulative-critic:
+        latest findings file when its kind qualifies, else the newest
+        qualifying review.critic ledger event."""
+        content = self.protocol
+        assert ".critic-findings.json" in content
+        assert ".governance-ledger.jsonl" in content
+        assert "extends_cumulative" in content
+
+    def test_protocol_evidence_distinguishes_scoped_from_full(self):
+        """Telemetry separates scoped from full runs by the evidence `mode`
+        field (pr-scoped/pr-full) plus the audit trail (spot_checks)."""
+        content = self.protocol
+        assert "pr-scoped" in content
+        assert "pr-full" in content
+        assert "spot_checks" in content
+
+    def test_skill_hands_record_to_reviewer(self):
+        """Step 3 names the record source for the reviewer (file, or ledger
+        line when Step 2 reported ledger-fallback)."""
+        content = self.skill
+        assert "gate-qualifying Critic record" in content
+        assert "ledger-fallback" in content
+
+    def test_skill_appends_review_pr_ledger_event(self):
+        """Step 4 appends the review.pr event so both review roles are in the
+        ledger (data requirement 1: model efficiency per role)."""
+        content = self.skill
+        assert "ledger-append --event review.pr" in content
+        frontmatter = content.split("---", 2)[1]
+        assert "Bash(prawduct-hook ledger-append *)" in frontmatter, (
+            "skills/pr/SKILL.md allowed-tools is missing ledger-append — "
+            "the skill cannot append the review.pr event."
+        )
+
+
 # =============================================================================
 # Discoverability in the plugin guidance layer
 # =============================================================================

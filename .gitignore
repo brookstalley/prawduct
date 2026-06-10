@@ -13,6 +13,7 @@
 .prawduct/reflections.md
 __pycache__/
 .pytest_cache/
+.DS_Store
 
 # Prawduct session files
 .prawduct/.test-evidence.json

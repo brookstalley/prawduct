@@ -499,6 +499,15 @@
   rebuild as the intended guarantee. Note: probe precision (false positives on common English) is separate,
   covered by the review-fixes plan Chunk 2. (builder)
 
+- **[STH-5R2Q]** Flag-only `prawduct-hook` subcommands silently ignore unknown positional arguments
+  `effort: S · impact: M · area: governance/cli · source: builder · added: 2026-06-10 · status: open · refs: bin/prawduct-hook · related: STH-9V4K`
+
+  `prawduct-hook audit-learnings` (and any flag-only subcommand) silently ignores unknown positional
+  arguments; this hid a test bug where `tmp_path` was passed positionally and the real repo was audited
+  instead (found 2026-06-10 during review-proportionality ch.04). Tighten flag-only subcommand arg
+  parsing to reject unknowns, matching ledger-append/review-stats/classify-diff-risk fail-closed arg
+  handling. (builder)
+
 ## Promoted
 
 - **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set

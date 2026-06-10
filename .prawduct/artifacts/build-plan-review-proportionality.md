@@ -126,18 +126,23 @@ ordering below deliberately enables that, but does not require it.
 - [ ] Chunk 03: Review telemetry — `prawduct-hook review-stats`
 - [ ] Chunk 04: Risk-surface reviewer escalation
 - [ ] Chunk 05: PR-reviewer scoping — consume the record, audit it, review the release
-Context: CHUNKS 01+02 BUILT 2026-06-10 (S1 complete; checkboxes flip at release via
-change-log tags `chunks=01|02 | scope=review-proportionality`). Ch.01 (ed3a330):
-cumulative-as-final prose on four surfaces + advisory pin test; the Critic's WARNING caught
-the under-enumerated template surface. Ch.02 (6c9241b): lib/ledger.py structural writer +
-PR-gate ledger fallback in lib/gates.py + schema additions (model/files) + 36 tests; Critic
-`final` (explicit, side-plan convention) clean — and it dogfooded ledger-append, so the
-ledger holds its first real correctly-scoped event. NEXT: PR-1 (ch.01+02 — keystone in the
-smallest bundle; user-confirmed direction pending) — the PR's cumulative review will append
-event #2 and exercise the gate live. Then S2 = ch.03+04 → /clear; S3 = ch.05 + ONE
-cumulative (which IS ch.05's review, per the rule ch.01 ships) + PR-2. Governance
-checkpoint 1 (post-ch.02): additive-ledger held under its own final review (0 blocking,
-0 warnings); gate fallback fail-closed paths pinned by adversarial tests — proceed.
+Context: ALL FIVE CHUNKS BUILT 2026-06-10 (checkboxes flip at release via change-log tags
+`chunks=NN | scope=review-proportionality`). PR-1 (ch.01+02) MERGED to develop as #87
+(squash c7981c3). S2: ch.03 (2482552) review-stats telemetry; ch.04 (c04882c + 2d41303)
+classify-diff-risk + dispatch wiring (details in change-log). S3: ch.05 (8945f4d)
+PR-reviewer scoping — review-protocol.md rewritten around consume-and-audit (record as
+evidence not truth; ≥2 adversarial spot-checks; failure voids → full pass), pr/SKILL
+hands the record + appends `review.pr` ledger events (lib/ledger.py: `--findings`
+required for review.pr, rejected for review.critic), evidence gains
+mode=pr-scoped/pr-full + record_consumed/spot_checks (telemetry distinguishes them with
+zero code change). In-cycle: ch.04's missed pr/SKILL allowed-tools entry for
+classify-diff-risk fixed + pinned; 3×-stated layering/fast-path prose deduplicated
+(user-directed). Per ch.01's rule the ONE cumulative (escalated tier, bundle
+c7981c3...8945f4d) WAS ch.05's review: 0 blocking, 1 warning (.DS_Store cruft from ch.04
+— untracked + gitignored in 7d4356e), chain verify-resolutions extends the cumulative to
+HEAD; check-cumulative-critic satisfied. 1181 tests. NEXT: PR-2 via /prawduct:pr (its
+reviewer runs the NEW scoped protocol — the dogfood closing the loop); after merge the
+plan is fully built, release-pending on the next develop→main promotion.
 
 ## Chunks
 

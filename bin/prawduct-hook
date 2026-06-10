@@ -1578,6 +1578,52 @@ def cmd_ledger_append(project_dir: Path, argv: list[str]) -> int:
     return ledger.ledger_append(project_dir, argv)
 
 
+def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
+    """Aggregate the governance ledger into review cost / yield numbers.
+    Thin wrapper — body lives in ``lib.telemetry.review_stats``
+    (review-proportionality ch.03: Visible Costs applied to the framework).
+    Telemetry is informational, never a gate — a missing lib degrades to a
+    note + exit 1, mirroring ``cmd_advisory``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import telemetry  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "review-stats unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return telemetry.review_stats(project_dir, argv)
+
+
+def cmd_classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
+    """Classify the review scope as ``escalate``/``standard`` against the
+    repo's risk surfaces. Thin wrapper — body lives in
+    ``lib.risk.classify_diff_risk`` (review-proportionality ch.04). The
+    import failure is fail-OPEN to ``standard`` ONLY because an unreadable
+    lib also means no surfaces could be resolved; the in-lib git-failure
+    path stays fail-closed when surfaces are declared."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import risk  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "classify-diff-risk unavailable (could not import the plugin lib/ "
+            "from ${CLAUDE_PLUGIN_ROOT}); defaulting to standard.",
+            file=sys.stderr,
+        )
+        print("standard")
+        return 0
+
+    return risk.classify_diff_risk(project_dir, argv)
+
+
 def cmd_compute_verify_resolutions_scope(project_dir: Path) -> int:
     """Print the file scope a ``/prawduct:critic verify-resolutions`` pass should review.
 
@@ -1933,6 +1979,7 @@ _USAGE = (
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
+    "review-stats [--json]|classify-diff-risk [<base>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|regen-views|infer-critic-mode [args]|"
@@ -2088,6 +2135,10 @@ def main() -> int:
         return cmd_verify_coverage(project_dir)
     elif command == "ledger-append":
         return cmd_ledger_append(project_dir, sys.argv[2:])
+    elif command == "review-stats":
+        return cmd_review_stats(project_dir, sys.argv[2:])
+    elif command == "classify-diff-risk":
+        return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":

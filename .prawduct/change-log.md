@@ -3,6 +3,147 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: PR-reviewer scoping — consume the Critic record, audit it, review the release
+
+<!-- prawduct: chunks=05 | type=feature | scope=review-proportionality -->
+
+**Why:** The PR reviewer re-derived code soundness over the same
+`merge-base...HEAD` the cumulative-Critic gate had just certified — the
+third structural tax this plan removes. Independence is preserved by
+*auditing* the record, not repeating its work.
+
+**What:** `skills/pr/review-protocol.md` rewritten around the
+consume-and-audit design: the gate-qualifying Critic record is an input
+(resolved the same way `check-cumulative-critic` resolves it — latest
+findings file when its kind qualifies, else the newest qualifying
+`review.critic` ledger event), consumed as **evidence, not truth**. Audit
+duty: adversarially spot-check ≥2 substantive claims against the code; ANY
+failure (or no qualifying record) voids the record → full code-soundness
+pass, declared in the output. Evidence gains `mode`
+(`pr-scoped`/`pr-full`), `model`, `duration_seconds`, `record_consumed`,
+`spot_checks` — telemetry separates scoped from full runs with zero
+telemetry-code change (mode flows through the existing grouping). Release
+focus sharpened: migration/rollback notes + version/changelog coherence
+bullets added to Merge Hygiene. `skills/pr/SKILL.md`: Step 3 hands the
+record source to the reviewer; Step 4 (and Update flow re-reviews) append
+`review.pr` to the governance ledger so role-vs-role model-efficiency
+(data requirement 1) has both review roles. `lib/ledger.py`: `review.pr`
+event kind (role `pr`) — requires the caller-computed `--findings <path>`,
+rejected for `review.critic` (canonical-source property preserved);
+payload validated at the stop-hook PR-gate bar (findings list + non-empty
+summary). The cumulative-Critic gate ignores `review.pr` events (pinned —
+a PR review must never vouch for code soundness).
+
+In-cycle fixes (no pre-existing exception): ch.04 wired
+`classify-diff-risk` into pr/SKILL step-3 prose but missed the
+`allowed-tools` frontmatter — added (with a structural pin, parallel to
+the Critic's). Deduplication (user-directed critical eye): the layering
+rationale was stated 3× in review-protocol.md (intro ¶ + goals preamble +
+table) → now intro + table; the retired-trivial-fast-path history was
+restated in full 3× across the two files → full rationale lives in SKILL
+Step 1b, the other two point at it; the `## Important` bullets restating
+Steps 1b/2/2b verbatim → one-line pointers.
+
+**Blast radius:** Modified: `skills/pr/review-protocol.md` (rewrite),
+`skills/pr/SKILL.md` (allowed-tools, Steps 3/4, Update flow, Important
+trim), `lib/ledger.py` (review.pr), `skills/critic/review-cycle.md` +
+`docs/governance-telemetry.md` (event-kind docs current). Tests:
+`tests/test_governance_ledger.py` (+9: TestLedgerAppendReviewPr + gate
+honesty), `tests/test_pr_reviewer.py` (+7: TestPrReviewerScoping),
+`tests/test_review_stats.py` (+1: pr-scoped/pr-full distinct modes),
+`tests/preferences/test_risk_escalation_prose.py` (+1: pr allowed-tools).
+1181 total.
+
+## 2026-06-10: risk-surface reviewer escalation — `classify-diff-risk`
+
+<!-- prawduct: chunks=04 | type=feature | scope=review-proportionality -->
+
+**Why:** Proportionality only ran one way — review depth scaled by size/type,
+never by diff RISK — yet the reviewer A/B/C experiment
+(`reviewer-model-ab-2026-06-10.md`) showed the top-tier reviewer catching 2
+real warnings opus missed precisely on a governance-gate bundle. That bundle
+class should buy depth; everything else stays on the efficiency-frontier
+default.
+
+**What:** New classifier `prawduct-hook classify-diff-risk [<base>]` (new
+`lib/risk.py`). Resolution order: explicit `risk_surfaces:` list in
+`project-state.yaml` (product-ownable; EXCLUSIVE when present — an empty
+list is a deliberate opt-out) → else derived defaults (`skills/`,
+`lib/gates*`, `bin/*hook*`) plus literal backticked contract paths from
+`boundary-patterns.md` (globs/slash-commands excluded via the shared
+`_looks_like_file_path` rule). Scope = committed `merge-base(base)...HEAD`
+paths + working-tree changed/untracked paths
+(`--untracked-files=all` — the porcelain default collapses untracked dirs
+to one line, silently hiding files from glob surfaces; caught by the new
+tests). Verdict is a single stdout token `escalate`/`standard`; matched
+files teach on stderr. Failure asymmetry: fail-OPEN to `standard` only when
+no surfaces are declared; fail-CLOSED to `escalate` when surfaces are
+declared but git evaluation fails — declared risk with an unverifiable diff
+never gets the cheap reviewer. Dispatch wiring: Critic coordinator
+(`review-protocol.md` — `final`/`cumulative` dispatch `model: fable` on
+`escalate`, else `opus`; `chunk`/`verify-resolutions` always default-tier),
+Critic SKILL step 6 + allowed-tools, PR reviewer dispatch (`pr/SKILL.md`
+step 3). The findings `model` field records what actually ran, so ch.03's
+telemetry will show whether escalation pays. Protocol token budget held
+<3120 by displacement (mode-resolution + ledger-append paragraphs now point
+at SKILL.md instead of restating it). Live check: this branch classifies
+`escalate` (5 matched paths). New prose pins:
+`tests/preferences/test_risk_escalation_prose.py`.
+
+In-cycle fix (no pre-existing exception): the audit-learnings CLI smoke test
+passed `tmp_path` as a positional arg the CLI ignores, silently auditing the
+REAL repo (~13s) — this chunk's added parallel load pushed it past the 30s
+pytest-timeout, killing the xdist worker. Now targets its tmp repo via
+`CLAUDE_PROJECT_DIR` (same assertions, <1s, deterministic); the
+ignored-unknown-args wart filed to backlog.
+
+**Blast radius:** New: `lib/risk.py`, `tests/test_classify_diff_risk.py`
+(21 tests — incl. lib.risk helper units added post-review to resolve the
+chunk Critic's evidence-attribution NOTE),
+`tests/preferences/test_risk_escalation_prose.py` (6 tests).
+Modified: `bin/prawduct-hook` (wrapper + dispatch + usage),
+`skills/critic/SKILL.md`, `skills/critic/review-protocol.md`,
+`skills/pr/SKILL.md`, `tests/test_audit_learnings.py` (env-target fix).
+1164 total.
+
+## 2026-06-10: review telemetry — `prawduct-hook review-stats`
+
+<!-- prawduct: chunks=03 | type=feature | scope=review-proportionality -->
+
+**Why:** The ledger (ch.02) records review history but nothing aggregates it —
+"is review worth it" stays a vibe. Visible Costs (Principle 9) applied to the
+framework: proportionality arguments need cost and actionable-finding-yield
+numbers, per reviewer role × model × mode (data requirement 1), per code path
+(requirement 2), per feature scope (requirement 3's join seam).
+
+**What:** New subcommand `prawduct-hook review-stats [--json]` (new
+`lib/telemetry.py`; thin hook wrapper per the established lazy-import
+pattern). Reads `.prawduct/.governance-ledger.jsonl` oldest-first; reports on
+`review.*` events only, skipping corrupt lines / unknown event kinds (a
+future `build.chunk` producer) / unusable payloads each WITH A COUNT, never
+silently. Missing ledger → "no review history", exit 0 (an answer, not an
+error); exit 1 only on bad args. Per grouping (overall, role×model×mode,
+per-scope): review count, total/median duration, findings by severity
+(blocking/warning/note + `other` so unexpected severities stay visible),
+actionable rate (share of reviews with ≥1 blocking/warning),
+findings-per-review. Findings-by-file rollup from per-finding `files`
+attribution — top 10 by actionable findings, with `files_attributed_total`
+alongside so the cap is visible. `--json` emits the stable machine shape
+(top-level `schema_version`/`project`/`generated_at`) that TEL-7A4X builds
+on; keys pinned by tests so a change must consciously bump
+REPORT_SCHEMA_VERSION. The reader deliberately does NOT reuse
+`ledger.iter_events_newest_first` (different contract: quiet counts vs the
+gate's newest-first stderr notes). Surfacing: one orient-step pointer in
+`/prawduct:janitor` — telemetry is pulled, not pushed. Documented in new
+`docs/governance-telemetry.md` (event schema + report contract). Dogfood:
+runs clean on this repo's real 2-event ledger — the first genuine
+cost/actionable-rate numbers.
+
+**Blast radius:** New: `lib/telemetry.py`, `tests/test_review_stats.py`
+(12 tests), `docs/governance-telemetry.md`. Modified: `bin/prawduct-hook`
+(wrapper + dispatch + usage), `skills/janitor/SKILL.md` (one line). 1137
+total.
+
 ## 2026-06-10: governance-event ledger — append-only review history + PR-gate fallback
 
 <!-- prawduct: chunks=02 | type=feature | scope=review-proportionality -->
