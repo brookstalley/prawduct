@@ -126,15 +126,18 @@ ordering below deliberately enables that, but does not require it.
 - [ ] Chunk 03: Review telemetry — `prawduct-hook review-stats`
 - [ ] Chunk 04: Risk-surface reviewer escalation
 - [ ] Chunk 05: PR-reviewer scoping — consume the record, audit it, review the release
-Context: PLAN AUTHORED 2026-06-10, REVISED same day after user requirements-elicitation for
-the ledger (event-envelope schema, structural ledger-append writer, finding-level file
-attribution, PR-review events; see "Ledger data requirements" + Confidence history) and a
-pause-and-review the user requested (which surfaced the structural writer + side-plan scope
-attribution). NOT STARTED. Prerequisite: merge feature/gate-soundness → develop, then branch
-feature/review-proportionality. PR strategy (user-confirmed direction pending): PR-1 after
-S1 (ch.01+02 — keystone reviewed in the smallest bundle), PR-2 after S3 (ch.03-05).
-Session plan: S1 = ch.01+02 → PR-1 → /clear; S2 = ch.03+04 → /clear; S3 = ch.05 + ONE
-cumulative (which IS ch.05's review, per the rule ch.01 ships) + PR-2.
+Context: CHUNKS 01+02 BUILT 2026-06-10 (S1 complete; checkboxes flip at release via
+change-log tags `chunks=01|02 | scope=review-proportionality`). Ch.01 (ed3a330):
+cumulative-as-final prose on four surfaces + advisory pin test; the Critic's WARNING caught
+the under-enumerated template surface. Ch.02 (6c9241b): lib/ledger.py structural writer +
+PR-gate ledger fallback in lib/gates.py + schema additions (model/files) + 36 tests; Critic
+`final` (explicit, side-plan convention) clean — and it dogfooded ledger-append, so the
+ledger holds its first real correctly-scoped event. NEXT: PR-1 (ch.01+02 — keystone in the
+smallest bundle; user-confirmed direction pending) — the PR's cumulative review will append
+event #2 and exercise the gate live. Then S2 = ch.03+04 → /clear; S3 = ch.05 + ONE
+cumulative (which IS ch.05's review, per the rule ch.01 ships) + PR-2. Governance
+checkpoint 1 (post-ch.02): additive-ledger held under its own final review (0 blocking,
+0 warnings); gate fallback fail-closed paths pinned by adversarial tests — proceed.
 
 ## Chunks
 
