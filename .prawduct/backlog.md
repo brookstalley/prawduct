@@ -8,6 +8,17 @@
 ## Open
 
 
+- **[TST-3E8V]** `cmd_test_evidence` catches only FileNotFoundError for a declared test_command — widen to OSError
+  `effort: S · impact: S · area: tests/runtime · source: critic · added: 2026-06-10 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_test_evidence), tests/test_plugin_runtime.py (TestTestEvidenceKnobs)`
+
+  `cmd_test_evidence` wraps the declared `test_command` launch in `except FileNotFoundError` only,
+  so a *missing* executable gets the clean exit-2 path but a *non-executable* target raises
+  PermissionError and tracebacks instead. Fix-shape: widen the except to `OSError`
+  (FileNotFoundError and PermissionError are both subclasses) so any OS-level launch failure takes
+  the same clean exit-2 path; add a non-executable-target case alongside the existing
+  `TestTestEvidenceKnobs` coverage. Filed from the cumulative Critic NOTE on the gate-soundness
+  bundle, 2026-06-10. (critic)
+
 - **[REL-6C3W]** Flag a code-changing branch that merges with no change-log entry
   `effort: M · impact: M · area: release/change-log · source: reflection · added: 2026-06-08 · status: open · related: REL-2N8K · refs: docs/release-process.md`
 
@@ -342,9 +353,20 @@
   Discodon archive (Feb–Apr 2026) has 4 confirmed cases where Critic misread code: Mar 24 shutdown event closure, Mar 25 eval doc merge (3 of 4 prior findings false), Mar 28 ARIA A1/A2 missed an existing `model_config = ConfigDict(str_strip_whitespace=False)` override, plus branch-switching confusion. Root cause: `context: fork` can't see overrides spanning files / inheritance / closures. Investigate whether Critic's research phase needs a wider read budget for inheritance chains, or whether prompt engineering can compensate. (reflection)
 
 - **[CRT-8D2W]** Critic-in-worktree as structural fix for session-file conflicts
-  `effort: L · impact: M · area: critic · source: reflection · added: 2026-03-25 · status: open · reviewed: 2026-05-29`
+  `effort: L · impact: M · area: critic · source: reflection · added: 2026-03-25 · status: open · reviewed: 2026-06-10 · related: CRT-3X9D`
 
   v1.3.3 gitignored build-plan.md and v1.3.4 added `_untrack_session_files()`, but the user explicitly suggested running Critic in a separate worktree to avoid touching session files in the active tree at all. Mar 25 discodon avatar_description session captured this when branch-switching during Critic review caused merge conflicts on `.session-handoff.md` and backlog. Worth designing as a follow-up to the gitignore approach. (reflection)
+
+  **Premise partially obsoleted — reassessed 2026-06-10:** the original motivation rested in part on
+  the build plan being a *gitignored* session file; gate-soundness ch.3 (review-fixes) made build
+  plans **tracked**, so that half of the conflict surface is gone. The residual rationale is
+  narrower: the remaining gitignored session files (`.session-handoff.md`, `.critic-findings.json`,
+  `.session-reflected`, …) plus the broader isolation argument — an independent reviewer should not
+  be able to mutate the session tree at all (the same invariant CRT-3X9D enforces at the mutation
+  site via the critic-begin/critic-end guard). Before any design work, re-derive the requirement
+  against the current tracked-build-plan + critic-session-guard reality; the worktree approach may
+  now be redundant defense-in-depth rather than a structural fix. (critic, gate-soundness cumulative
+  review note)
 
 - **[SYN-6J0R]** WIP tracking goes stale when branches merge piecemeal
   `effort: M · impact: M · area: sync · source: reflection · added: 2026-03-23 · status: open · reviewed: 2026-05-29`
