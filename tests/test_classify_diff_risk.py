@@ -19,10 +19,20 @@ mirroring tests/test_governance_ledger.py.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "bin" / "prawduct-hook"
+
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from lib.risk import (  # noqa: E402
+    DERIVED_DEFAULT_SURFACES,
+    _read_list_yaml_key,
+    _surface_matches,
+)
 
 
 def _git_env(repo: Path) -> dict[str, str]:
@@ -80,6 +90,63 @@ def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 def _declare_surfaces(repo: Path, yaml_block: str) -> None:
     (repo / ".prawduct" / "project-state.yaml").write_text(yaml_block)
+
+
+class TestSurfaceMatching:
+    """Pattern semantics: trailing `/` = directory prefix; else fnmatch glob
+    (no metacharacters = exact path)."""
+
+    def test_directory_prefix(self):
+        assert _surface_matches("skills/critic/SKILL.md", "skills/")
+        assert not _surface_matches("myskills/x.md", "skills/")
+
+    def test_glob(self):
+        assert _surface_matches("lib/gates.py", "lib/gates*")
+        assert _surface_matches("bin/prawduct-hook", "bin/*hook*")
+        assert not _surface_matches("lib/gitstate.py", "lib/gates*")
+
+    def test_exact_path(self):
+        assert _surface_matches("src/api/contract.py", "src/api/contract.py")
+        assert not _surface_matches("src/api/contract.pyc", "src/api/contract.py")
+
+    def test_derived_defaults_are_framework_governance_paths(self):
+        assert DERIVED_DEFAULT_SURFACES == ("skills/", "lib/gates*", "bin/*hook*")
+
+
+class TestRiskSurfacesYamlList:
+    """`_read_list_yaml_key` distinguishes undeclared (None) from
+    declared-but-empty ([]) — the branch point of the failure asymmetry."""
+
+    def test_absent_key_is_none(self, tmp_path):
+        state = tmp_path / "project-state.yaml"
+        state.write_text("base_branch: develop\n")
+        assert _read_list_yaml_key(state, "risk_surfaces") is None
+
+    def test_missing_file_is_none(self, tmp_path):
+        assert _read_list_yaml_key(tmp_path / "absent.yaml", "risk_surfaces") is None
+
+    def test_inline_empty_list(self, tmp_path):
+        state = tmp_path / "project-state.yaml"
+        state.write_text("risk_surfaces: []\n")
+        assert _read_list_yaml_key(state, "risk_surfaces") == []
+
+    def test_block_list_with_comments_and_quotes(self, tmp_path):
+        state = tmp_path / "project-state.yaml"
+        state.write_text(
+            "views_enabled: true\n"
+            "risk_surfaces:  # governance hot spots\n"
+            "  - 'src/core/'\n"
+            "  - src/api/contract.py  # the shared shape\n"
+            "next_key: x\n"
+        )
+        assert _read_list_yaml_key(state, "risk_surfaces") == [
+            "src/core/", "src/api/contract.py",
+        ]
+
+    def test_indented_same_name_key_ignored(self, tmp_path):
+        state = tmp_path / "project-state.yaml"
+        state.write_text("nested:\n  risk_surfaces:\n    - a/\n")
+        assert _read_list_yaml_key(state, "risk_surfaces") is None
 
 
 class TestDerivedDefaults:
