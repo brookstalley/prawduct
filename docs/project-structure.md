@@ -86,7 +86,8 @@ my-product/
 │   │   └── project-preferences.md     # developer preferences (language, testing, style)
 │   ├── .pr-reviews/                   # PR review evidence (gitignored)
 │   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
-│   └── .critic-findings.json          # Critic review evidence (gitignored, checked by the Stop hook)
+│   ├── .critic-findings.json          # latest Critic review record (gitignored, checked by the Stop hook)
+│   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `prawduct-hook ledger-append`)
 ├── .claude/
 │   └── settings.json                  # the committed install reference (marketplace + enabled plugin)
 └── src/                               # product source code (+ the product's own skills, MCP servers, configs)

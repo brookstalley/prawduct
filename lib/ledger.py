@@ -1,0 +1,252 @@
+"""Governance-event ledger — append-only review history (review-proportionality ch.02).
+
+The single-slot ``.prawduct/.critic-findings.json`` stays the canonical "latest
+record" every existing consumer reads; this module adds an append-only EVENT
+history alongside it at ``.prawduct/.governance-ledger.jsonl`` — one JSON event
+per line. The ledger exists to answer the elicited analytics questions (the
+build plan's "Ledger data requirements"): reviewer-model efficiency per role,
+findings density per code path, wall clock per phase per feature, and
+cross-project aggregation (TEL-7A4X). Fields exist to serve those questions.
+
+**Envelope/payload split.** Every event shares the envelope —
+``{schema_version, event, ts, duration_seconds, project, scope, chunk,
+actor: {role, model}, git: {head, base}}`` — and nests its kind-specific
+payload beneath a kind-named key (``review`` for v1's ``review.critic``).
+Aggregators key on the envelope without understanding every payload;
+consumers skip unknown event kinds and unknown fields. v1 emits only
+``review.critic`` (``review.pr`` arrives with the PR-reviewer scoping chunk;
+``build.chunk`` / ``plan.authored`` / ``discovery.session`` are accommodated
+by the envelope and deliberately NOT built — see the build plan's Out of
+scope).
+
+**Structural writer.** The agent never hand-authors JSONL: ``prawduct-hook
+ledger-append`` reads the just-written findings file, validates it
+(``lib.gates.validate_critic_findings`` — the same schema the gates trust),
+computes the envelope itself, and appends ONE line in a single
+``O_APPEND``-mode write. Validation lives at the append boundary because this
+is the only writer. ``duration_seconds`` and ``actor.model`` come from the
+findings record / ``--model`` — both nullable, never invented.
+
+**Scope attribution.** ``--scope`` is passed EXPLICITLY by the reviewer from
+the plan it reviewed against; the ``active_build_plan`` pointer is only the
+fallback, because side-plans (a feature branch whose plan isn't the pointed-at
+one) would otherwise mis-attribute the feature key.
+
+Size is unbounded-but-tiny (one line per event). If a long-lived repo ever
+needs pruning, truncate oldest-first by line — every line is self-contained;
+no tooling is built for this until a real ledger needs it.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import gitstate
+from .core import resolve_build_plan_path
+
+LEDGER_BASENAME = ".governance-ledger.jsonl"
+LEDGER_SCHEMA_VERSION = 1
+
+# Event kind -> actor role. Fail-closed: unknown kinds are rejected at append
+# (learnings: "Escape hatches in classification create silent failures").
+# ``review.pr`` joins when the PR-reviewer scoping chunk defines what it reads.
+_EVENT_ROLES = {"review.critic": "critic"}
+
+
+def ledger_path(prawduct_dir: Path) -> Path:
+    return prawduct_dir / LEDGER_BASENAME
+
+
+def _git_capture(project_dir: Path, *args: str) -> str | None:
+    """One git read; ``None`` on any failure (the writer must not crash —
+    a repo-less fixture still gets an honest ``git: {head: null, ...}``)."""
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- envelope fields are nullable, never fatal
+        return None
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.strip()
+    return out or None
+
+
+def _scope_from_plan(prawduct_dir: Path) -> str | None:
+    """Fallback scope: the active build plan's frontmatter ``scope:`` value,
+    else the ``build-plan-<scope>.md`` filename convention, else ``None``."""
+    plan_path = resolve_build_plan_path(prawduct_dir)
+    if not plan_path.is_file():
+        return None
+    try:
+        lines = plan_path.read_text().splitlines()
+    except OSError:
+        return None
+    if lines and lines[0].strip() == "---":
+        for line in lines[1:30]:
+            stripped = line.strip()
+            if stripped == "---":
+                break
+            if stripped.startswith("scope:"):
+                value = stripped[len("scope:"):].strip().strip("\"'")
+                if value:
+                    return value
+    stem = plan_path.stem
+    if stem.startswith("build-plan-") and stem != "build-plan-":
+        return stem[len("build-plan-"):]
+    return None
+
+
+def ledger_append(project_dir: Path, argv: list[str]) -> int:
+    """Body of ``prawduct-hook ledger-append`` — see module docstring.
+
+    Usage: ``ledger-append --event review.critic [--scope <scope>]
+    [--chunk <id>] [--model <id>]``. Exit 0 on append; exit 1 with a stderr
+    reason on bad args, unknown event kind, or a missing/invalid findings
+    file (an invalid record must not enter the history the PR gate trusts).
+    """
+    event_kind: str | None = None
+    scope: str | None = None
+    chunk: str | None = None
+    model: str | None = None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--event", "--scope", "--chunk", "--model"):
+            if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+                print(f"ledger-append: {arg} requires a value", file=sys.stderr)
+                return 1
+            value = argv[i + 1]
+            if arg == "--event":
+                event_kind = value
+            elif arg == "--scope":
+                scope = value
+            elif arg == "--chunk":
+                chunk = value
+            else:
+                model = value
+            i += 2
+        else:
+            print(f"ledger-append: unknown argument {arg!r}", file=sys.stderr)
+            return 1
+
+    if event_kind is None:
+        print("ledger-append: --event is required", file=sys.stderr)
+        return 1
+    if event_kind not in _EVENT_ROLES:
+        allowed = ", ".join(sorted(_EVENT_ROLES))
+        print(
+            f"ledger-append: unknown event kind {event_kind!r} (allowed: "
+            f"{allowed}). Unknown kinds are rejected, not guessed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    findings_path = prawduct_dir / ".critic-findings.json"
+    if not findings_path.is_file():
+        print(
+            f"ledger-append: no findings record at {findings_path} — write "
+            "the findings file first, then append.",
+            file=sys.stderr,
+        )
+        return 1
+
+    from . import gates  # noqa: PLC0415 — lazy; avoids a gates<->ledger import cycle
+
+    if not gates.validate_critic_findings(findings_path):
+        print(
+            f"ledger-append: {findings_path} failed schema validation — an "
+            "invalid record must not enter the ledger the PR gate trusts.",
+            file=sys.stderr,
+        )
+        return 1
+    record = json.loads(findings_path.read_text())
+
+    duration = record.get("duration_seconds")
+    if not isinstance(duration, (int, float)) or isinstance(duration, bool):
+        duration = None
+    record_model = record.get("model")
+    actor_model = model or (
+        record_model if isinstance(record_model, str) and record_model.strip() else None
+    )
+    if scope is None:
+        scope = _scope_from_plan(prawduct_dir)
+
+    base, _reason = _resolve_base(project_dir)
+    event = {
+        "schema_version": LEDGER_SCHEMA_VERSION,
+        "event": event_kind,
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "duration_seconds": duration,
+        "project": project_dir.resolve().name,
+        "scope": scope,
+        "chunk": chunk,
+        "actor": {"role": _EVENT_ROLES[event_kind], "model": actor_model},
+        "git": {
+            "head": _git_capture(project_dir, "rev-parse", "HEAD"),
+            "base": base,
+        },
+        "review": record,
+    }
+
+    path = ledger_path(prawduct_dir)
+    prawduct_dir.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(event) + "\n"
+    # "a" opens O_APPEND; one write() call keeps concurrent appends whole.
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(line)
+    print(
+        f"appended: {event_kind} -> {path} "
+        f"(scope={scope or '-'}, chunk={chunk or '-'}, model={actor_model or '-'})"
+    )
+    return 0
+
+
+def _resolve_base(project_dir: Path) -> tuple[str | None, str]:
+    """The canonical base resolution (``coverage._resolve_base_branch``),
+    nullable on failure — the envelope records what was knowable, no more."""
+    try:
+        from . import coverage  # noqa: PLC0415 — lazy keeps ledger import light
+
+        return coverage._resolve_base_branch(project_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- envelope fields are nullable, never fatal
+        return None, "base resolution failed"
+
+
+def iter_events_newest_first(prawduct_dir: Path):
+    """Yield ``(line_number, event_dict)`` newest-first, skipping unparseable
+    lines and non-dict events with one stderr note each — a corrupt line must
+    never crash a consumer (the PR-gate fallback reads through this)."""
+    path = ledger_path(prawduct_dir)
+    if not path.is_file():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        print(f"ledger: unreadable ({exc}) — skipping", file=sys.stderr)
+        return
+    for lineno in range(len(lines), 0, -1):
+        raw = lines[lineno - 1].strip()
+        if not raw:
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            print(
+                f"ledger: skipping unparseable line {lineno} of {path.name}",
+                file=sys.stderr,
+            )
+            continue
+        if not isinstance(event, dict):
+            print(
+                f"ledger: skipping non-object line {lineno} of {path.name}",
+                file=sys.stderr,
+            )
+            continue
+        yield lineno, event

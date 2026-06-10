@@ -3,6 +3,97 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: governance-event ledger — append-only review history + PR-gate fallback
+
+<!-- prawduct: chunks=02 | type=feature | scope=review-proportionality -->
+
+**Why:** The single-slot `.critic-findings.json` forces a choice between
+reviewing new work and preserving the PR-gate record (observed twice on
+2026-06-10: a review deferred-and-declared, a chunk review that would have
+clobbered the gate's evidence) — and review history is unmeasurable because
+each record overwrites the last (Principle 9, Visible Costs, unapplied to
+the framework itself).
+
+**What:** Append-only governance-event ledger at
+`.prawduct/.governance-ledger.jsonl`, ADDITIVE — the findings file stays the
+canonical latest record all existing consumers read. Schema shaped by the
+user-elicited "Ledger data requirements" (not mechanism-first): per-line
+`schema_version`, envelope/payload split (`{schema_version, event, ts,
+duration_seconds, project, scope, chunk, actor:{role,model}, git:{head,base}}`
++ kind-named payload), consumers skip unknown kinds/fields. v1 emits
+`review.critic` only; unknown kinds REJECTED at append (fail closed).
+Structural writer `prawduct-hook ledger-append` (new `lib/ledger.py`):
+agents never hand-author JSONL — the helper validates the findings file
+(same schema the gates trust), computes the envelope itself, appends one
+O_APPEND line; `--scope` explicit from the reviewer (side-plan
+mis-attribution), `active_build_plan` only the fallback (frontmatter
+`scope:` → filename); duration/model nullable, never invented. PR-gate
+ledger fallback (`check_cumulative_critic` refactored into
+`_pr_gate_record_qualifies` / `_ledger_fallback_record` /
+`_evaluate_pr_gate_record`): when the latest record is the wrong KIND
+(chunk/final, or verify with no chain anchor), scan the ledger newest-first
+for the first qualifying `review.critic` payload and evaluate it under the
+unchanged checks — stale/blocking ledger records still fail honestly,
+corrupt lines skip with a stderr note, no qualifying event → today's exact
+failure messages. Findings schema gains optional `model` (record level) and
+per-finding `files` (risky-areas attribution). Producers: Critic SKILL step
+7 + review-protocol Output Format instruct the append (allowed-tools gains
+`Bash(prawduct-hook ledger-append *)`); protocol budget held <3120 by
+displacement. Hygiene: gitignore entry in all three mirrors (core
+GITIGNORE_ENTRIES, hook _SESSION_GITIGNORED_PATHS — caught live by
+TestSessionGitignoreMirror — and this repo's .gitignore); event shape
+documented in review-cycle.md "Recording Reviews" + project-structure.md;
+prune escape hatch is prose only (truncate oldest lines; no tooling until a
+real ledger needs it). Critic `final` (explicit override, side-plan
+convention): 0 blocking, 0 warnings, 2 NOTEs (defensive-branch comment
+added; tag confirmed). The Critic dogfooded `ledger-append` recording its
+own review — first real event, correctly scope-attributed.
+
+**Blast radius:** New: `lib/ledger.py`, `tests/test_governance_ledger.py`
+(36 tests). Modified: `lib/gates.py`, `lib/core.py`, `bin/prawduct-hook`,
+`.gitignore`, `skills/critic/SKILL.md`, `skills/critic/review-protocol.md`,
+`skills/critic/review-cycle.md`, `docs/project-structure.md`. 1125 total.
+
+## 2026-06-10: cumulative-as-final — one full review per plan, not two
+
+<!-- prawduct: chunks=01 | type=feature | scope=review-proportionality -->
+
+**Why:** `Type: cumulative-final` was *defined* as the last chunk's `final`
+review PLUS a cumulative — two 4-10 min full reviews over nearly the same
+diff, on every multi-chunk plan. Cumulative is a strict superset of final
+(all 7 goals + cross-checks over `merge-base...HEAD` ⊇ the chunk diff), so
+the second pass re-bought assurance already paid for. Gate-soundness ch.05
+already did the right thing ad hoc as a declared deviation; this makes it
+the rule (review wall-clock is P0).
+
+**What:** Redefined `cumulative-final`: commit the last chunk first, then run
+`/prawduct:critic cumulative` ONCE — that review IS the chunk's review and
+the PR-gate record; post-cumulative fixes ride the CRT-4J8W chain. Prose on
+four surfaces (`skills/critic/review-cycle.md` Type matrix + When-Review-Is-
+Required rows + a new Per-Chunk-Cycle sequencing note documenting the
+rule-3-final-is-mid-chunk / rule-2-cumulative-is-at-commit inference
+distinction; `methodology/planning.md` Critic-Mode override bullet +
+`cumulative-final` Type description; `methodology/building.md` Skipping-final
+trap; `templates/build-plan.md` Type list + Done-when comment + PR-cadence
+example — the template was a Critic WARNING catch, the chunk's own surface
+enumeration missed it). No code change: inference already sequences correctly
+(rule-3 `final` fires only on UNCOMMITTED last-chunk work; rule-2 picks
+`cumulative` once committed and clean). New
+`TestSynthesisAdvisoryAcceptsCumulative` pins that the stop-hook synthesis
+advisory accepts a `cumulative` closer and still trips on
+`chunk`/`verify-resolutions` (no prior pin existed — an untested governance
+bound rots silently). Also shipped the schema-lock-in tripwire from this
+plan's own near-miss: `methodology/planning.md` ("A persisted format is
+always a lock-in decision" — consumers' future queries are the requirements,
+reversal cost not LOC) + condensed into `methodology/building.md` Decision
+Research lock-in trigger. building.md budget held by displacement (<4850):
+PR-gate paragraph condensed to a review-cycle.md pointer, in-file duplicate
+mode-list/inference-default lines collapsed.
+
+**Blast radius:** `skills/critic/review-cycle.md`, `methodology/planning.md`,
+`methodology/building.md`, `templates/build-plan.md`,
+`tests/test_critic_gate_fallthrough.py` (+4 tests, 1089 total).
+
 ## 2026-06-10: chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
 
 <!-- prawduct: chunks=05 | type=feature | scope=gate-soundness -->

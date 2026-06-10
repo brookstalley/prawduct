@@ -1,12 +1,8 @@
 # Build Governance (The Critic)
 
-<!-- Role: Independent quality reviewer. Invoked via /prawduct:critic (context: fork).
-     Tools: Read, Glob, Grep, git, wc, Write, Agent. NO test execution, NO builds.
-     Independence: You have NOT seen the builder's reasoning. That is structural. -->
+<!-- Role: Independent quality reviewer. NO test execution, NO builds. -->
 
-The Critic enforces quality by reviewing changes against principles and specifications. It is invoked as a **separate agent** (via the `/prawduct:critic` skill with `context: fork`), providing genuinely independent review — the agent hasn't seen the builder's reasoning or decision-making.
-
-This file is the Critic agent's complete instruction set. The stop hook enforces that Critic review happens before a session ends when code was modified.
+The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set. The stop hook enforces review before session end when code was modified.
 
 ## When You Are Activated
 
@@ -25,9 +21,9 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
 - **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`. See `review-cycle.md`.
-- **`verify-resolutions`** — Goals 1-3 against prior findings' `files_reviewed` ∪ files changed since `commit_reviewed`. Target 1-2 min. Demotion rules and the CRT-4J8W chain: `review-cycle.md`.
+- **`verify-resolutions`** — Goals 1-3 against the prior review's scope. Target 1-2 min. Demotion rules and the CRT-4J8W chain: `review-cycle.md`.
 
-**Default:** missing/ambiguous → `final`. Never silently downgrade. The `mode` field in findings uses the verbose form (see Output Format).
+**Default:** missing/ambiguous → `final`. Never silently downgrade.
 
 **Chunk type axis.** Chunks declare `Type:` (orthogonal to mode). `Type: designer-handoff` → output "Review skipped — Type: designer-handoff", exit clean (no findings file). Other types adjust per-goal protocol — see `review-cycle.md` "Per-Chunk Type Protocol Selector." Missing/unrecognized → `code` (full protocol).
 
@@ -187,17 +183,20 @@ If no findings: "No issues found. Changes are ready to proceed."
   "duration_seconds": 180,
   "mode": "final (full review, ready for push)",
   "mode_chosen_by": "rule-3 final: last unchecked chunk of 4-chunk plan is in progress",
+  "model": "opus",
   "commit_reviewed": "<git rev-parse HEAD at review time>",
   "base_reviewed": null,
   "files_reviewed": ["file1", "file2"],
   "findings": [
-    {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description"}
+    {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description", "files": ["file1"]}
   ],
   "summary": "N warnings. Changes ready to proceed."
 }
 ```
 
-`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by` (v1.5 Chunk 03): `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `commit_reviewed` (v1.5): record `git rev-parse HEAD` at review time — anchors the delta computation that `verify-resolutions` mode reads. `base_reviewed`: in `cumulative` mode, record the `git merge-base <base> HEAD` you reviewed against (with `<base>` from `prawduct-hook resolve-base`); otherwise `null`. `extends_cumulative` (CRT-4J8W): record `{"commit_reviewed": "<sha>"}` when the scope reason carries `extends-cumulative=<sha>` — the PR-gate chain anchor; else omit. All these fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
+`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by`: `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `model`: the model id the review ran as. `files` (per finding): which files the finding is about (telemetry attribution). `commit_reviewed`: `git rev-parse HEAD` at review time — anchors the `verify-resolutions` delta. `base_reviewed`: in `cumulative` mode, the `git merge-base <base> HEAD` you reviewed against (with `<base>` from `prawduct-hook resolve-base`); otherwise `null`. `extends_cumulative` (CRT-4J8W): record `{"commit_reviewed": "<sha>"}` when the scope reason carries `extends-cumulative=<sha>` — the PR-gate chain anchor; else omit. All these fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
+
+**Append to the governance ledger:** after writing the findings file, run `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` — validates and appends one event to `.prawduct/.governance-ledger.jsonl`. Never hand-write the JSONL; `--scope` = the plan reviewed against (details: SKILL step 7).
 
 ## Review Cycle
 

@@ -239,6 +239,20 @@ _CRITIC_MODE_VALUES = frozenset({
 def validate_critic_findings(findings_path: Path) -> bool:
     """Validate that critic findings JSON has required structure.
 
+    Thin path wrapper over :func:`_validate_critic_findings_data` (the data
+    form also validates ledger event payloads — review-proportionality
+    ch.02, one schema for both homes of the same record).
+    """
+    try:
+        data = json.loads(findings_path.read_text())
+        return _validate_critic_findings_data(data)
+    except Exception:  # prawduct:allow prawduct/broad-except -- validation must not crash gate check
+        return False
+
+
+def _validate_critic_findings_data(data) -> bool:
+    """Validate a critic findings record (dict form).
+
     Requires: non-empty files_reviewed list, findings list where each entry
     has goal/severity/summary, and a non-empty summary string. The `mode`
     field is optional (legacy hooks pre-v1.3.13 omit it) but, when present,
@@ -247,7 +261,8 @@ def validate_critic_findings(findings_path: Path) -> bool:
     caller-side input form, not the persistence form.
     """
     try:
-        data = json.loads(findings_path.read_text())
+        if not isinstance(data, dict):
+            return False
         # Must have a findings list
         findings = data.get("findings")
         if not isinstance(findings, list):
@@ -264,6 +279,17 @@ def validate_critic_findings(findings_path: Path) -> bool:
                 val = finding.get(field)
                 if not isinstance(val, str) or not val.strip():
                     return False
+            # review-proportionality ch.02 — optional per-finding `files`
+            # (which files the finding is about): finding-level attribution
+            # so findings-density-by-path is computable without parsing
+            # summary strings. When present: a list of non-empty strings.
+            if "files" in finding:
+                files = finding["files"]
+                if not isinstance(files, list):
+                    return False
+                for f in files:
+                    if not isinstance(f, str) or not f.strip():
+                        return False
         # Must have a non-empty summary
         summary = data.get("summary")
         if not isinstance(summary, str) or not summary.strip():
@@ -313,6 +339,13 @@ def validate_critic_findings(findings_path: Path) -> bool:
         if "mode_chosen_by" in data:
             val = data["mode_chosen_by"]
             if not isinstance(val, str) or not val.strip():
+                return False
+        # review-proportionality ch.02 — optional record-level `model` (the
+        # model id the reviewer actually ran as; reviewer-tiering telemetry).
+        # Nullable like the sha fields; non-empty string when set.
+        if "model" in data:
+            val = data["model"]
+            if val is not None and (not isinstance(val, str) or not val.strip()):
                 return False
         return True
     except Exception:  # prawduct:allow prawduct/broad-except -- validation must not crash gate check
@@ -970,6 +1003,15 @@ def check_cumulative_critic(project_dir: Path) -> int:
        scope/stop-hook helpers' ``_is_metadata_path`` symmetry (gate-soundness
        ch.5 declared decision).
 
+    **Ledger fallback** (review-proportionality ch.02): when the latest
+    findings record is the wrong KIND (chunk/final, or verify-resolutions
+    with no chain anchor), the gate scans
+    ``.prawduct/.governance-ledger.jsonl`` newest-first for the first
+    qualifying ``review.critic`` payload and evaluates THAT under the same
+    checks unchanged — a stale or blocking ledger record still fails
+    honestly. Corrupt lines are skipped with a stderr note; no qualifying
+    event → the original wrong-mode / chain-missing-anchor message.
+
     Exit 1 otherwise. stderr names the specific check that failed so the
     caller (`/prawduct:pr` skill) can present an actionable message to the user.
     """
@@ -997,6 +1039,106 @@ def check_cumulative_critic(project_dir: Path) -> int:
         print(f"unreadable: {exc}", file=sys.stderr)
         return 1
 
+    if _pr_gate_record_qualifies(data):
+        return _evaluate_pr_gate_record(project_dir, data, str(findings_path))
+
+    # Ledger fallback (review-proportionality ch.02): the latest findings
+    # record is the wrong KIND for this gate (a chunk/final review, or a
+    # verify pass with no chain anchor) — but the append-only ledger may
+    # still hold the qualifying review this branch already paid for. Scan
+    # newest-first for the first qualifying ``review.critic`` payload and
+    # evaluate THAT under the same checks unchanged — a stale ledger record
+    # still fails honestly. This dissolves the single-slot conflict: a chunk
+    # review after the cumulative no longer destroys the PR gate's evidence.
+    fallback = _ledger_fallback_record(prawduct_dir)
+    if fallback is not None:
+        lineno, payload, ledger_file = fallback
+        print(
+            f"ledger-fallback: latest findings record (mode "
+            f"{data.get('mode')!r}) does not qualify at the PR gate; "
+            f"evaluating the newest qualifying review.critic event "
+            f"({ledger_file.name} line {lineno}) instead.",
+            file=sys.stderr,
+        )
+        return _evaluate_pr_gate_record(
+            project_dir, payload, f"{ledger_file} line {lineno}, ledger fallback"
+        )
+
+    mode = data.get("mode")
+    if mode == _CRITIC_MODE_VERIFY_RESOLUTIONS:
+        print(
+            "chain-missing-anchor: this verify-resolutions record has no "
+            "extends_cumulative anchor — it re-verifies prior findings but "
+            "cannot certify the bundle. Chain sequence: land all non-.md "
+            "fixes, run /prawduct:critic cumulative once; for fixes AFTER "
+            "the cumulative — fix, commit, then /prawduct:critic "
+            "verify-resolutions (the Critic embeds the anchor when the "
+            "prior record is that cumulative). If the cumulative record is "
+            "gone, re-run /prawduct:critic cumulative.",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"wrong-mode: findings mode is {mode!r}, expected cumulative "
+        f"({_CRITIC_MODE_CUMULATIVE!r}) or a chained verify-resolutions "
+        "record (CRT-4J8W). Sequence: land ALL non-.md fixes first, then "
+        "run /prawduct:critic cumulative once; for fixes after the "
+        "cumulative — fix, commit, then /prawduct:critic verify-resolutions "
+        "(the chain record extends the cumulative to HEAD; no full re-run).",
+        file=sys.stderr,
+    )
+    return 1
+
+
+def _pr_gate_record_qualifies(data: dict) -> bool:
+    """Is this record the right KIND for the PR gate — a cumulative, or a
+    verify-resolutions carrying a chain anchor? Kind only; coverage, chain
+    scope, and blocking findings are judged by :func:`_evaluate_pr_gate_record`."""
+    mode = data.get("mode")
+    if mode == _CRITIC_MODE_CUMULATIVE:
+        return True
+    if mode == _CRITIC_MODE_VERIFY_RESOLUTIONS:
+        ext = data.get("extends_cumulative")
+        anchor = ext.get("commit_reviewed") if isinstance(ext, dict) else None
+        return isinstance(anchor, str) and bool(anchor.strip())
+    return False
+
+
+def _ledger_fallback_record(prawduct_dir: Path):
+    """Newest qualifying ``review.critic`` payload from the governance ledger,
+    as ``(lineno, payload, ledger_path)`` — or ``None``. Skips corrupt lines
+    (the reader emits stderr notes), non-review events, schema-invalid
+    payloads, and payloads of the wrong kind. Never raises — the gate must
+    fail with its own honest message, not a fallback crash."""
+    try:
+        from . import ledger  # noqa: PLC0415 — lazy keeps gates' import DAG light
+
+        for lineno, event in ledger.iter_events_newest_first(prawduct_dir):
+            if event.get("event") != "review.critic":
+                continue
+            payload = event.get("review")
+            if not isinstance(payload, dict):
+                continue
+            if not _validate_critic_findings_data(payload):
+                print(
+                    f"ledger: skipping line {lineno} (review payload failed "
+                    "schema validation)",
+                    file=sys.stderr,
+                )
+                continue
+            if not _pr_gate_record_qualifies(payload):
+                continue
+            return lineno, payload, ledger.ledger_path(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- fallback is best-effort; the gate's own message stands
+        return None
+    return None
+
+
+def _evaluate_pr_gate_record(project_dir: Path, data: dict, source: str) -> int:
+    """Evaluate one kind-qualifying record under the PR-gate checks (commit
+    coverage, chain scope, 0 BLOCKING). Prints the verdict; returns the gate
+    exit code. ``source`` names where the record came from (the findings file,
+    or a ledger line) so the satisfied message stays attributable."""
     mode = data.get("mode")
     if mode == _CRITIC_MODE_CUMULATIVE:
         # CRT-7M2D — judge the record by COMMIT-COVERAGE, not mtime-recency.
@@ -1038,7 +1180,7 @@ def check_cumulative_critic(project_dir: Path) -> int:
             return 1
         satisfied_msg = (
             f"satisfied: cumulative-Critic record covers HEAD and is clean "
-            f"({findings_path})"
+            f"({source})"
         )
     elif mode == _CRITIC_MODE_VERIFY_RESOLUTIONS:
         # CRT-4J8W — the chain path. A verify-resolutions record certifies
@@ -1136,9 +1278,12 @@ def check_cumulative_critic(project_dir: Path) -> int:
             return 1
         satisfied_msg = (
             f"satisfied: verify-resolutions chain extends cumulative "
-            f"{anchor[:12]} and covers HEAD ({findings_path})"
+            f"{anchor[:12]} and covers HEAD ({source})"
         )
     else:
+        # Defensive only — callers pre-filter via _pr_gate_record_qualifies,
+        # so this branch is unreachable today; kept so a future caller that
+        # skips the filter fails closed with the canonical message.
         print(
             f"wrong-mode: findings mode is {mode!r}, expected cumulative "
             f"({_CRITIC_MODE_CUMULATIVE!r}) or a chained verify-resolutions "
