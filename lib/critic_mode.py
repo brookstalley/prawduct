@@ -19,6 +19,13 @@ return the first that fires:
      uncommitted diff is non-empty AND is a subset of prior
      ``files_reviewed``. Signal: builder is in the middle of fixing
      findings from the last review.
+  1b. ``verify-resolutions`` (chain, CRT-4J8W) — tree clean, prior record
+     is chain-extendable (cumulative, or a chain record with an
+     ``extends_cumulative`` anchor), and the committed delta since
+     ``commit_reviewed`` has ≥1 non-``.md`` file under the widening
+     threshold. Signal: builder committed a fix after the cumulative; a
+     verify pass extends it to HEAD instead of re-paying a full bundle
+     review.
   2. ``cumulative`` — working tree is clean (no uncommitted code) AND
      branch is ≥2 commits ahead of the detected base branch AND no
      ``cumulative``-mode findings file exists for current HEAD. Signal:
@@ -184,6 +191,12 @@ def infer_mode(
             "subset of prior files_reviewed (builder is mid-fix)"
         )
 
+    postfix_reason = _rule_postfix_chain_fires(prawduct_dir, project_dir)
+    if postfix_reason:
+        return "verify-resolutions", (
+            f"rule-1b verify-resolutions (chain): {postfix_reason}"
+        )
+
     cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
     if cumulative_reason:
         return "cumulative", f"rule-2 cumulative: {cumulative_reason}"
@@ -261,6 +274,84 @@ def _rule_verify_resolutions_fires(
     return diff_files.issubset(prior_set)
 
 
+def _chain_extendable_anchor(data: dict) -> str | None:
+    """Return the cumulative anchor a verify pass over ``data`` would extend.
+
+    Mirrors ``lib.gates._chain_anchor`` (CRT-4J8W) — kept in lockstep like
+    the other hook/gates mirrors in this module. Chain-extendable: a
+    ``cumulative``-mode record (anchor = its own ``commit_reviewed``) or a
+    ``verify-resolutions``-mode record carrying a valid
+    ``extends_cumulative`` (multi-link propagation). ``None`` otherwise.
+    """
+    commit_reviewed = data.get("commit_reviewed")
+    if not isinstance(commit_reviewed, str) or not commit_reviewed.strip():
+        return None
+    mode = data.get("mode")
+    if mode == _MODE_CUMULATIVE_VERBOSE:
+        return commit_reviewed
+    if mode == _MODE_VERIFY_RESOLUTIONS_VERBOSE:
+        ext = data.get("extends_cumulative")
+        if isinstance(ext, dict):
+            anchor = ext.get("commit_reviewed")
+            if isinstance(anchor, str) and anchor.strip():
+                return anchor
+    return None
+
+
+def _rule_postfix_chain_fires(prawduct_dir: Path, project_dir: Path) -> str:
+    """Rule 1b (CRT-4J8W): a committed fix after a chain-extendable review.
+
+    Fires when the working tree is clean, the prior record is
+    chain-extendable (see :func:`_chain_extendable_anchor`), its
+    ``commit_reviewed`` resolves, and the committed delta since it has at
+    least one non-``.md`` file while staying under the verify-resolutions
+    widening threshold (``len(delta) > 2 * prior + 5`` — mirrored so the
+    rule never recommends a mode that would immediately demote). Without
+    this rule the canonical no-args ``/prawduct:critic`` after a
+    post-cumulative fix falls through to rule 2 and recommends a FULL
+    bundle re-review — the run-count treadmill the chain gate exists to
+    kill. A doc-only (all-``.md``) or empty delta does not fire: the
+    existing record already covers HEAD under the gate's doc-only
+    allowance, so no review is needed at all.
+
+    Returns a rationale string when the rule fires, ``""`` otherwise.
+    """
+    if _get_uncommitted_code_files(project_dir):
+        return ""
+    findings_path = prawduct_dir / ".critic-findings.json"
+    if not findings_path.is_file():
+        return ""
+    try:
+        data = json.loads(findings_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+    anchor = _chain_extendable_anchor(data)
+    if anchor is None:
+        return ""
+    commit_reviewed = data["commit_reviewed"]  # non-empty str when anchor is not None
+    if not _commit_resolves(project_dir, commit_reviewed):
+        return ""
+    prior_files = data.get("files_reviewed")
+    if not isinstance(prior_files, list) or not prior_files:
+        return ""
+    prior_set = {f for f in prior_files if isinstance(f, str) and f.strip()}
+    if not prior_set:
+        return ""
+    delta = {
+        f for f in _committed_files_since(project_dir, commit_reviewed)
+        if not _is_metadata_path(f)
+    }
+    if not any(not f.endswith(".md") for f in delta):
+        return ""
+    if len(delta) > 2 * len(prior_set) + 5:
+        return ""
+    return (
+        f"committed delta of {len(delta)} file(s) since the prior "
+        f"chain-extendable review ({commit_reviewed[:12]}); a verify pass "
+        "extends the cumulative's vouching to HEAD at delta-review cost"
+    )
+
+
 def _rule_cumulative_fires(
     prawduct_dir: Path, project_dir: Path
 ) -> str:
@@ -281,7 +372,11 @@ def _rule_cumulative_fires(
     if commits_ahead < 2:
         return ""
 
-    # Skip if a cumulative-mode record already covers current HEAD.
+    # Skip if a record that satisfies the PR gate already covers current
+    # HEAD: a cumulative-mode record, or a chain record (verify-resolutions
+    # with an extends_cumulative anchor — CRT-4J8W). Without the chain arm,
+    # no-args /prawduct:critic right after a successful chain pass would
+    # recommend a pointless full cumulative.
     head_sha = _git_head_sha(project_dir)
     findings_path = prawduct_dir / ".critic-findings.json"
     if head_sha and findings_path.is_file():
@@ -289,9 +384,12 @@ def _rule_cumulative_fires(
             data = json.loads(findings_path.read_text())
         except (json.JSONDecodeError, OSError):
             data = {}
-        if (
+        if data.get("commit_reviewed") == head_sha and (
             data.get("mode") == _MODE_CUMULATIVE_VERBOSE
-            and data.get("commit_reviewed") == head_sha
+            or (
+                data.get("mode") == _MODE_VERIFY_RESOLUTIONS_VERBOSE
+                and _chain_extendable_anchor(data) is not None
+            )
         ):
             return ""
 
@@ -374,6 +472,20 @@ def _get_uncommitted_code_files(project_dir: Path) -> set[str]:
         if path and not _is_metadata_path(path):
             files.add(path)
     return files
+
+
+def _committed_files_since(project_dir: Path, sha: str) -> set[str]:
+    """Files changed in ``<sha>..HEAD`` (committed delta). ``set()`` on failure."""
+    proc = subprocess.run(
+        ["git", "diff", "--name-only", f"{sha}..HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if proc.returncode != 0:
+        return set()
+    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
 
 
 def _commit_resolves(project_dir: Path, sha: str) -> bool:

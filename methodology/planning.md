@@ -44,7 +44,7 @@ Between phases, review what you've produced. Apply the review perspectives (Prod
 
 ### Where Artifacts Live
 
-Write all generated artifacts to `.prawduct/artifacts/`. This is the canonical location — the Critic reads from it and the build cycle references it. The stop hook triggers the Critic review gate when it detects `artifacts/build-plan.md`.
+Write all generated artifacts to `.prawduct/artifacts/`. This is the canonical location — the Critic reads from it and the build cycle references it. The stop hook triggers the Critic review gate when it detects the active build plan (the `active_build_plan` pointer; default `artifacts/build-plan.md`).
 
 Name files by artifact type: `product-brief.md`, `data-model.md`, `build-plan.md`, etc. For onboarded projects that already have specifications elsewhere, those can stay — but Prawduct-generated artifacts go in `.prawduct/artifacts/`.
 
@@ -57,6 +57,8 @@ If an artifact is genuinely not applicable (e.g., API contract for a product wit
 ## Build Planning
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
+
+**Plan lifecycle on gitflow.** When authoring a new plan while the prior plan's work is merged-but-unreleased (gitflow: feature merged to `develop`, the `develop→main` release pending), leave `active_build_plan` pointing at the pending plan until the release ships — the release flips its change-log entries to `shipped` and regenerates its Status. Write the new plan under a scope-named file (`build-plan-<scope>.md`) and repoint only after the release (see `/prawduct:pr` step 7). Build plans are tracked artifacts — commit them.
 
 ### Requirements Confidence
 

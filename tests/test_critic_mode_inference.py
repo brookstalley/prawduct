@@ -95,8 +95,13 @@ def _write_findings(
     files_reviewed: list[str] | None = None,
     severity: str = "blocking",
     include_finding: bool = True,
+    extends_cumulative: str | None = None,
 ) -> None:
-    """Write a ``.critic-findings.json`` for inference rule fixtures."""
+    """Write a ``.critic-findings.json`` for inference rule fixtures.
+
+    ``extends_cumulative`` is the CRT-4J8W chain-anchor SHA; when given it is
+    wrapped in the persisted ``{"commit_reviewed": <sha>}`` dict form.
+    """
     data: dict = {
         "files_reviewed": files_reviewed or ["src/app.py"],
         "findings": (
@@ -109,6 +114,8 @@ def _write_findings(
     }
     if commit_reviewed is not None:
         data["commit_reviewed"] = commit_reviewed
+    if extends_cumulative is not None:
+        data["extends_cumulative"] = {"commit_reviewed": extends_cumulative}
     prawduct.mkdir(parents=True, exist_ok=True)
     (prawduct / ".critic-findings.json").write_text(json.dumps(data))
 
@@ -341,6 +348,131 @@ class TestRule1VerifyResolutions:
 # ---------------------------------------------------------------------------
 
 
+class TestRule1bPostfixChain:
+    """Rule 1b (CRT-4J8W): a committed non-doc delta after a chain-extendable
+    review (cumulative, or a chain record propagating its anchor) infers
+    ``verify-resolutions`` — the chain pass that extends the cumulative to
+    HEAD — instead of falling through to rule 2's full bundle re-review.
+    """
+
+    def _chain_repo(self, repo: Path) -> str:
+        """main + feature branch ≥2 ahead; returns the cumulative-anchor SHA
+        (HEAD at "review time"), BEFORE the post-review fix is committed."""
+        _init_repo(repo)
+        _write(repo, "README.md", "x\n")
+        _commit(repo, "initial")
+        _checkout_new_branch(repo, "feature/work")
+        _write(repo, "src/a.py", "# a\n")
+        _commit(repo, "feat: a")
+        _write(repo, "src/b.py", "# b\n")
+        return _commit(repo, "feat: b")
+
+    def test_fires_for_committed_fix_after_clean_cumulative(self, tmp_path: Path):
+        reviewed = self._chain_repo(tmp_path)
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=reviewed,
+            files_reviewed=["src/a.py", "src/b.py"],
+            include_finding=False,  # clean cumulative
+        )
+        _write(tmp_path, "src/a.py", "# a fixed\n")
+        _commit(tmp_path, "fix: post-cumulative")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "verify-resolutions"
+        assert rationale.startswith("rule-1b verify-resolutions (chain):")
+
+    def test_takes_precedence_over_rule_2_cumulative(self, tmp_path: Path):
+        # Same state satisfies rule 2's win condition (clean tree, ≥2 ahead,
+        # no cumulative record at HEAD) — 1b must win or the no-args flow
+        # re-pays a full bundle review for every post-cumulative fix.
+        reviewed = self._chain_repo(tmp_path)
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=reviewed,
+            files_reviewed=["src/a.py", "src/b.py"],
+            severity="warning",
+        )
+        _write(tmp_path, "src/a.py", "# a fixed\n")
+        _commit(tmp_path, "fix: post-cumulative")
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode == "verify-resolutions"
+
+    def test_fires_for_chain_record_prior(self, tmp_path: Path):
+        # Multi-link: the prior record is itself a chain record; a second
+        # committed fix still infers a verify pass.
+        anchor = self._chain_repo(tmp_path)
+        _write(tmp_path, "src/a.py", "# a fixed\n")
+        verify_head = _commit(tmp_path, "fix: round 1")
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="verify-resolutions (delta review, prior findings only)",
+            commit_reviewed=verify_head,
+            files_reviewed=["src/a.py", "src/b.py"],
+            include_finding=False,
+            extends_cumulative=anchor,
+        )
+        _write(tmp_path, "src/b.py", "# b fixed\n")
+        _commit(tmp_path, "fix: round 2")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "verify-resolutions"
+        assert rationale.startswith("rule-1b")
+
+    def test_does_not_fire_for_non_chain_prior(self, tmp_path: Path):
+        # A chunk-mode prior is not chain-extendable → rule 2 takes over.
+        reviewed = self._chain_repo(tmp_path)
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=reviewed,  # default mode: chunk
+            files_reviewed=["src/a.py", "src/b.py"],
+            include_finding=False,
+        )
+        _write(tmp_path, "src/a.py", "# a fixed\n")
+        _commit(tmp_path, "fix: post-chunk-review")
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode == "cumulative"
+
+    def test_does_not_fire_for_doc_only_delta(self, tmp_path: Path):
+        # All-.md delta: the existing record already covers HEAD under the
+        # gate's doc-only allowance — no review to recommend from 1b.
+        reviewed = self._chain_repo(tmp_path)
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=reviewed,
+            files_reviewed=["src/a.py", "src/b.py"],
+            include_finding=False,
+        )
+        _write(tmp_path, "docs.md", "# d\n")
+        _commit(tmp_path, "docs: after review")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert not rationale.startswith("rule-1b"), rationale
+
+    def test_does_not_fire_when_delta_widens_past_threshold(self, tmp_path: Path):
+        # prior surface 1 file → threshold 2*1+5 = 7; 8 changed files would
+        # demote inside the verify pass, so 1b must not recommend it.
+        reviewed = self._chain_repo(tmp_path)
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=reviewed,
+            files_reviewed=["src/a.py"],
+            include_finding=False,
+        )
+        for i in range(8):
+            _write(tmp_path, f"src/new{i}.py", f"# {i}\n")
+        _commit(tmp_path, "feat: wide new work")
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode == "cumulative"
+
+
 class TestRule2Cumulative:
     """Cumulative wins when working tree is clean AND branch is ≥2
     commits ahead of base AND no fresh cumulative-mode findings record
@@ -424,6 +556,33 @@ class TestRule2Cumulative:
         assert mode != "cumulative"
         # No active plan + no uncommitted code → rule-4 fail-safe → final
         assert mode == "final"
+
+    def test_does_not_fire_when_chain_record_covers_head(self, tmp_path: Path):
+        """A chain record (verify-resolutions + extends_cumulative) at HEAD
+        satisfies the PR gate (CRT-4J8W) — re-firing cumulative right after
+        a successful chain pass would be the pointless review the chain
+        exists to avoid."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feature/work")
+        _write(tmp_path, "src/a.py", "# a\n")
+        anchor = _commit(tmp_path, "feat: a")
+        _write(tmp_path, "src/b.py", "# b\n")
+        head_sha = _commit(tmp_path, "fix: b")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="verify-resolutions (delta review, prior findings only)",
+            commit_reviewed=head_sha,
+            files_reviewed=["src/a.py", "src/b.py"],
+            include_finding=False,
+            extends_cumulative=anchor,
+        )
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode != "cumulative"
+        assert mode == "final"  # no plan, clean tree → rule-4 fail-safe
 
     def test_does_not_fire_when_no_base_branch(self, tmp_path: Path):
         """Detached/orphan branch without main/master/develop → cumulative
@@ -744,6 +903,7 @@ class TestRationaleFormat:
         "expected_prefix,setup",
         [
             ("rule-1 verify-resolutions:", "verify_resolutions"),
+            ("rule-1b verify-resolutions (chain):", "postfix_chain"),
             ("rule-2 cumulative:", "cumulative"),
             ("rule-3 final:", "final"),
             ("rule-4 chunk:", "chunk_default"),
@@ -752,6 +912,24 @@ class TestRationaleFormat:
     def test_rationale_starts_with_rule_identifier(
         self, tmp_path: Path, expected_prefix: str, setup: str
     ):
+        if setup == "postfix_chain":
+            _init_repo(tmp_path)
+            _write(tmp_path, "README.md", "x\n")
+            _commit(tmp_path, "initial")
+            _checkout_new_branch(tmp_path, "feature/work")
+            _write(tmp_path, "src/a.py", "# a\n")
+            _commit(tmp_path, "feat: a")
+            _write(tmp_path, "src/b.py", "# b\n")
+            reviewed = _commit(tmp_path, "feat: b")
+            _write_findings(
+                tmp_path / ".prawduct",
+                mode="cumulative (bundle review, ready for merge)",
+                commit_reviewed=reviewed,
+                files_reviewed=["src/a.py", "src/b.py"],
+                include_finding=False,
+            )
+            _write(tmp_path, "src/a.py", "# fixed\n")
+            _commit(tmp_path, "fix: post-cumulative")
         if setup == "verify_resolutions":
             _init_repo(tmp_path)
             _write(tmp_path, "src/app.py", "# v1\n")
@@ -920,6 +1098,64 @@ class TestValidatorAcceptsModeChosenBy:
         path = self._write_findings(
             tmp_path / "findings.json",
             mode_chosen_by=42,
+        )
+        assert self.mod.validate_critic_findings(path) is False
+
+
+class TestValidatorExtendsCumulative:
+    """``validate_critic_findings`` must accept the optional CRT-4J8W
+    ``extends_cumulative`` chain anchor and reject malformed shapes —
+    a malformed anchor would silently break the chain check at the PR
+    gate, so writer drift fails at validation."""
+
+    @pytest.fixture(autouse=True)
+    def _module(self):
+        from lib import gates  # noqa: PLC0415
+
+        self.mod = gates
+
+    def _write_findings(self, path: Path, **overrides) -> Path:
+        data = {
+            "files_reviewed": ["bin/prawduct-hook"],
+            "findings": [],
+            "summary": "No issues.",
+        }
+        data.update(overrides)
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_accepts_valid_anchor_dict(self, tmp_path: Path):
+        path = self._write_findings(
+            tmp_path / "findings.json",
+            extends_cumulative={"commit_reviewed": "a" * 40},
+        )
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_accepts_absent_field(self, tmp_path: Path):
+        path = self._write_findings(tmp_path / "findings.json")
+        assert self.mod.validate_critic_findings(path) is True
+
+    def test_accepts_null_field(self, tmp_path: Path):
+        path = self._write_findings(
+            tmp_path / "findings.json", extends_cumulative=None
+        )
+        assert self.mod.validate_critic_findings(path) is True
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "a" * 40,                       # bare string, not the dict form
+            {},                              # missing commit_reviewed
+            {"commit_reviewed": ""},         # empty anchor
+            {"commit_reviewed": "   "},      # whitespace anchor
+            {"commit_reviewed": 42},         # non-string anchor
+            {"commit_reviewed": None},       # null anchor
+            ["a" * 40],                      # wrong container type
+        ],
+    )
+    def test_rejects_malformed_shapes(self, tmp_path: Path, bad):
+        path = self._write_findings(
+            tmp_path / "findings.json", extends_cumulative=bad
         )
         assert self.mod.validate_critic_findings(path) is False
 
@@ -1109,3 +1345,63 @@ class TestBranchProgressCRT7B4M:
         _write(tmp_path, "src/wip.py", "# wip\n")  # chunk 02 in progress
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "chunk", rationale
+
+
+# ---------------------------------------------------------------------------
+# CRT-4J8W chain-anchor parity — gates vs critic_mode mirrors
+# ---------------------------------------------------------------------------
+
+
+class TestChainAnchorParity:
+    """``lib.gates._chain_anchor`` and ``lib.critic_mode._chain_extendable_anchor``
+    are deliberate mirrors (importing ``gates`` from ``critic_mode`` would widen
+    the slash-command shim's import surface), and the "kept in lockstep" comments
+    alone don't enforce it — every other mirror in this repo is test-pinned.
+    Drift would desync what inference *recommends* (a chain verify pass) from
+    what the PR gate *accepts* (the chain record) — a governance-soundness
+    divergence flagged by the 2026-06-10 cumulative review (warning 2)."""
+
+    _CUM = "cumulative (bundle review, ready for merge)"
+    _VER = "verify-resolutions (delta review, prior findings only)"
+    _A, _B = "a" * 40, "b" * 40
+
+    RECORD_SHAPES = [
+        {},
+        {"mode": _CUM, "commit_reviewed": _A},
+        {"mode": _CUM},
+        {"mode": _CUM, "commit_reviewed": "   "},
+        {"mode": _CUM, "commit_reviewed": 42},
+        {"mode": _VER, "commit_reviewed": _A},
+        {"mode": _VER, "commit_reviewed": _A,
+         "extends_cumulative": {"commit_reviewed": _B}},
+        {"mode": _VER, "commit_reviewed": _A,
+         "extends_cumulative": {"commit_reviewed": ""}},
+        {"mode": _VER, "commit_reviewed": _A,
+         "extends_cumulative": {"commit_reviewed": None}},
+        {"mode": _VER, "commit_reviewed": _A, "extends_cumulative": _B},
+        {"mode": _VER, "commit_reviewed": _A, "extends_cumulative": None},
+        {"mode": _VER, "extends_cumulative": {"commit_reviewed": _B}},
+        {"mode": "chunk (lighter pass, not ready for push)", "commit_reviewed": _A},
+        {"mode": "final (full review, ready for push)", "commit_reviewed": _A},
+    ]
+
+    def test_helpers_agree_on_every_record_shape(self):
+        from lib import critic_mode, gates  # noqa: PLC0415
+
+        for record in self.RECORD_SHAPES:
+            assert (
+                gates._chain_anchor(record)
+                == critic_mode._chain_extendable_anchor(record)
+            ), f"mirror drift on record shape: {record!r}"
+
+    def test_verbose_mode_constants_in_lockstep(self):
+        from lib import critic_mode, gates  # noqa: PLC0415
+
+        assert (
+            gates._CRITIC_MODE_CUMULATIVE
+            == critic_mode._MODE_CUMULATIVE_VERBOSE
+        )
+        assert (
+            gates._CRITIC_MODE_VERIFY_RESOLUTIONS
+            == critic_mode._MODE_VERIFY_RESOLUTIONS_VERBOSE
+        )

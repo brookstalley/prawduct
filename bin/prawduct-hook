@@ -280,7 +280,10 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.gates-waived",
     ".prawduct/.advisories.json",
     ".prawduct/reflections.md",
-    ".prawduct/artifacts/build-plan.md",
+    # NOTE: .prawduct/artifacts/build-plan.md is deliberately NOT here —
+    # build plans are tracked artifacts (gate-soundness ch.3); this loop
+    # used to force-untrack them at every session start, reverting any
+    # product that tracked its plan.
 )
 
 
@@ -1014,6 +1017,22 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``).
+
+    Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
+    one-repo-shape assumption that forced products (scriob) into wrapper
+    scripts:
+
+    * ``test_command:`` — the project's canonical suite invocation, run
+      shlex-split from the repo root instead of ``sys.executable -m pytest``
+      (whose interpreter cannot import a uv/venv-managed product package). It
+      MUST contain a ``{junit_xml}`` literal; the hook substitutes its report
+      path there. Shell operators are not supported — point the command at a
+      script for compound invocations. Extra CLI pytest args are rejected when
+      the knob is set — the declared command IS the invocation (scriob's "run
+      the exact command CI runs" learning, made structural).
+    * ``tests_dirs:`` — whitespace-separated test trees (default ``tests``),
+      forwarded to the F4a overlay as repeated ``--tests-dir`` so one verifier
+      run covers a monorepo's components.
     """
     import tempfile  # noqa: PLC0415 — only this command needs them
     import xml.etree.ElementTree as ET  # noqa: PLC0415
@@ -1030,6 +1049,30 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     prawduct_dir = get_prawduct_dir(project_dir)
     evidence_path = prawduct_dir / ".test-evidence.json"
+    state_path = prawduct_dir / "project-state.yaml"
+
+    test_command = _read_str_yaml_key(state_path, "test_command")
+    tests_dirs_raw = _read_str_yaml_key(state_path, "tests_dirs")
+    tests_dirs = tests_dirs_raw.split() if tests_dirs_raw else []
+
+    if test_command:
+        if extra:
+            print(
+                "error: extra pytest args are not allowed when "
+                "project-state.yaml declares test_command — the declared "
+                "command IS the canonical invocation. Edit test_command "
+                "instead.",
+                file=sys.stderr,
+            )
+            return 2
+        if "{junit_xml}" not in test_command:
+            print(
+                "error: test_command must contain the {junit_xml} placeholder "
+                "(the hook substitutes its JUnit XML report path there, e.g. "
+                "test_command: uv run pytest --junit-xml={junit_xml} -q).",
+                file=sys.stderr,
+            )
+            return 2
 
     # Run the suite with a JUnit XML report — built into pytest (no plugin) and
     # parse-robust where the terminal summary line is not (xdist, warnings, and
@@ -1037,9 +1080,33 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
     os.close(fd)
     junit = Path(junit_name)
-    cmd = [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *extra]
     try:
-        proc = subprocess.run(cmd, cwd=str(project_dir))
+        if test_command:
+            # shlex list-form, not shell=True (injection surface; banned by
+            # tests/preferences). Wrappers like `uv run pytest …` split fine;
+            # compound invocations (&&, pipes, env vars) belong in a script
+            # the command points at. Split BEFORE substituting so a report
+            # path containing spaces/quotes lands as one intact token.
+            import shlex  # noqa: PLC0415 — only this branch needs it
+            run_argv = [
+                tok.replace("{junit_xml}", str(junit))
+                for tok in shlex.split(test_command)
+            ]
+            try:
+                proc = subprocess.run(run_argv, cwd=str(project_dir))
+            except FileNotFoundError:
+                print(
+                    f"error: test_command executable not found: {run_argv[0]!r} "
+                    "— check the test_command in project-state.yaml.",
+                    file=sys.stderr,
+                )
+                return 2
+        else:
+            cmd = [
+                sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q",
+                *extra,
+            ]
+            proc = subprocess.run(cmd, cwd=str(project_dir))
         try:
             root = ET.parse(junit).getroot()
         except (ET.ParseError, OSError) as exc:
@@ -1054,18 +1121,24 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         except OSError:
             pass
 
-    suite = root if root.tag == "testsuite" else root.find("testsuite")
-    if suite is None:
+    # Aggregate across ALL top-level <testsuite> elements, not just the first:
+    # pytest emits one, but `test_command` invites arbitrary runners
+    # (jest-junit, go-junit-report, merged CI reports) whose <testsuites>
+    # roots carry many — reading only the first silently undercounted the
+    # evidence the freshness and Critic gates trust. Direct children only
+    # (not iter()) so Ant-style nested suites aren't double-counted.
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    if not suites:
         print(
-            "error: pytest produced no <testsuite> (no tests collected?)",
+            "error: the test run produced no <testsuite> (no tests collected?)",
             file=sys.stderr,
         )
         return 2
-    total = int(suite.get("tests", "0"))
-    failures = int(suite.get("failures", "0"))
-    errors = int(suite.get("errors", "0"))
-    skipped = int(suite.get("skipped", "0"))
-    duration = float(suite.get("time", "0") or "0")
+    total = sum(int(s.get("tests", "0")) for s in suites)
+    failures = sum(int(s.get("failures", "0")) for s in suites)
+    errors = sum(int(s.get("errors", "0")) for s in suites)
+    skipped = sum(int(s.get("skipped", "0")) for s in suites)
+    duration = sum(float(s.get("time", "0") or "0") for s in suites)
     passed = total - failures - errors - skipped
     failed = failures + errors
 
@@ -1084,7 +1157,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     record = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "git_sha": git_sha,
-        "command": " ".join(["python3 -m pytest -q", *extra]).strip(),
+        "command": (
+            test_command
+            if test_command
+            else " ".join(["python3 -m pytest -q", *extra]).strip()
+        ),
         "passed": passed,
         "failed": failed,
         "skipped": skipped,
@@ -1093,6 +1170,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         "coverage_level": "referenced",
         "tests_executed": [],
         "changes_referenced": [],
+        "changes_unjudged": [],
     }
     # Atomic write — the freshness gate must never observe a half-written file.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
@@ -1113,6 +1191,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             "--repo",
             str(project_dir),
         ]
+        for tests_dir in tests_dirs:
+            merge_cmd += ["--tests-dir", tests_dir]
         if base:
             merge_cmd += ["--base", base]
         mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)
@@ -1676,6 +1756,40 @@ def cmd_init_product(argv: list[str]) -> int:
     return init_product.run(argv)
 
 
+def cmd_update_gitignore(project_dir: Path) -> int:
+    """Reconcile ``.gitignore`` with the framework's session-file contract
+    (``/prawduct:doctor`` repair step — gate-soundness ch.3).
+
+    Adds missing session entries and strips lines that ignore managed files or
+    RETIRED entries (the tracked-by-default build plan). ``init-product``
+    early-exits on an already-scaffolded repo and the session hooks must never
+    edit a tracked file (the no-noise guarantee), so this on-demand command is
+    how an existing repo picks up gitignore-contract changes. Prints each
+    unignored path so the caller can advise ``git add``.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import core as lib_core  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "update-gitignore unavailable (could not import the plugin lib/ "
+            "from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    result = lib_core.update_gitignore(project_dir)
+    if result.get("unignored"):
+        for path in result["unignored"]:
+            print(f"unignored: {path} — now tracked-by-contract; `git add` it if present")
+    print("updated .gitignore" if result.get("modified") else "no changes needed")
+    return 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -1810,6 +1924,7 @@ _USAGE = (
     "check-pr-doc-only|regen-views|infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
+    "update-gitignore|"
     "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -1982,6 +2097,8 @@ def main() -> int:
         return cmd_migrate_plugin(project_dir, sys.argv[2:])
     elif command == "init-product":
         return cmd_init_product(sys.argv[2:])
+    elif command == "update-gitignore":
+        return cmd_update_gitignore(project_dir)
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
     elif command == "repo-disable":

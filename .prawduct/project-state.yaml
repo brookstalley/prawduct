@@ -477,9 +477,9 @@ views_enabled: true
 # (2026-06-08). v2.0.17 (2026-06-08) shipped two fixes — retire-pr-trivial-fast-path
 # (#84) and legacy-backlog-format-probe (#85); regen-views flipped each plan's
 # ## Status checkboxes to [x] via its scope= change-log tag (REL-4T8N). No
-# release-pending plans remain — the pointer is cleared (unset → falls back to
-# artifacts/build-plan.md). The next in-progress plan sets it again.
-active_build_plan:
+# release-pending plans remained after v2.0.17, so the pointer was cleared;
+# 2026-06-10 repointed it at the in-progress gate-soundness plan.
+active_build_plan: artifacts/build-plan-gate-soundness.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

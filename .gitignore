@@ -20,7 +20,6 @@ __pycache__/
 # Work-model vocabulary index — derived per-repo state, rebuilt from artifacts
 # each session (hooks build-index / user-prompt-submit). Ephemeral, gitignored.
 .prawduct/.work-model-index.json
-.prawduct/artifacts/build-plan.md
 
 # Prawduct session files
 .prawduct/.advisories.json

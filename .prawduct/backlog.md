@@ -8,6 +8,46 @@
 ## Open
 
 
+- **[TEL-7A4X]** Cross-project review-telemetry aggregation — aggregate and review review-cost/value stats across all Prawduct-governed products
+  `effort: M · impact: L · area: governance/telemetry · source: user · added: 2026-06-10 · status: open · stage: requirements · refs: build-plan-review-proportionality.md`
+
+  Builds on the per-project foundation in `build-plan-review-proportionality.md` (chunk 02 ledger
+  `.prawduct/.critic-reviews.jsonl` with schema_version/model fields; chunk 03 `prawduct-hook
+  review-stats --json` stable machine shape with top-level schema_version/project/generated_at —
+  that JSON contract is the integration point). Fix-shape sketch (requirements still open): an
+  aggregator that scans known product directories (the same discovery the "reviewing product
+  feedback" CLAUDE.md route uses for learnings.md), collects each repo's `review-stats --json`, and
+  renders a cross-project view: review wall-clock and actionable-finding rate by mode/model/project,
+  so proportionality tuning (e.g. which products' chunk reviews yield nothing, where escalation
+  pays) is evidence-driven framework-wide. Open requirements: where the aggregate view lives (skill
+  vs doc vs janitor section), product opt-in/privacy posture (ledgers are gitignored local state),
+  and whether product plugin versions skew comparability. **Blocked until review-proportionality
+  chunks 02–03 ship.** User request 2026-06-10 ("grab a backlog to enable telemetry aggregation and
+  review across projects"). (user)
+
+- **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
+  `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end)`
+
+  During the 2026-06-10 gate-soundness cumulative review, a coordinator-pattern subagent ran the
+  affected test files directly (217 passed, reported in the review summary) despite the SKILL prose
+  instruction and the pure-allow tool list — which doesn't bind Agent-dispatched subagents. Same gap
+  class as CRT-3X9D, whose critic-begin marker guards only `prawduct-hook clear`. The review
+  conclusion was unaffected, but the boundary exists so reviews can't mutate or depend on session
+  state. Fix-shape: extend the critic-active marker enforcement (or subagent tool restriction) to
+  test/build execution, or have the coordinator pass an enforced `allowed-tools` to Agent
+  dispatches. Priority P2. (reflection)
+
+- **[TST-3E8V]** `cmd_test_evidence` catches only FileNotFoundError for a declared test_command — widen to OSError
+  `effort: S · impact: S · area: tests/runtime · source: critic · added: 2026-06-10 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_test_evidence), tests/test_plugin_runtime.py (TestTestEvidenceKnobs)`
+
+  `cmd_test_evidence` wraps the declared `test_command` launch in `except FileNotFoundError` only,
+  so a *missing* executable gets the clean exit-2 path but a *non-executable* target raises
+  PermissionError and tracebacks instead. Fix-shape: widen the except to `OSError`
+  (FileNotFoundError and PermissionError are both subclasses) so any OS-level launch failure takes
+  the same clean exit-2 path; add a non-executable-target case alongside the existing
+  `TestTestEvidenceKnobs` coverage. Filed from the cumulative Critic NOTE on the gate-soundness
+  bundle, 2026-06-10. (critic)
+
 - **[REL-6C3W]** Flag a code-changing branch that merges with no change-log entry
   `effort: M · impact: M · area: release/change-log · source: reflection · added: 2026-06-08 · status: open · related: REL-2N8K · refs: docs/release-process.md`
 
@@ -342,9 +382,20 @@
   Discodon archive (Feb–Apr 2026) has 4 confirmed cases where Critic misread code: Mar 24 shutdown event closure, Mar 25 eval doc merge (3 of 4 prior findings false), Mar 28 ARIA A1/A2 missed an existing `model_config = ConfigDict(str_strip_whitespace=False)` override, plus branch-switching confusion. Root cause: `context: fork` can't see overrides spanning files / inheritance / closures. Investigate whether Critic's research phase needs a wider read budget for inheritance chains, or whether prompt engineering can compensate. (reflection)
 
 - **[CRT-8D2W]** Critic-in-worktree as structural fix for session-file conflicts
-  `effort: L · impact: M · area: critic · source: reflection · added: 2026-03-25 · status: open · reviewed: 2026-05-29`
+  `effort: L · impact: M · area: critic · source: reflection · added: 2026-03-25 · status: open · reviewed: 2026-06-10 · related: CRT-3X9D`
 
   v1.3.3 gitignored build-plan.md and v1.3.4 added `_untrack_session_files()`, but the user explicitly suggested running Critic in a separate worktree to avoid touching session files in the active tree at all. Mar 25 discodon avatar_description session captured this when branch-switching during Critic review caused merge conflicts on `.session-handoff.md` and backlog. Worth designing as a follow-up to the gitignore approach. (reflection)
+
+  **Premise partially obsoleted — reassessed 2026-06-10:** the original motivation rested in part on
+  the build plan being a *gitignored* session file; gate-soundness ch.3 (feature/gate-soundness) made build
+  plans **tracked**, so that half of the conflict surface is gone. The residual rationale is
+  narrower: the remaining gitignored session files (`.session-handoff.md`, `.critic-findings.json`,
+  `.session-reflected`, …) plus the broader isolation argument — an independent reviewer should not
+  be able to mutate the session tree at all (the same invariant CRT-3X9D enforces at the mutation
+  site via the critic-begin/critic-end guard). Before any design work, re-derive the requirement
+  against the current tracked-build-plan + critic-session-guard reality; the worktree approach may
+  now be redundant defense-in-depth rather than a structural fix. (critic, gate-soundness cumulative
+  review note)
 
 - **[SYN-6J0R]** WIP tracking goes stale when branches merge piecemeal
   `effort: M · impact: M · area: sync · source: reflection · added: 2026-03-23 · status: open · reviewed: 2026-05-29`
@@ -375,6 +426,21 @@
   `effort: S · impact: S · area: backlog · source: builder · added: 2026-05-29 · status: open`
 
   Requirements §8.2. A convenience alias that forwards to the existing unified `/prawduct-advisory dismiss`. The unified command already works, so this is pure ergonomics — deferred until the alias's discoverability is worth the extra surface. (builder)
+
+- **[BLD-7W2J]** Single-slot `active_build_plan` vs parallel in-flight plans
+  `effort: M · impact: M · area: governance/planning · source: critic · added: 2026-06-10 · status: open · stage: idea · related: REL-4T8N · refs: lib/core.py (resolve_build_plan_path), methodology/planning.md`
+
+  Two concurrent feature branches (feature/review-fixes → `build-plan-review-fixes.md`,
+  feature/gate-soundness → `build-plan-gate-soundness.md`) each set the one `active_build_plan`
+  pointer in `project-state.yaml`, guaranteeing a same-line merge conflict on develop — after which
+  one plan is invisible to pointer-resolved governance (stop hook, `infer-critic-mode`,
+  `verify-chunk-refs`) until repointed. planning.md's new "Plan lifecycle on gitflow" paragraph
+  covers only the *serial* release-pending case; gate-soundness ch.3 (tracked plans) + scope-named
+  files make parallel plans more likely. Design work needed: model multi-plan state (e.g. a plan
+  list, or per-branch resolution) or document the parallel-branch convention. Related: REL-4T8N
+  solved the *release-side* multi-plan problem (regen-views enumerates change-log scopes instead of
+  the pointer) but the in-flight pointer remains single-slot. Filed from fable test-reviewer NOTE on
+  the gate-soundness bundle, 2026-06-10. (critic)
 
 ## Promoted
 
@@ -410,6 +476,35 @@
 
 ## Archive
 
+
+- **[CRT-4J8W]** P0 — review-phase wall clock: accept a cumulative + verify-resolutions CHAIN at the PR gate
+  `effort: M · impact: L · area: governance/gates · source: user · added: 2026-06-10 · status: shipped · closed-by: gate-soundness ch.05 (commits 9618c2b + 78fadaf) · reviewed: 2026-06-10 · stage: ready · related: CRT-7M2D · refs: lib/gates.py (check_cumulative_critic), skills/critic/SKILL.md, skills/critic/review-protocol.md, tests/test_cumulative_gate.py`
+
+  User escalation 2026-06-10: review phase ran 30+ min wall clock for ~5 min of work. Two cost
+  drivers: unit cost per review (fixed same day — reviewers default to model opus, ~4x faster per
+  the reviewer-model-ab-2026-06-10.md experiment) and the **re-review treadmill**: every non-.md fix
+  after a cumulative review re-stales `check-cumulative-critic` and costs a FULL bundle re-review
+  even when only 2 files changed. Structural fix (the option deferred in gate-soundness ch.4 as
+  "build if it recurs" — it recurred the same session):
+  1. When `/prawduct:critic verify-resolutions` runs while the existing `.critic-findings.json` is a
+     clean cumulative record, embed an `extends_cumulative: {commit_reviewed: <X>}` anchor in the
+     new record.
+  2. `check_cumulative_critic` accepts EITHER a HEAD-covering cumulative record (today's rule) OR a
+     chain: `mode=verify-resolutions`, 0 blocking, `commit_reviewed==HEAD`, `extends_cumulative`
+     present, AND files changed in `X..HEAD` ⊆ the record's `files_reviewed` (fail closed on any
+     gap, same as today).
+
+  Soundness argument: cumulative@X vouches for the bundle; a clean delta review whose scope covers
+  `X..HEAD` extends that vouching to HEAD — same shape as the existing doc-only allowance, with
+  scope verification. Surfaces: `lib/gates.py` (`check_cumulative_critic` + findings schema optional
+  field), `skills/critic/SKILL.md` + `review-protocol.md` (record the anchor),
+  `tests/test_cumulative_gate.py` (chain accept/reject cases incl. scope-gap fail-closed),
+  `methodology/building.md` + `skills/pr/SKILL.md` sequencing prose (update: the fix-after-cumulative
+  path becomes a cheap delta review, not a full re-run). Priority P0. Related: CRT-7M2D (the
+  coverage-not-mtime gate this extends — archived/shipped). (user)
+
+  — Shipped 2026-06-10 — Built as gate-soundness chunk 05 (commits 9618c2b + 78fadaf). Dogfooded on
+  its own PR bundle: the chain record satisfied `check-cumulative-critic` live.
 
 - **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
   `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: shipped · closed-by: retire-pr-trivial-fast-path · reviewed: 2026-06-08 · related: STH-1W5N, BLD-2R9X`

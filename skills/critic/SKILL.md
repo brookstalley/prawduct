@@ -3,6 +3,12 @@ description: Independent Critic review — quality governance for product and fr
 user-invocable: true
 disable-model-invocation: false
 context: fork
+# Reviewer tier: opus — the efficiency frontier in the 2026-06-10 A/B/C
+# experiment (.prawduct/artifacts/reviewer-model-ab-2026-06-10.md): ~4x faster
+# and ~40% cheaper than top-tier with strong novel-finding recall. Bump if
+# bundle-boundary misses recur (the experiment's n=1 showed the top tier
+# catching 2 warnings opus missed on a cumulative pass).
+model: opus
 allowed-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git branch --show-current), Bash(git for-each-ref *), Bash(wc *), Bash(prawduct-hook test-status), Bash(prawduct-hook verify-chunk-refs *), Bash(prawduct-hook infer-critic-mode *), Bash(prawduct-hook compute-verify-resolutions-scope), Bash(prawduct-hook resolve-base), Bash(prawduct-hook critic-begin), Bash(prawduct-hook critic-end), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---
@@ -51,5 +57,5 @@ That instruction is prose, and prose alone proved insufficient: coordinator suba
 4. Read `.prawduct/.test-evidence.json` for test results, then run `prawduct-hook test-status` to validate evidence is from this session (exit 1 = stale, raise as a WARNING in your review)
 5. Assess changes via `git diff` and reading changed files (use the merge-base diff for `cumulative`; for `verify-resolutions`, scope = prior findings' surface ∪ files-since-`commit_reviewed` — see `${CLAUDE_SKILL_DIR}/review-cycle.md`)
 6. Execute the review following the protocol (including framework-specific checks in `final` and `cumulative` modes; goals 1-3 only for `verify-resolutions`)
-7. Write findings to `.prawduct/.critic-findings.json` with the `mode` field set to the verbose string for your mode: `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, `"cumulative (bundle review, ready for merge)"`, or `"verify-resolutions (delta review, prior findings only)"`. Also include `mode_chosen_by` — the verbatim rationale from `infer-critic-mode`, or the literal string `"explicit-args"` when `$ARGUMENTS` overrode inference. For `verify-resolutions`, `files_reviewed` must be the computed scope union.
+7. Write findings to `.prawduct/.critic-findings.json` with the `mode` field set to the verbose string for your mode: `"chunk (lighter pass, not ready for push)"`, `"final (full review, ready for push)"`, `"cumulative (bundle review, ready for merge)"`, or `"verify-resolutions (delta review, prior findings only)"`. Also include `mode_chosen_by` — the verbatim rationale from `infer-critic-mode`, or the literal string `"explicit-args"` when `$ARGUMENTS` overrode inference. For `verify-resolutions`, `files_reviewed` must be the computed scope union, and when `compute-verify-resolutions-scope`'s reason line carries `extends-cumulative=<sha>`, also record `extends_cumulative: {"commit_reviewed": "<sha>"}` — the chain anchor that lets `check-cumulative-critic` accept this record at the PR gate (CRT-4J8W; see `${CLAUDE_SKILL_DIR}/review-cycle.md`).
 8. Run `prawduct-hook critic-end` to clear the critic-active marker now that the review is complete. (If you never reach this step — a crash or aborted review — the marker auto-expires after 30 min and is swept at the next session start, so a stale marker never permanently blocks `clear`.)

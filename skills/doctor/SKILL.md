@@ -3,7 +3,7 @@ description: Health-check, repair, and maintain an already-onboarded Prawduct re
 argument-hint: "[no args — runs in the product repo]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook audit-learnings *), Read, Glob
+allowed-tools: Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook audit-learnings *), Bash(prawduct-hook update-gitignore), Read, Glob
 ---
 
 You are managing prawduct product-repo health under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Every flow operates on the consumer's own repo: there is no framework checkout to call back to.
@@ -35,6 +35,7 @@ Plugin-native — read the consumer's OWN `.prawduct/` and `.claude/` with Read 
 5. **Core state present** — `.prawduct/` has `project-state.yaml`, `learnings.md`, `backlog.md`, `change-log.md`, and `artifacts/`.
 6. **Discovery captured** — if the repo shows product-definition work (source code, or markdown under `docs/`), `project-state.yaml` should have `classification` and `product_definition` filled, not template-default (`domain: null` / `vision: null`). Template-default state alongside real product work means discovery was skipped — the docs-first / brownfield onboarding gap the **DISCOVERY NOT CAPTURED** session-briefing nudge also flags. Recommend **`/prawduct:discovery`** (reconciliation mode reads the existing docs/code and backfills `project-state.yaml`). A repo with no product work yet is fine — discovery comes when building starts.
 7. **External backlog files** — if `TODO.md` / `BACKLOG.md` / `ROADMAP.md` / `IDEAS.md` exist in the repo root or `.github/` and aren't recorded in `backlog_external_imports`, report them and recommend **`/prawduct:backlog import <path>`** (don't auto-import — the user confirms). This is the explicit health-check surface for the same signal the `external-backlog-detected` session-start advisory raises ambiently; both resolve on `backlog_external_imports`.
+8. **Gitignore contract** — `.gitignore` should carry the session-file entries and must NOT ignore retired entries (`.prawduct/artifacts/build-plan.md` — build plans are tracked artifacts; an ignored plan plus the tracked `active_build_plan:` pointer breaks every other clone). Stale line present or session entries missing → run `prawduct-hook update-gitignore` (it prints any `unignored:` paths — advise `git add` on those that exist on disk).
 
 Classify and report:
 - **healthy**: install reference + `distribution: plugin` + no residue + core state present + discovery captured (or no product work yet) → "Your prawduct plugin setup is healthy."
@@ -46,7 +47,7 @@ Classify and report:
 Plugin-native — enabling a gate is a `project-state.yaml` flag flip (no migrate subcommand, no sync). This skill **reads and guides**; it does not edit `project-state.yaml`. Read the current value first, confirm intent (surface the BLOCKING consequence), then present the exact one-line edit for the user (or the main session) to apply.
 
 ### Coverage (F4 — symbol-coverage enforcement)
-Set `coverage_required: true` in `.prawduct/project-state.yaml`. **Consequence:** the Critic's Goal 1 then BLOCKS on any changed file missing from `.test-evidence.json`'s `changes_referenced`. (`/prawduct:building` "Coverage Evidence" explains the evidence shape; `bin/test-reference-verify` is the Python symbol floor — stronger language-native tools give `coverage_level: executed`.)
+Set `coverage_required: true` in `.prawduct/project-state.yaml`. **Consequence:** the Critic's Goal 1 then BLOCKS on any changed file the verifier can judge that is missing from `.test-evidence.json`'s `changes_referenced` (unjudgeable files — non-code, symbol-less, deleted — land in `changes_unjudged` and are reported, not gated). (`/prawduct:building` "Coverage Evidence" explains the evidence shape; `bin/test-reference-verify` is the Python symbol floor — stronger language-native tools give `coverage_level: executed`.)
 
 ### Operator verification (F10 — pre-merge human-verification gate)
 Set `operator_verification_required: true` in `.prawduct/project-state.yaml`; entries accumulate in `.prawduct/operator-verification.md` as visual / live-integration chunks enqueue them. **Consequence:** `/prawduct:pr create` then BLOCKS while any entry's status is `pending`; the per-PR override is `/prawduct:pr create --accept-pending-verification "rationale"` (rationale recorded back into each entry).

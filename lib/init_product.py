@@ -205,8 +205,11 @@ def init_product(project_dir: str | Path, name: str, *, apply: bool = False) -> 
     # .gitignore — session files + the per-repo version marker.
     gitignore = project_dir / ".gitignore"
     gitignore_existed = gitignore.is_file()
+    unignored: list[str] = []
     if apply:
-        changed = bool(core.update_gitignore(project_dir).get("modified"))
+        gi_result = core.update_gitignore(project_dir)
+        changed = bool(gi_result.get("modified"))
+        unignored = list(gi_result.get("unignored") or [])
         changed = ensure_marker_gitignored(project_dir) or changed
         if changed:
             (edited if gitignore_existed else created).append(".gitignore")
@@ -231,6 +234,10 @@ def init_product(project_dir: str | Path, name: str, *, apply: bool = False) -> 
         "created": created,
         "edited": edited,
         "created_dirs": created_dirs,
+        # Paths whose stale ignore lines were stripped (managed files, retired
+        # entries like the tracked-by-default build plan — gate-soundness
+        # ch.3). The caller (onboard/doctor) should advise `git add` on these.
+        "unignored": unignored,
     }
 
 
@@ -288,6 +295,10 @@ def run(argv: list[str]) -> int:
         print(f"  {verb}      {f}")
     for f in result["edited"]:
         print(f"  {edit_verb}     {f}")
+    for f in result.get("unignored", []):
+        # Stale ignore lines stripped (managed files / retired entries like the
+        # tracked-by-default build plan) — the onboard skill advises `git add`.
+        print(f"  unignored   {f} — now tracked-by-contract; `git add` it if present")
     if not apply:
         print("\nDry run — re-run with --apply to write. Then open the target in a "
               "new Claude Code session for governance.")

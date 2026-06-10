@@ -81,7 +81,7 @@ Add observability alongside features, not after. If the observability strategy c
 
 **Verify.** Two layers:
 
-- *Code:* Run the full suite. First check `prawduct-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. After running tests, write `.prawduct/.test-evidence.json` with the timestamp and results.
+- *Code:* Run the full suite. First check `prawduct-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. Record via `prawduct-hook test-evidence record` (non-default suites: `test_command:`/`tests_dirs:`).
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -197,7 +197,7 @@ Tests are the most important artifact you produce during building. They're contr
 
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively — proportionality applies to strategies too.
 
-**Idiomatic tooling, honest coverage.** Use language-native incremental/cached runners to skip re-runs when nothing changed. The framework asserts the *contract* (every change appears in `.test-evidence.json`'s `changes_referenced`), not a specific verifier. `bin/test-reference-verify` is a **floor**: symbol-grep catches untested new code but cannot prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`; the Critic's `verify-coverage` scales finding language accordingly.
+**Idiomatic tooling, honest coverage.** Use language-native incremental/cached runners to skip re-runs when nothing changed. The framework asserts the *contract* (judged changes appear in `.test-evidence.json`'s `changes_referenced`; the rest in `changes_unjudged`, ungated), not a specific verifier. `bin/test-reference-verify` is a **floor**: symbol-grep catches untested new code but cannot prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`; the Critic's `verify-coverage` scales finding language accordingly.
 
 ## The Critic
 
@@ -236,7 +236,7 @@ Inference failure or unrecognized mode → `final`. See `skills/critic/review-cy
 
 Use `/prawduct:pr` for the full PR lifecycle. It invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/prawduct:pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open a PR without a blocking-free, HEAD-covering `cumulative` record. Cumulative diffs `merge-base...HEAD` — the full PR bundle — catching cross-chunk integration cracks per-chunk reviews miss. Run `/prawduct:critic cumulative` first; while it runs (~4-10 min), do prep that doesn't depend on findings (`/prawduct:learnings`, draft PR description, audit backlog, capture deferred reflections). This reorganizes wait time — it doesn't shorten it.
+**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — required: a blocking-free record vouching for HEAD — a `cumulative` record (diffs `merge-base...HEAD`, catching cracks per-chunk reviews miss) or a `verify-resolutions` chain record extending one (CRT-4J8W). Sequence: land every non-`.md` fix, run `/prawduct:critic cumulative` once; afterwards — fix, commit, `/prawduct:critic verify-resolutions` (the chain extends it to HEAD; no second full run). While it runs (~4-10 min), do findings-independent prep.
 
 See the plugin's bundled `skills/pr/review-protocol.md` for review criteria. After merge, `/prawduct:pr` cleans up the build plan. Without `/prawduct:pr`, do it manually.
 

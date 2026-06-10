@@ -12,6 +12,15 @@ cumulative-mode record whose ``commit_reviewed`` covers HEAD — meaning either
     forcing a full ``/prawduct:critic cumulative`` re-run. A doc-only delta now
     does NOT — coverage holds.
 
+CRT-4J8W extends the gate with the **chain** acceptance: a ``verify-resolutions``
+record carrying an ``extends_cumulative`` anchor X satisfies the gate iff it has
+0 BLOCKING findings, its own ``commit_reviewed`` covers HEAD, X resolves, and
+every non-``.md``, non-metadata file changed in ``X..HEAD`` is in the record's
+``files_reviewed`` — killing the remaining treadmill leg (a full bundle re-review
+after every post-cumulative code fix). The chain is a cheaper-path gate, so the
+reject cases here are the load-bearing coverage (learnings: a skip-gate needs the
+*most* adversarial coverage).
+
 These tests had no predecessor — the gate shipped (v1.4 F2) with zero direct
 coverage. Uses real ``git`` repos so ``rev-parse`` / ``diff`` behave as in
 production (mock-git would diverge on commit resolution and name-only diffs).
@@ -28,6 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "bin" / "prawduct-hook"
 CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
 CHUNK_MODE = "chunk (lighter pass, not ready for push)"
+VERIFY_MODE = "verify-resolutions (delta review, prior findings only)"
 
 
 # ---------------------------------------------------------------------------
@@ -83,11 +93,17 @@ def _write_findings(
     mode: str = CUMULATIVE_MODE,
     blocking: bool = False,
     include_commit: bool = True,
+    files_reviewed: list[str] | None = None,
+    extends_cumulative: str | None = None,
 ) -> None:
-    """Write an UNtracked ``.prawduct/.critic-findings.json`` for the gate."""
+    """Write an UNtracked ``.prawduct/.critic-findings.json`` for the gate.
+
+    ``extends_cumulative`` is the chain anchor SHA (CRT-4J8W); when given it
+    is wrapped in the persisted ``{"commit_reviewed": <sha>}`` dict form.
+    """
     data: dict = {
         "mode": mode,
-        "files_reviewed": ["app.py"],
+        "files_reviewed": files_reviewed if files_reviewed is not None else ["app.py"],
         "findings": (
             [{"goal": "Nothing Is Broken", "severity": "blocking", "summary": "boom"}]
             if blocking else []
@@ -96,6 +112,8 @@ def _write_findings(
     }
     if include_commit:
         data["commit_reviewed"] = commit_reviewed
+    if extends_cumulative is not None:
+        data["extends_cumulative"] = {"commit_reviewed": extends_cumulative}
     prawduct = repo / ".prawduct"
     prawduct.mkdir(parents=True, exist_ok=True)
     (prawduct / ".critic-findings.json").write_text(json.dumps(data))
@@ -195,6 +213,12 @@ def test_wrong_mode_fails(tmp_path):
     r = _run_gate(repo)
     assert r.returncode == 1
     assert "wrong-mode" in r.stderr
+    # Gate-soundness ch.4 + ch.5: the message teaches the sequencing rule that
+    # was previously only learnable by paying a full cumulative re-review —
+    # non-.md fixes land first, ONE cumulative, and post-cumulative fixes go
+    # through the verify-resolutions chain (CRT-4J8W), not a full re-run.
+    assert "verify-resolutions" in r.stderr
+    assert "non-.md" in r.stderr
 
 
 def test_missing_findings_file_fails(tmp_path):
@@ -205,3 +229,245 @@ def test_missing_findings_file_fails(tmp_path):
     r = _run_gate(repo)
     assert r.returncode == 1
     assert "missing" in r.stderr
+
+
+# ---------------------------------------------------------------------------
+# CRT-4J8W chain: the satisfying cases
+# ---------------------------------------------------------------------------
+
+
+def _chain_repo(tmp_path) -> tuple[Path, str, str]:
+    """Repo with the canonical chain shape: cumulative at X, fix committed
+    after, returning ``(repo, X, head)``."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    anchor = _commit_file(repo, "app.py", "print(1)\n", "bundle")  # cumulative @ X
+    head = _commit_file(repo, "core.py", "x = 2\n", "fix after cumulative")
+    return repo, anchor, head
+
+
+def test_chain_record_covering_head_passes(tmp_path):
+    # THE run-count fix: cumulative@X + committed fix + verify record at HEAD
+    # whose scope covers X..HEAD → gate satisfied, no full re-review.
+    repo, anchor, head = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 0, r.stderr
+    assert "satisfied" in r.stdout and "chain" in r.stdout
+    assert anchor[:12] in r.stdout
+
+
+def test_chain_with_doc_only_delta_after_verify_still_passes(tmp_path):
+    # The doc-only allowance applies to the chain's HEAD-coverage too:
+    # reflections/docs committed after the verify pass don't re-stale it.
+    repo, anchor, verify_head = _chain_repo(tmp_path)
+    _commit_file(repo, "README.md", "# docs\n", "docs after verify")
+    _write_findings(
+        repo, commit_reviewed=verify_head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 0, r.stderr
+    assert "satisfied" in r.stdout
+
+
+def test_chain_scope_check_ignores_md_and_metadata_paths(tmp_path):
+    # X..HEAD also contains a doc and a .prawduct metadata file that the
+    # verify scope (rightly) never listed — neither may break the chain,
+    # mirroring the gate's doc-only allowance and _is_metadata_path symmetry.
+    repo, anchor, _ = _chain_repo(tmp_path)
+    _commit_file(repo, "notes.md", "# n\n", "docs inside chain range")
+    head = _commit_file(repo, ".prawduct/project-state.yaml", "k: v\n", "state")
+    _write_findings(
+        repo, commit_reviewed=head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 0, r.stderr
+
+
+# ---------------------------------------------------------------------------
+# CRT-4J8W chain: the failing cases (fail-closed — a cheaper-path gate gets
+# the most adversarial coverage)
+# ---------------------------------------------------------------------------
+
+
+def test_chain_scope_gap_fails(tmp_path):
+    # A non-.md file changed since the extended cumulative but absent from
+    # the verify record's scope: the chain cannot vouch for unreviewed code.
+    repo, anchor, head = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=head, mode=VERIFY_MODE,
+        files_reviewed=["app.py"],  # core.py changed in X..HEAD but not reviewed
+        extends_cumulative=anchor,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "chain-scope-gap" in r.stderr and "core.py" in r.stderr
+
+
+def test_chain_unresolved_anchor_fails(tmp_path):
+    repo, _, head = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"], extends_cumulative="0" * 40,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "chain-unresolved-anchor" in r.stderr
+
+
+def test_chain_record_with_blocking_finding_fails(tmp_path):
+    # The verify pass re-emitted (or newly found) a BLOCKING — the chain
+    # never launders an unresolved blocker through the cheap path.
+    repo, anchor, head = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=head, mode=VERIFY_MODE, blocking=True,
+        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "blocking" in r.stderr
+
+
+def test_chain_stale_when_code_committed_after_verify_fails(tmp_path):
+    # Verify record anchored before the latest code commit (the classic
+    # sequencing mistake: reviewing the fix, THEN committing more code).
+    repo, anchor, verify_head = _chain_repo(tmp_path)
+    _commit_file(repo, "extra.py", "y = 3\n", "code after verify")
+    _write_findings(
+        repo, commit_reviewed=verify_head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py", "extra.py"],
+        extends_cumulative=anchor,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "chain-stale" in r.stderr
+    assert "commit" in r.stderr.lower()  # teaches: commit BEFORE verify
+
+
+def test_verify_record_without_anchor_fails_with_teaching_message(tmp_path):
+    # An anchor-less verify record still cannot certify the bundle — the
+    # message now teaches the chain sequence instead of a flat refusal.
+    repo, _, head = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"],
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "chain-missing-anchor" in r.stderr
+    assert "cumulative" in r.stderr
+
+
+def test_chain_record_with_malformed_anchor_fails_schema(tmp_path):
+    # extends_cumulative must be {"commit_reviewed": <non-empty str>} —
+    # writer drift fails schema validation, never half-evaluates the chain.
+    repo, anchor, head = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
+    )
+    findings_path = repo / ".prawduct" / ".critic-findings.json"
+    data = json.loads(findings_path.read_text())
+    data["extends_cumulative"] = {"commit_reviewed": ""}
+    findings_path.write_text(json.dumps(data))
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "invalid" in r.stderr
+
+
+# ---------------------------------------------------------------------------
+# CRT-4J8W scope helper: chain-anchor emission + demotion relaxation
+# ---------------------------------------------------------------------------
+
+
+def _scope(repo: Path) -> tuple[list[str], str]:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from lib.gates import _compute_verify_resolutions_scope
+
+    return _compute_verify_resolutions_scope(repo / ".prawduct", repo)
+
+
+def test_scope_reason_carries_anchor_for_cumulative_prior(tmp_path):
+    # Prior is a cumulative with a fix committed after: the ok-reason must
+    # name the anchor so the Critic embeds extends_cumulative.
+    repo, anchor, _ = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=anchor, mode=CUMULATIVE_MODE,
+        files_reviewed=["app.py"],
+    )
+    scope, reason = _scope(repo)
+    assert reason.startswith("ok:"), reason
+    assert f"extends-cumulative={anchor}" in reason
+    assert "core.py" in scope and "app.py" in scope
+
+
+def test_scope_clean_cumulative_prior_with_delta_no_longer_demotes(tmp_path):
+    # Pre-CRT-4J8W this returned no-actionable-findings; a chain-extendable
+    # prior with a reviewable delta is now a valid verify baseline.
+    repo, anchor, _ = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=anchor, mode=CUMULATIVE_MODE,
+        files_reviewed=["app.py"],  # clean record (no findings) by default
+    )
+    scope, reason = _scope(repo)
+    assert scope, reason
+
+
+def test_scope_anchor_propagates_through_chain_prior(tmp_path):
+    # Prior is itself a chain record: the ORIGINAL cumulative anchor is
+    # carried forward, not the intermediate verify commit.
+    repo, anchor, verify_head = _chain_repo(tmp_path)
+    _commit_file(repo, "extra.py", "y = 3\n", "second fix")
+    _write_findings(
+        repo, commit_reviewed=verify_head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
+    )
+    scope, reason = _scope(repo)
+    assert reason.startswith("ok:"), reason
+    assert f"extends-cumulative={anchor}" in reason
+    assert "extra.py" in scope
+
+
+def test_scope_clean_cumulative_prior_with_no_delta_still_demotes(tmp_path):
+    # Nothing to verify AND nothing to extend over — original demotion holds.
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    head = _commit_file(repo, "app.py", "print(1)\n", "init")
+    _write_findings(
+        repo, commit_reviewed=head, mode=CUMULATIVE_MODE, files_reviewed=["app.py"],
+    )
+    scope, reason = _scope(repo)
+    assert scope == []
+    assert "no-actionable-findings" in reason
+
+
+def test_scope_clean_non_chain_prior_still_demotes(tmp_path):
+    # A clean chunk/final prior is NOT chain-extendable — demotion unchanged.
+    repo, _, head = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=head, mode=CHUNK_MODE, files_reviewed=["app.py"],
+    )
+    scope, reason = _scope(repo)
+    assert scope == []
+    assert "no-actionable-findings" in reason
+
+
+def test_scope_no_anchor_in_reason_for_non_chain_prior(tmp_path):
+    # Actionable chunk-mode prior computes a scope but must NOT advertise a
+    # chain anchor — the Critic would otherwise embed a bogus one.
+    repo, _, head = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=head, mode=CHUNK_MODE, blocking=True,
+        files_reviewed=["app.py", "core.py"],
+    )
+    repo_file = repo / "app.py"
+    repo_file.write_text("print(2)\n")  # uncommitted fix in scope
+    scope, reason = _scope(repo)
+    assert reason.startswith("ok:"), reason
+    assert "extends-cumulative=" not in reason
