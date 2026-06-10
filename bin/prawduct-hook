@@ -1381,9 +1381,13 @@ def cmd_regen_views(project_dir: Path) -> int:
     # does NOT change the exit code or the flip rule (only status==shipped flips).
     try:
         change_log_text = (prawduct_dir / "change-log.md").read_text(encoding="utf-8")
-        for warning in views.validate_status_values(
-            views.parse_change_log(change_log_text)
-        ):
+        parsed_entries = views.parse_change_log(change_log_text)
+        for warning in views.validate_status_values(parsed_entries):
+            print(f"WARNING: {warning}", file=sys.stderr)
+        # Surface entries with multiple tag lines — parse_change_log unions
+        # them (VWS-4D8J) so the regen is correct, but the canonical format is
+        # one line per entry and conflicting scalars were kept first-wins.
+        for warning in views.validate_tag_line_multiplicity(parsed_entries):
             print(f"WARNING: {warning}", file=sys.stderr)
         # Surface release-pending (status=merged) scopes with no resolvable
         # build-plan file, and duplicate scopes across plan files — non-fatal

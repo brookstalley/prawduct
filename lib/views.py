@@ -56,6 +56,13 @@ class ChangeLogEntry:
     title: str
     tags: dict[str, object] = field(default_factory=dict)
     line_number: int = 0  # 1-indexed line of the H2 header
+    # How many `<!-- prawduct: ... -->` lines headed this entry. The canonical
+    # format is exactly one; >1 means the tags above are a union (VWS-4D8J) and
+    # validate_tag_line_multiplicity will warn.
+    tag_line_count: int = 0
+    # Scalar keys that appeared on a later tag line with a DIFFERENT value than
+    # an earlier one — first-wins, the losing value recorded here for the warning.
+    tag_conflicts: list[str] = field(default_factory=list)
 
     @property
     def shipped_chunks(self) -> list[str]:
@@ -92,12 +99,40 @@ def parse_tag_line(tag_body: str) -> dict[str, object]:
     return tags
 
 
+def _merge_tag_line(entry: ChangeLogEntry, new_tags: dict[str, object]) -> None:
+    """Merge a subsequent tag line's pairs into an entry, union semantics.
+
+    ``chunks`` lists are concatenated with order-preserving dedup; a key not
+    yet present is adopted; a scalar key already present with a *different*
+    value is first-wins, the ignored value recorded in ``tag_conflicts`` so
+    :func:`validate_tag_line_multiplicity` can surface it.
+    """
+    for k, v in new_tags.items():
+        if k not in entry.tags:
+            entry.tags[k] = v
+            continue
+        existing = entry.tags[k]
+        if k == "chunks" and isinstance(existing, list) and isinstance(v, list):
+            entry.tags[k] = existing + [c for c in v if c not in existing]
+        elif existing != v:
+            entry.tag_conflicts.append(f"{k}: kept {existing!r}, ignored {v!r}")
+
+
 def parse_change_log(content: str) -> list[ChangeLogEntry]:
     """Parse change-log markdown into a list of entries.
 
     An entry is ``## YYYY-MM-DD: title`` followed (after up to a few blank
-    lines) by ``<!-- prawduct: key=value | ... -->``. The tag line, if present,
-    must appear before the next non-blank content line under the H2.
+    lines) by ``<!-- prawduct: key=value | ... -->``. The tag block, if
+    present, must begin before the next non-blank content line under the H2.
+
+    The canonical format is ONE tag line per entry, but **all consecutive**
+    tag lines at the head of the body are consumed (blank lines between them
+    tolerated, the same leniency as before the first one) — the historical
+    first-line-only parse silently dropped the later lines' ``chunks=`` at
+    release time (VWS-4D8J). Multiple lines are unioned per
+    :func:`_merge_tag_line`, ``tag_line_count`` records how many were seen,
+    and :func:`validate_tag_line_multiplicity` warns on >1. A tag line after
+    intervening prose is still later body content, never entry metadata.
     """
     entries: list[ChangeLogEntry] = []
     lines = content.splitlines()
@@ -115,10 +150,16 @@ def parse_change_log(content: str) -> list[ChangeLogEntry]:
                 j += 1
                 continue
             tag_match = TAG_LINE_RE.search(lines[j])
-            if tag_match:
-                entry.tags = parse_tag_line(tag_match.group(1))
-            # First non-blank line settles the question — tag line or not.
-            break
+            if not tag_match:
+                # First non-blank non-tag line ends the tag block.
+                break
+            new_tags = parse_tag_line(tag_match.group(1))
+            entry.tag_line_count += 1
+            if entry.tag_line_count == 1:
+                entry.tags = new_tags
+            else:
+                _merge_tag_line(entry, new_tags)
+            j += 1
         entries.append(entry)
         i += 1
     return entries
@@ -151,6 +192,40 @@ def validate_status_values(entries: list[ChangeLogEntry]) -> list[str]:
                 f"{sorted(VALID_STATUS_VALUES)}; this entry will not flip any "
                 f"checkbox. Likely a typo."
             )
+    return warnings
+
+
+def validate_tag_line_multiplicity(entries: list[ChangeLogEntry]) -> list[str]:
+    """Return a warning string for each entry parsed from >1 tag line.
+
+    The canonical change-log format is one ``<!-- prawduct: ... -->`` line per
+    entry. :func:`parse_change_log` now unions consecutive tag lines rather
+    than silently dropping the later ones (VWS-4D8J — a second line's
+    ``chunks=`` nearly shipped unflipped at v2.1.0), but the union is a repair,
+    not a blessing: this pure helper (mirroring :func:`validate_status_values`)
+    surfaces each multi-tag entry as a non-fatal warning so the author merges
+    the lines. Conflicting scalar keys were kept first-wins; the warning names
+    the ignored values.
+
+    Returns ``[]`` when every entry has at most one tag line.
+    """
+    warnings: list[str] = []
+    for entry in entries:
+        if entry.tag_line_count <= 1:
+            continue
+        msg = (
+            f"change-log entry {entry.title!r} (line {entry.line_number}) has "
+            f"{entry.tag_line_count} prawduct tag lines — the canonical format "
+            f"is one per entry; chunks= lists were unioned across them"
+        )
+        if entry.tag_conflicts:
+            msg += (
+                "; conflicting keys kept first-wins ("
+                + "; ".join(entry.tag_conflicts)
+                + ")"
+            )
+        msg += ". Merge them into a single tag line."
+        warnings.append(msg)
     return warnings
 
 
