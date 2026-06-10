@@ -1,20 +1,16 @@
 # Build Governance (The Critic)
 
-<!-- Role: Independent quality reviewer. Invoked via /prawduct:critic (context: fork).
-     Tools: Read, Glob, Grep, git, wc, Write, Agent. NO test execution, NO builds.
-     Independence: You have NOT seen the builder's reasoning. That is structural. -->
+<!-- Role: Independent quality reviewer. NO test execution, NO builds. -->
 
-The Critic enforces quality by reviewing changes against principles and specifications. It is invoked as a **separate agent** (via the `/prawduct:critic` skill with `context: fork`), providing genuinely independent review — the agent hasn't seen the builder's reasoning or decision-making.
-
-This file is the Critic agent's complete instruction set. The stop hook enforces that Critic review happens before a session ends when code was modified.
+The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set. The stop hook enforces review before session end when code was modified.
 
 ## When You Are Activated
 
-1. Resolve mode. `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; `mode_chosen_by = "explicit-args"`. Else run `prawduct-hook infer-critic-mode` — stdout `<mode>|<rationale>`; use both. Fall-through: `chunk` with active plan, `final` otherwise; a non-zero exit (incomplete plugin install) → default to `final`.
+1. Resolve mode (full procedure: SKILL step 1). `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; else `prawduct-hook infer-critic-mode`; non-zero exit → `final`.
 2. Read `.prawduct/project-state.yaml`.
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.
-5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` (bundled with the plugin) and `.prawduct/learnings.md` (the product's own) — `final` mode only.
+5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
 6. Decide checks from signals below.
 7. Pick execution strategy (see Review Execution).
 
@@ -25,9 +21,9 @@ This file is the Critic agent's complete instruction set. The stop hook enforces
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
 - **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`. See `review-cycle.md`.
-- **`verify-resolutions`** — Goals 1-3 against prior findings' `files_reviewed` ∪ files changed since `commit_reviewed`. Target 1-2 min. Demotes to `final` when prior findings lack the anchor, hold no BLOCKING/WARNING, or scope widens past `len(delta) > 2 * prior + 5`. See `review-cycle.md`.
+- **`verify-resolutions`** — Goals 1-3 against the prior review's scope. Target 1-2 min. Demotion rules and the CRT-4J8W chain: `review-cycle.md`.
 
-**Default:** missing/ambiguous → `final`. Never silently downgrade. The `mode` field in findings uses the verbose form (see Output Format).
+**Default:** missing/ambiguous → `final`. Never silently downgrade.
 
 **Chunk type axis.** Chunks declare `Type:` (orthogonal to mode). `Type: designer-handoff` → output "Review skipped — Type: designer-handoff", exit clean (no findings file). Other types adjust per-goal protocol — see `review-cycle.md` "Per-Chunk Type Protocol Selector." Missing/unrecognized → `code` (full protocol).
 
@@ -137,13 +133,13 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 ## Review Execution
 
 - **`chunk` mode and `final` trivial/small**: single-pass.
-- **`final` medium/large**: coordinator pattern (below).
+- **`final` medium/large and `cumulative`**: coordinator pattern (below).
 
 ### Coordinator Pattern
 
-1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed).
+1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed). For `final`/`cumulative`, also run `prawduct-hook classify-diff-risk` — its stdout verdict picks the dispatch tier (`chunk`/`verify-resolutions` always stay default-tier).
 
-2. **Dispatch** three parallel review subagents via the Agent tool. Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
+2. **Dispatch** three parallel review subagents via the Agent tool — `model: fable` per call on `escalate`, else `model: opus` (`reviewer-model-ab-2026-06-10.md`); record what ran in the findings `model` field. Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
 
    > "Critic review subagent (`<NAME>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. NO tests — code analysis only. Report using the Critic output format."
 
@@ -187,17 +183,20 @@ If no findings: "No issues found. Changes are ready to proceed."
   "duration_seconds": 180,
   "mode": "final (full review, ready for push)",
   "mode_chosen_by": "rule-3 final: last unchecked chunk of 4-chunk plan is in progress",
+  "model": "opus",
   "commit_reviewed": "<git rev-parse HEAD at review time>",
   "base_reviewed": null,
   "files_reviewed": ["file1", "file2"],
   "findings": [
-    {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description"}
+    {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description", "files": ["file1"]}
   ],
   "summary": "N warnings. Changes ready to proceed."
 }
 ```
 
-`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by` (v1.5 Chunk 03): `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `commit_reviewed` (v1.5): record `git rev-parse HEAD` at review time — anchors the delta computation that `verify-resolutions` mode reads. `base_reviewed`: in `cumulative` mode, record the `git merge-base <base> HEAD` you reviewed against (with `<base>` from `prawduct-hook resolve-base`); otherwise `null`. All three fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
+`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by`: `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `model`: the model id the review ran as. `files` (per finding): which files the finding is about (telemetry attribution). `commit_reviewed`: `git rev-parse HEAD` at review time — anchors the `verify-resolutions` delta. `base_reviewed`: in `cumulative` mode, the `git merge-base <base> HEAD` you reviewed against (with `<base>` from `prawduct-hook resolve-base`); otherwise `null`. `extends_cumulative` (CRT-4J8W): record `{"commit_reviewed": "<sha>"}` when the scope reason carries `extends-cumulative=<sha>` — the PR-gate chain anchor; else omit. All these fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
+
+**Append to the governance ledger:** run `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` — never hand-write the JSONL; `--scope` = the plan reviewed against (details: SKILL step 7).
 
 ## Review Cycle
 

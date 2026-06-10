@@ -5,6 +5,34 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.1.0
+
+### review-fixes
+
+**Entry:** 2026-06-10: framework-repo slim session digest — always-loaded context dedup
+
+**Chunks shipped:** 1, 2, 3, 4
+
+### review-proportionality
+
+**Entry:** 2026-06-10: PR-reviewer scoping — consume the Critic record, audit it, review the release
+
+**Chunks shipped:** 01, 02, 03, 04, 05
+
+### gate-soundness
+
+**Entry:** 2026-06-10: chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
+
+**Chunks shipped:** 01, 02, 03, 04, 05
+
+### reviewer-model-tiering
+
+**Entry:** 2026-06-10: reviewer model tiering — A/B/C experiment + opus default
+
+**Chunks shipped:** 01, 02
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.0.17
 
 ### legacy-backlog-format-probe

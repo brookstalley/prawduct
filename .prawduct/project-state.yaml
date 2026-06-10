@@ -477,9 +477,14 @@ views_enabled: true
 # (2026-06-08). v2.0.17 (2026-06-08) shipped two fixes — retire-pr-trivial-fast-path
 # (#84) and legacy-backlog-format-probe (#85); regen-views flipped each plan's
 # ## Status checkboxes to [x] via its scope= change-log tag (REL-4T8N). No
-# release-pending plans remain — the pointer is cleared (unset → falls back to
-# artifacts/build-plan.md). The next in-progress plan sets it again.
-active_build_plan:
+# release-pending plans remained after v2.0.17, so the pointer was cleared;
+# 2026-06-10 repointed it at the in-progress gate-soundness plan (merged to
+# develop as #86 the same day). v2.1.0 (2026-06-10) shipped FOUR batched scopes —
+# gate-soundness (#86), reviewer-model-tiering (rode #86), review-proportionality
+# (#87+#88), review-fixes (#89, the BLD-7W2J parallel side-plan); regen-views
+# flipped all four plans' ## Status checkboxes via their scope= change-log tags
+# (REL-4T8N batched pass) and the pointer is cleared again — no release-pending
+# plans remain. All four build-plan files are retained as historical artifacts.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -549,6 +554,9 @@ scope_rollups:
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]
+  gate-soundness:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v2.1.0"]
   hook-decomp:
     chunks: ["1", "2", "3", "4", "5", "6", "7"]
     releases: ["v2.0.14"]
@@ -561,6 +569,15 @@ scope_rollups:
   retire-pr-trivial-fast-path:
     chunks: ["01"]
     releases: ["v2.0.17"]
+  review-fixes:
+    chunks: ["1", "2", "3", "4"]
+    releases: ["v2.1.0"]
+  review-proportionality:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v2.1.0"]
+  reviewer-model-tiering:
+    chunks: ["01", "02"]
+    releases: ["v2.1.0"]
   rigor-and-stance:
     chunks: ["01", "02", "03"]
     releases: ["v2.0.7"]

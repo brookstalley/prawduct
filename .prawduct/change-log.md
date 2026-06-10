@@ -3,6 +3,598 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: framework-repo slim session digest — always-loaded context dedup
+
+<!-- prawduct: chunks=4 | type=feature | release=v2.1.0 | status=shipped | scope=review-fixes -->
+
+**Why:** In the prawduct framework repo the always-injected session digest
+(~5.4k chars, re-injected on every compaction) duplicated 40–50% of the
+always-loaded CLAUDE.md nearly 1:1 (principles roster, Critic/Stop
+explanation, attribution rule, rigor scaling). The digest is the legitimate
+and ONLY carrier of those rules for product repos (thin-anchor CLAUDE.md), so
+the fix must not gut it — per the plan-level assumption (user-confirmed
+2026-06-10), the variant is selected per-repo, full stays the product default.
+
+**What:** New canonical `methodology/session-digest-slim.md` (~2.2k chars,
+budget-pinned ≤50% of full): pointers to CLAUDE.md plus only the rules
+CLAUDE.md does not restate (waiver pragma, backlog discipline, branch/PR
+rule, condensed agent stance, on-demand skill index). `hooks/digest.py`
+gains `is_framework_repo` — the governed repo (`CLAUDE_PROJECT_DIR`) is the
+framework iff `.claude-plugin/plugin.json` at its root parses to
+`name: prawduct`; ANY anomaly (missing, unreadable, malformed, non-dict,
+other name) fails safe to the full digest, and a framework repo served by an
+older cached plugin without the slim file falls back to full (never
+silence). **Declared deviation from the chunk's surface list:** the
+two-variant documentation lives in `hooks/digest.py`'s module docstring and
+the slim file's own header — NOT inside `methodology/session-digest.md`,
+whose entire body is injected verbatim into every product session
+(meta-documentation there would pollute the payload).
+`tests/test_briefing_functions.py` and `tests/test_v5_methodology.py`
+needed no changes (verified: neither asserts digest presence/content).
+
+**Blast radius:** `hooks/digest.py`, `methodology/session-digest-slim.md`
+(new), `tests/test_plugin_methodology_digest.py` (+11: variant selection
+incl. all fail-safe paths, slim canonical-copy + budget pins, both-variant
+load-bearing pointers; `test_additional_context_matches_source`
+renegotiated in the open — ROOT is the framework repo, so the emitted
+context is now the slim source; full-verbatim contract moved to the product
+fixture). Live acceptance: `hooks/digest.py` in this repo emits the slim
+variant (2,189 chars); a product fixture gets the full digest verbatim.
+
+## 2026-06-10: PR-reviewer scoping — consume the Critic record, audit it, review the release
+
+<!-- prawduct: chunks=05 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
+
+**Why:** The PR reviewer re-derived code soundness over the same
+`merge-base...HEAD` the cumulative-Critic gate had just certified — the
+third structural tax this plan removes. Independence is preserved by
+*auditing* the record, not repeating its work.
+
+**What:** `skills/pr/review-protocol.md` rewritten around the
+consume-and-audit design: the gate-qualifying Critic record is an input
+(resolved the same way `check-cumulative-critic` resolves it — latest
+findings file when its kind qualifies, else the newest qualifying
+`review.critic` ledger event), consumed as **evidence, not truth**. Audit
+duty: adversarially spot-check ≥2 substantive claims against the code; ANY
+failure (or no qualifying record) voids the record → full code-soundness
+pass, declared in the output. Evidence gains `mode`
+(`pr-scoped`/`pr-full`), `model`, `duration_seconds`, `record_consumed`,
+`spot_checks` — telemetry separates scoped from full runs with zero
+telemetry-code change (mode flows through the existing grouping). Release
+focus sharpened: migration/rollback notes + version/changelog coherence
+bullets added to Merge Hygiene. `skills/pr/SKILL.md`: Step 3 hands the
+record source to the reviewer; Step 4 (and Update flow re-reviews) append
+`review.pr` to the governance ledger so role-vs-role model-efficiency
+(data requirement 1) has both review roles. `lib/ledger.py`: `review.pr`
+event kind (role `pr`) — requires the caller-computed `--findings <path>`,
+rejected for `review.critic` (canonical-source property preserved);
+payload validated at the stop-hook PR-gate bar (findings list + non-empty
+summary). The cumulative-Critic gate ignores `review.pr` events (pinned —
+a PR review must never vouch for code soundness).
+
+In-cycle fixes (no pre-existing exception): ch.04 wired
+`classify-diff-risk` into pr/SKILL step-3 prose but missed the
+`allowed-tools` frontmatter — added (with a structural pin, parallel to
+the Critic's). Deduplication (user-directed critical eye): the layering
+rationale was stated 3× in review-protocol.md (intro ¶ + goals preamble +
+table) → now intro + table; the retired-trivial-fast-path history was
+restated in full 3× across the two files → full rationale lives in SKILL
+Step 1b, the other two point at it; the `## Important` bullets restating
+Steps 1b/2/2b verbatim → one-line pointers.
+
+**Blast radius:** Modified: `skills/pr/review-protocol.md` (rewrite),
+`skills/pr/SKILL.md` (allowed-tools, Steps 3/4, Update flow, Important
+trim), `lib/ledger.py` (review.pr), `skills/critic/review-cycle.md` +
+`docs/governance-telemetry.md` (event-kind docs current). Tests:
+`tests/test_governance_ledger.py` (+9: TestLedgerAppendReviewPr + gate
+honesty), `tests/test_pr_reviewer.py` (+7: TestPrReviewerScoping),
+`tests/test_review_stats.py` (+1: pr-scoped/pr-full distinct modes),
+`tests/preferences/test_risk_escalation_prose.py` (+1: pr allowed-tools).
+1181 total.
+
+## 2026-06-10: risk-surface reviewer escalation — `classify-diff-risk`
+
+<!-- prawduct: chunks=04 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
+
+**Why:** Proportionality only ran one way — review depth scaled by size/type,
+never by diff RISK — yet the reviewer A/B/C experiment
+(`reviewer-model-ab-2026-06-10.md`) showed the top-tier reviewer catching 2
+real warnings opus missed precisely on a governance-gate bundle. That bundle
+class should buy depth; everything else stays on the efficiency-frontier
+default.
+
+**What:** New classifier `prawduct-hook classify-diff-risk [<base>]` (new
+`lib/risk.py`). Resolution order: explicit `risk_surfaces:` list in
+`project-state.yaml` (product-ownable; EXCLUSIVE when present — an empty
+list is a deliberate opt-out) → else derived defaults (`skills/`,
+`lib/gates*`, `bin/*hook*`) plus literal backticked contract paths from
+`boundary-patterns.md` (globs/slash-commands excluded via the shared
+`_looks_like_file_path` rule). Scope = committed `merge-base(base)...HEAD`
+paths + working-tree changed/untracked paths
+(`--untracked-files=all` — the porcelain default collapses untracked dirs
+to one line, silently hiding files from glob surfaces; caught by the new
+tests). Verdict is a single stdout token `escalate`/`standard`; matched
+files teach on stderr. Failure asymmetry: fail-OPEN to `standard` only when
+no surfaces are declared; fail-CLOSED to `escalate` when surfaces are
+declared but git evaluation fails — declared risk with an unverifiable diff
+never gets the cheap reviewer. Dispatch wiring: Critic coordinator
+(`review-protocol.md` — `final`/`cumulative` dispatch `model: fable` on
+`escalate`, else `opus`; `chunk`/`verify-resolutions` always default-tier),
+Critic SKILL step 6 + allowed-tools, PR reviewer dispatch (`pr/SKILL.md`
+step 3). The findings `model` field records what actually ran, so ch.03's
+telemetry will show whether escalation pays. Protocol token budget held
+<3120 by displacement (mode-resolution + ledger-append paragraphs now point
+at SKILL.md instead of restating it). Live check: this branch classifies
+`escalate` (5 matched paths). New prose pins:
+`tests/preferences/test_risk_escalation_prose.py`.
+
+In-cycle fix (no pre-existing exception): the audit-learnings CLI smoke test
+passed `tmp_path` as a positional arg the CLI ignores, silently auditing the
+REAL repo (~13s) — this chunk's added parallel load pushed it past the 30s
+pytest-timeout, killing the xdist worker. Now targets its tmp repo via
+`CLAUDE_PROJECT_DIR` (same assertions, <1s, deterministic); the
+ignored-unknown-args wart filed to backlog.
+
+**Blast radius:** New: `lib/risk.py`, `tests/test_classify_diff_risk.py`
+(21 tests — incl. lib.risk helper units added post-review to resolve the
+chunk Critic's evidence-attribution NOTE),
+`tests/preferences/test_risk_escalation_prose.py` (6 tests).
+Modified: `bin/prawduct-hook` (wrapper + dispatch + usage),
+`skills/critic/SKILL.md`, `skills/critic/review-protocol.md`,
+`skills/pr/SKILL.md`, `tests/test_audit_learnings.py` (env-target fix).
+1164 total.
+
+## 2026-06-10: review telemetry — `prawduct-hook review-stats`
+
+<!-- prawduct: chunks=03 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
+
+**Why:** The ledger (ch.02) records review history but nothing aggregates it —
+"is review worth it" stays a vibe. Visible Costs (Principle 9) applied to the
+framework: proportionality arguments need cost and actionable-finding-yield
+numbers, per reviewer role × model × mode (data requirement 1), per code path
+(requirement 2), per feature scope (requirement 3's join seam).
+
+**What:** New subcommand `prawduct-hook review-stats [--json]` (new
+`lib/telemetry.py`; thin hook wrapper per the established lazy-import
+pattern). Reads `.prawduct/.governance-ledger.jsonl` oldest-first; reports on
+`review.*` events only, skipping corrupt lines / unknown event kinds (a
+future `build.chunk` producer) / unusable payloads each WITH A COUNT, never
+silently. Missing ledger → "no review history", exit 0 (an answer, not an
+error); exit 1 only on bad args. Per grouping (overall, role×model×mode,
+per-scope): review count, total/median duration, findings by severity
+(blocking/warning/note + `other` so unexpected severities stay visible),
+actionable rate (share of reviews with ≥1 blocking/warning),
+findings-per-review. Findings-by-file rollup from per-finding `files`
+attribution — top 10 by actionable findings, with `files_attributed_total`
+alongside so the cap is visible. `--json` emits the stable machine shape
+(top-level `schema_version`/`project`/`generated_at`) that TEL-7A4X builds
+on; keys pinned by tests so a change must consciously bump
+REPORT_SCHEMA_VERSION. The reader deliberately does NOT reuse
+`ledger.iter_events_newest_first` (different contract: quiet counts vs the
+gate's newest-first stderr notes). Surfacing: one orient-step pointer in
+`/prawduct:janitor` — telemetry is pulled, not pushed. Documented in new
+`docs/governance-telemetry.md` (event schema + report contract). Dogfood:
+runs clean on this repo's real 2-event ledger — the first genuine
+cost/actionable-rate numbers.
+
+**Blast radius:** New: `lib/telemetry.py`, `tests/test_review_stats.py`
+(12 tests), `docs/governance-telemetry.md`. Modified: `bin/prawduct-hook`
+(wrapper + dispatch + usage), `skills/janitor/SKILL.md` (one line). 1137
+total.
+
+## 2026-06-10: governance-event ledger — append-only review history + PR-gate fallback
+
+<!-- prawduct: chunks=02 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
+
+**Why:** The single-slot `.critic-findings.json` forces a choice between
+reviewing new work and preserving the PR-gate record (observed twice on
+2026-06-10: a review deferred-and-declared, a chunk review that would have
+clobbered the gate's evidence) — and review history is unmeasurable because
+each record overwrites the last (Principle 9, Visible Costs, unapplied to
+the framework itself).
+
+**What:** Append-only governance-event ledger at
+`.prawduct/.governance-ledger.jsonl`, ADDITIVE — the findings file stays the
+canonical latest record all existing consumers read. Schema shaped by the
+user-elicited "Ledger data requirements" (not mechanism-first): per-line
+`schema_version`, envelope/payload split (`{schema_version, event, ts,
+duration_seconds, project, scope, chunk, actor:{role,model}, git:{head,base}}`
++ kind-named payload), consumers skip unknown kinds/fields. v1 emits
+`review.critic` only; unknown kinds REJECTED at append (fail closed).
+Structural writer `prawduct-hook ledger-append` (new `lib/ledger.py`):
+agents never hand-author JSONL — the helper validates the findings file
+(same schema the gates trust), computes the envelope itself, appends one
+O_APPEND line; `--scope` explicit from the reviewer (side-plan
+mis-attribution), `active_build_plan` only the fallback (frontmatter
+`scope:` → filename); duration/model nullable, never invented. PR-gate
+ledger fallback (`check_cumulative_critic` refactored into
+`_pr_gate_record_qualifies` / `_ledger_fallback_record` /
+`_evaluate_pr_gate_record`): when the latest record is the wrong KIND
+(chunk/final, or verify with no chain anchor), scan the ledger newest-first
+for the first qualifying `review.critic` payload and evaluate it under the
+unchanged checks — stale/blocking ledger records still fail honestly,
+corrupt lines skip with a stderr note, no qualifying event → today's exact
+failure messages. Findings schema gains optional `model` (record level) and
+per-finding `files` (risky-areas attribution). Producers: Critic SKILL step
+7 + review-protocol Output Format instruct the append (allowed-tools gains
+`Bash(prawduct-hook ledger-append *)`); protocol budget held <3120 by
+displacement. Hygiene: gitignore entry in all three mirrors (core
+GITIGNORE_ENTRIES, hook _SESSION_GITIGNORED_PATHS — caught live by
+TestSessionGitignoreMirror — and this repo's .gitignore); event shape
+documented in review-cycle.md "Recording Reviews" + project-structure.md;
+prune escape hatch is prose only (truncate oldest lines; no tooling until a
+real ledger needs it). Critic `final` (explicit override, side-plan
+convention): 0 blocking, 0 warnings, 2 NOTEs (defensive-branch comment
+added; tag confirmed). The Critic dogfooded `ledger-append` recording its
+own review — first real event, correctly scope-attributed.
+
+**Blast radius:** New: `lib/ledger.py`, `tests/test_governance_ledger.py`
+(36 tests). Modified: `lib/gates.py`, `lib/core.py`, `bin/prawduct-hook`,
+`.gitignore`, `skills/critic/SKILL.md`, `skills/critic/review-protocol.md`,
+`skills/critic/review-cycle.md`, `docs/project-structure.md`. 1125 total.
+
+## 2026-06-10: cumulative-as-final — one full review per plan, not two
+
+<!-- prawduct: chunks=01 | type=feature | release=v2.1.0 | status=shipped | scope=review-proportionality -->
+
+**Why:** `Type: cumulative-final` was *defined* as the last chunk's `final`
+review PLUS a cumulative — two 4-10 min full reviews over nearly the same
+diff, on every multi-chunk plan. Cumulative is a strict superset of final
+(all 7 goals + cross-checks over `merge-base...HEAD` ⊇ the chunk diff), so
+the second pass re-bought assurance already paid for. Gate-soundness ch.05
+already did the right thing ad hoc as a declared deviation; this makes it
+the rule (review wall-clock is P0).
+
+**What:** Redefined `cumulative-final`: commit the last chunk first, then run
+`/prawduct:critic cumulative` ONCE — that review IS the chunk's review and
+the PR-gate record; post-cumulative fixes ride the CRT-4J8W chain. Prose on
+four surfaces (`skills/critic/review-cycle.md` Type matrix + When-Review-Is-
+Required rows + a new Per-Chunk-Cycle sequencing note documenting the
+rule-3-final-is-mid-chunk / rule-2-cumulative-is-at-commit inference
+distinction; `methodology/planning.md` Critic-Mode override bullet +
+`cumulative-final` Type description; `methodology/building.md` Skipping-final
+trap; `templates/build-plan.md` Type list + Done-when comment + PR-cadence
+example — the template was a Critic WARNING catch, the chunk's own surface
+enumeration missed it). No code change: inference already sequences correctly
+(rule-3 `final` fires only on UNCOMMITTED last-chunk work; rule-2 picks
+`cumulative` once committed and clean). New
+`TestSynthesisAdvisoryAcceptsCumulative` pins that the stop-hook synthesis
+advisory accepts a `cumulative` closer and still trips on
+`chunk`/`verify-resolutions` (no prior pin existed — an untested governance
+bound rots silently). Also shipped the schema-lock-in tripwire from this
+plan's own near-miss: `methodology/planning.md` ("A persisted format is
+always a lock-in decision" — consumers' future queries are the requirements,
+reversal cost not LOC) + condensed into `methodology/building.md` Decision
+Research lock-in trigger. building.md budget held by displacement (<4850):
+PR-gate paragraph condensed to a review-cycle.md pointer, in-file duplicate
+mode-list/inference-default lines collapsed.
+
+**Blast radius:** `skills/critic/review-cycle.md`, `methodology/planning.md`,
+`methodology/building.md`, `templates/build-plan.md`,
+`tests/test_critic_gate_fallthrough.py` (+4 tests, 1089 total).
+
+## 2026-06-10: chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
+
+<!-- prawduct: chunks=05 | type=feature | release=v2.1.0 | status=shipped | scope=gate-soundness -->
+
+**Why:** Review cost = unit-cost × run-count. Reviewer-model tiering fixed
+unit cost; run-count was still gate design: every non-`.md` fix after the one
+cumulative re-staled `check-cumulative-critic` and cost a FULL bundle
+re-review (~4-10 min) even for a 2-file fix. User P0 escalation 2026-06-10;
+the gate-soundness ch.4 "build if it recurs" trigger fired the same session.
+
+**What:** `check-cumulative-critic` now accepts EITHER a HEAD-covering
+cumulative record (unchanged) OR a chain record: `verify-resolutions` mode,
+`extends_cumulative` anchor X resolving, 0 BLOCKING, own `commit_reviewed`
+covering HEAD (same doc-only allowance), and all non-`.md`/non-metadata files
+in `X..HEAD` ⊆ `files_reviewed` — fail closed on any gap. Soundness:
+cumulative@X vouches for the bundle; a clean delta review whose scope covers
+`X..HEAD` extends that vouching to HEAD. Producer side: the scope helper
+emits `extends-cumulative=<X>` for chain-extendable priors (cumulative, or
+chain records — the anchor propagates) and no longer demotes a clean
+cumulative prior that has a reviewable delta; the Critic embeds the anchor
+(schema: optional `extends_cumulative` dict, malformed shapes rejected).
+Inference: new rule 1b picks `verify-resolutions` for a committed
+post-cumulative fix (else no-args `/prawduct:critic` re-pays a full bundle
+review), and rule 2 skips when a chain record covers HEAD. Gate stderr
+teaches the new sequence (`chain-stale` says commit BEFORE verify;
+`chain-scope-gap` names uncovered files). Declared decision: the anchor
+embeds for ANY prior cumulative incl. one with BLOCKINGs — the verify pass
+adjudicates resolution and the gate accepts only 0-BLOCKING chain records;
+restricting to clean priors would leave the blocking-fix loop on the
+treadmill.
+
+**Blast radius:** `lib/gates.py` (`validate_critic_findings`, `_chain_anchor`,
+`_compute_verify_resolutions_scope`, `_record_covers_head`,
+`check_cumulative_critic`), `lib/critic_mode.py` (rule 1b, rule-2 skip,
+`_chain_extendable_anchor`), `skills/critic/SKILL.md` + `review-protocol.md`
++ `review-cycle.md`, `skills/pr/SKILL.md` Step 2, `methodology/building.md`
+(both budget files trimmed to hold), `tests/test_cumulative_gate.py` (chain
+accept/reject + scope-helper chain cases), `tests/test_critic_mode_inference.py`
+(rule 1b, rule-2 skip, `extends_cumulative` schema).
+
+## 2026-06-10: reviewer model tiering — A/B/C experiment + opus default
+
+<!-- prawduct: chunks=01,02 | type=feature | release=v2.1.0 | status=shipped | scope=reviewer-model-tiering -->
+
+**Why:** Independent reviewers (Critic fork, PR reviewer, coordinator
+subagents) inherited the main session's model — top-tier cost and latency
+(5-10 min per review) for every review. User escalated review-phase wall
+clock to P0 (30+ min of review for ~5 min of work this session).
+
+**What:** Ch.01 — captured A/B/C: three parallel agents, identical prompt
+(recorded verbatim in `artifacts/reviewer-model-ab-2026-06-10.md`), identical
+tree, models sonnet/opus/fable. Result: sonnet found nothing novel at higher
+cost than opus (ruled out); opus = efficiency frontier (1m53s, 74k tokens,
+one novel real finding); fable = deepest (2 real warnings opus missed) at
+~4x opus wall clock. Ch.02 — per the user's decision, all three reviewer
+legs default to `opus`: critic SKILL frontmatter `model: opus` (applies to
+the fork), coordinator dispatch declares `model: opus` per Agent call, PR
+skill Step 3 passes `model: opus`. Declared deviation: ch.02's own Critic
+review is deferred (a re-run would overwrite the cumulative record that
+satisfies the open PR gate — single-slot findings file); the diff is .md-only
+and rides the gate-soundness PR's independent review. The treadmill half of
+the P0 is designed and filed ready-to-build as CRT-4J8W (cumulative +
+verify-resolutions chain at the PR gate).
+
+**Blast radius:** `skills/critic/SKILL.md`, `skills/critic/review-protocol.md`
+(within token budget after trim), `skills/pr/SKILL.md`,
+`.prawduct/artifacts/reviewer-model-ab-2026-06-10.md` (new),
+`.prawduct/artifacts/build-plan-reviewer-model-tiering.md` (new),
+`.prawduct/backlog.md` (CRT-4J8W).
+
+## 2026-06-10: pre-PR hardening from the reviewer-model A/B/C experiment (gate-soundness)
+
+<!-- prawduct: type=fix | release=v2.1.0 | status=shipped | scope=gate-soundness -->
+
+**Why:** The reviewer-model-tiering experiment (chunk 01 of that plan) ran
+three identical independent reviews of this bundle on sonnet/opus/fable. The
+fable run surfaced two real warnings the official record missed: (1) JUnit
+parsing read only the FIRST `<testsuite>` — safe under pytest, but
+`test_command` invites multi-suite runners (jest-junit, merged CI reports)
+whose counts would be silently undercounted in gate-trusted evidence; (2) the
+`init_product` `unignored` presentation layer — the exact seam that absorbed
+two ch.3 Critic warnings — shipped untested. Per the project rule that
+warnings are effectively blocking, fixed before PR rather than backlogged.
+
+**What:** Counts now sum across all top-level `<testsuite>` elements (direct
+children, so Ant-style nesting can't double-count) — pinned by a multi-suite
+fake-runner test. Two presentation tests pin `init_product.run`'s text-mode
+git-add advice and `--json` `unignored` field. Plus the experiment's smaller
+catches: `argv` shadowing renamed (`run_argv`); skip-scope test renamed and
+ch.1 change-log phrasing tempered (the unjudged listing is producer-attested
+— the pinned contract is per-listed-file skip, not tamper-proofing); stale
+`project-state.yaml` pointer narrative and `planning.md` stop-hook
+trigger wording fixed; `#`-truncation caveat documented on `test_command`;
+CRT-8D2W misattribution corrected and BLD-7W2J (parallel-plans single-slot
+pointer) filed via /prawduct:backlog. 1050 pass.
+
+**Blast radius:** `bin/prawduct-hook` (JUnit aggregation, rename),
+`tests/test_plugin_runtime.py`, `tests/test_gitignore_management.py`,
+`tests/test_verify_coverage_gate.py`, `templates/project-state.yaml`,
+`methodology/planning.md`, `.prawduct/project-state.yaml`,
+`.prawduct/backlog.md`, `.prawduct/change-log.md`.
+
+## 2026-06-10: cumulative-gate ordering guidance + plan-lifecycle note (gate-soundness ch.4)
+
+<!-- prawduct: chunks=04 | type=fix | release=v2.1.0 | status=shipped | scope=gate-soundness -->
+
+**Why:** The natural review loop (cumulative → fix findings → verify-resolutions)
+can never satisfy `check-cumulative-critic` — the gate accepts only a
+cumulative-mode record at HEAD (or .md-only since). That rule was learnable
+only by paying a full ~4-10 min re-review (scriob PR #43 did). And the
+"don't repoint `active_build_plan` while the prior plan is release-pending"
+rule lived only in the PR-merge flow, invisible at planning time where the
+repointing mistake actually happens.
+
+**What:** The gate's `wrong-mode` stderr now teaches the sequencing rule
+inline (verify-resolutions can't certify the bundle; land all non-.md fixes
+first, cumulative once, last) — pinned by test. `skills/pr/SKILL.md` Step 2
+gains the explicit Sequencing paragraph; `methodology/building.md`'s
+cumulative-gate paragraph folds the rule in word-neutrally (prep-list examples
+live on in the PR skill); `methodology/planning.md` Build Planning gains the
+gitflow plan-lifecycle paragraph (retain the pending plan's pointer until the
+release ships; scope-named plan files; plans are tracked artifacts). No gate
+semantics changed — guidance and error-message teaching only. 1047 pass.
+
+**Blast radius:** `lib/gates.py` (message text), `skills/pr/SKILL.md`,
+`methodology/building.md`, `methodology/planning.md`,
+`tests/test_cumulative_gate.py`.
+
+## 2026-06-10: build plans are tracked artifacts (gate-soundness ch.3)
+
+<!-- prawduct: chunks=03 | type=fix | release=v2.1.0 | status=shipped | scope=gate-soundness -->
+
+**Why:** The framework gitignored `.prawduct/artifacts/build-plan.md`
+(`GITIGNORE_ENTRIES`) while tracked `project-state.yaml` pointed
+`active_build_plan:` at it and `/prawduct:pr` step 7 retains the plan through
+a gitflow release-pending window — so every multi-clone repo carried a tracked
+pointer to a file the other clones don't have (scriob PR #43: broken
+verify-chunk-refs + views error, invisible locally). Worse,
+`_untrack_session_files` force-`git rm --cached`'d a tracked plan at every
+session start, actively reverting the product's fix. A build plan is a
+durable, multi-session, release-spanning artifact — not session state; the
+ignore default also made resumed sessions blind to committed decompositions
+(scriob's "plan invisible to git status" learning).
+
+**What:** Entry removed from both `GITIGNORE_ENTRIES` and the hook's
+`_SESSION_GITIGNORED_PATHS` (mirror-parity test pins them together); new
+`RETIRED_GITIGNORE_ENTRIES` list that `update_gitignore` strips from existing
+repos, reported via `unignored` and plumbed through `init_product` (text +
+json output) so onboard advises `git add`. Declared deviation: a new thin
+`prawduct-hook update-gitignore` subcommand is the doctor repair path
+(init-product early-exits on onboarded repos; session hooks must never edit a
+tracked file). Doctor health-check 8 covers the gitignore contract; doctor's
+F4 wording aligned with ch.1. This repo's own `.gitignore` line removed.
+First behavioral tests for `update_gitignore` (previously untested guard).
+1047 pass.
+
+**Blast radius:** `lib/core.py`, `lib/init_product.py`, `bin/prawduct-hook`,
+`.gitignore`, `skills/doctor/SKILL.md`, `skills/onboard/SKILL.md`,
+`tests/test_gitignore_management.py` (new). Critic (chunk ×2): 0 blocking;
+ch.3-pass-1 warning (unignored report had no consumer) and pass-2 warning
+(onboard text-mode never printed it) both fixed; note (declare the subcommand
+deviation in the plan) adopted.
+
+## 2026-06-10: test-evidence configurability — `test_command:` + `tests_dirs:` (gate-soundness ch.2)
+
+<!-- prawduct: chunks=02 | type=feature | release=v2.1.0 | status=shipped | scope=gate-soundness -->
+
+**Why:** `test-evidence record` hardcoded `sys.executable -m pytest` from the
+repo root with a single `tests/` grep dir. On a uv-managed venv the hook's
+interpreter can't import the product package; on a monorepo there's no root
+pytest config and tests live in component trees; the verifier took ONE
+`--tests-dir` and `--merge-into` overwrote, so multi-tree products needed a
+multi-pass temp-file union. scriob's 90-line `scripts/test-evidence.sh`
+wrapper is the requirements doc this chunk implements.
+
+**What:** Two optional `project-state.yaml` knobs. `test_command:` — the
+canonical suite invocation (the exact command CI runs), shlex-split (never a
+shell — the subprocess-safety guardrail caught the originally-planned
+`shell=True`; deviation declared in the build plan) and run from the repo
+root; must contain `{junit_xml}` (substituted per-token after splitting);
+extra CLI args rejected; missing executable is a clean exit-2. `tests_dirs:`
+— whitespace-separated trees forwarded to the verifier, whose `--tests-dir`
+is now repeatable with union discovery (one run covers all trees; no merge
+dance). No knobs ⇒ behavior unchanged (regression-pinned). Also fixed ch.1
+coherence drift in `methodology/building.md`/`templates/project-state.yaml`
+("every change" → judged/unjudged contract), trimming within the building.md
+token budget. 8 new tests; 1038 pass.
+
+**Blast radius:** `bin/prawduct-hook` (`cmd_test_evidence`),
+`bin/test-reference-verify` (`--tests-dir` append), `templates/project-state.yaml`,
+`methodology/building.md`, `tests/test_plugin_runtime.py`,
+`tests/test_reference_verifier.py`. Critic (chunk mode): 0 blocking, 1 warning
+(plan-vs-code shell-semantics drift — plan deviation declared, docstring
+fixed), 2 notes (FileNotFoundError handling, substitute-after-split — both
+adopted).
+
+## 2026-06-10: coverage gate honesty — `changes_unjudged` (gate-soundness ch.1)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.0 | status=shipped | scope=gate-soundness -->
+
+**Why:** The F4a producer (`bin/test-reference-verify`) symbol-greps Python only,
+but the F4b consumer (`verify_coverage`) compared the WHOLE branch diff +
+untracked files against `changes_referenced` — so docs, configs, fixtures,
+symbol-less `__init__.py`, and deletions failed the gate by construction.
+scriob hit this three times (learnings `confirmations=3`) and then neutralized
+the gate by unioning the full branch diff into `changes_referenced` (4ca5bd3) —
+an unsatisfiable gate trained the product to make it vacuous.
+
+**What:** The verifier now classifies each changed file: judged (Python with
+≥1 def/class symbol) vs unjudged (non-Python, symbol-less Python, deleted) —
+new evidence field `changes_unjudged`; the filename-stem fallback is dropped
+(noise both directions; contract renegotiated in the open —
+`test_non_python_file_is_unjudged_not_stem_matched`). The gate skips files
+listed unjudged or absent from disk, reporting them in one informational
+stdout line, and still exits 1 with BLOCKING `missing-coverage:` for judged
+Python files no test references — severity language untouched, no
+blocking→warning demotion anywhere. Legacy/product evidence without the field
+keeps the old contract (absent ⇒ empty). First direct test module for the
+F4b gate (`tests/test_verify_coverage_gate.py`), including the skip-scope
+case (only LISTED files are skipped; an unlisted judged gap still blocks —
+the listing itself is producer-attested, same trust model as
+`changes_referenced`). 1030 pass.
+
+**Blast radius:** `bin/test-reference-verify`, `lib/gates.py`
+(`_EVIDENCE_OPTIONAL_FIELDS`, `verify_coverage`), `bin/prawduct-hook`
+(placeholder record), `tests/test_reference_verifier.py`,
+`tests/test_verify_coverage_gate.py` (new). Critic (chunk mode): 0 blocking,
+1 warning (stale `_looks_like_python` docstring — fixed), 1 note
+(informational line now echoes `coverage_level` — adopted).
+
+## 2026-06-09: work-model probe precision — frequency floor, firing threshold, widened corpus
+
+<!-- prawduct: chunks=2 | type=fix | release=v2.1.0 | status=shipped | scope=review-fixes -->
+
+**Why:** The work-model probe (terms-not-in-artifacts tripwire) fired on
+ordinary prompts — acknowledgments, questions, noun-homographs ("the build
+failed"), contractions — eroding trust in tripwire #1. Four false-positive
+prompt classes observed live 2026-06-09.
+
+**What:** Three precision levers: a common-English frequency floor (top-4,000
+of the google-10000-english list — the observed false-positive *efficiency*
+ranks #3283, forcing the cutoff; 30KB accepted, provenance + license posture
+documented in `lib/common_words.py`), a firing threshold, and a widened
+artifact corpus. Two extra precision bugs found and fixed during build:
+contraction tokens minting orphan non-words ("let's" → "let'"), and
+requirement verbs reporting themselves as the orphan ("extend X" flagging
+*extend*). All four observed false-positive prompt classes verified silent
+live against this repo's hook; "add OAuth login to the settings page" still
+fires.
+
+**Blast radius:** `bin/prawduct-hook` (probe), `lib/common_words.py` (new),
+`tests/` (+14, 1051 pass). Critic (chunk mode ×2): pass, then 1 warning +
+2 notes, all resolved (count drift, sentence-boundary determiner reset,
+wordlist license posture).
+
+## 2026-06-09: review-gate soundness — PR doc-only protected paths + Critic marker ordering
+
+<!-- prawduct: chunks=3 | type=fix | release=v2.1.0 | status=shipped | scope=review-fixes -->
+
+**Why:** PR-5K8D: `check-pr-doc-only` treated `skills/*.md` as docs, so
+governance-logic changes could skip the independent PR reviewer — the only
+remaining PR-boundary gate-skip path after the trivial fast-path was retired.
+CRT-6F2N: the critic SKILL ran `critic-begin` before the designer-handoff
+early exit, leaving a `.critic-active` marker (blocking `clear`) for up to
+its 30-min TTL on a review that never happened.
+
+**What:** Extracted `protected_path_violation()` from the trivial gate's
+bound list (`_TRIVIAL_PROTECTED_PATHS`: `skills/`, `methodology/`,
+`templates/`, root `CLAUDE.md`) and consulted it in the PR doc-only gate — a
+`skills/*.md` PR now exits 1 `not-doc-only`; nested `foo/CLAUDE.md` stays
+doc-only (exact-match semantics preserved). Stop-hook Gate 3 inherits the
+tightened bound through the shared helper; fails closed. Moved the
+designer-handoff early exit BEFORE `critic-begin` in the critic SKILL step 1,
+pinned by a prose-ordering test.
+
+**Blast radius:** `lib/buildplan_refs.py` (`protected_path_violation`),
+`lib/coverage.py` (PR doc-only gate), `skills/critic/SKILL.md` (step
+ordering), `tests/` (+7, 1058 pass). Critic (chunk mode): 1 blocking (a
+placeholder path in the build plan's own Tests bullet failed
+verify-chunk-refs — fixed), 1 note (accepted with rationale). Both backlog
+items shipped/archived via `/prawduct:backlog`.
+
+## 2026-06-09: hot-path correctness fixes (core.py depth, Gate 3 network call, porcelain parsing)
+
+<!-- prawduct: chunks=1 | type=fix | release=v2.1.0 | status=shipped | scope=review-fixes -->
+
+**Why:** Three verified bugs from the 2026-06-09 full-framework review, all on
+hooks hot paths. (1) `lib/core.py`'s `FRAMEWORK_DIR = parent.parent.parent` was a
+byte-parity holdover from the retired file-sync three-level tools layout — from
+top-level `lib/` it resolved one level ABOVE the plugin root, so `TEMPLATES_DIR`
+pointed at a nonexistent path and `PRAWDUCT_VERSION` silently read `"dev"` (the
+Chunk-14 Critic had called this "inert"; learnings.md already documents why that
+verdict didn't hold). (2) The stop-hook's Gate 3 ran `gh pr list` — a
+300-800ms network call, 15s timeout worst case — on EVERY turn-end of any
+feature-branch session, even with zero session changes, because its only guard
+was `not doc_only` and `doc_only` is False when `has_changes` is False. (3) All
+three porcelain parsers in `lib/gitstate.py` used `line.split()[-1]`, which
+mangles git-quoted space-paths (` M "my doc.md"` → `doc.md"`) and renames — a
+doc-only session touching a space-path was falsely blocked by the
+Critic/reflection gates.
+
+**What:** Fixed the `FRAMEWORK_DIR` depth and removed `init_product.py`'s
+now-dead resolution workaround (it routes through `core` again). Gate 3 now
+short-circuits on `not has_changes` (merge-time enforcement stays in
+`/prawduct:pr`). Added shared `gitstate.parse_porcelain_line` (quoted paths,
+renames; caveats documented), adopted at all three gitstate sites AND the
+trivial-gate's previously-duplicated inline parse in `lib/gates.py`; dropped the
+whole-output `.strip()` that corrupted the first porcelain line's fixed-offset
+status; added the corrupted-baseline guard `_get_session_changed_files` was
+missing. Synced `pyproject.toml` 2.0.15→2.0.17. Renegotiated the Gate 3 test
+contract in the open (the old tests pinned the always-probe behavior with empty
+status; they now carry a code diff, and a recording-mock test pins the ABSENCE
+of the `gh` call on a no-change session — 0.29s wall empirically). 17 new
+regression tests; 1037 pass.
+
+**Blast radius:** `lib/core.py`, `lib/init_product.py`, `lib/gitstate.py`,
+`lib/gates.py`, `bin/prawduct-hook` (Gate 3 condition), `pyproject.toml`,
+`tests/test_gitstate_porcelain.py` (new), `tests/test_plugin_init.py`,
+`tests/test_pr_reviewer.py`. Critic (final + 2× verify-resolutions) caught the
+plan's own `active_build_plan` pointer mis-resolution — fixed in
+`.prawduct/project-state.yaml` (pointer is `.prawduct/`-relative).
+
 ## 2026-06-08: register the missing legacy-backlog-format advisory probe
 
 <!-- prawduct: chunks=01 | type=fix | release=v2.0.17 | status=shipped | scope=legacy-backlog-format-probe -->

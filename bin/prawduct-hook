@@ -270,6 +270,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
     ".prawduct/.session-git-baseline",
@@ -280,7 +281,10 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.gates-waived",
     ".prawduct/.advisories.json",
     ".prawduct/reflections.md",
-    ".prawduct/artifacts/build-plan.md",
+    # NOTE: .prawduct/artifacts/build-plan.md is deliberately NOT here —
+    # build plans are tracked artifacts (gate-soundness ch.3); this loop
+    # used to force-untrack them at every session start, reverting any
+    # product that tracked its plan.
 )
 
 
@@ -869,12 +873,18 @@ def cmd_stop(project_dir: Path) -> int:
             print(f"NOTE: {mode_reason}", file=sys.stderr)
 
     # Gate 3: PR review evidence (when a PR exists for the current branch).
-    # Skipped for doc-only changes. The waiver is only noted when the gate
-    # would have actually blocked (real PR exists with no valid evidence).
+    # Skipped for doc-only changes AND for sessions with no changes at all:
+    # a session that changed nothing incurred no new review obligation, and
+    # the `gh pr list` probe below is a network call (300-800ms typical,
+    # 15s timeout worst case) that used to fire on EVERY turn-end of a pure
+    # Q&A session on a feature branch (review-fixes Chunk 1). Merge-time
+    # enforcement lives in `/prawduct:pr` regardless. The waiver is only
+    # noted when the gate would have actually blocked (real PR exists with
+    # no valid evidence).
     pr_reviews_dir = prawduct_dir / ".pr-reviews"
     pr_would_block = False
     pr_block_branch = ""
-    if not doc_only:
+    if has_changes and not doc_only:
         try:
             branch_result = subprocess.run(
                 ["git", "branch", "--show-current"],
@@ -1014,6 +1024,22 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``).
+
+    Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
+    one-repo-shape assumption that forced products (scriob) into wrapper
+    scripts:
+
+    * ``test_command:`` — the project's canonical suite invocation, run
+      shlex-split from the repo root instead of ``sys.executable -m pytest``
+      (whose interpreter cannot import a uv/venv-managed product package). It
+      MUST contain a ``{junit_xml}`` literal; the hook substitutes its report
+      path there. Shell operators are not supported — point the command at a
+      script for compound invocations. Extra CLI pytest args are rejected when
+      the knob is set — the declared command IS the invocation (scriob's "run
+      the exact command CI runs" learning, made structural).
+    * ``tests_dirs:`` — whitespace-separated test trees (default ``tests``),
+      forwarded to the F4a overlay as repeated ``--tests-dir`` so one verifier
+      run covers a monorepo's components.
     """
     import tempfile  # noqa: PLC0415 — only this command needs them
     import xml.etree.ElementTree as ET  # noqa: PLC0415
@@ -1030,6 +1056,30 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     prawduct_dir = get_prawduct_dir(project_dir)
     evidence_path = prawduct_dir / ".test-evidence.json"
+    state_path = prawduct_dir / "project-state.yaml"
+
+    test_command = _read_str_yaml_key(state_path, "test_command")
+    tests_dirs_raw = _read_str_yaml_key(state_path, "tests_dirs")
+    tests_dirs = tests_dirs_raw.split() if tests_dirs_raw else []
+
+    if test_command:
+        if extra:
+            print(
+                "error: extra pytest args are not allowed when "
+                "project-state.yaml declares test_command — the declared "
+                "command IS the canonical invocation. Edit test_command "
+                "instead.",
+                file=sys.stderr,
+            )
+            return 2
+        if "{junit_xml}" not in test_command:
+            print(
+                "error: test_command must contain the {junit_xml} placeholder "
+                "(the hook substitutes its JUnit XML report path there, e.g. "
+                "test_command: uv run pytest --junit-xml={junit_xml} -q).",
+                file=sys.stderr,
+            )
+            return 2
 
     # Run the suite with a JUnit XML report — built into pytest (no plugin) and
     # parse-robust where the terminal summary line is not (xdist, warnings, and
@@ -1037,9 +1087,33 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
     os.close(fd)
     junit = Path(junit_name)
-    cmd = [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *extra]
     try:
-        proc = subprocess.run(cmd, cwd=str(project_dir))
+        if test_command:
+            # shlex list-form, not shell=True (injection surface; banned by
+            # tests/preferences). Wrappers like `uv run pytest …` split fine;
+            # compound invocations (&&, pipes, env vars) belong in a script
+            # the command points at. Split BEFORE substituting so a report
+            # path containing spaces/quotes lands as one intact token.
+            import shlex  # noqa: PLC0415 — only this branch needs it
+            run_argv = [
+                tok.replace("{junit_xml}", str(junit))
+                for tok in shlex.split(test_command)
+            ]
+            try:
+                proc = subprocess.run(run_argv, cwd=str(project_dir))
+            except FileNotFoundError:
+                print(
+                    f"error: test_command executable not found: {run_argv[0]!r} "
+                    "— check the test_command in project-state.yaml.",
+                    file=sys.stderr,
+                )
+                return 2
+        else:
+            cmd = [
+                sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q",
+                *extra,
+            ]
+            proc = subprocess.run(cmd, cwd=str(project_dir))
         try:
             root = ET.parse(junit).getroot()
         except (ET.ParseError, OSError) as exc:
@@ -1054,18 +1128,24 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         except OSError:
             pass
 
-    suite = root if root.tag == "testsuite" else root.find("testsuite")
-    if suite is None:
+    # Aggregate across ALL top-level <testsuite> elements, not just the first:
+    # pytest emits one, but `test_command` invites arbitrary runners
+    # (jest-junit, go-junit-report, merged CI reports) whose <testsuites>
+    # roots carry many — reading only the first silently undercounted the
+    # evidence the freshness and Critic gates trust. Direct children only
+    # (not iter()) so Ant-style nested suites aren't double-counted.
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    if not suites:
         print(
-            "error: pytest produced no <testsuite> (no tests collected?)",
+            "error: the test run produced no <testsuite> (no tests collected?)",
             file=sys.stderr,
         )
         return 2
-    total = int(suite.get("tests", "0"))
-    failures = int(suite.get("failures", "0"))
-    errors = int(suite.get("errors", "0"))
-    skipped = int(suite.get("skipped", "0"))
-    duration = float(suite.get("time", "0") or "0")
+    total = sum(int(s.get("tests", "0")) for s in suites)
+    failures = sum(int(s.get("failures", "0")) for s in suites)
+    errors = sum(int(s.get("errors", "0")) for s in suites)
+    skipped = sum(int(s.get("skipped", "0")) for s in suites)
+    duration = sum(float(s.get("time", "0") or "0") for s in suites)
     passed = total - failures - errors - skipped
     failed = failures + errors
 
@@ -1084,7 +1164,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     record = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "git_sha": git_sha,
-        "command": " ".join(["python3 -m pytest -q", *extra]).strip(),
+        "command": (
+            test_command
+            if test_command
+            else " ".join(["python3 -m pytest -q", *extra]).strip()
+        ),
         "passed": passed,
         "failed": failed,
         "skipped": skipped,
@@ -1093,6 +1177,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         "coverage_level": "referenced",
         "tests_executed": [],
         "changes_referenced": [],
+        "changes_unjudged": [],
     }
     # Atomic write — the freshness gate must never observe a half-written file.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
@@ -1113,6 +1198,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             "--repo",
             str(project_dir),
         ]
+        for tests_dir in tests_dirs:
+            merge_cmd += ["--tests-dir", tests_dir]
         if base:
             merge_cmd += ["--base", base]
         mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)
@@ -1485,6 +1572,64 @@ def cmd_verify_coverage(project_dir: Path) -> int:
     return _gates().verify_coverage(project_dir)
 
 
+def cmd_ledger_append(project_dir: Path, argv: list[str]) -> int:
+    """Append one governance-ledger event from the latest findings record.
+    Thin wrapper — body lives in ``lib.ledger.ledger_append``
+    (review-proportionality ch.02: the agent never hand-authors JSONL)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import ledger  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return ledger.ledger_append(project_dir, argv)
+
+
+def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
+    """Aggregate the governance ledger into review cost / yield numbers.
+    Thin wrapper — body lives in ``lib.telemetry.review_stats``
+    (review-proportionality ch.03: Visible Costs applied to the framework).
+    Telemetry is informational, never a gate — a missing lib degrades to a
+    note + exit 1, mirroring ``cmd_advisory``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import telemetry  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "review-stats unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return telemetry.review_stats(project_dir, argv)
+
+
+def cmd_classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
+    """Classify the review scope as ``escalate``/``standard`` against the
+    repo's risk surfaces. Thin wrapper — body lives in
+    ``lib.risk.classify_diff_risk`` (review-proportionality ch.04). The
+    import failure is fail-OPEN to ``standard`` ONLY because an unreadable
+    lib also means no surfaces could be resolved; the in-lib git-failure
+    path stays fail-closed when surfaces are declared."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import risk  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "classify-diff-risk unavailable (could not import the plugin lib/ "
+            "from ${CLAUDE_PLUGIN_ROOT}); defaulting to standard.",
+            file=sys.stderr,
+        )
+        print("standard")
+        return 0
+
+    return risk.classify_diff_risk(project_dir, argv)
+
+
 def cmd_compute_verify_resolutions_scope(project_dir: Path) -> int:
     """Print the file scope a ``/prawduct:critic verify-resolutions`` pass should review.
 
@@ -1676,6 +1821,40 @@ def cmd_init_product(argv: list[str]) -> int:
     return init_product.run(argv)
 
 
+def cmd_update_gitignore(project_dir: Path) -> int:
+    """Reconcile ``.gitignore`` with the framework's session-file contract
+    (``/prawduct:doctor`` repair step — gate-soundness ch.3).
+
+    Adds missing session entries and strips lines that ignore managed files or
+    RETIRED entries (the tracked-by-default build plan). ``init-product``
+    early-exits on an already-scaffolded repo and the session hooks must never
+    edit a tracked file (the no-noise guarantee), so this on-demand command is
+    how an existing repo picks up gitignore-contract changes. Prints each
+    unignored path so the caller can advise ``git add``.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import core as lib_core  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "update-gitignore unavailable (could not import the plugin lib/ "
+            "from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    result = lib_core.update_gitignore(project_dir)
+    if result.get("unignored"):
+        for path in result["unignored"]:
+            print(f"unignored: {path} — now tracked-by-contract; `git add` it if present")
+    print("updated .gitignore" if result.get("modified") else "no changes needed")
+    return 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -1805,11 +1984,14 @@ _USAGE = (
     "stop|build-index|user-prompt-submit|test-status|validate-evidence|test-evidence record [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
+    "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
+    "review-stats [--json]|classify-diff-risk [<base>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|regen-views|infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
+    "update-gitignore|"
     "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -1821,7 +2003,8 @@ _USAGE = (
 # undocumented. The catch logic is the pure lib/work_model_index.py (Chunk 1);
 # these are the thin runtime wrappers (Chunk 2). Per the plugin invariant, the
 # derived index is per-repo state in ``.prawduct/.work-model-index.json`` (NOT
-# plugin-bundled state), rebuilt from the repo's governing artifacts. Both
+# plugin-bundled state), rebuilt from the repo's governing corpus (artifacts,
+# CLAUDE.md, docs/, methodology/ — review-fixes Chunk 2). Both
 # commands gate on ``.prawduct/`` (the user-scoped plugin fires in every repo)
 # and are fail-soft — a hook error must never break session start or, above all,
 # prompt submission.
@@ -1839,11 +2022,26 @@ def _work_model_load_lib():
     return work_model_index
 
 
-def _work_model_artifact_texts(prawduct_dir: Path) -> list[str]:
-    """The governing-artifact corpus the vocabulary index is built from:
-    every markdown artifact under ``.prawduct/artifacts/``."""
+def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path]:
+    """The governing corpus the vocabulary index is built from: every markdown
+    artifact under ``.prawduct/artifacts/``, plus the repo's CLAUDE.md and any
+    top-level ``docs/`` / ``methodology/`` markdown (review-fixes Chunk 2:
+    framework-domain words in those files must not read as orphans). Missing
+    directories simply contribute nothing — product repos rarely have all of
+    them. Top-level globs are deliberate: subdirectories (docs/examples/, …)
+    hold samples and archives, not governing vocabulary."""
+    paths = sorted((prawduct_dir / "artifacts").glob("*.md"))
+    claude_md = project_dir / "CLAUDE.md"
+    if claude_md.is_file():
+        paths.append(claude_md)
+    for sub in ("docs", "methodology"):
+        paths.extend(sorted((project_dir / sub).glob("*.md")))
+    return paths
+
+
+def _work_model_corpus_texts(project_dir: Path, prawduct_dir: Path) -> list[str]:
     texts: list[str] = []
-    for path in sorted((prawduct_dir / "artifacts").glob("*.md")):
+    for path in _work_model_corpus_paths(project_dir, prawduct_dir):
         try:
             texts.append(path.read_text(encoding="utf-8", errors="replace"))
         except OSError:
@@ -1851,21 +2049,23 @@ def _work_model_artifact_texts(prawduct_dir: Path) -> list[str]:
     return texts
 
 
-def _work_model_ensure_index(prawduct_dir: Path, wmi, *, force: bool = False) -> dict:
-    """Return the vocabulary index, rebuilding from artifacts when missing,
-    stale (an artifact is newer than the index), corrupt, or ``force``."""
+def _work_model_ensure_index(
+    project_dir: Path, prawduct_dir: Path, wmi, *, force: bool = False
+) -> dict:
+    """Return the vocabulary index, rebuilding from the corpus when missing,
+    stale (a corpus file is newer than the index), corrupt, or ``force``."""
     index_path = prawduct_dir / _WORK_MODEL_INDEX_RELPATH
-    artifacts = sorted((prawduct_dir / "artifacts").glob("*.md"))
+    corpus = _work_model_corpus_paths(project_dir, prawduct_dir)
 
     if not force and index_path.exists():
         idx_mtime = index_path.stat().st_mtime
-        if all(p.stat().st_mtime <= idx_mtime for p in artifacts):
+        if all(p.stat().st_mtime <= idx_mtime for p in corpus):
             try:
                 return json.loads(index_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 pass  # corrupt -> rebuild below
 
-    index = wmi.build_index(_work_model_artifact_texts(prawduct_dir))
+    index = wmi.build_index(_work_model_corpus_texts(project_dir, prawduct_dir))
     try:
         index_path.write_text(json.dumps(index), encoding="utf-8")
     except OSError:
@@ -1875,14 +2075,14 @@ def _work_model_ensure_index(prawduct_dir: Path, wmi, *, force: bool = False) ->
 
 def cmd_build_index(project_dir: Path) -> int:
     """Rebuild the work-model vocabulary index from the repo's governing
-    artifacts (wired on SessionStart to warm the index). Best-effort: a build
+    corpus (wired on SessionStart to warm the index). Best-effort: a build
     failure must never break session start."""
     prawduct_dir = get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
         return 0  # not a Prawduct-governed repo — stay silent (mirrors digest.py)
     try:
         wmi = _work_model_load_lib()
-        _work_model_ensure_index(prawduct_dir, wmi, force=True)
+        _work_model_ensure_index(project_dir, prawduct_dir, wmi, force=True)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- index build is best-effort; must never break session start
         print(f"NOTE: Prawduct could not build the work-model index: {exc}", file=sys.stderr)
         return 0
@@ -1903,8 +2103,8 @@ def cmd_user_prompt_submit(project_dir: Path) -> int:
         if not prompt.strip():
             return 0
         wmi = _work_model_load_lib()
-        index = _work_model_ensure_index(prawduct_dir, wmi)
-        nudge = wmi.format_nudge(wmi.find_orphan_terms(prompt, index))
+        index = _work_model_ensure_index(project_dir, prawduct_dir, wmi)
+        nudge = wmi.nudge_for(prompt, index)
         if nudge:
             print(
                 json.dumps(
@@ -1957,6 +2157,12 @@ def main() -> int:
         return cmd_verify_chunk_refs(project_dir, chunk_id)
     elif command == "verify-coverage":
         return cmd_verify_coverage(project_dir)
+    elif command == "ledger-append":
+        return cmd_ledger_append(project_dir, sys.argv[2:])
+    elif command == "review-stats":
+        return cmd_review_stats(project_dir, sys.argv[2:])
+    elif command == "classify-diff-risk":
+        return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":
@@ -1982,6 +2188,8 @@ def main() -> int:
         return cmd_migrate_plugin(project_dir, sys.argv[2:])
     elif command == "init-product":
         return cmd_init_product(sys.argv[2:])
+    elif command == "update-gitignore":
+        return cmd_update_gitignore(project_dir)
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
     elif command == "repo-disable":

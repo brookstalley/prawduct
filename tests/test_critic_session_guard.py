@@ -203,3 +203,26 @@ class TestCriticBeginEndCLI:
         _prawduct(tmp_path)
         result = run_plugin_hook("critic-end", tmp_path)
         assert result.returncode == 0, result.stderr
+
+
+class TestDesignerHandoffMarkerOrdering:
+    """CRT-6F2N — the designer-handoff early exit must precede critic-begin.
+
+    The marker lifecycle is agent-followed prose (the skill, not the hook,
+    decides when to run critic-begin), so the pin is structural: in the
+    critic SKILL's step 1, the designer-handoff early-exit instruction must
+    appear BEFORE the critic-begin instruction. Without that ordering, a
+    designer-handoff invocation set the marker and exited without critic-end,
+    leaving `clear` blocked until the 30-minute TTL.
+    """
+
+    def test_skill_prose_orders_early_exit_before_critic_begin(self):
+        text = (_ROOT / "skills" / "critic" / "SKILL.md").read_text(encoding="utf-8")
+        exit_pos = text.find("Designer-handoff early exit")
+        begin_pos = text.find("run `prawduct-hook critic-begin`")
+        assert exit_pos != -1, "designer-handoff early-exit instruction missing from SKILL.md"
+        assert begin_pos != -1, "critic-begin instruction missing from SKILL.md"
+        assert exit_pos < begin_pos, (
+            "the designer-handoff early exit must come before critic-begin "
+            "(CRT-6F2N: no critic-active marker for a review that never happens)"
+        )

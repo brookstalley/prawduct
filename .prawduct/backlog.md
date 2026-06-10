@@ -8,6 +8,137 @@
 ## Open
 
 
+- **[TEL-7A4X]** Cross-project review-telemetry aggregation — aggregate and review review-cost/value stats across all Prawduct-governed products
+  `effort: M · impact: L · area: governance/telemetry · source: user · added: 2026-06-10 · status: open · stage: requirements · refs: build-plan-review-proportionality.md`
+
+  Builds on the per-project foundation in `build-plan-review-proportionality.md` (chunk 02 ledger
+  `.prawduct/.critic-reviews.jsonl` with schema_version/model fields; chunk 03 `prawduct-hook
+  review-stats --json` stable machine shape with top-level schema_version/project/generated_at —
+  that JSON contract is the integration point). Fix-shape sketch (requirements still open): an
+  aggregator that scans known product directories (the same discovery the "reviewing product
+  feedback" CLAUDE.md route uses for learnings.md), collects each repo's `review-stats --json`, and
+  renders a cross-project view: review wall-clock and actionable-finding rate by mode/model/project,
+  so proportionality tuning (e.g. which products' chunk reviews yield nothing, where escalation
+  pays) is evidence-driven framework-wide. Open requirements: where the aggregate view lives (skill
+  vs doc vs janitor section), product opt-in/privacy posture (ledgers are gitignored local state),
+  and whether product plugin versions skew comparability. **Blocked until review-proportionality
+  chunks 02–03 ship.** User request 2026-06-10 ("grab a backlog to enable telemetry aggregation and
+  review across projects"). (user)
+
+- **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
+  `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end)`
+
+  During the 2026-06-10 gate-soundness cumulative review, a coordinator-pattern subagent ran the
+  affected test files directly (217 passed, reported in the review summary) despite the SKILL prose
+  instruction and the pure-allow tool list — which doesn't bind Agent-dispatched subagents. Same gap
+  class as CRT-3X9D, whose critic-begin marker guards only `prawduct-hook clear`. The review
+  conclusion was unaffected, but the boundary exists so reviews can't mutate or depend on session
+  state. Fix-shape: extend the critic-active marker enforcement (or subagent tool restriction) to
+  test/build execution, or have the coordinator pass an enforced `allowed-tools` to Agent
+  dispatches. Priority P2. (reflection)
+
+- **[TST-3E8V]** `cmd_test_evidence` catches only FileNotFoundError for a declared test_command — widen to OSError
+  `effort: S · impact: S · area: tests/runtime · source: critic · added: 2026-06-10 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_test_evidence), tests/test_plugin_runtime.py (TestTestEvidenceKnobs)`
+
+  `cmd_test_evidence` wraps the declared `test_command` launch in `except FileNotFoundError` only,
+  so a *missing* executable gets the clean exit-2 path but a *non-executable* target raises
+  PermissionError and tracebacks instead. Fix-shape: widen the except to `OSError`
+  (FileNotFoundError and PermissionError are both subclasses) so any OS-level launch failure takes
+  the same clean exit-2 path; add a non-executable-target case alongside the existing
+  `TestTestEvidenceKnobs` coverage. Filed from the cumulative Critic NOTE on the gate-soundness
+  bundle, 2026-06-10. (critic)
+- **[STH-5P2W]** Loud guard when a set active_build_plan pointer resolves to no file
+  `effort: S · impact: M · area: stop-hook · source: critic · added: 2026-06-09 · status: open · stage: ready · related: REL-4T8N · refs: lib/core.py, bin/prawduct-hook`
+
+  From review-fixes Chunk 1 Critic (2026-06-09). The active_build_plan pointer is
+  .prawduct/-relative; a repo-relative value (the natural way to write it) mis-resolves and the
+  resolvers (lib/core.py resolve_build_plan_path + the hook's inline mirror) silently fall back to
+  the default plan path — disabling the Critic gate, plan-aware mode inference, and
+  verify-chunk-refs with no signal. Happened live: the review-fixes planning commit shipped the
+  mis-resolving form and the gates were blind for one work cycle until the Critic caught it.
+  Fix-shape: when the pointer is SET but resolves to a nonexistent file, warn loudly in the session
+  briefing (and/or accept repo-relative forms by stripping a leading .prawduct/) + test.
+  Escape-hatches-create-silent-failures shape. (critic)
+
+- **[CRT-5Q8W]** Skill prose clarity micro-fixes from the 2026-06-09 review (critic protocol wording, designer-handoff note, backlog pick defaults, framework-checks example)
+  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md · reviewed: 2026-06-10`
+
+  Batch of small wording fixes from the skills review agent, none changing behavior: (1) critic
+  review-protocol.md 'Decide checks from signals below' is vague — state that the resolved MODE
+  determines which goals apply, with a pointer to review-cycle.md. (2) ~~critic SKILL.md Getting
+  Started: add a one-line note that Type: designer-handoff chunks exit early without a findings
+  file, so an agent that skips the protocol read still knows the special case.~~ **Resolved** by
+  review-fixes ch.3's CRT-6F2N fix (2026-06-10, feature/review-fixes). (3) review-cycle.md
+  learnings cross-check: note that if a later learning revokes/softens the original, the latest
+  learning wins (currently assumes learnings are infallible). (4) framework-checks.md Check 7: add
+  a concrete avoid/prefer example for 'strengthening the dynamic generation system'. (5) backlog
+  SKILL pick: document the combined effect of missing effort/impact defaults (2/2 = 1.0 score)
+  explicitly; drop the stale Q6 label. (builder)
+
+  2026-06-10: sub-item (2) resolved by review-fixes ch.3's CRT-6F2N fix; sub-items (1), (3), (4),
+  (5) remain open.
+
+- **[MET-6W3J]** learnings.md compaction: restore When-X-do-Y-because-Z brevity, move narrative to learnings-detail.md, add a size nudge
+  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · related: MET-5C2H, MET-7R4J · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md`
+
+  From the 2026-06-09 framework review. learnings.md is ~28k tokens for 23 entries — individual
+  entries run 300-600 words, drifting from the file's own stated format (rule in learnings.md, full
+  context in learnings-detail.md). Every /prawduct:learnings lookup and Critic learnings cross-check
+  pays this. Fix-shape: (1) compact each entry to the When/do/because rule plus a pointer into
+  learnings-detail.md (move the narrative there — never delete it); (2) add a mechanical size check
+  per this repo's own 'growing files need structural nudges to prune' learning (e.g. session-start
+  warn when learnings.md exceeds a threshold, like the existing project-state.yaml 40KB warning).
+  (builder)
+
+- **[PR-3J6W]** PR skill control-flow clarity: pre-flight guard placement, named retry entry points, Step 1b addressee, evidence retention
+  `effort: S · impact: M · area: pr · source: builder · added: 2026-06-09 · status: open · related: PR-5K8D, PR-2H8N · refs: skills/pr/SKILL.md, skills/pr/review-protocol.md`
+
+  From the 2026-06-09 framework review (skills agent). (1) The release-promotion guard sits
+  mid-prose after the Context Detection heading but must fire before routing — extract it as an
+  explicit Pre-flight section before the routing table. (2) The three sequential STOPs (steps 2,
+  2b, 3) never name their retry entry point; an agent may re-run Step 1 after fixing a Step 3
+  block — add 'fix, re-run THIS gate, continue' to each. (3) Step 1b's doc-only fast-path
+  instruction reads as if addressed to the Critic; rephrase as imperative to the skill executor.
+  (4) Decide evidence-file retention: 'delete the evidence file with the branch' loses the audit
+  trail if a PR is reverted — archive to .prawduct/.pr-reviews-archive/ or document why deletion
+  is intended. Note: the doc-only fileset bug itself (skills/ treated as docs) is PR-5K8D,
+  promoted into the review-fixes plan Chunk 3 — this item is the prose/control-flow cleanup only.
+  (builder)
+
+- **[STH-4F7C]** Extract the duplicated Critic-freshness gate (cmd_stop vs briefing) to lib/gates.py — copies have already diverged
+  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-9V4K, STH-6B4R, STH-2K8R · refs: bin/prawduct-hook, lib/briefing.py, lib/gates.py`
+
+  From the 2026-06-09 framework review. The mtime-vs-session-start freshness check is duplicated
+  nearly verbatim (including the same STH-6B4R comment block) in cmd_stop (bin/prawduct-hook) and
+  briefing._check_previous_session_gates (lib/briefing.py). Unlike the hook's intentional inline
+  mirrors, this pair has no parity test and has already diverged: cmd_stop gained the
+  verify-resolutions scope check; the briefing copy did not. The briefing copy lives in lib/
+  already, so the import-light hot-path rationale does not apply — extract to lib/gates.py and add
+  a parity/regression test. (builder)
+
+- **[STH-8M3V]** Atomic writes for .prawduct state files + guard unguarded hot-path I/O in cmd_clear
+  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-6Q9D, ADV-9K2T · refs: bin/prawduct-hook, lib/advisory_store.py, lib/gitstate.py`
+
+  From the 2026-06-09 framework review. Only .test-evidence.json gets tmp + os.replace;
+  .advisories.json (lib/advisory_store.py), .work-model-index.json, .session-start,
+  .session-git-baseline, and .session-handoff.md are plain write_text — two concurrent sessions on
+  the same repo (worktrees) can tear them. Readers fail open, so blast radius is a misfired gate,
+  not a crash — still worth one shared atomic_write_text helper. Same pass: three unguarded I/O
+  sites in cmd_clear (session-file unlink loop, .session-start write, baseline write) can traceback
+  the SessionStart hook on an OSError, unlike the meticulously best-effort code around them;
+  gitstate's _get_session_changed_files also lacks the (UnicodeDecodeError, OSError) guard its
+  siblings have. (builder)
+
+- **[STH-6Q9D]** Batch git subprocess fan-out on SessionStart/Stop hot paths
+  `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: bin/prawduct-hook, lib/gitstate.py`
+
+  From the 2026-06-09 framework review. cmd_clear runs ~20+ serial subprocesses (~940ms here; 5-10s
+  risk on monorepos): _untrack_session_files issues 1 + up to 14 git ls-files --error-unmatch calls
+  every session start (replace with one batched 'git ls-files -- <paths>'); 'git status --porcelain'
+  is re-run 4-5x per clear and >=3x per stop (capture once per invocation and pass down);
+  _has_product_code (lib/gitstate.py) walks the full tree via rglob including node_modules/.git
+  before filtering (use pruned os.walk or git ls-files). (builder)
+
 - **[REL-6C3W]** Flag a code-changing branch that merges with no change-log entry
   `effort: M · impact: M · area: release/change-log · source: reflection · added: 2026-06-08 · status: open · related: REL-2N8K · refs: docs/release-process.md`
 
@@ -19,33 +150,6 @@
   Candidate fix: a PR/merge gate (parallel to check-pr-doc-only/trivial) or a release-prep probe that
   flags when `merge-base...HEAD` is not doc-only/trivial yet adds no new change-log entry. Filed from
   the v2.0.16 release (2026-06-08). (reflection)
-
-- **[PR-5K8D]** check-pr-doc-only should exclude skills/ (and methodology/templates) — align with `_classify_trivial_change`'s bounds
-  `effort: S · impact: M · area: pr/governance · source: reflection · added: 2026-06-08 · status: open · reviewed: 2026-06-08 · related: PR-9T4M · refs: skills/pr/SKILL.md, lib/buildplan_refs.py, lib/coverage.py`
-
-  The two PR fast-path classifiers disagreed on skill files. On the backlog-legend-refresh PR (#83),
-  `check-pr-doc-only` returned exit 0 (all 4 files `.md` → "gates may be skipped"), which per the
-  `/pr` Step 1b instruction would skip the independent PR reviewer entirely — but `check-pr-trivial`
-  correctly returned "not-trivial: skill-file-edited: skills/backlog/SKILL.md. Full review required."
-  A fork-skill's SKILL.md IS behavior/logic (per the existing learning "when a feature's logic lives
-  in a context:fork skill, lib/ holds DATA not LOGIC"), so an extension-only doc-only classification
-  under-reads a behavioral skill change and can skip review.
-
-  Re-anchored 2026-06-08 (branch fix/retire-pr-trivial-fast-path): `check-pr-trivial` /
-  `_pr_diff_is_trivial` were DELETED when the PR-boundary trivial fast-path was retired (see
-  PR-9T4M). The original fix-shape pointed at `check-pr-trivial` as the model to copy; that
-  classifier is gone. The canonical exclusion bounds still live in `lib/buildplan_refs.py`
-  (`_classify_trivial_change` / `_TRIVIAL_PROTECTED_PATHS` — `{skills/, methodology/, templates/,
-  CLAUDE.md}`), now consumed only by the chunk-level `_is_trivial_fileset_eligible` gate
-  (`lib/gates.py`). This item is now MORE relevant, not less: with the trivial fast-path retired,
-  `check-pr-doc-only` (`lib/coverage.py`, hook `cmd_check_pr_doc_only`) is the ONLY remaining
-  PR-boundary gate-skip path, and it still under-reads behavioral `skills/*.md` changes. Candidate
-  fix (re-anchored): align `check-pr-doc-only`'s fileset bounds with `_classify_trivial_change` —
-  exclude `skills/`, `methodology/`, `templates/`, and `CLAUDE.md` from the doc-only fast-path so a
-  behavioral-prose change still gets the reviewer; consume the shared `_TRIVIAL_PROTECTED_PATHS`
-  rather than re-listing the bounds. refs: skills/pr/SKILL.md (Step 1b/1c), lib/coverage.py
-  (check_pr_doc_only), lib/buildplan_refs.py (_classify_trivial_change). Filed from the v2.0.16
-  release (2026-06-08). (reflection)
 
 - **[CRT-3D9K]** `bin/prawduct-hook` stop-gate chunk resolution has the same views-branch blindness CRT-7B4M fixed in inference
   `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · stage: requirements · related: CRT-7B4M, STH-2K8R`
@@ -95,17 +199,6 @@
   `status=merged` on the merged entry so the lifecycle the learnings describe actually holds. Either
   closes the silent-omission hole. (builder, from the v2.0.14 release)
 
-- **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set
-  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: open · related: CRT-3X9D`
-
-  Critic SKILL.md step 1 runs `prawduct-hook critic-begin` right after mode resolution, but a
-  `Type: designer-handoff` chunk exits clean *before* step 8 (`critic-end`), so the
-  `.prawduct/.critic-active` marker is left set on that path. Benign — the marker self-corrects
-  three ways (30-min TTL, session-start sweep, explicit override) — and rare, but ideally
-  `critic-begin` should run only after the designer-handoff skip is ruled out (move the
-  `critic-begin` call below the skip, or pair the skip with a `critic-end`). Surfaced as a NOTE in
-  the CRT-3X9D cumulative review. (critic, 2026-06-08)
-
 - **[CRT-3X9D]** Critic's no-execution constraint doesn't prevent session-mutating `prawduct-hook clear`
   `effort: S · impact: M · area: critic · source: builder · added: 2026-06-07 · status: in-progress (implementation complete) · branch: fix/critic-session-guard-CRT-3X9D · plan: build-plan-critic-session-guard.md · related: STH-9V4K`
 
@@ -123,7 +216,7 @@
   never be able to mutate the session it's reviewing. (builder)
 
 - **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
-  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K`
+  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · related: STH-9V4K · reviewed: 2026-06-09`
 
   `lib/critic_mode.py` carries independent re-implementations of `_current_chunk_id_from_status`,
   the chunk-`Type:` parser, and `_is_metadata_path` (and references `_parse_build_plan_status`),
@@ -137,6 +230,10 @@
   behavior-preserving move (it changes critic_mode's structure + collapses a parity relationship),
   so it needs its own tests + Critic pass — kept out of ch.3 for scope discipline. Filed from the
   ch.3 buildplan_refs extraction on 2026-06-07. (builder)
+
+  Critic note (review-fixes Chunk 1, 2026-06-09): lib/critic_mode.py contains a third porcelain
+  parser that near-duplicates the new shared gitstate.parse_porcelain_line (quoted paths, renames);
+  fold it onto the shared helper when consolidating this item's lib/critic_mode mirrors.
 
 - **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
   `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · related: CRT-9V4T, PRR-4M9T, JAN-4F7M`
@@ -342,9 +439,20 @@
   Discodon archive (Feb–Apr 2026) has 4 confirmed cases where Critic misread code: Mar 24 shutdown event closure, Mar 25 eval doc merge (3 of 4 prior findings false), Mar 28 ARIA A1/A2 missed an existing `model_config = ConfigDict(str_strip_whitespace=False)` override, plus branch-switching confusion. Root cause: `context: fork` can't see overrides spanning files / inheritance / closures. Investigate whether Critic's research phase needs a wider read budget for inheritance chains, or whether prompt engineering can compensate. (reflection)
 
 - **[CRT-8D2W]** Critic-in-worktree as structural fix for session-file conflicts
-  `effort: L · impact: M · area: critic · source: reflection · added: 2026-03-25 · status: open · reviewed: 2026-05-29`
+  `effort: L · impact: M · area: critic · source: reflection · added: 2026-03-25 · status: open · reviewed: 2026-06-10 · related: CRT-3X9D`
 
   v1.3.3 gitignored build-plan.md and v1.3.4 added `_untrack_session_files()`, but the user explicitly suggested running Critic in a separate worktree to avoid touching session files in the active tree at all. Mar 25 discodon avatar_description session captured this when branch-switching during Critic review caused merge conflicts on `.session-handoff.md` and backlog. Worth designing as a follow-up to the gitignore approach. (reflection)
+
+  **Premise partially obsoleted — reassessed 2026-06-10:** the original motivation rested in part on
+  the build plan being a *gitignored* session file; gate-soundness ch.3 (feature/gate-soundness) made build
+  plans **tracked**, so that half of the conflict surface is gone. The residual rationale is
+  narrower: the remaining gitignored session files (`.session-handoff.md`, `.critic-findings.json`,
+  `.session-reflected`, …) plus the broader isolation argument — an independent reviewer should not
+  be able to mutate the session tree at all (the same invariant CRT-3X9D enforces at the mutation
+  site via the critic-begin/critic-end guard). Before any design work, re-derive the requirement
+  against the current tracked-build-plan + critic-session-guard reality; the worktree approach may
+  now be redundant defense-in-depth rather than a structural fix. (critic, gate-soundness cumulative
+  review note)
 
 - **[SYN-6J0R]** WIP tracking goes stale when branches merge piecemeal
   `effort: M · impact: M · area: sync · source: reflection · added: 2026-03-23 · status: open · reviewed: 2026-05-29`
@@ -375,6 +483,50 @@
   `effort: S · impact: S · area: backlog · source: builder · added: 2026-05-29 · status: open`
 
   Requirements §8.2. A convenience alias that forwards to the existing unified `/prawduct-advisory dismiss`. The unified command already works, so this is pure ergonomics — deferred until the alias's discoverability is worth the extra surface. (builder)
+
+- **[BLD-7W2J]** Single-slot `active_build_plan` vs parallel in-flight plans
+  `effort: M · impact: M · area: governance/planning · source: critic · added: 2026-06-10 · status: open · stage: idea · related: REL-4T8N · refs: lib/core.py (resolve_build_plan_path), methodology/planning.md`
+
+  Two concurrent feature branches (feature/review-fixes → `build-plan-review-fixes.md`,
+  feature/gate-soundness → `build-plan-gate-soundness.md`) each set the one `active_build_plan`
+  pointer in `project-state.yaml`, guaranteeing a same-line merge conflict on develop — after which
+  one plan is invisible to pointer-resolved governance (stop hook, `infer-critic-mode`,
+  `verify-chunk-refs`) until repointed. planning.md's new "Plan lifecycle on gitflow" paragraph
+  covers only the *serial* release-pending case; gate-soundness ch.3 (tracked plans) + scope-named
+  files make parallel plans more likely. Design work needed: model multi-plan state (e.g. a plan
+  list, or per-branch resolution) or document the parallel-branch convention. Related: REL-4T8N
+  solved the *release-side* multi-plan problem (regen-views enumerates change-log scopes instead of
+  the pointer) but the in-flight pointer remains single-slot. Filed from fable test-reviewer NOTE on
+  the gate-soundness bundle, 2026-06-10. (critic)
+
+- **[MET-7R4J]** Methodology/CLAUDE.md redundancy and prompt-quality pass — hard rules stated 4-6x across always-loaded surfaces
+  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · related: MET-5C2H · refs: CLAUDE.md, docs/principles.md, methodology/building.md, methodology/planning.md, methodology/session-digest.md`
+
+  From the 2026-06-09 framework review (methodology-as-prompts agent). For Opus/Fable-class models, restating a rule with varied phrasing creates interference, not reinforcement. (1) Consolidate to one canonical statement + cross-refs: Tests Are Contracts appears 6x (CLAUDE.md, principles.md, agent-stance.md, building.md 2x, session-digest.md); the mid-build-requirement rule has 8+ phrasings; the Critic mandate appears 6x with escalating emphasis. (2) Remove emphasis escalation: CLAUDE.md 'STOP. Read this before writing ANY code' caps — prompt-rot pattern that also misstates Critic timing (Critic runs after code). (3) Compress planning.md Foreign API Verification (~40 lines to ~15: rule + when-to-apply + one worked example; move match mechanics to the Critic protocol). (4) Add one sentence to building.md Before You Build: re-review the plan's Open assumptions as code reveals new facts (assumptions are recorded at plan time but never checkpointed mid-build). Note: digest-vs-CLAUDE.md duplication is handled separately by the review-fixes plan Chunk 4 (slim framework-repo digest); this item is the within-file redundancy pass. Token-budget guardrail tests on methodology files will need adjusting downward, not up. (builder)
+
+- **[JNT-9R2K]** Janitor SKILL: move the investigation-theme taxonomy to a companion reference file; close the Step 2.5 to Step 7 backlog loop
+  `effort: S · impact: S · area: janitor · source: builder · added: 2026-06-09 · status: open · refs: skills/janitor/SKILL.md`
+
+  From the 2026-06-09 framework review (skills agent). (1) The nine investigation themes (~100 lines, ~50% of the skill) read once per janitor run — move theme details to a bundled companion file (the pattern the Critic already uses with review-protocol.md etc.) and keep SKILL.md as dispatcher + process. (2) Clarify that Step 2.5 Backlog Health emits read-only NOTE findings and Step 7 Reconcile is where those findings drive /prawduct:backlog update calls — the linkage is currently implicit. (3) Reframe the 'fresh eyes' line toward pattern-detection + infer-and-confirm, and say what to do when the user cannot confirm a preference divergence (file a backlog item rather than resolving unilaterally). (builder)
+
+- **[WMK-7D3R]** Work-model index never rebuilds on artifact deletion — retired vocabulary lingers
+  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · related: WMK-1P4Q · refs: bin/prawduct-hook, lib/work_model_index.py`
+
+  From the 2026-06-09 framework review. The staleness check (bin/prawduct-hook, build-index path) compares
+  remaining artifact mtimes to the index mtime, so deleting an artifact never triggers a rebuild and its
+  vocabulary lingers between sessions. Mostly masked by build-index force=True at SessionStart — decide
+  whether to fix (include the artifact file-set in the staleness fingerprint) or document the SessionStart
+  rebuild as the intended guarantee. Note: probe precision (false positives on common English) is separate,
+  covered by the review-fixes plan Chunk 2. (builder)
+
+- **[STH-5R2Q]** Flag-only `prawduct-hook` subcommands silently ignore unknown positional arguments
+  `effort: S · impact: M · area: governance/cli · source: builder · added: 2026-06-10 · status: open · refs: bin/prawduct-hook · related: STH-9V4K`
+
+  `prawduct-hook audit-learnings` (and any flag-only subcommand) silently ignores unknown positional
+  arguments; this hid a test bug where `tmp_path` was passed positionally and the real repo was audited
+  instead (found 2026-06-10 during review-proportionality ch.04). Tighten flag-only subcommand arg
+  parsing to reject unknowns, matching ledger-append/review-stats/classify-diff-risk fail-closed arg
+  handling. (builder)
 
 ## Promoted
 
@@ -410,6 +562,72 @@
 
 ## Archive
 
+
+- **[CRT-4J8W]** P0 — review-phase wall clock: accept a cumulative + verify-resolutions CHAIN at the PR gate
+  `effort: M · impact: L · area: governance/gates · source: user · added: 2026-06-10 · status: shipped · closed-by: gate-soundness ch.05 (commits 9618c2b + 78fadaf) · reviewed: 2026-06-10 · stage: ready · related: CRT-7M2D · refs: lib/gates.py (check_cumulative_critic), skills/critic/SKILL.md, skills/critic/review-protocol.md, tests/test_cumulative_gate.py`
+
+  User escalation 2026-06-10: review phase ran 30+ min wall clock for ~5 min of work. Two cost
+  drivers: unit cost per review (fixed same day — reviewers default to model opus, ~4x faster per
+  the reviewer-model-ab-2026-06-10.md experiment) and the **re-review treadmill**: every non-.md fix
+  after a cumulative review re-stales `check-cumulative-critic` and costs a FULL bundle re-review
+  even when only 2 files changed. Structural fix (the option deferred in gate-soundness ch.4 as
+  "build if it recurs" — it recurred the same session):
+  1. When `/prawduct:critic verify-resolutions` runs while the existing `.critic-findings.json` is a
+     clean cumulative record, embed an `extends_cumulative: {commit_reviewed: <X>}` anchor in the
+     new record.
+  2. `check_cumulative_critic` accepts EITHER a HEAD-covering cumulative record (today's rule) OR a
+     chain: `mode=verify-resolutions`, 0 blocking, `commit_reviewed==HEAD`, `extends_cumulative`
+     present, AND files changed in `X..HEAD` ⊆ the record's `files_reviewed` (fail closed on any
+     gap, same as today).
+
+  Soundness argument: cumulative@X vouches for the bundle; a clean delta review whose scope covers
+  `X..HEAD` extends that vouching to HEAD — same shape as the existing doc-only allowance, with
+  scope verification. Surfaces: `lib/gates.py` (`check_cumulative_critic` + findings schema optional
+  field), `skills/critic/SKILL.md` + `review-protocol.md` (record the anchor),
+  `tests/test_cumulative_gate.py` (chain accept/reject cases incl. scope-gap fail-closed),
+  `methodology/building.md` + `skills/pr/SKILL.md` sequencing prose (update: the fix-after-cumulative
+  path becomes a cheap delta review, not a full re-run). Priority P0. Related: CRT-7M2D (the
+  coverage-not-mtime gate this extends — archived/shipped). (user)
+
+  — Shipped 2026-06-10 — Built as gate-soundness chunk 05 (commits 9618c2b + 78fadaf). Dogfooded on
+  its own PR bundle: the chain record satisfied `check-cumulative-critic` live.
+- **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: shipped · closed-by: review-fixes-ch3 · reviewed: 2026-06-09 · related: CRT-3X9D`
+
+  Critic SKILL.md step 1 runs `prawduct-hook critic-begin` right after mode resolution, but a
+  `Type: designer-handoff` chunk exits clean *before* step 8 (`critic-end`), so the
+  `.prawduct/.critic-active` marker is left set on that path. Benign — the marker self-corrects
+  three ways (30-min TTL, session-start sweep, explicit override) — and rare, but ideally
+  `critic-begin` should run only after the designer-handoff skip is ruled out (move the
+  `critic-begin` call below the skip, or pair the skip with a `critic-end`). Surfaced as a NOTE in
+  the CRT-3X9D cumulative review. (critic, 2026-06-08)
+
+- **[PR-5K8D]** check-pr-doc-only should exclude skills/ (and methodology/templates) — align with `_classify_trivial_change`'s bounds
+  `effort: S · impact: M · area: pr/governance · source: reflection · added: 2026-06-08 · status: shipped · closed-by: review-fixes-ch3 · reviewed: 2026-06-09 · related: PR-9T4M · refs: skills/pr/SKILL.md, lib/buildplan_refs.py, lib/coverage.py`
+
+  The two PR fast-path classifiers disagreed on skill files. On the backlog-legend-refresh PR (#83),
+  `check-pr-doc-only` returned exit 0 (all 4 files `.md` → "gates may be skipped"), which per the
+  `/pr` Step 1b instruction would skip the independent PR reviewer entirely — but `check-pr-trivial`
+  correctly returned "not-trivial: skill-file-edited: skills/backlog/SKILL.md. Full review required."
+  A fork-skill's SKILL.md IS behavior/logic (per the existing learning "when a feature's logic lives
+  in a context:fork skill, lib/ holds DATA not LOGIC"), so an extension-only doc-only classification
+  under-reads a behavioral skill change and can skip review.
+
+  Re-anchored 2026-06-08 (branch fix/retire-pr-trivial-fast-path): `check-pr-trivial` /
+  `_pr_diff_is_trivial` were DELETED when the PR-boundary trivial fast-path was retired (see
+  PR-9T4M). The original fix-shape pointed at `check-pr-trivial` as the model to copy; that
+  classifier is gone. The canonical exclusion bounds still live in `lib/buildplan_refs.py`
+  (`_classify_trivial_change` / `_TRIVIAL_PROTECTED_PATHS` — `{skills/, methodology/, templates/,
+  CLAUDE.md}`), now consumed only by the chunk-level `_is_trivial_fileset_eligible` gate
+  (`lib/gates.py`). This item is now MORE relevant, not less: with the trivial fast-path retired,
+  `check-pr-doc-only` (`lib/coverage.py`, hook `cmd_check_pr_doc_only`) is the ONLY remaining
+  PR-boundary gate-skip path, and it still under-reads behavioral `skills/*.md` changes. Candidate
+  fix (re-anchored): align `check-pr-doc-only`'s fileset bounds with `_classify_trivial_change` —
+  exclude `skills/`, `methodology/`, `templates/`, and `CLAUDE.md` from the doc-only fast-path so a
+  behavioral-prose change still gets the reviewer; consume the shared `_TRIVIAL_PROTECTED_PATHS`
+  rather than re-listing the bounds. refs: skills/pr/SKILL.md (Step 1b/1c), lib/coverage.py
+  (check_pr_doc_only), lib/buildplan_refs.py (_classify_trivial_change). Filed from the v2.0.16
+  release (2026-06-08). (reflection)
 
 - **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
   `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: shipped · closed-by: retire-pr-trivial-fast-path · reviewed: 2026-06-08 · related: STH-1W5N, BLD-2R9X`

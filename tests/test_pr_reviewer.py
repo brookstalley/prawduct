@@ -97,13 +97,22 @@ class TestStopPrReviewGate:
         assert result.returncode == 0
 
     def test_stop_with_pr_no_evidence_blocks(self, tmp_path: Path):
-        """When a PR exists but no review evidence, stop should BLOCK."""
+        """When the session changed code and a PR exists with no review
+        evidence, stop should BLOCK.
+
+        Contract renegotiated in review-fixes Chunk 1: the gate now requires
+        session changes (the fixture's code diff). The original test used an
+        empty `git status` and pinned the old always-probe behavior, which made
+        every turn-end of a pure Q&A session on a feature branch pay a
+        `gh pr list` network call — see
+        `test_stop_no_session_changes_skips_pr_gate` for the new short-circuit.
+        """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
 
@@ -121,8 +130,41 @@ class TestStopPrReviewGate:
         assert "PR REVIEW" in result.stderr
         assert "PR exists for branch" in result.stderr or "no review evidence" in result.stderr
 
+    def test_stop_no_session_changes_skips_pr_gate(self, tmp_path: Path):
+        """A session with NO changes incurs no review obligation: Gate 3 must
+        exit clean AND never invoke `gh` (the probe is a network call that used
+        to fire on every turn-end of a no-change session on a feature branch —
+        review-fixes Chunk 1). The recording mock pins the absence of the call,
+        not just the absence of the blocker."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        gh_log = tmp_path.parent / "gh_calls.log"
+
+        git_script = "\n".join([
+            'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',  # no session changes
+            'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
+        ])
+        gh_script = "\n".join([
+            f'echo "$@" >> "{gh_log}"',
+            'if [[ "$1" == "pr" && "$2" == "list" ]]; then echo \'[{"number": 42}]\'; exit 0; fi',
+        ])
+
+        result = run_hook(
+            "stop", tmp_path,
+            git_script=git_script,
+            gh_script_body=gh_script,
+        )
+        assert result.returncode == 0
+        assert "PR REVIEW" not in result.stderr
+        assert not gh_log.exists(), (
+            f"gh was invoked on a no-change session: {gh_log.read_text() if gh_log.exists() else ''}"
+        )
+
     def test_stop_with_pr_and_evidence_no_warning(self, tmp_path: Path):
-        """When PR exists AND review evidence exists, no warning."""
+        """When the session changed code, a PR exists AND review evidence
+        exists, no warning. (Code diff per the renegotiated Gate 3 contract —
+        see test_stop_with_pr_no_evidence_blocks.)"""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         reviews_dir = prawduct / ".pr-reviews"
@@ -139,7 +181,7 @@ class TestStopPrReviewGate:
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
 
@@ -167,7 +209,7 @@ class TestStopPrReviewGate:
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
         gh_script = "\n".join([
@@ -189,7 +231,7 @@ class TestStopPrReviewGate:
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
         gh_script = "\n".join([
@@ -211,7 +253,7 @@ class TestStopPrReviewGate:
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feature/test-pr"; exit 0; fi',
         ])
         gh_script = "\n".join([
@@ -223,13 +265,15 @@ class TestStopPrReviewGate:
         assert "PR REVIEW" in result.stderr
 
     def test_stop_on_main_branch_skips_pr_check(self, tmp_path: Path):
-        """PR review check should skip main/master/develop branches."""
+        """PR review check should skip main/master/develop branches. (The
+        fixture carries a code diff so the branch condition — not the
+        no-session-changes short-circuit — is what's exercised.)"""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
-            'if [[ "$1" == "status" ]]; then printf ""; exit 0; fi',
+            'if [[ "$1" == "status" ]]; then printf "%s" " M src/changed.py"; exit 0; fi',
             'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "main"; exit 0; fi',
         ])
 
@@ -475,6 +519,76 @@ class TestPrReviewSkillContent:
         """PR reviewer must have a Learnings Cross-Check section."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         assert "Learnings Cross-Check" in content
+
+
+class TestPrReviewerScoping:
+    """PR-reviewer scoping (review-proportionality ch.05): the reviewer
+    consumes the gate-qualifying Critic record as evidence, audits it with
+    adversarial spot-checks, and falls back to a full code-soundness pass
+    when the audit fails. Losing any one of these silently reverts the
+    reviewer to re-deriving what the cumulative already certified — the
+    duplication this chunk removed — or, worse, to trusting the record
+    blindly (the independence this chunk preserved)."""
+
+    @property
+    def protocol(self) -> str:
+        return (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+
+    @property
+    def skill(self) -> str:
+        return (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+
+    def test_protocol_has_audit_duty(self):
+        """The record is audited (≥2 adversarial spot-checks), never trusted
+        blindly — the independence-preserving half of the scoping."""
+        content = self.protocol
+        assert "Evidence, Not Truth" in content
+        assert "at least 2 substantive claims" in content
+        assert "adversarial" in content.lower()
+
+    def test_protocol_has_void_fallback(self):
+        """Any failed spot-check voids the record → full code-soundness pass,
+        stated in the output. Without this, a wrong record scopes the review
+        anyway."""
+        content = self.protocol
+        assert "voids the record" in content
+        assert "full code-soundness pass" in content
+        assert "record_consumed" in content
+
+    def test_protocol_resolves_record_like_the_gate(self):
+        """The reviewer's record resolution mirrors check-cumulative-critic:
+        latest findings file when its kind qualifies, else the newest
+        qualifying review.critic ledger event."""
+        content = self.protocol
+        assert ".critic-findings.json" in content
+        assert ".governance-ledger.jsonl" in content
+        assert "extends_cumulative" in content
+
+    def test_protocol_evidence_distinguishes_scoped_from_full(self):
+        """Telemetry separates scoped from full runs by the evidence `mode`
+        field (pr-scoped/pr-full) plus the audit trail (spot_checks)."""
+        content = self.protocol
+        assert "pr-scoped" in content
+        assert "pr-full" in content
+        assert "spot_checks" in content
+
+    def test_skill_hands_record_to_reviewer(self):
+        """Step 3 names the record source for the reviewer (file, or ledger
+        line when Step 2 reported ledger-fallback)."""
+        content = self.skill
+        assert "gate-qualifying Critic record" in content
+        assert "ledger-fallback" in content
+
+    def test_skill_appends_review_pr_ledger_event(self):
+        """Step 4 appends the review.pr event so both review roles are in the
+        ledger (data requirement 1: model efficiency per role)."""
+        content = self.skill
+        assert "ledger-append --event review.pr" in content
+        frontmatter = content.split("---", 2)[1]
+        assert "Bash(prawduct-hook ledger-append *)" in frontmatter, (
+            "skills/pr/SKILL.md allowed-tools is missing ledger-append — "
+            "the skill cannot append the review.pr event."
+        )
 
 
 # =============================================================================

@@ -44,7 +44,7 @@ Between phases, review what you've produced. Apply the review perspectives (Prod
 
 ### Where Artifacts Live
 
-Write all generated artifacts to `.prawduct/artifacts/`. This is the canonical location — the Critic reads from it and the build cycle references it. The stop hook triggers the Critic review gate when it detects `artifacts/build-plan.md`.
+Write all generated artifacts to `.prawduct/artifacts/`. This is the canonical location — the Critic reads from it and the build cycle references it. The stop hook triggers the Critic review gate when it detects the active build plan (the `active_build_plan` pointer; default `artifacts/build-plan.md`).
 
 Name files by artifact type: `product-brief.md`, `data-model.md`, `build-plan.md`, etc. For onboarded projects that already have specifications elsewhere, those can stay — but Prawduct-generated artifacts go in `.prawduct/artifacts/`.
 
@@ -57,6 +57,8 @@ If an artifact is genuinely not applicable (e.g., API contract for a product wit
 ## Build Planning
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
+
+**Plan lifecycle on gitflow.** When authoring a new plan while the prior plan's work is merged-but-unreleased (gitflow: feature merged to `develop`, the `develop→main` release pending), leave `active_build_plan` pointing at the pending plan until the release ships — the release flips its change-log entries to `shipped` and regenerates its Status. Write the new plan under a scope-named file (`build-plan-<scope>.md`) and repoint only after the release (see `/prawduct:pr` step 7). Build plans are tracked artifacts — commit them.
 
 ### Requirements Confidence
 
@@ -88,6 +90,8 @@ This is what makes filling-in *intentional* rather than silent: a High-impact as
 
 **Governance checkpoints** are points during the build where you pause to review the whole — not just the current chunk but the trajectory. Place them at natural boundaries: after the first chunk (architecture validation), at the midpoint, and before completion. The number scales with risk (1-2 for low-risk, 3-5 for high-risk).
 
+**A persisted format is always a lock-in decision, regardless of implementation size.** Lock-in is measured by reversal cost, not LOC — a 30-line ledger writer locks a schema every future consumer depends on. A chunk introducing a persisted format/schema must enumerate, in the plan and before designing fields, the questions the data must answer: its consumers' future queries are its requirements, elicited from those consumers (usually the user), not inferred from the mechanism (see `methodology/building.md` "Decision Research").
+
 **Enumerate the surfaces when a chunk introduces a project-wide concept.** Some chunks add a structural concept that has to be threaded through many files at once — a new build-plan field, a governance flag, a convention every reviewer must honor. These cascade: a single concept can touch the product CLAUDE.md, the Critic skill and its review protocol, the PR protocol, the methodology guides, the build-plan template, and the tests that guard them — eight or more surfaces is common. The plan should list those surfaces up front, in the chunk description, rather than discovering them mid-build. Two reasons. First, an enumerated surface count makes the chunk's true size visible, so it can be split if it's too large to review in one Critic pass. Second, several of those surfaces (methodology files, the Critic protocol) carry token-budget guardrail tests; a cascade that adds prose to each will pressure those budgets and force an aggressive trim of surrounding text before any budget can be raised. Anticipating the cascade means the trim is planned, not a surprise at chunk-close. This pattern has recurred enough (the Requirements-Precede-Code threading, the source-of-truth guardrail, the waiver-pragma work) to be a planning default, not a lesson re-learned per chunk.
 
 ### Critic Mode Per Chunk
@@ -98,7 +102,7 @@ This is what makes filling-in *intentional* rather than silent: a High-impact as
 - **Single-chunk plan** → inference picks `final` (no prior committed chunks). No declaration needed.
 - **Multi-chunk plan** → inference picks `chunk` for non-final chunks (prior chunks committed, more chunks pending) and `final` for the last chunk. No declaration needed for the common case.
 - **Override forward to `final`** on an early chunk that lands an architectural keystone whose coherence matters before later chunks build on it — Goals 4-7 + cross-checks pay off here even mid-plan.
-- **Override forward to `cumulative`** on the last chunk of a multi-chunk plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the Type triggers a cumulative pass on top of the chunk's `final` review; the explicit `Critic mode:` field is not required for this case).
+- **Override forward to `cumulative`** on the last chunk of a multi-chunk plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the chunk's review IS the one cumulative pass: commit the chunk, then run `/prawduct:critic cumulative` once — no separate `final`; the explicit `Critic mode:` field is not required for this case).
 - **Trivial chunks** (typo-level edits buried inside a larger plan) → waive Critic entirely via `.gates-waived`. For bounded mechanical code changes, prefer `Type: trivial` over the waiver (see Choosing a Chunk Type below).
 
 **Why this layering:** the per-chunk goals (Nothing Is Broken, Missing, Unintended) catch the high-frequency failures — fix-by-fudging, dropped requirements, broad exceptions — and they're cheap to run because they scope to local changes. The final-chunk goals (Coherence, Decisions, Understood, Design, plus the cross-checks) need the full diff to do their job — coherence is across files, design is a system-wide property — so they belong at the end of the cycle, not on every chunk.
@@ -119,7 +123,7 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 - **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage. Use when the chunk truly doesn't touch executable code.
 - **`cleanup`** — branch hygiene, file moves, dead-code removal. Critic tolerates a zero diff; structural-only review. Use when the chunk's value is the removal, not the new code.
 - **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped — Type: designer-handoff" and the stop-hook Critic gate also skips. **This is the only Type that bypasses Critic enforcement entirely — use deliberately.** Replaces the prior user-memory carveout with a framework-level rule.
-- **`cumulative-final`** — marker on the last chunk of a multi-chunk plan. Signals that a `/prawduct:critic cumulative` review against `merge-base...HEAD` is required in addition to the chunk's own `final` review. The cumulative review is the `/prawduct:pr create` gate (Principle 14 — Independent Review at the bundle level).
+- **`cumulative-final`** — marker on the last chunk of a multi-chunk plan. The chunk's own review IS the one `/prawduct:critic cumulative` against `merge-base...HEAD`: commit the chunk first, then run it once — no separate `final`, because cumulative is a strict superset (all 7 goals + cross-checks, over a scope that contains the chunk's diff). The cumulative review is the `/prawduct:pr create` gate (Principle 14 — Independent Review at the bundle level).
 - **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small. Two enforcement layers run at chunk close:
   1. **File-set bounds (machine-enforced, hard):** chunk diff has no edits under `skills/`, `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file deletions; no new files. These are the catastrophic-blast-radius classes regardless of size — file-set is necessary but not sufficient.
   2. **Required `**Trivial because:**` rationale (machine-enforced, hard):** the chunk must include a non-empty rationale field. Empty or absent → BLOCKING at the stop-hook. The rationale is the semantic claim; **Critic Goal 3** validates rationale-vs-diff fit (Chunk 05) — a strong rationale points at the structural property bounding risk, not at the author's feeling about the change.

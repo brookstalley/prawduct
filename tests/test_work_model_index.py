@@ -154,12 +154,137 @@ def test_index_suppresses_covered_terms_and_keeps_signal_above_noise():
 
 
 def test_sparse_index_is_noisy_documenting_the_risk():
-    """With an almost-empty index the catch over-fires — documenting honestly
-    that the catch's quality depends on a populated index (the make-or-break
-    risk the review named). This is characterization, not a target."""
+    """With an almost-empty index the catch still flags genuinely rare domain
+    words — documenting honestly that the catch's quality depends on a
+    populated index (the make-or-break risk the review named). This is
+    characterization, not a target.
+
+    Contract renegotiated in review-fixes Chunk 2 (was ``>= 3``): the
+    common-English frequency floor now absorbs the ordinary-word part of the
+    sparse-index noise (window, judge, refactor), which is the chunk's point —
+    only the genuinely rare terms (retrieval, continuity) still surface."""
     sparse = wmi.build_index(["# Notes\nnothing **domain** here"])
     orphans = wmi.find_orphan_terms(
         "refactor the retrieval window for the continuity judge", sparse
     )
-    # An empty index flags ordinary content words -> noise is real and expected.
-    assert len(orphans) >= 3
+    assert "retrieval" in orphans and "continuity" in orphans
+    assert "window" not in orphans  # the floor at work
+
+
+# --- Precision layer (review-fixes Chunk 2): floor + firing threshold -------
+
+# The index for precision tests: a representative governing corpus.
+PRECISION_INDEX = wmi.build_index(VERIFICATION_ARTIFACTS)
+
+# Conversational / non-requirement prompts: every one of these MUST be silent.
+# The first four are the false-positive classes observed live in the 2026-06-09
+# review session (the chunk's acceptance criteria).
+CONVERSATIONAL_PROMPTS = [
+    "Please continue!",
+    "thanks, looks good",
+    "Please review the framework for efficiency, quality, performance, and "
+    "token management improvements",
+    "<task-notification>\n<task-id>b31kix32k</task-id>\n<status>completed</status>\n"
+    "Background command finished: pytest exited 0 with 1037 passed, "
+    "porcelain gitstate regression fixtures all green\n</task-notification>",
+    "yes, that's exactly right",
+    "ok great, ship it",
+    "hmm, can you explain why the second test failed?",
+    "what does the critic do during a cumulative review?",
+    "looks good to me, nice work",
+    "typo in the readme, third paragraph",
+    "that fixed it, thanks!",
+    "go ahead",
+    "sounds good, proceed with the plan",
+    "interesting — I didn't expect that result",
+    "let's pause here and pick this up tomorrow",
+    # Verb homographs used as nouns must not make chatter requirement-shaped
+    # (Critic NOTE, review-fixes ch.2):
+    "the build failed with a segfault",
+    "thanks for the support — that refactor landed cleanly",
+    "the new integration looks solid, nice work on the rollout",
+]
+
+# Genuine new-requirement prompts: every one of these MUST still fire.
+REQUIREMENT_PROMPTS = [
+    "add OAuth login to the settings page",
+    SCRIOB_PROMPT,
+    "implement webhook retries with exponential backoff",
+    "build a kanban board view for the backlog",
+    "we should support SSO via SAML for enterprise tenants",
+]
+
+
+def test_precision_conversational_corpus_is_silent():
+    noisy = [p for p in CONVERSATIONAL_PROMPTS if wmi.nudge_for(p, PRECISION_INDEX)]
+    assert not noisy, f"false positives on: {noisy!r}"
+
+
+def test_precision_requirement_corpus_still_fires():
+    missed = [p for p in REQUIREMENT_PROMPTS if not wmi.nudge_for(p, PRECISION_INDEX)]
+    assert not missed, f"missed genuine requirement prompts: {missed!r}"
+
+
+def test_floor_suppresses_common_english_regardless_of_corpus():
+    empty = wmi.build_index([])
+    assert wmi.find_orphan_terms(
+        "thank you, look again — good development, continue to improve "
+        "efficiency, quality and performance", empty
+    ) == []
+
+
+def test_floor_closes_over_ly_and_ed_but_not_ing_derivations():
+    empty = wmi.build_index([])
+    # Inflections of common bases are as conversational as the bases.
+    assert wmi.find_orphan_terms("it landed cleanly and merged", empty) == []
+    # -ing is deliberately open: "conflicting" is a keystone concept marker
+    # even though its base "conflict" is common.
+    assert "conflicting" in wmi.find_orphan_terms("conflicting claims", empty)
+
+
+def test_threshold_single_orphan_non_imperative_is_silent():
+    assert wmi.nudge_for("consider the provenance here", PRECISION_INDEX) is None
+
+
+def test_threshold_two_orphans_fire():
+    msg = wmi.nudge_for("provenance and attestation matter here", PRECISION_INDEX)
+    assert msg is not None and "provenance" in msg
+
+
+def test_threshold_imperative_plus_one_orphan_fires():
+    msg = wmi.nudge_for("add provenance tracking", PRECISION_INDEX)
+    assert msg is not None and "provenance" in msg
+
+
+def test_threshold_bare_question_is_silent_even_with_orphans():
+    assert wmi.nudge_for(
+        "what about provenance and attestation?", PRECISION_INDEX
+    ) is None
+
+
+def test_threshold_requirement_shaped_question_still_fires():
+    # A question that REQUESTS work is a requirement carrier, not a bare question.
+    assert wmi.nudge_for("can you add provenance tracking?", PRECISION_INDEX) is not None
+
+
+def test_verb_homographs_as_nouns_are_not_requirement_shaped():
+    assert not wmi.is_requirement_shaped("the build failed with a segfault")
+    assert not wmi.is_requirement_shaped("thanks for the support")
+    # ... while genuine directives still are:
+    assert wmi.is_requirement_shaped("build a kanban view")
+    assert wmi.is_requirement_shaped("can you build a kanban view?")
+    assert wmi.is_requirement_shaped("we should support SSO")
+    # The noun-determiner check resets at sentence boundaries (Critic NOTE):
+    assert wmi.is_requirement_shaped("I like this. Build a kanban view")
+
+
+def test_requirement_verbs_are_never_the_orphan():
+    # "extend"/"integrate" rank above the frequency floor, but a directive verb
+    # is never the undocumented domain term — only "telemetry" may surface.
+    orphans = wmi.find_orphan_terms("extend and integrate the telemetry", PRECISION_INDEX)
+    assert orphans == ["telemetry"]
+
+
+def test_harness_injected_content_never_fires():
+    blob = "<system-reminder>provenance attestation doxastic ledger</system-reminder>"
+    assert wmi.nudge_for(blob, PRECISION_INDEX) is None

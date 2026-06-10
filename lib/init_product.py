@@ -61,33 +61,8 @@ _LEARNINGS_REL = ".prawduct/learnings.md"
 _LEARNINGS_STARTER = "# Learnings\n\nAccumulated wisdom from building this product.\n"
 
 
-def _plugin_root() -> Path:
-    """The plugin root — ``<root>/lib/init_product.py`` → ``<root>``.
-
-    Resolve ``templates/`` and ``VERSION`` from the plugin root directly rather
-    than via ``core.TEMPLATES_DIR`` / ``core.PRAWDUCT_VERSION``: ``core.py``'s
-    ``FRAMEWORK_DIR = __file__.parent.parent.parent`` assumed the file-sync
-    ``tools/lib/`` depth — in the plugin's top-level ``lib/`` it lands one level
-    too high (``…/source`` instead of ``…/<plugin>``). The plugin always resolves
-    its own resources from the plugin root (as ``bin/`` and ``hooks/`` do); this is
-    the first plugin code to render ``templates/`` at runtime, so it does the same.
-    """
-    return Path(__file__).resolve().parent.parent
-
-
-def _templates_dir() -> Path:
-    return _plugin_root() / "templates"
-
-
-def _prawduct_version() -> str:
-    try:
-        return (_plugin_root() / "VERSION").read_text(encoding="utf-8").strip()
-    except OSError:
-        return core.PRAWDUCT_VERSION  # best-effort fallback
-
-
 def _subs(name: str) -> dict[str, str]:
-    return {"{{PRODUCT_NAME}}": name, "{{PRAWDUCT_VERSION}}": _prawduct_version()}
+    return {"{{PRODUCT_NAME}}": name, "{{PRAWDUCT_VERSION}}": core.PRAWDUCT_VERSION}
 
 
 def already_scaffolded(project_dir: Path) -> bool:
@@ -165,7 +140,7 @@ def init_product(project_dir: str | Path, name: str, *, apply: bool = False) -> 
             created.append(rel)
             if apply:
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                core.write_template(_templates_dir() / tmpl, dst, subs)
+                core.write_template(core.TEMPLATES_DIR / tmpl, dst, subs)
 
     # Learnings starter (no template — a one-line seed, mirroring file-sync init).
     learnings = project_dir / _LEARNINGS_REL
@@ -205,8 +180,11 @@ def init_product(project_dir: str | Path, name: str, *, apply: bool = False) -> 
     # .gitignore — session files + the per-repo version marker.
     gitignore = project_dir / ".gitignore"
     gitignore_existed = gitignore.is_file()
+    unignored: list[str] = []
     if apply:
-        changed = bool(core.update_gitignore(project_dir).get("modified"))
+        gi_result = core.update_gitignore(project_dir)
+        changed = bool(gi_result.get("modified"))
+        unignored = list(gi_result.get("unignored") or [])
         changed = ensure_marker_gitignored(project_dir) or changed
         if changed:
             (edited if gitignore_existed else created).append(".gitignore")
@@ -231,6 +209,10 @@ def init_product(project_dir: str | Path, name: str, *, apply: bool = False) -> 
         "created": created,
         "edited": edited,
         "created_dirs": created_dirs,
+        # Paths whose stale ignore lines were stripped (managed files, retired
+        # entries like the tracked-by-default build plan — gate-soundness
+        # ch.3). The caller (onboard/doctor) should advise `git add` on these.
+        "unignored": unignored,
     }
 
 
@@ -288,6 +270,10 @@ def run(argv: list[str]) -> int:
         print(f"  {verb}      {f}")
     for f in result["edited"]:
         print(f"  {edit_verb}     {f}")
+    for f in result.get("unignored", []):
+        # Stale ignore lines stripped (managed files / retired entries like the
+        # tracked-by-default build plan) — the onboard skill advises `git add`.
+        print(f"  unignored   {f} — now tracked-by-contract; `git add` it if present")
     if not apply:
         print("\nDry run — re-run with --apply to write. Then open the target in a "
               "new Claude Code session for governance.")

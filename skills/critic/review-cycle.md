@@ -11,13 +11,13 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Trivial** (typo, config) | None — waive via `.gates-waived` if the stop hook prompts. |
 | **Small** (bug fix, minor feature) | One `final` review, optional. |
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
-| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk. |
-| **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (in addition to the per-chunk reviews above). |
+| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). |
+| **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (in addition to the per-chunk reviews above — but on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |
 | **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Falls through to `chunk`/`final` when the anchor is missing or scope widens past the demotion threshold. |
 
 The stop hook enforces review for code changes when a build plan exists. It also surfaces an advisory WARNING when all chunks are marked `[x]` but the most recent review ran Goals 1-3 only (`chunk` or `verify-resolutions` mode) — run `/prawduct:critic final` before pushing.
 
-`/prawduct:pr create` is gated by `prawduct-hook check-cumulative-critic` — opening a PR without a blocking-free, HEAD-covering `cumulative` record fails the gate.
+`/prawduct:pr create` is gated by `prawduct-hook check-cumulative-critic` — opening a PR without a blocking-free, HEAD-covering `cumulative` record fails the gate. A `verify-resolutions` **chain record** that extends such a cumulative also satisfies it (CRT-4J8W — see "The chain" below).
 
 ## Mode Selection
 
@@ -47,7 +47,7 @@ See `methodology/planning.md` "Critic Mode Per Chunk" for the heuristic of when 
 | **Scope** | Chunk's uncommitted diff (`git diff` + `git status` for new files) | Full session diff at end-of-cycle, OR uncommitted diff for non-chunked work | `git diff <merge-base>...HEAD` (base from `prawduct-hook resolve-base`) — the entire PR bundle, all commits on the branch since it diverged | Prior findings' `files_reviewed` ∪ files changed since `commit_reviewed` (see "Verify-resolutions scope and demotion" below) |
 | **Execution** | Always single-pass | Single pass for trivial/small; coordinator pattern for medium/large | Single pass for trivial/small; coordinator pattern for medium/large | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
-| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings, to confirm the resolution without paying full-review latency. Demotes to `chunk` / `final` when prior findings lack `commit_reviewed`, hold no actionable findings, or scope widens past the threshold. |
+| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings, to confirm the resolution without paying full-review latency — or after a *committed* post-cumulative fix, where the resulting chain record satisfies the PR gate (CRT-4J8W). Demotes to `chunk` / `final` when prior findings lack `commit_reviewed`, hold no actionable findings (and no chain-extendable delta), or scope widens past the threshold. |
 
 **Two-form rule for the `mode` value:**
 - **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument): the short token — `chunk`, `final`, `cumulative`, or `verify-resolutions`.
@@ -68,17 +68,19 @@ Default `Type:` is `code` — fail-closed. A missing or unrecognized `Type:` is 
 | `trivial` | Small-blast-radius code change (rename, type annotations, mechanical edit) within Chunk 04 file-set bounds | full | full | full + **rationale-vs-diff fit** sub-check (see Goal 3 in SKILL.md) | required | fires (file-set bounds + `**Trivial because:**` rationale enforced structurally) |
 | `cleanup` | Branch hygiene, file moves, dead-code removal | structural-only (no broken refs) | requirement coverage | scope discipline; tolerate zero diff | skipped | fires |
 | `designer-handoff` | Visual / token / design-asset handoff to a human designer | skipped | skipped | skipped | skipped | **skipped** (formalized carveout — previously a user-memory rule) |
-| `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — triggers `/prawduct:critic cumulative` in addition to the chunk's own `final` review | — | — | — | fires |
+| `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — the chunk's review IS the one `/prawduct:critic cumulative`: commit the chunk first, then run it once; no separate `final` (cumulative is a strict superset — all 7 goals + cross-checks over `merge-base...HEAD` ⊇ the chunk diff) | — | — | — | fires |
 
 The `Type:` field defaults to `code` when omitted. Declare `Type:` only when it deviates from `code`; minimal-declaration is the v1.4 convention. **The `Type:` axis is the proportional-effort knob (P11) — under-declaring is safe (worst case: redundant Critic time), over-declaring is unsafe (designer-handoff on a code chunk silently skips review).**
 
-When chunk type is `designer-handoff` and the Critic is invoked anyway, output a single line: `Review skipped — Type: designer-handoff (visual handoff; review-by-human)` and exit clean. No findings file is required; the stop-hook gate skip is the structural enforcement.
+When chunk type is `designer-handoff` and the Critic is invoked anyway, output a single line: `Review skipped — Type: designer-handoff (visual handoff; review-by-human)` and exit clean. The exit happens BEFORE `prawduct-hook critic-begin` (SKILL step 1, CRT-6F2N) so no critic-active marker is left to block `clear` until its 30-minute TTL. No findings file is required; the stop-hook gate skip is the structural enforcement.
 
 ### Cumulative-mode diff scope and PR gate
 
 `cumulative` is the only mode whose scope is *not* derived from working-tree state. Resolve the base branch with `prawduct-hook resolve-base` (run it as a discrete step) — it honors a configured `base_branch:` in `project-state.yaml` (gitflow `develop`), falling back to `origin/main`/`main` for trunk repos. This is the **single source of truth** the PR/coverage gates use too, so the reviewer and the gates never diff different ranges — don't guess the base from prose. Then compute `git merge-base <base> HEAD` and diff `<merge-base>...HEAD`. This deliberately spans every commit on the branch, not just the end-of-cycle diff `final` would see, so cross-chunk integration cracks surface here even if every per-chunk review was clean. (Why this matters: on a gitflow repo, a `main`-anchored base diffs the whole `develop..main` promotion range — a 2-commit feature branch reviewed as dozens of commits.)
 
 `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. The gate requires: cumulative-mode findings file present, schema-valid, **covering current HEAD** (CRT-7M2D — the recorded `commit_reviewed` is HEAD, or the only files changed since are docs `.md`), and free of unresolved BLOCKING findings. Coverage, not recency, is the test: a code change since the review fails the gate (re-run needed), but a doc-only change does not — so an inert post-review fix doesn't force a needless re-run. WARNING and NOTE are advisory at the PR gate — they do not block, matching the PR reviewer's own severity contract.
+
+**The chain (CRT-4J8W).** A code fix *after* the cumulative no longer forces a full bundle re-review. The gate equally accepts a `verify-resolutions` record that **extends** the cumulative: `extends_cumulative.commit_reviewed` = the cumulative's anchor X (resolvable), 0 BLOCKING findings, the record's own `commit_reviewed` covers HEAD (same `==HEAD`-or-doc-only-since rule), and every non-`.md`, non-metadata file changed in `X..HEAD` is in the record's `files_reviewed` — fail closed on any gap. Soundness: cumulative@X vouches for the bundle; a clean delta review whose scope covers `X..HEAD` extends that vouching to HEAD. Sequencing matters: **commit the fix first, then run `/prawduct:critic verify-resolutions`** — a verify record anchored pre-commit can never cover HEAD (`chain-stale`). Chains may stack (a chain record propagates its original anchor); the scope-widening demotion bounds their length.
 
 **Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes synchronously. Before invoking it, complete any prep work that doesn't depend on its findings: `/prawduct:learnings` for next-chunk topics, draft the PR description, audit the backlog for items this branch resolves, capture deferred chunk-boundary reflections. This does NOT shorten the wait — it reorganizes work so the agent can integrate findings the moment Critic returns rather than spinning up fresh post-wait. See `methodology/building.md` for the full guidance.
 
@@ -95,10 +97,12 @@ When chunk type is `designer-handoff` and the Critic is invoked anyway, output a
 | Prior findings file missing | Nothing to verify against. |
 | Prior findings lack `commit_reviewed` (pre-v1.5 record) | No anchor for the delta. |
 | `commit_reviewed` does not resolve in current repo | Rebase, force-push, or never on this branch — anchor unreliable. |
-| Prior findings have no BLOCKING/WARNING entries | A verify pass has nothing actionable to re-check. |
+| Prior findings have no BLOCKING/WARNING entries — *unless* the prior is chain-extendable (cumulative, or a chain record) AND something changed since `commit_reviewed` (CRT-4J8W) | A verify pass has nothing actionable to re-check; with a chain-extendable prior + delta, the delta itself is the work — the pass extends the cumulative to HEAD. |
 | `len(files_since_commit) > 2 * len(prior_files_reviewed) + 5` | Scope widened beyond the prior surface — a partial review would mislead. |
 
 These are fail-closed: when the helper cannot anchor a delta, it refuses to compute one rather than silently shrinking the review (learnings: "Escape hatches in classification create silent failures").
+
+**Chain anchor emission (CRT-4J8W).** When the prior record is chain-extendable, the subcommand's `ok:` reason line ends with `extends-cumulative=<sha>` — the cumulative anchor this verify pass extends (propagated unchanged through stacked chain records). Record it in the findings file as `extends_cumulative: {"commit_reviewed": "<sha>"}` (SKILL.md step 7); the PR gate's chain acceptance depends on it. No suffix → no anchor to embed.
 
 **Stop-hook gate behavior.** A `verify-resolutions` findings file clears the stop-hook Critic gate **only** when the current chunk diff is a subset of the findings' `files_reviewed`. If the builder adds work after the verify pass, those new files are out of scope, the gate refuses to clear, and the blocker names the specific out-of-scope files so the builder runs `/prawduct:critic chunk` or `/prawduct:critic final` next.
 
@@ -117,6 +121,8 @@ These are fail-closed: when the helper cannot anchor a delta, it refuses to comp
    - Repeat until no blocking findings remain.
 4. **Record findings** to `.prawduct/.critic-findings.json` (see main SKILL.md for format).
 5. **If no BLOCKING findings:** chunk is complete, proceed to next chunk.
+
+**Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that review is simultaneously the chunk's review and the PR-gate record. Don't run a separate `final` first — cumulative is a strict superset (all 7 goals + Framework checks + cross-checks, over `merge-base...HEAD`, which contains the chunk's diff), so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives anyway. Mode inference already implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (rule-3 — the right call for a MID-chunk look); once the chunk is committed and the tree is clean, it infers `cumulative` (rule-2) — the AT-COMMIT review. Post-cumulative fixes ride the verify-resolutions chain (CRT-4J8W), not a second full pass.
 
 ## Final-Mode Cross-Checks
 
@@ -173,3 +179,21 @@ When a significant architectural or design change spans multiple chunks, review 
 Every review cycle must produce a findings record — governance without an audit trail is documentation fiction.
 
 After each review cycle, write `.prawduct/.critic-findings.json` with the findings (see main SKILL.md for format). When no findings exist, record an empty findings array.
+
+### The Governance-Event Ledger
+
+The findings file is single-slot — each review overwrites the last. The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only history alongside it: after writing the findings file, the reviewer runs `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` (SKILL.md step 7). The helper is the **single writer** — it validates the record and computes the envelope itself; agents never hand-author JSONL.
+
+Each line is one event with an **envelope/payload split**:
+
+```json
+{"schema_version": 1, "event": "review.critic", "ts": "...Z",
+ "duration_seconds": 180, "project": "my-product", "scope": "my-feature",
+ "chunk": "02", "actor": {"role": "critic", "model": "opus"},
+ "git": {"head": "<sha>", "base": "origin/develop"},
+ "review": { ...the findings record verbatim... }}
+```
+
+The envelope is shared by every event kind; the kind-specific payload nests under a family-named key (`review` for `review.critic` and `review.pr` — the PR reviewer's evidence joins via `/prawduct:pr`). Consumers key on the envelope and **skip unknown event kinds and unknown fields** — later kinds (`build.chunk`, …) join without schema change. `duration_seconds` and `actor.model` are nullable, never invented; `scope` is the build-plan feature key (passed explicitly by the reviewer; `active_build_plan` is only the fallback).
+
+One gate consumes it today: `check-cumulative-critic` falls back to the newest qualifying `review.critic` event when the latest findings file is the wrong kind for the PR gate — so a chunk review after the cumulative no longer destroys the gate's evidence. The history also exists to be aggregated (reviewer-model efficiency per role, findings density per path, wall clock per feature — the questions the schema was designed to answer). The ledger is unbounded-but-tiny (one line per event); if a long-lived repo ever needs pruning, truncate oldest lines — every line is self-contained. No prune tooling exists until a real ledger needs it.

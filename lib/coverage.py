@@ -135,7 +135,9 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     """Shared helper: is the PR diff (``merge-base...HEAD``) all ``.md``?
 
     Returns ``(is_doc_only, status_message)``. ``is_doc_only`` is True only
-    when the diff is non-empty AND every file ends in ``.md``. The status
+    when the diff is non-empty, every file ends in ``.md``, AND no file is
+    governance-protected (``skills/``, ``methodology/``, ``templates/``,
+    root ``CLAUDE.md`` — PR-5K8D). The status
     message names the specific reason for False (``no-base``, ``git-failed``,
     ``empty-diff``, ``not-doc-only: <files>``) so both the CLI gate and the
     stop-hook Gate 3 can surface actionable detail without re-implementing
@@ -166,6 +168,18 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
         more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
         return False, f"not-doc-only: PR includes non-.md files: {sample}{more}"
 
+    # Governance-protected paths are never doc-only even as .md: fork-skill
+    # prose, methodology, and templates ARE behavioral logic here, so a
+    # skills/*.md change must not skip the reviewers (PR-5K8D). Same bound
+    # list as the Type: trivial gate — one source of truth.
+    protected = [
+        v for f in files if (v := buildplan_refs.protected_path_violation(f))
+    ]
+    if protected:
+        sample = "; ".join(protected[:3])
+        more = f" (+{len(protected) - 3} more)" if len(protected) > 3 else ""
+        return False, f"not-doc-only: governance-protected paths in PR: {sample}{more}"
+
     return True, f"doc-only: {len(files)} file(s) in {base}...HEAD all .md"
 
 
@@ -180,9 +194,11 @@ def check_pr_doc_only(project_dir: Path) -> int:
     so a doc-only PR doesn't get blocked at session end for missing
     evidence — symmetric behavior across both gates.
 
-    Exit 1 otherwise (any non-``.md`` file, empty diff, no resolvable base
-    branch, or git failure). Fails closed: when the gate cannot be evaluated,
-    fall through to the full review path rather than silently skipping it.
+    Exit 1 otherwise (any non-``.md`` file, any governance-protected path —
+    skill/methodology/template prose is behavioral logic, never "docs" —
+    empty diff, no resolvable base branch, or git failure). Fails closed:
+    when the gate cannot be evaluated, fall through to the full review path
+    rather than silently skipping it.
     """
     is_doc_only, status = _pr_diff_is_doc_only(project_dir)
     if is_doc_only:

@@ -3,6 +3,7 @@
 .prawduct/.critic-active
 .prawduct/.critic-findings.json
 .prawduct/.critic-test-findings.json
+.prawduct/.governance-ledger.jsonl
 .prawduct/.pr-reviews/
 .prawduct/.session-git-baseline
 .prawduct/.session-handoff.md
@@ -12,6 +13,7 @@
 .prawduct/reflections.md
 __pycache__/
 .pytest_cache/
+.DS_Store
 
 # Prawduct session files
 .prawduct/.test-evidence.json
@@ -20,7 +22,6 @@ __pycache__/
 # Work-model vocabulary index — derived per-repo state, rebuilt from artifacts
 # each session (hooks build-index / user-prompt-submit). Ephemeral, gitignored.
 .prawduct/.work-model-index.json
-.prawduct/artifacts/build-plan.md
 
 # Prawduct session files
 .prawduct/.advisories.json

@@ -40,6 +40,15 @@ design-in-chat — a taxonomy invented in prose that touches no file — cannot 
   sincerity]. If this is new behavior, locate/write the parent before designing (tripwire #1)."*
   Fires on the **prompt**, before any file is touched. **Silent when clean** → dodges the B3
   rubber-stamp critique (it's signal, not an always-passing check).
+  - *Precision layer (review-fixes Chunk 2, 2026-06-09):* live use showed the bare vocab-diff
+    fired on ordinary English ("thanks, looks good") and harness notifications, training the
+    model to ignore the one real catch. Three shipped refinements (`lib/work_model_index.py`):
+    a **common-English frequency floor** (`lib/common_words.py` — top-4,000 words never flag),
+    a **firing threshold** (`should_fire` — requirement-shaped prompt, or ≥ 2 orphans; bare
+    questions/acks/harness-injected content never fire), and a **widened corpus** (CLAUDE.md,
+    `docs/`, `methodology/` feed the index alongside `.prawduct/artifacts/`). Accepted recall
+    trade: a requirement phrased entirely in floor words ("add payment support") stays silent —
+    the documented gap the optional upgrade below would close.
   - *Optional upgrade (`type:prompt`):* a fast-model hook asks "does this introduce a concept not
     in the attached artifact summary?" — the "light LLM floor," now **external** (in the hook),
     not self-administered. Gate it behind the cheap keyword pre-filter to bound cost.

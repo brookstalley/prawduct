@@ -17,7 +17,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-FRAMEWORK_DIR = Path(__file__).resolve().parent.parent.parent
+# The plugin root: ``<root>/lib/core.py`` → ``<root>``. The previous
+# ``parent.parent.parent`` was a byte-parity holdover from the file-sync
+# ``tools/lib/`` depth — it resolved one level ABOVE the plugin root, so
+# ``TEMPLATES_DIR`` pointed at a nonexistent path and ``PRAWDUCT_VERSION``
+# silently read ``"dev"``. Fixed in review-fixes Chunk 1 (the file-sync
+# engine, the parity constraint's reason, was removed in M4).
+FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = FRAMEWORK_DIR / "templates"
 
 
@@ -70,6 +76,7 @@ GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews/",
     ".prawduct/.session-git-baseline",
@@ -80,8 +87,20 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.gates-waived",
     ".prawduct/.advisories.json",
     ".prawduct/reflections.md",
-    ".prawduct/artifacts/build-plan.md",
     "__pycache__/",
+]
+
+# Entries this list used to carry but that must now be TRACKED —
+# update_gitignore strips them from existing repos and reports them so
+# init-product/doctor can advise `git add`. Build plans (gate-soundness ch.3):
+# a build plan is a durable, multi-session, release-spanning artifact — the
+# methodology retains it through a gitflow release-pending window while
+# tracked project-state.yaml points `active_build_plan:` at it. Ignoring it
+# made every multi-clone repo carry a tracked pointer to a file the other
+# clones don't have (scriob PR #43), and `_untrack_session_files` actively
+# reverted any product that tracked its plan.
+RETIRED_GITIGNORE_ENTRIES = [
+    ".prawduct/artifacts/build-plan.md",
 ]
 
 
@@ -253,9 +272,11 @@ def update_gitignore(target: Path) -> dict:
     modified = False
     unignored: list[str] = []
 
-    # Remove lines that gitignore managed files (they should be committed)
+    # Remove lines that gitignore managed files (they should be committed) —
+    # plus retired entries the framework used to write itself (tracked-by-
+    # default build plans, gate-soundness ch.3).
     incorrectly_ignored = set()
-    for rel_path in MANAGED_FILES:
+    for rel_path in (*MANAGED_FILES, *RETIRED_GITIGNORE_ENTRIES):
         if rel_path in existing_lines:
             incorrectly_ignored.add(rel_path)
 
