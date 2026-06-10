@@ -47,11 +47,13 @@ pytest-timeout, killing the xdist worker. Now targets its tmp repo via
 ignored-unknown-args wart filed to backlog.
 
 **Blast radius:** New: `lib/risk.py`, `tests/test_classify_diff_risk.py`
-(10 tests), `tests/preferences/test_risk_escalation_prose.py` (6 tests).
+(21 tests — incl. lib.risk helper units added post-review to resolve the
+chunk Critic's evidence-attribution NOTE),
+`tests/preferences/test_risk_escalation_prose.py` (6 tests).
 Modified: `bin/prawduct-hook` (wrapper + dispatch + usage),
 `skills/critic/SKILL.md`, `skills/critic/review-protocol.md`,
 `skills/pr/SKILL.md`, `tests/test_audit_learnings.py` (env-target fix).
-1155 total.
+1164 total.
 
 ## 2026-06-10: review telemetry — `prawduct-hook review-stats`
 

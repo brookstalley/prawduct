@@ -126,18 +126,26 @@ ordering below deliberately enables that, but does not require it.
 - [ ] Chunk 03: Review telemetry — `prawduct-hook review-stats`
 - [ ] Chunk 04: Risk-surface reviewer escalation
 - [ ] Chunk 05: PR-reviewer scoping — consume the record, audit it, review the release
-Context: CHUNKS 01+02 BUILT 2026-06-10 (S1 complete; checkboxes flip at release via
-change-log tags `chunks=01|02 | scope=review-proportionality`). Ch.01 (ed3a330):
-cumulative-as-final prose on four surfaces + advisory pin test; the Critic's WARNING caught
-the under-enumerated template surface. Ch.02 (6c9241b): lib/ledger.py structural writer +
-PR-gate ledger fallback in lib/gates.py + schema additions (model/files) + 36 tests; Critic
-`final` (explicit, side-plan convention) clean — and it dogfooded ledger-append, so the
-ledger holds its first real correctly-scoped event. NEXT: PR-1 (ch.01+02 — keystone in the
-smallest bundle; user-confirmed direction pending) — the PR's cumulative review will append
-event #2 and exercise the gate live. Then S2 = ch.03+04 → /clear; S3 = ch.05 + ONE
-cumulative (which IS ch.05's review, per the rule ch.01 ships) + PR-2. Governance
-checkpoint 1 (post-ch.02): additive-ledger held under its own final review (0 blocking,
-0 warnings); gate fallback fail-closed paths pinned by adversarial tests — proceed.
+Context: CHUNKS 01-04 BUILT 2026-06-10 (S1+S2 complete; checkboxes flip at release via
+change-log tags `chunks=NN | scope=review-proportionality`). PR-1 (ch.01+02) MERGED to
+develop as #87 (squash c7981c3) — its cumulative ran clean, appended ledger event #2, and
+exercised the PR gate live (wrong-mode fail → cumulative satisfy, the exact ch.02 design
+sequence). S2 on the recreated feature/review-proportionality branch: ch.03 (2482552)
+lib/telemetry.py + `review-stats [--json]`, dogfooded on the real ledger; reviewed via
+inferred rule-1b verify-resolutions chain (same Goals-1-3 depth as the predicted `chunk`,
+plus chain continuity — state-driven variance, committed-first). Ch.04 (c04882c + 2d41303)
+lib/risk.py `classify-diff-risk` + dispatch wiring on three skill surfaces; chunk review
+clean (1 NOTE resolved by adding lib.risk helper unit tests — evidence now attributes the
+module); live check: this branch classifies `escalate` (5 paths). In-cycle fix: audit-CLI
+smoke test was silently auditing the REAL repo and timing out xdist workers — now
+env-targeted; wart filed as STH-5R2Q. Governance checkpoint 2 (post-ch.04) PENDING USER
+READ: review-stats shows 4 events (one per mode), 1770s total review time, 0% actionable
+rate so far (all clean reviews — no data contradicting ch.05's scoping assumptions; the
+checkpoint question "are PR reviews already cheap relative to yield" stays open until
+review.pr events exist, which is ch.05 itself). NEXT: /clear, then S3 = ch.05
+(PR-reviewer scoping) + ONE cumulative (which IS ch.05's review, per ch.01's rule) + PR-2
+via /prawduct:pr (its reviewer runs the NEW scoped protocol — the dogfood closing the
+loop).
 
 ## Chunks
 
