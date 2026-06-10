@@ -511,8 +511,10 @@
 
 ## Promoted
 
+## Archive
+
 - **[REL-9F2T]** Change-log lifecycle hardening — close the silent-drop family (statusless entries, missing entries, multi-tag entries, orphaned scopes)
-  `effort: M · impact: L · area: governance/change-log · source: reflection · added: 2026-06-10 · status: promoted · stage: ready · closes: REL-2N8K, REL-6C3W, VWS-4D8J · related: VWS-3K7P, REL-4T8N, CRT-7B4M · refs: lib/views.py, skills/pr/SKILL.md, docs/release-process.md, .prawduct/artifacts/build-plan-changelog-lifecycle.md · reviewed: 2026-06-10`
+  `effort: M · impact: L · area: governance/change-log · source: reflection · added: 2026-06-10 · status: shipped · stage: ready · closes: REL-2N8K, REL-6C3W, VWS-4D8J · related: VWS-3K7P, REL-4T8N, CRT-7B4M · refs: lib/views.py, skills/pr/SKILL.md, docs/release-process.md, .prawduct/artifacts/build-plan-changelog-lifecycle.md · closed-by: v2.1.1 · reviewed: 2026-06-10`
 
   The change-log state machine (statusless → merged → shipped) is broken at three transitions, all
   silent, all observed live: (a) the /prawduct:pr merge flow is documented to stamp `status=merged`
@@ -536,8 +538,9 @@
   stamp-merged + statusless scope validation, missing-entry probe at PR create); branch
   feature/changelog-lifecycle.
 
-## Archive
-
+  — Shipped 2026-06-10 as v2.1.1: all three chunks shipped (PR #90 squash-merged to develop as
+  c7015e9). Closes the silent-drop family REL-2N8K, REL-6C3W, VWS-4D8J per the `closes:` field —
+  all three already archived (dropped, merged into this item) at the 2026-06-10 groom.
 
 - **[REL-2N8K]** Release-prep silently drops statusless change-log entries — step 3 only flips `status=merged`
   `effort: S · impact: M · area: methodology · source: builder · added: 2026-06-08 · status: dropped · stage: design · related: REL-4T8N, REL-6C3W, VWS-4D8J, REL-9F2T · reviewed: 2026-06-10`

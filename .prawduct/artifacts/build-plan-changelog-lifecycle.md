@@ -43,9 +43,9 @@ below as vetoable assumptions.
 
 ## Status
 
-- [ ] Chunk 01: Multi-tag-line parsing — union + warning
-- [ ] Chunk 02: Statusless lifecycle — stamp-merged + statusless scope validation
-- [ ] Chunk 03: Missing-entry probe at the PR boundary
+- [x] Chunk 01: Multi-tag-line parsing — union + warning
+- [x] Chunk 02: Statusless lifecycle — stamp-merged + statusless scope validation
+- [x] Chunk 03: Missing-entry probe at the PR boundary
 Context: Chunk 01 done 2026-06-10 (parse_change_log consumes consecutive tag
 lines, chunks-union + first-wins scalars, validate_tag_line_multiplicity wired
 into regen-views stderr; Critic chunk-mode passed — its one WARNING, missing

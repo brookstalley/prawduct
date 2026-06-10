@@ -34,10 +34,6 @@ distribution: plugin
 # preferred over the bare `develop` for a stable remote-tracking merge-base.
 base_branch: develop
 
-# Active build plan (.prawduct/-relative). Drives the Critic gate, plan-aware
-# mode inference, and verify-chunk-refs. Cleared at the develop→main release.
-active_build_plan: artifacts/build-plan-changelog-lifecycle.md
-
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
@@ -548,6 +544,9 @@ scope_rollups:
   backlog-rework:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
     releases: ["v2.0.15"]
+  changelog-lifecycle:
+    chunks: ["01", "02", "03"]
+    releases: ["v2.1.1"]
   cleanup-batch:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.0.5"]
