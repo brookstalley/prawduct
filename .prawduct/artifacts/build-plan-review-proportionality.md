@@ -126,26 +126,23 @@ ordering below deliberately enables that, but does not require it.
 - [ ] Chunk 03: Review telemetry — `prawduct-hook review-stats`
 - [ ] Chunk 04: Risk-surface reviewer escalation
 - [ ] Chunk 05: PR-reviewer scoping — consume the record, audit it, review the release
-Context: CHUNKS 01-04 BUILT 2026-06-10 (S1+S2 complete; checkboxes flip at release via
-change-log tags `chunks=NN | scope=review-proportionality`). PR-1 (ch.01+02) MERGED to
-develop as #87 (squash c7981c3) — its cumulative ran clean, appended ledger event #2, and
-exercised the PR gate live (wrong-mode fail → cumulative satisfy, the exact ch.02 design
-sequence). S2 on the recreated feature/review-proportionality branch: ch.03 (2482552)
-lib/telemetry.py + `review-stats [--json]`, dogfooded on the real ledger; reviewed via
-inferred rule-1b verify-resolutions chain (same Goals-1-3 depth as the predicted `chunk`,
-plus chain continuity — state-driven variance, committed-first). Ch.04 (c04882c + 2d41303)
-lib/risk.py `classify-diff-risk` + dispatch wiring on three skill surfaces; chunk review
-clean (1 NOTE resolved by adding lib.risk helper unit tests — evidence now attributes the
-module); live check: this branch classifies `escalate` (5 paths). In-cycle fix: audit-CLI
-smoke test was silently auditing the REAL repo and timing out xdist workers — now
-env-targeted; wart filed as STH-5R2Q. Governance checkpoint 2 (post-ch.04) PENDING USER
-READ: review-stats shows 4 events (one per mode), 1770s total review time, 0% actionable
-rate so far (all clean reviews — no data contradicting ch.05's scoping assumptions; the
-checkpoint question "are PR reviews already cheap relative to yield" stays open until
-review.pr events exist, which is ch.05 itself). NEXT: /clear, then S3 = ch.05
-(PR-reviewer scoping) + ONE cumulative (which IS ch.05's review, per ch.01's rule) + PR-2
-via /prawduct:pr (its reviewer runs the NEW scoped protocol — the dogfood closing the
-loop).
+Context: ALL FIVE CHUNKS BUILT 2026-06-10 (checkboxes flip at release via change-log tags
+`chunks=NN | scope=review-proportionality`). PR-1 (ch.01+02) MERGED to develop as #87
+(squash c7981c3). S2: ch.03 (2482552) review-stats telemetry; ch.04 (c04882c + 2d41303)
+classify-diff-risk + dispatch wiring (details in change-log). S3: ch.05 (8945f4d)
+PR-reviewer scoping — review-protocol.md rewritten around consume-and-audit (record as
+evidence not truth; ≥2 adversarial spot-checks; failure voids → full pass), pr/SKILL
+hands the record + appends `review.pr` ledger events (lib/ledger.py: `--findings`
+required for review.pr, rejected for review.critic), evidence gains
+mode=pr-scoped/pr-full + record_consumed/spot_checks (telemetry distinguishes them with
+zero code change). In-cycle: ch.04's missed pr/SKILL allowed-tools entry for
+classify-diff-risk fixed + pinned; 3×-stated layering/fast-path prose deduplicated
+(user-directed). Per ch.01's rule the ONE cumulative (escalated tier, bundle
+c7981c3...8945f4d) WAS ch.05's review: 0 blocking, 1 warning (.DS_Store cruft from ch.04
+— untracked + gitignored in 7d4356e), chain verify-resolutions extends the cumulative to
+HEAD; check-cumulative-critic satisfied. 1181 tests. NEXT: PR-2 via /prawduct:pr (its
+reviewer runs the NEW scoped protocol — the dogfood closing the loop); after merge the
+plan is fully built, release-pending on the next develop→main promotion.
 
 ## Chunks
 
