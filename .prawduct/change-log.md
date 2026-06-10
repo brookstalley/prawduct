@@ -3,6 +3,38 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: pre-PR hardening from the reviewer-model A/B/C experiment (gate-soundness)
+
+<!-- prawduct: type=fix | scope=gate-soundness -->
+
+**Why:** The reviewer-model-tiering experiment (chunk 01 of that plan) ran
+three identical independent reviews of this bundle on sonnet/opus/fable. The
+fable run surfaced two real warnings the official record missed: (1) JUnit
+parsing read only the FIRST `<testsuite>` — safe under pytest, but
+`test_command` invites multi-suite runners (jest-junit, merged CI reports)
+whose counts would be silently undercounted in gate-trusted evidence; (2) the
+`init_product` `unignored` presentation layer — the exact seam that absorbed
+two ch.3 Critic warnings — shipped untested. Per the project rule that
+warnings are effectively blocking, fixed before PR rather than backlogged.
+
+**What:** Counts now sum across all top-level `<testsuite>` elements (direct
+children, so Ant-style nesting can't double-count) — pinned by a multi-suite
+fake-runner test. Two presentation tests pin `init_product.run`'s text-mode
+git-add advice and `--json` `unignored` field. Plus the experiment's smaller
+catches: `argv` shadowing renamed (`run_argv`); skip-scope test renamed and
+ch.1 change-log phrasing tempered (the unjudged listing is producer-attested
+— the pinned contract is per-listed-file skip, not tamper-proofing); stale
+`project-state.yaml` pointer narrative and `planning.md` stop-hook
+trigger wording fixed; `#`-truncation caveat documented on `test_command`;
+CRT-8D2W misattribution corrected and BLD-7W2J (parallel-plans single-slot
+pointer) filed via /prawduct:backlog. 1050 pass.
+
+**Blast radius:** `bin/prawduct-hook` (JUnit aggregation, rename),
+`tests/test_plugin_runtime.py`, `tests/test_gitignore_management.py`,
+`tests/test_verify_coverage_gate.py`, `templates/project-state.yaml`,
+`methodology/planning.md`, `.prawduct/project-state.yaml`,
+`.prawduct/backlog.md`, `.prawduct/change-log.md`.
+
 ## 2026-06-10: cumulative-gate ordering guidance + plan-lifecycle note (gate-soundness ch.4)
 
 <!-- prawduct: chunks=04 | type=fix | scope=gate-soundness -->
@@ -119,8 +151,10 @@ stdout line, and still exits 1 with BLOCKING `missing-coverage:` for judged
 Python files no test references — severity language untouched, no
 blocking→warning demotion anywhere. Legacy/product evidence without the field
 keeps the old contract (absent ⇒ empty). First direct test module for the
-F4b gate (`tests/test_verify_coverage_gate.py`), including the adversarial
-"unjudged listing cannot hide a judged gap" case. 1030 pass.
+F4b gate (`tests/test_verify_coverage_gate.py`), including the skip-scope
+case (only LISTED files are skipped; an unlisted judged gap still blocks —
+the listing itself is producer-attested, same trust model as
+`changes_referenced`). 1030 pass.
 
 **Blast radius:** `bin/test-reference-verify`, `lib/gates.py`
 (`_EVIDENCE_OPTIONAL_FIELDS`, `verify_coverage`), `bin/prawduct-hook`

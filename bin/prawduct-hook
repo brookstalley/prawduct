@@ -1088,15 +1088,15 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             # the command points at. Split BEFORE substituting so a report
             # path containing spaces/quotes lands as one intact token.
             import shlex  # noqa: PLC0415 — only this branch needs it
-            argv = [
+            run_argv = [
                 tok.replace("{junit_xml}", str(junit))
                 for tok in shlex.split(test_command)
             ]
             try:
-                proc = subprocess.run(argv, cwd=str(project_dir))
+                proc = subprocess.run(run_argv, cwd=str(project_dir))
             except FileNotFoundError:
                 print(
-                    f"error: test_command executable not found: {argv[0]!r} "
+                    f"error: test_command executable not found: {run_argv[0]!r} "
                     "— check the test_command in project-state.yaml.",
                     file=sys.stderr,
                 )
@@ -1121,18 +1121,24 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         except OSError:
             pass
 
-    suite = root if root.tag == "testsuite" else root.find("testsuite")
-    if suite is None:
+    # Aggregate across ALL top-level <testsuite> elements, not just the first:
+    # pytest emits one, but `test_command` invites arbitrary runners
+    # (jest-junit, go-junit-report, merged CI reports) whose <testsuites>
+    # roots carry many — reading only the first silently undercounted the
+    # evidence the freshness and Critic gates trust. Direct children only
+    # (not iter()) so Ant-style nested suites aren't double-counted.
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    if not suites:
         print(
-            "error: pytest produced no <testsuite> (no tests collected?)",
+            "error: the test run produced no <testsuite> (no tests collected?)",
             file=sys.stderr,
         )
         return 2
-    total = int(suite.get("tests", "0"))
-    failures = int(suite.get("failures", "0"))
-    errors = int(suite.get("errors", "0"))
-    skipped = int(suite.get("skipped", "0"))
-    duration = float(suite.get("time", "0") or "0")
+    total = sum(int(s.get("tests", "0")) for s in suites)
+    failures = sum(int(s.get("failures", "0")) for s in suites)
+    errors = sum(int(s.get("errors", "0")) for s in suites)
+    skipped = sum(int(s.get("skipped", "0")) for s in suites)
+    duration = sum(float(s.get("time", "0") or "0") for s in suites)
     passed = total - failures - errors - skipped
     failed = failures + errors
 

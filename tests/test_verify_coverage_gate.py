@@ -159,10 +159,14 @@ class TestJudgedGapsStillBlock:
         assert result.returncode == 1
         assert "missing-coverage: src/untested.py" in result.stderr
 
-    def test_unjudged_listing_cannot_hide_a_referenced_gap(self, gated_repo: Path):
-        """Belt-and-suspenders: a file in changes_unjudged is skipped even if
-        it would otherwise be missing — but only files actually listed are
-        skipped. An unlisted judged file still blocks alongside one."""
+    def test_only_listed_files_are_skipped_unlisted_judged_gaps_still_block(
+        self, gated_repo: Path
+    ):
+        """Scope of the skip: a file in changes_unjudged is taken on the
+        producer's word (the gate's threat model is honest-agent guidance —
+        `changes_referenced` was always equally producer-attested); the
+        contract pinned here is that the skip is PER-LISTED-FILE, so an
+        unlisted judged file still blocks alongside a listed one."""
         (gated_repo / "src" / "a.py").write_text("def a():\n    return 1\n")
         (gated_repo / "src" / "b.py").write_text("def b():\n    return 2\n")
         _git(gated_repo, "add", ".")

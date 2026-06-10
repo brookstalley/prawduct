@@ -1107,6 +1107,31 @@ class TestTestEvidenceKnobs:
         assert res.returncode == 2
         assert "test_command" in res.stderr
 
+    def test_multi_suite_junit_report_is_aggregated(self, tmp_path):
+        """A declared test_command may be any runner — jest-junit and merged
+        CI reports emit MULTIPLE <testsuite> elements under <testsuites>.
+        Counts must sum across all of them, not read only the first."""
+        writer = (
+            "import sys\n"
+            "open(sys.argv[1], 'w').write(\n"
+            "    '<testsuites>'\n"
+            "    '<testsuite tests=\"3\" failures=\"1\" errors=\"0\" skipped=\"0\" time=\"1.0\"/>'\n"
+            "    '<testsuite tests=\"4\" failures=\"0\" errors=\"0\" skipped=\"2\" time=\"2.0\"/>'\n"
+            "    '</testsuites>')\n"
+        )
+        repo = self._repo(tmp_path, "placeholder: x\n")
+        (repo / "fake_runner.py").write_text(writer)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_command: {sys.executable} fake_runner.py {{junit_xml}}\n"
+        )
+        res = _run_in(repo, "test-evidence", "record")
+        # Exit mirrors the COMMAND (the fake runner exits 0); the failure
+        # lives in the recorded counts, which is what the gates read.
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 4 and ev["failed"] == 1 and ev["skipped"] == 2
+        assert ev["duration_seconds"] == 3.0
+
     def test_missing_executable_is_a_clean_error(self, tmp_path):
         """A typo'd test_command executable exits 2 with an actionable
         message, not a raw FileNotFoundError traceback."""

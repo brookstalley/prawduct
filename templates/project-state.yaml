@@ -249,6 +249,9 @@ coverage_required: false
 #   and run from the repo root. Must contain the `{junit_xml}` literal — the
 #   hook substitutes its report path there. Shell operators (&&, |, FOO=1)
 #   are not supported; point the command at a script for compound runs.
+#   Caveat: the value is read by a YAML-comment-aware scalar reader, so a
+#   literal `#` anywhere in the command truncates it — wrap such invocations
+#   in a script too.
 #
 # tests_dirs: engine/tests server/tests
 #   Whitespace-separated test trees for the coverage verifier (default:

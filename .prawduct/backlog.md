@@ -358,7 +358,7 @@
   v1.3.3 gitignored build-plan.md and v1.3.4 added `_untrack_session_files()`, but the user explicitly suggested running Critic in a separate worktree to avoid touching session files in the active tree at all. Mar 25 discodon avatar_description session captured this when branch-switching during Critic review caused merge conflicts on `.session-handoff.md` and backlog. Worth designing as a follow-up to the gitignore approach. (reflection)
 
   **Premise partially obsoleted — reassessed 2026-06-10:** the original motivation rested in part on
-  the build plan being a *gitignored* session file; gate-soundness ch.3 (review-fixes) made build
+  the build plan being a *gitignored* session file; gate-soundness ch.3 (feature/gate-soundness) made build
   plans **tracked**, so that half of the conflict surface is gone. The residual rationale is
   narrower: the remaining gitignored session files (`.session-handoff.md`, `.critic-findings.json`,
   `.session-reflected`, …) plus the broader isolation argument — an independent reviewer should not
@@ -397,6 +397,21 @@
   `effort: S · impact: S · area: backlog · source: builder · added: 2026-05-29 · status: open`
 
   Requirements §8.2. A convenience alias that forwards to the existing unified `/prawduct-advisory dismiss`. The unified command already works, so this is pure ergonomics — deferred until the alias's discoverability is worth the extra surface. (builder)
+
+- **[BLD-7W2J]** Single-slot `active_build_plan` vs parallel in-flight plans
+  `effort: M · impact: M · area: governance/planning · source: critic · added: 2026-06-10 · status: open · stage: idea · related: REL-4T8N · refs: lib/core.py (resolve_build_plan_path), methodology/planning.md`
+
+  Two concurrent feature branches (feature/review-fixes → `build-plan-review-fixes.md`,
+  feature/gate-soundness → `build-plan-gate-soundness.md`) each set the one `active_build_plan`
+  pointer in `project-state.yaml`, guaranteeing a same-line merge conflict on develop — after which
+  one plan is invisible to pointer-resolved governance (stop hook, `infer-critic-mode`,
+  `verify-chunk-refs`) until repointed. planning.md's new "Plan lifecycle on gitflow" paragraph
+  covers only the *serial* release-pending case; gate-soundness ch.3 (tracked plans) + scope-named
+  files make parallel plans more likely. Design work needed: model multi-plan state (e.g. a plan
+  list, or per-branch resolution) or document the parallel-branch convention. Related: REL-4T8N
+  solved the *release-side* multi-plan problem (regen-views enumerates change-log scopes instead of
+  the pointer) but the in-flight pointer remains single-slot. Filed from fable test-reviewer NOTE on
+  the gate-soundness bundle, 2026-06-10. (critic)
 
 ## Promoted
 

@@ -114,6 +114,38 @@ class TestUpdateGitignoreSubcommand:
         assert "unignored:" not in res.stdout
 
 
+class TestInitProductUnignoredPresentation:
+    """The onboard-facing layer: `init_product.run` must SURFACE the
+    `unignored` advice in both output modes. This exact seam absorbed two
+    Critic warnings during the build (report computed but discarded; then
+    plumbed but never printed on the documented flow) — pin it."""
+
+    def test_apply_text_mode_prints_git_add_advice(self, tmp_path, capsys):
+        from lib.init_product import run
+
+        (tmp_path / ".gitignore").write_text(f"{BUILD_PLAN_REL}\n")
+
+        rc = run([str(tmp_path), "--name", "TestProd", "--apply"])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert BUILD_PLAN_REL in out
+        assert "git add" in out
+
+    def test_apply_json_mode_carries_unignored(self, tmp_path, capsys):
+        import json as _json
+
+        from lib.init_product import run
+
+        (tmp_path / ".gitignore").write_text(f"{BUILD_PLAN_REL}\n")
+
+        rc = run([str(tmp_path), "--name", "TestProd", "--apply", "--json"])
+
+        assert rc == 0
+        result = _json.loads(capsys.readouterr().out)
+        assert BUILD_PLAN_REL in result["unignored"]
+
+
 class TestExistingBehaviorPinned:
     """Pre-existing update_gitignore behavior, previously untested."""
 
