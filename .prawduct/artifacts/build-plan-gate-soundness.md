@@ -22,8 +22,10 @@ the coverage gate only blocks on files the verifier can judge; `test-evidence re
 declared test command and test dirs; build plans are tracked (and stay tracked); the
 cumulative-gate ordering rule is stated where agents will read it before paying a re-review.
 
-**Out of scope.** (a) A verify-resolutions→cumulative gate-chain extension (document the
-ordering instead; build the chain only if re-review cost recurs after the doc fix). (b) Work-model
+**Out of scope.** (a) ~~A verify-resolutions→cumulative gate-chain extension (document the
+ordering instead; build the chain only if re-review cost recurs after the doc fix)~~ — the
+recurrence trigger fired the same session (two full cumulative runs on one bundle, user P0
+escalation, filed as CRT-4J8W designed-to-ready); now in scope as Chunk 05. (b) Work-model
 probe precision (in flight on `feature/review-fixes`). (c) Migrating scriob itself (its wrapper
 shrinks/disappears when it adopts the new knobs; follow-up, not this plan). (d) Any change to
 `coverage_required` default (stays opt-in/false).
@@ -61,13 +63,15 @@ planning.
 - [ ] Chunk 02: test-evidence configurability — `test_command:` + `tests_dirs:`
 - [ ] Chunk 03: Build plans are tracked artifacts
 - [ ] Chunk 04: Cumulative-gate ordering guidance + plan-lifecycle note
-Context: ALL FOUR CHUNKS BUILT AND CUMULATIVE-REVIEWED 2026-06-10 (checkboxes flip at
+- [ ] Chunk 05: Chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
+Context: Chunks 01-04 BUILT AND CUMULATIVE-REVIEWED 2026-06-10 (checkboxes flip at
 release via scope=gate-soundness change-log tags). Branch feature/gate-soundness off
-origin/develop (ed2dcb6), 6 commits, cumulative Critic at b14f7b9: 0 blocking / 1 warning
-(resolved doc-only post-review, gate re-verified satisfied) / 3 notes (1 fixed doc-only,
-1 filed as TST-3E8V, 1 closed by reassessing CRT-8D2W). 1047 tests pass. PR-ready
-(feature/gate-soundness → develop) — PR not yet created. Two declared deviations recorded
-in ch.2 (shlex, not shell) and ch.3 (update-gitignore subcommand).
+origin/develop (ed2dcb6), 9 commits incl. the reviewer-model-tiering side-plan (opus
+reviewer default + A/B/C experiment artifact). Chunk 05 (the chain gate, P0 CRT-4J8W —
+the Out-of-scope (a) recurrence trigger fired) added 2026-06-10, IN PROGRESS. Prior
+cumulative at 2d74be9 (0 blocking / 1 warning — resolved by 03bd7c5's experiment
+artifact); chunk 05 will re-stale it; ONE fresh cumulative at HEAD closes the chunk, and
+any post-cumulative fix dogfoods the new verify-resolutions chain. 1050 tests pass.
 
 ## Chunks
 
@@ -199,6 +203,86 @@ the PR-merge flow, invisible at planning time.
   2. /prawduct:critic run (final + cumulative per Type) and blocking findings resolved.
   3. Committed; tagged change-log entry (`chunks=04 | scope=gate-soundness`).
 
+### Chunk 05: Chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
+
+Review cost = unit-cost × run-count. Reviewer-model tiering fixed unit cost (~4x); run-count
+is gate design: every non-`.md` fix after the one cumulative re-stales `check-cumulative-critic`
+and costs a FULL bundle re-review (~4-10 min) even for a 2-file fix (user P0 escalation
+2026-06-10; recurred the same session it was deferred). Fix: the gate accepts a
+**cumulative + verify-resolutions CHAIN**. Soundness: cumulative@X vouches for the bundle;
+a 0-blocking delta review whose recorded scope covers `X..HEAD` extends that vouching to
+HEAD — same shape as the existing doc-only allowance, with scope verification. The chain
+anchor also preserves review lineage across the single-slot `.critic-findings.json`
+overwrite (the verify record would otherwise erase the only proof a cumulative ran).
+
+- **Schema** (`lib/gates.py::validate_critic_findings`): optional `extends_cumulative`
+  field. When present and non-null it must be a dict whose `commit_reviewed` is a non-empty
+  string — anything else fails validation (writer drift surfaces at the gate, mirroring
+  `commit_reviewed`/`base_reviewed` handling).
+- **Scope helper** (`lib/gates.py::_compute_verify_resolutions_scope`): when the prior
+  record is *chain-extendable* — `mode=cumulative`, or `mode=verify-resolutions` with a
+  valid `extends_cumulative` (multi-link propagation; the widening threshold bounds chain
+  length naturally) — resolve the chain anchor X (prior `commit_reviewed`, or the
+  propagated anchor) and append `extends-cumulative=<X>` to the `ok:` reason line so the
+  Critic knows to embed it. Relax the `no-actionable-findings` demotion ONLY for
+  chain-extendable priors with a non-empty post-`commit_reviewed` delta (a clean/note-only
+  cumulative followed by a committed fix is a reviewable delta); empty delta still demotes.
+- **Gate** (`lib/gates.py::check_cumulative_critic`): accept EITHER a HEAD-covering
+  cumulative record (today's rule, unchanged) OR a chain record: `mode=verify-resolutions`,
+  valid `extends_cumulative` anchor X that resolves, 0 BLOCKING findings, record's
+  `commit_reviewed` covers HEAD (same `==HEAD`-or-doc-only-since rule as cumulative), AND
+  every non-`.md`, non-metadata file changed in `X..HEAD` ∈ the record's `files_reviewed` —
+  fail closed on any gap or git failure. New stderr taxonomy teaches at the gate (ch.4
+  pattern): `chain-scope-gap:` names the uncovered files; `chain-stale:` says *commit fixes
+  BEFORE running verify-resolutions* (a verify record anchored pre-commit can never cover
+  HEAD); the `wrong-mode` message for an anchor-less verify record now teaches the chain
+  sequence instead of declaring verify-resolutions categorically unable to satisfy the gate.
+- **Inference** (`lib/critic_mode.py`): (a) `_rule_cumulative_fires` also skips when a
+  chain record covers current HEAD (else no-args `/prawduct:critic` after a successful
+  chain triggers a pointless cumulative); (b) new rule between 1 and 2 — *post-fix chain*:
+  prior record chain-extendable, tree clean, committed delta since `commit_reviewed`
+  non-empty and under the widening threshold → `verify-resolutions`. Without (b) the
+  canonical no-args flow recommends a full cumulative for every post-cumulative fix,
+  defeating the chunk. **Surface addition beyond CRT-4J8W's list** — declared here, serves
+  the same parent requirement (run-count P0).
+- **Critic skill prose**: `skills/critic/SKILL.md` step 7 + `review-protocol.md` JSON
+  format (embed `extends_cumulative` when the scope reason carries the anchor; budget
+  <3120) + `review-cycle.md` (verify-resolutions scope/demotion + PR-gate paragraphs:
+  chain semantics, demotion-table row for the chain exception).
+- **Sequencing prose**: `skills/pr/SKILL.md` Step 2 + `methodology/building.md`
+  cumulative-gate paragraph (budget <4850): fix-after-cumulative becomes *fix → commit →
+  `/prawduct:critic verify-resolutions` → chain satisfies the gate*; never a second full
+  cumulative for in-scope fixes.
+
+Declared decisions (vetoable):
+- [ASSUMPTION: the anchor embeds for ANY prior cumulative, including one with BLOCKING
+  findings — wider than the backlog's "clean cumulative" phrasing. Rationale: the verify
+  pass is the adjudicator of resolution (re-emits unresolved blockings → chain record has
+  blockings → gate fails); gate-side the acceptance condition is identical either way, and
+  restricting to clean priors would leave the blocking-fix loop — the most common
+  findings-fix flow — on the full-re-review treadmill | MED impact | user can override]
+- [ASSUMPTION: chain HEAD-coverage and the `X..HEAD ⊆ files_reviewed` subset check exclude
+  `.md` and metadata paths, mirroring the gate's existing doc-only allowance and the
+  scope/stop-hook helpers' `_is_metadata_path` symmetry | LOW impact | user can override]
+
+- **Type:** code
+- **Done when:**
+  1. Chain accept/reject tests pass with the full suite — accept: happy chain, doc-only
+     after the verify record, metadata-only delta; reject (fail-closed, skip-gates get the
+     most adversarial coverage): scope gap, unresolved anchor, BLOCKING in chain record,
+     chain record not covering HEAD, anchor-less verify record. Schema, scope-helper, and
+     inference cases alongside. Token budgets hold.
+  2. Committed; then ONE `/prawduct:critic cumulative` at HEAD serves as both this chunk's
+     review and the PR-gate record (run-count P0: cumulative scope ⊇ this chunk's diff and
+     runs all 7 goals + cross-checks, so a separate `final` adds no coverage). Blocking
+     findings resolved.
+  3. Dogfood (user-requested): if the cumulative surfaces findings needing non-`.md`
+     fixes — fix, commit, `/prawduct:critic verify-resolutions`, then confirm
+     `prawduct-hook check-cumulative-critic` exits 0 via the chain. If the cumulative is
+     clean, the chain is exercised by tests only (state so honestly).
+  4. Tagged change-log entry (`chunks=05 | scope=gate-soundness`); CRT-4J8W updated via
+     `/prawduct:backlog`.
+
 ## Verification Strategy
 
 Beyond unit tests: exercise the real commands in a throwaway fixture repo — (ch.1/2) a two-tree
@@ -207,4 +291,7 @@ docs/config changes present and red when a judged Python file lacks any test ref
 (ch.3) `update_gitignore` on a `.gitignore` carrying the old entry, then confirm a tracked plan
 survives a simulated session start. This repo itself (root pytest, knobs absent) is the
 no-knob regression case — the suite and `prawduct-hook test-evidence record` must behave
-identically before and after.
+identically before and after. (ch.5) Dogfood on this very branch: the chunk's own
+post-cumulative fix flow, if any, must satisfy `check-cumulative-critic` via the chain
+(Done-when 3); the throwaway-fixture equivalents live in `tests/test_cumulative_gate.py`'s
+real-git repos.

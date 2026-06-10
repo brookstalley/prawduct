@@ -3,6 +3,46 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
+
+<!-- prawduct: chunks=05 | type=feature | scope=gate-soundness -->
+
+**Why:** Review cost = unit-cost × run-count. Reviewer-model tiering fixed
+unit cost; run-count was still gate design: every non-`.md` fix after the one
+cumulative re-staled `check-cumulative-critic` and cost a FULL bundle
+re-review (~4-10 min) even for a 2-file fix. User P0 escalation 2026-06-10;
+the gate-soundness ch.4 "build if it recurs" trigger fired the same session.
+
+**What:** `check-cumulative-critic` now accepts EITHER a HEAD-covering
+cumulative record (unchanged) OR a chain record: `verify-resolutions` mode,
+`extends_cumulative` anchor X resolving, 0 BLOCKING, own `commit_reviewed`
+covering HEAD (same doc-only allowance), and all non-`.md`/non-metadata files
+in `X..HEAD` ⊆ `files_reviewed` — fail closed on any gap. Soundness:
+cumulative@X vouches for the bundle; a clean delta review whose scope covers
+`X..HEAD` extends that vouching to HEAD. Producer side: the scope helper
+emits `extends-cumulative=<X>` for chain-extendable priors (cumulative, or
+chain records — the anchor propagates) and no longer demotes a clean
+cumulative prior that has a reviewable delta; the Critic embeds the anchor
+(schema: optional `extends_cumulative` dict, malformed shapes rejected).
+Inference: new rule 1b picks `verify-resolutions` for a committed
+post-cumulative fix (else no-args `/prawduct:critic` re-pays a full bundle
+review), and rule 2 skips when a chain record covers HEAD. Gate stderr
+teaches the new sequence (`chain-stale` says commit BEFORE verify;
+`chain-scope-gap` names uncovered files). Declared decision: the anchor
+embeds for ANY prior cumulative incl. one with BLOCKINGs — the verify pass
+adjudicates resolution and the gate accepts only 0-BLOCKING chain records;
+restricting to clean priors would leave the blocking-fix loop on the
+treadmill.
+
+**Blast radius:** `lib/gates.py` (`validate_critic_findings`, `_chain_anchor`,
+`_compute_verify_resolutions_scope`, `_record_covers_head`,
+`check_cumulative_critic`), `lib/critic_mode.py` (rule 1b, rule-2 skip,
+`_chain_extendable_anchor`), `skills/critic/SKILL.md` + `review-protocol.md`
++ `review-cycle.md`, `skills/pr/SKILL.md` Step 2, `methodology/building.md`
+(both budget files trimmed to hold), `tests/test_cumulative_gate.py` (chain
+accept/reject + scope-helper chain cases), `tests/test_critic_mode_inference.py`
+(rule 1b, rule-2 skip, `extends_cumulative` schema).
+
 ## 2026-06-10: reviewer model tiering — A/B/C experiment + opus default
 
 <!-- prawduct: chunks=01 | type=feature | scope=reviewer-model-tiering -->

@@ -236,7 +236,7 @@ Inference failure or unrecognized mode → `final`. See `skills/critic/review-cy
 
 Use `/prawduct:pr` for the full PR lifecycle. It invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/prawduct:pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open a PR without a blocking-free, HEAD-covering `cumulative` record. Cumulative diffs `merge-base...HEAD` — the full PR bundle — catching cross-chunk integration cracks per-chunk reviews miss. Sequence: land every non-`.md` fix first, then run `/prawduct:critic cumulative` once, last — `verify-resolutions` can't satisfy the gate, and post-review code commits re-stale it. While it runs (~4-10 min), do prep independent of findings.
+**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — required: a blocking-free record vouching for HEAD — a `cumulative` record (diffs `merge-base...HEAD`, catching cracks per-chunk reviews miss) or a `verify-resolutions` chain record extending one (CRT-4J8W). Sequence: land every non-`.md` fix, run `/prawduct:critic cumulative` once; afterwards — fix, commit, `/prawduct:critic verify-resolutions` (the chain extends it to HEAD; no second full run). While it runs (~4-10 min), do findings-independent prep.
 
 See the plugin's bundled `skills/pr/review-protocol.md` for review criteria. After merge, `/prawduct:pr` cleans up the build plan. Without `/prawduct:pr`, do it manually.
 
