@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: framework-repo slim session digest — always-loaded context dedup
+
+<!-- prawduct: chunks=4 | type=feature | scope=review-fixes -->
+
+**Why:** In the prawduct framework repo the always-injected session digest
+(~5.4k chars, re-injected on every compaction) duplicated 40–50% of the
+always-loaded CLAUDE.md nearly 1:1 (principles roster, Critic/Stop
+explanation, attribution rule, rigor scaling). The digest is the legitimate
+and ONLY carrier of those rules for product repos (thin-anchor CLAUDE.md), so
+the fix must not gut it — per the plan-level assumption (user-confirmed
+2026-06-10), the variant is selected per-repo, full stays the product default.
+
+**What:** New canonical `methodology/session-digest-slim.md` (~2.2k chars,
+budget-pinned ≤50% of full): pointers to CLAUDE.md plus only the rules
+CLAUDE.md does not restate (waiver pragma, backlog discipline, branch/PR
+rule, condensed agent stance, on-demand skill index). `hooks/digest.py`
+gains `is_framework_repo` — the governed repo (`CLAUDE_PROJECT_DIR`) is the
+framework iff `.claude-plugin/plugin.json` at its root parses to
+`name: prawduct`; ANY anomaly (missing, unreadable, malformed, non-dict,
+other name) fails safe to the full digest, and a framework repo served by an
+older cached plugin without the slim file falls back to full (never
+silence). **Declared deviation from the chunk's surface list:** the
+two-variant documentation lives in `hooks/digest.py`'s module docstring and
+the slim file's own header — NOT inside `methodology/session-digest.md`,
+whose entire body is injected verbatim into every product session
+(meta-documentation there would pollute the payload).
+`tests/test_briefing_functions.py` and `tests/test_v5_methodology.py`
+needed no changes (verified: neither asserts digest presence/content).
+
+**Blast radius:** `hooks/digest.py`, `methodology/session-digest-slim.md`
+(new), `tests/test_plugin_methodology_digest.py` (+11: variant selection
+incl. all fail-safe paths, slim canonical-copy + budget pins, both-variant
+load-bearing pointers; `test_additional_context_matches_source`
+renegotiated in the open — ROOT is the framework repo, so the emitted
+context is now the slim source; full-verbatim contract moved to the product
+fixture). Live acceptance: `hooks/digest.py` in this repo emits the slim
+variant (2,189 chars); a product fixture gets the full digest verbatim.
+
 ## 2026-06-10: PR-reviewer scoping — consume the Critic record, audit it, review the release
 
 <!-- prawduct: chunks=05 | type=feature | scope=review-proportionality -->
@@ -465,6 +503,59 @@ the listing itself is producer-attested, same trust model as
 `tests/test_verify_coverage_gate.py` (new). Critic (chunk mode): 0 blocking,
 1 warning (stale `_looks_like_python` docstring — fixed), 1 note
 (informational line now echoes `coverage_level` — adopted).
+
+## 2026-06-09: work-model probe precision — frequency floor, firing threshold, widened corpus
+
+<!-- prawduct: chunks=2 | type=fix | scope=review-fixes -->
+
+**Why:** The work-model probe (terms-not-in-artifacts tripwire) fired on
+ordinary prompts — acknowledgments, questions, noun-homographs ("the build
+failed"), contractions — eroding trust in tripwire #1. Four false-positive
+prompt classes observed live 2026-06-09.
+
+**What:** Three precision levers: a common-English frequency floor (top-4,000
+of the google-10000-english list — the observed false-positive *efficiency*
+ranks #3283, forcing the cutoff; 30KB accepted, provenance + license posture
+documented in `lib/common_words.py`), a firing threshold, and a widened
+artifact corpus. Two extra precision bugs found and fixed during build:
+contraction tokens minting orphan non-words ("let's" → "let'"), and
+requirement verbs reporting themselves as the orphan ("extend X" flagging
+*extend*). All four observed false-positive prompt classes verified silent
+live against this repo's hook; "add OAuth login to the settings page" still
+fires.
+
+**Blast radius:** `bin/prawduct-hook` (probe), `lib/common_words.py` (new),
+`tests/` (+14, 1051 pass). Critic (chunk mode ×2): pass, then 1 warning +
+2 notes, all resolved (count drift, sentence-boundary determiner reset,
+wordlist license posture).
+
+## 2026-06-09: review-gate soundness — PR doc-only protected paths + Critic marker ordering
+
+<!-- prawduct: chunks=3 | type=fix | scope=review-fixes -->
+
+**Why:** PR-5K8D: `check-pr-doc-only` treated `skills/*.md` as docs, so
+governance-logic changes could skip the independent PR reviewer — the only
+remaining PR-boundary gate-skip path after the trivial fast-path was retired.
+CRT-6F2N: the critic SKILL ran `critic-begin` before the designer-handoff
+early exit, leaving a `.critic-active` marker (blocking `clear`) for up to
+its 30-min TTL on a review that never happened.
+
+**What:** Extracted `protected_path_violation()` from the trivial gate's
+bound list (`_TRIVIAL_PROTECTED_PATHS`: `skills/`, `methodology/`,
+`templates/`, root `CLAUDE.md`) and consulted it in the PR doc-only gate — a
+`skills/*.md` PR now exits 1 `not-doc-only`; nested `foo/CLAUDE.md` stays
+doc-only (exact-match semantics preserved). Stop-hook Gate 3 inherits the
+tightened bound through the shared helper; fails closed. Moved the
+designer-handoff early exit BEFORE `critic-begin` in the critic SKILL step 1,
+pinned by a prose-ordering test.
+
+**Blast radius:** `lib/buildplan_refs.py` (`protected_path_violation`),
+`lib/coverage.py` (PR doc-only gate), `skills/critic/SKILL.md` (step
+ordering), `tests/` (+7, 1058 pass). Critic (chunk mode): 1 blocking (a
+placeholder path in the build plan's own Tests bullet failed
+verify-chunk-refs — fixed), 1 note (accepted with rationale). Both backlog
+items shipped/archived via `/prawduct:backlog`.
+
 ## 2026-06-09: hot-path correctness fixes (core.py depth, Gate 3 network call, porcelain parsing)
 
 <!-- prawduct: chunks=1 | type=fix | scope=review-fixes -->
