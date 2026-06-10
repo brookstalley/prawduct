@@ -90,7 +90,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **In-flight background work is not a waiver case.** If the Critic/reflection gate blocks only because a tracked background `Workflow`/`Task` is still producing the diff, **wait — don't waive**: the gate *will* be satisfied this session once the job lands, and waiving would skip the Critic the completed work still needs. The repeated block is an expected reminder during a legitimate async wait, not an error to escape. (Rough edge `STH-3W7F`: a `.gates-deferred` mechanism to quiet the wait without skipping the Critic is the pending fix.)
 
-**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (`/prawduct:critic chunk` / `final` / `cumulative` / `verify-resolutions`) only to override; report override cases so inference can improve. Default if inference fails: `final`. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
+**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 
 **Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 
@@ -132,7 +132,7 @@ When you modify files that affect a contract surface:
 
 ### Decision Research (when choices constrain future options)
 
-A decision is "major" when it has: **lock-in** (hard to reverse), **pervasiveness** (used across many files), **structural impact** (shapes architecture), **external dependency** (long-term reliance on a library/service), or **volatility** (correctness depends on timely / fast-moving / post-cutoff data — knowledge gaps want reasoning, volatility gaps want web research; see `methodology/discovery.md` "Calibrate Rigor").
+A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format/schema is ALWAYS lock-in, reversal cost not LOC: enumerate the questions the data must answer — its consumers' future queries — before designing fields), **pervasiveness** (used across many files), **structural impact** (shapes architecture), **external dependency** (long-term reliance on a library/service), or **volatility** (correctness depends on timely / fast-moving / post-cutoff data — knowledge gaps want reasoning, volatility gaps want web research; see `methodology/discovery.md` "Calibrate Rigor").
 
 Research scales to impact:
 - **Medium-impact** (pervasive pattern, non-core dependency): Quick research in the main context. A few web searches, check library health.
@@ -215,16 +215,16 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 
 ### Modes
 
-`/prawduct:critic` (no args) infers from git + build-plan state via `prawduct-hook infer-critic-mode`; `Critic mode:` in the plan and an explicit slash arg are successive overrides. Four modes:
+`/prawduct:critic` (no args) infers from git + build-plan state; `Critic mode:` in the plan and an explicit slash arg are successive overrides. Four modes:
 
 - **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
 - **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.
 - **`cumulative`** — all 7 goals against `merge-base...HEAD`. Gates `/prawduct:pr create`.
-- **`verify-resolutions`** — Goals 1-3 against (prior `files_reviewed` ∪ files since `commit_reviewed`); re-review after fixing prior findings.
+- **`verify-resolutions`** — Goals 1-3 against the prior review's scope; re-review after fixing prior findings.
 
 Inference failure or unrecognized mode → `final`. See `skills/critic/review-cycle.md` (per-mode table) and `skills/critic/review-protocol.md` (goals).
 
-**The Critic takes time.** Reviews take 1-5 minutes; don't check on it. While it reviews, do your own deep scrub — re-read changes for completeness, correctness, DRY, encapsulation, test coverage, UX, and docs. Self-review often pre-resolves findings.
+**The Critic takes time.** Reviews take 1-5 minutes; don't check on it. While it reviews, deep-scrub your own changes — self-review often pre-resolves findings.
 
 **Never write Critic findings yourself.** If the agent is slow, wait. Writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent fails, tell the user and re-invoke.
 
@@ -236,7 +236,7 @@ Inference failure or unrecognized mode → `final`. See `skills/critic/review-cy
 
 Use `/prawduct:pr` for the full PR lifecycle. It invokes the PR reviewer agent for independent release-readiness assessment — a fresh-eyes review of the full changeset, complementing the Critic's per-chunk reviews. The `/prawduct:pr` command is context-aware: it detects git state and routes to create, update, merge, or status automatically.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — required: a blocking-free record vouching for HEAD — a `cumulative` record (diffs `merge-base...HEAD`, catching cracks per-chunk reviews miss) or a `verify-resolutions` chain record extending one (CRT-4J8W). Sequence: land every non-`.md` fix, run `/prawduct:critic cumulative` once; afterwards — fix, commit, `/prawduct:critic verify-resolutions` (the chain extends it to HEAD; no second full run). While it runs (~4-10 min), do findings-independent prep.
+**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — required: a blocking-free record vouching for HEAD — a `cumulative` record or a `verify-resolutions` chain record extending one (CRT-4J8W; details in `skills/critic/review-cycle.md`). Sequence: land every non-`.md` fix, run `/prawduct:critic cumulative` once; post-cumulative fixes ride the chain (fix → commit → `verify-resolutions`). While it runs (~4-10 min), do findings-independent prep.
 
 See the plugin's bundled `skills/pr/review-protocol.md` for review criteria. After merge, `/prawduct:pr` cleans up the build plan. Without `/prawduct:pr`, do it manually.
 
@@ -279,4 +279,4 @@ Broad catches that swallow errors without logging (`except Exception: pass`, emp
 
 **Opinionated defaults without configuration**: Shipping a workflow-affecting feature with one hardcoded behavior. If it could reasonably work two ways, make it a `project-preferences.md` preference with a safe default.
 
-**Skipping `final` mode**: chunk-mode skips Coherence, Design, Learnings Cross-Check, and Backlog Reconciliation. After all chunks are `[x]`, run `/prawduct:critic final` — the stop hook WARNs otherwise.
+**Skipping `final` mode**: chunk-mode skips Coherence, Design, Learnings Cross-Check, and Backlog Reconciliation. After all chunks are `[x]`, run `final` — or the `cumulative` that IS a `cumulative-final` plan's last-chunk review — the stop hook WARNs otherwise.

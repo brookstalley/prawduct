@@ -11,8 +11,8 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Trivial** (typo, config) | None — waive via `.gates-waived` if the stop hook prompts. |
 | **Small** (bug fix, minor feature) | One `final` review, optional. |
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
-| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk. |
-| **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (in addition to the per-chunk reviews above). |
+| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). |
+| **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (in addition to the per-chunk reviews above — but on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |
 | **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Falls through to `chunk`/`final` when the anchor is missing or scope widens past the demotion threshold. |
 
 The stop hook enforces review for code changes when a build plan exists. It also surfaces an advisory WARNING when all chunks are marked `[x]` but the most recent review ran Goals 1-3 only (`chunk` or `verify-resolutions` mode) — run `/prawduct:critic final` before pushing.
@@ -68,7 +68,7 @@ Default `Type:` is `code` — fail-closed. A missing or unrecognized `Type:` is 
 | `trivial` | Small-blast-radius code change (rename, type annotations, mechanical edit) within Chunk 04 file-set bounds | full | full | full + **rationale-vs-diff fit** sub-check (see Goal 3 in SKILL.md) | required | fires (file-set bounds + `**Trivial because:**` rationale enforced structurally) |
 | `cleanup` | Branch hygiene, file moves, dead-code removal | structural-only (no broken refs) | requirement coverage | scope discipline; tolerate zero diff | skipped | fires |
 | `designer-handoff` | Visual / token / design-asset handoff to a human designer | skipped | skipped | skipped | skipped | **skipped** (formalized carveout — previously a user-memory rule) |
-| `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — triggers `/prawduct:critic cumulative` in addition to the chunk's own `final` review | — | — | — | fires |
+| `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — the chunk's review IS the one `/prawduct:critic cumulative`: commit the chunk first, then run it once; no separate `final` (cumulative is a strict superset — all 7 goals + cross-checks over `merge-base...HEAD` ⊇ the chunk diff) | — | — | — | fires |
 
 The `Type:` field defaults to `code` when omitted. Declare `Type:` only when it deviates from `code`; minimal-declaration is the v1.4 convention. **The `Type:` axis is the proportional-effort knob (P11) — under-declaring is safe (worst case: redundant Critic time), over-declaring is unsafe (designer-handoff on a code chunk silently skips review).**
 
@@ -121,6 +121,8 @@ These are fail-closed: when the helper cannot anchor a delta, it refuses to comp
    - Repeat until no blocking findings remain.
 4. **Record findings** to `.prawduct/.critic-findings.json` (see main SKILL.md for format).
 5. **If no BLOCKING findings:** chunk is complete, proceed to next chunk.
+
+**Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that review is simultaneously the chunk's review and the PR-gate record. Don't run a separate `final` first — cumulative is a strict superset (all 7 goals + Framework checks + cross-checks, over `merge-base...HEAD`, which contains the chunk's diff), so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives anyway. Mode inference already implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (rule-3 — the right call for a MID-chunk look); once the chunk is committed and the tree is clean, it infers `cumulative` (rule-2) — the AT-COMMIT review. Post-cumulative fixes ride the verify-resolutions chain (CRT-4J8W), not a second full pass.
 
 ## Final-Mode Cross-Checks
 

@@ -159,3 +159,69 @@ class TestDesignerHandoffSkipsCriticGate:
         assert "CRITIC REVIEW" not in result.stderr, (
             f"the Critic block must be absent when skipped. stderr={result.stderr!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Cumulative-as-final: the end-of-cycle synthesis advisory accepts cumulative
+# ---------------------------------------------------------------------------
+
+# Persisted-side (verbose) mode strings, pinned as literals: the advisory's
+# contract is over what reviews WRITE to .critic-findings.json, so the test
+# must break if either the constants or the acceptance set drifts.
+_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
+_MODE_FINAL = "final (full review, ready for push)"
+_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"
+_MODE_VERIFY = "verify-resolutions (delta review, prior findings only)"
+
+
+def _all_complete_plan(tmp_path: Path, *, mode: str) -> Path:
+    """A multi-chunk plan with every chunk `[x]` and a latest findings record
+    in the given persisted-side mode — exactly the state the synthesis
+    advisory (`_critic_session_satisfies_gate` case 4/5) inspects."""
+    prawduct = tmp_path / ".prawduct"
+    artifacts = prawduct / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "build-plan.md").write_text(
+        "# Build Plan\n\n## Status\n- [x] Chunk 01: A\n- [x] Chunk 02: B\n"
+    )
+    (prawduct / ".critic-findings.json").write_text(
+        json.dumps({"mode": mode, "findings": [], "summary": "clean"})
+    )
+    return prawduct
+
+
+class TestSynthesisAdvisoryAcceptsCumulative:
+    """Pins `_critic_session_satisfies_gate` case 5 for `cumulative` records
+    (review-proportionality ch.01 — cumulative-as-final). The one-review rule
+    makes a `Type: cumulative-final` plan's LAST review legitimately
+    `cumulative` instead of `final`; if the advisory ever stopped accepting
+    cumulative records, every such plan would close with a spurious "run
+    /prawduct:critic final" warning — re-introducing the duplicate full review
+    the rule removed. No prior test pinned this acceptance (learnings: an
+    untested governance bound rots silently)."""
+
+    def test_cumulative_record_satisfies_synthesis_advisory(self, tmp_path):
+        from lib.gates import _critic_session_satisfies_gate
+
+        prawduct = _all_complete_plan(tmp_path, mode=_MODE_CUMULATIVE)
+        ok, reason = _critic_session_satisfies_gate(prawduct)
+        assert ok, f"cumulative must satisfy the synthesis advisory: {reason!r}"
+
+    def test_final_record_satisfies_synthesis_advisory(self, tmp_path):
+        from lib.gates import _critic_session_satisfies_gate
+
+        prawduct = _all_complete_plan(tmp_path, mode=_MODE_FINAL)
+        ok, reason = _critic_session_satisfies_gate(prawduct)
+        assert ok, f"final must satisfy the synthesis advisory: {reason!r}"
+
+    @pytest.mark.parametrize("mode", [_MODE_CHUNK, _MODE_VERIFY])
+    def test_goals_1_3_modes_still_trip_the_advisory(self, tmp_path, mode):
+        # Contrast partner — the advisory's whole job. Goals-1-3-only closers
+        # must keep tripping it, or cumulative-as-final would quietly widen
+        # into accepting ANY closing mode (a no-review rule).
+        from lib.gates import _critic_session_satisfies_gate
+
+        prawduct = _all_complete_plan(tmp_path, mode=mode)
+        ok, reason = _critic_session_satisfies_gate(prawduct)
+        assert not ok, f"{mode!r} must trip the synthesis advisory"
+        assert "/prawduct:critic final" in reason

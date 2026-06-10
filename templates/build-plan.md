@@ -262,8 +262,9 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
          the stop-hook gate is also skipped. **Use deliberately — this is the
          only Type that bypasses Critic enforcement.**
        - `cumulative-final`: marker on the last chunk of a multi-chunk plan;
-         signals that a `/critic cumulative` review against `merge-base...HEAD`
-         is required in addition to the chunk's own `final` review (see Done-when
+         the chunk's own review IS the one `/critic cumulative` against
+         `merge-base...HEAD` — commit the chunk first, then run it once; no
+         separate `final` (cumulative is a strict superset; see Done-when
          step 4 below).
        - `trivial`: semantically simple change whose risk is low *because the
          author can name why* — not because LOC is small. **Structural bounds
@@ -340,7 +341,9 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
        On the final chunk of a multi-cycle branch (or any time a PR will be
        opened for this work), also add as step 4:
          4. `/critic cumulative` run against `merge-base...HEAD` and blocking
-            findings resolved — this is the structural gate for `/pr create`. -->
+            findings resolved — this is the structural gate for `/pr create`,
+            and on a `Type: cumulative-final` chunk it IS the chunk's review
+            (commit first; no separate `final`). -->
 
 <!-- Repeat for each chunk -->
 
@@ -361,7 +364,7 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
   Typically: after the early feedback milestone and after all chunks complete.
 -->
 
-**Commit & PR cadence:** [e.g., "Commit per chunk after `/critic <mode>` passes; PR after the final chunk's `/critic final` AND `/critic cumulative` pass."]
+**Commit & PR cadence:** [e.g., "Commit per chunk after `/critic <mode>` passes; PR after the last chunk's one `/critic cumulative` (its review AND the PR gate) passes."]
 <!--
   Per-chunk commit is the default and the contract for `chunk`-mode Critic
   reviews — each chunk's diff scope is the working tree against the previous

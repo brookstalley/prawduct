@@ -3,6 +3,46 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: cumulative-as-final — one full review per plan, not two
+
+<!-- prawduct: chunks=01 | type=feature | scope=review-proportionality -->
+
+**Why:** `Type: cumulative-final` was *defined* as the last chunk's `final`
+review PLUS a cumulative — two 4-10 min full reviews over nearly the same
+diff, on every multi-chunk plan. Cumulative is a strict superset of final
+(all 7 goals + cross-checks over `merge-base...HEAD` ⊇ the chunk diff), so
+the second pass re-bought assurance already paid for. Gate-soundness ch.05
+already did the right thing ad hoc as a declared deviation; this makes it
+the rule (review wall-clock is P0).
+
+**What:** Redefined `cumulative-final`: commit the last chunk first, then run
+`/prawduct:critic cumulative` ONCE — that review IS the chunk's review and
+the PR-gate record; post-cumulative fixes ride the CRT-4J8W chain. Prose on
+four surfaces (`skills/critic/review-cycle.md` Type matrix + When-Review-Is-
+Required rows + a new Per-Chunk-Cycle sequencing note documenting the
+rule-3-final-is-mid-chunk / rule-2-cumulative-is-at-commit inference
+distinction; `methodology/planning.md` Critic-Mode override bullet +
+`cumulative-final` Type description; `methodology/building.md` Skipping-final
+trap; `templates/build-plan.md` Type list + Done-when comment + PR-cadence
+example — the template was a Critic WARNING catch, the chunk's own surface
+enumeration missed it). No code change: inference already sequences correctly
+(rule-3 `final` fires only on UNCOMMITTED last-chunk work; rule-2 picks
+`cumulative` once committed and clean). New
+`TestSynthesisAdvisoryAcceptsCumulative` pins that the stop-hook synthesis
+advisory accepts a `cumulative` closer and still trips on
+`chunk`/`verify-resolutions` (no prior pin existed — an untested governance
+bound rots silently). Also shipped the schema-lock-in tripwire from this
+plan's own near-miss: `methodology/planning.md` ("A persisted format is
+always a lock-in decision" — consumers' future queries are the requirements,
+reversal cost not LOC) + condensed into `methodology/building.md` Decision
+Research lock-in trigger. building.md budget held by displacement (<4850):
+PR-gate paragraph condensed to a review-cycle.md pointer, in-file duplicate
+mode-list/inference-default lines collapsed.
+
+**Blast radius:** `skills/critic/review-cycle.md`, `methodology/planning.md`,
+`methodology/building.md`, `templates/build-plan.md`,
+`tests/test_critic_gate_fallthrough.py` (+4 tests, 1089 total).
+
 ## 2026-06-10: chain gate — cumulative + verify-resolutions at the PR gate (CRT-4J8W)
 
 <!-- prawduct: chunks=05 | type=feature | scope=gate-soundness -->
