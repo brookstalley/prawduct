@@ -195,6 +195,11 @@ def test_wrong_mode_fails(tmp_path):
     r = _run_gate(repo)
     assert r.returncode == 1
     assert "wrong-mode" in r.stderr
+    # Gate-soundness ch.4: the message teaches the sequencing rule that was
+    # previously only learnable by paying a full cumulative re-review
+    # (verify-resolutions can't certify the bundle; non-.md fixes land first).
+    assert "verify-resolutions" in r.stderr
+    assert "non-.md" in r.stderr
 
 
 def test_missing_findings_file_fails(tmp_path):

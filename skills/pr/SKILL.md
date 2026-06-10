@@ -56,6 +56,8 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 ### Step 2: Cumulative-Critic gate — MANDATORY
 **Run `prawduct-hook check-cumulative-critic`.** This gate requires a blocking-free, HEAD-covering `cumulative`-mode Critic record (reviewed over `merge-base...HEAD`; "HEAD-covering" = its `commit_reviewed` is HEAD, or only docs changed since — CRT-7M2D). If it exits non-zero, **STOP**: invoke `/prawduct:critic cumulative` to produce the missing record, resolve any blocking findings, then re-check. Do NOT proceed to Step 3 until this gate passes.
 
+**Sequencing (avoids a full re-review):** land every non-`.md` fix — code, evidence, pointers, configs — BEFORE the one cumulative run, which comes last. A `verify-resolutions` record can never satisfy this gate (it re-verifies prior findings; it doesn't certify the bundle), and any non-`.md` commit after the cumulative review re-stales it. If the cumulative itself surfaces findings, fix them all in one pass and re-run once.
+
 While `/prawduct:critic cumulative` runs (~4-10 min), do prep that doesn't depend on findings: `/prawduct:learnings` for next-chunk topics, draft the PR description in your head, audit `.prawduct/backlog.md` for items this branch resolves, capture deferred chunk-boundary reflections. Reorganizes wait time; doesn't shorten it.
 
 ### Step 2b: Operator-verification gate — MANDATORY when `$ARGUMENTS` doesn't include `--accept-pending-verification`

@@ -58,6 +58,8 @@ If an artifact is genuinely not applicable (e.g., API contract for a product wit
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
 
+**Plan lifecycle on gitflow.** When authoring a new plan while the prior plan's work is merged-but-unreleased (gitflow: feature merged to `develop`, the `develop→main` release pending), leave `active_build_plan` pointing at the pending plan until the release ships — the release flips its change-log entries to `shipped` and regenerates its Status. Write the new plan under a scope-named file (`<scope>-build-plan.md`) and repoint only after the release (see `/prawduct:pr` step 7). Build plans are tracked artifacts — commit them.
+
 ### Requirements Confidence
 
 Every build plan opens with a **Requirements Confidence** level — High, Medium, or Low — that's an honest self-assessment of whether you understand what to build well enough to build it well (Principle 6 — Requirements Precede Code).

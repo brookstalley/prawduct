@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: cumulative-gate ordering guidance + plan-lifecycle note (gate-soundness ch.4)
+
+<!-- prawduct: chunks=04 | type=fix | scope=gate-soundness -->
+
+**Why:** The natural review loop (cumulative → fix findings → verify-resolutions)
+can never satisfy `check-cumulative-critic` — the gate accepts only a
+cumulative-mode record at HEAD (or .md-only since). That rule was learnable
+only by paying a full ~4-10 min re-review (scriob PR #43 did). And the
+"don't repoint `active_build_plan` while the prior plan is release-pending"
+rule lived only in the PR-merge flow, invisible at planning time where the
+repointing mistake actually happens.
+
+**What:** The gate's `wrong-mode` stderr now teaches the sequencing rule
+inline (verify-resolutions can't certify the bundle; land all non-.md fixes
+first, cumulative once, last) — pinned by test. `skills/pr/SKILL.md` Step 2
+gains the explicit Sequencing paragraph; `methodology/building.md`'s
+cumulative-gate paragraph folds the rule in word-neutrally (prep-list examples
+live on in the PR skill); `methodology/planning.md` Build Planning gains the
+gitflow plan-lifecycle paragraph (retain the pending plan's pointer until the
+release ships; scope-named plan files; plans are tracked artifacts). No gate
+semantics changed — guidance and error-message teaching only. 1047 pass.
+
+**Blast radius:** `lib/gates.py` (message text), `skills/pr/SKILL.md`,
+`methodology/building.md`, `methodology/planning.md`,
+`tests/test_cumulative_gate.py`.
+
 ## 2026-06-10: build plans are tracked artifacts (gate-soundness ch.3)
 
 <!-- prawduct: chunks=03 | type=fix | scope=gate-soundness -->

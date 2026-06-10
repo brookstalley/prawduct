@@ -858,7 +858,11 @@ def check_cumulative_critic(project_dir: Path) -> int:
         print(
             f"wrong-mode: findings mode is {mode!r}, expected cumulative "
             f"({_CRITIC_MODE_CUMULATIVE!r}). The cumulative review covers "
-            "`merge-base...HEAD` — re-run /prawduct:critic cumulative.",
+            "`merge-base...HEAD` — re-run /prawduct:critic cumulative. "
+            "(A verify-resolutions record re-verifies prior findings; it "
+            "cannot certify the bundle. Sequence: land ALL non-.md fixes "
+            "first, then run cumulative once, last — any post-review code "
+            "commit re-stales this gate.)",
             file=sys.stderr,
         )
         return 1
