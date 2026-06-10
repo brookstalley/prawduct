@@ -509,6 +509,18 @@
   parsing to reject unknowns, matching ledger-append/review-stats/classify-diff-risk fail-closed arg
   handling. (builder)
 
+- **[REL-7P3X]** stamp-merged branch guard rejects origin/-prefixed base_branch configs
+  `effort: S · impact: S · area: governance/release · source: critic · added: 2026-06-10 · status: open · stage: ready · refs: bin/prawduct-hook · related: PR-2H8N · reviewed: 2026-06-10`
+
+  cmd_stamp_merged (bin/prawduct-hook) compares the raw `base_branch` value from project-state.yaml
+  to `git rev-parse --abbrev-ref HEAD` output; works for bare `develop` (this repo) but
+  project-state.yaml's own comment calls `origin/develop` "preferred", and an origin/-prefixed value
+  would make stamp-merged refuse permanently while resolve-base normalizes fine. Fix-shape: strip a
+  leading `origin/` from the configured value before comparing (the guard compares local branch names
+  by design — deliberate divergence from `_resolve_base_branch` is on record in the 2026-06-10
+  chunk-02 Critic findings). Source: PR #90 reviewer NOTE (fable, escalate tier), same family as
+  PR-2H8N. (critic)
+
 ## Promoted
 
 ## Archive
