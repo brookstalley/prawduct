@@ -526,44 +526,6 @@
 
 ## Promoted
 
-- **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set
-  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: promoted · reviewed: 2026-06-09 · related: CRT-3X9D`
-
-  Critic SKILL.md step 1 runs `prawduct-hook critic-begin` right after mode resolution, but a
-  `Type: designer-handoff` chunk exits clean *before* step 8 (`critic-end`), so the
-  `.prawduct/.critic-active` marker is left set on that path. Benign — the marker self-corrects
-  three ways (30-min TTL, session-start sweep, explicit override) — and rare, but ideally
-  `critic-begin` should run only after the designer-handoff skip is ruled out (move the
-  `critic-begin` call below the skip, or pair the skip with a `critic-end`). Surfaced as a NOTE in
-  the CRT-3X9D cumulative review. (critic, 2026-06-08)
-
-- **[PR-5K8D]** check-pr-doc-only should exclude skills/ (and methodology/templates) — align with `_classify_trivial_change`'s bounds
-  `effort: S · impact: M · area: pr/governance · source: reflection · added: 2026-06-08 · status: promoted · reviewed: 2026-06-09 · related: PR-9T4M · refs: skills/pr/SKILL.md, lib/buildplan_refs.py, lib/coverage.py`
-
-  The two PR fast-path classifiers disagreed on skill files. On the backlog-legend-refresh PR (#83),
-  `check-pr-doc-only` returned exit 0 (all 4 files `.md` → "gates may be skipped"), which per the
-  `/pr` Step 1b instruction would skip the independent PR reviewer entirely — but `check-pr-trivial`
-  correctly returned "not-trivial: skill-file-edited: skills/backlog/SKILL.md. Full review required."
-  A fork-skill's SKILL.md IS behavior/logic (per the existing learning "when a feature's logic lives
-  in a context:fork skill, lib/ holds DATA not LOGIC"), so an extension-only doc-only classification
-  under-reads a behavioral skill change and can skip review.
-
-  Re-anchored 2026-06-08 (branch fix/retire-pr-trivial-fast-path): `check-pr-trivial` /
-  `_pr_diff_is_trivial` were DELETED when the PR-boundary trivial fast-path was retired (see
-  PR-9T4M). The original fix-shape pointed at `check-pr-trivial` as the model to copy; that
-  classifier is gone. The canonical exclusion bounds still live in `lib/buildplan_refs.py`
-  (`_classify_trivial_change` / `_TRIVIAL_PROTECTED_PATHS` — `{skills/, methodology/, templates/,
-  CLAUDE.md}`), now consumed only by the chunk-level `_is_trivial_fileset_eligible` gate
-  (`lib/gates.py`). This item is now MORE relevant, not less: with the trivial fast-path retired,
-  `check-pr-doc-only` (`lib/coverage.py`, hook `cmd_check_pr_doc_only`) is the ONLY remaining
-  PR-boundary gate-skip path, and it still under-reads behavioral `skills/*.md` changes. Candidate
-  fix (re-anchored): align `check-pr-doc-only`'s fileset bounds with `_classify_trivial_change` —
-  exclude `skills/`, `methodology/`, `templates/`, and `CLAUDE.md` from the doc-only fast-path so a
-  behavioral-prose change still gets the reviewer; consume the shared `_TRIVIAL_PROTECTED_PATHS`
-  rather than re-listing the bounds. refs: skills/pr/SKILL.md (Step 1b/1c), lib/coverage.py
-  (check_pr_doc_only), lib/buildplan_refs.py (_classify_trivial_change). Filed from the v2.0.16
-  release (2026-06-08). (reflection)
-
 - **[BLD-2R9X]** `verify-chunk-refs` over-matches glob paths (`*.md`) written as prose in a build plan
   `effort: S · impact: S · area: build-plan · source: critic · added: 2026-06-05 · status: in-progress · branch: fix/verify-chunk-refs-globs · related: BLD-8F2Q, BLD-5V8F`
 
@@ -625,6 +587,43 @@
 
   — Shipped 2026-06-10 — Built as gate-soundness chunk 05 (commits 9618c2b + 78fadaf). Dogfooded on
   its own PR bundle: the chain record satisfied `check-cumulative-critic` live.
+- **[CRT-6F2N]** `critic-begin` runs before the designer-handoff skip, so a designer-handoff chunk leaves the marker set
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-08 · status: shipped · closed-by: review-fixes-ch3 · reviewed: 2026-06-09 · related: CRT-3X9D`
+
+  Critic SKILL.md step 1 runs `prawduct-hook critic-begin` right after mode resolution, but a
+  `Type: designer-handoff` chunk exits clean *before* step 8 (`critic-end`), so the
+  `.prawduct/.critic-active` marker is left set on that path. Benign — the marker self-corrects
+  three ways (30-min TTL, session-start sweep, explicit override) — and rare, but ideally
+  `critic-begin` should run only after the designer-handoff skip is ruled out (move the
+  `critic-begin` call below the skip, or pair the skip with a `critic-end`). Surfaced as a NOTE in
+  the CRT-3X9D cumulative review. (critic, 2026-06-08)
+
+- **[PR-5K8D]** check-pr-doc-only should exclude skills/ (and methodology/templates) — align with `_classify_trivial_change`'s bounds
+  `effort: S · impact: M · area: pr/governance · source: reflection · added: 2026-06-08 · status: shipped · closed-by: review-fixes-ch3 · reviewed: 2026-06-09 · related: PR-9T4M · refs: skills/pr/SKILL.md, lib/buildplan_refs.py, lib/coverage.py`
+
+  The two PR fast-path classifiers disagreed on skill files. On the backlog-legend-refresh PR (#83),
+  `check-pr-doc-only` returned exit 0 (all 4 files `.md` → "gates may be skipped"), which per the
+  `/pr` Step 1b instruction would skip the independent PR reviewer entirely — but `check-pr-trivial`
+  correctly returned "not-trivial: skill-file-edited: skills/backlog/SKILL.md. Full review required."
+  A fork-skill's SKILL.md IS behavior/logic (per the existing learning "when a feature's logic lives
+  in a context:fork skill, lib/ holds DATA not LOGIC"), so an extension-only doc-only classification
+  under-reads a behavioral skill change and can skip review.
+
+  Re-anchored 2026-06-08 (branch fix/retire-pr-trivial-fast-path): `check-pr-trivial` /
+  `_pr_diff_is_trivial` were DELETED when the PR-boundary trivial fast-path was retired (see
+  PR-9T4M). The original fix-shape pointed at `check-pr-trivial` as the model to copy; that
+  classifier is gone. The canonical exclusion bounds still live in `lib/buildplan_refs.py`
+  (`_classify_trivial_change` / `_TRIVIAL_PROTECTED_PATHS` — `{skills/, methodology/, templates/,
+  CLAUDE.md}`), now consumed only by the chunk-level `_is_trivial_fileset_eligible` gate
+  (`lib/gates.py`). This item is now MORE relevant, not less: with the trivial fast-path retired,
+  `check-pr-doc-only` (`lib/coverage.py`, hook `cmd_check_pr_doc_only`) is the ONLY remaining
+  PR-boundary gate-skip path, and it still under-reads behavioral `skills/*.md` changes. Candidate
+  fix (re-anchored): align `check-pr-doc-only`'s fileset bounds with `_classify_trivial_change` —
+  exclude `skills/`, `methodology/`, `templates/`, and `CLAUDE.md` from the doc-only fast-path so a
+  behavioral-prose change still gets the reviewer; consume the shared `_TRIVIAL_PROTECTED_PATHS`
+  rather than re-listing the bounds. refs: skills/pr/SKILL.md (Step 1b/1c), lib/coverage.py
+  (check_pr_doc_only), lib/buildplan_refs.py (_classify_trivial_change). Filed from the v2.0.16
+  release (2026-06-08). (reflection)
 
 - **[PR-9T4M]** Trivial PR fast-path treats `bin/` + `lib/` (core runtime) as fileset-eligible — a core-runtime change can skip cumulative-Critic + reviewer
   `effort: S · impact: M · area: pr · source: builder · added: 2026-06-06 · status: shipped · closed-by: retire-pr-trivial-fast-path · reviewed: 2026-06-08 · related: STH-1W5N, BLD-2R9X`

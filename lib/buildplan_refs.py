@@ -430,6 +430,22 @@ _TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
 })
 
 
+def protected_path_violation(path: str) -> str | None:
+    """Return the violation label (``"<reason_label>: <path>"``) when *path*
+    falls under a governance-protected bound (``skills/``, ``methodology/``,
+    ``templates/``, root ``CLAUDE.md``), else ``None``.
+
+    Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
+    and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-
+    skill prose is behavioral logic in this framework, so a ``skills/*.md``
+    change must never ride a doc-only fast path past the reviewers."""
+    for protected, is_exact, reason_label in _TRIVIAL_PROTECTED_PATHS:
+        matched = path == protected if is_exact else path.startswith(protected)
+        if matched:
+            return f"{reason_label}: {path}"
+    return None
+
+
 def _classify_trivial_change(
     *,
     path: str,
@@ -472,14 +488,11 @@ def _classify_trivial_change(
         return None
     if src_path is not None and gitstate._is_metadata_path(src_path):
         return None
-    # Unconditional path bounds — driven by the _TRIVIAL_PROTECTED_PATHS
-    # constant so this gate and the PR-boundary gate share one list. The
-    # classes are mutually exclusive (a path matches at most one), so the
-    # frozenset's unordered iteration is behavior-preserving.
-    for protected, is_exact, reason_label in _TRIVIAL_PROTECTED_PATHS:
-        matched = path == protected if is_exact else path.startswith(protected)
-        if matched:
-            return f"{reason_label}: {path}"
+    # Unconditional path bounds — shared with the PR-boundary doc-only gate
+    # via protected_path_violation (one provably-identical list).
+    violation = protected_path_violation(path)
+    if violation is not None:
+        return violation
     if is_deletion and path.startswith("tests/"):
         return f"test-file-deleted: {path}"
     if src_path is not None and src_path.startswith("tests/"):
