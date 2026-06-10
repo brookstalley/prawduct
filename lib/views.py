@@ -229,6 +229,52 @@ def validate_tag_line_multiplicity(entries: list[ChangeLogEntry]) -> list[str]:
     return warnings
 
 
+def stamp_merged(content: str) -> tuple[str, list[str]]:
+    """Stamp ``status=merged`` onto every statusless *tagged* entry.
+
+    The change-log lifecycle is statusless (feature branch) → ``merged``
+    (integrated) → ``shipped`` (released), but the merge flow historically
+    never applied the middle stamp, so most entries reached release-prep
+    statusless and a literal reading of the release checklist silently dropped
+    them (REL-2N8K — v2.0.14 shipped 8 of 10 entries unflipped). This pure
+    function is the stamping mechanism the ``stamp-merged`` hook command (and
+    `/prawduct:pr` merge-flow step 6) applies on the integration branch.
+
+    Semantics — deliberately convergent and idempotent: EVERY entry that has a
+    tag line and no ``status=`` key is stamped, not only the just-merged
+    branch's, so a previously missed stamp is repaired by the next merge.
+    Entries with no tag line at all (historical, pre-convention) are never
+    touched; entries already carrying any ``status=`` (including typos — the
+    typo-guard owns those) are left alone. The stamp is appended to the FIRST
+    tag line, preserving the existing pairs verbatim.
+
+    Returns ``(new_content, stamped_titles)``; ``new_content is content`` is
+    not guaranteed, but the text is unchanged when ``stamped_titles`` is empty.
+    """
+    lines = content.splitlines(keepends=True)
+    stamped: list[str] = []
+    for entry in parse_change_log(content):
+        if entry.tag_line_count == 0 or "status" in entry.tags:
+            continue
+        # Locate the entry's first tag line: scan forward from the H2,
+        # skipping blanks (the same leniency parse_change_log applies).
+        for j in range(entry.line_number, len(lines)):
+            if not lines[j].strip():
+                continue
+            m = TAG_LINE_RE.search(lines[j])
+            # parse_change_log said tag_line_count > 0, so the first non-blank
+            # line IS a tag line; the guard keeps a parser/scan drift from
+            # corrupting a prose line.
+            if m:
+                body = m.group(1)
+                lines[j] = lines[j].replace(
+                    m.group(0), f"<!-- prawduct: {body} | status=merged -->", 1
+                )
+                stamped.append(entry.title)
+            break
+    return "".join(lines), stamped
+
+
 def collect_shipped_chunks(
     entries: list[ChangeLogEntry], scope: str | None = None
 ) -> set[str]:
@@ -476,9 +522,12 @@ def diagnose_scope_plan_coverage(
     Pure diagnostic (mirrors :func:`validate_status_values`): the caller
     (``cmd_regen_views``) prints the returned strings on stderr. Two cases:
 
-    * A ``status=merged`` (release-pending) scope with NO matching build-plan
-      file — its ``## Status`` cannot be regenerated, a real release-process
-      error. A ``status=shipped`` scope with no file is deliberately NOT flagged:
+    * An unreleased scope with NO matching build-plan file — its ``## Status``
+      cannot be regenerated, a real release-process error. "Unreleased" covers
+      both ``status=merged`` (release-pending) and **statusless tagged**
+      entries (the merge-flow stamp was missed — REL-9F2T audit finding: a
+      statusless entry with a bad ``scope=`` was undetected until release).
+      A ``status=shipped`` scope with no file is deliberately NOT flagged:
       its plan is a retired historical artifact or predates the ``scope:``
       frontmatter convention, so the absence is expected, not an error.
     * Two ``artifacts/*.md`` files declaring the same ``scope:`` — ambiguous; the
@@ -508,7 +557,17 @@ def diagnose_scope_plan_coverage(
     plan_map = build_scope_to_plan_map(artifacts_dir)
     seen: set[str] = set()
     for entry in parse_change_log(change_log_content):
-        if entry.tags.get("status") != "merged":
+        status = entry.tags.get("status")
+        if status == "merged":
+            label = "release-pending (status=merged)"
+        elif status is None and entry.tag_line_count > 0:
+            # A statusless TAGGED entry is unreleased work whose merge-flow
+            # status=merged stamp was missed — same release-integrity stakes,
+            # previously invisible to this diagnostic (REL-9F2T).
+            label = "unreleased (statusless — merge stamp missed?)"
+        else:
+            # shipped (retired plan is expected), typos (typo-guard owns
+            # those), and untagged historical entries.
             continue
         scope = entry.tags.get("scope")
         if not (isinstance(scope, str) and scope) or scope in seen:
@@ -516,7 +575,7 @@ def diagnose_scope_plan_coverage(
         seen.add(scope)
         if scope not in plan_map:
             warnings.append(
-                f"change-log scope={scope!r} is release-pending (status=merged) "
+                f"change-log scope={scope!r} is {label} "
                 f"but has no matching build-plan file in artifacts/ — its "
                 f"## Status cannot be regenerated."
             )

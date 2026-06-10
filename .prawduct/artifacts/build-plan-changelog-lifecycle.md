@@ -50,7 +50,15 @@ Context: Chunk 01 done 2026-06-10 (parse_change_log consumes consecutive tag
 lines, chunks-union + first-wins scalars, validate_tag_line_multiplicity wired
 into regen-views stderr; Critic chunk-mode passed — its one WARNING, missing
 hook-level stderr test, resolved via TestRegenViewsMultiTagLineWarning).
-Next: Chunk 02 (stamp-merged + statusless scope validation).
+Chunk 02 done 2026-06-10 (stamp_merged pure fn + stamp-merged hook command with
+integration-branch guard; diagnose_scope_plan_coverage extended to statusless
+tagged entries; PR merge flow gains step 6 = stamp + commit, old steps 6-7 now
+7-8 with cross-refs updated in release-process.md + planning.md; release-process
+step 3 reworded to "every unreleased entry, statusless OR merged". Critic: 2
+NOTEs, 0 blocking — stale step-7 test label fixed in test_pr_reviewer.py; the
+guard's literal-"main" fallback divergence from _resolve_base_branch is
+deliberate and on record in the findings). Next: Chunk 03 (missing-entry probe,
+Type: cumulative-final).
 
 ## Scaffolding
 
