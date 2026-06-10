@@ -179,3 +179,21 @@ When a significant architectural or design change spans multiple chunks, review 
 Every review cycle must produce a findings record — governance without an audit trail is documentation fiction.
 
 After each review cycle, write `.prawduct/.critic-findings.json` with the findings (see main SKILL.md for format). When no findings exist, record an empty findings array.
+
+### The Governance-Event Ledger
+
+The findings file is single-slot — each review overwrites the last. The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only history alongside it: after writing the findings file, the reviewer runs `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` (SKILL.md step 7). The helper is the **single writer** — it validates the record and computes the envelope itself; agents never hand-author JSONL.
+
+Each line is one event with an **envelope/payload split**:
+
+```json
+{"schema_version": 1, "event": "review.critic", "ts": "...Z",
+ "duration_seconds": 180, "project": "my-product", "scope": "my-feature",
+ "chunk": "02", "actor": {"role": "critic", "model": "opus"},
+ "git": {"head": "<sha>", "base": "origin/develop"},
+ "review": { ...the findings record verbatim... }}
+```
+
+The envelope is shared by every event kind; the kind-specific payload nests under a kind-named key (`review` for `review.critic`). Consumers key on the envelope and **skip unknown event kinds and unknown fields** — later kinds (`review.pr`, `build.chunk`, …) join without schema change. `duration_seconds` and `actor.model` are nullable, never invented; `scope` is the build-plan feature key (passed explicitly by the reviewer; `active_build_plan` is only the fallback).
+
+One gate consumes it today: `check-cumulative-critic` falls back to the newest qualifying `review.critic` event when the latest findings file is the wrong kind for the PR gate — so a chunk review after the cumulative no longer destroys the gate's evidence. The history also exists to be aggregated (reviewer-model efficiency per role, findings density per path, wall clock per feature — the questions the schema was designed to answer). The ledger is unbounded-but-tiny (one line per event); if a long-lived repo ever needs pruning, truncate oldest lines — every line is self-contained. No prune tooling exists until a real ledger needs it.

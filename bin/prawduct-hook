@@ -270,6 +270,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
     ".prawduct/.session-git-baseline",
@@ -1565,6 +1566,18 @@ def cmd_verify_coverage(project_dir: Path) -> int:
     return _gates().verify_coverage(project_dir)
 
 
+def cmd_ledger_append(project_dir: Path, argv: list[str]) -> int:
+    """Append one governance-ledger event from the latest findings record.
+    Thin wrapper — body lives in ``lib.ledger.ledger_append``
+    (review-proportionality ch.02: the agent never hand-authors JSONL)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import ledger  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return ledger.ledger_append(project_dir, argv)
+
+
 def cmd_compute_verify_resolutions_scope(project_dir: Path) -> int:
     """Print the file scope a ``/prawduct:critic verify-resolutions`` pass should review.
 
@@ -1919,6 +1932,7 @@ _USAGE = (
     "stop|build-index|user-prompt-submit|test-status|validate-evidence|test-evidence record [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
+    "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|regen-views|infer-critic-mode [args]|"
@@ -2072,6 +2086,8 @@ def main() -> int:
         return cmd_verify_chunk_refs(project_dir, chunk_id)
     elif command == "verify-coverage":
         return cmd_verify_coverage(project_dir)
+    elif command == "ledger-append":
+        return cmd_ledger_append(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":

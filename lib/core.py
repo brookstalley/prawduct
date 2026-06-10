@@ -70,6 +70,7 @@ GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews/",
     ".prawduct/.session-git-baseline",
