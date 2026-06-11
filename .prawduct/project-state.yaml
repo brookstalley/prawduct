@@ -495,6 +495,11 @@ views_enabled: true
 # regen-views flipped its ## Status via the scope=do-next tags and the pointer
 # is cleared — no release-pending plans remain. The build-plan file is retained
 # as a historical artifact.
+# 2026-06-10: repointed at the in-progress gate-hardening plan (STH-4F7C +
+# STH-8M3V + CRT-2N7V, branch feature/gate-hardening); gate-hardening SHIPPED
+# in v2.1.3 (#92, same day), regen-views flipped its ## Status via the
+# scope=gate-hardening tags and the pointer is cleared — no release-pending
+# plans remain. The build-plan file is retained as a historical artifact.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -570,6 +575,9 @@ scope_rollups:
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]
+  gate-hardening:
+    chunks: ["01", "02", "03"]
+    releases: ["v2.1.3"]
   gate-soundness:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.1.0"]

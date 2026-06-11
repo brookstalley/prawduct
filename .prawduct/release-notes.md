@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.1.3
+
+**Entry:** 2026-06-10: /prawduct:critic explicit mode argument — forward to the helper, never self-parse (CRT-2N7V)
+
+**Chunks shipped:** 01, 02, 03
+
+**Scope:** gate-hardening
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.1.2
 
 **Entry:** 2026-06-10: learnings.md compaction + size nudge (MET-6W3J)

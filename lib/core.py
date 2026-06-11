@@ -14,6 +14,7 @@ is gone.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -112,6 +113,25 @@ RETIRED_GITIGNORE_ENTRIES = [
 def log(msg: str) -> None:
     """Print status to stderr."""
     print(msg, file=sys.stderr)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically: tmp sibling + ``os.replace``.
+
+    The shared writer for ``.prawduct/`` state files (STH-8M3V; same pattern
+    as the hook's ``.test-evidence.json`` writer). Their readers fail open on
+    a missing or corrupt file, so a torn write from two concurrent sessions
+    on one repo degrades a gate silently rather than crashing — ``os.replace``
+    guarantees every reader sees either the old content or the new, never a
+    prefix. OSErrors propagate: each caller owns its failure policy
+    (best-effort + stderr NOTE on the hook's session paths, a
+    ``{status: error}`` return in ``advisory_store.write_store``). A stale
+    ``.tmp`` sibling left by a crash between write and replace is harmless —
+    the next write overwrites it.
+    """
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
 
 
 # Optional project-state pointer naming the active build plan (relative to the

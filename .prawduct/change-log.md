@@ -3,6 +3,103 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: /prawduct:critic explicit mode argument — forward to the helper, never self-parse (CRT-2N7V)
+
+<!-- prawduct: chunks=03 | type=fix | release=v2.1.3 | status=shipped | scope=gate-hardening -->
+
+**Why:** Invoking the Critic skill via the Skill tool with an explicit mode
+(observed 2026-06-10: args `chunk`) ran inference instead — `mode_chosen_by`
+recorded the rule-1b rationale, not `"explicit-args"`. Root cause confirmed
+by research, not recall: Claude Code does not substitute `$ARGUMENTS` in
+`context: fork` skills invoked via the Skill tool
+(anthropics/claude-code#34164, closed not-planned) — the forked Critic saw
+the literal placeholder, which contains no mode token, and correctly fell
+through. CRT-3M8Q's fix (#58) added the plan-field override as a workaround
+but left the skill prose promising an explicit-args path that can't fire on
+that delivery route. Same-session evidence showed Skill-tool args DO reach
+fork skills (backlog `pick`, learnings topics honored), so the arguments
+arrive — the prose just told the model to read them from the one place
+they're not.
+
+**What:** Mode resolution is now delivery-agnostic and helper-owned. (1)
+SKILL.md step 1: collect arguments from whichever path carried them
+(substituted placeholder — now a labeled `**Invocation arguments:**` line —
+launch message, or trailing `ARGUMENTS:` line; the literal unsubstituted
+placeholder means "check the other paths"), then forward verbatim to
+`prawduct-hook infer-critic-mode <args…>` — never self-parse. The helper
+already implemented the full precedence (explicit token → `explicit-args` >
+plan-override > inference; tested) and was already wildcard-allowed; the
+prose was the only broken layer. (2) `review-cycle.md` layer-1 documents the
+forward-never-parse rule and the harness caveat. (3)
+`TestExplicitModeArgContract` pins the contract: exactly one placeholder
+occurrence (more garble under substitution, zero switches to the unverified
+auto-append path), the forwarding instruction, the #34164 reference, and the
+wildcarded allow entry. **Live-verification status (honest):** this bundle's
+own cumulative review was invoked with explicit args `cumulative` and STILL
+recorded the rule-2 inference rationale — the third observation of the bug
+class. Undetermined whether that invocation ran the edited skill (the
+framework repo's skill source resolution is ambiguous: marketplace clone of
+the released v2.1.2 vs. working tree) — so the prose fix is verified at the
+helper layer (unit tests) and by contract pins, NOT yet live end-to-end.
+Post-release verification filed as CRT-9L2F; if Skill-tool launch-message
+delivery turns out not to reach the Critic fork at all, the escalation path
+is a file-based mode request. The acceptance criterion's contract arm is
+satisfied either way: the prose no longer promises an unreachable path — it
+degrades to inference and the `mode_chosen_by` audit trail distinguishes the
+cases.
+
+## 2026-06-10: atomic .prawduct state writes + cmd_clear OSError resilience (STH-8M3V)
+
+<!-- prawduct: chunks=02 | type=fix | release=v2.1.3 | status=shipped | scope=gate-hardening -->
+
+**Why:** Only `.test-evidence.json` got the tmp+`os.replace` treatment; the
+other session state files (`.session-start`, `.session-git-baseline`,
+`.session-handoff.md`, `.advisories.json`) were plain `write_text`, so two
+concurrent sessions on one repo could tear them — readers fail open, making
+the blast radius a silently misfired gate rather than a crash. Same audit:
+three unguarded I/O sites in `cmd_clear` (session-file unlink loop,
+`.session-start` write, baseline write) could traceback the SessionStart hook
+on an OSError, unlike the meticulously best-effort code around them.
+
+**What:** (1) One shared `core.atomic_write_text` (tmp sibling +
+`os.replace`; OSErrors propagate — callers own failure policy); converted the
+four audited write sites. `.gates-waived` was in the groomed set but has no
+code write site (agent-written) — nothing to convert. (2) `cmd_clear`'s
+unlink loop and both marker writes are now best-effort: OSError → stderr NOTE
+naming the consequence (stale carry-over / fail-closed freshness / spurious
+session changes), exit 0 — verified end-to-end by a read-only-`.prawduct`
+subprocess test. (3) Audited-but-already-done: `_get_session_changed_files`
+already had its `(UnicodeDecodeError, OSError)` guard. Out of scope, noted
+for backlog: two further non-atomic sites (`lib/critic_marker.py`,
+`lib/operator_verification.py`).
+
+## 2026-06-10: shared session Critic gate — extract diverged freshness check to lib/gates.py (STH-4F7C)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.3 | status=shipped | scope=gate-hardening -->
+
+**Why:** The mtime-vs-session-start Critic-findings freshness check was
+duplicated nearly verbatim between `cmd_stop`'s blocking gate
+(`bin/prawduct-hook`) and the session-start advisory
+(`lib/briefing.py::_check_previous_session_gates`) — and the copies had
+already diverged: cmd_stop gained the v1.5 verify-resolutions scope check,
+the advisory did not, so the session-start advisory reported a fresh
+verify-resolutions record as satisfying even when the session diff had
+outgrown its declared scope. Unlike the hook's parity-pinned inline mirrors,
+this pair had no parity test and no import-light rationale (the advisory copy
+already lives in `lib/`).
+
+**What:** (1) One shared `gates.critic_findings_satisfy_session_gate`
+(freshness with the STH-6B4R strict-`>` whole-second compare, schema
+validation, verify-resolutions scope subset) — both consumers delegate; the
+returned scope reason preserves cmd_stop's two distinct blocker variants.
+(2) The advisory now warns "Critic review stale — verify-resolutions scope
+exceeded: …" on the case it previously passed (the live gap). (3) Tightened
+fail-closed: an empty `.session-start` marker now rejects (the old inline
+copies compared against `""` and failed open), matching CRT-8W3F's stance.
+(4) `tests/test_session_critic_gate.py`: truth-table unit tests, the advisory
+regression test, and a source-level guard that neither former host re-grows
+an inline freshness computation.
+
 ## 2026-06-10: learnings.md compaction + size nudge (MET-6W3J)
 
 <!-- prawduct: chunks=03 | type=fix | release=v2.1.2 | status=shipped | scope=do-next -->
