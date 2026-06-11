@@ -34,9 +34,19 @@ forward-never-parse rule and the harness caveat. (3)
 `TestExplicitModeArgContract` pins the contract: exactly one placeholder
 occurrence (more garble under substitution, zero switches to the unverified
 auto-append path), the forwarding instruction, the #34164 reference, and the
-wildcarded allow entry. Live verification: this bundle's own cumulative
-review was invoked with explicit args and recorded
-`mode_chosen_by: "explicit-args"`.
+wildcarded allow entry. **Live-verification status (honest):** this bundle's
+own cumulative review was invoked with explicit args `cumulative` and STILL
+recorded the rule-2 inference rationale — the third observation of the bug
+class. Undetermined whether that invocation ran the edited skill (the
+framework repo's skill source resolution is ambiguous: marketplace clone of
+the released v2.1.2 vs. working tree) — so the prose fix is verified at the
+helper layer (unit tests) and by contract pins, NOT yet live end-to-end.
+Post-release verification filed as CRT-9L2F; if Skill-tool launch-message
+delivery turns out not to reach the Critic fork at all, the escalation path
+is a file-based mode request. The acceptance criterion's contract arm is
+satisfied either way: the prose no longer promises an unreachable path — it
+degrades to inference and the `mode_chosen_by` audit trail distinguishes the
+cases.
 
 ## 2026-06-10: atomic .prawduct state writes + cmd_clear OSError resilience (STH-8M3V)
 

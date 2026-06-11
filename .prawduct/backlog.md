@@ -506,6 +506,21 @@
   cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
   active plan scope. (reflection)
 
+- **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
+  `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
+
+  After the gate-hardening bundle ships in a release (so the installed plugin carries the rewritten
+  SKILL.md step 1), invoke the Critic via the Skill tool with an explicit mode that DIFFERS from
+  what inference would pick, and confirm .critic-findings.json records mode_chosen_by:
+  "explicit-args". Context: the bundle's own cumulative (2026-06-10) was invoked with explicit args
+  and still recorded rule-2 inference — third observation; undetermined whether the edited skill
+  even ran (framework-repo skill source ambiguity: marketplace v2.1.2 clone vs working tree).
+  Known facts: $ARGUMENTS substitution is broken for Skill-tool→fork (anthropics/claude-code#34164,
+  closed not-planned); args demonstrably reach OTHER fork skills (backlog, learnings — same
+  session); the helper layer (prawduct-hook infer-critic-mode <token>) is unit-proven. If
+  launch-message delivery doesn't reach the Critic fork, escalate to a file-based mode request
+  (invoker writes the requested mode to a .prawduct dotfile; helper reads + deletes it). (builder)
+
 ## Promoted
 
 ## Archive
