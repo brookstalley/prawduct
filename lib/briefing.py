@@ -37,7 +37,12 @@ import subprocess
 from pathlib import Path
 
 from . import backlog, buildplan_refs, gates, gitstate
-from .core import BUILD_PLAN_POINTER_KEY, read_str_yaml_key, resolve_build_plan_path
+from .core import (
+    BUILD_PLAN_POINTER_KEY,
+    atomic_write_text,
+    read_str_yaml_key,
+    resolve_build_plan_path,
+)
 
 
 # =============================================================================
@@ -905,10 +910,14 @@ def generate_session_handoff(project_dir: Path) -> None:
             sections.append(f"- ... and {len(commits) - 10} more")
         sections.append("")
 
-    # Only write if there's actual content beyond the header
+    # Only write if there's actual content beyond the header. Atomic
+    # (STH-8M3V): the next session's briefing reads this file, and a torn
+    # handoff silently loses cross-session context.
     if len(sections) > 2:
         try:
-            (prawduct_dir / ".session-handoff.md").write_text("\n".join(sections) + "\n")
+            atomic_write_text(
+                prawduct_dir / ".session-handoff.md", "\n".join(sections) + "\n"
+            )
         except Exception:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
             pass
 

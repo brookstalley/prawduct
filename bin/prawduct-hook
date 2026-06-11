@@ -130,6 +130,21 @@ def _gates():
     return gates
 
 
+def _core():
+    """Lazy-import the shared core utilities (lib/core). Same lazy idiom as
+    _gitstate(). cmd_clear reaches `atomic_write_text` through here for the
+    session markers (STH-8M3V) — each call site is wrapped in an OSError
+    guard, so an import or write failure degrades to a stderr NOTE and never
+    blocks session start. After the ch.1 __init__ slim this loads only
+    core.py (stdlib-only), isolated."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import core  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return core
+
+
 def _briefing():
     """Lazy-import the SessionStart briefing + handoff assembly (lib/briefing).
     Same lazy idiom as _gitstate(). cmd_clear (the inline hot-path SessionStart
@@ -461,15 +476,32 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         except (UnicodeDecodeError, OSError):
             pass  # Corrupted reflection — skip archival, safe to proceed
 
-    # Remove session files
+    # Remove session files. Best-effort per file (STH-8M3V): an OSError here
+    # (permissions, transient FS) must not traceback the SessionStart hook —
+    # a survivor just carries stale state into the new session, which the
+    # NOTE names so the user can remove it by hand.
     for name in (".session-reflected", ".session-start", ".session-git-baseline", ".gates-waived"):
         f = prawduct_dir / name
-        if f.is_file():
-            f.unlink()
+        try:
+            if f.is_file():
+                f.unlink()
+        except OSError as exc:
+            print(
+                f"NOTE: could not remove {name} ({exc}) — stale session state may carry over",
+                file=sys.stderr,
+            )
 
-    # Create session start timestamp
+    # Create session start timestamp (atomic — STH-8M3V). On failure the
+    # freshness gates fail closed this session (no marker → no fresh
+    # evidence/findings), which the NOTE names; never block session start.
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    (prawduct_dir / ".session-start").write_text(stamp)
+    try:
+        _core().atomic_write_text(prawduct_dir / ".session-start", stamp)
+    except (OSError, ImportError) as exc:
+        print(
+            f"NOTE: could not write .session-start ({exc}) — freshness gates will fail closed this session",
+            file=sys.stderr,
+        )
 
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
@@ -562,9 +594,19 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
 
     # Capture git status baseline so session-start state doesn't trigger
     # spurious stop-hook gates (no sync runs first in the plugin runtime).
+    # Atomic + best-effort (STH-8M3V): a torn/missing baseline makes every
+    # pre-existing dirty file count as session-changed (spurious gates), so
+    # the failure NOTE names that consequence; never block session start.
     baseline = _gitstate().git_status_output(project_dir)
     if baseline is not None:
-        (prawduct_dir / ".session-git-baseline").write_text(baseline)
+        try:
+            _core().atomic_write_text(prawduct_dir / ".session-git-baseline", baseline)
+        except (OSError, ImportError) as exc:
+            print(
+                f"NOTE: could not write .session-git-baseline ({exc}) — "
+                "pre-existing dirty files will count as session changes",
+                file=sys.stderr,
+            )
 
     # v5: Staleness scan + session briefing + subagent briefing
     try:

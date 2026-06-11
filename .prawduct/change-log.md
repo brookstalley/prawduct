@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: atomic .prawduct state writes + cmd_clear OSError resilience (STH-8M3V)
+
+<!-- prawduct: chunks=02 | type=fix | scope=gate-hardening -->
+
+**Why:** Only `.test-evidence.json` got the tmp+`os.replace` treatment; the
+other session state files (`.session-start`, `.session-git-baseline`,
+`.session-handoff.md`, `.advisories.json`) were plain `write_text`, so two
+concurrent sessions on one repo could tear them — readers fail open, making
+the blast radius a silently misfired gate rather than a crash. Same audit:
+three unguarded I/O sites in `cmd_clear` (session-file unlink loop,
+`.session-start` write, baseline write) could traceback the SessionStart hook
+on an OSError, unlike the meticulously best-effort code around them.
+
+**What:** (1) One shared `core.atomic_write_text` (tmp sibling +
+`os.replace`; OSErrors propagate — callers own failure policy); converted the
+four audited write sites. `.gates-waived` was in the groomed set but has no
+code write site (agent-written) — nothing to convert. (2) `cmd_clear`'s
+unlink loop and both marker writes are now best-effort: OSError → stderr NOTE
+naming the consequence (stale carry-over / fail-closed freshness / spurious
+session changes), exit 0 — verified end-to-end by a read-only-`.prawduct`
+subprocess test. (3) Audited-but-already-done: `_get_session_changed_files`
+already had its `(UnicodeDecodeError, OSError)` guard. Out of scope, noted
+for backlog: two further non-atomic sites (`lib/critic_marker.py`,
+`lib/operator_verification.py`).
+
 ## 2026-06-10: shared session Critic gate — extract diverged freshness check to lib/gates.py (STH-4F7C)
 
 <!-- prawduct: chunks=01 | type=fix | scope=gate-hardening -->

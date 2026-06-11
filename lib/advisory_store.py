@@ -42,6 +42,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Iterable
 
+from .core import atomic_write_text
+
 # Schema version of the on-disk store. Incremented only on breaking changes;
 # read-tolerance / forward-migration is implemented by ``_migrate_store`` (A7).
 SCHEMA_VERSION = 1
@@ -326,11 +328,12 @@ def read_store(product_dir) -> dict:
 
 
 def write_store(product_dir, store: dict) -> dict:
-    """Write the nag log as pretty JSON. Returns ``{status, ...}`` (no raise)."""
+    """Write the nag log as pretty JSON, atomically (STH-8M3V).
+    Returns ``{status, ...}`` (no raise)."""
     path = _store_path(product_dir)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(store, indent=2) + "\n")
+        atomic_write_text(path, json.dumps(store, indent=2) + "\n")
     except OSError as exc:
         return {"status": "error", "reason": str(exc)}
     return {"status": "ok", "path": str(path)}
