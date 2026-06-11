@@ -28,9 +28,9 @@ last_validated: 2026-06-10
 
 ## Status
 
-- [ ] Chunk 01: Extract shared Critic-freshness gate to lib/gates.py (STH-4F7C)
-- [ ] Chunk 02: atomic_write_text + cmd_clear OSError guards (STH-8M3V)
-- [ ] Chunk 03: Honor explicit /prawduct:critic mode argument (CRT-2N7V)
+- [x] Chunk 01: Extract shared Critic-freshness gate to lib/gates.py (STH-4F7C)
+- [x] Chunk 02: atomic_write_text + cmd_clear OSError guards (STH-8M3V)
+- [x] Chunk 03: Honor explicit /prawduct:critic mode argument (CRT-2N7V)
 Context: All three chunks built and committed 2026-06-10/11 (ch.01 04f571a, ch.02 cd644be, ch.03 b5f0c2c). Cumulative Critic: 0 blocking / 0 warnings / 3 backlog-reconciliation NOTEs — ready for PR. Ch.03 caveat: the explicit-args fix is verified at the helper layer + contract pins; live end-to-end verification deferred post-release (CRT-9L2F — the bundle's own cumulative still recorded inference rationale; undetermined whether the edited skill ran). Follow-ups filed: STH-9T4F (two remaining non-atomic writes), CRT-9L2F.
 
 ## Scaffolding
