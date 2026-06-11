@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.1.4
+
+**Entry:** 2026-06-10: Consolidate critic_mode's mirrored helpers onto buildplan_refs/gitstate + shared build-plan walkers (STH-2K8R + BLD-6Q1N)
+
+**Chunks shipped:** 01
+
+**Scope:** critic-mode-consolidation
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.1.3
 
 **Entry:** 2026-06-10: /prawduct:critic explicit mode argument — forward to the helper, never self-parse (CRT-2N7V)

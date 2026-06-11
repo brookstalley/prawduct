@@ -130,38 +130,6 @@
   rather than per-file; and only raise a per-file budget when every existing token is high-ROI. Output: a
   recommendation + (likely) a revised budget model. Then it can advance to `design`/`ready`. (user)
 
-- **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
-  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: open · stage: ready · closes: CRT-3D9K · related: STH-9V4K, BLD-6Q1N · reviewed: 2026-06-10`
-
-  `lib/critic_mode.py` carries independent re-implementations of `_current_chunk_id_from_status`,
-  the chunk-`Type:` parser, and `_is_metadata_path` (and references `_parse_build_plan_status`),
-  whose stated rationale is "no dependency on `bin/prawduct-hook` — re-implemented to stay importable
-  from the slash-command shim" (critic_mode.py docstring ~L46). STH-9V4K ch.2–3 moved those helpers
-  into `lib/gitstate` + `lib/buildplan_refs`, which `critic_mode` *already* imports siblings from
-  (`from .core import resolve_build_plan_path`). So the mirror's reason-to-exist is now gone:
-  `critic_mode` could `from .buildplan_refs import _current_chunk_id_from_status` (etc.) and
-  `from .gitstate import _is_metadata_path`, deleting the duplicate bodies + their manual-sync
-  docstrings. Defer until the decomposition (ch.4–7) lands so the lib surface is stable. NOT a
-  behavior-preserving move (it changes critic_mode's structure + collapses a parity relationship),
-  so it needs its own tests + Critic pass — kept out of ch.3 for scope discipline. Filed from the
-  ch.3 buildplan_refs extraction on 2026-06-07. (builder)
-
-  Critic note (review-fixes Chunk 1, 2026-06-09): lib/critic_mode.py contains a third porcelain
-  parser that near-duplicates the new shared gitstate.parse_porcelain_line (quoted paths, renames);
-  fold it onto the shared helper when consolidating this item's lib/critic_mode mirrors.
-
-  Groom 2026-06-10: UNBLOCKED — the defer-until condition ("until the decomposition (ch.4–7) lands")
-  is satisfied: STH-9V4K shipped in v2.0.14 (archived). The lib surface is stable; this is now
-  directly actionable.
-
-  — merged from CRT-3D9K (2026-06-10) — this item's consolidation closes CRT-3D9K by construction
-  (CRT-3D9K's own text says so); CRT-3D9K's full original body is preserved on its archived entry.
-  Audit 2026-06-10 confirmed critic_mode still carries its own _current_chunk_id_from_status
-  (~L640), _count_build_plan_chunks (~L744, duplicate of lib/gates.py ~L633 — the BLD-6Q1N pair),
-  and an inline porcelain parse in _get_uncommitted_code_files (~L462-474) that does NOT use
-  gitstate.parse_porcelain_line despite importing gitstate. One consolidation pass closes STH-2K8R +
-  CRT-3D9K + the porcelain remnant; do BLD-6Q1N in the same pass.
-
 - **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
   `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · stage: requirements · related: CRT-9V4T, PRR-4M9T, JAN-4F7M · reviewed: 2026-06-10`
 
@@ -325,18 +293,6 @@
 
   v1.4 Chunk 02 (F3) shipped file-path verification only; the original plan also called for symbol (function/class names) and backlog-ID verification. Deferred during build because (a) symbols in prose are often approximate (`parse_func` vs implementation's `_parse_func`) so strict grep produces false positives requiring fuzzy match; (b) this project's backlog has no formal IDs (bullet titles, not e.g. `BL-123`), so the check would be inert here and need per-project ID convention. Add when a project surfaces a concrete need: define matching rules (substring grep across configured source roots for symbols; project-preferences `backlog_id_pattern` regex for backlog refs) and extend `_parse_build_plan_chunk_refs` to return `symbols` and `backlog_refs` lists alongside `file_paths`. Note: this project now HAS formal backlog IDs (`[PFX-XXXX]`) post-migration, so the backlog-ID half is newly actionable. Filed from /critic NOTE on 2026-05-18. (critic)
 
-- **[BLD-6Q1N]** Extract `_iter_status_section_items` shared parser for build-plan Status
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-08 · status: open · stage: ready · refs: lib/gates.py, lib/critic_mode.py, lib/buildplan_refs.py · reviewed: 2026-06-10`
-
-  `_count_build_plan_chunks` (bin/prawduct-hook lines ~2073-2113, added v1.3.13) duplicates the Status-section parsing skeleton of `_parse_build_plan_status` (lines ~1021-1099): same `## Status` detection, same HTML-comment skip, same exit on next `## ` heading. Two callers is borderline; if a third caller appears (e.g., a future stop-hook check that needs chunk metadata), extract to `_iter_status_section_items(prawduct_dir) -> Iterator[StatusItem]` and refactor both call sites. Filed from /critic NOTE on 2026-05-08. (critic)
-
-  Groom 2026-06-10 — refs refreshed post hook-decomposition (STH-9V4K, v2.0.14) and the premise is
-  now STRONGER: `_count_build_plan_chunks` exists as near-duplicate copies in BOTH `lib/gates.py`
-  (~L633) and `lib/critic_mode.py` (~L744), alongside `_parse_build_plan_status` in
-  `lib/buildplan_refs.py` (~L31). The third-caller threshold the item set is effectively met;
-  natural home for the shared iterator is lib/buildplan_refs. Overlaps the STH-2K8R consolidation —
-  consider doing both in one pass.
-
 - **[MET-9K4R]** Workflow-values schema/validator
   `effort: S · impact: S · area: methodology · source: critic · added: 2026-05-01 · status: open · stage: design · reviewed: 2026-06-10`
 
@@ -478,6 +434,63 @@
 ## Promoted
 
 ## Archive
+
+- **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
+  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: shipped · stage: ready · closes: CRT-3D9K · related: STH-9V4K, BLD-6Q1N · closed-by: PR #93 / v2.1.4 (bf0c889) · reviewed: 2026-06-10`
+
+  `lib/critic_mode.py` carries independent re-implementations of `_current_chunk_id_from_status`,
+  the chunk-`Type:` parser, and `_is_metadata_path` (and references `_parse_build_plan_status`),
+  whose stated rationale is "no dependency on `bin/prawduct-hook` — re-implemented to stay importable
+  from the slash-command shim" (critic_mode.py docstring ~L46). STH-9V4K ch.2–3 moved those helpers
+  into `lib/gitstate` + `lib/buildplan_refs`, which `critic_mode` *already* imports siblings from
+  (`from .core import resolve_build_plan_path`). So the mirror's reason-to-exist is now gone:
+  `critic_mode` could `from .buildplan_refs import _current_chunk_id_from_status` (etc.) and
+  `from .gitstate import _is_metadata_path`, deleting the duplicate bodies + their manual-sync
+  docstrings. Defer until the decomposition (ch.4–7) lands so the lib surface is stable. NOT a
+  behavior-preserving move (it changes critic_mode's structure + collapses a parity relationship),
+  so it needs its own tests + Critic pass — kept out of ch.3 for scope discipline. Filed from the
+  ch.3 buildplan_refs extraction on 2026-06-07. (builder)
+
+  Critic note (review-fixes Chunk 1, 2026-06-09): lib/critic_mode.py contains a third porcelain
+  parser that near-duplicates the new shared gitstate.parse_porcelain_line (quoted paths, renames);
+  fold it onto the shared helper when consolidating this item's lib/critic_mode mirrors.
+
+  Groom 2026-06-10: UNBLOCKED — the defer-until condition ("until the decomposition (ch.4–7) lands")
+  is satisfied: STH-9V4K shipped in v2.0.14 (archived). The lib surface is stable; this is now
+  directly actionable.
+
+  — merged from CRT-3D9K (2026-06-10) — this item's consolidation closes CRT-3D9K by construction
+  (CRT-3D9K's own text says so); CRT-3D9K's full original body is preserved on its archived entry.
+  Audit 2026-06-10 confirmed critic_mode still carries its own _current_chunk_id_from_status
+  (~L640), _count_build_plan_chunks (~L744, duplicate of lib/gates.py ~L633 — the BLD-6Q1N pair),
+  and an inline porcelain parse in _get_uncommitted_code_files (~L462-474) that does NOT use
+  gitstate.parse_porcelain_line despite importing gitstate. One consolidation pass closes STH-2K8R +
+  CRT-3D9K + the porcelain remnant; do BLD-6Q1N in the same pass.
+
+  Promoted 2026-06-10 into `artifacts/build-plan-critic-mode-consolidation.md` (branch
+  `feature/critic-mode-consolidation`) — one consolidation chunk covering STH-2K8R + BLD-6Q1N.
+
+  Shipped 2026-06-10 in v2.1.4 (PR #93, commit bf0c889, squash-merged to develop). Carries
+  `closes: CRT-3D9K` (already archived) — CRT-3D9K's closure rides this anchor: the consolidation
+  that closed it by construction shipped in PR #93 / v2.1.4.
+
+- **[BLD-6Q1N]** Extract `_iter_status_section_items` shared parser for build-plan Status
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-08 · status: shipped · stage: ready · refs: lib/gates.py, lib/critic_mode.py, lib/buildplan_refs.py · related: STH-2K8R · closed-by: PR #93 / v2.1.4 (bf0c889) · reviewed: 2026-06-10`
+
+  `_count_build_plan_chunks` (bin/prawduct-hook lines ~2073-2113, added v1.3.13) duplicates the Status-section parsing skeleton of `_parse_build_plan_status` (lines ~1021-1099): same `## Status` detection, same HTML-comment skip, same exit on next `## ` heading. Two callers is borderline; if a third caller appears (e.g., a future stop-hook check that needs chunk metadata), extract to `_iter_status_section_items(prawduct_dir) -> Iterator[StatusItem]` and refactor both call sites. Filed from /critic NOTE on 2026-05-08. (critic)
+
+  Groom 2026-06-10 — refs refreshed post hook-decomposition (STH-9V4K, v2.0.14) and the premise is
+  now STRONGER: `_count_build_plan_chunks` exists as near-duplicate copies in BOTH `lib/gates.py`
+  (~L633) and `lib/critic_mode.py` (~L744), alongside `_parse_build_plan_status` in
+  `lib/buildplan_refs.py` (~L31). The third-caller threshold the item set is effectively met;
+  natural home for the shared iterator is lib/buildplan_refs. Overlaps the STH-2K8R consolidation —
+  consider doing both in one pass.
+
+  Promoted 2026-06-10 into `artifacts/build-plan-critic-mode-consolidation.md` (branch
+  `feature/critic-mode-consolidation`) — one consolidation chunk covering STH-2K8R + BLD-6Q1N.
+
+  Shipped 2026-06-10 in v2.1.4 (PR #93, commit bf0c889, squash-merged to develop) — one
+  consolidation chunk with STH-2K8R.
 
 - **[STH-4F7C]** Extract the duplicated Critic-freshness gate (cmd_stop vs briefing) to lib/gates.py — copies have already diverged
   `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: shipped · stage: ready · related: STH-9V4K, STH-6B4R, STH-2K8R · refs: bin/prawduct-hook, lib/briefing.py, lib/gates.py · closed-by: feature/gate-hardening ch.01 (04f571a) · reviewed: 2026-06-10`

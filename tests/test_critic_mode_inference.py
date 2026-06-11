@@ -1173,16 +1173,20 @@ class TestMetadataPathClassification:
     were removed — a plugin repo never carries them, and a product's *own*
     skill under ``.claude/skills/`` is product code that must be gated, not
     excused from the reflection/Critic gates.
+
+    The allowlist's canonical home is ``lib.gitstate`` — ``critic_mode``'s
+    mirror was consolidated onto it (STH-2K8R), so these pins target the one
+    copy every consumer (gates, critic_mode, the hook via lib) now reads.
     """
 
     def test_product_state_and_install_reference_are_metadata(self):
-        from lib.critic_mode import _is_metadata_path
+        from lib.gitstate import _is_metadata_path
 
         assert _is_metadata_path(".prawduct/project-state.yaml")
         assert _is_metadata_path(".claude/settings.json")
 
     def test_retired_filesync_prefixes_are_not_metadata(self):
-        from lib.critic_mode import _is_metadata_path
+        from lib.gitstate import _is_metadata_path
 
         # A product's own skill is product code, not excused framework metadata.
         assert not _is_metadata_path(".claude/skills/my-skill/SKILL.md")
