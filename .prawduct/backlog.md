@@ -38,6 +38,16 @@
   (lib/advisory_store.py ~L333), and .gates-waived. One shared atomic_write_text helper covers all.
   Still stage: ready.
 
+- **[STH-9T4F]** Convert the two remaining non-atomic .prawduct state writes to core.atomic_write_text
+  `effort: S · impact: S · area: stop-hook · source: builder · added: 2026-06-10 · status: open · stage: ready · related: STH-8M3V · refs: lib/critic_marker.py, lib/operator_verification.py, lib/core.py`
+
+  Convert the two remaining non-atomic .prawduct state writes to core.atomic_write_text:
+  lib/critic_marker.py:75 (critic-active marker payload) and lib/operator_verification.py:251
+  (operator-verification queue rewrite). Found during STH-8M3V (gate-hardening ch.02), which
+  converted the four audited sites and added the shared helper; these two were out of that item's
+  groomed scope. Same rationale: readers fail open, torn writes misfire governance silently.
+  (builder)
+
 - **[STH-6Q9D]** Batch git subprocess fan-out on SessionStart/Stop hot paths
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: bin/prawduct-hook, lib/gitstate.py · reviewed: 2026-06-10`
 

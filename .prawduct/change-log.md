@@ -3,6 +3,41 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: /prawduct:critic explicit mode argument — forward to the helper, never self-parse (CRT-2N7V)
+
+<!-- prawduct: chunks=03 | type=fix | scope=gate-hardening -->
+
+**Why:** Invoking the Critic skill via the Skill tool with an explicit mode
+(observed 2026-06-10: args `chunk`) ran inference instead — `mode_chosen_by`
+recorded the rule-1b rationale, not `"explicit-args"`. Root cause confirmed
+by research, not recall: Claude Code does not substitute `$ARGUMENTS` in
+`context: fork` skills invoked via the Skill tool
+(anthropics/claude-code#34164, closed not-planned) — the forked Critic saw
+the literal placeholder, which contains no mode token, and correctly fell
+through. CRT-3M8Q's fix (#58) added the plan-field override as a workaround
+but left the skill prose promising an explicit-args path that can't fire on
+that delivery route. Same-session evidence showed Skill-tool args DO reach
+fork skills (backlog `pick`, learnings topics honored), so the arguments
+arrive — the prose just told the model to read them from the one place
+they're not.
+
+**What:** Mode resolution is now delivery-agnostic and helper-owned. (1)
+SKILL.md step 1: collect arguments from whichever path carried them
+(substituted placeholder — now a labeled `**Invocation arguments:**` line —
+launch message, or trailing `ARGUMENTS:` line; the literal unsubstituted
+placeholder means "check the other paths"), then forward verbatim to
+`prawduct-hook infer-critic-mode <args…>` — never self-parse. The helper
+already implemented the full precedence (explicit token → `explicit-args` >
+plan-override > inference; tested) and was already wildcard-allowed; the
+prose was the only broken layer. (2) `review-cycle.md` layer-1 documents the
+forward-never-parse rule and the harness caveat. (3)
+`TestExplicitModeArgContract` pins the contract: exactly one placeholder
+occurrence (more garble under substitution, zero switches to the unverified
+auto-append path), the forwarding instruction, the #34164 reference, and the
+wildcarded allow entry. Live verification: this bundle's own cumulative
+review was invoked with explicit args and recorded
+`mode_chosen_by: "explicit-args"`.
+
 ## 2026-06-10: atomic .prawduct state writes + cmd_clear OSError resilience (STH-8M3V)
 
 <!-- prawduct: chunks=02 | type=fix | scope=gate-hardening -->
