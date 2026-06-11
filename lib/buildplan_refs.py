@@ -28,6 +28,104 @@ from . import gitstate
 from .core import resolve_build_plan_path
 
 
+def _iter_status_section_lines(content: str):
+    """Yield stripped lines inside the build plan's ``## Status`` section.
+
+    The one canonical Status-section walk (BLD-6Q1N): starts after a line that
+    is exactly ``## Status``, stops at the next ``## `` heading, and skips
+    HTML-comment spans (``<!-- ... -->``, multi-line). This skeleton was
+    previously copied in five readers across ``buildplan_refs`` / ``gates`` /
+    ``critic_mode``; all of them now fold onto this generator. (The index-based
+    Status *rewriter* in ``lib/views.py`` is deliberately separate — it splices
+    lines back into the file, so it needs positions, not a reader's view.)
+    """
+    in_status = False
+    in_comment = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped == "## Status":
+            in_status = True
+            continue
+        if not in_status:
+            continue
+        if stripped.startswith("## ") and stripped != "## Status":
+            break
+        if "<!--" in stripped:
+            in_comment = True
+        if "-->" in stripped:
+            in_comment = False
+            continue
+        if in_comment:
+            continue
+        yield stripped
+
+
+def _iter_status_section_items(content: str):
+    """Yield ``(checked, text)`` for each ``- [ ]`` / ``- [x]`` Status item."""
+    for stripped in _iter_status_section_lines(content):
+        if stripped.startswith("- [ ]"):
+            yield False, stripped[5:].strip()
+        elif stripped.startswith("- [x]") or stripped.startswith("- [X]"):
+            yield True, stripped[5:].strip()
+
+
+def _chunk_id_from_item_text(text: str) -> str | None:
+    """``"Chunk 02: name"`` → ``"02"``; ``None`` for non-``Chunk NN:`` items."""
+    if not text.startswith("Chunk "):
+        return None
+    chunk_id = text[len("Chunk "):].split(":", 1)[0].strip()
+    return chunk_id or None
+
+
+def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
+    """Count chunks in the active build plan's Status section.
+
+    Resolves the plan via the ``active_build_plan:`` pointer (falls back to
+    ``artifacts/build-plan.md``), so scope-named plans are counted too.
+    Returns ``(total, complete)``; ``(0, 0)`` if the plan or its Status section
+    is missing or unreadable. The single canonical implementation — consumed by
+    ``lib.gates`` (end-of-cycle synthesis gate) and ``lib.critic_mode`` (mode
+    inference), which carried near-duplicate copies until STH-2K8R/BLD-6Q1N.
+    """
+    plan_path = resolve_build_plan_path(prawduct_dir)
+    if not plan_path.is_file():
+        return 0, 0
+    try:
+        content = plan_path.read_text()
+    except (OSError, UnicodeDecodeError):
+        return 0, 0
+    total = 0
+    complete = 0
+    for checked, _text in _iter_status_section_items(content):
+        total += 1
+        if checked:
+            complete += 1
+    return total, complete
+
+
+def _chunk_ids_in_status_order(prawduct_dir: Path) -> list[str]:
+    """Raw chunk ids (e.g. ``"01"``) in build-plan Status order, both states.
+
+    Returns the ordered ``Chunk <id>:`` ids for ``- [ ]`` and ``- [x]`` items
+    alike, so a git-derived progress count can map to the right current chunk
+    (CRT-7B4M — see ``lib.critic_mode._git_aware_progress``, its consumer).
+    Empty list when the plan or its Status section is missing or unreadable.
+    """
+    plan_path = resolve_build_plan_path(prawduct_dir)
+    if not plan_path.is_file():
+        return []
+    try:
+        content = plan_path.read_text()
+    except (OSError, UnicodeDecodeError):
+        return []
+    ids: list[str] = []
+    for _checked, text in _iter_status_section_items(content):
+        cid = _chunk_id_from_item_text(text)
+        if cid:
+            ids.append(cid)
+    return ids
+
+
 def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
     """Parse work context from build-plan.md Status section.
 
@@ -69,27 +167,8 @@ def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
                 break
 
         # Parse Status section for current chunk and context
-        in_status = False
-        in_comment = False
         has_any_items = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped == "## Status":
-                in_status = True
-                continue
-            if not in_status:
-                continue
-            # Exit on next section
-            if stripped.startswith("## ") and stripped != "## Status":
-                break
-            # Track HTML comments (multi-line)
-            if "<!--" in stripped:
-                in_comment = True
-            if "-->" in stripped:
-                in_comment = False
-                continue
-            if in_comment:
-                continue
+        for stripped in _iter_status_section_lines(content):
             # Current chunk = first unchecked item
             if stripped.startswith("- [ ]") and "current_chunk" not in result:
                 has_any_items = True
@@ -159,6 +238,51 @@ def _looks_like_file_path(token: str) -> bool:
     return True
 
 
+def _chunk_section_lines(
+    content: str, chunk_id: str
+) -> tuple[bool, list[tuple[int, str]]]:
+    """Locate the ``### Chunk <chunk_id>:`` section and return its body lines.
+
+    The one canonical chunk-section walk: name-anchored with leading-zero
+    tolerance (``"02"`` matches ``### Chunk 2:`` and vice versa), stops at the
+    next sibling ``### Chunk`` or ``## `` heading, and drops fenced code blocks
+    (project-structure diagrams aren't load-bearing prose). Returns
+    ``(found, [(line_num, raw_line), ...])`` with 1-based line numbers into
+    ``content``. This skeleton was previously copied in the three chunk-field
+    parsers below and ``lib.critic_mode``'s ``**Critic mode:**`` reader; all
+    four now fold onto it.
+    """
+    target = chunk_id.lstrip("0") or "0"
+    in_section = False
+    in_fence = False
+    section_lines: list[tuple[int, str]] = []
+    for line_num, line in enumerate(content.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith("### Chunk "):
+            # Heading format: "### Chunk NN: Name"
+            rest = stripped[len("### Chunk "):]
+            head = rest.split(":", 1)[0].strip()
+            head_norm = head.lstrip("0") or "0"
+            if in_section:
+                # Entered a sibling chunk; stop accumulating.
+                break
+            if head_norm == target:
+                in_section = True
+            continue
+        if not in_section:
+            continue
+        if stripped.startswith("## "):
+            # Left the Build Chunks section entirely.
+            break
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        section_lines.append((line_num, line))
+    return in_section, section_lines
+
+
 def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     """Extract backticked file-path references from a single chunk's section
     in ``.prawduct/artifacts/build-plan.md``.
@@ -187,39 +311,8 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
         result["error"] = f"unreadable build-plan: {exc}"
         return result
 
-    # Normalize chunk_id: strip leading zeros for matching ("02" matches
-    # "### Chunk 2:" and vice versa) but report the original in errors.
-    target = chunk_id.lstrip("0") or "0"
-
-    in_section = False
-    in_fence = False
-    section_lines: list[tuple[int, str]] = []
-    for line_num, line in enumerate(content.splitlines(), start=1):
-        stripped = line.strip()
-        if stripped.startswith("### Chunk "):
-            # Heading format: "### Chunk NN: Name"
-            rest = stripped[len("### Chunk "):]
-            head = rest.split(":", 1)[0].strip()
-            head_norm = head.lstrip("0") or "0"
-            if in_section:
-                # Entered a sibling chunk; stop accumulating.
-                break
-            if head_norm == target:
-                in_section = True
-            continue
-        if not in_section:
-            continue
-        if stripped.startswith("## "):
-            # Left the Build Chunks section entirely.
-            break
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        section_lines.append((line_num, line))
-
-    if not in_section and not section_lines:
+    found, section_lines = _chunk_section_lines(content, chunk_id)
+    if not found:
         result["error"] = f"chunk {chunk_id!r} not found in build-plan"
         return result
 
@@ -263,9 +356,9 @@ def _parse_build_plan_chunk_type(
     Unknown values surface as ``(None, "unknown type: <value>")`` so the
     author fixes the typo instead of getting silent fall-through.
 
-    Section discovery mirrors ``_parse_build_plan_chunk_refs`` — name-anchored
-    on ``### Chunk <chunk_id>:`` with leading-zero tolerance; fenced code
-    blocks are skipped.
+    Section discovery is the shared ``_chunk_section_lines`` walker —
+    name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
+    fenced code blocks are skipped.
     """
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
@@ -275,40 +368,16 @@ def _parse_build_plan_chunk_type(
     except OSError as exc:
         return None, f"unreadable build-plan: {exc}"
 
-    target = chunk_id.lstrip("0") or "0"
+    found, section_lines = _chunk_section_lines(content, chunk_id)
+    if not found:
+        return None, f"chunk {chunk_id!r} not found in build-plan"
 
-    in_section = False
-    in_fence = False
-    section_found = False
     declared: str | None = None
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("### Chunk "):
-            rest = stripped[len("### Chunk "):]
-            head = rest.split(":", 1)[0].strip()
-            head_norm = head.lstrip("0") or "0"
-            if in_section:
-                break  # hit sibling chunk
-            if head_norm == target:
-                in_section = True
-                section_found = True
-            continue
-        if not in_section:
-            continue
-        if stripped.startswith("## "):
-            break
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+    for _line_num, line in section_lines:
         m = _BUILD_PLAN_TYPE_RE.match(line)
         if m:
             declared = m.group(1)
             break
-
-    if not section_found:
-        return None, f"chunk {chunk_id!r} not found in build-plan"
 
     if declared is None:
         return "code", None  # fail-closed default
@@ -329,9 +398,9 @@ def _parse_build_plan_chunk_trivial_rationale(
     a list-item / heading prefix) is joined into a single string until the
     next field.
 
-    Section discovery mirrors ``_parse_build_plan_chunk_type`` —
-    name-anchored on ``### Chunk <chunk_id>:`` with leading-zero
-    tolerance; fenced code blocks are skipped.
+    Section discovery is the shared ``_chunk_section_lines`` walker —
+    name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
+    fenced code blocks are skipped.
     """
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
@@ -341,34 +410,14 @@ def _parse_build_plan_chunk_trivial_rationale(
     except OSError as exc:
         return None, f"unreadable build-plan: {exc}"
 
-    target = chunk_id.lstrip("0") or "0"
+    found, section_lines = _chunk_section_lines(content, chunk_id)
+    if not found:
+        return None, f"chunk {chunk_id!r} not found in build-plan"
 
-    in_section = False
-    in_fence = False
-    section_found = False
     capturing = False
     rationale_lines: list[str] = []
-    for line in content.splitlines():
+    for _line_num, line in section_lines:
         stripped = line.strip()
-        if stripped.startswith("### Chunk "):
-            rest = stripped[len("### Chunk "):]
-            head = rest.split(":", 1)[0].strip()
-            head_norm = head.lstrip("0") or "0"
-            if in_section:
-                break  # hit sibling chunk
-            if head_norm == target:
-                in_section = True
-                section_found = True
-            continue
-        if not in_section:
-            continue
-        if stripped.startswith("## "):
-            break
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
         m = _BUILD_PLAN_TRIVIAL_RATIONALE_RE.match(line)
         if m:
             capturing = True
@@ -388,8 +437,6 @@ def _parse_build_plan_chunk_trivial_rationale(
             if stripped:
                 rationale_lines.append(stripped)
 
-    if not section_found:
-        return None, f"chunk {chunk_id!r} not found in build-plan"
     if not capturing:
         return None, (
             "missing-rationale: Type: trivial requires non-empty "

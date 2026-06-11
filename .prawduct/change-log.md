@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: Consolidate critic_mode's mirrored helpers onto buildplan_refs/gitstate + shared build-plan walkers (STH-2K8R + BLD-6Q1N)
+
+<!-- prawduct: chunks=01 | type=refactor | scope=critic-mode-consolidation -->
+
+**Why:** `lib/critic_mode.py` carried five re-implementations whose stated
+rationale — "no dependency on `bin/prawduct-hook`; re-implemented to stay
+importable from the slash-command shim" — died when STH-9V4K (v2.0.14) moved
+the canonical helpers into lib siblings `critic_mode` already imports from.
+The copies were live drift hazards: the 2026-06-09 review-fixes Critic
+flagged the inline porcelain parse as a third parser that silently lacked
+`parse_porcelain_line`'s quoted-path/rename hardening rationale trail, and
+the Status-walk skeleton existed in five places (BLD-6Q1N's third-caller
+threshold met twice over).
+
+**What:** One consolidation pass, not behavior-preserving by construction
+(it collapses parity relationships). (1) `critic_mode` deleted
+`_is_metadata_path`/`_METADATA_PREFIXES`, `_git_head_sha`,
+`_current_chunk_id_from_status`, `_chunk_ids_in_status_order`, and
+`_count_build_plan_chunks`; it now consumes `lib.gitstate` and
+`lib.buildplan_refs`. (2) `_get_uncommitted_code_files` keeps its own
+`-uall` git call but parses lines via `gitstate.parse_porcelain_line`.
+(3) BLD-6Q1N: `buildplan_refs` gains the canonical Status-section walkers
+(`_iter_status_section_lines`/`_iter_status_section_items`) and chunk-section
+walker (`_chunk_section_lines`); `_count_build_plan_chunks` and
+`_chunk_ids_in_status_order` live there now; `gates.py` deleted its duplicate
+counter and delegates. All five Status readers and all four chunk-section
+parsers fold onto the shared walkers. (4) Shared-helper read errors now
+catch `(OSError, UnicodeDecodeError)` — unifying gates' broad-except posture
+and critic_mode's OSError-only posture (a malformed-encoding plan previously
+crashed critic_mode's copy, returned (0,0) from gates'). (5) Deliberately
+NOT consolidated: `_chain_extendable_anchor` ↔ `gates._chain_anchor` + the
+verbose mode constants — a test-pinned mirror (`TestChainAnchorParity`)
+whose rationale (keep `gates` out of the shim's import graph) still holds;
+`lib/views.py`'s index-based Status rewriter (needs positions, not a
+reader's view); the hook's import-light pinned mirrors. (6) New
+`tests/test_buildplan_walkers.py`: walker unit coverage, porcelain edge
+cases through the consolidated parse path, and consolidation pins — the
+inverse of `TestChainAnchorParity`: that mirror must stay equal, these must
+stay singular (source-scan + namespace assertions). Two existing
+metadata-allowlist pins repointed from `lib.critic_mode` to the canonical
+`lib.gitstate` home, assertions unchanged. Net −150 lines of production
+code; closes STH-2K8R, BLD-6Q1N, and CRT-3D9K (by construction — merged
+into STH-2K8R).
+
 ## 2026-06-10: /prawduct:critic explicit mode argument — forward to the helper, never self-parse (CRT-2N7V)
 
 <!-- prawduct: chunks=03 | type=fix | release=v2.1.3 | status=shipped | scope=gate-hardening -->

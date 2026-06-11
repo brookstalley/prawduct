@@ -54,7 +54,8 @@ def git_has_changes(project_dir: Path) -> str:
 # (``.claude/skills/`` for synced framework skills, ``tools/product-hook``)
 # are intentionally absent — a plugin repo never carries them, and a
 # product's *own* skill under ``.claude/skills/`` is product code that must
-# be gated, not excused. (Mirrored in ``lib/critic_mode.py``.)
+# be gated, not excused. The single canonical copy — ``lib/critic_mode.py``'s
+# mirror was consolidated onto this one (STH-2K8R).
 _METADATA_PREFIXES = (
     ".prawduct/",
     ".claude/settings.json",
