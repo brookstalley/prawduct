@@ -5,7 +5,7 @@
 
 ## 2026-06-10: Consolidate critic_mode's mirrored helpers onto buildplan_refs/gitstate + shared build-plan walkers (STH-2K8R + BLD-6Q1N)
 
-<!-- prawduct: chunks=01 | type=refactor | scope=critic-mode-consolidation | status=merged -->
+<!-- prawduct: chunks=01 | type=refactor | release=v2.1.4 | status=shipped | scope=critic-mode-consolidation -->
 
 **Why:** `lib/critic_mode.py` carried five re-implementations whose stated
 rationale — "no dependency on `bin/prawduct-hook`; re-implemented to stay

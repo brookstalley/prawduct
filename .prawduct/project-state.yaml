@@ -501,9 +501,11 @@ views_enabled: true
 # scope=gate-hardening tags and the pointer is cleared — no release-pending
 # plans remain. The build-plan file is retained as a historical artifact.
 # 2026-06-10: pointed at the in-progress critic-mode-consolidation plan
-# (STH-2K8R + BLD-6Q1N, closes CRT-3D9K; branch feature/critic-mode-consolidation).
-
-active_build_plan: artifacts/build-plan-critic-mode-consolidation.md
+# (STH-2K8R + BLD-6Q1N, closes CRT-3D9K; branch feature/critic-mode-consolidation);
+# critic-mode-consolidation SHIPPED in v2.1.4 (#93, same day), regen-views flipped
+# its ## Status via the scope=critic-mode-consolidation tag and the pointer is
+# cleared — no release-pending plans remain. The build-plan file is retained as a
+# historical artifact.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -567,6 +569,9 @@ scope_rollups:
   critic-mode-branch-fix:
     chunks: ["01"]
     releases: ["v2.0.16"]
+  critic-mode-consolidation:
+    chunks: ["01"]
+    releases: ["v2.1.4"]
   critic-session-guard:
     chunks: ["1"]
     releases: ["v2.0.14"]

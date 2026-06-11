@@ -41,7 +41,7 @@ the verbose mode constants, `TestChainAnchorParity`) is explicitly OUT of scope.
 
 ## Status
 
-- [ ] Chunk 01: Consolidate critic_mode mirrors onto buildplan_refs/gitstate + shared Status walker
+- [x] Chunk 01: Consolidate critic_mode mirrors onto buildplan_refs/gitstate + shared Status walker
 Context: Chunk 01 built and committed 2026-06-10 (9acb8c3). Suite 1331 passed / 0 failed
 (evidence recorded). Cumulative Critic: 0 blocking / 1 warning / 0 notes — the warning
 (verify-chunk-refs false positives on extension-less module paths in this plan's prose)

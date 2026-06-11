@@ -433,8 +433,10 @@
 
 ## Promoted
 
+## Archive
+
 - **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
-  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: promoted · stage: ready · closes: CRT-3D9K · related: STH-9V4K, BLD-6Q1N · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: shipped · stage: ready · closes: CRT-3D9K · related: STH-9V4K, BLD-6Q1N · closed-by: PR #93 / v2.1.4 (bf0c889) · reviewed: 2026-06-10`
 
   `lib/critic_mode.py` carries independent re-implementations of `_current_chunk_id_from_status`,
   the chunk-`Type:` parser, and `_is_metadata_path` (and references `_parse_build_plan_status`),
@@ -468,8 +470,12 @@
   Promoted 2026-06-10 into `artifacts/build-plan-critic-mode-consolidation.md` (branch
   `feature/critic-mode-consolidation`) — one consolidation chunk covering STH-2K8R + BLD-6Q1N.
 
+  Shipped 2026-06-10 in v2.1.4 (PR #93, commit bf0c889, squash-merged to develop). Carries
+  `closes: CRT-3D9K` (already archived) — CRT-3D9K's closure rides this anchor: the consolidation
+  that closed it by construction shipped in PR #93 / v2.1.4.
+
 - **[BLD-6Q1N]** Extract `_iter_status_section_items` shared parser for build-plan Status
-  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-08 · status: promoted · stage: ready · refs: lib/gates.py, lib/critic_mode.py, lib/buildplan_refs.py · related: STH-2K8R · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: build-plan · source: critic · added: 2026-05-08 · status: shipped · stage: ready · refs: lib/gates.py, lib/critic_mode.py, lib/buildplan_refs.py · related: STH-2K8R · closed-by: PR #93 / v2.1.4 (bf0c889) · reviewed: 2026-06-10`
 
   `_count_build_plan_chunks` (bin/prawduct-hook lines ~2073-2113, added v1.3.13) duplicates the Status-section parsing skeleton of `_parse_build_plan_status` (lines ~1021-1099): same `## Status` detection, same HTML-comment skip, same exit on next `## ` heading. Two callers is borderline; if a third caller appears (e.g., a future stop-hook check that needs chunk metadata), extract to `_iter_status_section_items(prawduct_dir) -> Iterator[StatusItem]` and refactor both call sites. Filed from /critic NOTE on 2026-05-08. (critic)
 
@@ -483,7 +489,8 @@
   Promoted 2026-06-10 into `artifacts/build-plan-critic-mode-consolidation.md` (branch
   `feature/critic-mode-consolidation`) — one consolidation chunk covering STH-2K8R + BLD-6Q1N.
 
-## Archive
+  Shipped 2026-06-10 in v2.1.4 (PR #93, commit bf0c889, squash-merged to develop) — one
+  consolidation chunk with STH-2K8R.
 
 - **[STH-4F7C]** Extract the duplicated Critic-freshness gate (cmd_stop vs briefing) to lib/gates.py — copies have already diverged
   `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: shipped · stage: ready · related: STH-9V4K, STH-6B4R, STH-2K8R · refs: bin/prawduct-hook, lib/briefing.py, lib/gates.py · closed-by: feature/gate-hardening ch.01 (04f571a) · reviewed: 2026-06-10`
