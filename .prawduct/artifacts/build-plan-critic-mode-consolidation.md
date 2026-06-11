@@ -42,7 +42,11 @@ the verbose mode constants, `TestChainAnchorParity`) is explicitly OUT of scope.
 ## Status
 
 - [ ] Chunk 01: Consolidate critic_mode mirrors onto buildplan_refs/gitstate + shared Status walker
-Context: Plan written 2026-06-10; baseline suite re-run in progress. Not started.
+Context: Chunk 01 built and committed 2026-06-10 (9acb8c3). Suite 1331 passed / 0 failed
+(evidence recorded). Cumulative Critic: 0 blocking / 1 warning / 0 notes — the warning
+(verify-chunk-refs false positives on extension-less module paths in this plan's prose)
+is fixed in-place; refs verify clean. Ready for PR when the user asks. Checkbox flips at
+release via the scope=critic-mode-consolidation change-log tag (views enabled).
 
 ## Scaffolding
 
@@ -77,17 +81,17 @@ pinned mirror's rationale — see out-of-scope).
   behavior-preserving by construction — it collapses parity relationships, so it gets its
   own tests and Critic review):
   1. **`_is_metadata_path` + `_METADATA_PREFIXES`** (`lib/critic_mode.py`) → import from
-     `lib/gitstate`; update `gitstate`'s "(Mirrored in `lib/critic_mode.py`.)" comment.
+     `lib/gitstate.py`; update `gitstate`'s "(Mirrored in `lib/critic_mode.py`.)" comment.
   2. **Inline porcelain parse** in `_get_uncommitted_code_files` → keep the
      `--untracked-files=all` subprocess call, parse each line via
      `gitstate.parse_porcelain_line` (rename-dst + quote handling become canonical; the
      near-duplicate noted by the review-fixes Chunk 1 Critic goes away).
-  3. **`_git_head_sha`** (`lib/critic_mode.py`) → import from `lib/gitstate` (same
+  3. **`_git_head_sha`** (`lib/critic_mode.py`) → import from `lib/gitstate.py` (same
      semantics; gitstate's adds the standard subprocess-failure guard).
   4. **`_current_chunk_id_from_status`** (`lib/critic_mode.py`) → import from
-     `lib/buildplan_refs` (pre-verified output-equivalent: first `- [ ]` item,
+     `lib/buildplan_refs.py` (pre-verified output-equivalent: first `- [ ]` item,
      comment-aware, `None` on missing plan/section/non-`Chunk NN:` form).
-  5. **BLD-6Q1N:** extract the shared Status-section walker into `lib/buildplan_refs`
+  5. **BLD-6Q1N:** extract the shared Status-section walker into `lib/buildplan_refs.py`
      (comment-aware, next-`## `-stop — the skeleton currently copied in 5 readers), then
      fold onto it: a single `_count_build_plan_chunks` in `buildplan_refs` replacing BOTH
      duplicates (`lib/gates.py` ~L694 — keep its broad-except gate posture at the call
@@ -96,7 +100,7 @@ pinned mirror's rationale — see out-of-scope).
      `buildplan_refs._parse_build_plan_status`'s own Status loop.
   6. **Chunk-section discovery:** extract the shared chunk-section walker
      (`### Chunk <id>:` name-anchored, leading-zero-tolerant, fence-skipping,
-     sibling/`## `-stop) into `lib/buildplan_refs` and fold its 4 copies onto it:
+     sibling/`## `-stop) into `lib/buildplan_refs.py` and fold its 4 copies onto it:
      `_parse_build_plan_chunk_refs`, `_parse_build_plan_chunk_type`,
      `_parse_build_plan_chunk_trivial_rationale` (all in `buildplan_refs`), and
      `critic_mode._critic_mode_for_chunk` (the "chunk-`Type:` parser" mirror named in
