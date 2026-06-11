@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import buildplan_refs, coverage, gitstate
@@ -634,6 +635,60 @@ _CRITIC_MODE_GOALS_1_3_ONLY = frozenset({
     _CRITIC_MODE_CHUNK,
     _CRITIC_MODE_VERIFY_RESOLUTIONS,
 })
+
+
+def critic_findings_satisfy_session_gate(
+    prawduct_dir: Path, project_dir: Path
+) -> tuple[bool, str]:
+    """Shared session Critic gate: does ``.critic-findings.json`` vouch for
+    this session's changes?
+
+    Single source of truth (STH-4F7C) for the freshness check previously
+    duplicated — and diverged — between ``cmd_stop``'s blocking gate
+    (``bin/prawduct-hook``) and the session-start advisory
+    (``briefing._check_previous_session_gates``): the advisory copy had not
+    gained the verify-resolutions scope check, so it could report a stale
+    record as satisfying. Satisfied requires ALL of:
+
+    1. ``.critic-findings.json`` and ``.session-start`` both exist;
+    2. findings mtime is strictly newer than session start. STH-6B4R:
+       identical-precision compare — the mtime is formatted to the same
+       whole-second ``%Y-%m-%dT%H:%M:%SZ`` shape ``.session-start`` is
+       written in, so the comparison is order-preserving lexicographic with
+       no format mismatch on either side. Tie rule: ``findings_mtime ==
+       session_start`` is NOT fresh — the strict ``>`` rejects a
+       same-whole-second tie, consistent with the cumulative-critic site's
+       ``<= -> stale``. Only ``_test_status``'s evidence freshness uses
+       ``>=`` (deliberately);
+    3. the findings are schema-valid (:func:`validate_critic_findings`);
+    4. for a ``verify-resolutions`` record, the current session diff is
+       within the declared scope (:func:`_verify_resolutions_gate_check`).
+
+    Returns:
+      - ``(True, "")`` — gate satisfied.
+      - ``(False, "")`` — no qualifying findings (missing, stale, or
+        schema-invalid); the caller phrases its own "review not recorded"
+        message.
+      - ``(False, reason)`` — fresh, valid ``verify-resolutions`` findings
+        whose declared scope the session diff has outgrown; ``reason`` names
+        the widening files (``cmd_stop`` surfaces it verbatim in its
+        dedicated blocker variant).
+
+    No-raise, fail-closed: any unexpected error returns ``(False, "")``.
+    """
+    critic_findings = prawduct_dir / ".critic-findings.json"
+    session_start = _read_session_start(prawduct_dir)
+    if not critic_findings.is_file() or not session_start:
+        return False, ""
+    try:
+        findings_mtime = datetime.fromtimestamp(
+            critic_findings.stat().st_mtime, tz=timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if findings_mtime > session_start and validate_critic_findings(critic_findings):
+            return _verify_resolutions_gate_check(prawduct_dir, project_dir, critic_findings)
+        return False, ""
+    except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session start/end
+        return False, ""
 
 
 def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:

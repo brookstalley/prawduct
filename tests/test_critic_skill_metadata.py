@@ -131,3 +131,42 @@ class TestCriticSkillDenyPatterns:
                         f"structurally blocked by the allow-list"
                     )
 
+
+
+class TestExplicitModeArgContract:
+    """CRT-2N7V: Skill-tool invocation of a fork-context skill does not
+    substitute `$ARGUMENTS` (anthropics/claude-code#34164), so the SKILL must
+    never parse the placeholder itself — it forwards whatever arguments were
+    delivered to `prawduct-hook infer-critic-mode`, which owns the full
+    precedence (explicit token > plan-override > inference) and returns
+    rationale `explicit-args` for a recognized forwarded token. These pins
+    keep the prose contract from regressing to self-parsing."""
+
+    def test_exactly_one_substitution_placeholder(self):
+        """One labeled placeholder line. More would garble sentences when
+        substitution DOES fire (all occurrences are replaced — a precedence
+        parenthetical containing the placeholder once read 'explicit `chunk`'
+        after substitution); zero would switch delivery to the auto-append
+        path, whose fork behavior is unverified."""
+        content = _PLUGIN_CRITIC_SKILL.read_text()
+        assert content.count("$ARGUMENTS") == 1
+        assert '**Invocation arguments:** "$ARGUMENTS"' in content
+
+    def test_step1_forwards_to_helper_not_self_parses(self):
+        content = _PLUGIN_CRITIC_SKILL.read_text()
+        # The forwarding instruction and the helper invocation are present...
+        assert "infer-critic-mode <args" in content
+        assert "Do NOT interpret the arguments yourself" in content
+        # ...and the known harness limitation travels with the contract.
+        assert "34164" in content
+        # The old self-parse instruction must not return: the only line
+        # mentioning the placeholder is the labeled one (asserted above), so
+        # an "If `$ARGUMENTS` contains a recognized mode token" revival would
+        # bump the count and fail test_exactly_one_substitution_placeholder.
+
+    def test_helper_wildcard_still_in_allowed_tools(self):
+        """Forwarding needs the wildcarded allow entry — the bare
+        `Bash(prawduct-hook infer-critic-mode)` form would reject the
+        argument-carrying invocation."""
+        allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
+        assert "Bash(prawduct-hook infer-critic-mode *)" in allowed

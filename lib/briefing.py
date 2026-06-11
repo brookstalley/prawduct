@@ -34,11 +34,15 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 
 from . import backlog, buildplan_refs, gates, gitstate
-from .core import BUILD_PLAN_POINTER_KEY, read_str_yaml_key, resolve_build_plan_path
+from .core import (
+    BUILD_PLAN_POINTER_KEY,
+    atomic_write_text,
+    read_str_yaml_key,
+    resolve_build_plan_path,
+)
 
 
 # =============================================================================
@@ -906,10 +910,14 @@ def generate_session_handoff(project_dir: Path) -> None:
             sections.append(f"- ... and {len(commits) - 10} more")
         sections.append("")
 
-    # Only write if there's actual content beyond the header
+    # Only write if there's actual content beyond the header. Atomic
+    # (STH-8M3V): the next session's briefing reads this file, and a torn
+    # handoff silently loses cross-session context.
     if len(sections) > 2:
         try:
-            (prawduct_dir / ".session-handoff.md").write_text("\n".join(sections) + "\n")
+            atomic_write_text(
+                prawduct_dir / ".session-handoff.md", "\n".join(sections) + "\n"
+            )
         except Exception:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
             pass
 
@@ -947,34 +955,22 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
         except (UnicodeDecodeError, OSError):
             warnings.append("reflection not captured")
 
-    # Gate 2: Critic review (only when building against an active plan)
+    # Gate 2: Critic review (only when building against an active plan).
+    # STH-4F7C: delegates to the shared lib/gates.py session gate — the same
+    # freshness + schema + verify-resolutions scope logic cmd_stop blocks on.
+    # This advisory copy had diverged (no scope check), so it could report a
+    # stale verify-resolutions record as satisfying.
     has_build_plan = gates._has_active_build_plan_file(prawduct_dir) or gates._has_build_plan_in_state(prawduct_dir)
     if has_build_plan and not doc_only and "critic" not in waivers and gitstate.git_has_code_changes(project_dir):
-        critic_findings = prawduct_dir / ".critic-findings.json"
-        session_start_file = prawduct_dir / ".session-start"
-        needs_review = True
-        if critic_findings.is_file() and session_start_file.is_file():
-            try:
-                session_start = session_start_file.read_text().strip()
-                # STH-6B4R: format findings_mtime to the SAME whole-second
-                # %Y-%m-%dT%H:%M:%SZ shape `.session-start` is written in (see
-                # cmd_clear's `stamp`), so the comparison is identical-precision
-                # lexicographic (== order-preserving for fixed-width second
-                # strings) — no fractional/format mismatch on either side.
-                # Tie rule: findings_mtime == session_start is NOT fresh
-                # (rejected). Strict `>` means a findings file whose mtime lands
-                # in the same whole second as session-start does not clear the
-                # gate — consistent with the cumulative-critic site's `<= ->
-                # stale`. Both Critic-gate sites use the strict convention; only
-                # `_test_status`'s evidence-freshness uses `>=` (deliberately).
-                findings_mtime = datetime.fromtimestamp(
-                    critic_findings.stat().st_mtime, tz=timezone.utc
-                ).strftime("%Y-%m-%dT%H:%M:%SZ")
-                if findings_mtime > session_start and gates.validate_critic_findings(critic_findings):
-                    needs_review = False
-            except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash clear
-                pass
-        if needs_review:
-            warnings.append("Critic review not recorded")
+        satisfied, scope_reason = gates.critic_findings_satisfy_session_gate(
+            prawduct_dir, project_dir
+        )
+        if not satisfied:
+            if scope_reason:
+                warnings.append(
+                    f"Critic review stale — verify-resolutions scope exceeded: {scope_reason}"
+                )
+            else:
+                warnings.append("Critic review not recorded")
 
     return warnings

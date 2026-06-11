@@ -495,6 +495,10 @@ views_enabled: true
 # regen-views flipped its ## Status via the scope=do-next tags and the pointer
 # is cleared — no release-pending plans remain. The build-plan file is retained
 # as a historical artifact.
+# 2026-06-10: repointed at the in-progress gate-hardening plan (STH-4F7C +
+# STH-8M3V + CRT-2N7V, branch feature/gate-hardening).
+
+active_build_plan: artifacts/build-plan-gate-hardening.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

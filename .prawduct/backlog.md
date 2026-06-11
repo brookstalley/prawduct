@@ -20,23 +20,15 @@
   test/build execution, or have the coordinator pass an enforced `allowed-tools` to Agent
   dispatches. Priority P2. (reflection)
 
-- **[STH-8M3V]** Atomic writes for .prawduct state files + guard unguarded hot-path I/O in cmd_clear
-  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-6Q9D, ADV-9K2T · refs: bin/prawduct-hook, lib/advisory_store.py, lib/gitstate.py, lib/briefing.py · reviewed: 2026-06-10`
+- **[STH-9T4F]** Convert the two remaining non-atomic .prawduct state writes to core.atomic_write_text
+  `effort: S · impact: S · area: stop-hook · source: builder · added: 2026-06-10 · status: open · stage: ready · related: STH-8M3V · refs: lib/critic_marker.py, lib/operator_verification.py, lib/core.py`
 
-  From the 2026-06-09 framework review. Only .test-evidence.json gets tmp + os.replace;
-  .advisories.json (lib/advisory_store.py), .work-model-index.json, .session-start,
-  .session-git-baseline, and .session-handoff.md are plain write_text — two concurrent sessions on
-  the same repo (worktrees) can tear them. Readers fail open, so blast radius is a misfired gate,
-  not a crash — still worth one shared atomic_write_text helper. Same pass: three unguarded I/O
-  sites in cmd_clear (session-file unlink loop, .session-start write, baseline write) can traceback
-  the SessionStart hook on an OSError, unlike the meticulously best-effort code around them;
-  gitstate's _get_session_changed_files also lacks the (UnicodeDecodeError, OSError) guard its
-  siblings have. (builder)
-
-  Groom 2026-06-10 (audit): the unatomic set confirmed — .session-start + .session-git-baseline
-  (bin/prawduct-hook ~L468, 563), .session-handoff.md (lib/briefing.py ~L868), .advisories.json
-  (lib/advisory_store.py ~L333), and .gates-waived. One shared atomic_write_text helper covers all.
-  Still stage: ready.
+  Convert the two remaining non-atomic .prawduct state writes to core.atomic_write_text:
+  lib/critic_marker.py:75 (critic-active marker payload) and lib/operator_verification.py:251
+  (operator-verification queue rewrite). Found during STH-8M3V (gate-hardening ch.02), which
+  converted the four audited sites and added the shared helper; these two were out of that item's
+  groomed scope. Same rationale: readers fail open, torn writes misfire governance silently.
+  (builder)
 
 - **[STH-6Q9D]** Batch git subprocess fan-out on SessionStart/Stop hot paths
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: bin/prawduct-hook, lib/gitstate.py · reviewed: 2026-06-10`
@@ -53,22 +45,6 @@
   --cached per SessionStart, bin/prawduct-hook ~L291-339 — batch into one ls-files + one rm),
   repeated `git status --porcelain` per clear/stop (capture once, pass down), and _has_product_code
   rglob walking node_modules before filtering (lib/gitstate.py ~L219-227). Still stage: ready.
-
-- **[STH-4F7C]** Extract the duplicated Critic-freshness gate (cmd_stop vs briefing) to lib/gates.py — copies have already diverged
-  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: open · stage: ready · related: STH-9V4K, STH-6B4R, STH-2K8R · refs: bin/prawduct-hook, lib/briefing.py, lib/gates.py · reviewed: 2026-06-10`
-
-  From the 2026-06-09 framework review. The mtime-vs-session-start freshness check is duplicated
-  nearly verbatim (including the same STH-6B4R comment block) in cmd_stop (bin/prawduct-hook) and
-  briefing._check_previous_session_gates (lib/briefing.py). Unlike the hook's intentional inline
-  mirrors, this pair has no parity test and has already diverged: cmd_stop gained the
-  verify-resolutions scope check; the briefing copy did not. The briefing copy lives in lib/
-  already, so the import-light hot-path rationale does not apply — extract to lib/gates.py and add
-  a parity/regression test. (builder)
-
-  Groom 2026-06-10 (audit): divergence re-confirmed and sharpened — cmd_stop runs the
-  verify-resolutions scope check (bin/prawduct-hook ~L787-812) but
-  lib/briefing._check_previous_session_gates (~L906-934) does not, so the session-start advisory
-  can report a stale verify-resolutions record as satisfying. Still stage: ready.
 
 - **[TEL-7A4X]** Cross-project review-telemetry aggregation — aggregate and review review-cost/value stats across all Prawduct-governed products
   `effort: M · impact: L · area: governance/telemetry · source: user · added: 2026-06-10 · status: open · stage: requirements · refs: build-plan-review-proportionality.md · reviewed: 2026-06-10`
@@ -475,8 +451,78 @@
   chunk-02 Critic findings). Source: PR #90 reviewer NOTE (fable, escalate tier), same family as
   PR-2H8N. (critic)
 
+- **[CRT-6J4P]** infer-critic-mode rule-1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
+  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V · refs: lib/critic_mode.py, skills/critic/SKILL.md`
+
+  Observed 2026-06-10: on a brand-new branch/plan (feature/do-next, first chunk), inference picked
+  verify-resolutions extending the PREVIOUS released bundle's cumulative (3c4b627,
+  changelog-lifecycle v2.1.1) instead of chunk mode. Commit-coverage keeps the record sound, but
+  cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
+  active plan scope. (reflection)
+
+- **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
+  `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
+
+  After the gate-hardening bundle ships in a release (so the installed plugin carries the rewritten
+  SKILL.md step 1), invoke the Critic via the Skill tool with an explicit mode that DIFFERS from
+  what inference would pick, and confirm .critic-findings.json records mode_chosen_by:
+  "explicit-args". Context: the bundle's own cumulative (2026-06-10) was invoked with explicit args
+  and still recorded rule-2 inference — third observation; undetermined whether the edited skill
+  even ran (framework-repo skill source ambiguity: marketplace v2.1.2 clone vs working tree).
+  Known facts: $ARGUMENTS substitution is broken for Skill-tool→fork (anthropics/claude-code#34164,
+  closed not-planned); args demonstrably reach OTHER fork skills (backlog, learnings — same
+  session); the helper layer (prawduct-hook infer-critic-mode <token>) is unit-proven. If
+  launch-message delivery doesn't reach the Critic fork, escalate to a file-based mode request
+  (invoker writes the requested mode to a .prawduct dotfile; helper reads + deletes it). (builder)
+
+## Promoted
+
+## Archive
+
+- **[STH-4F7C]** Extract the duplicated Critic-freshness gate (cmd_stop vs briefing) to lib/gates.py — copies have already diverged
+  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: shipped · stage: ready · related: STH-9V4K, STH-6B4R, STH-2K8R · refs: bin/prawduct-hook, lib/briefing.py, lib/gates.py · closed-by: feature/gate-hardening ch.01 (04f571a) · reviewed: 2026-06-10`
+
+  From the 2026-06-09 framework review. The mtime-vs-session-start freshness check is duplicated
+  nearly verbatim (including the same STH-6B4R comment block) in cmd_stop (bin/prawduct-hook) and
+  briefing._check_previous_session_gates (lib/briefing.py). Unlike the hook's intentional inline
+  mirrors, this pair has no parity test and has already diverged: cmd_stop gained the
+  verify-resolutions scope check; the briefing copy did not. The briefing copy lives in lib/
+  already, so the import-light hot-path rationale does not apply — extract to lib/gates.py and add
+  a parity/regression test. (builder)
+
+  Groom 2026-06-10 (audit): divergence re-confirmed and sharpened — cmd_stop runs the
+  verify-resolutions scope check (bin/prawduct-hook ~L787-812) but
+  lib/briefing._check_previous_session_gates (~L906-934) does not, so the session-start advisory
+  can report a stale verify-resolutions record as satisfying. Still stage: ready.
+
+  Shipped 2026-06-10 on feature/gate-hardening (chunk 01, commit 04f571a): shared session
+  Critic-freshness gate extracted, advisory gains the scope check. Gate-hardening bundle, delivered
+  and Critic-approved this session.
+
+- **[STH-8M3V]** Atomic writes for .prawduct state files + guard unguarded hot-path I/O in cmd_clear
+  `effort: S · impact: M · area: stop-hook · source: builder · added: 2026-06-09 · status: shipped · stage: ready · related: STH-6Q9D, ADV-9K2T, STH-9T4F · refs: bin/prawduct-hook, lib/advisory_store.py, lib/gitstate.py, lib/briefing.py · closed-by: feature/gate-hardening ch.02 (cd644be) · reviewed: 2026-06-10`
+
+  From the 2026-06-09 framework review. Only .test-evidence.json gets tmp + os.replace;
+  .advisories.json (lib/advisory_store.py), .work-model-index.json, .session-start,
+  .session-git-baseline, and .session-handoff.md are plain write_text — two concurrent sessions on
+  the same repo (worktrees) can tear them. Readers fail open, so blast radius is a misfired gate,
+  not a crash — still worth one shared atomic_write_text helper. Same pass: three unguarded I/O
+  sites in cmd_clear (session-file unlink loop, .session-start write, baseline write) can traceback
+  the SessionStart hook on an OSError, unlike the meticulously best-effort code around them;
+  gitstate's _get_session_changed_files also lacks the (UnicodeDecodeError, OSError) guard its
+  siblings have. (builder)
+
+  Groom 2026-06-10 (audit): the unatomic set confirmed — .session-start + .session-git-baseline
+  (bin/prawduct-hook ~L468, 563), .session-handoff.md (lib/briefing.py ~L868), .advisories.json
+  (lib/advisory_store.py ~L333), and .gates-waived. One shared atomic_write_text helper covers all.
+  Still stage: ready.
+
+  Shipped 2026-06-10 on feature/gate-hardening (chunk 02, commit cd644be): atomic .prawduct state
+  writes via shared helper + cmd_clear OSError resilience. Two out-of-scope sites spun off as
+  STH-9T4F. Gate-hardening bundle, delivered and Critic-approved this session.
+
 - **[CRT-2N7V]** /prawduct:critic explicit mode argument not honored — mode_chosen_by records inference rationale instead of explicit-args
-  `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-3M8Q, CRT-7B4M, CRT-6J4P · refs: skills/critic/SKILL.md`
+  `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: shipped · stage: ready · related: CRT-3M8Q, CRT-7B4M, CRT-6J4P, CRT-9L2F · refs: skills/critic/SKILL.md · closed-by: feature/gate-hardening ch.03 (b5f0c2c) · reviewed: 2026-06-10`
 
   Observed 2026-06-10 on feature/do-next chunk 01: invoked the skill with args "chunk" but the
   forked Critic ran rule-1b verify-resolutions and recorded mode_chosen_by as the verbatim inference
@@ -487,18 +533,10 @@
   v2.0-era, closed-by #58), which fixed the same Skill-tool-args-don't-thread-to-$ARGUMENTS gap —
   verify whether that fix covers explicit args or only the plan-field override. (builder)
 
-- **[CRT-6J4P]** infer-critic-mode rule-1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
-  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V · refs: lib/critic_mode.py, skills/critic/SKILL.md`
-
-  Observed 2026-06-10: on a brand-new branch/plan (feature/do-next, first chunk), inference picked
-  verify-resolutions extending the PREVIOUS released bundle's cumulative (3c4b627,
-  changelog-lifecycle v2.1.1) instead of chunk mode. Commit-coverage keeps the record sound, but
-  cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
-  active plan scope. (reflection)
-
-## Promoted
-
-## Archive
+  Shipped 2026-06-10 on feature/gate-hardening (chunk 03, commit b5f0c2c): explicit mode arg now
+  forwarded to infer-critic-mode; the skill never self-parses $ARGUMENTS. Post-release end-to-end
+  verification tracked as CRT-9L2F. Gate-hardening bundle, delivered and Critic-approved this
+  session.
 
 - **[CRT-8W3F]** PR-gate ledger fallback accepts an arbitrarily old cumulative — no freshness/session check
   `effort: S · impact: M · area: governance/gates · source: critic · added: 2026-06-10 · status: shipped · stage: ready · related: CRT-4J8W, CRT-7M2D · refs: lib/gates.py (_ledger_fallback_record ~L1094-1121) · closed-by: feature/do-next ch.01 (59258bd) · reviewed: 2026-06-10`
