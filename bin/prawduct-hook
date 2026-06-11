@@ -780,40 +780,24 @@ def cmd_stop(project_dir: Path) -> int:
                         trivial_block_reason = rationale_error
 
     critic_would_block = False
-    # v1.5 Chunk 02: when the fresh, schema-valid findings file is in
-    # verify-resolutions mode, the gate must also confirm that the current
-    # chunk diff is a subset of the verify pass's declared scope. Out-of-
-    # scope means the builder added work after the verify pass — the
-    # findings are stale relative to the current diff. The reason string is
-    # surfaced verbatim in the blocker so the builder knows which files
+    # STH-4F7C: freshness (STH-6B4R strict-`>` whole-second compare), schema
+    # validation, and the v1.5 Chunk 02 verify-resolutions scope subset check
+    # all live in the shared lib gate — one source of truth with the
+    # session-start advisory (briefing._check_previous_session_gates). A
+    # non-empty reason means a fresh, valid verify-resolutions record whose
+    # declared scope the chunk diff has outgrown; it is surfaced verbatim in
+    # the dedicated blocker variant below so the builder knows which files
     # widened the scope.
     verify_resolutions_block_reason = ""
     if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
         critic_would_block = True
-        critic_findings = prawduct_dir / ".critic-findings.json"
-        session_start_file = prawduct_dir / ".session-start"
-        if critic_findings.is_file() and session_start_file.is_file():
-            try:
-                session_start = session_start_file.read_text().strip()
-                # STH-6B4R: identical-precision compare — findings_mtime is
-                # formatted to the same whole-second %Y-%m-%dT%H:%M:%SZ shape
-                # `.session-start` is written in, so this is order-preserving
-                # lexicographic with no format mismatch. Tie rule (mirrors the
-                # cmd_clear gate above): findings_mtime == session_start is NOT
-                # fresh — the strict `>` rejects a same-whole-second tie.
-                findings_mtime = datetime.fromtimestamp(
-                    critic_findings.stat().st_mtime, tz=timezone.utc
-                ).strftime("%Y-%m-%dT%H:%M:%SZ")
-                if findings_mtime > session_start and _gates().validate_critic_findings(critic_findings):
-                    in_scope, scope_reason = _gates()._verify_resolutions_gate_check(
-                        prawduct_dir, project_dir, critic_findings
-                    )
-                    if in_scope:
-                        critic_would_block = False
-                    else:
-                        verify_resolutions_block_reason = scope_reason
-            except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-                pass
+        try:
+            satisfied, verify_resolutions_block_reason = (
+                _gates().critic_findings_satisfy_session_gate(prawduct_dir, project_dir)
+            )
+            critic_would_block = not satisfied
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            pass
 
     if critic_would_block:
         if "critic" in waivers:

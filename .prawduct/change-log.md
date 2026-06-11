@@ -3,6 +3,33 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-10: shared session Critic gate — extract diverged freshness check to lib/gates.py (STH-4F7C)
+
+<!-- prawduct: chunks=01 | type=fix | scope=gate-hardening -->
+
+**Why:** The mtime-vs-session-start Critic-findings freshness check was
+duplicated nearly verbatim between `cmd_stop`'s blocking gate
+(`bin/prawduct-hook`) and the session-start advisory
+(`lib/briefing.py::_check_previous_session_gates`) — and the copies had
+already diverged: cmd_stop gained the v1.5 verify-resolutions scope check,
+the advisory did not, so the session-start advisory reported a fresh
+verify-resolutions record as satisfying even when the session diff had
+outgrown its declared scope. Unlike the hook's parity-pinned inline mirrors,
+this pair had no parity test and no import-light rationale (the advisory copy
+already lives in `lib/`).
+
+**What:** (1) One shared `gates.critic_findings_satisfy_session_gate`
+(freshness with the STH-6B4R strict-`>` whole-second compare, schema
+validation, verify-resolutions scope subset) — both consumers delegate; the
+returned scope reason preserves cmd_stop's two distinct blocker variants.
+(2) The advisory now warns "Critic review stale — verify-resolutions scope
+exceeded: …" on the case it previously passed (the live gap). (3) Tightened
+fail-closed: an empty `.session-start` marker now rejects (the old inline
+copies compared against `""` and failed open), matching CRT-8W3F's stance.
+(4) `tests/test_session_critic_gate.py`: truth-table unit tests, the advisory
+regression test, and a source-level guard that neither former host re-grows
+an inline freshness computation.
+
 ## 2026-06-10: learnings.md compaction + size nudge (MET-6W3J)
 
 <!-- prawduct: chunks=03 | type=fix | release=v2.1.2 | status=shipped | scope=do-next -->
