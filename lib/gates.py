@@ -14,9 +14,10 @@ gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 ``_gates()``. ``_has_active_build_plan_file`` and ``_is_trivial_fileset_eligible``
 were reassigned here (they are gate logic, lib-clean) from the briefing region.
 
-Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs`` and
-``core`` (``read_bool_yaml_key`` / ``resolve_build_plan_path`` — canonical twins
-of the hook's parity-pinned inline mirrors), plus the stdlib — the DAG node
+Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
+(build-plan Status parsing, including ``_count_build_plan_chunks``) and ``core``
+(``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
+mirror), plus the stdlib — the DAG node
 ``gitstate``/``coverage``/``buildplan_refs`` ← ``gates``.
 """
 
@@ -30,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import buildplan_refs, coverage, gitstate
-from .core import read_bool_yaml_key, resolve_build_plan_path
+from .core import read_bool_yaml_key
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -691,49 +692,6 @@ def critic_findings_satisfy_session_gate(
         return False, ""
 
 
-def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
-    """Count chunks in build-plan.md's Status section.
-
-    Returns ``(total, complete)``: total chunks declared, and how many are
-    marked ``[x]``. Returns ``(0, 0)`` if the plan is missing, has no Status
-    section, or has no chunk items. Mirrors the parsing rules in
-    ``_parse_build_plan_status`` (skip HTML comments; exit on next ``## ``).
-    """
-    plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
-        return 0, 0
-    try:
-        content = plan_path.read_text()
-        in_status = False
-        in_comment = False
-        total = 0
-        complete = 0
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped == "## Status":
-                in_status = True
-                continue
-            if not in_status:
-                continue
-            if stripped.startswith("## ") and stripped != "## Status":
-                break
-            if "<!--" in stripped:
-                in_comment = True
-            if "-->" in stripped:
-                in_comment = False
-                continue
-            if in_comment:
-                continue
-            if stripped.startswith("- [ ]"):
-                total += 1
-            elif stripped.startswith("- [x]") or stripped.startswith("- [X]"):
-                total += 1
-                complete += 1
-        return total, complete
-    except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-        return 0, 0
-
-
 def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
     """Check whether the latest Critic findings satisfy end-of-cycle synthesis.
 
@@ -761,7 +719,7 @@ def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
     blocker has cleared (i.e. findings exist and ``validate_critic_findings``
     returned True). Defensive checks here keep the helper standalone-safe.
     """
-    total, complete = _count_build_plan_chunks(prawduct_dir)
+    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
     if total == 0:
         return True, ""
     if total == 1:

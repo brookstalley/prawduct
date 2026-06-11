@@ -500,6 +500,10 @@ views_enabled: true
 # in v2.1.3 (#92, same day), regen-views flipped its ## Status via the
 # scope=gate-hardening tags and the pointer is cleared — no release-pending
 # plans remain. The build-plan file is retained as a historical artifact.
+# 2026-06-10: pointed at the in-progress critic-mode-consolidation plan
+# (STH-2K8R + BLD-6Q1N, closes CRT-3D9K; branch feature/critic-mode-consolidation).
+
+active_build_plan: artifacts/build-plan-critic-mode-consolidation.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

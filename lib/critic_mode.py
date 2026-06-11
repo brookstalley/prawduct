@@ -51,11 +51,14 @@ cumulative would undo that. The guard preserves the spec's intent (run
 cumulative when about to PR) without the cost.
 
 Pure-ish: takes ``project_dir``, reads files under it, runs ``git``
-subprocesses against it. Deterministic given fixed git state. Imports
-only from the stdlib + ``lib.core`` (the build-plan resolver) — no
-dependency on ``bin/prawduct-hook``; its metadata/build-plan helpers are
-intentionally re-implemented here to keep the module lightweight and
-importable from the slash-command shim.
+subprocesses against it. Deterministic given fixed git state. Imports only
+from the stdlib + light lib siblings (``core``, ``coverage``, ``gitstate``,
+``buildplan_refs``) — never ``bin/prawduct-hook``, and never ``lib.gates``
+(keeping gates out of this module's import graph is why the chain-anchor
+helper below is a deliberate, test-pinned mirror rather than an import).
+The metadata/build-plan helpers once re-implemented here moved to their
+canonical homes in ``gitstate``/``buildplan_refs`` (STH-2K8R); this module
+consumes them.
 """
 
 from __future__ import annotations
@@ -65,6 +68,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from . import buildplan_refs, gitstate
 from .core import resolve_build_plan_path, read_bool_yaml_key
 from .coverage import _resolve_base_branch
 
@@ -103,21 +107,6 @@ _BUILD_PLAN_CRITIC_MODE_RE = re.compile(
 # Capital-C + digits matches the "Chunk NN" commit convention without
 # false-matching prose like "10-chunk plan" (CRT-7B4M).
 _CHUNK_COMMIT_RE = re.compile(r"Chunk\s+(\d+)")
-
-# Mirrors ``_METADATA_PREFIXES`` in ``bin/prawduct-hook``. Kept in sync
-# manually — duplication is acceptable for this small set; extracting to
-# ``lib.core`` would expand core's surface for one consumer.
-#
-# Plugin-only metadata: product-owned state and the committed install
-# reference. The file-sync-era entries (``.claude/skills/`` for synced
-# framework skills, ``tools/product-hook``) are intentionally absent — post
-# v2.0.x a plugin repo never carries them, and a product's *own* skill under
-# ``.claude/skills/`` is product code that must be gated, not excused.
-_METADATA_PREFIXES = (
-    ".prawduct/",
-    ".claude/settings.json",
-)
-
 
 def infer_mode(
     project_dir: Path | str,
@@ -160,13 +149,13 @@ def infer_mode(
     # and "first unchecked" is always Chunk 01, which would pin every chunk's
     # mode to Chunk 01's declaration. When that's the case, derive progress from
     # git instead (CRT-7B4M); otherwise use the checkboxes.
-    total, checkbox_complete = _count_build_plan_chunks(prawduct_dir)
+    total, checkbox_complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
     git_progress = _git_aware_progress(project_dir, prawduct_dir, total)
     if git_progress is not None:
         complete, current_chunk_id = git_progress
     else:
         complete = checkbox_complete
-        current_chunk_id = _current_chunk_id_from_status(prawduct_dir)
+        current_chunk_id = buildplan_refs._current_chunk_id_from_status(prawduct_dir)
 
     # Plan-level override: the CURRENT chunk may declare a ``**Critic mode:**``
     # field. Honor it here (above inference, below explicit args) so a
@@ -277,8 +266,10 @@ def _rule_verify_resolutions_fires(
 def _chain_extendable_anchor(data: dict) -> str | None:
     """Return the cumulative anchor a verify pass over ``data`` would extend.
 
-    Mirrors ``lib.gates._chain_anchor`` (CRT-4J8W) — kept in lockstep like
-    the other hook/gates mirrors in this module. Chain-extendable: a
+    Mirrors ``lib.gates._chain_anchor`` (CRT-4J8W) — the one DELIBERATE
+    mirror left in this module (importing ``gates`` here would widen the
+    slash-command shim's import surface), pinned by
+    ``TestChainAnchorParity`` rather than by comment. Chain-extendable: a
     ``cumulative``-mode record (anchor = its own ``commit_reviewed``) or a
     ``verify-resolutions``-mode record carrying a valid
     ``extends_cumulative`` (multi-link propagation). ``None`` otherwise.
@@ -339,7 +330,7 @@ def _rule_postfix_chain_fires(prawduct_dir: Path, project_dir: Path) -> str:
         return ""
     delta = {
         f for f in _committed_files_since(project_dir, commit_reviewed)
-        if not _is_metadata_path(f)
+        if not gitstate._is_metadata_path(f)
     }
     if not any(not f.endswith(".md") for f in delta):
         return ""
@@ -377,7 +368,7 @@ def _rule_cumulative_fires(
     # with an extends_cumulative anchor — CRT-4J8W). Without the chain arm,
     # no-args /prawduct:critic right after a successful chain pass would
     # recommend a pointless full cumulative.
-    head_sha = _git_head_sha(project_dir)
+    head_sha = gitstate._git_head_sha(project_dir)
     findings_path = prawduct_dir / ".critic-findings.json"
     if head_sha and findings_path.is_file():
         try:
@@ -434,11 +425,6 @@ def _rule_final_fires(project_dir: Path, total: int, complete: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _is_metadata_path(filepath: str) -> bool:
-    """Mirrors ``bin/prawduct-hook``'s ``_is_metadata_path``."""
-    return any(filepath.startswith(p) for p in _METADATA_PREFIXES)
-
-
 def _get_uncommitted_code_files(project_dir: Path) -> set[str]:
     """Return uncommitted-change file paths (vs HEAD), minus metadata.
 
@@ -447,7 +433,10 @@ def _get_uncommitted_code_files(project_dir: Path) -> set[str]:
     ``--untracked-files=all`` so a new directory expands to per-file
     entries rather than collapsing to ``?? subdir/`` (the default
     ``--untracked-files=normal`` undercounts new directories — caught
-    by ``test_wins_for_no_plan_medium_plus_work``).
+    by ``test_wins_for_no_plan_medium_plus_work``). The ``-uall`` flag is
+    why this keeps its own ``git status`` call instead of
+    ``gitstate.git_status_output``; line parsing (quoted paths, renames)
+    is ``gitstate.parse_porcelain_line``.
     """
     proc = subprocess.run(
         ["git", "status", "--porcelain", "--untracked-files=all"],
@@ -460,16 +449,11 @@ def _get_uncommitted_code_files(project_dir: Path) -> set[str]:
         return set()
     files: set[str] = set()
     for line in proc.stdout.splitlines():
-        if len(line) < 4:
+        parsed = gitstate.parse_porcelain_line(line)
+        if parsed is None:
             continue
-        path = line[3:].strip()
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1].strip()
-        # Strip optional surrounding quotes (porcelain quotes paths
-        # containing special chars).
-        if path.startswith('"') and path.endswith('"'):
-            path = path[1:-1]
-        if path and not _is_metadata_path(path):
+        path = parsed[2]
+        if not gitstate._is_metadata_path(path):
             files.add(path)
     return files
 
@@ -517,20 +501,6 @@ def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
         return -1
 
 
-def _git_head_sha(project_dir: Path) -> str:
-    """``git rev-parse HEAD`` or ``""`` on failure."""
-    proc = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if proc.returncode != 0:
-        return ""
-    return proc.stdout.strip()
-
-
 def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
     """Normalized chunk ids referenced in commit subjects on ``base..HEAD``.
 
@@ -553,50 +523,6 @@ def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
     for subject in proc.stdout.splitlines():
         for m in _CHUNK_COMMIT_RE.finditer(subject):
             ids.add(m.group(1).lstrip("0") or "0")
-    return ids
-
-
-def _chunk_ids_in_status_order(prawduct_dir: Path) -> list[str]:
-    """Raw chunk ids (e.g. ``"01"``) in build-plan Status order, both states.
-
-    Parses the ``## Status`` section like :func:`_count_build_plan_chunks` but
-    returns the ordered ``Chunk <id>:`` ids (for ``- [ ]`` and ``- [x]`` alike),
-    so a git-derived progress count can map to the right current chunk.
-    """
-    plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
-        return []
-    try:
-        content = plan_path.read_text()
-    except OSError:
-        return []
-    ids: list[str] = []
-    in_status = False
-    in_comment = False
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped == "## Status":
-            in_status = True
-            continue
-        if not in_status:
-            continue
-        if stripped.startswith("## ") and stripped != "## Status":
-            break
-        if "<!--" in stripped:
-            in_comment = True
-        if "-->" in stripped:
-            in_comment = False
-            continue
-        if in_comment:
-            continue
-        for marker in ("- [ ]", "- [x]", "- [X]"):
-            if stripped.startswith(marker):
-                rest = stripped[len(marker):].strip()
-                if rest.startswith("Chunk "):
-                    cid = rest[len("Chunk "):].split(":", 1)[0].strip()
-                    if cid:
-                        ids.append(cid)
-                break
     return ids
 
 
@@ -628,58 +554,13 @@ def _git_aware_progress(
     committed = _committed_chunk_ids(project_dir, base)
     if not committed:
         return None
-    status_ids = _chunk_ids_in_status_order(prawduct_dir)
+    status_ids = buildplan_refs._chunk_ids_in_status_order(prawduct_dir)
     complete = sum(1 for cid in status_ids if (cid.lstrip("0") or "0") in committed)
     current = next(
         (cid for cid in status_ids if (cid.lstrip("0") or "0") not in committed),
         None,
     )
     return complete, current
-
-
-def _current_chunk_id_from_status(prawduct_dir: Path) -> str | None:
-    """Return the chunk id of the first ``- [ ]`` item in the build-plan
-    Status section, e.g. ``"02"`` for ``- [ ] Chunk 02: widget``.
-
-    Mirrors ``bin/prawduct-hook``'s ``_current_chunk_id_from_status`` (via
-    ``_parse_build_plan_status``) so the inference helper, the stop hook,
-    and the Critic helper agree on "which chunk is current." Returns
-    ``None`` when there is no plan, no Status section, all chunks are
-    complete, or the current item isn't in the ``Chunk NN:`` form.
-    """
-    plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
-        return None
-    try:
-        content = plan_path.read_text()
-    except OSError:
-        return None
-
-    in_status = False
-    in_comment = False
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped == "## Status":
-            in_status = True
-            continue
-        if not in_status:
-            continue
-        if stripped.startswith("## ") and stripped != "## Status":
-            break
-        if "<!--" in stripped:
-            in_comment = True
-        if "-->" in stripped:
-            in_comment = False
-            continue
-        if in_comment:
-            continue
-        if stripped.startswith("- [ ]"):
-            current = stripped[5:].strip()
-            if not current.startswith("Chunk "):
-                return None
-            chunk_id = current[len("Chunk "):].split(":", 1)[0].strip()
-            return chunk_id or None
-    return None
 
 
 def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | None:
@@ -694,9 +575,9 @@ def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | No
 
     ``chunk_id`` is resolved by the caller — git-aware on a views-enabled
     feature branch (CRT-7B4M), otherwise the first ``- [ ]`` chunk via
-    :func:`_current_chunk_id_from_status`. Section discovery mirrors
-    ``bin/prawduct-hook``'s ``_parse_build_plan_chunk_type``: name-anchored on
-    ``### Chunk <id>:`` with leading-zero tolerance, fenced code blocks
+    ``buildplan_refs._current_chunk_id_from_status``. Section discovery is
+    the shared ``buildplan_refs._chunk_section_lines`` walker: name-anchored
+    on ``### Chunk <id>:`` with leading-zero tolerance, fenced code blocks
     skipped, stop at the next sibling chunk or top-level section.
     """
     if chunk_id is None:
@@ -710,75 +591,10 @@ def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | No
     except OSError:
         return None
 
-    target = chunk_id.lstrip("0") or "0"
-
-    in_section = False
-    in_fence = False
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("### Chunk "):
-            rest = stripped[len("### Chunk "):]
-            head = rest.split(":", 1)[0].strip()
-            head_norm = head.lstrip("0") or "0"
-            if in_section:
-                break  # hit sibling chunk
-            if head_norm == target:
-                in_section = True
-            continue
-        if not in_section:
-            continue
-        if stripped.startswith("## "):
-            break
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+    _found, section_lines = buildplan_refs._chunk_section_lines(content, chunk_id)
+    for _line_num, line in section_lines:
         m = _BUILD_PLAN_CRITIC_MODE_RE.match(line)
         if m:
             token = m.group(1)
             return token if token in _VALID_ARG_MODES else None
     return None
-
-
-def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
-    """Count chunks in the active build plan's Status section.
-
-    Mirrors ``bin/prawduct-hook``'s ``_count_build_plan_chunks``. Resolves the
-    plan via the ``active_build_plan:`` pointer (falls back to
-    ``artifacts/build-plan.md``), so scope-named plans are counted too.
-    Returns ``(total, complete)``; ``(0, 0)`` if plan/Status absent.
-    """
-    plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
-        return 0, 0
-    try:
-        content = plan_path.read_text()
-    except OSError:
-        return 0, 0
-    in_status = False
-    in_comment = False
-    total = 0
-    complete = 0
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped == "## Status":
-            in_status = True
-            continue
-        if not in_status:
-            continue
-        if stripped.startswith("## ") and stripped != "## Status":
-            break
-        if "<!--" in stripped:
-            in_comment = True
-        if "-->" in stripped:
-            in_comment = False
-            continue
-        if in_comment:
-            continue
-        if stripped.startswith("- [ ]"):
-            total += 1
-        elif stripped.startswith("- [x]") or stripped.startswith("- [X]"):
-            total += 1
-            complete += 1
-    return total, complete
