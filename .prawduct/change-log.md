@@ -5,7 +5,7 @@
 
 ## 2026-06-10: /prawduct:critic explicit mode argument — forward to the helper, never self-parse (CRT-2N7V)
 
-<!-- prawduct: chunks=03 | type=fix | scope=gate-hardening -->
+<!-- prawduct: chunks=03 | type=fix | scope=gate-hardening | status=merged -->
 
 **Why:** Invoking the Critic skill via the Skill tool with an explicit mode
 (observed 2026-06-10: args `chunk`) ran inference instead — `mode_chosen_by`
@@ -50,7 +50,7 @@ cases.
 
 ## 2026-06-10: atomic .prawduct state writes + cmd_clear OSError resilience (STH-8M3V)
 
-<!-- prawduct: chunks=02 | type=fix | scope=gate-hardening -->
+<!-- prawduct: chunks=02 | type=fix | scope=gate-hardening | status=merged -->
 
 **Why:** Only `.test-evidence.json` got the tmp+`os.replace` treatment; the
 other session state files (`.session-start`, `.session-git-baseline`,
@@ -75,7 +75,7 @@ for backlog: two further non-atomic sites (`lib/critic_marker.py`,
 
 ## 2026-06-10: shared session Critic gate — extract diverged freshness check to lib/gates.py (STH-4F7C)
 
-<!-- prawduct: chunks=01 | type=fix | scope=gate-hardening -->
+<!-- prawduct: chunks=01 | type=fix | scope=gate-hardening | status=merged -->
 
 **Why:** The mtime-vs-session-start Critic-findings freshness check was
 duplicated nearly verbatim between `cmd_stop`'s blocking gate
