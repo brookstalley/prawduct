@@ -1,7 +1,5 @@
 # Build Governance (The Critic)
 
-<!-- Role: Independent quality reviewer. NO test execution, NO builds. -->
-
 The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set. The stop hook enforces review before session end when code was modified.
 
 ## When You Are Activated
@@ -105,7 +103,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 ### 7. The Design Is Sound
 - **Encapsulation**: Modules expose only what consumers need. Internal implementation details don't leak through public interfaces. State that should be private isn't accessible externally. → **WARNING** if boundaries are unclear or internals exposed.
 - **Coupling**: Changes in one module shouldn't force changes in unrelated modules. Watch for god objects/functions that concentrate too many responsibilities, and for modules that know too much about each other's internals. → **WARNING** if coupling is inappropriate.
-- **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** is a common variant: migration paths, fallbacks, or compatibility shims when there is no existing deployment to migrate. If nobody asked for backwards compatibility, it's unnecessary complexity → **WARNING**.
+- **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** is a common variant: migration paths, fallbacks, or compatibility shims with no existing deployment to migrate → **WARNING**.
 - **Deduplication**: Duplicated logic that should be extracted. Copy-paste patterns across files. Near-identical implementations that vary only in superficial ways. → **WARNING** for meaningful duplication.
 - **Idiomatic language usage**: Non-idiomatic code that ignores language best practices (e.g., `for i in range(len(items))` vs `for item in items`) → **WARNING**. Check `project-preferences.md` for declared conventions.
 - **Unmodeled state-based problems**: When correctness depends on multiple parts of the code agreeing which discrete condition the system is in (phase, mode, lifecycle stage, UI view, workflow step) but state is reconstructed from interdependent booleans / scattered order-of-events conditionals rather than a single-source-of-truth model. Mechanism (enum, class, reducer, schema, type) is implementation choice — flag absence of the *model*. **BLOCKING** when invalid combos are reachable, double-transitions possible, or persisted state can diverge. **WARNING** when 3+ interdependent state signals lack a SoT and transition logic spans multiple call sites. **NOTE** borderline (two signals, localized) — recommend backlog. Enumerate the conditions you observed.
@@ -139,7 +137,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed). For `final`/`cumulative`, also run `prawduct-hook classify-diff-risk` — its stdout verdict picks the dispatch tier (`chunk`/`verify-resolutions` always stay default-tier).
 
-2. **Dispatch** three parallel review subagents via the Agent tool — `model: fable` per call on `escalate`, else `model: opus` (`reviewer-model-ab-2026-06-10.md`); record what ran in the findings `model` field. Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
+2. **Dispatch** three parallel review subagents via the Agent tool on the verdict's **tier chain** (highest first; `reviewer-model-ab-2026-06-10.md`): `escalate` → `model: fable`, then `opus`; `standard` → `opus`, then `sonnet`. Use the first the harness accepts; **fall back** on a **withdrawn**/unrecognized model or dispatch error. Record what ran in `model`. Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
 
    > "Critic review subagent (`<NAME>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. NO tests — code analysis only. Report using the Critic output format."
 

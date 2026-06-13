@@ -431,6 +431,22 @@
   launch-message delivery doesn't reach the Critic fork, escalate to a file-based mode request
   (invoker writes the requested mode to a .prawduct dotfile; helper reads + deletes it). (builder)
 
+- **[REL-5K8M]** Heavier-mechanism option for reviewer-model churn — single-source tier→model registry + drift check
+  `effort: M · impact: M · area: governance/release · source: builder · added: 2026-06-12 · status: open · stage: idea · refs: .prawduct/artifacts/build-plan-reviewer-model-fallback.md, documentation/research/open-6-model-tier-registry.md`
+
+  Deferred from reviewer-model-fallback (2026-06-12). The v2.1.5 fix handled model withdrawal (Fable
+  temporarily pulled) with prose-only ordered fallback chains — the user chose the lightest mechanism.
+  If model churn recurs or the prose-driven resolution proves error-prone, consider the heavier
+  mechanism that was considered and declined for proportionality: a single source-of-truth tier→model
+  registry (one place to edit on a lineup change) plus a `/prawduct:doctor` or `/prawduct:janitor`
+  drift check that flags when a named alias in the registry is past a known retirement date.
+
+  Honest constraint recorded in `build-plan-reviewer-model-fallback.md`: a Python hook cannot see the
+  harness's live valid-model set, so any check is refresh-cadence/advisory-based, not an automated
+  availability probe. Related: `documentation/research/open-6-model-tier-registry.md` is a separate
+  surface (the Critic classifying a *product's* models), not this reviewer-dispatch registry. Type:
+  enhancement, low priority. (builder)
+
 ## Promoted
 
 ## Archive

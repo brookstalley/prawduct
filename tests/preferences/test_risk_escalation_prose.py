@@ -47,11 +47,22 @@ def test_dispatch_surface_consults_the_classifier(path: Path) -> None:
     ids=["critic_protocol", "pr_skill"],
 )
 def test_escalation_tier_declared(path: Path) -> None:
+    # Two-part contract (reviewer-model-fallback, 2026-06-12): the escalate
+    # surface must name a depth tier distinct from the flat default AND document
+    # a fallback for when that tier is withdrawn. Model lineups change (Fable was
+    # pulled) — a pinned `model: fable` with no fallback breaks the escalate
+    # dispatch, or silently mis-tiers it to the session model.
     content = path.read_text()
     assert "model: fable" in content, (
-        f"{path.relative_to(REPO_ROOT)} does not declare the escalation tier "
-        "(`model: fable`) — on `escalate` the dispatch would have no tier to "
-        "switch to."
+        f"{path.relative_to(REPO_ROOT)} does not declare the depth (escalation) "
+        "tier (`model: fable`) — on `escalate` the dispatch would have no higher "
+        "tier to switch to."
+    )
+    assert "withdrawn" in content and "fall back" in content, (
+        f"{path.relative_to(REPO_ROOT)} does not document the withdrawn-model "
+        "fallback for the escalation tier — a tier pinned with no fallback breaks "
+        "(or silently mis-tiers) the dispatch when the model lineup changes "
+        "(reviewer-model-fallback)."
     )
 
 
