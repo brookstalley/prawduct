@@ -71,7 +71,7 @@ evolved to also require a documented fallback (not weakened).
 
 ## Status
 
-- [ ] Chunk 01: Fallback-aware tier chains across the three dispatch surfaces + test
+- [x] Chunk 01: Fallback-aware tier chains across the three dispatch surfaces + test
 
 Context: single work cycle, 2026-06-12, branch `fix/reviewer-model-fallback`.
 `views_enabled: true` — the checkbox flips at release via the

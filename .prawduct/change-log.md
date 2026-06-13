@@ -5,7 +5,7 @@
 
 ## 2026-06-12: Harden reviewer-model dispatch against model withdrawal — ordered tier chains with graceful fallback (reviewer-model-fallback)
 
-<!-- prawduct: chunks=01 | type=fix | scope=reviewer-model-fallback -->
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.5 | status=shipped | scope=reviewer-model-fallback -->
 
 **Why:** Reviewer dispatch pinned concrete model aliases in skill prose (`escalate`
 → `model: fable`, `standard` → `model: opus`). Fable was temporarily withdrawn
