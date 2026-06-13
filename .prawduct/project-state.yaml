@@ -506,6 +506,10 @@ views_enabled: true
 # its ## Status via the scope=critic-mode-consolidation tag and the pointer is
 # cleared — no release-pending plans remain. The build-plan file is retained as a
 # historical artifact.
+# 2026-06-12: pointed at the in-progress reviewer-model-fallback plan (harden
+# reviewer dispatch against model withdrawal — Fable temporarily pulled; branch
+# fix/reviewer-model-fallback).
+active_build_plan: artifacts/build-plan-reviewer-model-fallback.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

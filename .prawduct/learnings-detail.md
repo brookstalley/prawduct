@@ -6,6 +6,14 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When prose picks which model a reviewer/subagent runs on, express it as an ordered fallback chain resolved at dispatch — never a pinned alias
+
+**Pattern**: reviewer-model-fallback (2026-06-12). Reviewer dispatch pinned `model: fable` (escalate) / `model: opus` (standard) as literals in three skill-prose surfaces. Fable was temporarily withdrawn; the pin would break escalate-tier review — or worse, silently run it on the *session* model, because Claude Code resolves a blocked/unavailable subagent `model:` override to the inherited/default model rather than erroring (verified via `claude-code-guide`, code.claude.com/docs — not recall).
+
+**Fix**: ordered tier chains + a withdrawn-model resolution rule across all three surfaces (`escalate` fable→opus, `standard` opus→sonnet): "use the first the harness lists as valid; fall back on a withdrawn/unrecognized model or dispatch error; record what ran." Per-call and frontmatter `model:` take a single value (no fallback syntax), so resolution is prose-driven by the runtime dispatching agent — the only actor that can see the live valid-model set (a Python hook can't, so an automated availability probe isn't feasible; the heavier registry+drift-check option is deferred as REL-5K8M).
+
+**Two reusable sub-lessons**: (1) a token-budget guardrail at its ceiling forces trim-vs-bump on any necessary addition — remove genuine redundancy (cross-file duplicate comments, self-restating clauses), don't bump the budget or drop a check; the guardrail correctly makes new content pay for itself. (2) Verifying harness/model behavior beats recalling it: the silent-substitution-to-session-model detail (which I would not have recalled correctly) is exactly what turned the rule from "pass fable and hope" into "pick a confirmed-valid model, then fall back explicitly."
+
 ## Artifacts drift silently during sustained building
 
 **Pattern**: Discodon built 40+ chunks over multiple sessions. Artifacts written during planning (test-specifications, architecture, data-model) were never updated. Test-specifications says "1056 tests" when the actual count is 1318+. Coverage matrix is missing 15+ test files. Architecture may not reflect scheduling, tool framework, or prompt architecture features.

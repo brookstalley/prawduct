@@ -4,6 +4,10 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ---
 
+## When prose picks which model a reviewer/subagent runs on, express it as an ordered fallback chain resolved at dispatch — never a pinned alias
+
+When governance prose selects a model for a reviewer or subagent, write an ordered tier chain with a resolution rule ("use the first the harness lists as valid; fall back on a withdrawn/unrecognized model or dispatch error"), not a single pinned `model: X` — model lineups churn (Fable was pulled mid-cycle), and a pin either breaks when X is withdrawn or silently resolves to the *session* model (wrong tier), because Claude Code falls a blocked/unavailable subagent `model:` override back to the inherited/default model rather than erroring. Per-call and frontmatter `model:` take a single value (no built-in fallback syntax), so the chain is resolved by the runtime dispatching agent — the only actor that can see the live valid-model set (a Python hook can't). Verify harness/model behavior via `claude-code-guide`, don't recall it. Relates to Reasoned Decisions (#4), Honest Confidence (#5), Living Documentation (#3), and [[backlog]] REL-5K8M (deferred heavier mechanism).
+
 ## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
 
 When creating a build plan, set the frontmatter `scope:` to a unique slug (matching the change-log entry's `scope=` tag) from the start — a `scope: null` plan is "legacy unfiltered" to regen-views, so EVERY `status=shipped` entry's chunk IDs flip its `## Status` checkboxes. Verify with `regen-views --check`. Relates to Coherent Artifacts (#13), [[new change-log entries on a feature branch are statusless]], and Validate Before Propagating (#15).
