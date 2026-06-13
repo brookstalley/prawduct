@@ -506,6 +506,12 @@ views_enabled: true
 # its ## Status via the scope=critic-mode-consolidation tag and the pointer is
 # cleared — no release-pending plans remain. The build-plan file is retained as a
 # historical artifact.
+# 2026-06-12: pointed at the in-progress reviewer-model-fallback plan (harden
+# reviewer dispatch against model withdrawal — Fable temporarily pulled; branch
+# fix/reviewer-model-fallback); reviewer-model-fallback SHIPPED in v2.1.5 (#94),
+# regen-views flipped its ## Status via the scope=reviewer-model-fallback tag and
+# the pointer is cleared — no release-pending plans remain. The build-plan file is
+# retained as a historical artifact.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -608,6 +614,9 @@ scope_rollups:
   review-proportionality:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.1.0"]
+  reviewer-model-fallback:
+    chunks: ["01"]
+    releases: ["v2.1.5"]
   reviewer-model-tiering:
     chunks: ["01", "02"]
     releases: ["v2.1.0"]

@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-12: Harden reviewer-model dispatch against model withdrawal — ordered tier chains with graceful fallback (reviewer-model-fallback)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.5 | status=shipped | scope=reviewer-model-fallback -->
+
+**Why:** Reviewer dispatch pinned concrete model aliases in skill prose (`escalate`
+→ `model: fable`, `standard` → `model: opus`). Fable was temporarily withdrawn
+(2026-06-12); a pinned `model: fable` with no fallback breaks every escalate-tier
+review when the harness no longer lists fable as a valid model — and a withdrawn
+subagent `model:` override does not fail loudly, it silently resolves to the
+*session* model (the wrong tier). The user asked to harden against model changes
+and chose the lightest mechanism (prose-only ordered fallbacks).
+
+**What:** All three dispatch surfaces now express ordered tier chains plus a
+withdrawn-model resolution rule — dispatch on the first chain model the harness
+lists as valid; if the preferred one is withdrawn/unrecognized or errors on
+dispatch, fall back to the next; record what actually ran. Chains: `escalate` →
+`fable` → `opus`; `standard` → `opus` → `sonnet` (evidence:
+`reviewer-model-ab-2026-06-10.md`). Canonical statement in
+`skills/critic/review-protocol.md` (terse, token-budget-capped); summary in
+`skills/critic/SKILL.md` step 6; self-contained copy (with the silent-substitution
+rationale) in `skills/pr/SKILL.md` step 3. The Critic-fork frontmatter
+(`model: opus`) is left as-is — already the fallback tier, not fable, and a single
+frontmatter value can't express a chain. Contract test
+`test_escalation_tier_declared` evolved to assert the two-part contract (depth tier
+named **and** withdrawn-model fallback documented) — strengthened, not weakened.
+`review-protocol.md` was at its `<3120`-token ceiling, so the new rule was offset
+by removing genuine redundancy (a top-of-file Role comment duplicating
+`SKILL.md`'s; a self-restating clause in the Simplification goal's backwards-compat
+bullet) — trim, not bump; no review check dropped. Heavier-mechanism option
+(single-source registry + drift check) considered and deferred as REL-5K8M. Harness
+behavior verified via claude-code-guide (2026-06-12, code.claude.com/docs): per-call
+and frontmatter `model:` take a single value (no fallback syntax), so resolution is
+prose-driven by the runtime dispatching agent.
+
 ## 2026-06-10: Consolidate critic_mode's mirrored helpers onto buildplan_refs/gitstate + shared build-plan walkers (STH-2K8R + BLD-6Q1N)
 
 <!-- prawduct: chunks=01 | type=refactor | release=v2.1.4 | status=shipped | scope=critic-mode-consolidation -->

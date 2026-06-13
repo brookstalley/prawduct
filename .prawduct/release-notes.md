@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.1.5
+
+**Entry:** 2026-06-12: Harden reviewer-model dispatch against model withdrawal — ordered tier chains with graceful fallback (reviewer-model-fallback)
+
+**Chunks shipped:** 01
+
+**Scope:** reviewer-model-fallback
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.1.4
 
 **Entry:** 2026-06-10: Consolidate critic_mode's mirrored helpers onto buildplan_refs/gitstate + shared build-plan walkers (STH-2K8R + BLD-6Q1N)
