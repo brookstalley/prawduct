@@ -43,6 +43,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
+- **Cross-component message contract (when boundaries are crossed — IPC + consumer, per the Signals above):** when changed code consumes or produces messages across a process/component boundary (IPC, WebSocket/wire protocol, event streams, pub/sub), trace the *actual emitted signal sequence on the other side* — not just that the message type/shape matches. A consumer that blocks on a signal the producer never emits, or omits handling for a terminal/error signal the producer does emit → **BLOCKING**. Matching types (e.g. a TS interface ↔ a Python dataclass) is necessary but not sufficient; read both ends. This runs in `chunk` mode (Goal 5's contract-surface check is `final`-only and one-directional — downstream-consumer-impact — so it cannot catch a consumer that mismodels the producer).
 - Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
 - **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
 - For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → **NOTE**.
@@ -89,7 +90,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 ### 5. Decisions Were Deliberate
 - New external dependencies include rationale in dependency manifest → **WARNING** if missing.
 - Architectural patterns are captured in architecture artifact → **WARNING** if missing.
-- If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was consumer impact investigated? → **WARNING** if no evidence.
+- If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was **downstream consumer** impact investigated? → **WARNING** if no evidence. (The inverse — a consumer that mismodels the producer's actual emitted signals — is a correctness check under Goal 1, "Cross-component message contract.")
 - Major technology choices include alternatives considered → **WARNING** if missing.
 
 ### 6. The System Can Be Understood
