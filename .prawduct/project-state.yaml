@@ -34,6 +34,11 @@ distribution: plugin
 # preferred over the bare `develop` for a stable remote-tracking merge-base.
 base_branch: develop
 
+# Active build plan (`.prawduct/`-relative pointer read by resolve_build_plan_path).
+# This branch carries two scopes; the pointer tracks the in-flight feature
+# (upstream-bug-reporting). The backlog-ship-in-pr docs scope is complete.
+active_build_plan: artifacts/build-plan-upstream-bug-reporting.md
+
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================

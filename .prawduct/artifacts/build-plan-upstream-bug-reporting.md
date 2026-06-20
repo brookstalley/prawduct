@@ -121,10 +121,12 @@ Proves the architecture: **resolve → write-or-fallback**, the whole filing flo
   1. `tests/test_bug_inbox.py` covers: env set+valid → path; env set+stale →
      None; file set+valid → path; file set+stale/unwritable → None; neither set →
      None; and the `bug-inbox` subcommand's exit-0/1 contract. Skill + template
-     exist with the asserted sections. Full suite green.
-  2. `/prawduct:critic` (inference picks `chunk` — fast Goals 1-3 over the
-     resolver + skill) run and blocking findings resolved.
-  3. Committed and chunk marked `[x]` in Status.
+     exist. Full suite green; the `bug-inbox` CLI exercised live (configured /
+     inert / stale).
+  2. Committed. Review is **deferred to the branch's single cumulative Critic**
+     (Chunk 02) per the review-wall-clock priority — Chunk 02 builds directly on
+     this slice and the cumulative covers both. (`views_enabled`: the Status
+     checkbox flips at release, not on commit — chunk progress derives from git.)
 
 ### Chunk 02: Receiving advisory + discoverability
 
