@@ -32,4 +32,4 @@ Critic" has the mechanics; a block names its gate). Full guides on demand:
 `/prawduct:methodology` (index) · `/prawduct:discovery` · `/prawduct:planning` ·
 `/prawduct:building` · `/prawduct:reflection` · `/prawduct:critic` · `/prawduct:pr` ·
 `/prawduct:backlog` · `/prawduct:learnings` · `/prawduct:janitor` · `/prawduct:doctor` ·
-`/prawduct:report-bug` (file/triage a bug in prawduct itself — inert in plugin-only repos)
+`/prawduct:report-bug` (triage `incoming-bugs/` here — the receiving end; products use it to file prawduct bugs upstream)

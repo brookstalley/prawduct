@@ -447,6 +447,22 @@
   surface (the Critic classifying a *product's* models), not this reviewer-dispatch registry. Type:
   enhancement, low priority. (builder)
 
+- **[BLD-4K7P]** `verify-chunk-refs` over-matches inline-code/prose tokens in build-plan chunk sections, producing false "missing-ref" positives
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-20 · status: open · stage: ready · related: BLD-2R9X, BLD-8F2Q, BLD-5V8F · refs: bin/prawduct-hook (cmd_verify_chunk_refs / _parse_build_plan_chunk_refs)`
+
+  The Goal-2 ref-drift check (`cmd_verify_chunk_refs` / `_parse_build_plan_chunk_refs`) extracts
+  backticked paths from a chunk's section and asserts they exist on disk. It misparses tokens that
+  are NOT deliverables: env-var names (`PRAWDUCT_BUG_INBOX`), write-target templates with angle
+  brackets (`<inbox>/<kebab-slug>.md`), URLs (`https://...`), and intentionally-gitignored paths
+  (`.prawduct/.bug-inbox`). Surfaced during the upstream-bug-reporting cumulative review (HEAD
+  befbcb8) — 4 false missing-ref lines, all adjudicated NOT blocking by the Critic. Fix-shape:
+  tighten the extractor to skip non-path-shaped tokens (contains `<>` or `://`, or matches a
+  known-gitignored managed entry), so the `new`-prefix convention is only needed for genuinely
+  created files. Also a candidate learning: a ref-existence heuristic over backticked spans must
+  exclude placeholder/templated/gitignored tokens or it cries wolf on legitimate plans. Same
+  parser family as the shipped BLD-2R9X (glob metacharacters) and BLD-8F2Q (`path::symbol`); this
+  covers token classes those two fixes don't reach. (critic)
+
 ## Promoted
 
 ## Archive

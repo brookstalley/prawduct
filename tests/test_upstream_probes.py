@@ -58,11 +58,6 @@ def test_fires_with_reports(tmp_path):
     assert out[0].recommended_action == "/prawduct:backlog"
 
 
-def test_ignores_readme(tmp_path):
-    _inbox(tmp_path, ["README.md"])
-    assert up.probe_untriaged_upstream_reports(ProjectState({}), _cb(tmp_path)) == []
-
-
 def test_ignores_archived_reports(tmp_path):
     inbox = _inbox(tmp_path)
     archive = inbox / "archive"

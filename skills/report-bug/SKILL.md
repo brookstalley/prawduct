@@ -89,7 +89,8 @@ session-start advisory surfaces a count and points here. To triage:
 3. **Archive** the processed report: move it to `incoming-bugs/archive/`. The
    advisory counts only top-level `*.md`, so archiving clears each report from the
    nudge while keeping it locally for reference (git tracks neither — the drop-box
-   is gitignored; the backlog item is the record).
+   is gitignored; the backlog item is the record). `archive/` is reference-only —
+   prune it whenever it gets noisy; nothing depends on it.
 
 The advisory is **inert by absence**: a product repo has no `incoming-bugs/`, so
 it never fires there — only in a repo that actually receives reports.

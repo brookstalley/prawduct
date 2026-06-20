@@ -5,11 +5,11 @@ triage when downstream products have filed bug reports into this repo's
 gitignored ``incoming-bugs/`` drop-box and they have not yet been triaged into
 ``.prawduct/backlog.md`` (and archived).
 
-It is **inert by absence**: it reads ``<repo-root>/incoming-bugs/`` directly off
-the filesystem (the dir is gitignored, so the Codebase scan skips it). A product
-repo simply has no such directory, so the probe returns nothing there — the
-nudge only ever fires in a repo that actually receives reports (the prawduct
-checkout itself). No "is this the framework repo?" marker is needed.
+It is **inert by absence**: it checks ``<repo-root>/incoming-bugs/`` directly on
+the filesystem (not via the Codebase scan). A product repo has no such directory,
+so the probe returns nothing there — the nudge only ever fires in a repo that
+actually receives reports (the prawduct checkout itself). No "is this the
+framework repo?" marker is needed.
 
 Registered at the runtime composition root (``bin/prawduct-hook`` ``cmd_clear``),
 not at ``advisory_store`` import time, so the infrastructure stays
@@ -24,8 +24,6 @@ FEATURE = "report-bug"
 PROBE_VERSION = 1
 
 INBOX_DIRNAME = "incoming-bugs"
-# Non-report files a maintainer might keep alongside the reports.
-_NON_REPORT_NAMES = frozenset({"README.md"})
 
 
 def _report_count(codebase: Codebase) -> int:
@@ -34,10 +32,7 @@ def _report_count(codebase: Codebase) -> int:
         return 0
     # Non-recursive: triaged reports moved into incoming-bugs/archive/ are not
     # counted, so archiving a report clears it from the nudge.
-    return sum(
-        1 for p in inbox.glob("*.md")
-        if p.is_file() and p.name not in _NON_REPORT_NAMES
-    )
+    return sum(1 for p in inbox.glob("*.md") if p.is_file())
 
 
 def probe_untriaged_upstream_reports(state: ProjectState, codebase: Codebase):

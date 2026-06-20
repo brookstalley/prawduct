@@ -30,8 +30,9 @@ the skill and the CLAUDE.md "Reviewing product feedback" route. `.bug-inbox` is 
 managed `GITIGNORE_ENTRIES` entry (gitignored in every onboarded product) with
 its hook-side mirror kept in parity. A terse discoverability pointer was added to
 both session digests (full reaches products; slim reaches the framework repo).
-26 new tests (resolver matrix + subcommand exit-code contract + probe fire/inert
-+ digest pointer); both inert paths exercised live.
+New tests cover the resolver matrix, the `bug-inbox` subcommand exit-code
+contract, the probe fire/inert split, and the digest pointer; both inert paths
+exercised live.
 
 ## 2026-06-20: Archive a closed backlog item in the closing PR, not as a separate after-merge edit (backlog-ship-in-pr)
 
