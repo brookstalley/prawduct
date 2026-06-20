@@ -3,6 +3,29 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-20: Archive a closed backlog item in the closing PR, not as a separate after-merge edit (backlog-ship-in-pr)
+
+<!-- prawduct: chunks=01 | type=fix | scope=backlog-ship-in-pr -->
+
+**Why:** Guidance framed marking a backlog item `status=shipped` as a post-merge
+*reconciliation* step, so closing an item required a separate bookkeeping
+commit/PR after the feature merged — redundant review/PR churn. The D4 rule it
+rests on ("never *infer* status from a view — the builder makes the explicit
+call") constrains *how* the call is made, not *when*; nothing actually required
+waiting until after merge.
+
+**What:** The primary path is now "archive the item *on the branch that closes
+it*" (`status=shipped closed-by=<scope>`), so the archive rides in the feature's
+own PR and is **atomic with the merge** — an abandoned PR abandons the archive
+too, so the backlog can't drift. `skills/backlog/SKILL.md` gains a "When to mark
+shipped" rule and demotes "Reconcile shipped work" to the explicit fallback;
+`skills/critic/review-cycle.md`'s backlog-resolution NOTE now nudges archiving
+on-branch. Disambiguated: backlog `shipped` = work merged to the integration
+base (its single terminal state) vs. a change-log entry's `status=shipped` =
+released to consumers (`main`), which legitimately batches at the `develop→main`
+release and is untouched. `methodology/building.md` is left as-is — its
+chunk-close step already closes affected items on-branch before `/clear`.
+
 ## 2026-06-12: Harden reviewer-model dispatch against model withdrawal — ordered tier chains with graceful fallback (reviewer-model-fallback)
 
 <!-- prawduct: chunks=01 | type=fix | release=v2.1.5 | status=shipped | scope=reviewer-model-fallback -->
