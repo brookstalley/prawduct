@@ -87,9 +87,12 @@ tests so the skill can rely on it.
 - [ ] Chunk 01: Filing path end to end (resolver + skill + template + gitignore + tests)
 - [ ] Chunk 02: Receiving advisory + discoverability (probe + digest pointer + triage docs + tests)
 
-Context: 2026-06-20 — both chunks built, tested (1353 green), and committed on
+Context: 2026-06-20 — both chunks built, tested (1352 green), and committed on
 `feature/upstream-bug-reporting`; both inert paths exercised live. Cumulative
-Critic + PR pending. Branch carries this scope alongside the small
+Critic clean (0 blocking / 0 warning; notes resolved or filed as BLD-4K7P).
+PR pending — at the `/prawduct:pr` gate, expect+dismiss the BLD-4K7P
+verify-chunk-refs false positives (placeholder/templated/gitignored tokens in
+this plan's prose). Branch carries this scope alongside the small
 `backlog-ship-in-pr` docs fix (one PR, two change-log scopes — to minimize review
 wall-clock per the CRT-4J8W single-cumulative gate). `views_enabled: true` —
 checkboxes flip at release via the `scope=upstream-bug-reporting` change-log tag.
