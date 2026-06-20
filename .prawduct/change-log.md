@@ -5,7 +5,7 @@
 
 ## 2026-06-20: Formalize the upstream bug-reporting channel — /prawduct:report-bug + inbox resolver + receiving advisory (upstream-bug-reporting)
 
-<!-- prawduct: chunks=01,02 | type=feature | scope=upstream-bug-reporting -->
+<!-- prawduct: chunks=01,02 | type=feature | scope=upstream-bug-reporting | status=merged -->
 
 **Why:** Products that consume prawduct hit bugs in prawduct *itself* and filed
 reports into the prawduct checkout's gitignored `incoming-bugs/` drop-box by
@@ -36,7 +36,7 @@ exercised live.
 
 ## 2026-06-20: Archive a closed backlog item in the closing PR, not as a separate after-merge edit (backlog-ship-in-pr)
 
-<!-- prawduct: chunks=01 | type=fix | scope=backlog-ship-in-pr -->
+<!-- prawduct: chunks=01 | type=fix | scope=backlog-ship-in-pr | status=merged -->
 
 **Why:** Guidance framed marking a backlog item `status=shipped` as a post-merge
 *reconciliation* step, so closing an item required a separate bookkeeping
