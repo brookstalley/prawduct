@@ -8,6 +8,16 @@
 ## Open
 
 
+- **[STH-3R8K]** Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution to a worktree toplevel
+  `effort: S · impact: S · area: stop-hook · source: critic · added: 2026-06-20 · status: open · stage: ready · related: STH-4K7N · refs: bin/prawduct-hook, hooks/digest.py, hooks/banner.py`
+
+  Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution away from
+  `CLAUDE_PROJECT_DIR` to a worktree toplevel. Today the worktree redirect (STH-4K7N) is silent: the
+  load-bearing assumption that a hook process runs with the worktree as its cwd fails safe (toward
+  more gating) but invisibly. A brief stderr/briefing note on the Stop path ("operating on worktree
+  <path> for branch <b>") when toplevel != `CLAUDE_PROJECT_DIR` would make the redirect observable
+  and aid debugging if the assumption is ever false. (critic)
+
 - **[STH-4K7N]** Governance gates + critic/pr skills don't compose with git worktrees — hooks resolve `.prawduct/` to the launch dir, agent side to the session worktree
   `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-20 · status: open · stage: ready · related: CRT-8D2W · refs: bin/prawduct-hook, hooks/digest.py, hooks/banner.py, incoming-bugs/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md`
 

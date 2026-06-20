@@ -39,7 +39,7 @@ These three are companions in the same `${CLAUDE_SKILL_DIR}/` directory; when th
 
 **Invocation arguments:** "$ARGUMENTS"
 
-The project is at the current working directory — in a git worktree that is the worktree, not the primary checkout, and `.prawduct/` state (findings, evidence, build plan) resolves there (STH-4K7N), so reviewing a worktree branch's changes works in place: run `/prawduct:critic` from the worktree as usual, no review-in-primary workaround. It may be a product repo or the Prawduct framework itself; read `.prawduct/project-state.yaml` (step 3 below) to establish context. The Framework-Specific Checks (7-10) are self-gating: they apply only when the change touches skill / template / framework instruction files, and `framework-checks.md` is skipped otherwise.
+The project is at the current working directory — for a session working in a git worktree, that resolves to the worktree's root (not the primary checkout), so `.prawduct/` state (findings, evidence, build plan) lives there (STH-4K7N) and reviewing a worktree branch's changes works in place: run `/prawduct:critic` from the worktree as usual, no review-in-primary workaround. It may be a product repo or the Prawduct framework itself; read `.prawduct/project-state.yaml` (step 3 below) to establish context. The Framework-Specific Checks (7-10) are self-gating: they apply only when the change touches skill / template / framework instruction files, and `framework-checks.md` is skipped otherwise.
 
 ## Structural Constraints
 
