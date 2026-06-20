@@ -38,10 +38,14 @@ post-merge real-worktree operator check.
 
 - [ ] Chunk 01: Worktree-aware `.prawduct/` resolution (code + tests)
 - [ ] Chunk 02: Worktree workflow guidance (methodology + skill notes)
+<!-- views_enabled: checkboxes flip from change-log status=shipped at release;
+     mid-branch progress is tracked in this Context line + git commits. -->
 Context: Plan authored 2026-06-20 on feature/worktree-compat (off develop).
-Root cause + remediation verified against bin/prawduct-hook, hooks/, lib/, and
-the Claude Code worktree/hook docs. No active build plan existed prior; pointer
-set to this file.
+**Chunk 01 DONE** (commit e7b65c6): `resolve_project_dir` in lib/gitstate.py +
+hook `get_project_dir` delegation, 10 tests, Critic final passed (header doc
+drift fixed). Descoped digest.py/banner.py with rationale. **Next: Chunk 02**
+— methodology worktree subsection + critic/pr skill notes + operator-verification
+queue entry; then change-log entry (statusless, scope=worktree-compat) + PR.
 
 ## Scaffolding
 

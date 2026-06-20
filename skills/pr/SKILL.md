@@ -12,6 +12,8 @@ You are managing the PR lifecycle for this project. Detect the current state and
 
 ## Context Detection
 
+All commands here operate on the **current worktree** — `git` reports the worktree's branch and `prawduct-hook` resolves `.prawduct/` state to the worktree (STH-4K7N), so creating/updating/merging a PR for a worktree branch works in place; no primary-checkout or raw-`gh` workaround is needed.
+
 Check git state to determine the action:
 
 1. Run `git branch --show-current` to get the current branch

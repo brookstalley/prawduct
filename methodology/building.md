@@ -8,9 +8,11 @@ A **session** is one Claude Code invocation — the period between the `clear` h
 
 A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
 
-**Context compaction** is a context-management event, not a session boundary: no hooks, no baseline reset, no governance checkpoint. Anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first. Conversation context is ephemeral; artifacts persist.
+**Context compaction** is a context-management event, not a session boundary: no hooks, no baseline reset, no governance checkpoint. Anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
 **`/clear` between work cycles is recommended** for cleaner governance. It resets the git baseline (so the next cycle's canary only sees its own changes), archives the previous reflection, and starts fresh context. Not required — multiple work cycles within a single session work correctly.
+
+**Working in a git worktree.** A work cycle composes in a worktree — run it (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to the worktree (STH-4K7N); no review-in-primary or raw-`gh` workaround is needed. One edge: starting in the primary checkout and entering a worktree *mid*-cycle leaves the SessionStart markers in primary (gate readers fail safe) — launch, or `/clear`, in the worktree to avoid it.
 
 The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, and advisory **compliance canary** checks run. Per-work-cycle governance (Critic after each chunk, reflection after each significant action) is the methodology's responsibility, not the hook's.
 
