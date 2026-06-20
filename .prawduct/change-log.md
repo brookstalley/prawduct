@@ -3,6 +3,36 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-20: Formalize the upstream bug-reporting channel — /prawduct:report-bug + inbox resolver + receiving advisory (upstream-bug-reporting)
+
+<!-- prawduct: chunks=01,02 | type=feature | scope=upstream-bug-reporting -->
+
+**Why:** Products that consume prawduct hit bugs in prawduct *itself* and filed
+reports into the prawduct checkout's gitignored `incoming-bugs/` drop-box by
+hand — an undocumented method with no path-discovery, no inert behavior for
+plugin-only users (who have no local writable checkout), and no formalized
+triage (reports sat unarchived). The user asked to formalize it so it works when
+a prawduct checkout is reachable and is harmless/inert otherwise.
+
+**What:** A new `/prawduct:report-bug` skill files a templated report into the
+inbox when one is reachable, else captures the bug in the product's *own* backlog
+(`area=prawduct-upstream`) and prints the GitHub issues URL — never errors.
+`prawduct-hook bug-inbox` resolves the inbox from `PRAWDUCT_BUG_INBOX` → a
+gitignored `.prawduct/.bug-inbox` pointer → none (validates exists+writable;
+fail-soft to none). The path is deliberately a local/machine signal, never
+committed state (a non-portable absolute path must not travel to clones/CI), so
+**inertness falls out of absence** — a plugin-only user configures neither
+signal. Receiving side: a `untriaged-upstream-reports` session-start advisory
+(`lib/upstream_probes.py`, registered in `cmd_clear`) fires only where
+`incoming-bugs/` exists and is non-empty — naturally absent → inert in every
+product repo — nudging triage; the triage→backlog→archive flow is documented in
+the skill and the CLAUDE.md "Reviewing product feedback" route. `.bug-inbox` is a
+managed `GITIGNORE_ENTRIES` entry (gitignored in every onboarded product) with
+its hook-side mirror kept in parity. A terse discoverability pointer was added to
+both session digests (full reaches products; slim reaches the framework repo).
+26 new tests (resolver matrix + subcommand exit-code contract + probe fire/inert
++ digest pointer); both inert paths exercised live.
+
 ## 2026-06-20: Archive a closed backlog item in the closing PR, not as a separate after-merge edit (backlog-ship-in-pr)
 
 <!-- prawduct: chunks=01 | type=fix | scope=backlog-ship-in-pr -->

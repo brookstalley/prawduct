@@ -75,3 +75,21 @@ is deliberately *not* committed project state: it is an absolute path on one
 machine and must not travel to other clones or CI. To turn the channel on, point
 `PRAWDUCT_BUG_INBOX` (or `.prawduct/.bug-inbox`) at your prawduct checkout's
 `incoming-bugs/` directory.
+
+## Receiving side — triage (when you ARE in the prawduct repo)
+
+The other end of the channel. When a session starts in the prawduct checkout and
+`incoming-bugs/` holds untriaged reports, the `untriaged-upstream-reports`
+session-start advisory surfaces a count and points here. To triage:
+
+1. Read each report in `incoming-bugs/`.
+2. For each, capture the durable record in the committed backlog:
+   `/prawduct:backlog add` (set a real `area:`, and `refs:` the report if useful).
+   The backlog item — not the gitignored report — is what survives.
+3. **Archive** the processed report: move it to `incoming-bugs/archive/`. The
+   advisory counts only top-level `*.md`, so archiving clears each report from the
+   nudge while keeping it locally for reference (git tracks neither — the drop-box
+   is gitignored; the backlog item is the record).
+
+The advisory is **inert by absence**: a product repo has no `incoming-bugs/`, so
+it never fires there — only in a repo that actually receives reports.

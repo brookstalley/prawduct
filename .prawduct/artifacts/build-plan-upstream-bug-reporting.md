@@ -87,10 +87,12 @@ tests so the skill can rely on it.
 - [ ] Chunk 01: Filing path end to end (resolver + skill + template + gitignore + tests)
 - [ ] Chunk 02: Receiving advisory + discoverability (probe + digest pointer + triage docs + tests)
 
-Context: new work cycle, 2026-06-20, branch carries this scope alongside the
-small `backlog-ship-in-pr` docs fix (one PR, two change-log scopes — to minimize
-review wall-clock per the CRT-4J8W single-cumulative gate). `views_enabled: true`
-— checkboxes flip at release via the `scope=upstream-bug-reporting` change-log tag.
+Context: 2026-06-20 — both chunks built, tested (1353 green), and committed on
+`feature/upstream-bug-reporting`; both inert paths exercised live. Cumulative
+Critic + PR pending. Branch carries this scope alongside the small
+`backlog-ship-in-pr` docs fix (one PR, two change-log scopes — to minimize review
+wall-clock per the CRT-4J8W single-cumulative gate). `views_enabled: true` —
+checkboxes flip at release via the `scope=upstream-bug-reporting` change-log tag.
 
 ## Chunks
 
