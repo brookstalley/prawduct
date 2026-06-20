@@ -41,11 +41,14 @@ post-merge real-worktree operator check.
 <!-- views_enabled: checkboxes flip from change-log status=shipped at release;
      mid-branch progress is tracked in this Context line + git commits. -->
 Context: Plan authored 2026-06-20 on feature/worktree-compat (off develop).
-**Chunk 01 DONE** (commit e7b65c6): `resolve_project_dir` in lib/gitstate.py +
-hook `get_project_dir` delegation, 10 tests, Critic final passed (header doc
-drift fixed). Descoped digest.py/banner.py with rationale. **Next: Chunk 02**
-— methodology worktree subsection + critic/pr skill notes + operator-verification
-queue entry; then change-log entry (statusless, scope=worktree-compat) + PR.
+**BOTH CHUNKS DONE — branch ready for PR (user has not requested it yet).**
+Ch.01 (e7b65c6): `resolve_project_dir` in lib/gitstate.py + hook delegation, 10
+tests, Critic final passed. Ch.02 (34609e5): building.md worktree callout +
+critic/pr skill notes + VRF-001 + change-log entry. Warning fix (3b13720).
+Cumulative Critic (cumulative mode) passed 0-blocking; `check-cumulative-critic`
+SATISFIED → `/prawduct:pr create` unblocked. Suite 1341 green, evidence @ HEAD.
+Follow-up filed: STH-3R8K (observable worktree-redirect signal). Open assumption
+(live hook-process cwd == worktree) queued for post-merge check as VRF-001.
 
 ## Scaffolding
 
