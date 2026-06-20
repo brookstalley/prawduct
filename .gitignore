@@ -1,5 +1,6 @@
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.prawduct/.bug-inbox
 .prawduct/.critic-active
 .prawduct/.critic-findings.json
 .prawduct/.critic-test-findings.json

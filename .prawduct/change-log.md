@@ -3,6 +3,60 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-20: Formalize the upstream bug-reporting channel — /prawduct:report-bug + inbox resolver + receiving advisory (upstream-bug-reporting)
+
+<!-- prawduct: chunks=01,02 | type=feature | release=v2.1.6 | status=shipped | scope=upstream-bug-reporting -->
+
+**Why:** Products that consume prawduct hit bugs in prawduct *itself* and filed
+reports into the prawduct checkout's gitignored `incoming-bugs/` drop-box by
+hand — an undocumented method with no path-discovery, no inert behavior for
+plugin-only users (who have no local writable checkout), and no formalized
+triage (reports sat unarchived). The user asked to formalize it so it works when
+a prawduct checkout is reachable and is harmless/inert otherwise.
+
+**What:** A new `/prawduct:report-bug` skill files a templated report into the
+inbox when one is reachable, else captures the bug in the product's *own* backlog
+(`area=prawduct-upstream`) and prints the GitHub issues URL — never errors.
+`prawduct-hook bug-inbox` resolves the inbox from `PRAWDUCT_BUG_INBOX` → a
+gitignored `.prawduct/.bug-inbox` pointer → none (validates exists+writable;
+fail-soft to none). The path is deliberately a local/machine signal, never
+committed state (a non-portable absolute path must not travel to clones/CI), so
+**inertness falls out of absence** — a plugin-only user configures neither
+signal. Receiving side: a `untriaged-upstream-reports` session-start advisory
+(`lib/upstream_probes.py`, registered in `cmd_clear`) fires only where
+`incoming-bugs/` exists and is non-empty — naturally absent → inert in every
+product repo — nudging triage; the triage→backlog→archive flow is documented in
+the skill and the CLAUDE.md "Reviewing product feedback" route. `.bug-inbox` is a
+managed `GITIGNORE_ENTRIES` entry (gitignored in every onboarded product) with
+its hook-side mirror kept in parity. A terse discoverability pointer was added to
+both session digests (full reaches products; slim reaches the framework repo).
+New tests cover the resolver matrix, the `bug-inbox` subcommand exit-code
+contract, the probe fire/inert split, and the digest pointer; both inert paths
+exercised live.
+
+## 2026-06-20: Archive a closed backlog item in the closing PR, not as a separate after-merge edit (backlog-ship-in-pr)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.6 | status=shipped | scope=backlog-ship-in-pr -->
+
+**Why:** Guidance framed marking a backlog item `status=shipped` as a post-merge
+*reconciliation* step, so closing an item required a separate bookkeeping
+commit/PR after the feature merged — redundant review/PR churn. The D4 rule it
+rests on ("never *infer* status from a view — the builder makes the explicit
+call") constrains *how* the call is made, not *when*; nothing actually required
+waiting until after merge.
+
+**What:** The primary path is now "archive the item *on the branch that closes
+it*" (`status=shipped closed-by=<scope>`), so the archive rides in the feature's
+own PR and is **atomic with the merge** — an abandoned PR abandons the archive
+too, so the backlog can't drift. `skills/backlog/SKILL.md` gains a "When to mark
+shipped" rule and demotes "Reconcile shipped work" to the explicit fallback;
+`skills/critic/review-cycle.md`'s backlog-resolution NOTE now nudges archiving
+on-branch. Disambiguated: backlog `shipped` = work merged to the integration
+base (its single terminal state) vs. a change-log entry's `status=shipped` =
+released to consumers (`main`), which legitimately batches at the `develop→main`
+release and is untouched. `methodology/building.md` is left as-is — its
+chunk-close step already closes affected items on-branch before `/clear`.
+
 ## 2026-06-12: Harden reviewer-model dispatch against model withdrawal — ordered tier chains with graceful fallback (reviewer-model-fallback)
 
 <!-- prawduct: chunks=01 | type=fix | release=v2.1.5 | status=shipped | scope=reviewer-model-fallback -->

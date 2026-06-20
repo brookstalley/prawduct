@@ -31,4 +31,5 @@ At session end the **Stop hook** runs the Critic gate + reflection gate (CLAUDE.
 Critic" has the mechanics; a block names its gate). Full guides on demand:
 `/prawduct:methodology` (index) · `/prawduct:discovery` · `/prawduct:planning` ·
 `/prawduct:building` · `/prawduct:reflection` · `/prawduct:critic` · `/prawduct:pr` ·
-`/prawduct:backlog` · `/prawduct:learnings` · `/prawduct:janitor` · `/prawduct:doctor`
+`/prawduct:backlog` · `/prawduct:learnings` · `/prawduct:janitor` · `/prawduct:doctor` ·
+`/prawduct:report-bug` (triage `incoming-bugs/` here — the receiving end; products use it to file prawduct bugs upstream)

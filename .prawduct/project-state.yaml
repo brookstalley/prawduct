@@ -566,6 +566,9 @@ scope_rollups:
   backlog-rework:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
     releases: ["v2.0.15"]
+  backlog-ship-in-pr:
+    chunks: ["01"]
+    releases: ["v2.1.6"]
   changelog-lifecycle:
     chunks: ["01", "02", "03"]
     releases: ["v2.1.1"]
@@ -629,6 +632,9 @@ scope_rollups:
   roi-batch-2:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
     releases: ["v2.0.5"]
+  upstream-bug-reporting:
+    chunks: ["01", "02"]
+    releases: ["v2.1.6"]
   v1.4:
     chunks: ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14"]
     releases: ["v1.3.17", "v1.4.0"]

@@ -57,7 +57,7 @@ When someone opens this directory, route based on context:
 → The user wants Claude to do work that isn't part of this framework and isn't being onboarded as a Prawduct product. Proceed with the work, applying principles as engineering judgment — not as a formal process. At session end, reflect on what was built and note any methodology observations (did the process help, hinder, or feel irrelevant?).
 
 **Reviewing product feedback** ("what have my products learned?", "check product learnings")
-→ Scan known product directories for `.prawduct/learnings.md`. Look for methodology friction or process feedback. Summarize and propose framework updates.
+→ Scan known product directories for `.prawduct/learnings.md`. Look for methodology friction or process feedback. Summarize and propose framework updates. Also triage `incoming-bugs/` — bug reports products filed upstream about prawduct itself (the `untriaged-upstream-reports` advisory nudges this); triage each into the backlog via `/prawduct:backlog`, then archive it (see `/prawduct:report-bug`).
 
 **First contact** ("hello", "what is this?", "what can you do?")
 → Briefly explain: Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. It installs as a Claude Code plugin; product repos onboard via `/prawduct:onboard` and commit only a small install reference — no framework files.
