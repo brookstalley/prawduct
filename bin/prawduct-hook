@@ -287,6 +287,7 @@ def _resolve_build_plan_path(prawduct_dir: Path) -> Path:
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
+    ".prawduct/.bug-inbox",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.governance-ledger.jsonl",
@@ -585,7 +586,9 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             sys.path.insert(0, lib_root)
         from lib.advisory_store import run_sync_advisories  # noqa: PLC0415 — lazy keeps top-level import cheap
         from lib.backlog_probes import register as _register_backlog_probes  # noqa: PLC0415
+        from lib.upstream_probes import register as _register_upstream_probes  # noqa: PLC0415
         _register_backlog_probes()  # register the backlog feature's probes before the roster runs
+        _register_upstream_probes()  # + the upstream-bug-reporting receiving-side probe
         run_sync_advisories(
             project_dir, sync_version=_plugin_manifest_version() or ""
         )
@@ -1808,6 +1811,34 @@ def cmd_resolve_base(project_dir: Path) -> int:
     return 0
 
 
+def cmd_bug_inbox(project_dir: Path) -> int:
+    """Resolve the upstream bug-report inbox and print it, or exit 1 when none.
+
+    The `/prawduct:report-bug` skill branches on the exit code: 0 = an inbox is
+    configured and reachable (file the report into the printed path); 1 = no
+    inbox (capture the bug in the product's own backlog + point at GitHub
+    issues). Inert by design for plugin-only users — they configure neither
+    ``PRAWDUCT_BUG_INBOX`` nor ``.prawduct/.bug-inbox``, so resolution returns
+    None and this exits 1.
+
+    Fail-soft: a missing/stale/unwritable inbox OR an incomplete plugin install
+    (lib not importable) both resolve to exit 1, never a crash — the channel
+    must stay silent and harmless in a repo that does not use it.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import bug_inbox  # noqa: PLC0415 — lazy keeps top-level lib-free
+    except ImportError:
+        return 1
+    inbox = bug_inbox.resolve_inbox(os.environ, project_dir)
+    if inbox is None:
+        return 1
+    print(inbox)
+    return 0
+
+
 def cmd_stamp_merged(project_dir: Path) -> int:
     """Stamp ``status=merged`` onto statusless tagged change-log entries.
 
@@ -2315,6 +2346,8 @@ def main() -> int:
         return cmd_compute_verify_resolutions_scope(project_dir)
     elif command == "resolve-base":
         return cmd_resolve_base(project_dir)
+    elif command == "bug-inbox":
+        return cmd_bug_inbox(project_dir)
     elif command == "advisory":
         return cmd_advisory(project_dir, sys.argv[2:])
     elif command == "migrate-plugin":

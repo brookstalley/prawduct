@@ -159,6 +159,13 @@ class TestDigestHook:
         assert "/prawduct:methodology" in text
         assert "Critic" in text and "Stop hook" in text
 
+    @pytest.mark.parametrize("src", [DIGEST_SRC, SLIM_DIGEST_SRC], ids=["full", "slim"])
+    def test_both_variants_surface_the_report_bug_channel(self, src):
+        # Discoverability of the upstream-bug-reporting channel (regression guard
+        # against a silent trim dropping the pointer). The full digest reaches
+        # products (the filing side); the slim reaches the framework repo.
+        assert "/prawduct:report-bug" in src.read_text(encoding="utf-8")
+
     def test_resolves_root_without_env(self):
         # No CLAUDE_PLUGIN_ROOT -> falls back to hooks/ parent (the plugin root).
         result = _run_digest(None)

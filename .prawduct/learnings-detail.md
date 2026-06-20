@@ -14,6 +14,14 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 **Two reusable sub-lessons**: (1) a token-budget guardrail at its ceiling forces trim-vs-bump on any necessary addition — remove genuine redundancy (cross-file duplicate comments, self-restating clauses), don't bump the budget or drop a check; the guardrail correctly makes new content pay for itself. (2) Verifying harness/model behavior beats recalling it: the silent-substitution-to-session-model detail (which I would not have recalled correctly) is exactly what turned the rule from "pass fable and hope" into "pick a confirmed-valid model, then fall back explicitly."
 
+## A clean cumulative (0 blocking/0 warning) makes post-review note-fixes asymmetric — `.md` fixes ride free, any `.py` change forces a fresh full review
+
+**Pattern**: upstream-bug-reporting (2026-06-20). A cumulative Critic over the bundle came back 0 blocking / 0 warning / 5 notes. Some notes were `.py` (a misleading docstring, a speculative dead-code guard), some `.md` (slim-digest framing); fixing them meant a follow-up commit. Because the follow-up touched `lib/upstream_probes.py` (non-`.md`), the prior cumulative no longer vouched for HEAD, so the PR gate (`check-cumulative-critic`) needed a fresh HEAD-covering record — a full re-review. Had the fixes been `.md`-only, the CRT-7M2D docs-only allowance would have kept the original cumulative HEAD-covering and cost nothing.
+
+**Why the re-review is full, not light**: the cheap post-fix path (`verify-resolutions`, Goals 1-3 over the delta) *demotes to `final`* precisely when prior findings hold no BLOCKING/WARNING — there's nothing to "verify resolved," so it falls back to a full pass. So an all-NOTE cumulative gives no cheap re-review path for a `.py` touch.
+
+**Reusable rule**: self-scrub hard BEFORE the first cumulative (the methodology's "deep-scrub while the Critic runs" only helps if there's a gap to use; a synchronous skill return leaves none — so scrub before invoking). When notes land: fix `.md` notes in place (free), and weigh each `.py` cosmetic note against one opus re-run — fixing a false docstring + dropping dead code was worth it here, but a pure tense-nit was not (left as a defensible description). Route low-value `.py` notes to a backlog item rather than re-reviewing. Ties directly to the Review-wall-clock-is-P0 priority.
+
 ## Artifacts drift silently during sustained building
 
 **Pattern**: Discodon built 40+ chunks over multiple sessions. Artifacts written during planning (test-specifications, architecture, data-model) were never updated. Test-specifications says "1056 tests" when the actual count is 1318+. Coverage matrix is missing 15+ test files. Architecture may not reflect scheduling, tool framework, or prompt architecture features.
