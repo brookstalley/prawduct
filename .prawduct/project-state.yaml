@@ -34,6 +34,10 @@ distribution: plugin
 # preferred over the bare `develop` for a stable remote-tracking merge-base.
 base_branch: develop
 
+# Active build plan (`.prawduct/`-relative pointer read by resolve_build_plan_path).
+# Set on feature/worktree-compat (STH-4K7N); cleared at release per merge-flow.
+active_build_plan: artifacts/build-plan-worktree-compat.md
+
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
