@@ -5,6 +5,22 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.1.6
+
+### upstream-bug-reporting
+
+**Entry:** 2026-06-20: Formalize the upstream bug-reporting channel — /prawduct:report-bug + inbox resolver + receiving advisory (upstream-bug-reporting)
+
+**Chunks shipped:** 01, 02
+
+### backlog-ship-in-pr
+
+**Entry:** 2026-06-20: Archive a closed backlog item in the closing PR, not as a separate after-merge edit (backlog-ship-in-pr)
+
+**Chunks shipped:** 01
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.1.5
 
 **Entry:** 2026-06-12: Harden reviewer-model dispatch against model withdrawal — ordered tier chains with graceful fallback (reviewer-model-fallback)

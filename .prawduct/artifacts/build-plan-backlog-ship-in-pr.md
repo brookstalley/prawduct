@@ -35,7 +35,7 @@ making the archive atomic with the merge.
 
 ## Status
 
-- [ ] Chunk 01: On-branch archive guidance (backlog SKILL + Critic review-cycle)
+- [x] Chunk 01: On-branch archive guidance (backlog SKILL + Critic review-cycle)
 
 Context: single docs work cycle, 2026-06-20. `views_enabled: true` — the checkbox
 flips at release via the `scope=backlog-ship-in-pr` change-log tag.

@@ -84,8 +84,8 @@ tests so the skill can rely on it.
 
 ## Status
 
-- [ ] Chunk 01: Filing path end to end (resolver + skill + template + gitignore + tests)
-- [ ] Chunk 02: Receiving advisory + discoverability (probe + digest pointer + triage docs + tests)
+- [x] Chunk 01: Filing path end to end (resolver + skill + template + gitignore + tests)
+- [x] Chunk 02: Receiving advisory + discoverability (probe + digest pointer + triage docs + tests)
 
 Context: 2026-06-20 — both chunks built, tested (1352 green), and committed on
 `feature/upstream-bug-reporting`; both inert paths exercised live. Cumulative
