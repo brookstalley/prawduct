@@ -54,10 +54,17 @@ rule must cascade to the definition it rests on).
 
 - [ ] Chunk 01: Reconcile the `closed-by` contract + bare-SHA/amend warning
 
-Context: single docs work cycle, 2026-06-21, branch
-`feature/backlog-closed-by-handle` off `develop` (the sibling
-`feature/hot-path-git-batching` bundle stays merge-ready and untouched).
-`views_enabled: true` — the checkbox flips at release via the
+Context: chunk 01 BUILT and review-complete (2026-06-21, single docs work cycle,
+branch `feature/backlog-closed-by-handle` off `develop`; the sibling
+`feature/hot-path-git-batching` bundle stays merge-ready and untouched). Cumulative
+Critic clean (0 blocking / 1 warning / 1 note, both resolved — `refs:` archive-path
+corrected; test state confirmed below). BKL-9K4T archived on-branch with
+`closed-by=backlog-closed-by-handle` (dogfooding the prescribed handle). Tests:
+1351 pass; the lone failure (`test_changelog_has_current_version_entry`) is a
+**pre-existing develop-baseline** issue — the v2.1.6 `CHANGELOG.md` headline
+(commit `30a4875`) is stranded on `feature/hot-path-git-batching` and never reached
+develop, so it is unrelated to this doc-only diff and self-resolves when hot-path
+merges. `views_enabled: true` — the checkbox flips at release via the
 `scope=backlog-closed-by-handle` change-log tag.
 
 ## Chunks
