@@ -365,10 +365,13 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
     if not matched:
         return untracked
 
-    # ONE batched `git rm --cached` untracks every matched session path. All
-    # matched paths are confirmed-tracked above, so this near-always succeeds
-    # atomically; on the rare whole-command failure (e.g. permissions) nothing is
-    # reported as untracked — best-effort cleanup must never block session start.
+    # ONE batched `git rm --cached` untracks every matched session path. This
+    # trades the old per-path loop's PARTIAL-success semantics for all-or-nothing:
+    # all matched paths are confirmed-tracked above, so the batch near-always
+    # succeeds atomically; on the rare whole-command failure (e.g. permissions)
+    # nothing is reported as untracked — where the old loop would have reported the
+    # paths it got through. Self-healing: the next session start retries the sweep.
+    # Best-effort cleanup must never block session start.
     try:
         rm = subprocess.run(
             ["git", "rm", "--cached", "--quiet", "-r", "--", *matched],

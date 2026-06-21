@@ -137,6 +137,30 @@ class TestUntrackBatching:
         assert hook._untrack_session_files(repo) == [".prawduct/.session-handoff.md"]
         assert _tracked(repo) == {"app.py"}
 
+    def test_tracked_pr_reviews_dir_collapses_to_declared_pathspec(self, tmp_path, monkeypatch):
+        # `.prawduct/.pr-reviews` is the one DIRECTORY pathspec in the session set:
+        # `git ls-files` expands it to member files, so D1 must collapse those back
+        # to the declared pathspec (the trickiest branch of the batch logic) so the
+        # report and the rm target stay the canonical session-path set.
+        repo = _init_repo(tmp_path, monkeypatch)
+        reviews = repo / ".prawduct" / ".pr-reviews"
+        reviews.mkdir(parents=True)
+        (reviews / "pr-42.json").write_text("{}")
+        (reviews / "pr-43.json").write_text("{}")
+        subprocess.run(
+            ["git", "add", "-f",
+             ".prawduct/.pr-reviews/pr-42.json", ".prawduct/.pr-reviews/pr-43.json"],
+            cwd=repo, check=True,
+        )
+        subprocess.run(["git", "commit", "-qm", "oops reviews"], cwd=repo, check=True)
+
+        hook = _load_hook()
+        untracked = hook._untrack_session_files(repo)
+        # Reported once as the declared directory pathspec — not the member files.
+        assert untracked == [".prawduct/.pr-reviews"]
+        # Both member files are actually untracked.
+        assert _tracked(repo) == set()
+
     def test_non_repo_returns_empty_without_crashing(self, tmp_path, monkeypatch):
         hook = _load_hook()
         # tmp_path is not a git repo — the rev-parse guard short-circuits.

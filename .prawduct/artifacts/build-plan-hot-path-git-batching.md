@@ -33,8 +33,11 @@ observable behavior:
    `git ls-files -- <paths>` and untracks them in **one** `git rm --cached`,
    down from 15 `ls-files` + N `rm`.
 2. The dense `status --porcelain` re-runs are captured once and threaded down via
-   an optional parameter: `clear`'s `_check_previous_session_gates` 3→1, `stop`'s
-   top-of-function pair 2→1. Backward-compatible (param defaults to compute).
+   an optional parameter: `clear`'s `_check_previous_session_gates` collapses its
+   3 probe re-runs to 1 capture, and `stop`'s preamble shares 1 capture across its
+   2 probes (total `stop` status calls 3 → 2 — the third is an out-of-scope
+   `lib/gates.py` call this changeset doesn't touch). Backward-compatible (param
+   defaults to compute).
 3. `_has_product_code` prunes `node_modules/`, `.git/`, `.prawduct/` at the
    directory level (pruned `os.walk`) and short-circuits on the first match,
    instead of enumerating the whole tree first.
@@ -87,7 +90,10 @@ contract; the groomed item (STH-6Q9D) names the three targets and the affected f
 ## Baseline Measurement (optimization discipline)
 
 - Suite: **1351 passed, 1 skipped** on `feature/hot-path-git-batching` (off
-  `develop`, with the cherry-picked v2.1.6 CHANGELOG baseline repair).
+  `develop`, with the cherry-picked v2.1.6 CHANGELOG baseline repair) — this is the
+  *pre-change* baseline. After the +13 new tests in this chunk the suite is **1364
+  passed, 0 failed** (the env-conditional skip didn't run); that is the figure the
+  change-log and test-evidence record carry.
 - git-call counts above are the pre-change baseline. Post-change measured:
   `clear` **25 → 11** (`ls-files` 15 → 1); gate status **3 → 1** on a dirty
   session; `stop` status **3 → 2** on a session with changes. The regression
@@ -126,8 +132,9 @@ on a non-repo (`rev-parse --git-dir` guard stays), and untracks the same set.
 `_get_session_changed_files`): when provided, use it; when `None`, compute via
 `git_status_output` (unchanged default → every existing caller and test is
 unaffected). Thread a single capture at the two dense callers:
-`_check_previous_session_gates` (`lib/briefing.py`, 3→1) and the `cmd_stop`
-preamble (`bin/prawduct-hook` ~L690–691, 2→1).
+`_check_previous_session_gates` (`lib/briefing.py`, its 3 probe re-runs → 1
+capture) and the `cmd_stop` preamble (`bin/prawduct-hook` ~L690–691, its 2 probes
+share 1 capture).
 
 **D3 — Prune `_has_product_code` walk** (`lib/gitstate.py`). Replace
 `project_dir.rglob("*")` with a pruned `os.walk` that removes `node_modules`,

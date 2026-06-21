@@ -426,6 +426,19 @@
   cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
   active plan scope. (reflection)
 
+- **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
+  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/)`
+
+  If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
+  verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
+  SHA does NOT resolve, so a SHA that still resolves on the sibling branch (not an ancestor of HEAD)
+  passes the guard and yields a cross-branch two-way diff full of phantom findings (surfaced live this
+  session on feature/hot-path-git-batching, anchors f208ad2/f92a4be from sibling
+  feature/hook-cli-robustness). Fix shape: add an is-ancestor check on commit_reviewed (git merge-base
+  --is-ancestor <anchor> HEAD) — if the anchor isn't an ancestor of HEAD, demote to cumulative/final
+  instead of computing a divergent delta. Surfaced + self-flagged by the Critic during STH-6Q9D.
+  (critic)
+
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
 
