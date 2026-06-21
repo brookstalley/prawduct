@@ -91,9 +91,9 @@ contract; the groomed item (STH-6Q9D) names the three targets and the affected f
 
 - Suite: **1351 passed, 1 skipped** on `feature/hot-path-git-batching` (off
   `develop`, with the cherry-picked v2.1.6 CHANGELOG baseline repair) — this is the
-  *pre-change* baseline. After the +13 new tests in this chunk the suite is **1364
-  passed, 0 failed** (the env-conditional skip didn't run); that is the figure the
-  change-log and test-evidence record carry.
+  *pre-change* baseline. After the +13 new tests in this chunk the suite is **1365
+  passed, 0 failed** (the env-conditional skip ran this session); that is the figure
+  the change-log and test-evidence record carry.
 - git-call counts above are the pre-change baseline. Post-change measured:
   `clear` **25 → 11** (`ls-files` 15 → 1); gate status **3 → 1** on a dirty
   session; `stop` status **3 → 2** on a session with changes. The regression

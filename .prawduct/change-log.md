@@ -35,7 +35,7 @@ file — same verdict, no full-tree enumeration. The remaining
 STH-3K7M. New `tests/test_hot_path_git_batching.py` pins the batched-call counts,
 the capture-once contract (passed snapshot is not recomputed), and the prune
 contract (`node_modules` never enumerated); behavior-preservation tests guard each
-deliverable. Full suite 1364 pass / 0 fail.
+deliverable. Full suite 1365 pass / 0 fail.
 
 ## 2026-06-20: Formalize the upstream bug-reporting channel — /prawduct:report-bug + inbox resolver + receiving advisory (upstream-bug-reporting)
 
