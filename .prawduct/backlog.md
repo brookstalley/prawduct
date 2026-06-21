@@ -8,6 +8,38 @@
 ## Open
 
 
+- **[BKL-8T3W]** Backlog-accuracy structural enforcement — surface cross-session "shipped-but-not-removed" Open items (and stale-by-age) so a ready item isn't rebuilt
+  `effort: M · impact: M · area: governance/backlog-tooling · source: user · added: 2026-06-21 · status: open · stage: requirements · related: BLD-4K7P · refs: incoming-bugs/archive/backlog-accuracy-stale-check-hook-plus-closed-but-not-removed-critic-goal.md, skills/critic/review-cycle.md, skills/pr/review-protocol.md, lib/backlog_probes.py`
+
+  ENHANCEMENT (not a defect), needs a design pass before build — file at stage=requirements. Recurring
+  drift: a `stage: ready` Open item (or its headline sub-claim) is shipped by OTHER, already-merged
+  work and never reconciled, so the next picker rebuilds shipped work or does archaeology. Evidence: 3
+  ready items in one Hallucinote session were 60–100% already shipped. Upstream report from
+  Hallucinote/puzzles.
+
+  Three CONSTRAINTS for whoever builds this (the review already mapped the overlap — scope to the
+  DELTA, don't rebuild):
+  1. Most of the proposal already exists — EXTEND, don't duplicate: the Critic's Backlog
+     Reconciliation (skills/critic/review-cycle.md:137, final+cumulative) already does the SEMANTIC
+     "this session's changes resolve an open item → NOTE archive"; the PR reviewer's R-2
+     (skills/pr/review-protocol.md:58, WARNING) already flags a diff referencing closes:/closed-by: PFX
+     while the item is still open; lib/backlog_probes.py's backlog-overdue-grooming advisory + the
+     /prawduct:backlog summary already do age/stale. The proposed (b) Critic "closed-but-not-removed"
+     goal is NOT the inverse of (a) — it largely duplicates review-cycle.md:137.
+  2. The genuine UNCOVERED gap is CROSS-SESSION drift: an item resolved by work that merged on a PRIOR
+     branch/session — the per-session Critic reconciliation structurally can't catch it. A
+     periodic/briefing-level scan of all Open items vs recently-merged work (the report's part (a)(2))
+     is the real value. Keep it ADVISORY (briefing/NOTE), never blocking.
+  3. The proposed keyword/headline-grep matching is the WEAK part — high false-positive risk, the exact
+     BLD-4K7P over-matching family. Prefer high-precision signals (an item's named files/functions from
+     its refs/body), NOT headline keywords. The existing SEMANTIC reviewer check is more precise than
+     grep for this. Consider a cheaper high-ROI partial first: a `pick`-time "this ready item may
+     already be shipped — grep the code/changelog first" nudge, which catches the drift at the moment it
+     costs money.
+
+  related: BLD-4K7P (keyword-grep over-match lesson), backlog-overdue-grooming probe. (user — upstream
+  report from Hallucinote/puzzles)
+
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
 
