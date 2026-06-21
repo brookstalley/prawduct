@@ -104,10 +104,13 @@ contract; the groomed item (STH-6Q9D) names the three targets and the affected f
 
 - [ ] Chunk 01: Batch untracking + capture-once status + pruned product-code walk
 
-Context: single work cycle, 2026-06-21, branch `feature/hot-path-git-batching`
-(off `develop`; the sibling `feature/hook-cli-robustness` bundle stays merge-ready
-and untouched). `views_enabled: true` — the checkbox flips at release via the
-`scope=hot-path-git-batching` change-log tag.
+Context: chunk 01 BUILT and merge-ready (2026-06-21, single work cycle, branch
+`feature/hot-path-git-batching` off `develop`; the sibling
+`feature/hook-cli-robustness` bundle stays merge-ready and untouched). Cumulative
+Critic clean (0 blocking / 0 warning / 4 note, all resolved); verify-resolutions
+chain extends to HEAD; 1365 pass / 0 fail. PR not yet created (user chose backlog
+work, didn't ask to PR). `views_enabled: true` — the checkbox flips at release via
+the `scope=hot-path-git-batching` change-log tag.
 
 ## Chunks
 
