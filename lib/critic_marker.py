@@ -43,6 +43,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .core import atomic_write_text
+
 #: A review is considered active only within this window of its start. Critic
 #: reviews target 4–10 min (final/cumulative); 30 min protects a slow review
 #: while a crashed marker frees within the window. One knob, deliberately
@@ -72,7 +74,7 @@ def write_marker(prawduct_dir: Path) -> bool:
         "pid": os.getpid(),
         "tool": "critic",
     }
-    _marker_path(prawduct_dir).write_text(json.dumps(payload))
+    atomic_write_text(_marker_path(prawduct_dir), json.dumps(payload))
     return True
 
 

@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-06-10
+backlog_last_groomed_at: 2026-06-21
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -512,6 +512,11 @@ views_enabled: true
 # regen-views flipped its ## Status via the scope=reviewer-model-fallback tag and
 # the pointer is cleared — no release-pending plans remain. The build-plan file is
 # retained as a historical artifact.
+# 2026-06-21: pointed at the in-progress hook-cli-robustness plan (STH-5R2Q +
+# TST-3E8V + REL-7P3X + STH-9T4F + BLD-4K7P — five ready S-effort robustness
+# fixes to bin/prawduct-hook + lib/, one cumulative review, one PR; branch
+# feature/hook-cli-robustness, target v2.1.7).
+active_build_plan: artifacts/build-plan-hook-cli-robustness.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
