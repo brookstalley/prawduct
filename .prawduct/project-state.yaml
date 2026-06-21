@@ -512,6 +512,10 @@ views_enabled: true
 # regen-views flipped its ## Status via the scope=reviewer-model-fallback tag and
 # the pointer is cleared — no release-pending plans remain. The build-plan file is
 # retained as a historical artifact.
+# 2026-06-21: pointed at the in-progress hot-path-git-batching plan (STH-6Q9D —
+# batch git subprocess fan-out on the clear/stop hot paths; branch
+# feature/hot-path-git-batching, off develop).
+active_build_plan: artifacts/build-plan-hot-path-git-batching.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

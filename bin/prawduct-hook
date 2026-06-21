@@ -333,28 +333,54 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
     except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         return untracked
 
-    for path in _SESSION_GITIGNORED_PATHS:
-        try:
-            ls = subprocess.run(
-                ["git", "ls-files", "--error-unmatch", path],
-                capture_output=True,
-                text=True,
-                cwd=str(project_dir),
-                timeout=10,
-            )
-            if ls.returncode != 0:
-                continue  # Not tracked — nothing to do
-            rm = subprocess.run(
-                ["git", "rm", "--cached", "--quiet", "-r", path],
-                capture_output=True,
-                text=True,
-                cwd=str(project_dir),
-                timeout=10,
-            )
-            if rm.returncode == 0:
-                untracked.append(path)
-        except Exception:  # prawduct:allow prawduct/broad-except -- single-file failure must not abort the loop
-            continue
+    # Batch the tracked-file lookup into ONE `git ls-files` over all session
+    # pathspecs (STH-6Q9D). The previous per-path `--error-unmatch` probe loop
+    # issued one subprocess per path — 15 on every SessionStart, the dominant
+    # cost on the hot path. `git ls-files -z -- <paths>` lists only the tracked
+    # subset (untracked/absent pathspecs print nothing, exit 0); `-z` keeps paths
+    # NUL-separated and unquoted so the prefix match below is exact.
+    try:
+        ls = subprocess.run(
+            ["git", "ls-files", "-z", "--", *_SESSION_GITIGNORED_PATHS],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if ls.returncode != 0:
+            return untracked
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
+        return untracked
+
+    # Map listed files back to the declared session pathspecs. Most are exact
+    # paths; `.prawduct/.pr-reviews` is a directory, so `ls-files` expands it to
+    # member files — collapse those to the declared pathspec so the report and
+    # the `rm` target stay the canonical session-path set (matching the old loop).
+    listed = [p for p in ls.stdout.split("\0") if p]
+    matched = [
+        path
+        for path in _SESSION_GITIGNORED_PATHS
+        if any(f == path or f.startswith(path + "/") for f in listed)
+    ]
+    if not matched:
+        return untracked
+
+    # ONE batched `git rm --cached` untracks every matched session path. All
+    # matched paths are confirmed-tracked above, so this near-always succeeds
+    # atomically; on the rare whole-command failure (e.g. permissions) nothing is
+    # reported as untracked — best-effort cleanup must never block session start.
+    try:
+        rm = subprocess.run(
+            ["git", "rm", "--cached", "--quiet", "-r", "--", *matched],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if rm.returncode == 0:
+            untracked = list(matched)
+    except Exception:  # prawduct:allow prawduct/broad-except -- batch untrack failure must not block session start
+        return untracked
 
     return untracked
 
@@ -686,9 +712,13 @@ def cmd_stop(project_dir: Path) -> int:
     except Exception:  # prawduct:allow prawduct/broad-except -- canary must never block session end
         pass
 
-    # Check for changes (session-scoped: only new changes since session start)
-    has_changes = _gitstate().git_has_session_changes(project_dir)
-    doc_only = _gitstate()._session_changes_are_doc_only(project_dir) if has_changes else False
+    # Check for changes (session-scoped: only new changes since session start).
+    # Capture `git status --porcelain` once and share it across both probes
+    # (STH-6Q9D) instead of each re-spawning git.
+    _gs = _gitstate()
+    status_output = _gs.git_status_output(project_dir)
+    has_changes = _gs.git_has_session_changes(project_dir, status_output)
+    doc_only = _gs._session_changes_are_doc_only(project_dir, status_output) if has_changes else False
 
     # Load agent-declared gate waivers (auto-cleared at session start).
     # The convention: a waiver is only NOTED to the user when it actually

@@ -8,6 +8,16 @@
 ## Open
 
 
+- **[STH-3K7M]** Capture `git branch --show-current` once on the SessionStart (clear) hot path
+  `effort: S · impact: S · area: stop-hook · source: builder · added: 2026-06-21 · status: open · stage: ready · related: STH-6Q9D · refs: lib/briefing.py (_get_current_branch and its callers)`
+
+  `_get_current_branch` (lib/briefing.py) is invoked redundantly on the SessionStart (clear) hot
+  path — measured 4× during STH-6Q9D. The redundancy spans three separate briefing functions:
+  `staleness_scan` (~L160), `assemble_session_briefing` (~L455), and `_parse_wip` (~L246
+  auto-detect). So "capture once" is a cross-function thread (compute in `cmd_clear` or the briefing
+  entry and pass the branch down), unlike STH-6Q9D's three local targets — which is why it was left
+  out of that chunk. Same fan-out theme as STH-6Q9D (shipped hot-path-git-batching). (builder)
+
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
 
