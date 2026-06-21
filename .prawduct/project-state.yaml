@@ -512,6 +512,10 @@ views_enabled: true
 # regen-views flipped its ## Status via the scope=reviewer-model-fallback tag and
 # the pointer is cleared — no release-pending plans remain. The build-plan file is
 # retained as a historical artifact.
+# 2026-06-21: pointed at the in-progress backlog-closed-by-handle plan (reconcile
+# the `closed-by:` handle contract — never a bare SHA; BKL-9K4T; branch
+# feature/backlog-closed-by-handle off develop).
+active_build_plan: artifacts/build-plan-backlog-closed-by-handle.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

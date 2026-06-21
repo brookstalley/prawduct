@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)
+
+<!-- prawduct: chunks=01 | type=fix | scope=backlog-closed-by-handle -->
+
+**Why:** v2.1.6 (`backlog-ship-in-pr`) told builders to archive an item *on the
+branch that closes it* (`closed-by=<scope>`), but only updated the "When to mark
+shipped" prose — the **contract text** defining `closed-by` (the item-shape line,
+the `update … closed-by` step, the template legend) still read `<chunk-id|tag>`
+and never said what handle to use for **non-chunk work** (a standalone
+refactor/chore committed directly). With no chunk id, a builder reaches for the
+commit SHA — which a commit can't contain and which `--amend` rewrites (dangle),
+forcing an extra "fix closed-by" commit: exactly the separate-bookkeeping churn
+`backlog-ship-in-pr` set out to remove. Filed as an upstream report (Hallucinote,
+originally `puzzles`); triaged to **BKL-9K4T**.
+
+**What:** All four contract sites in `skills/backlog/SKILL.md` and
+`templates/backlog.md` now state one rule — `closed-by` is a handle that exists
+*before* the commit recording it (a chunk id, the branch/feature **scope** name,
+or a release/change-log tag), **never a bare commit SHA** (can't sit in its own
+commit; dangles on `--amend`) **nor an unassigned PR number**. For non-chunk work
+the prescribed handle is the **branch/scope name** (resolvable on-branch, survives
+amends), and the `update` step warns on a bare SHA and substitutes the scope name.
+Doc-only — nothing in `lib/`/`bin/` parses `closed-by`; it is human-readable
+provenance. Coherent-Artifacts (P13) fix: the v2.1.6 rule change cascaded to the
+field's own contract definition.
+
 ## 2026-06-20: Formalize the upstream bug-reporting channel — /prawduct:report-bug + inbox resolver + receiving advisory (upstream-bug-reporting)
 
 <!-- prawduct: chunks=01,02 | type=feature | release=v2.1.6 | status=shipped | scope=upstream-bug-reporting -->
