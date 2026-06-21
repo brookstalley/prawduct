@@ -5,7 +5,7 @@
 
 ## 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)
 
-<!-- prawduct: chunks=01 | type=fix | scope=backlog-closed-by-handle -->
+<!-- prawduct: chunks=01 | type=fix | scope=backlog-closed-by-handle | status=merged -->
 
 **Why:** v2.1.6 (`backlog-ship-in-pr`) told builders to archive an item *on the
 branch that closes it* (`closed-by=<scope>`), but only updated the "When to mark
