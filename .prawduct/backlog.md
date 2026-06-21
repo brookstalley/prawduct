@@ -467,6 +467,29 @@
 
 ## Archive
 
+- **[BKL-9K4T]** Reconcile the `closed-by:` contract with non-chunk/bare-commit work — define a stable on-branch handle and warn on the amend-dangle footgun
+  `effort: S · impact: S · area: backlog · source: user · added: 2026-06-21 · status: shipped · stage: ready · related: REL-7P3X, PR-2H8N · refs: incoming-bugs/backlog-closed-by-cannot-reference-its-own-commit.md, skills/backlog/SKILL.md, templates/backlog.md · closed-by: backlog-closed-by-handle · reviewed: 2026-06-21`
+
+  Upstream report (puzzles repo via Hallucinote, prawduct v2.1.5;
+  `incoming-bugs/backlog-closed-by-cannot-reference-its-own-commit.md`). The `closed-by:` field is
+  contracted as `<chunk-id|tag>` — an identifier that exists **before** the commit (backlog SKILL.md
+  item-shape contract, the `update … closed-by=<change-log tag or chunk id>` step, and the
+  `templates/backlog.md` legend line, reported as SKILL :30/:61 + template :45 in v2.1.5). That holds
+  for chunked/released work, but prawduct also legitimately ships **non-chunk** items (refactors,
+  chores, debt paydown) whose only stable "what shipped this" handle is the commit SHA — and a bare
+  SHA is a footgun: a `git commit --amend` that folds `backlog.md` into the ship commit rewrites the
+  SHA (dangling ref), and a commit cannot contain its own final SHA (chicken-and-egg), so recording
+  `closed-by` correctly forces an extra "fix closed-by ref" commit.
+
+  Fix-shape (reconcile the contract with the v2.1.6 on-branch ship rule, reported at :14): define the
+  on-branch `closed-by` handle as the **branch/scope name** (or a change-log `date-slug` heading,
+  which also exists before the commit) — never a bare SHA and never a PR# (assigned post-push, also
+  unstable for an in-commit handle). Update the three contract sites (SKILL item-shape line, the
+  `update … closed-by` step, the template legend) consistently, and have the `update <ID>
+  closed-by=<bare-sha>` path **warn** about the amend-dangle and recommend the stable handle instead.
+  Dedup note: distinct from REL-7P3X / PR-2H8N (release/PR-merge guard mechanics) — this is the
+  `closed-by` provenance contract, not the merge flow. (user — upstream report)
+
 - **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
   `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: shipped · stage: ready · closes: CRT-3D9K · related: STH-9V4K, BLD-6Q1N · closed-by: PR #93 / v2.1.4 (bf0c889) · reviewed: 2026-06-10`
 
