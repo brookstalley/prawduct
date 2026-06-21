@@ -8,6 +8,25 @@
 ## Open
 
 
+- **[REL-3M7K]** Release-prep must add the root CHANGELOG.md headline and gate on a green suite before tagging
+  `effort: S · impact: M · area: governance/release · source: builder · added: 2026-06-21 · status: open · stage: ready · related: REL-9F2T · refs: CHANGELOG.md, hooks/banner.py (parse_changelog), skills/pr/SKILL.md, .prawduct/release-notes.md`
+
+  Root cause found 2026-06-21 during the hook-cli-robustness baseline check: v2.1.6 was tagged +
+  version-bumped (81b28fe) but its consumer-facing root CHANGELOG.md headline was never added — the
+  prep commit updated .prawduct/release-notes.md and .prawduct/change-log.md but missed root
+  CHANGELOG.md. That left develop RED on
+  tests/test_plugin_version_banner.py::test_changelog_has_current_version_entry (PLUGIN_VERSION 2.1.6
+  absent from CHANGELOG.md) since the release, i.e. v2.1.6 shipped on a red suite.
+
+  Two gaps: (a) release-prep updates the .prawduct views but not root CHANGELOG.md, so the
+  consumer-facing headline is hand-step-only and was forgotten; (b) the release tagged without a
+  green full suite, or CI does not gate tagging. Symptom already repaired (headline added in
+  024bf53, sourced from release-notes.md v2.1.6 block).
+
+  Fix-shape: wire the CHANGELOG.md headline into the /prawduct:pr release-promotion / release-prep
+  flow (or generate it from the release= change-log tag like release-notes.md is), and make
+  release-prep refuse to bump/tag on a non-green suite. (builder)
+
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
 

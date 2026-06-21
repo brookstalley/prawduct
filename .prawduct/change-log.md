@@ -3,6 +3,41 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-21: Hook-CLI robustness bundle — five ready S-effort fixes (hook-cli-robustness)
+
+<!-- prawduct: chunks=01 | type=fix | scope=hook-cli-robustness -->
+
+**Why:** Five independent, ready, S-effort robustness/correctness gaps in the
+framework's own hook CLI + governance libs accumulated on the backlog (from
+Critic/builder/reviewer notes). Each was small and isolated; the highest-ROI
+structure was to bundle them on one branch so a single cumulative review + PR
+amortizes the (P0) opus review wall-clock across five correctness wins rather
+than paying it five times.
+
+**What:** (1) **STH-5R2Q** — flag-only subcommands (`clear`, `audit-learnings`,
+`repo-disable`) now reject unknown args via a shared `_reject_unknown_args`
+helper (exit 2, the hook's usage-error convention) instead of silently ignoring
+them — the swallow that had masked a real bug where a test passed `tmp_path`
+positionally and the live repo was audited. (2) **TST-3E8V** —
+`cmd_test_evidence` widens its launch catch `FileNotFoundError` → `OSError`, so a
+non-executable `test_command` target (`PermissionError`) takes the clean exit-2
+path instead of tracebacking. (3) **REL-7P3X** — `cmd_stamp_merged` strips a
+leading origin/ from the configured `base_branch` before the local-branch guard
+compare, so the project-state-"preferred" origin-prefixed form no longer refuses
+permanently. (4) **STH-9T4F** — the critic-active marker
+(`lib/critic_marker.py`) and the operator-verification queue rewrite
+(`lib/operator_verification.py`) now use `core.atomic_write_text` (the two sites
+left out of STH-8M3V's scope); their readers fail open, so a torn write misfired
+governance silently. (5) **BLD-4K7P** — `verify-chunk-refs` no longer cries wolf
+on non-path tokens: `_looks_like_file_path` skips `<>`/`://` (template
+placeholders, URLs) and `_verify_chunk_refs` skips intentionally-gitignored
+managed paths via a new `gitstate.git_path_is_ignored` helper. +14 tests
+(1352 → 1366). Cumulative Critic caught one BLOCKING (the plan's own prose
+backticked git-ref tokens that tripped the new ref check) — fixed by
+de-backticking, with the general git-ref over-match captured as follow-up
+BLD-3M7K. CRT-9L2F (post-release live-verify of explicit Critic mode) is the
+natural follow-up once this ships.
+
 ## 2026-06-20: Formalize the upstream bug-reporting channel — /prawduct:report-bug + inbox resolver + receiving advisory (upstream-bug-reporting)
 
 <!-- prawduct: chunks=01,02 | type=feature | release=v2.1.6 | status=shipped | scope=upstream-bug-reporting -->
