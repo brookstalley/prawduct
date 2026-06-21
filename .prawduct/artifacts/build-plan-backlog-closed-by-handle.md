@@ -52,7 +52,7 @@ rule must cascade to the definition it rests on).
 
 ## Status
 
-- [ ] Chunk 01: Reconcile the `closed-by` contract + bare-SHA/amend warning
+- [x] Chunk 01: Reconcile the `closed-by` contract + bare-SHA/amend warning
 
 Context: chunk 01 BUILT and review-complete (2026-06-21, single docs work cycle,
 branch `feature/backlog-closed-by-handle` off `develop`; the sibling

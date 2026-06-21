@@ -514,8 +514,11 @@ views_enabled: true
 # retained as a historical artifact.
 # 2026-06-21: pointed at the in-progress backlog-closed-by-handle plan (reconcile
 # the `closed-by:` handle contract — never a bare SHA; BKL-9K4T; branch
-# feature/backlog-closed-by-handle off develop).
-active_build_plan: artifacts/build-plan-backlog-closed-by-handle.md
+# feature/backlog-closed-by-handle off develop); backlog-closed-by-handle SHIPPED
+# in v2.1.7 (#100), regen-views flipped its ## Status via the
+# scope=backlog-closed-by-handle change-log tag and the pointer is cleared — no
+# release-pending plans remain. The build-plan file is retained as a historical
+# artifact.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -564,6 +567,9 @@ deprecated_terms:
 # overwritten on next regen.
 
 scope_rollups:
+  backlog-closed-by-handle:
+    chunks: ["01"]
+    releases: ["v2.1.7"]
   backlog-legend-refresh:
     chunks: []
     releases: ["v2.0.16"]
