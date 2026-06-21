@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v2.1.6
+Upstream bug-reporting channel plus on-branch backlog archiving — two shipped features. (1) **A formal upstream bug-reporting channel.** `/prawduct:report-bug` writes a structured report to the product's bug inbox, an inbox resolver routes it, and a receiving advisory nudges triage of incoming reports — so a governed product can file a bug against prawduct itself without leaving its session. (2) **A closed backlog item is archived in its closing PR**, not as a separate after-merge edit, so the backlog status flip and the merge land as one atomic change instead of drifting apart.
+
 ## v2.1.5
 Reviewer-model dispatch now survives a model being withdrawn. The Critic and PR reviewer previously pinned specific model aliases (`fable` for escalated/governance-critical reviews, `opus` otherwise) as literal values in their dispatch prose — so when a model is temporarily pulled from the harness (as Fable was), an escalate-tier review would break, or worse, silently fall through to whatever model the session happens to be running (the wrong tier — a withdrawn `model:` override resolves to the inherited/session model rather than erroring). All three dispatch surfaces now express **ordered tier chains** with an explicit fallback rule: dispatch on the first model the harness lists as valid, and if the preferred tier is withdrawn/unrecognized or errors on dispatch, fall back to the next (`escalate`: fable→opus; `standard`: opus→sonnet). Prose-only — no behavior change for consuming repos beyond more resilient review dispatch when the model lineup changes.
 
