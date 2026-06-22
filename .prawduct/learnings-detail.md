@@ -6,6 +6,63 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version) — `regen-views` resolves plans by it and a version there silently skips Status flipping at release
+
+**Pattern**: v2.1.8 batch release (2026-06-22). The `hook-cli-robustness` branch was built
+targeting v2.1.7, then batched into the v2.1.8 release alongside three other branches. Its
+build-plan frontmatter read `scope: v2.1.7` (and five prose references said v2.1.7). The PR
+reviewer flagged the version references as a single **cosmetic** Coherent-Artifacts WARNING
+("authoring-time snapshot, may be waived"). Checking the convention — every sibling plan's
+frontmatter `scope:` is the scope NAME (`test-evidence`, `gate-hardening`, …), matching its
+change-log `scope=` tag — revealed that line 11 was not cosmetic: it is the field
+`regen-views` uses (REL-4T8N) to resolve a change-log `scope=hook-cli-robustness` tag to its
+build-plan file. With `scope: v2.1.7`, the release would have enumerated `scope=hook-cli-robustness`,
+found no plan with that frontmatter, and left the plan's `## Status` checkboxes `[ ]` — a silent
+miss, since regen-views skips (doesn't error on) an unresolved scope.
+
+**The rule**: when a plan ships in a different release than it was authored for, audit the
+frontmatter `scope:` and any version references. The `scope:` must equal the change-log `scope=`
+tag (the scope name), never a version. Don't accept a reviewer's "cosmetic version string" framing
+for the frontmatter line — verify it against the sibling-plan convention, because release-time
+`## Status` regeneration is load-bearing on it. The prose version references ARE cosmetic; the
+frontmatter `scope:` is not. Relates to Coherent Artifacts (#13), Validate Before Propagating (#15),
+Independent Review (#14 — the reviewer surfaced it but mis-severitied it; the audit caught the real impact).
+
+## When serially merging several stale feature branches into develop for one batched release, expect additive bookkeeping conflicts every time — and watch for a duplicate `active_build_plan:` key the auto-merge creates
+
+**Pattern**: v2.1.8 batch release (2026-06-22). Four completed-but-stale feature branches
+(12–21 commits behind develop) were merged into develop in sequence for one release. Observations:
+
+- **Bookkeeping conflicts are additive and predictable.** Every single merge conflicted on
+  `.prawduct/change-log.md`, `.prawduct/backlog.md`, `.prawduct/project-state.yaml`, and
+  `CHANGELOG.md` — because each branch had appended a change-log entry at the file top, backlog
+  items at the `## Open` head, a pointer-history comment, and (for branches carrying the
+  `024bf53` v2.1.6-headline cherry-pick) a `## v2.1.7`-vs-empty CHANGELOG gap. The resolution is
+  always a UNION: keep both sides' additions. For the change-log, place all release-pending
+  entries above the prior `release=vX` boundary regardless of their header dates (worktree-compat
+  was dated 2026-06-20 but still belongs above the 2026-06-21 v2.1.7 boundary entry) — the release
+  checklist enumerates by boundary, not date.
+
+- **The `active_build_plan:` duplicate-key trap.** worktree-compat set its pointer near the TOP of
+  project-state.yaml (just under `base_branch:`) while develop carried the pointer in the canonical
+  mid-file slot (set to hot-path by the previous merge). Two column-0 `active_build_plan:` keys on
+  different lines do NOT textually conflict, so git auto-merged BOTH → a duplicate top-level YAML
+  key. It is runtime-correct under the repo's first-wins line parser (`lib.core.read_str_yaml_key`)
+  but a PyYAML reader would last-wins to the WRONG plan, silently disabling that scope's gates. The
+  cumulative Critic caught it as a Goal-4 coherence WARNING. Fix: collapse to one canonical key.
+
+- **Critic records don't survive re-sync.** Each branch's prior-session cumulative Critic findings
+  were gone (single-slot `.critic-findings.json`, gitignored), and re-syncing develop changed HEAD
+  anyway — so a fresh `cumulative` per branch after the sync was unavoidable (verify-resolutions
+  only extends a record that already covers the merge-base..pre-fix range). A forked Critic that
+  dies mid-run (connection-closed) leaves `.critic-active` set with no findings written; clear it
+  with `prawduct-hook critic-end` before re-invoking.
+
+**The rule**: batch-merging stale branches → resolve bookkeeping by union (release-boundary order
+for the change-log), explicitly check for a duplicated `active_build_plan:` key, and run a fresh
+cumulative Critic on each branch AFTER syncing develop in. Relates to Coherent Artifacts (#13),
+Independent Review (#14), Validate Before Propagating (#15).
+
 ## When a session switches branches after SessionStart, pass the Critic mode explicitly — `infer-critic-mode` trusts the stale session-start branch marker
 
 **Pattern**: hot-path-git-batching / STH-6Q9D (2026-06-21). The session started on
