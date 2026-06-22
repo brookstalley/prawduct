@@ -61,9 +61,17 @@ stated premises. Builders of each chunk should read this before starting:
 - [ ] Chunk 01: Retire the misleading `git_sha` — freshness is `test-status`, period
 - [ ] Chunk 02: `--from-junit` ingest — end the double-execution of the suite
 - [ ] Chunk 03: Loud-fail on empty test discovery + document the `tests_dirs:` knob
-Context: Plan authored 2026-06-22 from the TST-4K2P/7M3K/2H9P pick. Spine direction
-confirmed by user (retire `git_sha`, keep gate timestamp-based). No code written yet
-— Chunk 01 is next. Builder: read `/prawduct:building` before writing code.
+Context: Chunks 01 + 02 COMPLETE. Ch01 (50c8ecb): `git_sha` retired; PR/Critic
+protocols retargeted at `test-status`; obsolete "record AFTER commit" learning
+replaced. Ch02: `record --from-junit <report>` ingests an existing JUnit run
+instead of re-running the suite (ends the double-execution); rejects combination
+with extra args / `test_command`; methodology Verify documents the single-run flow
+(a lossless trim of the adjacent In-flight paragraph kept building.md under its
+4850-token ceiling). Critic chunk-mode: 0 blocking, 0 warnings, 1 NOTE (building.md
+omits the explicit `pytest --junit-xml=<f>` producing step — left as-is: accurate +
+sufficient, and re-adding it would re-breach the ceiling). 1365 tests pass (7 new).
+Next: Chunk 03 (loud-fail on empty test discovery + document `tests_dirs:`;
+cumulative-final → the one `/critic cumulative` = the PR gate).
 
 ## Scaffolding
 
