@@ -1123,8 +1123,12 @@ class TestTestEvidenceRecord:
         assert ev_path.is_file()
         ev = json.loads(ev_path.read_text())
         assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 0, 0)
-        # counts are tied to a REAL run, and the sha is HEAD (not a stale stamp)
-        assert ev["git_sha"] == _git(repo, "rev-parse", "HEAD").stdout.strip()
+        # git_sha retired (TST-4K2P): it was dead-read by every runtime consumer
+        # and misleading when stamped before commit (review agents eyeballed the
+        # lagging sha and wrongly flagged "stale"). Freshness is the timestamp vs
+        # session-start (test-status), never a commit field — so the record must
+        # NOT carry a git_sha.
+        assert "git_sha" not in ev
         assert ev["timestamp"] and ev["duration_seconds"] >= 0
         # the plugin's own validator accepts what the plugin produced
         assert _run_in(repo, "validate-evidence").returncode == 0
@@ -1162,6 +1166,100 @@ class TestTestEvidenceRecord:
         res = _run_in(repo, "test-evidence", "bogus")
         assert res.returncode == 2
         assert "usage" in res.stderr.lower()
+
+
+class TestFromJunitIngest:
+    """TST-7M3K: `record --from-junit <report>` ingests a JUnit XML the builder
+    already produced instead of re-running the suite — the gate stops paying for
+    the suite twice per stamp point.
+    """
+
+    def _repo(self, tmp_path, body: str = "def test_ok():\n    assert True\n") -> Path:
+        repo = tmp_path / "fj"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text(body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def _junit(self, repo: Path, *, tests: int = 2, failures: int = 0,
+               errors: int = 0, skipped: int = 0, time: str = "1.5",
+               name: str = "report.xml") -> Path:
+        path = repo / name
+        path.write_text(
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            "<testsuites>\n"
+            f'  <testsuite name="pytest" tests="{tests}" failures="{failures}" '
+            f'errors="{errors}" skipped="{skipped}" time="{time}"></testsuite>\n'
+            "</testsuites>\n"
+        )
+        return path
+
+    def test_ingests_report_without_running_the_suite(self, tmp_path):
+        # The repo's OWN test would FAIL if run; the report claims 2 passed, 0
+        # failed. An ingested record reflecting the report (exit 0, 2 passed)
+        # proves the suite was never executed — the double-run is gone.
+        repo = self._repo(tmp_path, "def test_bad():\n    assert False\n")
+        junit = self._junit(repo, tests=2, failures=0)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 0, 0)
+        assert "git_sha" not in ev
+        assert ev["command"] == f"--from-junit {junit}"
+        # the plugin's own validator accepts what the plugin produced
+        assert _run_in(repo, "validate-evidence").returncode == 0
+        # the caller's report is read, not consumed — it must survive
+        assert junit.is_file()
+
+    def test_failing_report_exits_nonzero(self, tmp_path):
+        repo = self._repo(tmp_path)
+        junit = self._junit(repo, tests=3, failures=1)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["failed"] == 1 and ev["passed"] == 2
+
+    def test_missing_report_is_a_clean_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit",
+                      str(repo / "nope.xml"))
+        assert res.returncode == 2
+        assert "not found" in res.stderr.lower()
+
+    def test_malformed_report_is_a_clean_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        bad = repo / "bad.xml"
+        bad.write_text("<not-valid-xml")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(bad))
+        assert res.returncode == 2
+        assert "parse" in res.stderr.lower()
+
+    def test_missing_path_argument_is_a_usage_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit")
+        assert res.returncode == 2
+        assert "--from-junit" in res.stderr
+
+    def test_rejects_extra_pytest_args(self, tmp_path):
+        repo = self._repo(tmp_path)
+        junit = self._junit(repo)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit",
+                      str(junit), "--", "-k", "foo")
+        assert res.returncode == 2
+        assert "from-junit" in res.stderr.lower()
+
+    def test_rejects_combination_with_test_command(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        junit = self._junit(repo)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 2
+        assert "test_command" in res.stderr
 
 
 class TestTestEvidenceKnobs:
