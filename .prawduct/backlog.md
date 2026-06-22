@@ -8,6 +8,21 @@
 ## Open
 
 
+- **[TST-4K2P]** Make test-evidence freshness content-based, not commit-SHA-based — a pre-commit record must not read as stale
+  `effort: M · impact: L · area: test-evidence · source: user · added: 2026-06-22 · status: open · stage: design · related: TST-6V2N · refs: bin/prawduct-hook, lib/gates.py, skills/pr/review-protocol.md, skills/critic/review-cycle.md`
+
+  **URGENT** (user: "a huge pain for all users", "a constant annoyance" — flagged 2026-06-22). High impact: affects every product using the prawduct PR/review flow.
+
+  Problem: `prawduct-hook test-evidence record` stamps `git_sha` = HEAD at record time, but it tests the WORKING TREE (HEAD + uncommitted edits). So the natural flow "edit → run suite → record → commit" stamps the PRE-commit SHA; after committing, the stamp lags HEAD. Consumers that read the stamp then judge the evidence stale even though its CONTENT tested exactly what's shipping — the PR reviewer flagged this as a WARNING on PR #101 ("evidence ran against a tree without the fix"; false — the tree had the fix, uncommitted), and it recurs on every branch unless you remember to record AFTER committing (hit twice in the 2026-06-22 session: A1 and the critic-protocol-budget bump). The mismatch is structural, not user error.
+
+  Proposed direction (user): judge freshness by CONTENT, independent of commit status — stamp a hash of the test-relevant file contents instead of (or alongside) `git_sha`. Then "edit → record → commit" stays current (the commit doesn't change content), and an amend/rebase/cherry-pick doesn't falsely invalidate.
+
+  KEY design decision (why stage:design, not ready): the hash MUST be scoped to test-relevant inputs (source + tests + test config), NOT the whole tree — a naive whole-tree content hash would invalidate evidence on every `.md` edit and destroy the CRT-7M2D docs-only allowance (a doc tweak after a clean review currently rides free, and SHOULD). Options for the scope: all tracked non-`.md` non-metadata files; a declared `tests_dirs:`/source glob; or language-native coverage inputs. Decide the scope, then content-hash that set.
+
+  Consumers to reconcile (all currently key off git_sha / commit-coverage): `test-status` (the reader), the PR-reviewer Merge-Hygiene freshness check (`skills/pr/review-protocol.md`), the Critic Goal-1 test-status check, and the cumulative-gate's HEAD-covering + CRT-7M2D docs-only-since logic in `lib/gates.py` (git_sha-based — reconcile content-freshness with the gate's commit-coverage requirement; they answer different questions).
+
+  Stopgap until shipped: record test-evidence as the LAST step, after committing, on a clean tree. Surfaced by TEL-4M9X (A1) and critic-protocol-budget; part of the review-streamlining track.
+
 - **[BKL-8T3W]** Backlog-accuracy structural enforcement — surface cross-session "shipped-but-not-removed" Open items (and stale-by-age) so a ready item isn't rebuilt
   `effort: M · impact: M · area: governance/backlog-tooling · source: user · added: 2026-06-21 · status: open · stage: requirements · related: BLD-4K7P · refs: incoming-bugs/archive/backlog-accuracy-stale-check-hook-plus-closed-but-not-removed-critic-goal.md, skills/critic/review-cycle.md, skills/pr/review-protocol.md, lib/backlog_probes.py`
 
@@ -161,6 +176,8 @@
   existing token earning its place?); decide whether budgets should be holistic (a total always-on ceiling)
   rather than per-file; and only raise a per-file budget when every existing token is high-ROI. Output: a
   recommendation + (likely) a revised budget model. Then it can advance to `design`/`ready`. (user)
+
+  — 2026-06-22: the critic-protocol-budget bump (review-protocol.md ceiling 3120→3350; change-log + PR #103) is a data point for this audit — a per-file ceiling raised AFTER a lean-audit (file at 3116/3120, every token load-bearing, relocating the one movable block would fragment the instructions), i.e. the reasoned posture this item asks for, not a ceiling-dodge. Does not close this (the broad holistic budget audit remains open).
 
 - **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
   `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · stage: requirements · related: CRT-9V4T, PRR-4M9T, JAN-4F7M · reviewed: 2026-06-10`
@@ -495,38 +512,6 @@
   parser family as the shipped BLD-2R9X (glob metacharacters) and BLD-8F2Q (`path::symbol`); this
   covers token classes those two fixes don't reach. (critic)
 
-- **[TEL-4M9X]** Normalize model-id strings in the governance ledger so review-stats can analyze the model dimension
-  `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: open · stage: ready · related: TEL-6P2D · refs: lib/telemetry.py, .prawduct/.governance-ledger.jsonl, .prawduct/artifacts/reviewer-model-ab-2026-06-10.md`
-
-  Problem: `review-stats` aggregates by `role × model × mode`, but the SAME model is recorded under
-  several id strings — `opus`, `claude-opus-4-8`, and `claude-opus-4-8[1m]` are all the same model,
-  while `fable`/`sonnet` are genuinely different. This fragments the model dimension into noise. The
-  2026-06-22 review-stats run split critic-opus reviews across three buckets (1 + 6 + others), making
-  per-model yield unreadable — which defeats the exact A/B question the telemetry was built to answer
-  (see reviewer-model-ab artifact).
-
-  Approach:
-  - Canonicalize the model-id at the aggregation key in lib/telemetry.py (read-time fold) AND at
-    write-time where the review.* ledger event is created, so new events are clean and the existing 41
-    immutable events still aggregate correctly without rewriting the append-only ledger.
-  - Collapse opus aliases (`opus`, `claude-opus-4-8`, `claude-opus-4-8[1m]`) → one canonical `opus`
-    family label; keep `fable`, `sonnet`, `haiku` distinct; unknown id → passthrough.
-  - Put the mapping in ONE shared helper so future model ids are a one-line add.
-
-  Assurance impact: pure measurement/observability fix — changes no gate behavior and adds no review
-  runs. Zero assurance risk.
-
-  Acceptance:
-  - review-stats shows opus variants collapsed to one bucket per (role, mode); fable stays separate.
-  - The historical 41 events aggregate correctly with NO rewrite of the ledger file.
-  - Unit test covers the canonicalization map (opus aliases→opus; fable→fable; unknown→passthrough).
-
-  Open decision: normalize the aggregation key only vs. add a persisted `model_family` field —
-  recommend aggregation-key normalization + shared helper (lighter; preserves the raw string). This is
-  the FIRST deliverable of the evidence-driven-pruning track and must land before any per-model or
-  per-leg pruning can be data-justified. Being started immediately (will be promoted on a feature
-  branch off develop). (user)
-
 - **[TEL-6P2D]** review-stats windowing + zero-yield pruning-candidate flag + a documented pruning protocol (no auto-cut)
   `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: open · stage: design · related: TEL-4M9X, CRT-9R4K, CRT-5T8N · refs: lib/telemetry.py, methodology/building.md`
 
@@ -558,32 +543,6 @@
   code-path/scope (a leg may be productive on governance diffs, dead on docs). Depends on A1 (clean
   model dimension). Feeds C (the data that would justify deferring per-chunk reviews on short plans).
   (user)
-
-- **[CRT-5T8N]** Single-owner the Learnings Cross-Check & Backlog Reconciliation shared by the cumulative-Critic and the PR reviewer
-  `effort: S · impact: S · area: critic · source: user · added: 2026-06-22 · status: open · stage: ready · related: TEL-6P2D · refs: skills/critic/review-protocol.md, skills/pr/review-protocol.md`
-
-  Problem: After the consume-and-audit redesign (PR reviewer audits the Critic record instead of
-  re-deriving code soundness), two checklist items are still performed by BOTH the cumulative/final
-  Critic and the PR reviewer: (1) Learnings Cross-Check (both scan learnings.md) and (2) Backlog
-  Reconciliation (Critic does it; PR reviewer does a data-consistency variant). This duplicates prompt
-  scope across two agents. It saves prompt tokens/focus, NOT wall-clock (no review run is removed) — a
-  tidy, not a needle-mover; scope accordingly.
-
-  Approach:
-  - B0 (validate FIRST — Principle 15): diff the two protocols' checklists and confirm the overlap is
-    TRUE duplication, not complementary work. Specifically check whether the PR reviewer's
-    release-coherence/data-consistency check (change-log ↔ version ↔ backlog) catches something the
-    Critic's reconciliation does not. Do NOT dedup complementary checks. If complementary, close B as
-    "no-op, confirmed complementary."
-  - B1: assign single ownership for the genuinely-duplicated parts — Critic owns the Learnings
-    Cross-Check and the substantive Backlog Reconciliation; the PR reviewer cites the Critic's result /
-    does only the thin release-coherence delta. Edit skills/critic/review-protocol.md and
-    skills/pr/review-protocol.md to state the single owner explicitly.
-
-  Assurance: must NOT drop any check — only relocate it to exactly one owner.
-  Acceptance: each of the two checks has exactly one named owner across the two protocols; nothing
-  silently dropped; the PR reviewer protocol explicitly references the Critic's result for the
-  relocated checks. Governance-protected files (skills/) → full Critic + PR review. (user)
 
 - **[CRT-9R4K]** Extend cumulative-final to short plans — defer per-chunk Critic reviews into one end-of-plan cumulative
   `effort: M · impact: M · area: building · source: user · added: 2026-06-22 · status: open · stage: requirements · related: TEL-6P2D · refs: methodology/building.md, skills/critic/review-protocol.md, lib/critic_mode.py`
@@ -624,6 +583,74 @@
 ## Promoted
 
 ## Archive
+
+- **[CRT-5T8N]** Single-owner the Learnings Cross-Check & Backlog Reconciliation shared by the cumulative-Critic and the PR reviewer
+  `effort: S · impact: S · area: critic · source: user · added: 2026-06-22 · status: shipped · stage: ready · related: TEL-6P2D · refs: skills/critic/review-protocol.md, skills/pr/review-protocol.md · closed-by: single-owner-shared-checks · reviewed: 2026-06-22`
+
+  Problem: After the consume-and-audit redesign (PR reviewer audits the Critic record instead of
+  re-deriving code soundness), two checklist items are still performed by BOTH the cumulative/final
+  Critic and the PR reviewer: (1) Learnings Cross-Check (both scan learnings.md) and (2) Backlog
+  Reconciliation (Critic does it; PR reviewer does a data-consistency variant). This duplicates prompt
+  scope across two agents. It saves prompt tokens/focus, NOT wall-clock (no review run is removed) — a
+  tidy, not a needle-mover; scope accordingly.
+
+  Approach:
+  - B0 (validate FIRST — Principle 15): diff the two protocols' checklists and confirm the overlap is
+    TRUE duplication, not complementary work. Specifically check whether the PR reviewer's
+    release-coherence/data-consistency check (change-log ↔ version ↔ backlog) catches something the
+    Critic's reconciliation does not. Do NOT dedup complementary checks. If complementary, close B as
+    "no-op, confirmed complementary."
+  - B1: assign single ownership for the genuinely-duplicated parts — Critic owns the Learnings
+    Cross-Check and the substantive Backlog Reconciliation; the PR reviewer cites the Critic's result /
+    does only the thin release-coherence delta. Edit skills/critic/review-protocol.md and
+    skills/pr/review-protocol.md to state the single owner explicitly.
+
+  Assurance: must NOT drop any check — only relocate it to exactly one owner.
+  Acceptance: each of the two checks has exactly one named owner across the two protocols; nothing
+  silently dropped; the PR reviewer protocol explicitly references the Critic's result for the
+  relocated checks. Governance-protected files (skills/) → full Critic + PR review. (user)
+
+  Shipped 2026-06-22 on branch feature/single-owner-shared-checks: scoped the PR reviewer's
+  Learnings Cross-Check + Backlog R-1 to the consumed Critic record; R-2 stays unconditional;
+  review-cycle.md names final/cumulative as owner; 2 guard tests; cumulative Critic clean, PR
+  reviewer clean. Archived on-branch per the ship-in-PR contract so it rides in the closing PR.
+  closed-by is the branch/feature scope name (a pre-commit handle, not a SHA).
+
+- **[TEL-4M9X]** Normalize model-id strings in the governance ledger so review-stats can analyze the model dimension
+  `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: shipped · stage: ready · related: TEL-6P2D · refs: lib/telemetry.py, .prawduct/.governance-ledger.jsonl, .prawduct/artifacts/reviewer-model-ab-2026-06-10.md · closed-by: telemetry-model-id-normalization · reviewed: 2026-06-22`
+
+  Problem: `review-stats` aggregates by `role × model × mode`, but the SAME model is recorded under
+  several id strings — `opus`, `claude-opus-4-8`, and `claude-opus-4-8[1m]` are all the same model,
+  while `fable`/`sonnet` are genuinely different. This fragments the model dimension into noise. The
+  2026-06-22 review-stats run split critic-opus reviews across three buckets (1 + 6 + others), making
+  per-model yield unreadable — which defeats the exact A/B question the telemetry was built to answer
+  (see reviewer-model-ab artifact).
+
+  Approach:
+  - Canonicalize the model-id at the aggregation key in lib/telemetry.py (read-time fold) AND at
+    write-time where the review.* ledger event is created, so new events are clean and the existing 41
+    immutable events still aggregate correctly without rewriting the append-only ledger.
+  - Collapse opus aliases (`opus`, `claude-opus-4-8`, `claude-opus-4-8[1m]`) → one canonical `opus`
+    family label; keep `fable`, `sonnet`, `haiku` distinct; unknown id → passthrough.
+  - Put the mapping in ONE shared helper so future model ids are a one-line add.
+
+  Assurance impact: pure measurement/observability fix — changes no gate behavior and adds no review
+  runs. Zero assurance risk.
+
+  Acceptance:
+  - review-stats shows opus variants collapsed to one bucket per (role, mode); fable stays separate.
+  - The historical 41 events aggregate correctly with NO rewrite of the ledger file.
+  - Unit test covers the canonicalization map (opus aliases→opus; fable→fable; unknown→passthrough).
+
+  Open decision: normalize the aggregation key only vs. add a persisted `model_family` field —
+  recommend aggregation-key normalization + shared helper (lighter; preserves the raw string). This is
+  the FIRST deliverable of the evidence-driven-pruning track and must land before any per-model or
+  per-leg pruning can be data-justified. Being started immediately (will be promoted on a feature
+  branch off develop). (user)
+
+  Shipped 2026-06-22 on branch feature/telemetry-model-id-normalization (lib/telemetry.py
+  `_canonical_model` fold + 4 tests + docs/governance-telemetry.md + change-log entry; full suite 1355
+  passed). Archived on the branch per the ship-in-PR contract so it rides in the closing PR.
 
 - **[BKL-9K4T]** Reconcile the `closed-by:` contract with non-chunk/bare-commit work — define a stable on-branch handle and warn on the amend-dangle footgun
   `effort: S · impact: S · area: backlog · source: user · added: 2026-06-21 · status: shipped · stage: ready · related: REL-7P3X, PR-2H8N · refs: incoming-bugs/archive/backlog-closed-by-cannot-reference-its-own-commit.md, skills/backlog/SKILL.md, templates/backlog.md · closed-by: backlog-closed-by-handle · reviewed: 2026-06-21`

@@ -26,6 +26,58 @@ before adding here." No protocol content changed; this is purely the test
 threshold. Part of the review-streamlining track (alongside the telemetry
 model-id fix and the PR-reviewer single-owner scoping).
 
+## 2026-06-22: Single-owner the PR reviewer's Learnings Cross-Check & Backlog R-1 — scope them to the consumed Critic record (single-owner-shared-checks)
+
+<!-- prawduct: chunks=01 | type=refactor | scope=single-owner-shared-checks -->
+
+**Why:** After the consume-and-audit redesign (the PR reviewer audits the Critic
+record instead of re-deriving code soundness), the PR reviewer *still* re-ran two
+checks the cumulative Critic already does over the same diff: the Learnings
+Cross-Check and the Backlog "resolved items" walk (R-1) — duplicated scanning
+across two agents. B0 (the validate-first step of CRT-5T8N) confirmed this is
+*true* duplication, not complementary work, but found the naive fix ("just delete
+it from the PR reviewer") has a **coverage gap**: the PR gate can be satisfied by
+a `verify-resolutions` **chain record**, which runs Goals 1-3 only and never runs
+those cross-checks over its delta `<anchor>...HEAD`. The PR reviewer's own scan
+was the only thing covering that delta.
+
+**What:** The PR reviewer's **Learnings Cross-Check** and **Backlog R-1** are now
+scoped to the consumed record — skip on a HEAD-covering `cumulative`/`final` (the
+Critic owns the bundle scan; rely on the audited record), scan **only** the
+chain-delta `<extends_cumulative.commit_reviewed>...HEAD` on a `verify-resolutions`
+record (closes the gap), full scan on a voided/absent record (the pre-scoping
+behavior). **R-2** (change-log↔backlog data inconsistency) stays unconditional —
+the Critic does not do it. `skills/critic/review-cycle.md` names `final`/`cumulative`
+as the explicit **owner** of both cross-checks so the division reads from both
+sides. 2 guard tests added (`tests/test_pr_reviewer.py`). Cuts duplicated reviewer
+work without losing assurance (CRT-5T8N, the B item of the review-streamlining
+track). *Note:* the item assumed the Critic-side detail lived in
+`critic/review-protocol.md`; it's actually in `review-cycle.md` (review-protocol.md
+only references it), so the ownership statement landed there.
+
+## 2026-06-22: Fold reviewer model-id aliases to a family label in review-stats so the model dimension isn't fragmented (telemetry-model-id-normalization)
+
+<!-- prawduct: chunks=01 | type=fix | scope=telemetry-model-id-normalization -->
+
+**Why:** `review-stats` groups reviews by role × model × mode, but one model is
+recorded under several id strings (`opus`, `claude-opus-4-8`,
+`claude-opus-4-8[1m]` are all the same model), so it split that model across
+three buckets — the 2026-06-22 run fragmented critic-opus reviews across
+`opus` / `claude-opus-4-8` / `claude-opus-4-8[1m]`, making per-model yield
+unreadable and defeating the reviewer-model A/B the dimension exists to answer.
+Surfaced while mining review-stats for the evidence-driven review-pruning track
+(**TEL-4M9X**, the first deliverable of that track).
+
+**What:** A `_canonical_model` helper folds a recorded id to its Claude family
+(`opus`/`sonnet`/`haiku`/`fable`) at the aggregation key only — `fable`/`sonnet`
+stay distinct from `opus`, and an unfamiliar id passes through verbatim (never
+bucketed under a known family). Substring match, so a future model *version*
+folds with no code change (the drift-resilience the reviewer-model fallback
+chains chose over pinned ids). The raw id stays untouched in each append-only
+ledger line, so the historical 41 events aggregate correctly with **no rewrite**
+— a read-time view. Folds **values, not keys**, so `REPORT_SCHEMA_VERSION` holds.
+4 tests added; `docs/governance-telemetry.md` documents the fold.
+
 ## 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)
 
 <!-- prawduct: chunks=01 | type=fix | release=v2.1.7 | status=shipped | scope=backlog-closed-by-handle -->
