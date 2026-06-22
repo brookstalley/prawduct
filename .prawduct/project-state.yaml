@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-06-10
+backlog_last_groomed_at: 2026-06-22
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -470,6 +470,9 @@ views_enabled: true
 # The v2.0.0, M4 (v2.0.3), and waiver-pragma/2.0-rock-solid (v2.0.4) plans are
 # complete and released; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans.
+
+active_build_plan: artifacts/build-plan-hot-path-git-batching.md
+
 #
 # v2.0.5 (2026-06-04) shipped FOUR batched scopes together — roi-batch (#58),
 # roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
@@ -516,6 +519,20 @@ views_enabled: true
 # regen-views flipped its ## Status via the scope=reviewer-model-fallback tag and
 # the pointer is cleared — no release-pending plans remain. The build-plan file is
 # retained as a historical artifact.
+# 2026-06-21: pointed at the in-progress backlog-closed-by-handle plan (reconcile
+# the `closed-by:` handle contract — never a bare SHA; BKL-9K4T; branch
+# feature/backlog-closed-by-handle off develop); backlog-closed-by-handle SHIPPED
+# in v2.1.7 (#100), regen-views flipped its ## Status via the
+# scope=backlog-closed-by-handle change-log tag and the pointer is cleared — no
+# release-pending plans remain. The build-plan file is retained as a historical
+# artifact.
+# 2026-06-22: the v2.1.8 release batch is being assembled on develop — test-evidence
+# (#104), then the hook-cli-robustness bundle (#105), then this hot-path-git-batching
+# refactor (STH-6Q9D, branch feature/hot-path-git-batching) which the operative pointer
+# above now tracks. Each member's change-log entry carries status=merged once its merge
+# runs stamp-merged; all are release-pending until the develop→main v2.1.8 promotion
+# flips their entries to status=shipped and regen-views flips each plan's ## Status via
+# its scope= tag.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -564,12 +581,18 @@ deprecated_terms:
 # overwritten on next regen.
 
 scope_rollups:
+  backlog-closed-by-handle:
+    chunks: ["01"]
+    releases: ["v2.1.7"]
   backlog-legend-refresh:
     chunks: []
     releases: ["v2.0.16"]
   backlog-rework:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
     releases: ["v2.0.15"]
+  backlog-ship-in-pr:
+    chunks: ["01"]
+    releases: ["v2.1.6"]
   changelog-lifecycle:
     chunks: ["01", "02", "03"]
     releases: ["v2.1.1"]
@@ -633,6 +656,9 @@ scope_rollups:
   roi-batch-2:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
     releases: ["v2.0.5"]
+  upstream-bug-reporting:
+    chunks: ["01", "02"]
+    releases: ["v2.1.6"]
   v1.4:
     chunks: ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14"]
     releases: ["v1.3.17", "v1.4.0"]

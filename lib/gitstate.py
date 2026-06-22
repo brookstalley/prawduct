@@ -12,6 +12,7 @@ the hook). The hook imports this lazily inside the functions that use it
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -129,9 +130,14 @@ def git_status_output(project_dir: Path) -> str | None:
         return None
 
 
-def git_has_changes(project_dir: Path) -> str:
-    """Check if there are uncommitted changes. Returns first changed file or empty string."""
-    output = git_status_output(project_dir)
+def git_has_changes(project_dir: Path, status_output: str | None = None) -> str:
+    """Check if there are uncommitted changes. Returns first changed file or empty string.
+
+    ``status_output`` lets a hot-path caller pass a single ``git status --porcelain``
+    capture so the family of probes shares one subprocess (STH-6Q9D); ``None`` (the
+    default) computes it, so every existing caller is unaffected.
+    """
+    output = status_output if status_output is not None else git_status_output(project_dir)
     if output is None:
         return ""
     lines = output.strip().splitlines()
@@ -193,21 +199,25 @@ def parse_porcelain_line(line: str) -> tuple[str, str | None, str] | None:
     return status, src_path, path
 
 
-def git_has_session_changes(project_dir: Path) -> str:
+def git_has_session_changes(project_dir: Path, status_output: str | None = None) -> str:
     """Check if non-metadata uncommitted changes differ from session baseline.
 
     Compares current git status to the baseline captured at session start.
     Ignores .prawduct/ metadata and framework-managed files.
     Returns first new changed file or empty string. Falls back to
     git_has_changes if no baseline exists (backward compat).
+
+    ``status_output`` (STH-6Q9D): an optional pre-captured ``git status
+    --porcelain`` snapshot to reuse instead of spawning git again; ``None``
+    computes it (unchanged default behavior).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     baseline_path = prawduct_dir / ".session-git-baseline"
 
     if not baseline_path.is_file():
-        return git_has_changes(project_dir)
+        return git_has_changes(project_dir, status_output)
 
-    current = git_status_output(project_dir)
+    current = status_output if status_output is not None else git_status_output(project_dir)
     if current is None:
         return ""
 
@@ -230,16 +240,17 @@ def git_has_session_changes(project_dir: Path) -> str:
     return ""
 
 
-def _session_changes_are_doc_only(project_dir: Path) -> bool:
+def _session_changes_are_doc_only(project_dir: Path, status_output: str | None = None) -> bool:
     """Check if all non-metadata session changes are documentation (.md) files.
 
     Returns True if changes exist but are all .md files — used to skip
-    the reflection gate for doc-only edits.
+    the reflection gate for doc-only edits. ``status_output`` (STH-6Q9D): an
+    optional pre-captured porcelain snapshot to reuse; ``None`` computes it.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     baseline_path = prawduct_dir / ".session-git-baseline"
 
-    current = git_status_output(project_dir)
+    current = status_output if status_output is not None else git_status_output(project_dir)
     if current is None:
         return False
 
@@ -268,14 +279,15 @@ def _session_changes_are_doc_only(project_dir: Path) -> bool:
     return has_any
 
 
-def git_has_code_changes(project_dir: Path) -> bool:
+def git_has_code_changes(project_dir: Path, status_output: str | None = None) -> bool:
     """Check if non-metadata files were modified since session baseline.
 
     Mirrors git_has_session_changes() baseline-diff logic but returns a bool.
     Skips files that match the session baseline (pre-existing dirt) and
     framework metadata (.prawduct/, .claude/settings.json, etc.).
+    ``status_output`` (STH-6Q9D): optional pre-captured porcelain snapshot.
     """
-    return bool(git_has_session_changes(project_dir))
+    return bool(git_has_session_changes(project_dir, status_output))
 
 
 def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
@@ -302,20 +314,36 @@ _PRODUCT_CODE_SUFFIXES = (
 )
 
 
+# Directory names pruned from the product-code walk (STH-6Q9D): never descend
+# into them. ``node_modules``/``.git`` can hold tens of thousands of files the old
+# ``rglob`` enumerated before the per-file filter discarded them; ``.prawduct`` is
+# framework state. ``node_modules`` and ``.prawduct`` were already excluded by the
+# prior filter; ``.git`` is added — it never holds product source, so the verdict
+# is unchanged while the heaviest tree (``.git/objects``) is no longer walked.
+_PRODUCT_WALK_PRUNE_DIRS = frozenset({".prawduct", "node_modules", ".git"})
+
+
 def _has_product_code(project_dir: Path) -> bool:
     """True if the repo contains the product's OWN source code — not framework
     tooling, not ``.prawduct/`` state, not vendored deps. The single definition
     behind both the project-preferences CRITICAL and the discovery-capture nudge.
+
+    Prunes ``node_modules``/``.git``/``.prawduct`` at the directory level
+    (STH-6Q9D) so a large ``node_modules`` is never enumerated, and short-circuits
+    on the first product-code file — same verdict as the prior ``rglob`` + filter.
     """
-    return any(
-        f.suffix in _PRODUCT_CODE_SUFFIXES
-        for f in project_dir.rglob("*")
-        if f.is_file()
-        and ".prawduct" not in f.parts
-        and "node_modules" not in f.parts
-        and f.name != "conftest.py"
-        and not _is_framework_tooling(f, project_dir)
-    )
+    for dirpath, dirnames, filenames in os.walk(str(project_dir)):
+        # Prune in place so os.walk never descends into excluded trees.
+        dirnames[:] = [d for d in dirnames if d not in _PRODUCT_WALK_PRUNE_DIRS]
+        for name in filenames:
+            if name == "conftest.py":
+                continue
+            f = Path(dirpath) / name
+            if f.suffix in _PRODUCT_CODE_SUFFIXES and not _is_framework_tooling(
+                f, project_dir
+            ):
+                return True
+    return False
 
 
 # Conventional documentation roots prawduct recognizes — CLAUDE.md (and the
@@ -395,10 +423,38 @@ def _git_head_sha(project_dir: Path) -> str:
     return ""
 
 
-def _get_session_changed_files(project_dir: Path) -> list[str]:
-    """Get files changed since session start. Returns list of file paths."""
+def git_path_is_ignored(project_dir: Path, rel_path: str) -> bool:
+    """True if ``rel_path`` is git-ignored within ``project_dir``.
+
+    Used by the build-plan ref-existence check so an intentionally-gitignored
+    managed path (e.g. ``.prawduct/.bug-inbox``) is not flagged as a missing
+    deliverable (BLD-4K7P) — such paths are generated/managed and legitimately
+    absent from a fresh checkout. Fail-closed: ``git check-ignore`` exits 0 when
+    ignored, 1 when not, and 128 on error (e.g. not a git repo); any non-zero or
+    exception returns False ("couldn't prove it's ignored"), so a genuinely
+    missing path is still flagged rather than silently passed.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", "--", rel_path],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash the ref check
+        return False
+
+
+def _get_session_changed_files(project_dir: Path, status_output: str | None = None) -> list[str]:
+    """Get files changed since session start. Returns list of file paths.
+
+    ``status_output`` (STH-6Q9D): optional pre-captured porcelain snapshot to
+    reuse; ``None`` computes it (unchanged default).
+    """
     prawduct_dir = get_prawduct_dir(project_dir)
-    current = git_status_output(project_dir)
+    current = status_output if status_output is not None else git_status_output(project_dir)
     if current is None:
         return []
 

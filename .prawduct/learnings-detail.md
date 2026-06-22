@@ -6,6 +6,42 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a session switches branches after SessionStart, pass the Critic mode explicitly — `infer-critic-mode` trusts the stale session-start branch marker
+
+**Pattern**: hot-path-git-batching / STH-6Q9D (2026-06-21). The session started on
+`feature/hook-cli-robustness` (a merge-ready branch the user deferred), then the
+work moved to a fresh `feature/hot-path-git-batching` off develop. At chunk close I
+ran `/prawduct:critic` with no args. It inferred `verify-resolutions` and chained to
+the *prior* session's anchors `f208ad2`/`f92a4be` — which live on the SIBLING
+hook-cli-robustness branch and are not ancestors of HEAD. The mode-inference read the
+branch captured at SessionStart, not the current one.
+
+**Why the guard missed it**: `compute-verify-resolutions-scope` demotes a chain only
+when the anchor `commit_reviewed` SHA does not *resolve*. A sibling-branch SHA still
+resolves in the shared object store — it's simply not an ancestor of HEAD — so the
+demote-guard passed it and the review computed an `anchor..HEAD` two-way diff that
+spanned the divergence point. That surfaced the sibling branch's `git_path_is_ignored`
+deletion and a `BLD-4K7P` carveout removal as if THIS work removed shipped behavior;
+both were absent at the develop merge-base and untouched by the real commit. The Critic
+self-flagged the phantoms and recommended `cumulative` on this branch, which I then ran
+(clean: 0/0/4), followed by a chain-extending `verify-resolutions` (0/0/0).
+
+**The rule**: after any mid-session branch switch, the session-start git markers
+(branch, baseline) are stale for governance inference — pass the Critic mode
+explicitly and anchor on the current branch. The deeper fix is filed as CRT-8H3R: add
+a `git merge-base --is-ancestor <anchor> HEAD` check to the demote-guard so a
+non-ancestor anchor demotes to `cumulative`/`final` instead of computing a divergent
+delta. Note this is distinct from CRT-6J4P (anchor is a valid ancestor, just from a
+prior bundle — surprise, not unsoundness); CRT-8H3R is the actual soundness bug.
+
+---
+
+## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree
+
+Surfaced 2026-06-22 during TEL-4M9X (review-stats model-id normalization). After landing the `_canonical_model` fold in `lib/telemetry.py` and confirming the unit tests passed, I ran `prawduct-hook review-stats` against the real ledger to watch the opus buckets collapse — and they didn't: the output still showed `opus` / `claude-opus-4-8` / `claude-opus-4-8[1m]` as three separate buckets, exactly as before the fix. Momentary "did the change not take?" The root cause: `command -v prawduct-hook` resolved to `~/.claude/plugins/cache/prawduct/prawduct/2.1.7/bin/prawduct-hook` — the installed plugin, pinned to the released v2.1.7 and importing *that release's* `lib/telemetry.py`, which has no `_canonical_model`. Re-running `python3 bin/prawduct-hook review-stats` from the repo root (which imports the working-tree `lib/`) showed the correct collapse — the 14-review cumulative bucket, with `fable` kept distinct. The unit tests never caught a problem because `tests/test_review_stats.py` invokes the hook via `ROOT / "bin" / "prawduct-hook"` — i.e. the repo-local copy — so the suite always exercised the new code. Fix-shape: when behaviorally verifying a framework `lib/`/`bin/` change, invoke the repo-local `python3 bin/prawduct-hook <cmd>`; treat the bare on-PATH command as *released* behavior that lags your edits until the plugin is re-released and re-cached. The diagnostic contradiction to watch for — green tests but unchanged PATH-command output — is itself the signal you're hitting the cached plugin, not your working tree. Relates to Honest Confidence (#5 — don't report a fix as broken on stale evidence), Validate Before Propagating (#15), and Reasoned Decisions (#4).
+
+---
+
 ## When prose picks which model a reviewer/subagent runs on, express it as an ordered fallback chain resolved at dispatch — never a pinned alias
 
 **Pattern**: reviewer-model-fallback (2026-06-12). Reviewer dispatch pinned `model: fable` (escalate) / `model: opus` (standard) as literals in three skill-prose surfaces. Fable was temporarily withdrawn; the pin would break escalate-tier review — or worse, silently run it on the *session* model, because Claude Code resolves a blocked/unavailable subagent `model:` override to the inherited/default model rather than erroring (verified via `claude-code-guide`, code.claude.com/docs — not recall).
@@ -13,6 +49,14 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 **Fix**: ordered tier chains + a withdrawn-model resolution rule across all three surfaces (`escalate` fable→opus, `standard` opus→sonnet): "use the first the harness lists as valid; fall back on a withdrawn/unrecognized model or dispatch error; record what ran." Per-call and frontmatter `model:` take a single value (no fallback syntax), so resolution is prose-driven by the runtime dispatching agent — the only actor that can see the live valid-model set (a Python hook can't, so an automated availability probe isn't feasible; the heavier registry+drift-check option is deferred as REL-5K8M).
 
 **Two reusable sub-lessons**: (1) a token-budget guardrail at its ceiling forces trim-vs-bump on any necessary addition — remove genuine redundancy (cross-file duplicate comments, self-restating clauses), don't bump the budget or drop a check; the guardrail correctly makes new content pay for itself. (2) Verifying harness/model behavior beats recalling it: the silent-substitution-to-session-model detail (which I would not have recalled correctly) is exactly what turned the rule from "pass fable and hope" into "pick a confirmed-valid model, then fall back explicitly."
+
+## A clean cumulative (0 blocking/0 warning) makes post-review note-fixes asymmetric — `.md` fixes ride free, any `.py` change forces a fresh full review
+
+**Pattern**: upstream-bug-reporting (2026-06-20). A cumulative Critic over the bundle came back 0 blocking / 0 warning / 5 notes. Some notes were `.py` (a misleading docstring, a speculative dead-code guard), some `.md` (slim-digest framing); fixing them meant a follow-up commit. Because the follow-up touched `lib/upstream_probes.py` (non-`.md`), the prior cumulative no longer vouched for HEAD, so the PR gate (`check-cumulative-critic`) needed a fresh HEAD-covering record — a full re-review. Had the fixes been `.md`-only, the CRT-7M2D docs-only allowance would have kept the original cumulative HEAD-covering and cost nothing.
+
+**Why the re-review is full, not light**: the cheap post-fix path (`verify-resolutions`, Goals 1-3 over the delta) *demotes to `final`* precisely when prior findings hold no BLOCKING/WARNING — there's nothing to "verify resolved," so it falls back to a full pass. So an all-NOTE cumulative gives no cheap re-review path for a `.py` touch.
+
+**Reusable rule**: self-scrub hard BEFORE the first cumulative (the methodology's "deep-scrub while the Critic runs" only helps if there's a gap to use; a synchronous skill return leaves none — so scrub before invoking). When notes land: fix `.md` notes in place (free), and weigh each `.py` cosmetic note against one opus re-run — fixing a false docstring + dropping dead code was worth it here, but a pure tense-nit was not (left as a defensible description). Route low-value `.py` notes to a backlog item rather than re-reviewing. Ties directly to the Review-wall-clock-is-P0 priority.
 
 ## Artifacts drift silently during sustained building
 

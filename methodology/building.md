@@ -83,14 +83,14 @@ Add observability alongside features, not after. If the observability strategy c
 
 **Verify.** Two layers:
 
-- *Code:* Run the full suite. First check `prawduct-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. Record via `prawduct-hook test-evidence record` (non-default suites: `test_command:`/`tests_dirs:`).
+- *Code:* Run the full suite once. Check `prawduct-hook test-status` first — exit 0 means this session's evidence passed, so re-running is wasteful. Record via `prawduct-hook test-evidence record` — or `--from-junit <f>` to ingest an existing run instead of re-running (TST-7M3K). Non-default suites: `test_command:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
-**In-flight background work is not a waiver case.** If the Critic/reflection gate blocks only because a tracked background `Workflow`/`Task` is still producing the diff, **wait — don't waive**: the gate *will* be satisfied this session once the job lands, and waiving would skip the Critic the completed work still needs. The repeated block is an expected reminder during a legitimate async wait, not an error to escape. (Rough edge `STH-3W7F`: a `.gates-deferred` mechanism to quiet the wait without skipping the Critic is the pending fix.)
+**In-flight background work is not a waiver case.** If the Critic/reflection gate blocks only because a tracked background `Workflow`/`Task` is still producing the diff, **wait — don't waive**: the gate *will* be satisfied this session once the job lands, and waiving would skip the Critic the completed work still needs. The repeated block is an expected reminder, not an error to escape. (Rough edge `STH-3W7F`: `.gates-deferred` to quiet the wait without skipping the Critic is pending.)
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 

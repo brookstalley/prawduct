@@ -84,3 +84,12 @@ Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
 events carry `pr-scoped` (the Critic record survived the audit and was
 consumed) or `pr-full` (record voided or absent — full code-soundness pass),
 so scoped and full runs aggregate as distinct modes.
+
+Model keys are **folded to a family label** (`opus` / `sonnet` / `haiku` /
+`fable`): one model is recorded under several id strings (`opus`,
+`claude-opus-4-8`, `claude-opus-4-8[1m]` are all `opus`), so the aggregation
+key collapses the aliases — otherwise the reviewer-model dimension fragments
+into noise (TEL-4M9X). An unfamiliar id passes through verbatim (never bucketed
+under a known family). This folds **values, not keys**, so `schema_version`
+holds; the raw id stays in each ledger line untouched, so the fold is a
+read-time view, not a rewrite.

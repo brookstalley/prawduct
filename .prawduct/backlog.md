@@ -8,6 +8,112 @@
 ## Open
 
 
+- **[COV-5H3N]** resolve-base ignores origin/HEAD and defaults to main on gitflow repos — silent wrong-base inflates review scope and breaks stamp-merged + build-plan lifecycle
+  `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: open · stage: design · related: PR-2H8N, REL-7P3X, MIG-6B0R · refs: lib/coverage.py (_resolve_base_branch, _DEFAULT_BASE_CANDIDATES), lib/migrate_plugin.py, skills/onboard, incoming-bugs/archive/resolve-base-ignores-origin-head-defaults-to-main-on-gitflow-repos.md`
+
+  When base_branch: is unset in project-state.yaml, _resolve_base_branch falls back to the hardcoded candidate list (origin/main, main, HEAD~1) and returns the first that resolves — even when the repo's declared default branch (origin/HEAD) is develop. The wrong base flows into the cumulative-Critic base, PR-reviewer base, coverage diff, classify-diff-risk, and the stamp-merged guard, so a 2-commit feature off develop is reviewed/gated as the entire develop..main promotion range, and stamp-merged refuses on develop ("integration base is main"), and Merge-Flow step 8 can take the build-plan-DELETE branch for a release-pending merge. Reported v2.1.4 from Discodon; every gitflow consumer hits it on its first PR unless they know the base_branch knob. THIS repo masks it (base_branch: develop is set). Fix-shape (either alone closes most of the gap; both is best): (1) make the default branch-aware — consult `git symbolic-ref --short refs/remotes/origin/HEAD` before the hardcoded list, prefer it when it resolves and isn't main-family (trunk repos with origin/HEAD=main unaffected); optionally warn instead of silently picking main when both a main-family branch and a non-main origin/HEAD exist. (2) set base_branch: at onboarding/migration time when origin/HEAD is non-main, so freshly-migrated gitflow repos start correct. Governance-protected (lib/) → full Critic + PR review.
+
+- **[COV-8R2K]** verify-coverage records BLOCKING missing-coverage for non-executable files — prose .md docs AND non-code config (YAML) — forcing waivers or token reference-tests on otherwise-clean chunks
+  `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: open · stage: design · related: TST-4K2P · refs: bin/prawduct-hook (verify-coverage), lib/coverage.py, skills/critic/review-cycle.md (Goal 1 rule F4b), incoming-bugs/archive/verify-coverage-records-blocking-missing-coverage-for-prose-docs.md, incoming-bugs/archive/check-pr-trivial-passes-feature-clusters-that-only-touch-existing-files.md`
+
+  The symbol-grep coverage floor is applied to non-executable files the same as code. Two corroborating reports: (a) a chunk whose deliverables legitimately include a prose .md always produces an unsoftenable BLOCKING missing-coverage (Goal 1 F4b: "a missing-coverage line is recorded BLOCKING per file, never softened"), even though prose can't be executed; (b) a branch editing a YAML/config file with no test symbols (e.g. .prawduct/project-state.yaml) is flagged missing-coverage and verify-coverage exits 1 on an otherwise-clean branch (the "config-file-accounting gap" products already note in their own learnings). A doc-ONLY-chunk skip already exists; this is the MIXED-chunk and non-code-config version. Fix-shape: make the floor file-type/language-aware — exempt (or downgrade to NOTE) files under a docs-path policy (configurable allowlist, e.g. **/README.md, docs/**, *.md) and non-code config, or scope the floor to runner-executable languages only. Governance-protected → full Critic + PR review.
+
+- **[STH-6T9W]** Stop critic-review gate counts untracked operator-authored non-code files as chunk-diff scope — no Critic mode can satisfy it, forcing a waiver on a clean, fully-reviewed tree
+  `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-22 · status: open · stage: design · related: STH-3W7F, STH-7K2A · refs: lib/gates.py (critic-review gate, verify-resolutions scope check; validate_critic_findings files_reviewed), incoming-bugs/archive/stop-gate-counts-untracked-operator-notes-as-chunk-diff.md`
+
+  An untracked operator-dropped non-code file (e.g. a note placed in incoming-bugs/) is counted into the chunk-diff scope, growing it beyond what the verify-resolutions findings cover; the suggested remedy (re-run /critic chunk) can't produce a schema-valid empty-scope record (validate_critic_findings requires non-empty files_reviewed), so a waiver becomes the only exit — on a session whose code was already fully reviewed and merged. Trains waiver-reaching: when the framework's cleanest sessions end in waivers, waivers stop signaling anything. Distinct root cause from STH-3W7F (background work) and STH-7K2A (loop-counter). Fix-shape: exclude untracked non-code files outside source/test/governance roots from the chunk-diff scope; and/or allow a schema-valid scope:empty findings record. Governance-protected → full Critic + PR review.
+
+- **[BLD-5J8N]** verify-chunk-refs can't parse the "## Chunk NN — Title" header style — false "chunk not found" exits habituate reviewers to dismiss a real-BLOCKING-shaped signal
+  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: open · stage: ready · related: BLD-4K7P, BLD-7P3K · refs: bin/prawduct-hook (cmd_verify_chunk_refs), templates/build-plan.md, incoming-bugs/archive/verify-chunk-refs-cant-parse-house-chunk-header-style.md`
+
+  The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
+
+- **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
+  `effort: M · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q · refs: UserPromptSubmit hook (work-model term extraction), incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md`
+
+  The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
+
+- **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
+  `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md`
+
+  Host repos increasingly MANDATE worktrees for WIP (stable primary checkout served live as a --plugin-dir MCP source), but prawduct has no documented worktree story, so sessions abandon the formal machinery (review via an independent Agent, PR/merge via raw gh), silently skipping the cumulative-Critic record the framework otherwise requires. IMPORTANT reconciliation (verified 2026-06-22 in this framework repo): state-file resolution is NOT actually ambiguous — get_project_dir() deterministically uses the session's CLAUDE_PROJECT_DIR, so a session run ENTIRELY inside one worktree reads/writes that worktree's .prawduct/ consistently and the gates ARE satisfiable in place (empirically confirmed: check-cumulative-critic resolved the worktree's own .critic-findings.json; gitignored runtime files isolate per-worktree). The real gap is therefore (a) NO documented supported worktree workflow, so host repos invented the "run Critic/PR from the PRIMARY session against worktree WIP" rule — and THAT genuinely breaks because the primary's .prawduct/ is a different working copy than the worktree's; and (b) the harness EnterWorktree defaults new worktrees off origin/<default-branch>=main (wrong on gitflow — belongs upstream with the harness, noted not-a-prawduct-bug). Fix-shape (remediation menu): (1) document/own a supported worktree workflow in the methodology — drive the full cycle (code→critic→pr→reflection) from inside the worktree (this WORKS today); (2) worktree-capable critic/pr skills that detect the worktree and review merge-base(base)..HEAD writing the normal record; (3) at minimum, methodology guidance so repos stop reinventing the workaround as private memory. Distinct from CRT-8D2W (inverse: run the Critic in ITS OWN worktree for session-isolation) and CRT-2K9F (worktrees SIDESTEP the single-slot clobber). Adjacent to the gitflow base-resolution item (base resolution vs gate/skill composition). Governance-protected → full Critic + PR review.
+
+- **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
+  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record), .prawduct/.critic-findings.json · reviewed: 2026-06-22`
+
+  Observed live 2026-06-22 while shipping the review-streamlining track (PRs #101/#102/#103). The cumulative-Critic PR gate (lib/gates.py compute_pr_gate) reads the single-slot .prawduct/.critic-findings.json. When two branches' Critic→PR cycles interleave (run branch X's Critic, then branch Y's Critic, then go to PR branch X), Y's Critic has overwritten the single slot with a record that IS the right KIND (a clean cumulative) but covers Y's HEAD, not X's. compute_pr_gate only falls back to the governance ledger when the slot record is the WRONG KIND (_pr_gate_record_qualifies false); a right-kind-but-wrong-HEAD record goes straight to _evaluate_pr_gate_record, fails the coverage check, and exits 1 — it never consults the ledger, where X's own still-valid qualifying record was appended. This session it forced a needless re-run of budget's Critic after B's Critic clobbered budget's slot.
+
+  Fix-shape: when the slot record fails (wrong kind OR fails HEAD-coverage/chain-scope), fall back to the ledger AND make _ledger_fallback_record select the newest qualifying record whose commit_reviewed COVERS THE CURRENT HEAD (CRT-7M2D coverage semantics), not merely the newest session-fresh qualifying record. The CRT-8W3F session-freshness bound stays.
+
+  Workaround today: finish one branch's full Critic→PR cycle before starting the next branch's Critic.
+
+  Assurance: must not loosen the gate — a record that covers HEAD and is clean is exactly as strong as the slot record would have been; this only stops a sibling branch's clean record from masking this branch's. Governance-protected file (lib/gates.py + skills/) → full Critic + PR review.
+
+  Related: CRT-8W3F (ledger-fallback freshness bound, shipped), CRT-4J8W (verify-resolutions chain record, shipped), CRT-7M2D (covers-HEAD semantics). (user)
+
+  Worktree corollary (verified 2026-06-22): the clobber is strictly a within-ONE-working-tree problem. Each git worktree has its own gitignored .prawduct/.critic-findings.json (and .session-start, .governance-ledger.jsonl), so running each branch's Critic->PR cycle in a separate worktree sidesteps the clobber entirely — no shared single slot to overwrite. That makes worktrees an available workaround and lowers this item's urgency; the in-tree fix below still matters for users who switch branches within one tree.
+
+- **[BKL-8T3W]** Backlog-accuracy structural enforcement — surface cross-session "shipped-but-not-removed" Open items (and stale-by-age) so a ready item isn't rebuilt
+  `effort: M · impact: M · area: governance/backlog-tooling · source: user · added: 2026-06-21 · status: open · stage: requirements · related: BLD-4K7P · refs: incoming-bugs/archive/backlog-accuracy-stale-check-hook-plus-closed-but-not-removed-critic-goal.md, skills/critic/review-cycle.md, skills/pr/review-protocol.md, lib/backlog_probes.py`
+
+  ENHANCEMENT (not a defect), needs a design pass before build — file at stage=requirements. Recurring
+  drift: a `stage: ready` Open item (or its headline sub-claim) is shipped by OTHER, already-merged
+  work and never reconciled, so the next picker rebuilds shipped work or does archaeology. Evidence: 3
+  ready items in one Hallucinote session were 60–100% already shipped. Upstream report from
+  Hallucinote/puzzles.
+
+  Three CONSTRAINTS for whoever builds this (the review already mapped the overlap — scope to the
+  DELTA, don't rebuild):
+  1. Most of the proposal already exists — EXTEND, don't duplicate: the Critic's Backlog
+     Reconciliation (skills/critic/review-cycle.md:137, final+cumulative) already does the SEMANTIC
+     "this session's changes resolve an open item → NOTE archive"; the PR reviewer's R-2
+     (skills/pr/review-protocol.md:58, WARNING) already flags a diff referencing closes:/closed-by: PFX
+     while the item is still open; lib/backlog_probes.py's backlog-overdue-grooming advisory + the
+     /prawduct:backlog summary already do age/stale. The proposed (b) Critic "closed-but-not-removed"
+     goal is NOT the inverse of (a) — it largely duplicates review-cycle.md:137.
+  2. The genuine UNCOVERED gap is CROSS-SESSION drift: an item resolved by work that merged on a PRIOR
+     branch/session — the per-session Critic reconciliation structurally can't catch it. A
+     periodic/briefing-level scan of all Open items vs recently-merged work (the report's part (a)(2))
+     is the real value. Keep it ADVISORY (briefing/NOTE), never blocking.
+  3. The proposed keyword/headline-grep matching is the WEAK part — high false-positive risk, the exact
+     BLD-4K7P over-matching family. Prefer high-precision signals (an item's named files/functions from
+     its refs/body), NOT headline keywords. The existing SEMANTIC reviewer check is more precise than
+     grep for this. Consider a cheaper high-ROI partial first: a `pick`-time "this ready item may
+     already be shipped — grep the code/changelog first" nudge, which catches the drift at the moment it
+     costs money.
+
+  related: BLD-4K7P (keyword-grep over-match lesson), backlog-overdue-grooming probe. (user — upstream
+  report from Hallucinote/puzzles)
+
+- **[REL-3M7K]** Release-prep must add the root CHANGELOG.md headline and gate on a green suite before tagging
+  `effort: S · impact: M · area: governance/release · source: builder · added: 2026-06-21 · status: open · stage: ready · related: REL-9F2T · refs: CHANGELOG.md, hooks/banner.py (parse_changelog), skills/pr/SKILL.md, .prawduct/release-notes.md`
+
+  Root cause found 2026-06-21 during the hook-cli-robustness baseline check: v2.1.6 was tagged +
+  version-bumped (81b28fe) but its consumer-facing root CHANGELOG.md headline was never added — the
+  prep commit updated .prawduct/release-notes.md and .prawduct/change-log.md but missed root
+  CHANGELOG.md. That left develop RED on
+  tests/test_plugin_version_banner.py::test_changelog_has_current_version_entry (PLUGIN_VERSION 2.1.6
+  absent from CHANGELOG.md) since the release, i.e. v2.1.6 shipped on a red suite.
+
+  Two gaps: (a) release-prep updates the .prawduct views but not root CHANGELOG.md, so the
+  consumer-facing headline is hand-step-only and was forgotten; (b) the release tagged without a
+  green full suite, or CI does not gate tagging. Symptom already repaired (headline added in
+  024bf53, sourced from release-notes.md v2.1.6 block).
+
+  Fix-shape: wire the CHANGELOG.md headline into the /prawduct:pr release-promotion / release-prep
+  flow (or generate it from the release= change-log tag like release-notes.md is), and make
+  release-prep refuse to bump/tag on a non-green suite. (builder)
+
+- **[STH-3K7M]** Capture `git branch --show-current` once on the SessionStart (clear) hot path
+  `effort: S · impact: S · area: stop-hook · source: builder · added: 2026-06-21 · status: open · stage: ready · related: STH-6Q9D · refs: lib/briefing.py (_get_current_branch and its callers)`
+
+  `_get_current_branch` (lib/briefing.py) is invoked redundantly on the SessionStart (clear) hot
+  path — measured 4× during STH-6Q9D. The redundancy spans three separate briefing functions:
+  `staleness_scan` (~L160), `assemble_session_briefing` (~L455), and `_parse_wip` (~L246
+  auto-detect). So "capture once" is a cross-function thread (compute in `cmd_clear` or the briefing
+  entry and pass the branch down), unlike STH-6Q9D's three local targets — which is why it was left
+  out of that chunk. Same fan-out theme as STH-6Q9D (shipped hot-path-git-batching). (builder)
+
 - **[STH-3R8K]** Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution to a worktree toplevel
   `effort: S · impact: S · area: stop-hook · source: critic · added: 2026-06-20 · status: open · stage: ready · related: STH-4K7N · refs: bin/prawduct-hook, hooks/digest.py, hooks/banner.py`
 
@@ -150,6 +256,8 @@
   existing token earning its place?); decide whether budgets should be holistic (a total always-on ceiling)
   rather than per-file; and only raise a per-file budget when every existing token is high-ROI. Output: a
   recommendation + (likely) a revised budget model. Then it can advance to `design`/`ready`. (user)
+
+  — 2026-06-22: the critic-protocol-budget bump (review-protocol.md ceiling 3120→3350; change-log + PR #103) is a data point for this audit — a per-file ceiling raised AFTER a lean-audit (file at 3116/3120, every token load-bearing, relocating the one movable block would fragment the instructions), i.e. the reasoned posture this item asks for, not a ceiling-dodge. Does not close this (the broad holistic budget audit remains open).
 
 - **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
   `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · stage: requirements · related: CRT-9V4T, PRR-4M9T, JAN-4F7M · reviewed: 2026-06-10`
@@ -437,6 +545,19 @@
   cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
   active plan scope. (reflection)
 
+- **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
+  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/)`
+
+  If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
+  verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
+  SHA does NOT resolve, so a SHA that still resolves on the sibling branch (not an ancestor of HEAD)
+  passes the guard and yields a cross-branch two-way diff full of phantom findings (surfaced live this
+  session on feature/hot-path-git-batching, anchors f208ad2/f92a4be from sibling
+  feature/hook-cli-robustness). Fix shape: add an is-ancestor check on commit_reviewed (git merge-base
+  --is-ancestor <anchor> HEAD) — if the anchor isn't an ancestor of HEAD, demote to cumulative/final
+  instead of computing a divergent delta. Surfaced + self-flagged by the Critic during STH-6Q9D.
+  (critic)
+
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
 
@@ -468,9 +589,240 @@
   surface (the Critic classifying a *product's* models), not this reviewer-dispatch registry. Type:
   enhancement, low priority. (builder)
 
+- **[BLD-4K7P]** `verify-chunk-refs` over-matches inline-code/prose tokens in build-plan chunk sections, producing false "missing-ref" positives
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-20 · status: open · stage: ready · related: BLD-2R9X, BLD-8F2Q, BLD-5V8F · refs: bin/prawduct-hook (cmd_verify_chunk_refs / _parse_build_plan_chunk_refs)`
+
+  The Goal-2 ref-drift check (`cmd_verify_chunk_refs` / `_parse_build_plan_chunk_refs`) extracts
+  backticked paths from a chunk's section and asserts they exist on disk. It misparses tokens that
+  are NOT deliverables: env-var names (`PRAWDUCT_BUG_INBOX`), write-target templates with angle
+  brackets (`<inbox>/<kebab-slug>.md`), URLs (`https://...`), and intentionally-gitignored paths
+  (`.prawduct/.bug-inbox`). Surfaced during the upstream-bug-reporting cumulative review (HEAD
+  befbcb8) — 4 false missing-ref lines, all adjudicated NOT blocking by the Critic. Fix-shape:
+  tighten the extractor to skip non-path-shaped tokens (contains `<>` or `://`, or matches a
+  known-gitignored managed entry), so the `new`-prefix convention is only needed for genuinely
+  created files. Also a candidate learning: a ref-existence heuristic over backticked spans must
+  exclude placeholder/templated/gitignored tokens or it cries wolf on legitimate plans. Same
+  parser family as the shipped BLD-2R9X (glob metacharacters) and BLD-8F2Q (`path::symbol`); this
+  covers token classes those two fixes don't reach. (critic)
+
+- **[TEL-6P2D]** review-stats windowing + zero-yield pruning-candidate flag + a documented pruning protocol (no auto-cut)
+  `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: open · stage: design · related: TEL-4M9X, CRT-9R4K, CRT-5T8N · refs: lib/telemetry.py, methodology/building.md`
+
+  Problem: We want to retire/lighten review legs that demonstrably catch nothing, WITHOUT guessing.
+  Today review-stats has no window and no "this leg looks unproductive" signal, and there is no written
+  protocol for how a cut is justified/approved. The 2026-06-22 data (post-A1) is too thin per bucket
+  (1–8 reviews) to act on, so the immediate need is to accumulate clean data and stand up the decision
+  machinery.
+
+  Approach:
+  - Add `review-stats --since=<window>` (time-based e.g. 30d AND/OR last-N reviews) so trailing-window
+    yield is readable, not just all-time.
+  - Flag any (role × mode [× code-path]) leg with ≥N reviews and 0 actionable (B/W) findings over the
+    window as a HUMAN-REVIEWED pruning candidate — surfaced in the report, NEVER auto-applied.
+  - Write the pruning protocol into methodology: a review leg may be lightened/retired only when (a) ≥N
+    reviews in window, (b) 0 actionable yield, (c) a human signs off, AND (d) it ships with a regression
+    test proving a non-eligible case still gets the full review (the trivial-fast-path lesson: a
+    skip-gate needs the MOST adversarial coverage).
+  - Name the PR reviewer (pr-scoped) as the standing WATCH-TARGET: as of 2026-06-22 it is the lowest
+    yield-per-run (9 reviews, ~1 actionable, ~46 min wall-clock total), BUT its low yield is confounded
+    — its job includes confirming the Critic was right + release-readiness, where an empty result is
+    partly success. Do NOT cut it on current data; instrument and watch.
+
+  Assurance: preserved by construction — every cut is gated behind data + human sign-off + a regression
+  test; the flag is advisory only.
+
+  Open design decisions: threshold N (proposal ≥10 reviews/0 actionable before flagging); window
+  semantics (time vs count — recommend both, default time); whether to break the flag down by
+  code-path/scope (a leg may be productive on governance diffs, dead on docs). Depends on A1 (clean
+  model dimension). Feeds C (the data that would justify deferring per-chunk reviews on short plans).
+  (user)
+
+- **[CRT-9R4K]** Extend cumulative-final to short plans — defer per-chunk Critic reviews into one end-of-plan cumulative
+  `effort: M · impact: M · area: building · source: user · added: 2026-06-22 · status: open · stage: requirements · related: TEL-6P2D · refs: methodology/building.md, skills/critic/review-protocol.md, lib/critic_mode.py`
+
+  Opportunity: For a multi-chunk feature every chunk gets its own opus fork Critic review, then the
+  cumulative re-reviews all of them (the deliberate local-vs-integration redundancy). For SHORT plans
+  this is the biggest avoidable wall-clock: N per-chunk runs a single end-of-plan cumulative would
+  cover. The 2026-06-22 chunk-mode yield is low (~1 actionable across 7 reviews) — MILD supporting
+  evidence only; early-detection value is not captured by finding-count, so this is a judgment call,
+  not a data verdict.
+
+  Tradeoff (USER owns it — Principle 23): deferring per-chunk reviews trades EARLY detection for a
+  bigger blast radius — a flaw introduced in chunk 1 surfaces only at end-of-plan, costing more rework
+  to unwind. Eligibility bounds that risk.
+
+  Requirements to pin FIRST (C0 — why this is stage:requirements, not ready):
+  - Decide the acceptable-tradeoff bounds: under what plan shape is deferring early detection
+    acceptable? Proposal: chunk-count ≤ 3 AND risk tier = standard AND NEVER escalate-tier
+    (governance/contract-path scope always gets per-chunk review). User to confirm/adjust.
+  - Confirm composition with the existing cumulative-final Type (today: commit last chunk, run
+    cumulative once = chunk review + PR record). C generalizes that to cover ALL chunks of a short
+    eligible plan, not just the last.
+
+  Design (C1, after requirements): eligibility predicate in lib/critic_mode.py + the build cycle in
+  methodology/building.md (eligible short plan marks intermediate chunks "review deferred to
+  end-of-plan cumulative"); resolve how a deferred plan interacts with the stop-hook Critic gate and
+  session boundaries (a plan spanning sessions cannot defer past a session end without a gate record).
+
+  Guardrail (C2 — MANDATORY, load-bearing): ship with a regression test proving a NON-eligible plan
+  (4+ chunks OR escalate-tier) STILL gets per-chunk reviews. The retired PR trivial-fast-path failed
+  precisely because it shipped with zero adversarial coverage — a skip-gate needs the MOST adversarial
+  coverage.
+
+  Assurance: preserved only if the eligibility predicate + C2 regression test hold and the bounded
+  early-detection loss is explicitly accepted by the user. Gated behind A's accumulated data OR an
+  explicit user accept-the-tradeoff decision. (user)
+
+- **[BLD-3M7K]** `verify-chunk-refs` over-matches git-ref tokens (origin/-prefixed and branch-like slash tokens) in build-plan prose, producing false missing-ref positives
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · status: open · stage: idea · related: BLD-4K7P, BLD-2R9X, BLD-8F2Q · refs: lib/buildplan_refs.py (_looks_like_file_path)`
+
+  Follow-up to BLD-4K7P. Surfaced 2026-06-21 by the hook-cli-robustness cumulative Critic: the
+  plan's own prose backticked `origin/develop` and `origin/` while describing the REL-7P3X fix;
+  `_looks_like_file_path` treats any backticked slash-token without `<>`/`://`/glob as a file path,
+  so git refs flag as missing. Same false-positive family the BLD-4K7P fix (placeholders, URLs,
+  gitignored) does NOT cover, and PR #99's cumulative saw it too. Workaround in place: de-backtick
+  git refs in plan prose (the gate correctly checks file paths; a git ref isn't one). Open question:
+  a general fix is hard — branch-like tokens (feature/x) are indistinguishable from real paths
+  (feature/x), so an origin/-prefix-only heuristic risks false-negatives on real missing paths.
+  Decide whether the narrow origin/ exclusion is worth it or the convention (don't backtick git
+  refs) suffices. (critic)
+
 ## Promoted
 
+<!-- Bundle: test-evidence cluster — one design + build plan (picked 2026-06-22).
+     Shared surface: `prawduct-hook test-evidence record` (bin/prawduct-hook).
+     TST-4K2P is the spine (content-based freshness identity); TST-7M3K folds in
+     double-execution (--from-junit); TST-2H9P folds in configurable --tests-dir.
+     Design these together: the content-hash scope (TST-4K2P) and the tests-dir/
+     source scope (TST-2H9P) are the SAME "which files are test-relevant inputs"
+     question, and the runner ownership (TST-7M3K) determines when the hash is
+     computed. Governance-protected (bin/, lib/, skills/) → full Critic + PR review. -->
+
+- **[TST-4K2P]** Make test-evidence freshness content-based, not commit-SHA-based — a pre-commit record must not read as stale
+  `effort: M · impact: L · area: test-evidence · source: user · added: 2026-06-22 · status: promoted · stage: design · related: TST-6V2N, TST-7M3K, TST-2H9P · refs: bin/prawduct-hook, lib/gates.py, skills/pr/review-protocol.md, skills/critic/review-cycle.md · reviewed: 2026-06-22`
+
+  **URGENT** (user: "a huge pain for all users", "a constant annoyance" — flagged 2026-06-22). High impact: affects every product using the prawduct PR/review flow.
+
+  **Bundle spine** (picked 2026-06-22 with TST-7M3K + TST-2H9P → one design + build plan): the content-hash *scope decision* this item must make ("which files are test-relevant inputs") is the same question TST-2H9P answers for --tests-dir, and the runner-ownership choice in TST-7M3K decides *when* the hash is computed. Design all three in one pass.
+
+  Problem: `prawduct-hook test-evidence record` stamps `git_sha` = HEAD at record time, but it tests the WORKING TREE (HEAD + uncommitted edits). So the natural flow "edit → run suite → record → commit" stamps the PRE-commit SHA; after committing, the stamp lags HEAD. Consumers that read the stamp then judge the evidence stale even though its CONTENT tested exactly what's shipping — the PR reviewer flagged this as a WARNING on PR #101 ("evidence ran against a tree without the fix"; false — the tree had the fix, uncommitted), and it recurs on every branch unless you remember to record AFTER committing (hit twice in the 2026-06-22 session: A1 and the critic-protocol-budget bump). The mismatch is structural, not user error.
+
+  Proposed direction (user): judge freshness by CONTENT, independent of commit status — stamp a hash of the test-relevant file contents instead of (or alongside) `git_sha`. Then "edit → record → commit" stays current (the commit doesn't change content), and an amend/rebase/cherry-pick doesn't falsely invalidate.
+
+  KEY design decision (why stage:design, not ready): the hash MUST be scoped to test-relevant inputs (source + tests + test config), NOT the whole tree — a naive whole-tree content hash would invalidate evidence on every `.md` edit and destroy the CRT-7M2D docs-only allowance (a doc tweak after a clean review currently rides free, and SHOULD). Options for the scope: all tracked non-`.md` non-metadata files; a declared `tests_dirs:`/source glob; or language-native coverage inputs. Decide the scope, then content-hash that set.
+
+  Consumers to reconcile (all currently key off git_sha / commit-coverage): `test-status` (the reader), the PR-reviewer Merge-Hygiene freshness check (`skills/pr/review-protocol.md`), the Critic Goal-1 test-status check, and the cumulative-gate's HEAD-covering + CRT-7M2D docs-only-since logic in `lib/gates.py` (git_sha-based — reconcile content-freshness with the gate's commit-coverage requirement; they answer different questions).
+
+  Stopgap until shipped: record test-evidence as the LAST step, after committing, on a clean tree. Surfaced by TEL-4M9X (A1) and critic-protocol-budget; part of the review-streamlining track.
+
+  Cross-product corroboration + digest-mechanism suggestion (from upstream report test-evidence-git-sha-pins-parent-commit-when-tree-is-dirty.md, Scriob/halcyon, v-2026-06): a SECOND product independently hit this — record stamps git_sha=HEAD-at-record-time but tests the working tree, so in the natural 'run suite (dirty) → commit' order the stamp carries the PARENT sha (~50s wasted re-run, surfaced as a procedurally-correct-but-substantively-false Critic freshness WARNING). Concrete digest mechanism the report proposes for the content-hash: `git stash create`-style working-tree tree hash, OR a hash of (`git diff HEAD` + HEAD sha) — either makes the natural test→commit order first-class without a post-commit re-run. Corroborates the two 2026-06-22 Hallucinote hits this item already records.
+
+- **[TST-7M3K]** test-evidence record re-runs the full suite the builder just ran — every stamp point pays for the suite twice
+  `effort: M · impact: M · area: test-evidence · source: user · added: 2026-06-22 · status: promoted · stage: design · related: TST-4K2P, TST-6V2N, TST-2H9P · refs: bin/prawduct-hook (test-evidence record), methodology/building.md (Verify), incoming-bugs/archive/test-evidence-record-reruns-the-suite-the-builder-just-ran.md · reviewed: 2026-06-22`
+
+  **Bundled with TST-4K2P (spine) + TST-2H9P** (picked 2026-06-22 → one design + build plan): this is the runner-ownership leg — whether `record` runs the suite itself, accepts `--from-junit`, or `--reuse-last` determines *when* TST-4K2P's content hash is computed and which run produced the evidence.
+
+  The build cycle says "run the suite, then record," but `test-evidence record` executes the entire suite itself rather than accepting the builder's run, so every stamp point triggers two back-to-back full-suite runs (~5 min/feature in Hallucinote). Pure wall-clock waste that scales with suite size × stamp frequency; a gate that costs double its necessary price trains the corner-cutting it exists to prevent. Distinct from TST-6V2N (created the record WRITER) and TST-4K2P (freshness IDENTITY, sha-vs-content) — this is record's double EXECUTION. Fix-shape (reporter ranks option 2): (1) record --from-junit <file> parses a runner-native junitxml the builder already produced; (2) record becomes the canonical runner (builder doesn't run separately); (3) --reuse-last. Pairs naturally with TST-4K2P's content-hash design — could be designed in one pass. Governance-protected → full Critic + PR review.
+
+- **[TST-2H9P]** test-evidence record (F4a overlay) defaults --tests-dir to repo-root tests/ — breaks engine-subdir / monorepo layouts, writing empty changes_referenced/tests_executed halves
+  `effort: S · impact: S · area: test-evidence · source: user · added: 2026-06-22 · status: promoted · stage: design · related: TST-4K2P, TST-7M3K, TST-6V2N · refs: bin/prawduct-hook (test-evidence record, bin/test-reference-verify --merge-into --tests-dir), incoming-bugs/archive/check-pr-trivial-passes-feature-clusters-that-only-touch-existing-files.md · reviewed: 2026-06-22`
+
+  **Bundled with TST-4K2P (spine) + TST-7M3K** (picked 2026-06-22 → one design + build plan): the configurable --tests-dir / source-scope this item needs is the SAME "which files are test-relevant inputs" decision TST-4K2P's content-hash scope must make — design the layout knob once and both consume it.
+
+  Secondary finding harvested from the check-pr-trivial report (Scriob, polyglot monorepo with the engine in engine/). The test-evidence record F4a overlay step (bin/test-reference-verify --merge-into) defaults --tests-dir to repo-root tests/; with tests in engine/tests it writes an EMPTY changes_referenced/tests_executed half → false verify-coverage missing-coverage and a cumulative-Critic BLOCKING. This is the next layer after TST-6V2N ("reader without a writer" — the writer now exists but assumes repo-root tests). Worked around in-repo with a wrapper passing --tests-dir engine/tests, but the hook itself can't be told the tests dir. Fix-shape: make tests-dir configurable (a project-state.yaml knob, e.g. tests_dir:) and/or auto-detect from the layout; thread it through record's overlay. Governance-protected → full Critic + PR review.
+
 ## Archive
+
+- **[CRT-5T8N]** Single-owner the Learnings Cross-Check & Backlog Reconciliation shared by the cumulative-Critic and the PR reviewer
+  `effort: S · impact: S · area: critic · source: user · added: 2026-06-22 · status: shipped · stage: ready · related: TEL-6P2D · refs: skills/critic/review-protocol.md, skills/pr/review-protocol.md · closed-by: single-owner-shared-checks · reviewed: 2026-06-22`
+
+  Problem: After the consume-and-audit redesign (PR reviewer audits the Critic record instead of
+  re-deriving code soundness), two checklist items are still performed by BOTH the cumulative/final
+  Critic and the PR reviewer: (1) Learnings Cross-Check (both scan learnings.md) and (2) Backlog
+  Reconciliation (Critic does it; PR reviewer does a data-consistency variant). This duplicates prompt
+  scope across two agents. It saves prompt tokens/focus, NOT wall-clock (no review run is removed) — a
+  tidy, not a needle-mover; scope accordingly.
+
+  Approach:
+  - B0 (validate FIRST — Principle 15): diff the two protocols' checklists and confirm the overlap is
+    TRUE duplication, not complementary work. Specifically check whether the PR reviewer's
+    release-coherence/data-consistency check (change-log ↔ version ↔ backlog) catches something the
+    Critic's reconciliation does not. Do NOT dedup complementary checks. If complementary, close B as
+    "no-op, confirmed complementary."
+  - B1: assign single ownership for the genuinely-duplicated parts — Critic owns the Learnings
+    Cross-Check and the substantive Backlog Reconciliation; the PR reviewer cites the Critic's result /
+    does only the thin release-coherence delta. Edit skills/critic/review-protocol.md and
+    skills/pr/review-protocol.md to state the single owner explicitly.
+
+  Assurance: must NOT drop any check — only relocate it to exactly one owner.
+  Acceptance: each of the two checks has exactly one named owner across the two protocols; nothing
+  silently dropped; the PR reviewer protocol explicitly references the Critic's result for the
+  relocated checks. Governance-protected files (skills/) → full Critic + PR review. (user)
+
+  Shipped 2026-06-22 on branch feature/single-owner-shared-checks: scoped the PR reviewer's
+  Learnings Cross-Check + Backlog R-1 to the consumed Critic record; R-2 stays unconditional;
+  review-cycle.md names final/cumulative as owner; 2 guard tests; cumulative Critic clean, PR
+  reviewer clean. Archived on-branch per the ship-in-PR contract so it rides in the closing PR.
+  closed-by is the branch/feature scope name (a pre-commit handle, not a SHA).
+
+- **[TEL-4M9X]** Normalize model-id strings in the governance ledger so review-stats can analyze the model dimension
+  `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: shipped · stage: ready · related: TEL-6P2D · refs: lib/telemetry.py, .prawduct/.governance-ledger.jsonl, .prawduct/artifacts/reviewer-model-ab-2026-06-10.md · closed-by: telemetry-model-id-normalization · reviewed: 2026-06-22`
+
+  Problem: `review-stats` aggregates by `role × model × mode`, but the SAME model is recorded under
+  several id strings — `opus`, `claude-opus-4-8`, and `claude-opus-4-8[1m]` are all the same model,
+  while `fable`/`sonnet` are genuinely different. This fragments the model dimension into noise. The
+  2026-06-22 review-stats run split critic-opus reviews across three buckets (1 + 6 + others), making
+  per-model yield unreadable — which defeats the exact A/B question the telemetry was built to answer
+  (see reviewer-model-ab artifact).
+
+  Approach:
+  - Canonicalize the model-id at the aggregation key in lib/telemetry.py (read-time fold) AND at
+    write-time where the review.* ledger event is created, so new events are clean and the existing 41
+    immutable events still aggregate correctly without rewriting the append-only ledger.
+  - Collapse opus aliases (`opus`, `claude-opus-4-8`, `claude-opus-4-8[1m]`) → one canonical `opus`
+    family label; keep `fable`, `sonnet`, `haiku` distinct; unknown id → passthrough.
+  - Put the mapping in ONE shared helper so future model ids are a one-line add.
+
+  Assurance impact: pure measurement/observability fix — changes no gate behavior and adds no review
+  runs. Zero assurance risk.
+
+  Acceptance:
+  - review-stats shows opus variants collapsed to one bucket per (role, mode); fable stays separate.
+  - The historical 41 events aggregate correctly with NO rewrite of the ledger file.
+  - Unit test covers the canonicalization map (opus aliases→opus; fable→fable; unknown→passthrough).
+
+  Open decision: normalize the aggregation key only vs. add a persisted `model_family` field —
+  recommend aggregation-key normalization + shared helper (lighter; preserves the raw string). This is
+  the FIRST deliverable of the evidence-driven-pruning track and must land before any per-model or
+  per-leg pruning can be data-justified. Being started immediately (will be promoted on a feature
+  branch off develop). (user)
+
+  Shipped 2026-06-22 on branch feature/telemetry-model-id-normalization (lib/telemetry.py
+  `_canonical_model` fold + 4 tests + docs/governance-telemetry.md + change-log entry; full suite 1355
+  passed). Archived on the branch per the ship-in-PR contract so it rides in the closing PR.
+
+- **[BKL-9K4T]** Reconcile the `closed-by:` contract with non-chunk/bare-commit work — define a stable on-branch handle and warn on the amend-dangle footgun
+  `effort: S · impact: S · area: backlog · source: user · added: 2026-06-21 · status: shipped · stage: ready · related: REL-7P3X, PR-2H8N · refs: incoming-bugs/archive/backlog-closed-by-cannot-reference-its-own-commit.md, skills/backlog/SKILL.md, templates/backlog.md · closed-by: backlog-closed-by-handle · reviewed: 2026-06-21`
+
+  Upstream report (puzzles repo via Hallucinote, prawduct v2.1.5;
+  `incoming-bugs/archive/backlog-closed-by-cannot-reference-its-own-commit.md`). The `closed-by:` field is
+  contracted as `<chunk-id|tag>` — an identifier that exists **before** the commit (backlog SKILL.md
+  item-shape contract, the `update … closed-by=<change-log tag or chunk id>` step, and the
+  `templates/backlog.md` legend line, reported as SKILL :30/:61 + template :45 in v2.1.5). That holds
+  for chunked/released work, but prawduct also legitimately ships **non-chunk** items (refactors,
+  chores, debt paydown) whose only stable "what shipped this" handle is the commit SHA — and a bare
+  SHA is a footgun: a `git commit --amend` that folds `backlog.md` into the ship commit rewrites the
+  SHA (dangling ref), and a commit cannot contain its own final SHA (chicken-and-egg), so recording
+  `closed-by` correctly forces an extra "fix closed-by ref" commit.
+
+  Fix-shape (reconcile the contract with the v2.1.6 on-branch ship rule, reported at :14): define the
+  on-branch `closed-by` handle as the **branch/scope name** (or a change-log `date-slug` heading,
+  which also exists before the commit) — never a bare SHA and never a PR# (assigned post-push, also
+  unstable for an in-commit handle). Update the three contract sites (SKILL item-shape line, the
+  `update … closed-by` step, the template legend) consistently, and have the `update <ID>
+  closed-by=<bare-sha>` path **warn** about the amend-dangle and recommend the stable handle instead.
+  Dedup note: distinct from REL-7P3X / PR-2H8N (release/PR-merge guard mechanics) — this is the
+  `closed-by` provenance contract, not the merge flow. (user — upstream report)
 
 - **[STH-2K8R]** `lib/critic_mode` could consume `lib/buildplan_refs` directly instead of mirroring its build-plan helpers
   `effort: S · impact: S · area: refactor · source: builder · added: 2026-06-07 · status: shipped · stage: ready · closes: CRT-3D9K · related: STH-9V4K, BLD-6Q1N · closed-by: PR #93 / v2.1.4 (bf0c889) · reviewed: 2026-06-10`

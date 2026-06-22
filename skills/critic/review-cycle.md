@@ -126,7 +126,7 @@ These are fail-closed: when the helper cannot anchor a delta, it refuses to comp
 
 ## Final-Mode Cross-Checks
 
-After completing the goal-based review in `final` mode, run two additional passes that `chunk` mode skips:
+After completing the goal-based review in `final` mode, run two additional passes that `chunk` mode skips. **`final`/`cumulative` is the owner of both cross-checks** — the PR reviewer consumes their result from the cumulative record rather than re-running them (it re-scans only a `verify-resolutions` chain-delta, or a voided record; see `skills/pr/review-protocol.md`), so each runs once per PR:
 
 ### Learnings Cross-Check
 
@@ -134,7 +134,7 @@ Scan your findings against active learnings. If a change reintroduces a pattern 
 
 ### Backlog Reconciliation
 
-Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly (the item was the work) or incidentally (other work addressed the underlying issue). For each resolved item, emit a **NOTE** finding: "Backlog item appears resolved: [item text]. Verify and `/prawduct:backlog update <id> status=shipped`." This keeps the backlog reflecting reality. Do not change status yourself — the framework never infers status (D4); the builder makes the explicit call.
+Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly (the item was the work) or incidentally (other work addressed the underlying issue). For each resolved item, emit a **NOTE** finding: "Backlog item appears resolved: [item text]. Verify and archive it now, on this branch — `/prawduct:backlog update <id> status=shipped closed-by=<scope>` — so it ships in this PR, not as a separate after-merge edit." This keeps the backlog reflecting reality. Do not change status yourself — the framework never infers status (D4); the builder makes the explicit call.
 
 **Backlog hygiene checks (C-B1–C-B4 — all NOTE-level, never BLOCKING)** — inspect the diff + backlog for four soft signals (`/prawduct:backlog` is the fix path for each):
 - **C-B1 — missing metadata:** a new backlog item in the diff with no metadata bar → NOTE the structured format.

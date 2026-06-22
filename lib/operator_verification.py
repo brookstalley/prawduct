@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from .core import atomic_write_text
+
 # Recognized status tokens. ``pending`` is the only status that blocks
 # ``/prawduct:pr create``; ``verified`` and ``accepted`` are both drained states
 # kept in the file as append-only history.
@@ -248,7 +250,9 @@ def _load_queue(queue_path: Path) -> tuple[str, list[VerificationEntry]]:
 def _write_queue(
     queue_path: Path, preamble: str, entries: list[VerificationEntry]
 ) -> None:
-    queue_path.write_text(format_operator_verification(preamble, entries))
+    atomic_write_text(
+        queue_path, format_operator_verification(preamble, entries)
+    )
 
 
 # =============================================================================

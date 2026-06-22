@@ -84,3 +84,7 @@ the gate so it's never mysterious.
 - `/prawduct:discovery` · `/prawduct:planning` · `/prawduct:building` · `/prawduct:reflection`
 - `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
   `/prawduct:janitor` · `/prawduct:doctor`
+
+**Hit a bug in prawduct itself?** `/prawduct:report-bug` files it upstream when a local prawduct
+checkout is configured (`PRAWDUCT_BUG_INBOX`), else captures it in this product's own backlog —
+inert and harmless when neither is set.

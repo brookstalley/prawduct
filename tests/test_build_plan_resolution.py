@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import re
+import subprocess
 
 import pytest
 from pathlib import Path
@@ -429,3 +430,51 @@ class TestVerifyChunkRefsGlobPaths:
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
         assert _bpr._verify_chunk_refs(project, refs) == []
+
+
+class TestVerifyChunkRefsNonPathTokens:
+    """BLD-4K7P: backticked tokens that aren't literal on-disk paths must not
+    produce false `missing-ref` positives — angle-bracket write-target templates
+    (`<inbox>/<slug>.md`) and URLs (`https://…`) are skipped at parse (same
+    form-family as the glob carveout), and an intentionally-gitignored managed
+    path (`.prawduct/.bug-inbox`) is captured but skipped at verification because
+    it's a generated/managed file, legitimately absent from a fresh checkout."""
+
+    def test_angle_bracket_template_is_skipped(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- writes `<inbox>/<kebab-slug>.md` per report\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_url_is_skipped(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- see `https://example.com/spec/x.md`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_gitignored_managed_path_not_flagged_missing(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- the resolver writes to `.prawduct/.bug-inbox`\n"
+        )
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+        (project / ".gitignore").write_text(".prawduct/.bug-inbox\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        # It IS a path-shaped token (captured), but verification skips it.
+        assert [e["ref"] for e in refs["file_paths"]] == [".prawduct/.bug-inbox"]
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_non_ignored_missing_path_still_flagged(self, tmp_path: Path):
+        # Contrast: a genuinely-missing, NON-ignored path is still a missing-ref —
+        # the gitignore skip must not suppress real drift.
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/does_not_exist.py`\n"
+        )
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+        (project / ".gitignore").write_text(".prawduct/.bug-inbox\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["lib/does_not_exist.py"]

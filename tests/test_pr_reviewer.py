@@ -591,6 +591,30 @@ class TestPrReviewerScoping:
             "the skill cannot append the review.pr event."
         )
 
+    def test_learnings_and_backlog_scoped_to_record(self):
+        """B (CRT-5T8N): the PR reviewer's Learnings Cross-Check and Backlog R-1
+        are scoped to the consumed Critic record — skip on a HEAD-covering
+        cumulative (the Critic already scanned the bundle), scan only the
+        chain-delta on a verify-resolutions record, full scan when the record is
+        voided. R-2 (data inconsistency) always runs because the Critic doesn't
+        do it. Guards against a silent revert to unconditional re-scanning (the
+        duplication B removed) or to dropping the chain-delta coverage (the gap
+        B avoided)."""
+        content = self.protocol
+        assert "cumulative Critic owns" in content   # the single-owner statement
+        assert "HEAD-covering" in content            # the skip discriminator
+        assert "chain record" in content             # the verify-resolutions delta case
+        assert "delta" in content
+        assert "always run" in content               # R-2 stays unconditional
+
+    def test_critic_cross_checks_named_as_owner(self):
+        """B (CRT-5T8N): review-cycle.md names final/cumulative as the OWNER of
+        the Learnings Cross-Check + Backlog Reconciliation, so the single-owner
+        division is explicit from the Critic side too (the PR reviewer consumes
+        the result rather than re-running it)."""
+        content = (FRAMEWORK_DIR / "skills" / "critic" / "review-cycle.md").read_text()
+        assert "owner of both cross-checks" in content
+
 
 # =============================================================================
 # Discoverability in the plugin guidance layer

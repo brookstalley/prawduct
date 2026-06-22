@@ -3,6 +3,185 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-22: Test-evidence `record` cluster — retire the misleading git_sha, ingest existing JUnit runs, loud-fail on empty discovery (test-evidence)
+
+<!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence | status=merged -->
+
+**Why:** Three independent fixes on the `test-evidence record` surface, bundled
+into one PR for review economy (a code survey confirmed they share the surface,
+not an abstraction). (1) The record carried a `git_sha` field that **no runtime
+code reads** and that is **not** in the evidence schema — its only live effect
+was the PR-reviewer eyeballing it and emitting false-positive "stale" warnings.
+Freshness is timestamp-based via `prawduct-hook test-status`; content-fingerprinting
+was deliberately removed pre-v1.4 after chronic false positives, so the backlog's
+"re-introduce content-hashing" premise was wrong. (2) `record` re-ran the whole
+suite even when the builder had just run it — a double-execution of the test
+suite. (3) When test discovery found zero files (e.g. a monorepo without the
+`tests_dirs:` knob set), `record` wrote empty `changes_referenced`/`tests_executed`
+halves **silently**, reading downstream as false missing-coverage.
+
+**What:**
+- **Chunk 01 (TST-4K2P):** Removed `git_sha` from the record and dropped the
+  `git rev-parse HEAD` call that fed it. Retargeted the PR and Critic review
+  protocols to determine freshness **only** via `prawduct-hook test-status` —
+  never inferring staleness from a commit/SHA field. Replaced the now-obsolete
+  "record test-evidence after committing" learning (the timing workaround existed
+  only for the removed field).
+- **Chunk 02 (TST-7M3K):** Added `record --from-junit <path>` to ingest a JUnit
+  XML the builder already produced instead of re-running the suite (default
+  behavior unchanged; `--from-junit` combined with `test_command:`/trailing
+  pytest args is rejected as a conflicting source). Documented the single-run
+  Verify flow in `methodology/building.md`.
+- **Chunk 03 (TST-2H9P):** `bin/test-reference-verify` now fails **loud** when
+  zero tests are discovered while judgeable files changed (naming the `tests_dirs:`
+  knob) instead of writing empty halves silently, and `record` now forwards the
+  previously-swallowed verifier stderr.
+- 10 new tests; 1368 green.
+
+## 2026-06-22: Raise the Critic review-protocol.md token budget 3120 → 3350 — relieve an operationally-zero ceiling without abandoning the trim discipline (critic-protocol-budget)
+
+<!-- prawduct: chunks=01 | type=refactor | scope=critic-protocol-budget | status=merged -->
+
+**Why:** `skills/critic/review-protocol.md` had reached 3116 of its 3120-token
+test ceiling — 4 tokens of headroom, an operational zero that forces a harmful
+trim on the *next* legitimate check. An audit found the file LEAN, not bloated:
+every goal bullet is a specific, severity-mapped check, already compressed across
+many documented passes. The one relocatable block (the findings-JSON field
+glossary) is genuinely useful inline next to its template, so relocating it purely
+to clear the number would fragment the instructions — the anti-pattern the budget
+exists to prevent. And the ceiling is only ~1-2% of a medium/large review's token
+cost (the file loads into a 4-10 min opus review over a full diff + 3 subagents),
+so it is an anti-bloat **discipline** knob, not a material cost control.
+
+**What:** Raised the ceiling to 3350 (+230 tokens ≈ room for 3-4 future checks)
+in `tests/test_v5_methodology.py`, with the rationale recorded in the test
+comment. The discipline posture is **unchanged** — the comment still mandates
+"prefer trim over bump, and relocate per-mode/record detail to `review-cycle.md`
+before adding here." No protocol content changed; this is purely the test
+threshold. Part of the review-streamlining track (alongside the telemetry
+model-id fix and the PR-reviewer single-owner scoping).
+
+## 2026-06-22: Single-owner the PR reviewer's Learnings Cross-Check & Backlog R-1 — scope them to the consumed Critic record (single-owner-shared-checks)
+
+<!-- prawduct: chunks=01 | type=refactor | scope=single-owner-shared-checks | status=merged -->
+
+**Why:** After the consume-and-audit redesign (the PR reviewer audits the Critic
+record instead of re-deriving code soundness), the PR reviewer *still* re-ran two
+checks the cumulative Critic already does over the same diff: the Learnings
+Cross-Check and the Backlog "resolved items" walk (R-1) — duplicated scanning
+across two agents. B0 (the validate-first step of CRT-5T8N) confirmed this is
+*true* duplication, not complementary work, but found the naive fix ("just delete
+it from the PR reviewer") has a **coverage gap**: the PR gate can be satisfied by
+a `verify-resolutions` **chain record**, which runs Goals 1-3 only and never runs
+those cross-checks over its delta `<anchor>...HEAD`. The PR reviewer's own scan
+was the only thing covering that delta.
+
+**What:** The PR reviewer's **Learnings Cross-Check** and **Backlog R-1** are now
+scoped to the consumed record — skip on a HEAD-covering `cumulative`/`final` (the
+Critic owns the bundle scan; rely on the audited record), scan **only** the
+chain-delta `<extends_cumulative.commit_reviewed>...HEAD` on a `verify-resolutions`
+record (closes the gap), full scan on a voided/absent record (the pre-scoping
+behavior). **R-2** (change-log↔backlog data inconsistency) stays unconditional —
+the Critic does not do it. `skills/critic/review-cycle.md` names `final`/`cumulative`
+as the explicit **owner** of both cross-checks so the division reads from both
+sides. 2 guard tests added (`tests/test_pr_reviewer.py`). Cuts duplicated reviewer
+work without losing assurance (CRT-5T8N, the B item of the review-streamlining
+track). *Note:* the item assumed the Critic-side detail lived in
+`critic/review-protocol.md`; it's actually in `review-cycle.md` (review-protocol.md
+only references it), so the ownership statement landed there.
+
+## 2026-06-22: Fold reviewer model-id aliases to a family label in review-stats so the model dimension isn't fragmented (telemetry-model-id-normalization)
+
+<!-- prawduct: chunks=01 | type=fix | scope=telemetry-model-id-normalization | status=merged -->
+
+**Why:** `review-stats` groups reviews by role × model × mode, but one model is
+recorded under several id strings (`opus`, `claude-opus-4-8`,
+`claude-opus-4-8[1m]` are all the same model), so it split that model across
+three buckets — the 2026-06-22 run fragmented critic-opus reviews across
+`opus` / `claude-opus-4-8` / `claude-opus-4-8[1m]`, making per-model yield
+unreadable and defeating the reviewer-model A/B the dimension exists to answer.
+Surfaced while mining review-stats for the evidence-driven review-pruning track
+(**TEL-4M9X**, the first deliverable of that track).
+
+**What:** A `_canonical_model` helper folds a recorded id to its Claude family
+(`opus`/`sonnet`/`haiku`/`fable`) at the aggregation key only — `fable`/`sonnet`
+stay distinct from `opus`, and an unfamiliar id passes through verbatim (never
+bucketed under a known family). Substring match, so a future model *version*
+folds with no code change (the drift-resilience the reviewer-model fallback
+chains chose over pinned ids). The raw id stays untouched in each append-only
+ledger line, so the historical 41 events aggregate correctly with **no rewrite**
+— a read-time view. Folds **values, not keys**, so `REPORT_SCHEMA_VERSION` holds.
+4 tests added; `docs/governance-telemetry.md` documents the fold.
+
+## 2026-06-21: Batch git subprocess fan-out on the SessionStart/Stop hot paths (hot-path-git-batching)
+
+<!-- prawduct: chunks=01 | type=refactor | scope=hot-path-git-batching | status=merged -->
+
+**Why:** The `clear` (SessionStart) and `stop` (Stop) hooks spawned more git
+subprocesses than needed — measured 25 on `clear`, dominated by
+`_untrack_session_files` issuing one `git ls-files --error-unmatch` per session
+path (15), plus `git status --porcelain` re-run by each baseline-diff probe (3 on
+`clear`, 2–3 on `stop`). On a monorepo each git invocation is dominated by
+repo-scan latency, so the fan-out risks multi-second session-start stalls.
+`_has_product_code` compounded it by walking the entire tree (including a large
+`node_modules`) before its filter discarded those paths — and that path fires
+exactly when a JS repo is being onboarded. From the 2026-06-09 framework review
+(STH-6Q9D).
+
+**What:** Three behavior-preserving optimizations on the shared hot-path surface.
+(1) `_untrack_session_files` learns the tracked session-file set in ONE
+`git ls-files -z -- <paths>` and untracks in ONE `git rm --cached` (was 15 + N) —
+`clear` drops 25 → 11 git subprocesses. (2) The status-family probes
+(`git_has_changes`, `git_has_session_changes`, `_session_changes_are_doc_only`,
+`git_has_code_changes`, `_get_session_changed_files`) gained an optional
+`status_output=` parameter so a hot-path caller captures `git status --porcelain`
+once and threads it down; applied at the two dense callers —
+`_check_previous_session_gates` (3 → 1 on a dirty session) and the `cmd_stop`
+preamble (3 → 2 on a session with changes). Default `None` preserves every
+existing caller. (3) `_has_product_code` prunes `node_modules`/`.git`/`.prawduct`
+at the directory level via `os.walk` and short-circuits on the first product-code
+file — same verdict, no full-tree enumeration. The remaining
+`git branch --show-current` ×4 on `clear` is a cross-function thread, filed as
+STH-3K7M. New `tests/test_hot_path_git_batching.py` pins the batched-call counts,
+the capture-once contract (passed snapshot is not recomputed), and the prune
+contract (`node_modules` never enumerated); behavior-preservation tests guard each
+deliverable. Full suite 1365 pass / 0 fail.
+
+## 2026-06-21: Hook-CLI robustness bundle — five ready S-effort fixes (hook-cli-robustness)
+
+<!-- prawduct: chunks=01 | type=fix | scope=hook-cli-robustness | status=merged -->
+
+**Why:** Five independent, ready, S-effort robustness/correctness gaps in the
+framework's own hook CLI + governance libs accumulated on the backlog (from
+Critic/builder/reviewer notes). Each was small and isolated; the highest-ROI
+structure was to bundle them on one branch so a single cumulative review + PR
+amortizes the (P0) opus review wall-clock across five correctness wins rather
+than paying it five times.
+
+**What:** (1) **STH-5R2Q** — flag-only subcommands (`clear`, `audit-learnings`,
+`repo-disable`) now reject unknown args via a shared `_reject_unknown_args`
+helper (exit 2, the hook's usage-error convention) instead of silently ignoring
+them — the swallow that had masked a real bug where a test passed `tmp_path`
+positionally and the live repo was audited. (2) **TST-3E8V** —
+`cmd_test_evidence` widens its launch catch `FileNotFoundError` → `OSError`, so a
+non-executable `test_command` target (`PermissionError`) takes the clean exit-2
+path instead of tracebacking. (3) **REL-7P3X** — `cmd_stamp_merged` strips a
+leading origin/ from the configured `base_branch` before the local-branch guard
+compare, so the project-state-"preferred" origin-prefixed form no longer refuses
+permanently. (4) **STH-9T4F** — the critic-active marker
+(`lib/critic_marker.py`) and the operator-verification queue rewrite
+(`lib/operator_verification.py`) now use `core.atomic_write_text` (the two sites
+left out of STH-8M3V's scope); their readers fail open, so a torn write misfired
+governance silently. (5) **BLD-4K7P** — `verify-chunk-refs` no longer cries wolf
+on non-path tokens: `_looks_like_file_path` skips `<>`/`://` (template
+placeholders, URLs) and `_verify_chunk_refs` skips intentionally-gitignored
+managed paths via a new `gitstate.git_path_is_ignored` helper. +14 tests
+(1352 → 1366). Cumulative Critic caught one BLOCKING (the plan's own prose
+backticked git-ref tokens that tripped the new ref check) — fixed by
+de-backticking, with the general git-ref over-match captured as follow-up
+BLD-3M7K. CRT-9L2F (post-release live-verify of explicit Critic mode) is the
+natural follow-up once this ships.
+
 ## 2026-06-20: Resolve `.prawduct/` state against the session git worktree — governance gates + critic/pr compose in worktrees (STH-4K7N)
 
 <!-- prawduct: chunks=01,02 | type=fix | scope=worktree-compat -->
@@ -46,6 +225,86 @@ trim. A post-merge live-harness check is queued in
 `.prawduct/operator-verification.md` (VRF-001) to confirm the one assumption a
 unit test can't reach: that a real hook *process* runs with the worktree as its
 cwd.
+
+## 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.7 | status=shipped | scope=backlog-closed-by-handle -->
+
+**Why:** v2.1.6 (`backlog-ship-in-pr`) told builders to archive an item *on the
+branch that closes it* (`closed-by=<scope>`), but only updated the "When to mark
+shipped" prose — the **contract text** defining `closed-by` (the item-shape line,
+the `update … closed-by` step, the template legend) still read `<chunk-id|tag>`
+and never said what handle to use for **non-chunk work** (a standalone
+refactor/chore committed directly). With no chunk id, a builder reaches for the
+commit SHA — which a commit can't contain and which `--amend` rewrites (dangle),
+forcing an extra "fix closed-by" commit: exactly the separate-bookkeeping churn
+`backlog-ship-in-pr` set out to remove. Filed as an upstream report (Hallucinote,
+originally `puzzles`); triaged to **BKL-9K4T**.
+
+**What:** All four contract sites in `skills/backlog/SKILL.md` and
+`templates/backlog.md` now state one rule — `closed-by` is a handle that exists
+*before* the commit recording it (a chunk id, the branch/feature **scope** name,
+or a release/change-log tag), **never a bare commit SHA** (can't sit in its own
+commit; dangles on `--amend`) **nor an unassigned PR number**. For non-chunk work
+the prescribed handle is the **branch/scope name** (resolvable on-branch, survives
+amends), and the `update` step warns on a bare SHA and substitutes the scope name.
+Doc-only — nothing in `lib/`/`bin/` parses `closed-by`; it is human-readable
+provenance. Coherent-Artifacts (P13) fix: the v2.1.6 rule change cascaded to the
+field's own contract definition.
+
+## 2026-06-20: Formalize the upstream bug-reporting channel — /prawduct:report-bug + inbox resolver + receiving advisory (upstream-bug-reporting)
+
+<!-- prawduct: chunks=01,02 | type=feature | release=v2.1.6 | status=shipped | scope=upstream-bug-reporting -->
+
+**Why:** Products that consume prawduct hit bugs in prawduct *itself* and filed
+reports into the prawduct checkout's gitignored `incoming-bugs/` drop-box by
+hand — an undocumented method with no path-discovery, no inert behavior for
+plugin-only users (who have no local writable checkout), and no formalized
+triage (reports sat unarchived). The user asked to formalize it so it works when
+a prawduct checkout is reachable and is harmless/inert otherwise.
+
+**What:** A new `/prawduct:report-bug` skill files a templated report into the
+inbox when one is reachable, else captures the bug in the product's *own* backlog
+(`area=prawduct-upstream`) and prints the GitHub issues URL — never errors.
+`prawduct-hook bug-inbox` resolves the inbox from `PRAWDUCT_BUG_INBOX` → a
+gitignored `.prawduct/.bug-inbox` pointer → none (validates exists+writable;
+fail-soft to none). The path is deliberately a local/machine signal, never
+committed state (a non-portable absolute path must not travel to clones/CI), so
+**inertness falls out of absence** — a plugin-only user configures neither
+signal. Receiving side: a `untriaged-upstream-reports` session-start advisory
+(`lib/upstream_probes.py`, registered in `cmd_clear`) fires only where
+`incoming-bugs/` exists and is non-empty — naturally absent → inert in every
+product repo — nudging triage; the triage→backlog→archive flow is documented in
+the skill and the CLAUDE.md "Reviewing product feedback" route. `.bug-inbox` is a
+managed `GITIGNORE_ENTRIES` entry (gitignored in every onboarded product) with
+its hook-side mirror kept in parity. A terse discoverability pointer was added to
+both session digests (full reaches products; slim reaches the framework repo).
+New tests cover the resolver matrix, the `bug-inbox` subcommand exit-code
+contract, the probe fire/inert split, and the digest pointer; both inert paths
+exercised live.
+
+## 2026-06-20: Archive a closed backlog item in the closing PR, not as a separate after-merge edit (backlog-ship-in-pr)
+
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.6 | status=shipped | scope=backlog-ship-in-pr -->
+
+**Why:** Guidance framed marking a backlog item `status=shipped` as a post-merge
+*reconciliation* step, so closing an item required a separate bookkeeping
+commit/PR after the feature merged — redundant review/PR churn. The D4 rule it
+rests on ("never *infer* status from a view — the builder makes the explicit
+call") constrains *how* the call is made, not *when*; nothing actually required
+waiting until after merge.
+
+**What:** The primary path is now "archive the item *on the branch that closes
+it*" (`status=shipped closed-by=<scope>`), so the archive rides in the feature's
+own PR and is **atomic with the merge** — an abandoned PR abandons the archive
+too, so the backlog can't drift. `skills/backlog/SKILL.md` gains a "When to mark
+shipped" rule and demotes "Reconcile shipped work" to the explicit fallback;
+`skills/critic/review-cycle.md`'s backlog-resolution NOTE now nudges archiving
+on-branch. Disambiguated: backlog `shipped` = work merged to the integration
+base (its single terminal state) vs. a change-log entry's `status=shipped` =
+released to consumers (`main`), which legitimately batches at the `develop→main`
+release and is untouched. `methodology/building.md` is left as-is — its
+chunk-close step already closes affected items on-branch before `/clear`.
 
 ## 2026-06-12: Harden reviewer-model dispatch against model withdrawal — ordered tier chains with graceful fallback (reviewer-model-fallback)
 

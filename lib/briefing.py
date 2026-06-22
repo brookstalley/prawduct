@@ -936,8 +936,12 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     warnings: list[str] = []
 
+    # Capture `git status --porcelain` once and thread it through the three
+    # baseline-diff probes below (STH-6Q9D) instead of each re-spawning git.
+    status_output = gitstate.git_status_output(project_dir)
+
     # Was there a previous session with changes?
-    had_changes = gitstate.git_has_session_changes(project_dir)
+    had_changes = gitstate.git_has_session_changes(project_dir, status_output)
     if not had_changes:
         return warnings
 
@@ -946,7 +950,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     waivers = gates._read_gates_waived(prawduct_dir)
 
     # Gate 1: Reflection (skipped for doc-only changes or when waived)
-    doc_only = gitstate._session_changes_are_doc_only(project_dir)
+    doc_only = gitstate._session_changes_are_doc_only(project_dir, status_output)
     if not doc_only and "reflection" not in waivers:
         reflected_file = prawduct_dir / ".session-reflected"
         try:
@@ -961,7 +965,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # This advisory copy had diverged (no scope check), so it could report a
     # stale verify-resolutions record as satisfying.
     has_build_plan = gates._has_active_build_plan_file(prawduct_dir) or gates._has_build_plan_in_state(prawduct_dir)
-    if has_build_plan and not doc_only and "critic" not in waivers and gitstate.git_has_code_changes(project_dir):
+    if has_build_plan and not doc_only and "critic" not in waivers and gitstate.git_has_code_changes(project_dir, status_output):
         satisfied, scope_reason = gates.critic_findings_satisfy_session_gate(
             prawduct_dir, project_dir
         )

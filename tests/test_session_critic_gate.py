@@ -135,9 +135,11 @@ class TestBriefingAdvisoryUsesSharedGate:
     that record as satisfying (no warning)."""
 
     def _patch(self, monkeypatch):
-        monkeypatch.setattr(briefing.gitstate, "git_has_session_changes", lambda d: True)
-        monkeypatch.setattr(briefing.gitstate, "_session_changes_are_doc_only", lambda d: False)
-        monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d: True)
+        # Stubs accept the optional status_output param (STH-6Q9D) the real
+        # signatures gained — the gate captures porcelain once and threads it.
+        monkeypatch.setattr(briefing.gitstate, "git_has_session_changes", lambda d, s=None: True)
+        monkeypatch.setattr(briefing.gitstate, "_session_changes_are_doc_only", lambda d, s=None: False)
+        monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d, s=None: True)
         monkeypatch.setattr(briefing.gates, "_read_gates_waived", lambda d: {})
         monkeypatch.setattr(briefing.gates, "_has_active_build_plan_file", lambda d: True)
         monkeypatch.setattr(briefing.gates, "_has_build_plan_in_state", lambda d: False)
