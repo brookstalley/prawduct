@@ -495,38 +495,6 @@
   parser family as the shipped BLD-2R9X (glob metacharacters) and BLD-8F2Q (`path::symbol`); this
   covers token classes those two fixes don't reach. (critic)
 
-- **[TEL-4M9X]** Normalize model-id strings in the governance ledger so review-stats can analyze the model dimension
-  `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: open · stage: ready · related: TEL-6P2D · refs: lib/telemetry.py, .prawduct/.governance-ledger.jsonl, .prawduct/artifacts/reviewer-model-ab-2026-06-10.md`
-
-  Problem: `review-stats` aggregates by `role × model × mode`, but the SAME model is recorded under
-  several id strings — `opus`, `claude-opus-4-8`, and `claude-opus-4-8[1m]` are all the same model,
-  while `fable`/`sonnet` are genuinely different. This fragments the model dimension into noise. The
-  2026-06-22 review-stats run split critic-opus reviews across three buckets (1 + 6 + others), making
-  per-model yield unreadable — which defeats the exact A/B question the telemetry was built to answer
-  (see reviewer-model-ab artifact).
-
-  Approach:
-  - Canonicalize the model-id at the aggregation key in lib/telemetry.py (read-time fold) AND at
-    write-time where the review.* ledger event is created, so new events are clean and the existing 41
-    immutable events still aggregate correctly without rewriting the append-only ledger.
-  - Collapse opus aliases (`opus`, `claude-opus-4-8`, `claude-opus-4-8[1m]`) → one canonical `opus`
-    family label; keep `fable`, `sonnet`, `haiku` distinct; unknown id → passthrough.
-  - Put the mapping in ONE shared helper so future model ids are a one-line add.
-
-  Assurance impact: pure measurement/observability fix — changes no gate behavior and adds no review
-  runs. Zero assurance risk.
-
-  Acceptance:
-  - review-stats shows opus variants collapsed to one bucket per (role, mode); fable stays separate.
-  - The historical 41 events aggregate correctly with NO rewrite of the ledger file.
-  - Unit test covers the canonicalization map (opus aliases→opus; fable→fable; unknown→passthrough).
-
-  Open decision: normalize the aggregation key only vs. add a persisted `model_family` field —
-  recommend aggregation-key normalization + shared helper (lighter; preserves the raw string). This is
-  the FIRST deliverable of the evidence-driven-pruning track and must land before any per-model or
-  per-leg pruning can be data-justified. Being started immediately (will be promoted on a feature
-  branch off develop). (user)
-
 - **[TEL-6P2D]** review-stats windowing + zero-yield pruning-candidate flag + a documented pruning protocol (no auto-cut)
   `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: open · stage: design · related: TEL-4M9X, CRT-9R4K, CRT-5T8N · refs: lib/telemetry.py, methodology/building.md`
 
@@ -624,6 +592,42 @@
 ## Promoted
 
 ## Archive
+
+- **[TEL-4M9X]** Normalize model-id strings in the governance ledger so review-stats can analyze the model dimension
+  `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: shipped · stage: ready · related: TEL-6P2D · refs: lib/telemetry.py, .prawduct/.governance-ledger.jsonl, .prawduct/artifacts/reviewer-model-ab-2026-06-10.md · closed-by: telemetry-model-id-normalization · reviewed: 2026-06-22`
+
+  Problem: `review-stats` aggregates by `role × model × mode`, but the SAME model is recorded under
+  several id strings — `opus`, `claude-opus-4-8`, and `claude-opus-4-8[1m]` are all the same model,
+  while `fable`/`sonnet` are genuinely different. This fragments the model dimension into noise. The
+  2026-06-22 review-stats run split critic-opus reviews across three buckets (1 + 6 + others), making
+  per-model yield unreadable — which defeats the exact A/B question the telemetry was built to answer
+  (see reviewer-model-ab artifact).
+
+  Approach:
+  - Canonicalize the model-id at the aggregation key in lib/telemetry.py (read-time fold) AND at
+    write-time where the review.* ledger event is created, so new events are clean and the existing 41
+    immutable events still aggregate correctly without rewriting the append-only ledger.
+  - Collapse opus aliases (`opus`, `claude-opus-4-8`, `claude-opus-4-8[1m]`) → one canonical `opus`
+    family label; keep `fable`, `sonnet`, `haiku` distinct; unknown id → passthrough.
+  - Put the mapping in ONE shared helper so future model ids are a one-line add.
+
+  Assurance impact: pure measurement/observability fix — changes no gate behavior and adds no review
+  runs. Zero assurance risk.
+
+  Acceptance:
+  - review-stats shows opus variants collapsed to one bucket per (role, mode); fable stays separate.
+  - The historical 41 events aggregate correctly with NO rewrite of the ledger file.
+  - Unit test covers the canonicalization map (opus aliases→opus; fable→fable; unknown→passthrough).
+
+  Open decision: normalize the aggregation key only vs. add a persisted `model_family` field —
+  recommend aggregation-key normalization + shared helper (lighter; preserves the raw string). This is
+  the FIRST deliverable of the evidence-driven-pruning track and must land before any per-model or
+  per-leg pruning can be data-justified. Being started immediately (will be promoted on a feature
+  branch off develop). (user)
+
+  Shipped 2026-06-22 on branch feature/telemetry-model-id-normalization (lib/telemetry.py
+  `_canonical_model` fold + 4 tests + docs/governance-telemetry.md + change-log entry; full suite 1355
+  passed). Archived on the branch per the ship-in-PR contract so it rides in the closing PR.
 
 - **[BKL-9K4T]** Reconcile the `closed-by:` contract with non-chunk/bare-commit work — define a stable on-branch handle and warn on the amend-dangle footgun
   `effort: S · impact: S · area: backlog · source: user · added: 2026-06-21 · status: shipped · stage: ready · related: REL-7P3X, PR-2H8N · refs: incoming-bugs/archive/backlog-closed-by-cannot-reference-its-own-commit.md, skills/backlog/SKILL.md, templates/backlog.md · closed-by: backlog-closed-by-handle · reviewed: 2026-06-21`

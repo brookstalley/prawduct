@@ -214,6 +214,47 @@ class TestAggregationMath:
         assert modes == {("pr", "pr-scoped"), ("pr", "pr-full")}
 
 
+class TestModelCanonicalization:
+    """Model-id aliases for one model fold to a single family bucket so the
+    reviewer-model A/B isn't fragmented across id strings; distinct families
+    and unfamiliar ids stay separate, a missing model stays None (TEL-4M9X)."""
+
+    def test_opus_aliases_fold_to_one_bucket(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(model="opus", mode=CHUNK_MODE),
+            _event(model="claude-opus-4-8", mode=CHUNK_MODE),
+            _event(model="claude-opus-4-8[1m]", mode=CHUNK_MODE),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        groups = {(e["role"], e["model"], e["mode"]): e for e in report["by_role_model_mode"]}
+        assert set(groups) == {("critic", "opus", "chunk")}
+        assert groups[("critic", "opus", "chunk")]["reviews"] == 3
+
+    def test_distinct_families_stay_separate(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(model="claude-opus-4-8[1m]", mode=CHUNK_MODE),
+            _event(model="fable", mode=CHUNK_MODE),
+            _event(model="claude-sonnet-4-6", mode=CHUNK_MODE),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        models = {e["model"] for e in report["by_role_model_mode"]}
+        assert models == {"opus", "fable", "sonnet"}
+
+    def test_unfamiliar_model_passes_through_visibly(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(model="some-future-model", mode=CHUNK_MODE)])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert {e["model"] for e in report["by_role_model_mode"]} == {"some-future-model"}
+
+    def test_missing_model_groups_as_none(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(model=None, mode=CHUNK_MODE)])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["by_role_model_mode"][0]["model"] is None
+
+
 class TestSkipCounting:
     def test_corrupt_unknown_and_invalid_each_counted(self, tmp_path):
         repo = tmp_path / "repo"
