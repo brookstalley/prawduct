@@ -113,6 +113,40 @@ ledger line, so the historical 41 events aggregate correctly with **no rewrite**
 — a read-time view. Folds **values, not keys**, so `REPORT_SCHEMA_VERSION` holds.
 4 tests added; `docs/governance-telemetry.md` documents the fold.
 
+## 2026-06-21: Batch git subprocess fan-out on the SessionStart/Stop hot paths (hot-path-git-batching)
+
+<!-- prawduct: chunks=01 | type=refactor | scope=hot-path-git-batching -->
+
+**Why:** The `clear` (SessionStart) and `stop` (Stop) hooks spawned more git
+subprocesses than needed — measured 25 on `clear`, dominated by
+`_untrack_session_files` issuing one `git ls-files --error-unmatch` per session
+path (15), plus `git status --porcelain` re-run by each baseline-diff probe (3 on
+`clear`, 2–3 on `stop`). On a monorepo each git invocation is dominated by
+repo-scan latency, so the fan-out risks multi-second session-start stalls.
+`_has_product_code` compounded it by walking the entire tree (including a large
+`node_modules`) before its filter discarded those paths — and that path fires
+exactly when a JS repo is being onboarded. From the 2026-06-09 framework review
+(STH-6Q9D).
+
+**What:** Three behavior-preserving optimizations on the shared hot-path surface.
+(1) `_untrack_session_files` learns the tracked session-file set in ONE
+`git ls-files -z -- <paths>` and untracks in ONE `git rm --cached` (was 15 + N) —
+`clear` drops 25 → 11 git subprocesses. (2) The status-family probes
+(`git_has_changes`, `git_has_session_changes`, `_session_changes_are_doc_only`,
+`git_has_code_changes`, `_get_session_changed_files`) gained an optional
+`status_output=` parameter so a hot-path caller captures `git status --porcelain`
+once and threads it down; applied at the two dense callers —
+`_check_previous_session_gates` (3 → 1 on a dirty session) and the `cmd_stop`
+preamble (3 → 2 on a session with changes). Default `None` preserves every
+existing caller. (3) `_has_product_code` prunes `node_modules`/`.git`/`.prawduct`
+at the directory level via `os.walk` and short-circuits on the first product-code
+file — same verdict, no full-tree enumeration. The remaining
+`git branch --show-current` ×4 on `clear` is a cross-function thread, filed as
+STH-3K7M. New `tests/test_hot_path_git_batching.py` pins the batched-call counts,
+the capture-once contract (passed snapshot is not recomputed), and the prune
+contract (`node_modules` never enumerated); behavior-preservation tests guard each
+deliverable. Full suite 1365 pass / 0 fail.
+
 ## 2026-06-21: Hook-CLI robustness bundle — five ready S-effort fixes (hook-cli-robustness)
 
 <!-- prawduct: chunks=01 | type=fix | scope=hook-cli-robustness | status=merged -->

@@ -403,9 +403,11 @@ class TestGenerateSessionHandoff:
 class TestCheckPreviousSessionGates:
     def _patch(self, monkeypatch, *, changes=True, doc_only=False, code=True,
                waivers=None, build_plan=True):
-        monkeypatch.setattr(briefing.gitstate, "git_has_session_changes", lambda d: changes)
-        monkeypatch.setattr(briefing.gitstate, "_session_changes_are_doc_only", lambda d: doc_only)
-        monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d: code)
+        # Stubs accept the optional status_output param (STH-6Q9D) the real
+        # signatures gained — the gate now captures porcelain once and threads it.
+        monkeypatch.setattr(briefing.gitstate, "git_has_session_changes", lambda d, s=None: changes)
+        monkeypatch.setattr(briefing.gitstate, "_session_changes_are_doc_only", lambda d, s=None: doc_only)
+        monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d, s=None: code)
         monkeypatch.setattr(briefing.gates, "_read_gates_waived", lambda d: waivers or {})
         monkeypatch.setattr(briefing.gates, "_has_active_build_plan_file", lambda d: build_plan)
         monkeypatch.setattr(briefing.gates, "_has_build_plan_in_state", lambda d: False)

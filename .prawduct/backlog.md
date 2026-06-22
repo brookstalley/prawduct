@@ -104,6 +104,16 @@
   flow (or generate it from the release= change-log tag like release-notes.md is), and make
   release-prep refuse to bump/tag on a non-green suite. (builder)
 
+- **[STH-3K7M]** Capture `git branch --show-current` once on the SessionStart (clear) hot path
+  `effort: S · impact: S · area: stop-hook · source: builder · added: 2026-06-21 · status: open · stage: ready · related: STH-6Q9D · refs: lib/briefing.py (_get_current_branch and its callers)`
+
+  `_get_current_branch` (lib/briefing.py) is invoked redundantly on the SessionStart (clear) hot
+  path — measured 4× during STH-6Q9D. The redundancy spans three separate briefing functions:
+  `staleness_scan` (~L160), `assemble_session_briefing` (~L455), and `_parse_wip` (~L246
+  auto-detect). So "capture once" is a cross-function thread (compute in `cmd_clear` or the briefing
+  entry and pass the branch down), unlike STH-6Q9D's three local targets — which is why it was left
+  out of that chunk. Same fan-out theme as STH-6Q9D (shipped hot-path-git-batching). (builder)
+
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
 
@@ -513,6 +523,19 @@
   changelog-lifecycle v2.1.1) instead of chunk mode. Commit-coverage keeps the record sound, but
   cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
   active plan scope. (reflection)
+
+- **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
+  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/)`
+
+  If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
+  verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
+  SHA does NOT resolve, so a SHA that still resolves on the sibling branch (not an ancestor of HEAD)
+  passes the guard and yields a cross-branch two-way diff full of phantom findings (surfaced live this
+  session on feature/hot-path-git-batching, anchors f208ad2/f92a4be from sibling
+  feature/hook-cli-robustness). Fix shape: add an is-ancestor check on commit_reviewed (git merge-base
+  --is-ancestor <anchor> HEAD) — if the anchor isn't an ancestor of HEAD, demote to cumulative/final
+  instead of computing a divergent delta. Surfaced + self-flagged by the Critic during STH-6Q9D.
+  (critic)
 
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
