@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-06-10
+backlog_last_groomed_at: 2026-06-22
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -466,6 +466,9 @@ views_enabled: true
 # The v2.0.0, M4 (v2.0.3), and waiver-pragma/2.0-rock-solid (v2.0.4) plans are
 # complete and released; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans.
+
+active_build_plan: artifacts/build-plan-test-evidence.md
+
 #
 # v2.0.5 (2026-06-04) shipped FOUR batched scopes together — roi-batch (#58),
 # roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
