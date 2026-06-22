@@ -5,7 +5,7 @@
 
 ## 2026-06-22: Test-evidence `record` cluster — retire the misleading git_sha, ingest existing JUnit runs, loud-fail on empty discovery (test-evidence)
 
-<!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence -->
+<!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence | status=merged -->
 
 **Why:** Three independent fixes on the `test-evidence record` surface, bundled
 into one PR for review economy (a code survey confirmed they share the surface,
