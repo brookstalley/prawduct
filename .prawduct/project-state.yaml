@@ -523,11 +523,12 @@ active_build_plan: artifacts/build-plan-hook-cli-robustness.md
 # release-pending plans remain. The build-plan file is retained as a historical
 # artifact.
 # 2026-06-22: the v2.1.8 release batch is being assembled on develop — test-evidence
-# (#104) merged first, then the hook-cli-robustness bundle (STH-5R2Q + TST-3E8V +
-# REL-7P3X + STH-9T4F + BLD-4K7P, branch feature/hook-cli-robustness) which the
-# operative pointer above now tracks. Both are release-pending (status=merged in the
-# change-log) until the develop→main v2.1.8 promotion flips them to status=shipped
-# and regen-views flips each plan's ## Status via its scope= tag.
+# (#104) merged first (change-log status=merged), then this hook-cli-robustness bundle
+# (STH-5R2Q + TST-3E8V + REL-7P3X + STH-9T4F + BLD-4K7P, branch feature/hook-cli-robustness)
+# which the operative pointer above now tracks (its change-log entry is statusless until
+# the merge runs stamp-merged). All batch members are release-pending until the
+# develop→main v2.1.8 promotion flips their change-log entries to status=shipped and
+# regen-views flips each plan's ## Status via its scope= tag.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
