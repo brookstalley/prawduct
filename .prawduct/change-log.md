@@ -184,7 +184,7 @@ natural follow-up once this ships.
 
 ## 2026-06-20: Resolve `.prawduct/` state against the session git worktree — governance gates + critic/pr compose in worktrees (STH-4K7N)
 
-<!-- prawduct: chunks=01,02 | type=fix | scope=worktree-compat -->
+<!-- prawduct: chunks=01,02 | type=fix | scope=worktree-compat | status=merged -->
 
 **Why:** Host repos increasingly *mandate* git worktrees for WIP (a stable
 primary checkout serving the plugin live; isolation for parallel agents), but
