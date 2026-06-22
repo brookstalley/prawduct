@@ -34,10 +34,6 @@ distribution: plugin
 # preferred over the bare `develop` for a stable remote-tracking merge-base.
 base_branch: develop
 
-# Active build plan (`.prawduct/`-relative pointer read by resolve_build_plan_path).
-# Set on feature/worktree-compat (STH-4K7N); cleared at release per merge-flow.
-active_build_plan: artifacts/build-plan-worktree-compat.md
-
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
@@ -471,7 +467,7 @@ views_enabled: true
 # complete and released; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans.
 
-active_build_plan: artifacts/build-plan-hot-path-git-batching.md
+active_build_plan: artifacts/build-plan-worktree-compat.md
 
 #
 # v2.0.5 (2026-06-04) shipped FOUR batched scopes together — roi-batch (#58),
@@ -527,12 +523,12 @@ active_build_plan: artifacts/build-plan-hot-path-git-batching.md
 # release-pending plans remain. The build-plan file is retained as a historical
 # artifact.
 # 2026-06-22: the v2.1.8 release batch is being assembled on develop — test-evidence
-# (#104), then the hook-cli-robustness bundle (#105), then this hot-path-git-batching
-# refactor (STH-6Q9D, branch feature/hot-path-git-batching) which the operative pointer
-# above now tracks. Each member's change-log entry carries status=merged once its merge
-# runs stamp-merged; all are release-pending until the develop→main v2.1.8 promotion
-# flips their entries to status=shipped and regen-views flips each plan's ## Status via
-# its scope= tag.
+# (#104), the hook-cli-robustness bundle (#105), the hot-path-git-batching refactor
+# (STH-6Q9D, #106), then this worktree-compat fix (STH-4K7N, branch
+# feature/worktree-compat) which the operative pointer above now tracks. Each member's
+# change-log entry carries status=merged once its merge runs stamp-merged; all are
+# release-pending until the develop→main v2.1.8 promotion flips their entries to
+# status=shipped and regen-views flips each plan's ## Status via its scope= tag.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
