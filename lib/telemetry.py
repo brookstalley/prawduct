@@ -13,6 +13,14 @@ COUNT (forward-compat: a future ``build.chunk`` producer must not crash or
 silently vanish from an old reader). Corrupt lines likewise skip-and-count.
 Telemetry is pulled, not pushed — nothing in the session hooks calls this.
 
+The ``model`` dimension folds id aliases to a family label (``opus`` covers
+``claude-opus-4-8`` and its ``[1m]`` variant; ``fable``/``sonnet``/``haiku``
+stay distinct) so the reviewer-model A/B isn't fragmented across the several
+id strings one model is recorded under (TEL-4M9X). The raw id stays in each
+ledger line untouched — only the aggregation key folds (``_canonical_model``),
+so this is a value-semantics change, not a key change: ``REPORT_SCHEMA_VERSION``
+stays put. See ``docs/governance-telemetry.md``.
+
 The reader deliberately does NOT reuse ``ledger.iter_events_newest_first``:
 that iterator serves the PR-gate fallback (newest-first, per-line stderr
 notes); this one is a quiet oldest-first sweep whose contract is honest
@@ -53,6 +61,33 @@ def _short_mode(mode) -> str:
     if not isinstance(mode, str) or not mode.strip():
         return "unknown"
     return mode.split(" (", 1)[0].strip()
+
+
+# Model-id families. The dispatcher records whatever model string it passed, so
+# the SAME model arrives under several ids — ``opus``, ``claude-opus-4-8``, and
+# ``claude-opus-4-8[1m]`` are one model; ``fable``/``sonnet``/``haiku`` are
+# distinct. review-stats groups by model to answer "is the deeper reviewer tier
+# paying off?" (the reviewer-model A/B), so it MUST fold those aliases to one
+# family or the dimension is pure noise. Substring match (not an exact map) so a
+# new opus/sonnet *version* folds with no code change — the drift-resilience the
+# reviewer-model fallback chains chose over pinned ids.
+_MODEL_FAMILIES = ("opus", "sonnet", "haiku", "fable")
+
+
+def _canonical_model(model) -> str | None:
+    """Fold a recorded model-id to its Claude family for grouping.
+
+    Returns the family label when one is recognized, the trimmed original when
+    it isn't (forward-compat: an unfamiliar model stays visible, never silently
+    bucketed under a known family), and ``None`` when no model was recorded.
+    """
+    if not isinstance(model, str) or not model.strip():
+        return None
+    lowered = model.lower()
+    for family in _MODEL_FAMILIES:
+        if family in lowered:
+            return family
+    return model.strip()
 
 
 def _read_events(path: Path) -> tuple[list[dict], dict]:
@@ -112,7 +147,7 @@ def _extract_row(event: dict) -> dict:
     ]
     return {
         "role": role if isinstance(role, str) else None,
-        "model": model if isinstance(model, str) else None,
+        "model": _canonical_model(model),
         "mode": _short_mode(event["review"].get("mode")),
         "scope": scope if isinstance(scope, str) else None,
         "duration": duration,
