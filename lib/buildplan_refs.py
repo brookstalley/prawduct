@@ -228,12 +228,22 @@ def _looks_like_file_path(token: str) -> bool:
     source path never contains the shell-glob metacharacters ``*``, ``?``, or
     ``[``, so a token carrying one is a glob to skip rather than a missing file
     to flag (BLD-2R9X). Sibling of the ``path::symbol`` carveout the chunk-ref
-    parser applies before calling this."""
+    parser applies before calling this.
+
+    Write-target templates with angle-bracket placeholders (e.g.
+    ``<inbox>/<kebab-slug>.md``) and URLs (e.g. ``https://example.com/x``) also
+    contain ``/`` but are not literal on-disk paths — a token carrying ``<``,
+    ``>``, or ``://`` is a placeholder/URL to skip, not a missing file to flag
+    (BLD-4K7P; same form-family as the glob carveout above)."""
     if "/" not in token:
         return False
     if token.startswith("/") and "/" not in token[1:] and "." not in token:
         return False
     if any(ch in token for ch in "*?["):
+        return False
+    if "<" in token or ">" in token:
+        return False
+    if "://" in token:
         return False
     return True
 
@@ -577,6 +587,12 @@ def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
         ref = entry["ref"]
         target = project_dir / ref
         if not target.exists():
+            if gitstate.git_path_is_ignored(project_dir, ref):
+                # BLD-4K7P: an intentionally-gitignored managed path (e.g.
+                # `.prawduct/.bug-inbox`) is a generated/managed file,
+                # legitimately absent from a fresh checkout — not a missing
+                # deliverable. Skip rather than cry wolf.
+                continue
             missing.append({
                 "kind": "file_path",
                 "ref": ref,

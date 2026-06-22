@@ -4,9 +4,17 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ---
 
+## When a session switches branches after SessionStart, pass the Critic mode explicitly — `infer-critic-mode` trusts the stale session-start branch marker
+
+When you change branches mid-session (e.g. start on branch A, then `git checkout -b B` off develop to do unrelated work), do NOT let `/prawduct:critic` infer its mode — pass it explicitly (`cumulative`, then `verify-resolutions`). `infer-critic-mode` reads the branch recorded at SessionStart, so on branch B it can chain `verify-resolutions` to branch A's anchor SHAs; `compute-verify-resolutions-scope` only demotes when an anchor SHA fails to *resolve*, and a sibling-branch SHA still resolves (it's just not an ancestor of HEAD), so the guard passes and the review computes a cross-branch two-way diff full of PHANTOM findings (deletions/changes the sibling branch made, not your work). The Critic can self-flag this, but don't rely on it — anchor your review on the current branch from the start. Relates to Independent Review (#14), Honest Confidence (#5), Validate Before Propagating (#15), and [[backlog]] CRT-8H3R (the `git merge-base --is-ancestor` demote-guard fix).
+
 ## When prose picks which model a reviewer/subagent runs on, express it as an ordered fallback chain resolved at dispatch — never a pinned alias
 
 When governance prose selects a model for a reviewer or subagent, write an ordered tier chain with a resolution rule ("use the first the harness lists as valid; fall back on a withdrawn/unrecognized model or dispatch error"), not a single pinned `model: X` — model lineups churn (Fable was pulled mid-cycle), and a pin either breaks when X is withdrawn or silently resolves to the *session* model (wrong tier), because Claude Code falls a blocked/unavailable subagent `model:` override back to the inherited/default model rather than erroring. Per-call and frontmatter `model:` take a single value (no built-in fallback syntax), so the chain is resolved by the runtime dispatching agent — the only actor that can see the live valid-model set (a Python hook can't). Verify harness/model behavior via `claude-code-guide`, don't recall it. Relates to Reasoned Decisions (#4), Honest Confidence (#5), Living Documentation (#3), and [[backlog]] REL-5K8M (deferred heavier mechanism).
+
+## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree
+
+When you change `lib/` or `bin/` in the prawduct framework repo and confirm the behavior by running the hook, invoke the **repo-local** `python3 bin/prawduct-hook <cmd>` — NOT the bare `prawduct-hook` on PATH, which resolves to the installed plugin cache (`~/.claude/plugins/cache/prawduct/<version>/bin/prawduct-hook`, pinned to the *released* version and importing its *released* `lib/`). The PATH command shows STALE behavior, so a correct fix looks like it didn't take and you can misreport it as broken. The tell is a contradiction: the test suite passes (it runs `bin/prawduct-hook` from the repo root) while the bare command's output is unchanged — trust the repo-local invocation, and `command -v prawduct-hook` confirms which one you're hitting. Relates to Honest Confidence (#5 — don't report a fix as broken on stale evidence), Validate Before Propagating (#15), and Reasoned Decisions (#4).
 
 ## A clean cumulative (0 blocking/0 warning) makes post-review note-fixes asymmetric — `.md` fixes ride free, any `.py` change forces a fresh full review
 
@@ -99,6 +107,10 @@ When you reverse a design decision partway through a chunk, re-grep your OWN new
 ## Editing a runtime that governs the current session: check your own signals first
 
 When you modify a runtime that ALSO governs the session you're editing in, run the new detection against the repo root and confirm the expected value BEFORE relying on the edit — a wrong signal can silently disable the very gate enforcing the current session, with no test failure to warn you ("am I standing on the branch I'm sawing?"). Relates to Structural Awareness (#21) and Validate Before Propagating (#15).
+
+## Pre-dispatch bootstrap code must fail open on a `lib/` ImportError
+
+`get_project_dir()` and any other helper that runs in `main()` BEFORE command dispatch must not hard-depend on the lazily-imported plugin `lib/`: wrap the lib call and fall back to the env/cwd behavior on `ImportError`. Adding a `lib` call there once broke the `regen-views` "could not import" contract — the eager import crashed with a traceback before the command's own graceful handler could fire. The hook's lib-free top level + lazy per-command imports are the architecture; bootstrap code that pre-empts a command's import-error handling defeats it. Relates to Honest Confidence (#5) and the broad-except/fail-open conventions.
 
 ## Session-end signals must come AFTER handoff
 
@@ -246,3 +258,7 @@ When rebuilding/porting a subsystem, enumerate its members from the SPEC roster 
 ## A persisted schema's requirements are its consumers' future queries — lock-in is reversal cost, not LOC, so "small format" never exempts it from decision research
 
 A chunk introducing any persisted format/schema/ledger must enumerate, in the plan, the questions the data must answer over time — elicited from its future consumers, not inferred from the mechanism — before designing fields; judge lock-in by REVERSAL cost, never LOC; user endorsement of a diagnosis is not requirements confirmation for the artifacts implementing it. Relates to Requirements Precede Code (#6), Reasoned Decisions (#4), Bring Expertise (#7), and Honest Confidence (#5 — mechanism-confidence is not requirements-confidence).
+
+## Test-evidence freshness is `test-status` (session timestamp) ONLY — `git_sha` was retired as misleading (TST-4K2P)
+
+The freshness gate (`prawduct-hook test-status`) decides current-vs-stale by `timestamp >= .session-start`, never by a commit field. The record no longer carries a `git_sha`: TST-4K2P removed it because it was **dead-read** by every runtime consumer yet review agents *eyeballed* it and flagged a false "stale / ran against a tree without the fix" whenever a record-before-commit run made the stamp lag HEAD. Consequences: (1) record timing no longer matters for freshness — the old "record AFTER commit, on a clean tree" stopgap is **obsolete**; record whenever in the cycle. (2) When reviewing, judge freshness ONLY by the `test-status` exit code — never infer staleness from a commit/SHA field (there is none). (3) Content-hash freshness is deliberately **not** reintroduced — that mechanism was removed pre-v1.4 for chronic false positives; the build cycle (write → test → Critic) is the trust boundary. Relates to Honest Confidence (#5 — don't let a misleading field read as a real gap), Validate Before Propagating (#15), and [[when verifying a framework-repo change by running the hook use the repo-local bin/prawduct-hook]].

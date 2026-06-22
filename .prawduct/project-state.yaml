@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-06-10
+backlog_last_groomed_at: 2026-06-22
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -466,6 +466,7 @@ views_enabled: true
 # The v2.0.0, M4 (v2.0.3), and waiver-pragma/2.0-rock-solid (v2.0.4) plans are
 # complete and released; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans.
+
 #
 # v2.0.5 (2026-06-04) shipped FOUR batched scopes together — roi-batch (#58),
 # roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
@@ -519,6 +520,13 @@ views_enabled: true
 # scope=backlog-closed-by-handle change-log tag and the pointer is cleared — no
 # release-pending plans remain. The build-plan file is retained as a historical
 # artifact.
+# 2026-06-22: the v2.1.8 release batch is being assembled on develop — test-evidence
+# (#104), the hook-cli-robustness bundle (#105), the hot-path-git-batching refactor
+# (STH-6Q9D, #106), then this worktree-compat fix (STH-4K7N, branch
+# feature/worktree-compat) which the operative pointer above now tracks. Each member's
+# change-log entry carries status=merged once its merge runs stamp-merged; all are
+# release-pending until the develop→main v2.1.8 promotion flips their entries to
+# status=shipped and regen-views flips each plan's ## Status via its scope= tag.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -591,6 +599,9 @@ scope_rollups:
   critic-mode-consolidation:
     chunks: ["01"]
     releases: ["v2.1.4"]
+  critic-protocol-budget:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
   critic-session-guard:
     chunks: ["1"]
     releases: ["v2.0.14"]
@@ -609,9 +620,15 @@ scope_rollups:
   gate-soundness:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.1.0"]
+  hook-cli-robustness:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
   hook-decomp:
     chunks: ["1", "2", "3", "4", "5", "6", "7"]
     releases: ["v2.0.14"]
+  hot-path-git-batching:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]
@@ -642,6 +659,15 @@ scope_rollups:
   roi-batch-2:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
     releases: ["v2.0.5"]
+  single-owner-shared-checks:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
+  telemetry-model-id-normalization:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
+  test-evidence:
+    chunks: ["01", "02", "03"]
+    releases: ["v2.1.8"]
   upstream-bug-reporting:
     chunks: ["01", "02"]
     releases: ["v2.1.6"]
@@ -672,3 +698,6 @@ scope_rollups:
   work-model:
     chunks: ["1", "2", "3"]
     releases: ["v2.0.13"]
+  worktree-compat:
+    chunks: ["01", "02"]
+    releases: ["v2.1.8"]

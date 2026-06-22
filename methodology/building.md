@@ -8,9 +8,11 @@ A **session** is one Claude Code invocation — the period between the `clear` h
 
 A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
 
-**Context compaction** is a context-management event, not a session boundary: no hooks, no baseline reset, no governance checkpoint. Anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first. Conversation context is ephemeral; artifacts persist.
+**Context compaction** is a context-management event, not a session boundary: no hooks, no baseline reset, no governance checkpoint. Anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
 **`/clear` between work cycles is recommended** for cleaner governance. It resets the git baseline (so the next cycle's canary only sees its own changes), archives the previous reflection, and starts fresh context. Not required — multiple work cycles within a single session work correctly.
+
+**Working in a git worktree.** A work cycle composes in a worktree — run it (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to the worktree (STH-4K7N); no review-in-primary or raw-`gh` workaround is needed. One edge: starting in the primary checkout and entering a worktree *mid*-cycle leaves the SessionStart markers in primary (gate readers fail safe) — launch, or `/clear`, in the worktree to avoid it.
 
 The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, and advisory **compliance canary** checks run. Per-work-cycle governance (Critic after each chunk, reflection after each significant action) is the methodology's responsibility, not the hook's.
 
@@ -81,14 +83,14 @@ Add observability alongside features, not after. If the observability strategy c
 
 **Verify.** Two layers:
 
-- *Code:* Run the full suite. First check `prawduct-hook test-status` — exit 0 means evidence was recorded this session and all tests passed; re-running is wasteful. Record via `prawduct-hook test-evidence record` (non-default suites: `test_command:`/`tests_dirs:`).
+- *Code:* Run the full suite once. Check `prawduct-hook test-status` first — exit 0 means this session's evidence passed, so re-running is wasteful. Record via `prawduct-hook test-evidence record` — or `--from-junit <f>` to ingest an existing run instead of re-running (TST-7M3K). Non-default suites: `test_command:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
-**In-flight background work is not a waiver case.** If the Critic/reflection gate blocks only because a tracked background `Workflow`/`Task` is still producing the diff, **wait — don't waive**: the gate *will* be satisfied this session once the job lands, and waiving would skip the Critic the completed work still needs. The repeated block is an expected reminder during a legitimate async wait, not an error to escape. (Rough edge `STH-3W7F`: a `.gates-deferred` mechanism to quiet the wait without skipping the Critic is the pending fix.)
+**In-flight background work is not a waiver case.** If the Critic/reflection gate blocks only because a tracked background `Workflow`/`Task` is still producing the diff, **wait — don't waive**: the gate *will* be satisfied this session once the job lands, and waiving would skip the Critic the completed work still needs. The repeated block is an expected reminder, not an error to escape. (Rough edge `STH-3W7F`: `.gates-deferred` to quiet the wait without skipping the Critic is pending.)
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below for per-mode behavior.
 

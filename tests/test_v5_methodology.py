@@ -169,8 +169,20 @@ class TestBuildingMethodology:
         # trimming UNRELATED prose to fit would violate Scope Discipline (the
         # rigor-and-stance precedent). If this test fails again, prefer trimming
         # over another bump.
+        #
+        # Bumped 4850 → 4950 in worktree-compat Chunk 02 (STH-4K7N). building.md
+        # gains the "Working in a git worktree" callout — a genuinely-new, named
+        # methodology concept a build-cycle reader needs (work cycles compose in a
+        # worktree; run /critic and /pr from there; the mid-session-enter marker
+        # edge). Condensed hard first, with the CANONICAL operational detail placed
+        # in the headroom skill files (skills/critic/SKILL.md, skills/pr/SKILL.md)
+        # so building.md carries only the condensed pointer; partly offset by
+        # deleting a verbatim-duplicate sentence ("Conversation context is
+        # ephemeral; artifacts persist." also lives in "Persist plans
+        # immediately"). The residual is irreducible without dropping the concept,
+        # and trimming UNRELATED prose to fit would violate Scope Discipline.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4850, f"building.md is ~{tokens} tokens, should be <4850"
+        assert tokens < 4950, f"building.md is ~{tokens} tokens, should be <4950"
 
 
 # =============================================================================
@@ -333,8 +345,23 @@ class TestCriticSkill:
         # `tools/product-hook`, `${CLAUDE_SKILL_DIR}/../../docs/principles.md` vs
         # `docs/principles.md`) — a one-time structural cost, not content bloat.
         # ~50-token headroom retained. Continue preferring trim over bump.
+        #
+        # Raised 3120 → 3350 in the v2.1.x review-streamlining track: the file
+        # hit 3116/3120 — 4 tokens, an operational zero. An audit found it LEAN,
+        # not bloated: every goal bullet is a specific, severity-mapped check,
+        # already compressed across many passes; the one relocatable block (the
+        # findings-JSON field glossary at the "Record findings" section) is
+        # genuinely useful inline next to its template, so moving it purely to
+        # clear the number would fragment the instructions — the anti-pattern
+        # this budget exists to prevent. And the ceiling is only ~1-2% of a
+        # medium/large review's token cost (4-10 min of opus over a full diff +
+        # 3 subagents), so it's an anti-bloat DISCIPLINE knob, not a material
+        # cost control — and the discipline lives just as well at a higher
+        # number. +230 tokens ≈ room for 3-4 future checks. Posture UNCHANGED:
+        # prefer trim over bump, and relocate per-mode/record detail to
+        # review-cycle.md before adding here. If this fails again, trim first.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3120, f"review-protocol.md is ~{tokens} tokens, should be <3120"
+        assert tokens < 3350, f"review-protocol.md is ~{tokens} tokens, should be <3350"
 
 
 # =============================================================================
