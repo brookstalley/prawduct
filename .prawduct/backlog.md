@@ -8,6 +8,21 @@
 ## Open
 
 
+- **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
+  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record), .prawduct/.critic-findings.json · reviewed: 2026-06-22`
+
+  Observed live 2026-06-22 while shipping the review-streamlining track (PRs #101/#102/#103). The cumulative-Critic PR gate (lib/gates.py compute_pr_gate) reads the single-slot .prawduct/.critic-findings.json. When two branches' Critic→PR cycles interleave (run branch X's Critic, then branch Y's Critic, then go to PR branch X), Y's Critic has overwritten the single slot with a record that IS the right KIND (a clean cumulative) but covers Y's HEAD, not X's. compute_pr_gate only falls back to the governance ledger when the slot record is the WRONG KIND (_pr_gate_record_qualifies false); a right-kind-but-wrong-HEAD record goes straight to _evaluate_pr_gate_record, fails the coverage check, and exits 1 — it never consults the ledger, where X's own still-valid qualifying record was appended. This session it forced a needless re-run of budget's Critic after B's Critic clobbered budget's slot.
+
+  Fix-shape: when the slot record fails (wrong kind OR fails HEAD-coverage/chain-scope), fall back to the ledger AND make _ledger_fallback_record select the newest qualifying record whose commit_reviewed COVERS THE CURRENT HEAD (CRT-7M2D coverage semantics), not merely the newest session-fresh qualifying record. The CRT-8W3F session-freshness bound stays.
+
+  Workaround today: finish one branch's full Critic→PR cycle before starting the next branch's Critic.
+
+  Assurance: must not loosen the gate — a record that covers HEAD and is clean is exactly as strong as the slot record would have been; this only stops a sibling branch's clean record from masking this branch's. Governance-protected file (lib/gates.py + skills/) → full Critic + PR review.
+
+  Related: CRT-8W3F (ledger-fallback freshness bound, shipped), CRT-4J8W (verify-resolutions chain record, shipped), CRT-7M2D (covers-HEAD semantics). (user)
+
+  Worktree corollary (verified 2026-06-22): the clobber is strictly a within-ONE-working-tree problem. Each git worktree has its own gitignored .prawduct/.critic-findings.json (and .session-start, .governance-ledger.jsonl), so running each branch's Critic->PR cycle in a separate worktree sidesteps the clobber entirely — no shared single slot to overwrite. That makes worktrees an available workaround and lowers this item's urgency; the in-tree fix below still matters for users who switch branches within one tree.
+
 - **[TST-4K2P]** Make test-evidence freshness content-based, not commit-SHA-based — a pre-commit record must not read as stale
   `effort: M · impact: L · area: test-evidence · source: user · added: 2026-06-22 · status: open · stage: design · related: TST-6V2N · refs: bin/prawduct-hook, lib/gates.py, skills/pr/review-protocol.md, skills/critic/review-cycle.md`
 
