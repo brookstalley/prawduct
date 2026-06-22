@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-22: Single-owner the PR reviewer's Learnings Cross-Check & Backlog R-1 — scope them to the consumed Critic record (single-owner-shared-checks)
+
+<!-- prawduct: chunks=01 | type=refactor | scope=single-owner-shared-checks -->
+
+**Why:** After the consume-and-audit redesign (the PR reviewer audits the Critic
+record instead of re-deriving code soundness), the PR reviewer *still* re-ran two
+checks the cumulative Critic already does over the same diff: the Learnings
+Cross-Check and the Backlog "resolved items" walk (R-1) — duplicated scanning
+across two agents. B0 (the validate-first step of CRT-5T8N) confirmed this is
+*true* duplication, not complementary work, but found the naive fix ("just delete
+it from the PR reviewer") has a **coverage gap**: the PR gate can be satisfied by
+a `verify-resolutions` **chain record**, which runs Goals 1-3 only and never runs
+those cross-checks over its delta `<anchor>...HEAD`. The PR reviewer's own scan
+was the only thing covering that delta.
+
+**What:** The PR reviewer's **Learnings Cross-Check** and **Backlog R-1** are now
+scoped to the consumed record — skip on a HEAD-covering `cumulative`/`final` (the
+Critic owns the bundle scan; rely on the audited record), scan **only** the
+chain-delta `<extends_cumulative.commit_reviewed>...HEAD` on a `verify-resolutions`
+record (closes the gap), full scan on a voided/absent record (the pre-scoping
+behavior). **R-2** (change-log↔backlog data inconsistency) stays unconditional —
+the Critic does not do it. `skills/critic/review-cycle.md` names `final`/`cumulative`
+as the explicit **owner** of both cross-checks so the division reads from both
+sides. 2 guard tests added (`tests/test_pr_reviewer.py`). Cuts duplicated reviewer
+work without losing assurance (CRT-5T8N, the B item of the review-streamlining
+track). *Note:* the item assumed the Critic-side detail lived in
+`critic/review-protocol.md`; it's actually in `review-cycle.md` (review-protocol.md
+only references it), so the ownership statement landed there.
+
 ## 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)
 
 <!-- prawduct: chunks=01 | type=fix | release=v2.1.7 | status=shipped | scope=backlog-closed-by-handle -->
