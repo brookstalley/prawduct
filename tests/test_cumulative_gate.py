@@ -471,3 +471,56 @@ def test_scope_no_anchor_in_reason_for_non_chain_prior(tmp_path):
     scope, reason = _scope(repo)
     assert reason.startswith("ok:"), reason
     assert "extends-cumulative=" not in reason
+
+
+# ---------------------------------------------------------------------------
+# CRT-8H3R: a resolvable-but-non-ancestor anchor must demote (the session
+# switched to a divergent/sibling branch — a delta would surface phantoms).
+# ---------------------------------------------------------------------------
+
+
+def _sibling_anchor_repo(tmp_path) -> tuple[Path, str, str]:
+    """Repo where the recorded anchor RESOLVES but is NOT an ancestor of HEAD:
+    a cumulative was recorded on a sibling branch, then the session switched to
+    a divergent branch. Returns ``(repo, sibling_anchor, head)``."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _commit_file(repo, "app.py", "print(1)\n", "base")  # on main
+    _git(repo, "checkout", "--quiet", "-b", "sibling")
+    sibling_anchor = _commit_file(repo, "app.py", "print('A')\n", "sibling work")
+    _git(repo, "checkout", "--quiet", "main")
+    head = _commit_file(repo, "core.py", "x = 2\n", "divergent work")
+    return repo, sibling_anchor, head
+
+
+def test_scope_non_ancestor_anchor_demotes(tmp_path):
+    # CRT-8H3R: the anchor resolves in the shared object store but belongs to a
+    # sibling branch the session left — a `commit_reviewed..` delta would span
+    # the divergence and surface phantom findings. Demote to final.
+    repo, sibling_anchor, _head = _sibling_anchor_repo(tmp_path)
+    # Sanity: the OLD demote-guard (resolve-only) would have passed this anchor.
+    rp = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{sibling_anchor}^{{commit}}"],
+        cwd=str(repo), capture_output=True, text=True, env=_git_env(repo), timeout=10,
+    )
+    assert rp.returncode == 0, "fixture invalid: anchor must resolve"
+    _write_findings(
+        repo, commit_reviewed=sibling_anchor, mode=CUMULATIVE_MODE,
+        files_reviewed=["app.py"],
+    )
+    scope, reason = _scope(repo)
+    assert scope == []
+    assert "non-ancestor-commit" in reason
+
+
+def test_scope_ancestor_anchor_unchanged(tmp_path):
+    # The contrast case: the SAME chain-extendable cumulative shape, but the
+    # anchor IS an ancestor of HEAD (linear history) → scope computes normally,
+    # no false demotion (the demote path must not over-fire).
+    repo, anchor, _ = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=anchor, mode=CUMULATIVE_MODE, files_reviewed=["app.py"],
+    )
+    scope, reason = _scope(repo)
+    assert reason.startswith("ok:"), reason
+    assert "core.py" in scope

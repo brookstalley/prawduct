@@ -342,6 +342,43 @@ class TestRule1VerifyResolutions:
         mode, _ = infer_mode(tmp_path, None)
         assert mode != "verify-resolutions"
 
+    def test_does_not_fire_when_anchor_is_non_ancestor(self, tmp_path: Path):
+        """CRT-8H3R: the anchor SHA resolves but belongs to a SIBLING branch —
+        the session switched branches after the prior review, so the anchor is
+        not an ancestor of HEAD. A verify pass would diff across the divergence
+        point and surface the sibling branch's changes as phantom findings, so
+        the rule must demote (the pre-fix resolve-only guard would have fired)."""
+        from lib import critic_mode
+
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# base\n")
+        _commit(tmp_path, "base")
+        # Sibling branch carries the prior review's anchor.
+        _checkout_new_branch(tmp_path, "sibling")
+        _write(tmp_path, "src/app.py", "# sibling\n")
+        sibling_anchor = _commit(tmp_path, "sibling work")
+        # Session switches to a divergent branch off base; HEAD lives here.
+        _git(tmp_path, "checkout", "main", "--quiet")
+        _checkout_new_branch(tmp_path, "feature/divergent")
+        _write(tmp_path, "src/app.py", "# divergent\n")
+        _commit(tmp_path, "divergent work")
+        # Uncommitted fix to a file in the prior review's surface.
+        _write(tmp_path, "src/app.py", "# fix\n")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=sibling_anchor,
+            files_reviewed=["src/app.py"],
+            severity="blocking",
+        )
+
+        # The anchor still RESOLVES (only the ancestry test demotes it).
+        assert critic_mode._commit_resolves(tmp_path, sibling_anchor)
+        assert not critic_mode._commit_is_ancestor(tmp_path, sibling_anchor)
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode != "verify-resolutions"
+
 
 # ---------------------------------------------------------------------------
 # Rule 2 — cumulative
@@ -471,6 +508,44 @@ class TestRule1bPostfixChain:
 
         mode, _ = infer_mode(tmp_path, None)
         assert mode == "cumulative"
+
+    def test_does_not_fire_when_anchor_is_non_ancestor(self, tmp_path: Path):
+        """CRT-6J4P / CRT-8H3R: a cumulative anchor that resolves but is a
+        sibling-branch commit (not an ancestor of HEAD) must not let the chain
+        vouch across the divergence — `_committed_files_since` would otherwise
+        compute a cross-branch phantom delta and 1b would chain over it."""
+        from lib import critic_mode
+
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        # Sibling branch carries the cumulative anchor.
+        _checkout_new_branch(tmp_path, "sibling")
+        _write(tmp_path, "src/a.py", "# a\n")
+        _write(tmp_path, "src/b.py", "# b\n")
+        sibling_anchor = _commit(tmp_path, "sibling bundle")
+        # Session switches to a divergent feature branch; clean tree at HEAD.
+        _git(tmp_path, "checkout", "main", "--quiet")
+        _checkout_new_branch(tmp_path, "feature/divergent")
+        _write(tmp_path, "src/c.py", "# c\n")
+        _write(tmp_path, "src/d.py", "# d\n")
+        _commit(tmp_path, "divergent bundle")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=sibling_anchor,
+            files_reviewed=["src/a.py", "src/b.py"],
+            include_finding=False,
+        )
+
+        # The anchor still RESOLVES (only the ancestry test demotes it).
+        assert critic_mode._commit_resolves(tmp_path, sibling_anchor)
+        assert not critic_mode._commit_is_ancestor(tmp_path, sibling_anchor)
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert not rationale.startswith("rule-1b"), rationale
+        assert mode != "verify-resolutions"
 
 
 class TestRule2Cumulative:

@@ -250,6 +250,11 @@ def _rule_verify_resolutions_fires(
 
     if not _commit_resolves(project_dir, commit_reviewed):
         return False
+    # CRT-8H3R: a resolvable-but-non-ancestor anchor (session switched to a
+    # divergent/sibling branch) would make the verify pass diff across the
+    # divergence and surface phantom findings — demote instead of firing.
+    if not _commit_is_ancestor(project_dir, commit_reviewed):
+        return False
 
     diff_files = _get_uncommitted_code_files(project_dir)
     if not diff_files:
@@ -321,6 +326,11 @@ def _rule_postfix_chain_fires(prawduct_dir: Path, project_dir: Path) -> str:
         return ""
     commit_reviewed = data["commit_reviewed"]  # non-empty str when anchor is not None
     if not _commit_resolves(project_dir, commit_reviewed):
+        return ""
+    # CRT-6J4P / CRT-8H3R: the anchor must be an ancestor of HEAD or the
+    # committed delta (`commit_reviewed..HEAD`) spans a branch divergence —
+    # the chain would vouch across a sibling branch's work. Demote.
+    if not _commit_is_ancestor(project_dir, commit_reviewed):
         return ""
     prior_files = data.get("files_reviewed")
     if not isinstance(prior_files, list) or not prior_files:
@@ -476,6 +486,27 @@ def _commit_resolves(project_dir: Path, sha: str) -> bool:
     """True iff ``sha`` resolves to a commit in this repo."""
     proc = subprocess.run(
         ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return proc.returncode == 0
+
+
+def _commit_is_ancestor(project_dir: Path, sha: str) -> bool:
+    """True iff ``sha`` is an ancestor of HEAD (CRT-8H3R / CRT-6J4P).
+
+    A prior-review anchor can still *resolve* in the shared object store while
+    belonging to a sibling/divergent branch the session switched onto — it is
+    simply not reachable from HEAD. Anchoring a delta or chain on such a commit
+    diffs across the divergence point and surfaces the sibling branch's changes
+    as phantom findings (the verify-resolutions soundness bug). Fail closed:
+    only ``--is-ancestor`` exit 0 (genuine ancestor) counts; exit 1 (not an
+    ancestor) and any other failure both demote the caller to cumulative/final.
+    """
+    proc = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
         cwd=str(project_dir),
         capture_output=True,
         text=True,

@@ -426,6 +426,11 @@ def _compute_verify_resolutions_scope(
       - ``unresolved-commit:`` — ``commit_reviewed`` does not resolve in
         the current repo (rebase, force-push, or simply never on this
         branch). Cannot compute a delta.
+      - ``non-ancestor-commit:`` — ``commit_reviewed`` resolves but is not
+        an ancestor of HEAD (CRT-8H3R — the session switched to a
+        divergent/sibling branch). A delta would span the divergence point
+        and surface the sibling branch's changes as phantom findings;
+        demote rather than compute it.
       - ``git-diff-failed:`` — the diff invocation itself failed.
       - ``scope-widened:`` — demotion criterion ``len(delta) > 2 * len(prior)
         + 5`` tripped. The prior surface no longer covers what changed; a
@@ -496,6 +501,26 @@ def _compute_verify_resolutions_scope(
             f"unresolved-commit: commit_reviewed {commit_reviewed[:12]} "
             "does not resolve in the current repo — cannot compute delta. "
             "Run /prawduct:critic chunk or /prawduct:critic final."
+        )
+
+    # CRT-8H3R: the anchor resolves, but if it is not an ancestor of HEAD the
+    # session switched to a divergent/sibling branch — a `commit_reviewed..`
+    # delta would span the divergence and surface that branch's changes as
+    # phantom findings. Fail closed: only a genuine ancestor (exit 0) anchors
+    # a delta; non-ancestor (exit 1) and any other failure demote to final.
+    ancestor_proc = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", commit_reviewed, "HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if ancestor_proc.returncode != 0:
+        return [], (
+            f"non-ancestor-commit: commit_reviewed {commit_reviewed[:12]} "
+            "resolves but is not an ancestor of HEAD — the session switched "
+            "to a divergent/sibling branch, so a delta would surface phantom "
+            "findings. Run /prawduct:critic chunk or /prawduct:critic final."
         )
 
     diff_proc = subprocess.run(
