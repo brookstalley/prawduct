@@ -8,6 +8,21 @@
 ## Open
 
 
+- **[TST-4K2P]** Make test-evidence freshness content-based, not commit-SHA-based — a pre-commit record must not read as stale
+  `effort: M · impact: L · area: test-evidence · source: user · added: 2026-06-22 · status: open · stage: design · related: TST-6V2N · refs: bin/prawduct-hook, lib/gates.py, skills/pr/review-protocol.md, skills/critic/review-cycle.md`
+
+  **URGENT** (user: "a huge pain for all users", "a constant annoyance" — flagged 2026-06-22). High impact: affects every product using the prawduct PR/review flow.
+
+  Problem: `prawduct-hook test-evidence record` stamps `git_sha` = HEAD at record time, but it tests the WORKING TREE (HEAD + uncommitted edits). So the natural flow "edit → run suite → record → commit" stamps the PRE-commit SHA; after committing, the stamp lags HEAD. Consumers that read the stamp then judge the evidence stale even though its CONTENT tested exactly what's shipping — the PR reviewer flagged this as a WARNING on PR #101 ("evidence ran against a tree without the fix"; false — the tree had the fix, uncommitted), and it recurs on every branch unless you remember to record AFTER committing (hit twice in the 2026-06-22 session: A1 and the critic-protocol-budget bump). The mismatch is structural, not user error.
+
+  Proposed direction (user): judge freshness by CONTENT, independent of commit status — stamp a hash of the test-relevant file contents instead of (or alongside) `git_sha`. Then "edit → record → commit" stays current (the commit doesn't change content), and an amend/rebase/cherry-pick doesn't falsely invalidate.
+
+  KEY design decision (why stage:design, not ready): the hash MUST be scoped to test-relevant inputs (source + tests + test config), NOT the whole tree — a naive whole-tree content hash would invalidate evidence on every `.md` edit and destroy the CRT-7M2D docs-only allowance (a doc tweak after a clean review currently rides free, and SHOULD). Options for the scope: all tracked non-`.md` non-metadata files; a declared `tests_dirs:`/source glob; or language-native coverage inputs. Decide the scope, then content-hash that set.
+
+  Consumers to reconcile (all currently key off git_sha / commit-coverage): `test-status` (the reader), the PR-reviewer Merge-Hygiene freshness check (`skills/pr/review-protocol.md`), the Critic Goal-1 test-status check, and the cumulative-gate's HEAD-covering + CRT-7M2D docs-only-since logic in `lib/gates.py` (git_sha-based — reconcile content-freshness with the gate's commit-coverage requirement; they answer different questions).
+
+  Stopgap until shipped: record test-evidence as the LAST step, after committing, on a clean tree. Surfaced by TEL-4M9X (A1) and critic-protocol-budget; part of the review-streamlining track.
+
 - **[BKL-8T3W]** Backlog-accuracy structural enforcement — surface cross-session "shipped-but-not-removed" Open items (and stale-by-age) so a ready item isn't rebuilt
   `effort: M · impact: M · area: governance/backlog-tooling · source: user · added: 2026-06-21 · status: open · stage: requirements · related: BLD-4K7P · refs: incoming-bugs/archive/backlog-accuracy-stale-check-hook-plus-closed-but-not-removed-critic-goal.md, skills/critic/review-cycle.md, skills/pr/review-protocol.md, lib/backlog_probes.py`
 
@@ -161,6 +176,8 @@
   existing token earning its place?); decide whether budgets should be holistic (a total always-on ceiling)
   rather than per-file; and only raise a per-file budget when every existing token is high-ROI. Output: a
   recommendation + (likely) a revised budget model. Then it can advance to `design`/`ready`. (user)
+
+  — 2026-06-22: the critic-protocol-budget bump (review-protocol.md ceiling 3120→3350; change-log + PR #103) is a data point for this audit — a per-file ceiling raised AFTER a lean-audit (file at 3116/3120, every token load-bearing, relocating the one movable block would fragment the instructions), i.e. the reasoned posture this item asks for, not a ceiling-dodge. Does not close this (the broad holistic budget audit remains open).
 
 - **[ADR-7X2M]** Adversarial review agent (4th review-agent role) — RFC: systematic edge-case / attack-surface generation
   `effort: L · impact: M · area: methodology · source: user · added: 2026-06-06 · status: open · stage: requirements · related: CRT-9V4T, PRR-4M9T, JAN-4F7M · reviewed: 2026-06-10`
