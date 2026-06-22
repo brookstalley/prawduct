@@ -3,6 +3,41 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-22: Test-evidence `record` cluster — retire the misleading git_sha, ingest existing JUnit runs, loud-fail on empty discovery (test-evidence)
+
+<!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence -->
+
+**Why:** Three independent fixes on the `test-evidence record` surface, bundled
+into one PR for review economy (a code survey confirmed they share the surface,
+not an abstraction). (1) The record carried a `git_sha` field that **no runtime
+code reads** and that is **not** in the evidence schema — its only live effect
+was the PR-reviewer eyeballing it and emitting false-positive "stale" warnings.
+Freshness is timestamp-based via `prawduct-hook test-status`; content-fingerprinting
+was deliberately removed pre-v1.4 after chronic false positives, so the backlog's
+"re-introduce content-hashing" premise was wrong. (2) `record` re-ran the whole
+suite even when the builder had just run it — a double-execution of the test
+suite. (3) When test discovery found zero files (e.g. a monorepo without the
+`tests_dirs:` knob set), `record` wrote empty `changes_referenced`/`tests_executed`
+halves **silently**, reading downstream as false missing-coverage.
+
+**What:**
+- **Chunk 01 (TST-4K2P):** Removed `git_sha` from the record and dropped the
+  `git rev-parse HEAD` call that fed it. Retargeted the PR and Critic review
+  protocols to determine freshness **only** via `prawduct-hook test-status` —
+  never inferring staleness from a commit/SHA field. Replaced the now-obsolete
+  "record test-evidence after committing" learning (the timing workaround existed
+  only for the removed field).
+- **Chunk 02 (TST-7M3K):** Added `record --from-junit <path>` to ingest a JUnit
+  XML the builder already produced instead of re-running the suite (default
+  behavior unchanged; `--from-junit` combined with `test_command:`/trailing
+  pytest args is rejected as a conflicting source). Documented the single-run
+  Verify flow in `methodology/building.md`.
+- **Chunk 03 (TST-2H9P):** `bin/test-reference-verify` now fails **loud** when
+  zero tests are discovered while judgeable files changed (naming the `tests_dirs:`
+  knob) instead of writing empty halves silently, and `record` now forwards the
+  previously-swallowed verifier stderr.
+- 10 new tests; 1368 green.
+
 ## 2026-06-22: Raise the Critic review-protocol.md token budget 3120 → 3350 — relieve an operationally-zero ceiling without abandoning the trim discipline (critic-protocol-budget)
 
 <!-- prawduct: chunks=01 | type=refactor | scope=critic-protocol-budget | status=merged -->
