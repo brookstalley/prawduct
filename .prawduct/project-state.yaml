@@ -467,6 +467,8 @@ views_enabled: true
 # complete and released; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans.
 
+active_build_plan: artifacts/build-plan-gate-fidelity.md
+
 #
 # v2.0.5 (2026-06-04) shipped FOUR batched scopes together — roi-batch (#58),
 # roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
@@ -527,6 +529,12 @@ views_enabled: true
 # change-log entry carries status=merged once its merge runs stamp-merged; all are
 # release-pending until the develop→main v2.1.8 promotion flips their entries to
 # status=shipped and regen-views flips each plan's ## Status via its scope= tag.
+# 2026-06-22: v2.1.8 promoted; pointer repointed at the in-progress gate-fidelity
+# plan (7 critic/builder-filed gate-fidelity fixes — CRT-8H3R, CRT-6J4P, CRT-2K9F,
+# BLD-5J8N, COV-8R2K, STH-6T9W, WMK-4Q9T; branch feature/gate-fidelity off develop).
+# 6 chunks across lib/gates.py, lib/critic_mode.py, lib/buildplan_refs.py,
+# lib/coverage.py, lib/work_model_index.py + critic protocol prose. Release-pending
+# until shipped; regen-views will flip its ## Status via the scope=gate-fidelity tag.
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

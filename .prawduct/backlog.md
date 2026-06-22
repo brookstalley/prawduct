@@ -13,26 +13,6 @@
 
   When base_branch: is unset in project-state.yaml, _resolve_base_branch falls back to the hardcoded candidate list (origin/main, main, HEAD~1) and returns the first that resolves — even when the repo's declared default branch (origin/HEAD) is develop. The wrong base flows into the cumulative-Critic base, PR-reviewer base, coverage diff, classify-diff-risk, and the stamp-merged guard, so a 2-commit feature off develop is reviewed/gated as the entire develop..main promotion range, and stamp-merged refuses on develop ("integration base is main"), and Merge-Flow step 8 can take the build-plan-DELETE branch for a release-pending merge. Reported v2.1.4 from Discodon; every gitflow consumer hits it on its first PR unless they know the base_branch knob. THIS repo masks it (base_branch: develop is set). Fix-shape (either alone closes most of the gap; both is best): (1) make the default branch-aware — consult `git symbolic-ref --short refs/remotes/origin/HEAD` before the hardcoded list, prefer it when it resolves and isn't main-family (trunk repos with origin/HEAD=main unaffected); optionally warn instead of silently picking main when both a main-family branch and a non-main origin/HEAD exist. (2) set base_branch: at onboarding/migration time when origin/HEAD is non-main, so freshly-migrated gitflow repos start correct. Governance-protected (lib/) → full Critic + PR review.
 
-- **[COV-8R2K]** verify-coverage records BLOCKING missing-coverage for non-executable files — prose .md docs AND non-code config (YAML) — forcing waivers or token reference-tests on otherwise-clean chunks
-  `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: open · stage: design · related: TST-4K2P · refs: bin/prawduct-hook (verify-coverage), lib/coverage.py, skills/critic/review-cycle.md (Goal 1 rule F4b), incoming-bugs/archive/verify-coverage-records-blocking-missing-coverage-for-prose-docs.md, incoming-bugs/archive/check-pr-trivial-passes-feature-clusters-that-only-touch-existing-files.md`
-
-  The symbol-grep coverage floor is applied to non-executable files the same as code. Two corroborating reports: (a) a chunk whose deliverables legitimately include a prose .md always produces an unsoftenable BLOCKING missing-coverage (Goal 1 F4b: "a missing-coverage line is recorded BLOCKING per file, never softened"), even though prose can't be executed; (b) a branch editing a YAML/config file with no test symbols (e.g. .prawduct/project-state.yaml) is flagged missing-coverage and verify-coverage exits 1 on an otherwise-clean branch (the "config-file-accounting gap" products already note in their own learnings). A doc-ONLY-chunk skip already exists; this is the MIXED-chunk and non-code-config version. Fix-shape: make the floor file-type/language-aware — exempt (or downgrade to NOTE) files under a docs-path policy (configurable allowlist, e.g. **/README.md, docs/**, *.md) and non-code config, or scope the floor to runner-executable languages only. Governance-protected → full Critic + PR review.
-
-- **[STH-6T9W]** Stop critic-review gate counts untracked operator-authored non-code files as chunk-diff scope — no Critic mode can satisfy it, forcing a waiver on a clean, fully-reviewed tree
-  `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-22 · status: open · stage: design · related: STH-3W7F, STH-7K2A · refs: lib/gates.py (critic-review gate, verify-resolutions scope check; validate_critic_findings files_reviewed), incoming-bugs/archive/stop-gate-counts-untracked-operator-notes-as-chunk-diff.md`
-
-  An untracked operator-dropped non-code file (e.g. a note placed in incoming-bugs/) is counted into the chunk-diff scope, growing it beyond what the verify-resolutions findings cover; the suggested remedy (re-run /critic chunk) can't produce a schema-valid empty-scope record (validate_critic_findings requires non-empty files_reviewed), so a waiver becomes the only exit — on a session whose code was already fully reviewed and merged. Trains waiver-reaching: when the framework's cleanest sessions end in waivers, waivers stop signaling anything. Distinct root cause from STH-3W7F (background work) and STH-7K2A (loop-counter). Fix-shape: exclude untracked non-code files outside source/test/governance roots from the chunk-diff scope; and/or allow a schema-valid scope:empty findings record. Governance-protected → full Critic + PR review.
-
-- **[BLD-5J8N]** verify-chunk-refs can't parse the "## Chunk NN — Title" header style — false "chunk not found" exits habituate reviewers to dismiss a real-BLOCKING-shaped signal
-  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: open · stage: ready · related: BLD-4K7P, BLD-7P3K · refs: bin/prawduct-hook (cmd_verify_chunk_refs), templates/build-plan.md, incoming-bugs/archive/verify-chunk-refs-cant-parse-house-chunk-header-style.md`
-
-  The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
-
-- **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
-  `effort: M · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q · refs: UserPromptSubmit hook (work-model term extraction), incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md`
-
-  The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
-
 - **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
   `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-06-22`
 
@@ -51,21 +31,6 @@
   at stage:requirements, scoped now to that doc/methodology + skill leg; `related: STH-4K7N` records
   the shipped code dependency it builds on. NOT archived (not a true duplicate — STH-4K7N was the
   code fix, this is the workflow/docs).
-
-- **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
-  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record), .prawduct/.critic-findings.json · reviewed: 2026-06-22`
-
-  Observed live 2026-06-22 while shipping the review-streamlining track (PRs #101/#102/#103). The cumulative-Critic PR gate (lib/gates.py compute_pr_gate) reads the single-slot .prawduct/.critic-findings.json. When two branches' Critic→PR cycles interleave (run branch X's Critic, then branch Y's Critic, then go to PR branch X), Y's Critic has overwritten the single slot with a record that IS the right KIND (a clean cumulative) but covers Y's HEAD, not X's. compute_pr_gate only falls back to the governance ledger when the slot record is the WRONG KIND (_pr_gate_record_qualifies false); a right-kind-but-wrong-HEAD record goes straight to _evaluate_pr_gate_record, fails the coverage check, and exits 1 — it never consults the ledger, where X's own still-valid qualifying record was appended. This session it forced a needless re-run of budget's Critic after B's Critic clobbered budget's slot.
-
-  Fix-shape: when the slot record fails (wrong kind OR fails HEAD-coverage/chain-scope), fall back to the ledger AND make _ledger_fallback_record select the newest qualifying record whose commit_reviewed COVERS THE CURRENT HEAD (CRT-7M2D coverage semantics), not merely the newest session-fresh qualifying record. The CRT-8W3F session-freshness bound stays.
-
-  Workaround today: finish one branch's full Critic→PR cycle before starting the next branch's Critic.
-
-  Assurance: must not loosen the gate — a record that covers HEAD and is clean is exactly as strong as the slot record would have been; this only stops a sibling branch's clean record from masking this branch's. Governance-protected file (lib/gates.py + skills/) → full Critic + PR review.
-
-  Related: CRT-8W3F (ledger-fallback freshness bound, shipped), CRT-4J8W (verify-resolutions chain record, shipped), CRT-7M2D (covers-HEAD semantics). (user)
-
-  Worktree corollary (verified 2026-06-22): the clobber is strictly a within-ONE-working-tree problem. Each git worktree has its own gitignored .prawduct/.critic-findings.json (and .session-start, .governance-ledger.jsonl), so running each branch's Critic->PR cycle in a separate worktree sidesteps the clobber entirely — no shared single slot to overwrite. That makes worktrees an available workaround and lowers this item's urgency; the in-tree fix below still matters for users who switch branches within one tree.
 
 - **[BKL-8T3W]** Backlog-accuracy structural enforcement — surface cross-session "shipped-but-not-removed" Open items (and stale-by-age) so a ready item isn't rebuilt
   `effort: M · impact: M · area: governance/backlog-tooling · source: user · added: 2026-06-21 · status: open · stage: requirements · related: BLD-4K7P · refs: incoming-bugs/archive/backlog-accuracy-stale-check-hook-plus-closed-but-not-removed-critic-goal.md, skills/critic/review-cycle.md, skills/pr/review-protocol.md, lib/backlog_probes.py`
@@ -481,28 +446,6 @@
   rebuild as the intended guarantee. Note: probe precision (false positives on common English) is separate,
   covered by the review-fixes plan Chunk 2. (builder)
 
-- **[CRT-6J4P]** infer-critic-mode rule-1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
-  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V · refs: lib/critic_mode.py, skills/critic/SKILL.md`
-
-  Observed 2026-06-10: on a brand-new branch/plan (feature/do-next, first chunk), inference picked
-  verify-resolutions extending the PREVIOUS released bundle's cumulative (3c4b627,
-  changelog-lifecycle v2.1.1) instead of chunk mode. Commit-coverage keeps the record sound, but
-  cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
-  active plan scope. (reflection)
-
-- **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
-  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/)`
-
-  If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
-  verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
-  SHA does NOT resolve, so a SHA that still resolves on the sibling branch (not an ancestor of HEAD)
-  passes the guard and yields a cross-branch two-way diff full of phantom findings (surfaced live this
-  session on feature/hot-path-git-batching, anchors f208ad2/f92a4be from sibling
-  feature/hook-cli-robustness). Fix shape: add an is-ancestor check on commit_reviewed (git merge-base
-  --is-ancestor <anchor> HEAD) — if the anchor isn't an ancestor of HEAD, demote to cumulative/final
-  instead of computing a divergent delta. Surfaced + self-flagged by the Critic during STH-6Q9D.
-  (critic)
-
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
 
@@ -618,7 +561,62 @@
 
 ## Promoted
 
-_(no items in flight)_
+- **[COV-8R2K]** verify-coverage records BLOCKING missing-coverage for non-executable files — prose .md docs AND non-code config (YAML) — forcing waivers or token reference-tests on otherwise-clean chunks
+  `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: promoted · stage: design · related: TST-4K2P · refs: bin/prawduct-hook (verify-coverage), lib/coverage.py, skills/critic/review-cycle.md (Goal 1 rule F4b), incoming-bugs/archive/verify-coverage-records-blocking-missing-coverage-for-prose-docs.md, incoming-bugs/archive/check-pr-trivial-passes-feature-clusters-that-only-touch-existing-files.md · reviewed: 2026-06-22`
+
+  The symbol-grep coverage floor is applied to non-executable files the same as code. Two corroborating reports: (a) a chunk whose deliverables legitimately include a prose .md always produces an unsoftenable BLOCKING missing-coverage (Goal 1 F4b: "a missing-coverage line is recorded BLOCKING per file, never softened"), even though prose can't be executed; (b) a branch editing a YAML/config file with no test symbols (e.g. .prawduct/project-state.yaml) is flagged missing-coverage and verify-coverage exits 1 on an otherwise-clean branch (the "config-file-accounting gap" products already note in their own learnings). A doc-ONLY-chunk skip already exists; this is the MIXED-chunk and non-code-config version. Fix-shape: make the floor file-type/language-aware — exempt (or downgrade to NOTE) files under a docs-path policy (configurable allowlist, e.g. **/README.md, docs/**, *.md) and non-code config, or scope the floor to runner-executable languages only. Governance-protected → full Critic + PR review.
+
+- **[STH-6T9W]** Stop critic-review gate counts untracked operator-authored non-code files as chunk-diff scope — no Critic mode can satisfy it, forcing a waiver on a clean, fully-reviewed tree
+  `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-22 · status: promoted · stage: design · related: STH-3W7F, STH-7K2A · refs: lib/gates.py (critic-review gate, verify-resolutions scope check; validate_critic_findings files_reviewed), incoming-bugs/archive/stop-gate-counts-untracked-operator-notes-as-chunk-diff.md · reviewed: 2026-06-22`
+
+  An untracked operator-dropped non-code file (e.g. a note placed in incoming-bugs/) is counted into the chunk-diff scope, growing it beyond what the verify-resolutions findings cover; the suggested remedy (re-run /critic chunk) can't produce a schema-valid empty-scope record (validate_critic_findings requires non-empty files_reviewed), so a waiver becomes the only exit — on a session whose code was already fully reviewed and merged. Trains waiver-reaching: when the framework's cleanest sessions end in waivers, waivers stop signaling anything. Distinct root cause from STH-3W7F (background work) and STH-7K2A (loop-counter). Fix-shape: exclude untracked non-code files outside source/test/governance roots from the chunk-diff scope; and/or allow a schema-valid scope:empty findings record. Governance-protected → full Critic + PR review.
+
+- **[BLD-5J8N]** verify-chunk-refs can't parse the "## Chunk NN — Title" header style — false "chunk not found" exits habituate reviewers to dismiss a real-BLOCKING-shaped signal
+  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: promoted · stage: ready · related: BLD-4K7P, BLD-7P3K · refs: bin/prawduct-hook (cmd_verify_chunk_refs), templates/build-plan.md, incoming-bugs/archive/verify-chunk-refs-cant-parse-house-chunk-header-style.md · reviewed: 2026-06-22`
+
+  The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
+
+- **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
+  `effort: M · impact: M · area: work-model · source: user · added: 2026-06-22 · status: promoted · stage: design · related: WMK-7D3R, WMK-1P4Q · refs: UserPromptSubmit hook (work-model term extraction), incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-06-22`
+
+  The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
+
+- **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
+  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: promoted · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record), .prawduct/.critic-findings.json · reviewed: 2026-06-22`
+
+  Observed live 2026-06-22 while shipping the review-streamlining track (PRs #101/#102/#103). The cumulative-Critic PR gate (lib/gates.py compute_pr_gate) reads the single-slot .prawduct/.critic-findings.json. When two branches' Critic→PR cycles interleave (run branch X's Critic, then branch Y's Critic, then go to PR branch X), Y's Critic has overwritten the single slot with a record that IS the right KIND (a clean cumulative) but covers Y's HEAD, not X's. compute_pr_gate only falls back to the governance ledger when the slot record is the WRONG KIND (_pr_gate_record_qualifies false); a right-kind-but-wrong-HEAD record goes straight to _evaluate_pr_gate_record, fails the coverage check, and exits 1 — it never consults the ledger, where X's own still-valid qualifying record was appended. This session it forced a needless re-run of budget's Critic after B's Critic clobbered budget's slot.
+
+  Fix-shape: when the slot record fails (wrong kind OR fails HEAD-coverage/chain-scope), fall back to the ledger AND make _ledger_fallback_record select the newest qualifying record whose commit_reviewed COVERS THE CURRENT HEAD (CRT-7M2D coverage semantics), not merely the newest session-fresh qualifying record. The CRT-8W3F session-freshness bound stays.
+
+  Workaround today: finish one branch's full Critic→PR cycle before starting the next branch's Critic.
+
+  Assurance: must not loosen the gate — a record that covers HEAD and is clean is exactly as strong as the slot record would have been; this only stops a sibling branch's clean record from masking this branch's. Governance-protected file (lib/gates.py + skills/) → full Critic + PR review.
+
+  Related: CRT-8W3F (ledger-fallback freshness bound, shipped), CRT-4J8W (verify-resolutions chain record, shipped), CRT-7M2D (covers-HEAD semantics). (user)
+
+  Worktree corollary (verified 2026-06-22): the clobber is strictly a within-ONE-working-tree problem. Each git worktree has its own gitignored .prawduct/.critic-findings.json (and .session-start, .governance-ledger.jsonl), so running each branch's Critic->PR cycle in a separate worktree sidesteps the clobber entirely — no shared single slot to overwrite. That makes worktrees an available workaround and lowers this item's urgency; the in-tree fix below still matters for users who switch branches within one tree.
+
+- **[CRT-6J4P]** infer-critic-mode rule-1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
+  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: promoted · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V · refs: lib/critic_mode.py, skills/critic/SKILL.md · reviewed: 2026-06-22`
+
+  Observed 2026-06-10: on a brand-new branch/plan (feature/do-next, first chunk), inference picked
+  verify-resolutions extending the PREVIOUS released bundle's cumulative (3c4b627,
+  changelog-lifecycle v2.1.1) instead of chunk mode. Commit-coverage keeps the record sound, but
+  cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
+  active plan scope. (reflection)
+
+- **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
+  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: promoted · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/) · reviewed: 2026-06-22`
+
+  If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
+  verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
+  SHA does NOT resolve, so a SHA that still resolves on the sibling branch (not an ancestor of HEAD)
+  passes the guard and yields a cross-branch two-way diff full of phantom findings (surfaced live this
+  session on feature/hot-path-git-batching, anchors f208ad2/f92a4be from sibling
+  feature/hook-cli-robustness). Fix shape: add an is-ancestor check on commit_reviewed (git merge-base
+  --is-ancestor <anchor> HEAD) — if the anchor isn't an ancestor of HEAD, demote to cumulative/final
+  instead of computing a divergent delta. Surfaced + self-flagged by the Critic during STH-6Q9D.
+  (critic)
 
 ## Archive
 
