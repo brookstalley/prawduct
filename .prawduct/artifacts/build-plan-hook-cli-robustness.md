@@ -1,4 +1,4 @@
-<!-- Build Plan: hook-cli-robustness (v2.1.7)
+<!-- Build Plan: hook-cli-robustness (v2.1.8)
      Tier: 1 (Source of Truth)
      A bundle of five independent, ready, S-effort robustness fixes to the
      framework's own hook CLI + governance libs. Highest-ROI structure: one
@@ -8,7 +8,7 @@
 ---
 artifact: build-plan
 version: 2
-scope: v2.1.7
+scope: hook-cli-robustness
 depends_on: []
 last_validated: null
 ---
@@ -31,7 +31,7 @@ last_validated: null
 
 - [ ] Chunk 01: Hook-CLI robustness bundle (5 fixes)
 
-Context: Chunk 01 BUILT and merge-ready (branch feature/hook-cli-robustness, 2026-06-21). All 5 fixes implemented with +14 tests; full suite 1366 pass / 0 fail; evidence current. Cumulative Critic (f208ad2) raised 1 BLOCKING — the plan's own prose backticked git-ref tokens that tripped verify-chunk-refs — resolved in f92a4be (de-backtick) and confirmed by verify-resolutions (chain covers HEAD, satisfies the /pr create gate). General git-ref over-match captured as BLD-3M7K. Checkbox stays [ ] until release flips the change-log entry to status=shipped (regen-views). Next: `/prawduct:pr` when the user is ready (target v2.1.7); CRT-9L2F is the post-release follow-up.
+Context: Chunk 01 BUILT and merge-ready (branch feature/hook-cli-robustness, 2026-06-21). All 5 fixes implemented with +14 tests; full suite 1366 pass / 0 fail; evidence current. Cumulative Critic (f208ad2) raised 1 BLOCKING — the plan's own prose backticked git-ref tokens that tripped verify-chunk-refs — resolved in f92a4be (de-backtick) and confirmed by verify-resolutions (chain covers HEAD, satisfies the /pr create gate). General git-ref over-match captured as BLD-3M7K. Checkbox stays [ ] until release flips the change-log entry to status=shipped (regen-views). Next: `/prawduct:pr` when the user is ready (target v2.1.8); CRT-9L2F is the post-release follow-up.
 
 ## Build Chunks
 
@@ -79,7 +79,7 @@ Context: Chunk 01 BUILT and merge-ready (branch feature/hook-cli-robustness, 202
   1. Acceptance criteria met and tests pass.
   2. Committed (chunk marked `[x]` in Status via the change-log entry).
   3. `/prawduct:critic cumulative` run against `develop...HEAD` and blocking findings resolved — this is the chunk's review AND the `/prawduct:pr create` gate.
-  4. Backlog hygiene: mark STH-5R2Q, TST-3E8V, REL-7P3X, STH-9T4F, BLD-4K7P `status=shipped` via `/prawduct:backlog` (note CRT-9L2F as the natural post-release follow-up, unblocked once v2.1.7 ships).
+  4. Backlog hygiene: mark STH-5R2Q, TST-3E8V, REL-7P3X, STH-9T4F, BLD-4K7P `status=shipped` via `/prawduct:backlog` (note CRT-9L2F as the natural post-release follow-up, unblocked once v2.1.8 ships).
 
 ## Early Feedback Milestone
 
@@ -88,6 +88,6 @@ Context: Chunk 01 BUILT and merge-ready (branch feature/hook-cli-robustness, 202
 
 ## Governance Checkpoints
 
-**Commit & PR cadence:** One chunk → commit → one `/prawduct:critic cumulative` (the chunk's review AND the PR gate) → `/prawduct:pr create`. Patch release → **v2.1.7**.
+**Commit & PR cadence:** One chunk → commit → one `/prawduct:critic cumulative` (the chunk's review AND the PR gate) → `/prawduct:pr create`. Patch release → **v2.1.8**.
 
 - After Chunk 01: cumulative Critic review (all 7 goals over `develop...HEAD`) — the single independent-review gate for the bundle before the PR opens.
