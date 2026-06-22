@@ -19,8 +19,12 @@ Differences from the legacy ``tools/product-hook`` (the file-sync runtime):
     coverage gates and the reviewer/cumulative base (``_resolve_base_branch`` +
     the ``resolve-base`` subcommand) — the 2.0.0 gitflow ship-blocker fix.
 
-Governing invariant (design §2): reads/writes ONLY ``${CLAUDE_PROJECT_DIR}/
-.prawduct/``; no mutable state is shared between repos through the plugin.
+Governing invariant (design §2): reads/writes ONLY the governed repo's
+``.prawduct/`` — the session's active git worktree, resolved by
+``get_project_dir`` (the worktree toplevel of cwd, or ``${CLAUDE_PROJECT_DIR}``
+when not in a same-repo worktree; STH-4K7N). No mutable state is shared between
+*unrelated* repos through the plugin — the resolver's same-repo
+``--git-common-dir`` guard preserves that.
 
 Usage (wired by ``hooks/hooks.json``):
   python3 "${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook" clear   (SessionStart hook)
@@ -38,8 +42,26 @@ from pathlib import Path
 
 
 def get_project_dir() -> Path:
-    """Get the project directory from CLAUDE_PROJECT_DIR or cwd."""
-    return Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
+    """Resolve the project dir to the session's active git worktree.
+
+    Was ``CLAUDE_PROJECT_DIR`` (or cwd). The harness pins ``CLAUDE_PROJECT_DIR``
+    to the launch dir, but a session that moves into a git worktree operates —
+    and writes ``.prawduct/`` state — from the worktree; resolving against the
+    worktree keeps the hooks reading the same state the agent wrote (STH-4K7N).
+    Delegates to the shared resolver so bin and lib agree; the resolver fails
+    open to ``CLAUDE_PROJECT_DIR``/cwd so non-worktree sessions are unchanged.
+
+    Bootstrap-resilient: this runs before command dispatch, so a broken/absent
+    plugin ``lib/`` must not crash here — fall back to the env/cwd behavior and
+    let the command that actually needs ``lib`` surface the import error with its
+    own handling (e.g. ``regen-views``)."""
+    try:
+        gitstate = _gitstate()
+    except ImportError:
+        return Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
+    return gitstate.resolve_project_dir(
+        os.environ.get("CLAUDE_PROJECT_DIR"), Path.cwd()
+    )
 
 
 def get_prawduct_dir(project_dir: Path) -> Path:

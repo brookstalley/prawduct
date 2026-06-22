@@ -169,8 +169,20 @@ class TestBuildingMethodology:
         # trimming UNRELATED prose to fit would violate Scope Discipline (the
         # rigor-and-stance precedent). If this test fails again, prefer trimming
         # over another bump.
+        #
+        # Bumped 4850 → 4950 in worktree-compat Chunk 02 (STH-4K7N). building.md
+        # gains the "Working in a git worktree" callout — a genuinely-new, named
+        # methodology concept a build-cycle reader needs (work cycles compose in a
+        # worktree; run /critic and /pr from there; the mid-session-enter marker
+        # edge). Condensed hard first, with the CANONICAL operational detail placed
+        # in the headroom skill files (skills/critic/SKILL.md, skills/pr/SKILL.md)
+        # so building.md carries only the condensed pointer; partly offset by
+        # deleting a verbatim-duplicate sentence ("Conversation context is
+        # ephemeral; artifacts persist." also lives in "Persist plans
+        # immediately"). The residual is irreducible without dropping the concept,
+        # and trimming UNRELATED prose to fit would violate Scope Discipline.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4850, f"building.md is ~{tokens} tokens, should be <4850"
+        assert tokens < 4950, f"building.md is ~{tokens} tokens, should be <4950"
 
 
 # =============================================================================

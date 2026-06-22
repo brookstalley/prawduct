@@ -114,6 +114,27 @@
   entry and pass the branch down), unlike STH-6Q9D's three local targets — which is why it was left
   out of that chunk. Same fan-out theme as STH-6Q9D (shipped hot-path-git-batching). (builder)
 
+- **[STH-3R8K]** Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution to a worktree toplevel
+  `effort: S · impact: S · area: stop-hook · source: critic · added: 2026-06-20 · status: open · stage: ready · related: STH-4K7N · refs: bin/prawduct-hook, hooks/digest.py, hooks/banner.py`
+
+  Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution away from
+  `CLAUDE_PROJECT_DIR` to a worktree toplevel. Today the worktree redirect (STH-4K7N) is silent: the
+  load-bearing assumption that a hook process runs with the worktree as its cwd fails safe (toward
+  more gating) but invisibly. A brief stderr/briefing note on the Stop path ("operating on worktree
+  <path> for branch <b>") when toplevel != `CLAUDE_PROJECT_DIR` would make the redirect observable
+  and aid debugging if the assumption is ever false. (critic)
+
+- **[STH-4K7N]** Governance gates + critic/pr skills don't compose with git worktrees — hooks resolve `.prawduct/` to the launch dir, agent side to the session worktree
+  `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-20 · status: open · stage: ready · related: CRT-8D2W · refs: bin/prawduct-hook, hooks/digest.py, hooks/banner.py, incoming-bugs/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md`
+
+  Hooks resolve `.prawduct/` to the launch dir (`CLAUDE_PROJECT_DIR`) while the agent side resolves
+  to the session worktree (cwd), so worktree-written reflection/critic/cumulative records are
+  invisible to the Stop + cumulative-critic gates (false blocks), forcing every worktree work cycle
+  off-protocol. Full fix approved: worktree-aware `get_project_dir()` resolution (stdin cwd →
+  `os.getcwd()` → `CLAUDE_PROJECT_DIR` via `git rev-parse --show-toplevel`) in `bin/prawduct-hook` +
+  `hooks/digest.py` + `hooks/banner.py`, empirical hook-cwd confirmation + regression tests, and
+  methodology guidance to run critic/pr from the worktree. (user)
+
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
 

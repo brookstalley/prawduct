@@ -182,6 +182,50 @@ de-backticking, with the general git-ref over-match captured as follow-up
 BLD-3M7K. CRT-9L2F (post-release live-verify of explicit Critic mode) is the
 natural follow-up once this ships.
 
+## 2026-06-20: Resolve `.prawduct/` state against the session git worktree — governance gates + critic/pr compose in worktrees (STH-4K7N)
+
+<!-- prawduct: chunks=01,02 | type=fix | scope=worktree-compat -->
+
+**Why:** Host repos increasingly *mandate* git worktrees for WIP (a stable
+primary checkout serving the plugin live; isolation for parallel agents), but
+prawduct had no worktree story. The hooks resolved `.prawduct/` via
+`CLAUDE_PROJECT_DIR` — which the harness pins to the *launch* dir (the primary
+checkout) — while the agent side (skills writing relative paths, and
+`prawduct-hook` invoked from a Bash `cd`'d into the worktree) resolved to the
+*worktree*. So worktree-written reflection / Critic findings / cumulative records
+were invisible to the Stop and cumulative-critic gates → false blocks, forcing
+every worktree work cycle off-protocol (review via an independent Agent, merge
+with raw `gh`). One reported bug
+(`incoming-bugs/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md`),
+three symptoms, one root cause: hook-read and agent-written state diverged.
+
+**What (Chunk 01 — code):** New `lib.gitstate.resolve_project_dir` makes the
+project dir follow the session into its worktree — `git rev-parse --show-toplevel`
+of cwd, preferred over the `CLAUDE_PROJECT_DIR` pin **only when cwd is a worktree
+of the same repo** (shared `--git-common-dir` guard, so a cwd in an *unrelated*
+repo still honors the pin), failing open to today's env/cwd behavior on any git
+error. The hook's `get_project_dir` delegates to it and stays bootstrap-resilient
+(a broken/absent plugin `lib/` falls back to the env behavior so per-command
+import-error handling still fires). No-regression by construction: in a single
+checkout the toplevel equals the pin, so resolution is unchanged. The two
+SessionStart cosmetic scripts (`hooks/digest.py`, `hooks/banner.py`) are
+deliberately *not* changed — they touch no gate state and `banner.py` refuses a
+cwd fallback by design. 10 new tests (`tests/test_project_dir_resolution.py`),
+including a "don't-saw-your-own-branch" self-check for this session-governing
+runtime. All git operations were already worktree-safe (shared refs, per-worktree
+working tree), so only state-file resolution needed the fix.
+
+**What (Chunk 02 — docs):** `methodology/building.md` gains a "Working in a git
+worktree" callout (work cycles compose in a worktree; run `/critic` and `/pr` from
+there; the mid-session-enter marker edge); canonical operational notes added to
+`skills/critic/SKILL.md` and `skills/pr/SKILL.md` (where they're consumed and have
+token headroom) so repos stop reinventing the private workaround. building.md's
+token ceiling bumped 4850 → 4950 with rationale, partly offset by a verbatim-dup
+trim. A post-merge live-harness check is queued in
+`.prawduct/operator-verification.md` (VRF-001) to confirm the one assumption a
+unit test can't reach: that a real hook *process* runs with the worktree as its
+cwd.
+
 ## 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)
 
 <!-- prawduct: chunks=01 | type=fix | release=v2.1.7 | status=shipped | scope=backlog-closed-by-handle -->

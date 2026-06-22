@@ -23,6 +23,96 @@ def get_prawduct_dir(project_dir: Path) -> Path:
     return project_dir / ".prawduct"
 
 
+def _git_toplevel(cwd: Path) -> Path | None:
+    """Resolved ``git rev-parse --show-toplevel`` from ``cwd``.
+
+    Returns the work-tree root (the session's *worktree* root when ``cwd`` is
+    inside one), or ``None`` when ``cwd`` is not in a git work tree / git is
+    unavailable. Never raises — git failures fall through to ``None`` so callers
+    can apply their fallback."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            cwd=str(cwd),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return None
+        out = result.stdout.strip()
+        return Path(out).resolve() if out else None
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
+        return None
+
+
+def _git_common_dir(cwd: Path) -> Path | None:
+    """Resolved shared git common dir for the repo at ``cwd``, or ``None``.
+
+    Worktrees of one repository share a single common dir (the real ``.git``),
+    so equality of this path is the identity test for "same repository". The
+    git output is relative to ``cwd`` in the primary checkout and absolute in a
+    linked worktree; ``Path(cwd) / out`` normalizes both (an absolute right
+    operand discards the left in pathlib)."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            cwd=str(cwd),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return None
+        out = result.stdout.strip()
+        if not out:
+            return None
+        return (Path(cwd) / out).resolve()
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
+        return None
+
+
+def resolve_project_dir(env_project_dir: str | None, cwd: Path) -> Path:
+    """Resolve the project root to the session's *active git worktree*.
+
+    The harness pins ``CLAUDE_PROJECT_DIR`` to where ``claude`` was launched (the
+    primary checkout). A session that moves into a git worktree (``EnterWorktree``
+    / ``cd``) operates — and the agent-side skills already write ``.prawduct/``
+    state — from the worktree's cwd. If the hooks kept resolving against the
+    launch dir, hook-read state and agent-written state would land in *different*
+    ``.prawduct/`` trees, breaking the Stop / cumulative-critic / critic-mode
+    gates for worktree work (STH-4K7N). Resolving here against the worktree
+    toplevel of ``cwd`` keeps both sides on the same tree.
+
+    Resolution:
+      1. If ``cwd`` is not in a git work tree → ``env_project_dir`` (today's
+         behavior), or ``cwd`` when the env var is unset.
+      2. If the env pin is unset → the work-tree toplevel of ``cwd``.
+      3. If the toplevel equals the env pin → the env pin (single-checkout
+         fast path; also normalizes launch-in-subdirectory). This is the no-op
+         common case.
+      4. Otherwise ``cwd``'s work tree differs from the launch dir: follow it
+         only when it is a worktree of the *same* repository (shared
+         ``--git-common-dir``); an unrelated repo at ``cwd`` honors the env pin.
+
+    Never raises (lib error-handling convention) — every git probe fails open to
+    a path."""
+    cwd = Path(cwd).resolve()
+    env_dir = Path(env_project_dir).resolve() if env_project_dir else None
+    top = _git_toplevel(cwd)
+
+    if top is None:
+        return env_dir if env_dir is not None else cwd
+    if env_dir is None:
+        return top
+    if top == env_dir:
+        return env_dir
+    common_cwd = _git_common_dir(cwd)
+    if common_cwd is not None and common_cwd == _git_common_dir(env_dir):
+        return top  # worktree of the same repo — follow the session
+    return env_dir  # unrelated repo (or undeterminable) — honor the launch pin
+
+
 def git_status_output(project_dir: Path) -> str | None:
     """Return raw `git status --porcelain` output, or None on failure."""
     try:

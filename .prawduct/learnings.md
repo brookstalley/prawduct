@@ -108,6 +108,10 @@ When you reverse a design decision partway through a chunk, re-grep your OWN new
 
 When you modify a runtime that ALSO governs the session you're editing in, run the new detection against the repo root and confirm the expected value BEFORE relying on the edit — a wrong signal can silently disable the very gate enforcing the current session, with no test failure to warn you ("am I standing on the branch I'm sawing?"). Relates to Structural Awareness (#21) and Validate Before Propagating (#15).
 
+## Pre-dispatch bootstrap code must fail open on a `lib/` ImportError
+
+`get_project_dir()` and any other helper that runs in `main()` BEFORE command dispatch must not hard-depend on the lazily-imported plugin `lib/`: wrap the lib call and fall back to the env/cwd behavior on `ImportError`. Adding a `lib` call there once broke the `regen-views` "could not import" contract — the eager import crashed with a traceback before the command's own graceful handler could fire. The hook's lib-free top level + lazy per-command imports are the architecture; bootstrap code that pre-empts a command's import-error handling defeats it. Relates to Honest Confidence (#5) and the broad-except/fail-open conventions.
+
 ## Session-end signals must come AFTER handoff
 
 When signaling session completion ("Ready for next session", "Session is complete"), do the handoff FIRST — commit, update build plan Status, write reflection, capture backlog. Because users interpret completion signals as "handoff is done" and act on them immediately.
