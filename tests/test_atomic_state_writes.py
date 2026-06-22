@@ -7,6 +7,12 @@ write from two concurrent sessions on one repo can no longer silently misfire
 a gate. (`.gates-waived` was audited into the set but has no code write site —
 it is agent-written — so there is nothing to convert.)
 
+STH-9T4F extends the converted set with the two sites that were out of
+STH-8M3V's groomed scope: the critic-active marker write
+(`lib/critic_marker.py`) and the operator-verification queue rewrite
+(`lib/operator_verification.py`) — same rationale (readers fail open, a torn
+write misfires governance silently).
+
 The second half pins cmd_clear's failure policy: the session-file unlink loop
 and the marker/baseline writes are best-effort — an OSError degrades to a
 stderr NOTE naming the consequence and the SessionStart hook still exits 0,
@@ -27,7 +33,7 @@ from pathlib import Path
 
 import pytest
 
-from lib import advisory_store, briefing, core
+from lib import advisory_store, briefing, core, critic_marker, operator_verification
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -106,9 +112,33 @@ class TestConvertedWriteSites:
         assert handoff.is_file()
         assert not handoff.with_name(handoff.name + ".tmp").exists()
 
+    def test_critic_marker_written_atomically_no_residue(self, tmp_path):
+        """STH-9T4F: the critic-active marker — read by the session-mutation
+        guard, which fails open on a missing/corrupt marker — is written
+        atomically, so a torn write can't silently drop the guard."""
+        pr = tmp_path / ".prawduct"
+        pr.mkdir()
+        assert critic_marker.write_marker(pr) is True
+        marker = pr / critic_marker.MARKER_NAME
+        assert json.loads(marker.read_text())["tool"] == "critic"
+        assert not marker.with_name(marker.name + ".tmp").exists()
+
+    def test_operator_queue_written_atomically_no_residue(self, tmp_path):
+        """STH-9T4F: the operator-verification queue rewrite — a `/pr create`
+        gate input — is written atomically."""
+        queue = tmp_path / "operator-verification.md"
+        operator_verification._write_queue(queue, "# Operator Verification\n", [])
+        assert queue.is_file()
+        assert not queue.with_name(queue.name + ".tmp").exists()
+        # Round-trips through the parser (the gate reads it back).
+        preamble, entries = operator_verification.parse_operator_verification(
+            queue.read_text()
+        )
+        assert "Operator Verification" in preamble and entries == []
+
     def test_source_pins_audited_sites_use_atomic_writer(self):
-        """The audited non-atomic writes (STH-8M3V groom 2026-06-10) must not
-        quietly revert to bare write_text."""
+        """The audited non-atomic writes (STH-8M3V groom 2026-06-10, plus the
+        STH-9T4F follow-ups) must not quietly revert to bare write_text."""
         hook_src = HOOK.read_text()
         assert 'atomic_write_text(prawduct_dir / ".session-start"' in hook_src
         assert 'atomic_write_text(prawduct_dir / ".session-git-baseline"' in hook_src
@@ -118,6 +148,13 @@ class TestConvertedWriteSites:
         assert '".session-handoff.md").write_text' not in briefing_src
         adv_src = (ROOT / "lib" / "advisory_store.py").read_text()
         assert "path.write_text" not in adv_src
+        # STH-9T4F sites.
+        cm_src = (ROOT / "lib" / "critic_marker.py").read_text()
+        assert "atomic_write_text(_marker_path(prawduct_dir)" in cm_src
+        assert "_marker_path(prawduct_dir).write_text" not in cm_src
+        ov_src = (ROOT / "lib" / "operator_verification.py").read_text()
+        assert "atomic_write_text(" in ov_src
+        assert "queue_path.write_text" not in ov_src
 
 
 # --------------------------------------------------------------------------- #

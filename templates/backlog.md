@@ -42,7 +42,9 @@
   Optional, on the same line (distinct concepts — keep them straight):
     related:   PFX-XXXX, PFX-XXXX   cross-references to related items
     closes:    PFX-XXXX             this item supersedes another backlog item (item → item)
-    closed-by: <chunk-id|tag>       what shipped this item, set on status=shipped (item → release)
+    closed-by: <chunk-id | scope/branch | tag>  what shipped this item (item → release), set on
+                                    status=shipped; a handle that exists before the commit —
+                                    never a bare commit SHA (dangles on --amend) or unassigned PR#
     reviewed:  YYYY-MM-DD           last-touched timestamp (auto-set on any update)
     accepted-by: @actor             soft claim "someone is on this" so others don't
                                     double-pick; pick/list exclude claimed items.

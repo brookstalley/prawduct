@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.1.7
+
+**Entry:** 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)
+
+**Chunks shipped:** 01
+
+**Scope:** backlog-closed-by-handle
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.1.6
 
 ### upstream-bug-reporting

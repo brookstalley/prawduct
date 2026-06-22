@@ -177,6 +177,32 @@ def _critic_marker():
     return critic_marker
 
 
+def _reject_unknown_args(
+    command: str, argv: list[str], allowed_flags: set[str]
+) -> int | None:
+    """Fail-closed arg guard for *flag-only* subcommands (STH-5R2Q).
+
+    Flag-only subcommands take no positionals and detect options with
+    ``"--flag" in argv`` — a pattern that silently ignores any token that
+    isn't a recognized flag. That swallowed a real bug where a test passed
+    ``tmp_path`` positionally to ``audit-learnings`` and the live repo was
+    audited instead of the fixture. Returns exit code 2 (the hook's usage-error
+    convention, matching ``cmd_test_evidence``'s extra-args rejection) after
+    printing the first unrecognized token to stderr, or ``None`` when every
+    token is a recognized flag. Mirrors the inline ``unknown argument``
+    handling in ``lib.ledger`` / ``lib.telemetry`` / ``lib.risk``.
+    """
+    for arg in argv:
+        if arg not in allowed_flags:
+            allowed = ", ".join(sorted(allowed_flags)) or "(none)"
+            print(
+                f"{command}: unknown argument {arg!r} (recognized flags: {allowed})",
+                file=sys.stderr,
+            )
+            return 2
+    return None
+
+
 # --- New-gate attribution (design §5a) -----------------------------------
 # A blocking message names the version + gate that caused it, so a surprise
 # block (e.g. a gate a recent plugin update introduced) is always traceable to
@@ -416,6 +442,11 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     cannot clobber the session it is reviewing.
     """
     argv = argv or []
+    rejected = _reject_unknown_args(
+        "clear", argv, {"--session-start", "--force"}
+    )
+    if rejected is not None:
+        return rejected
     session_start = "--session-start" in argv
     force = "--force" in argv
     prawduct_dir = get_prawduct_dir(project_dir)
@@ -1077,16 +1108,29 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     The freshness gate (``test-status``) and the cumulative-Critic staleness
     check READ this file, but nothing in the plugin PRODUCED it — every product
-    repo improvised a hand-written JSON plus a sha-stamp shim, and the
-    ``git_sha`` check was satisfiable by stamping a fresh sha over stale counts.
-    This subcommand closes the reader-without-a-writer gap: it runs pytest with a
-    JUnit XML report (exact counts, not a parsed summary line), stamps
-    ``git_sha = HEAD`` plus an ISO-8601 UTC timestamp, overlays the F4a coverage
-    half via ``bin/test-reference-verify --merge-into``, and writes the record
-    atomically — so the gate judges output the plugin itself produced, tied to a
-    real run.
+    repo improvised a hand-written JSON. This subcommand closes the
+    reader-without-a-writer gap: it runs pytest with a JUnit XML report (exact
+    counts, not a parsed summary line), stamps an ISO-8601 UTC ``timestamp``,
+    overlays the F4a coverage half via ``bin/test-reference-verify --merge-into``,
+    and writes the record atomically — so the gate judges output the plugin itself
+    produced, tied to a real run.
 
-    Usage: ``prawduct-hook test-evidence record [-- <extra pytest args>]``
+    Freshness identity is the ``timestamp`` alone (``test-status`` compares it
+    against ``.session-start``). No ``git_sha`` is stamped: it was dead-read by
+    every runtime consumer and actively misleading — a record-before-commit run
+    stamped the *prior* commit, which review agents eyeballed and wrongly flagged
+    "stale" (TST-4K2P). Content-hash freshness is deliberately NOT reintroduced
+    here; that mechanism was removed pre-v1.4 for chronic false positives.
+
+    Usage: ``prawduct-hook test-evidence record [--from-junit <report>]
+    [-- <extra pytest args>]``
+
+    ``--from-junit <report>`` (TST-7M3K) ingests a JUnit XML the builder already
+    produced instead of re-running the suite — the build cycle ran the suite once;
+    re-running it inside ``record`` paid for it twice per stamp. The report is
+    read as-is (no run), so it cannot be combined with extra pytest args or a
+    declared ``test_command:``. Exit status then derives from the report's failure
+    count rather than a process.
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``).
@@ -1112,11 +1156,28 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     if not argv or argv[0] != "record":
         print(
-            "usage: prawduct-hook test-evidence record [-- <pytest args>]",
+            "usage: prawduct-hook test-evidence record "
+            "[--from-junit <report>] [-- <pytest args>]",
             file=sys.stderr,
         )
         return 2
-    extra = argv[1:]
+    rest = list(argv[1:])
+    # --from-junit <path> (TST-7M3K): ingest a JUnit report the builder already
+    # produced instead of re-running the suite — the gate stops paying for the
+    # suite twice per stamp. Parsed before the `--` separator so both
+    # `record --from-junit r.xml` and `record -- --from-junit r.xml` work.
+    from_junit = None
+    if "--from-junit" in rest:
+        i = rest.index("--from-junit")
+        if i + 1 >= len(rest):
+            print(
+                "error: --from-junit requires a path to a JUnit XML report",
+                file=sys.stderr,
+            )
+            return 2
+        from_junit = rest[i + 1]
+        del rest[i : i + 2]
+    extra = rest
     if extra and extra[0] == "--":  # tolerate the conventional `--` separator
         extra = extra[1:]
 
@@ -1127,6 +1188,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     test_command = _read_str_yaml_key(state_path, "test_command")
     tests_dirs_raw = _read_str_yaml_key(state_path, "tests_dirs")
     tests_dirs = tests_dirs_raw.split() if tests_dirs_raw else []
+
+    if from_junit is not None:
+        # Ingest mode runs nothing, so a runner source (extra pytest args or a
+        # declared test_command) is a contradiction — reject it loudly rather
+        # than silently ignore it.
+        if extra:
+            print(
+                "error: extra pytest args are not allowed with --from-junit — "
+                "the report is ingested as-is; nothing is run.",
+                file=sys.stderr,
+            )
+            return 2
+        if test_command:
+            print(
+                "error: --from-junit cannot be combined with a declared "
+                "test_command — one ingests an existing report, the other runs "
+                "the suite. Use one or the other.",
+                file=sys.stderr,
+            )
+            return 2
 
     if test_command:
         if extra:
@@ -1147,52 +1228,79 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
 
-    # Run the suite with a JUnit XML report — built into pytest (no plugin) and
-    # parse-robust where the terminal summary line is not (xdist, warnings, and
-    # "no tests ran" all perturb the summary; the XML attributes do not).
-    fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
-    os.close(fd)
-    junit = Path(junit_name)
-    try:
-        if test_command:
-            # shlex list-form, not shell=True (injection surface; banned by
-            # tests/preferences). Wrappers like `uv run pytest …` split fine;
-            # compound invocations (&&, pipes, env vars) belong in a script
-            # the command points at. Split BEFORE substituting so a report
-            # path containing spaces/quotes lands as one intact token.
-            import shlex  # noqa: PLC0415 — only this branch needs it
-            run_argv = [
-                tok.replace("{junit_xml}", str(junit))
-                for tok in shlex.split(test_command)
-            ]
-            try:
-                proc = subprocess.run(run_argv, cwd=str(project_dir))
-            except FileNotFoundError:
-                print(
-                    f"error: test_command executable not found: {run_argv[0]!r} "
-                    "— check the test_command in project-state.yaml.",
-                    file=sys.stderr,
-                )
-                return 2
-        else:
-            cmd = [
-                sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q",
-                *extra,
-            ]
-            proc = subprocess.run(cmd, cwd=str(project_dir))
+    if from_junit is not None:
+        # Ingest mode: parse the JUnit report the builder already produced. No
+        # temp file, no subprocess, and we must NOT delete the caller's report.
+        junit = Path(from_junit)
+        if not junit.is_file():
+            print(
+                f"error: --from-junit report not found: {from_junit}",
+                file=sys.stderr,
+            )
+            return 2
         try:
             root = ET.parse(junit).getroot()
         except (ET.ParseError, OSError) as exc:
             print(
-                f"error: could not parse pytest JUnit report: {exc}",
+                f"error: could not parse --from-junit report: {exc}",
                 file=sys.stderr,
             )
             return 2
-    finally:
+        proc = None  # no run; exit status derives from the parsed failure count
+    else:
+        # Run the suite with a JUnit XML report — built into pytest (no plugin)
+        # and parse-robust where the terminal summary line is not (xdist,
+        # warnings, and "no tests ran" all perturb the summary; the XML
+        # attributes do not).
+        fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
+        os.close(fd)
+        junit = Path(junit_name)
         try:
-            junit.unlink()
-        except OSError:
-            pass
+            if test_command:
+                # shlex list-form, not shell=True (injection surface; banned by
+                # tests/preferences). Wrappers like `uv run pytest …` split fine;
+                # compound invocations (&&, pipes, env vars) belong in a script
+                # the command points at. Split BEFORE substituting so a report
+                # path containing spaces/quotes lands as one intact token.
+                import shlex  # noqa: PLC0415 — only this branch needs it
+                run_argv = [
+                    tok.replace("{junit_xml}", str(junit))
+                    for tok in shlex.split(test_command)
+                ]
+                try:
+                    proc = subprocess.run(run_argv, cwd=str(project_dir))
+                except OSError as exc:
+                    # Widened from FileNotFoundError to OSError (TST-3E8V): a
+                    # *missing* executable raises FileNotFoundError, but a
+                    # *non-executable* target raises PermissionError — both are
+                    # OSError subclasses and both are launch failures that should
+                    # take the clean exit-2 path, not traceback.
+                    print(
+                        f"error: could not launch test_command executable "
+                        f"{run_argv[0]!r} ({exc}) — check the test_command in "
+                        "project-state.yaml.",
+                        file=sys.stderr,
+                    )
+                    return 2
+            else:
+                cmd = [
+                    sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q",
+                    *extra,
+                ]
+                proc = subprocess.run(cmd, cwd=str(project_dir))
+            try:
+                root = ET.parse(junit).getroot()
+            except (ET.ParseError, OSError) as exc:
+                print(
+                    f"error: could not parse pytest JUnit report: {exc}",
+                    file=sys.stderr,
+                )
+                return 2
+        finally:
+            try:
+                junit.unlink()
+            except OSError:
+                pass
 
     # Aggregate across ALL top-level <testsuite> elements, not just the first:
     # pytest emits one, but `test_command` invites arbitrary runners
@@ -1215,23 +1323,16 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     passed = total - failures - errors - skipped
     failed = failures + errors
 
-    sha_proc = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-    )
-    git_sha = sha_proc.stdout.strip() if sha_proc.returncode == 0 else ""
-
     # Base record carries the pytest half PLUS schema-valid placeholder F4a
     # fields, so the file is self-sufficient even if the F4a overlay below is
     # skipped (verifier absent on a broken install). The overlay fills the real
     # coverage half.
     record = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "git_sha": git_sha,
         "command": (
-            test_command
+            f"--from-junit {from_junit}"
+            if from_junit is not None
+            else test_command
             if test_command
             else " ".join(["python3 -m pytest -q", *extra]).strip()
         ),
@@ -1269,6 +1370,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         if base:
             merge_cmd += ["--base", base]
         mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)
+        if mp.stderr.strip():
+            # Forward the verifier's warnings (e.g. zero test discovery —
+            # TST-2H9P); capture_output would otherwise swallow them.
+            print(mp.stderr.rstrip(), file=sys.stderr)
         if mp.returncode != 0:
             print(
                 f"note: F4a coverage overlay did not complete (exit "
@@ -1284,9 +1389,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     print(
         f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
-        f"in {record['duration_seconds']}s @ {git_sha[:10] or '(no git)'} "
-        f"({record['timestamp']})"
+        f"in {record['duration_seconds']}s ({record['timestamp']})"
     )
+    # Exit status mirrors the suite when we ran it; in ingest mode there is no
+    # process, so derive it from the parsed failure count.
+    if proc is None:
+        return 0 if failed == 0 else 1
     return 0 if proc.returncode == 0 else 1
 
 
@@ -1914,6 +2022,14 @@ def cmd_stamp_merged(project_dir: Path) -> int:
         prawduct_dir / "project-state.yaml", "base_branch"
     )
     integration_branch = configured or "main"
+    # REL-7P3X: project-state.yaml's own comment calls `origin/develop`
+    # "preferred", but this guard compares against the LOCAL branch name from
+    # `git rev-parse --abbrev-ref HEAD` (a deliberate divergence from
+    # `_resolve_base_branch`, on record in the 2026-06-10 ch.02 Critic
+    # findings). Strip a single leading `origin/` so an origin-prefixed config
+    # normalizes to the local branch instead of refusing permanently.
+    if integration_branch.startswith("origin/"):
+        integration_branch = integration_branch[len("origin/"):]
     proc = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         cwd=str(project_dir),
@@ -2061,6 +2177,9 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args("audit-learnings", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
     apply = "--apply" in argv
     as_json = "--json" in argv
 
@@ -2121,6 +2240,11 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
     key). Fail-safe: if the bundled lib/ cannot be imported, print a clear message
     and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args(
+        "repo-disable", argv, {"--local", "--apply", "--json"}
+    )
+    if rejected is not None:
+        return rejected
     local = "--local" in argv
     apply = "--apply" in argv
     as_json = "--json" in argv
