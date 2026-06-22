@@ -1067,8 +1067,12 @@ class TestTestEvidenceRecord:
         assert ev_path.is_file()
         ev = json.loads(ev_path.read_text())
         assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 0, 0)
-        # counts are tied to a REAL run, and the sha is HEAD (not a stale stamp)
-        assert ev["git_sha"] == _git(repo, "rev-parse", "HEAD").stdout.strip()
+        # git_sha retired (TST-4K2P): it was dead-read by every runtime consumer
+        # and misleading when stamped before commit (review agents eyeballed the
+        # lagging sha and wrongly flagged "stale"). Freshness is the timestamp vs
+        # session-start (test-status), never a commit field — so the record must
+        # NOT carry a git_sha.
+        assert "git_sha" not in ev
         assert ev["timestamp"] and ev["duration_seconds"] >= 0
         # the plugin's own validator accepts what the plugin produced
         assert _run_in(repo, "validate-evidence").returncode == 0
