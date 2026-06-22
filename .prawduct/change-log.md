@@ -32,6 +32,29 @@ track). *Note:* the item assumed the Critic-side detail lived in
 `critic/review-protocol.md`; it's actually in `review-cycle.md` (review-protocol.md
 only references it), so the ownership statement landed there.
 
+## 2026-06-22: Fold reviewer model-id aliases to a family label in review-stats so the model dimension isn't fragmented (telemetry-model-id-normalization)
+
+<!-- prawduct: chunks=01 | type=fix | scope=telemetry-model-id-normalization -->
+
+**Why:** `review-stats` groups reviews by role × model × mode, but one model is
+recorded under several id strings (`opus`, `claude-opus-4-8`,
+`claude-opus-4-8[1m]` are all the same model), so it split that model across
+three buckets — the 2026-06-22 run fragmented critic-opus reviews across
+`opus` / `claude-opus-4-8` / `claude-opus-4-8[1m]`, making per-model yield
+unreadable and defeating the reviewer-model A/B the dimension exists to answer.
+Surfaced while mining review-stats for the evidence-driven review-pruning track
+(**TEL-4M9X**, the first deliverable of that track).
+
+**What:** A `_canonical_model` helper folds a recorded id to its Claude family
+(`opus`/`sonnet`/`haiku`/`fable`) at the aggregation key only — `fable`/`sonnet`
+stay distinct from `opus`, and an unfamiliar id passes through verbatim (never
+bucketed under a known family). Substring match, so a future model *version*
+folds with no code change (the drift-resilience the reviewer-model fallback
+chains chose over pinned ids). The raw id stays untouched in each append-only
+ledger line, so the historical 41 events aggregate correctly with **no rewrite**
+— a read-time view. Folds **values, not keys**, so `REPORT_SCHEMA_VERSION` holds.
+4 tests added; `docs/governance-telemetry.md` documents the fold.
+
 ## 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)
 
 <!-- prawduct: chunks=01 | type=fix | release=v2.1.7 | status=shipped | scope=backlog-closed-by-handle -->
