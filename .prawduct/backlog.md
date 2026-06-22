@@ -85,6 +85,25 @@
   related: BLD-4K7P (keyword-grep over-match lesson), backlog-overdue-grooming probe. (user — upstream
   report from Hallucinote/puzzles)
 
+- **[REL-3M7K]** Release-prep must add the root CHANGELOG.md headline and gate on a green suite before tagging
+  `effort: S · impact: M · area: governance/release · source: builder · added: 2026-06-21 · status: open · stage: ready · related: REL-9F2T · refs: CHANGELOG.md, hooks/banner.py (parse_changelog), skills/pr/SKILL.md, .prawduct/release-notes.md`
+
+  Root cause found 2026-06-21 during the hook-cli-robustness baseline check: v2.1.6 was tagged +
+  version-bumped (81b28fe) but its consumer-facing root CHANGELOG.md headline was never added — the
+  prep commit updated .prawduct/release-notes.md and .prawduct/change-log.md but missed root
+  CHANGELOG.md. That left develop RED on
+  tests/test_plugin_version_banner.py::test_changelog_has_current_version_entry (PLUGIN_VERSION 2.1.6
+  absent from CHANGELOG.md) since the release, i.e. v2.1.6 shipped on a red suite.
+
+  Two gaps: (a) release-prep updates the .prawduct views but not root CHANGELOG.md, so the
+  consumer-facing headline is hand-step-only and was forgotten; (b) the release tagged without a
+  green full suite, or CI does not gate tagging. Symptom already repaired (headline added in
+  024bf53, sourced from release-notes.md v2.1.6 block).
+
+  Fix-shape: wire the CHANGELOG.md headline into the /prawduct:pr release-promotion / release-prep
+  flow (or generate it from the release= change-log tag like release-notes.md is), and make
+  release-prep refuse to bump/tag on a non-green suite. (builder)
+
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
 
@@ -609,6 +628,20 @@
   Assurance: preserved only if the eligibility predicate + C2 regression test hold and the bounded
   early-detection loss is explicitly accepted by the user. Gated behind A's accumulated data OR an
   explicit user accept-the-tradeoff decision. (user)
+
+- **[BLD-3M7K]** `verify-chunk-refs` over-matches git-ref tokens (origin/-prefixed and branch-like slash tokens) in build-plan prose, producing false missing-ref positives
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · status: open · stage: idea · related: BLD-4K7P, BLD-2R9X, BLD-8F2Q · refs: lib/buildplan_refs.py (_looks_like_file_path)`
+
+  Follow-up to BLD-4K7P. Surfaced 2026-06-21 by the hook-cli-robustness cumulative Critic: the
+  plan's own prose backticked `origin/develop` and `origin/` while describing the REL-7P3X fix;
+  `_looks_like_file_path` treats any backticked slash-token without `<>`/`://`/glob as a file path,
+  so git refs flag as missing. Same false-positive family the BLD-4K7P fix (placeholders, URLs,
+  gitignored) does NOT cover, and PR #99's cumulative saw it too. Workaround in place: de-backtick
+  git refs in plan prose (the gate correctly checks file paths; a git ref isn't one). Open question:
+  a general fix is hard — branch-like tokens (feature/x) are indistinguishable from real paths
+  (feature/x), so an origin/-prefix-only heuristic risks false-negatives on real missing paths.
+  Decide whether the narrow origin/ exclusion is worth it or the convention (don't backtick git
+  refs) suffices. (critic)
 
 ## Promoted
 

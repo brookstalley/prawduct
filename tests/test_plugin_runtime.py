@@ -1022,6 +1022,62 @@ class TestAuditLearningsSubcommand:
         assert "audit-learnings" in result.stderr
 
 
+class TestFlagOnlyArgRejection:
+    """STH-5R2Q: flag-only subcommands (no positionals; options detected via
+    `"--flag" in argv`) historically swallowed any unrecognized token. That
+    masked a real bug — a test passed `tmp_path` positionally to
+    `audit-learnings`, which silently ignored it and audited the inherited
+    CLAUDE_PROJECT_DIR repo instead. Each flag-only command now rejects unknown
+    args with exit 2 (the hook's usage-error convention), matching the
+    fail-closed arg handling in lib.ledger / lib.telemetry / lib.risk.
+    """
+
+    def test_audit_learnings_rejects_unknown_positional(self, tmp_path):
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        result = _run_in(repo, "audit-learnings", str(repo), "--json")
+        assert result.returncode == 2
+        assert "unknown argument" in result.stderr
+
+    def test_audit_learnings_rejects_unknown_flag(self, tmp_path):
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        result = _run_in(repo, "audit-learnings", "--bogus")
+        assert result.returncode == 2
+        assert "unknown argument" in result.stderr
+
+    def test_audit_learnings_recognized_flags_still_pass(self, tmp_path):
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "learnings.md").write_text("# Learnings\n")
+        result = _run_in(repo, "audit-learnings", "--apply", "--json")
+        assert result.returncode == 0, result.stderr
+
+    def test_repo_disable_rejects_unknown_arg(self, tmp_path):
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        result = _run_in(repo, "repo-disable", "--bogus")
+        assert result.returncode == 2
+        assert "unknown argument" in result.stderr
+
+    def test_clear_rejects_unknown_arg(self, tmp_path):
+        """The hot-path SessionStart command also rejects unknowns — the guard
+        fires before any git/state work, so it needs no repo scaffolding."""
+        repo = tmp_path / "r"
+        repo.mkdir()
+        result = _run_in(repo, "clear", "--bogus")
+        assert result.returncode == 2
+        assert "unknown argument" in result.stderr
+
+    def test_clear_recognized_flags_still_pass(self, tmp_path):
+        """A bare `clear` and `clear --session-start` must still proceed — a
+        non-onboarded repo (no .prawduct/) exits 0 cleanly (no briefing)."""
+        repo = tmp_path / "r"
+        repo.mkdir()
+        result = _run_in(repo, "clear", "--session-start")
+        assert result.returncode == 0, result.stderr
+
+
 class TestNoBareSkillShadowing:
     """A bare `.claude/skills/<name>/` in this framework repo would double-load as
     a `/<name>` skill and shadow the plugin's `/prawduct:<name>`. Chunk 14 first
@@ -1291,6 +1347,23 @@ class TestTestEvidenceKnobs:
         res = _run_in(repo, "test-evidence", "record")
         assert res.returncode == 2
         assert "no-such-binary-xyz" in res.stderr
+        assert "Traceback" not in res.stderr
+
+    def test_non_executable_target_is_a_clean_error(self, tmp_path):
+        """TST-3E8V: a *non-executable* target (exists but no +x) raises
+        PermissionError, not FileNotFoundError — both are OSError, so the
+        widened catch routes it to the same clean exit-2 path rather than a
+        raw traceback."""
+        repo = self._repo(tmp_path, "placeholder: x\n")
+        target = repo / "not_executable.sh"
+        target.write_text("#!/bin/sh\necho hi\n")
+        target.chmod(0o644)  # readable, NOT executable
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: ./not_executable.sh --junit-xml={junit_xml}\n"
+        )
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 2
+        assert "not_executable.sh" in res.stderr
         assert "Traceback" not in res.stderr
 
     def test_tests_dirs_forwarded_to_coverage_overlay(self, tmp_path):

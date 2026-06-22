@@ -2253,6 +2253,19 @@ class TestStampMergedCommand:
         assert result.returncode == 0, result.stderr
         assert "stamped status=merged" in result.stdout
 
+    def test_strips_origin_prefix_from_configured_base(self, tmp_path: Path):
+        """REL-7P3X: an `origin/develop` base_branch (project-state.yaml's own
+        'preferred' remote-tracking form) normalizes to the local `develop`
+        branch and stamps, instead of refusing permanently. The guard compares
+        LOCAL branch names by design (deliberate divergence from resolve-base)."""
+        repo = _make_git_product_repo(
+            tmp_path, branch="develop", base_branch="origin/develop",
+            change_log=self._CHANGE_LOG,
+        )
+        result = _run_stamp_merged(repo)
+        assert result.returncode == 0, result.stderr
+        assert "stamped status=merged" in result.stdout
+
     def test_nothing_to_stamp_is_a_clean_no_op(self, tmp_path: Path):
         repo = _make_git_product_repo(
             tmp_path, branch="develop", base_branch="develop",

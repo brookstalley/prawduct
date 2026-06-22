@@ -177,6 +177,32 @@ def _critic_marker():
     return critic_marker
 
 
+def _reject_unknown_args(
+    command: str, argv: list[str], allowed_flags: set[str]
+) -> int | None:
+    """Fail-closed arg guard for *flag-only* subcommands (STH-5R2Q).
+
+    Flag-only subcommands take no positionals and detect options with
+    ``"--flag" in argv`` — a pattern that silently ignores any token that
+    isn't a recognized flag. That swallowed a real bug where a test passed
+    ``tmp_path`` positionally to ``audit-learnings`` and the live repo was
+    audited instead of the fixture. Returns exit code 2 (the hook's usage-error
+    convention, matching ``cmd_test_evidence``'s extra-args rejection) after
+    printing the first unrecognized token to stderr, or ``None`` when every
+    token is a recognized flag. Mirrors the inline ``unknown argument``
+    handling in ``lib.ledger`` / ``lib.telemetry`` / ``lib.risk``.
+    """
+    for arg in argv:
+        if arg not in allowed_flags:
+            allowed = ", ".join(sorted(allowed_flags)) or "(none)"
+            print(
+                f"{command}: unknown argument {arg!r} (recognized flags: {allowed})",
+                file=sys.stderr,
+            )
+            return 2
+    return None
+
+
 # --- New-gate attribution (design §5a) -----------------------------------
 # A blocking message names the version + gate that caused it, so a surprise
 # block (e.g. a gate a recent plugin update introduced) is always traceable to
@@ -387,6 +413,11 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     cannot clobber the session it is reviewing.
     """
     argv = argv or []
+    rejected = _reject_unknown_args(
+        "clear", argv, {"--session-start", "--force"}
+    )
+    if rejected is not None:
+        return rejected
     session_start = "--session-start" in argv
     force = "--force" in argv
     prawduct_dir = get_prawduct_dir(project_dir)
@@ -1205,10 +1236,16 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 ]
                 try:
                     proc = subprocess.run(run_argv, cwd=str(project_dir))
-                except FileNotFoundError:
+                except OSError as exc:
+                    # Widened from FileNotFoundError to OSError (TST-3E8V): a
+                    # *missing* executable raises FileNotFoundError, but a
+                    # *non-executable* target raises PermissionError — both are
+                    # OSError subclasses and both are launch failures that should
+                    # take the clean exit-2 path, not traceback.
                     print(
-                        f"error: test_command executable not found: {run_argv[0]!r} "
-                        "— check the test_command in project-state.yaml.",
+                        f"error: could not launch test_command executable "
+                        f"{run_argv[0]!r} ({exc}) — check the test_command in "
+                        "project-state.yaml.",
                         file=sys.stderr,
                     )
                     return 2
@@ -1952,6 +1989,14 @@ def cmd_stamp_merged(project_dir: Path) -> int:
         prawduct_dir / "project-state.yaml", "base_branch"
     )
     integration_branch = configured or "main"
+    # REL-7P3X: project-state.yaml's own comment calls `origin/develop`
+    # "preferred", but this guard compares against the LOCAL branch name from
+    # `git rev-parse --abbrev-ref HEAD` (a deliberate divergence from
+    # `_resolve_base_branch`, on record in the 2026-06-10 ch.02 Critic
+    # findings). Strip a single leading `origin/` so an origin-prefixed config
+    # normalizes to the local branch instead of refusing permanently.
+    if integration_branch.startswith("origin/"):
+        integration_branch = integration_branch[len("origin/"):]
     proc = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         cwd=str(project_dir),
@@ -2099,6 +2144,9 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args("audit-learnings", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
     apply = "--apply" in argv
     as_json = "--json" in argv
 
@@ -2159,6 +2207,11 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
     key). Fail-safe: if the bundled lib/ cannot be imported, print a clear message
     and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args(
+        "repo-disable", argv, {"--local", "--apply", "--json"}
+    )
+    if rejected is not None:
+        return rejected
     local = "--local" in argv
     apply = "--apply" in argv
     as_json = "--json" in argv

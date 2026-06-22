@@ -305,6 +305,30 @@ def _git_head_sha(project_dir: Path) -> str:
     return ""
 
 
+def git_path_is_ignored(project_dir: Path, rel_path: str) -> bool:
+    """True if ``rel_path`` is git-ignored within ``project_dir``.
+
+    Used by the build-plan ref-existence check so an intentionally-gitignored
+    managed path (e.g. ``.prawduct/.bug-inbox``) is not flagged as a missing
+    deliverable (BLD-4K7P) — such paths are generated/managed and legitimately
+    absent from a fresh checkout. Fail-closed: ``git check-ignore`` exits 0 when
+    ignored, 1 when not, and 128 on error (e.g. not a git repo); any non-zero or
+    exception returns False ("couldn't prove it's ignored"), so a genuinely
+    missing path is still flagged rather than silently passed.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", "--", rel_path],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash the ref check
+        return False
+
+
 def _get_session_changed_files(project_dir: Path) -> list[str]:
     """Get files changed since session start. Returns list of file paths."""
     prawduct_dir = get_prawduct_dir(project_dir)
