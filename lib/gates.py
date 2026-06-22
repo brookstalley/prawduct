@@ -1074,6 +1074,36 @@ def check_cumulative_critic(project_dir: Path) -> int:
         return 1
 
     if _pr_gate_record_qualifies(data):
+        # CRT-2K9F: a slot record that qualifies by KIND but covers a SIBLING
+        # branch's HEAD (an interleaved Critic→PR cycle overwrote the single
+        # slot) reports "stale" here, yet THIS branch's own covering record may
+        # still sit in the append-only ledger. Before failing on the slot's
+        # stale verdict, consult the ledger for the newest record that COVERS
+        # the current HEAD. Only the "stale" status gets this rescue — covered
+        # is the happy path (evaluate directly), and no-anchor/unresolved/error
+        # are malformed records whose own honest message should reach the user.
+        # (The extra _record_covers_head call here is a deliberate, cheap
+        # redundancy on the cold PR-create path — it avoids reshaping the
+        # shared _evaluate_pr_gate_record return contract.)
+        slot_status, _ = _record_covers_head(project_dir, data.get("commit_reviewed"))
+        if slot_status == "stale":
+            covering = _ledger_fallback_record(
+                prawduct_dir, project_dir, require_covers_head=True
+            )
+            if covering is not None:
+                lineno, payload, ledger_file = covering
+                print(
+                    f"ledger-fallback: the latest findings record (mode "
+                    f"{data.get('mode')!r}) covers a different branch's HEAD "
+                    f"(stale here); evaluating the newest review.critic event "
+                    f"that covers this HEAD ({ledger_file.name} line {lineno}) "
+                    "instead — interleaved Critic→PR cycle (CRT-2K9F).",
+                    file=sys.stderr,
+                )
+                return _evaluate_pr_gate_record(
+                    project_dir, payload, f"{ledger_file} line {lineno}, ledger fallback"
+                )
+            # No covering ledger record → the slot's stale verdict stands.
         return _evaluate_pr_gate_record(project_dir, data, str(findings_path))
 
     # Ledger fallback (review-proportionality ch.02): the latest findings
@@ -1138,7 +1168,12 @@ def _pr_gate_record_qualifies(data: dict) -> bool:
     return False
 
 
-def _ledger_fallback_record(prawduct_dir: Path):
+def _ledger_fallback_record(
+    prawduct_dir: Path,
+    project_dir: Path | None = None,
+    *,
+    require_covers_head: bool = False,
+):
     """Newest qualifying ``review.critic`` payload from the governance ledger,
     as ``(lineno, payload, ledger_path)`` — or ``None``. Skips corrupt lines
     (the reader emits stderr notes), non-review events, schema-invalid
@@ -1154,6 +1189,17 @@ def _ledger_fallback_record(prawduct_dir: Path):
     closed: a missing/unreadable session marker, or a qualifying event with
     no usable ``ts``, yields no fallback — the gate's own wrong-mode /
     chain-missing-anchor message stands, and the skip is taught on stderr.
+
+    **Coverage requirement (CRT-2K9F).** With ``require_covers_head`` the
+    candidate must additionally COVER the current HEAD (``_record_covers_head``
+    returns ``"covered"``) — used when the single-slot record qualifies by KIND
+    but covers a *sibling* branch's HEAD (an interleaved Critic→PR cycle
+    overwrote the slot), so only a ledger record that covers THIS HEAD may
+    stand in. Scans newest-first and returns the newest covering record; a
+    non-covering candidate is skipped, not selected. Requires ``project_dir``
+    to evaluate coverage — without it the requirement cannot be checked and no
+    record is returned (fail closed). This never LOOSENS the gate: a
+    covering clean record is exactly as strong as a covering slot record.
     """
     try:
         from . import ledger  # noqa: PLC0415 — lazy keeps gates' import DAG light
@@ -1200,6 +1246,22 @@ def _ledger_fallback_record(prawduct_dir: Path):
                     file=sys.stderr,
                 )
                 continue
+            # CRT-2K9F coverage requirement: skip qualifying-but-non-covering
+            # records (a sibling branch's), keep scanning older for one that
+            # covers THIS HEAD. Fail closed when coverage can't be evaluated.
+            if require_covers_head:
+                if project_dir is None:
+                    return None
+                cov_status, _ = _record_covers_head(
+                    project_dir, payload.get("commit_reviewed")
+                )
+                if cov_status != "covered":
+                    print(
+                        f"ledger: skipping line {lineno} (qualifies but does "
+                        f"not cover HEAD: {cov_status} — CRT-2K9F)",
+                        file=sys.stderr,
+                    )
+                    continue
             return lineno, payload, ledger.ledger_path(prawduct_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- fallback is best-effort; the gate's own message stands
         return None

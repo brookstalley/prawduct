@@ -466,7 +466,36 @@ def _run_gate(repo: Path) -> subprocess.CompletedProcess:
     return _run_hook(repo, "check-cumulative-critic")
 
 
+def _interleaved_repo(tmp_path):
+    """Repo modeling an interleaved Critic→PR cycle: HEAD is on branch X, but
+    the single findings slot was last written for a SIBLING branch Y. Returns
+    ``(repo, x_head, y_head)`` — ``x_head`` IS HEAD; ``y_head`` is the sibling's
+    tip (resolves in the shared object store, does not cover ``x_head``)."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    base = _commit_file(repo, "app.py", "print(1)\n", "base")
+    x_head = _commit_file(repo, "x.py", "x = 1\n", "x branch work")  # main == X
+    _git(repo, "checkout", "--quiet", "-b", "siblingY", base)
+    y_head = _commit_file(repo, "y.py", "y = 1\n", "y branch work")
+    _git(repo, "checkout", "--quiet", "main")  # back to X; HEAD == x_head
+    return repo, x_head, y_head
+
+
 class TestGateLedgerFallbackAccepts:
+    def test_stale_sibling_slot_rescued_by_covering_ledger(self, tmp_path):
+        # CRT-2K9F: interleaved Critic→PR cycles overwrote the single slot with
+        # a SIBLING branch's cumulative (covers Y's HEAD — stale here). THIS
+        # branch's own covering record is still in the append-only ledger, so
+        # the gate passes via fallback instead of forcing a needless re-review.
+        repo, x_head, y_head = _interleaved_repo(tmp_path)
+        _append_ledger_event(repo, _cumulative_payload(x_head))  # X's own record
+        _write_session_start(repo)
+        _write_findings(repo, mode=CUMULATIVE_MODE, commit_reviewed=y_head)  # sibling slot
+        r = _run_gate(repo)
+        assert r.returncode == 0, r.stderr
+        assert "satisfied" in r.stdout and "ledger fallback" in r.stdout
+        assert "ledger-fallback" in r.stderr and "CRT-2K9F" in r.stderr
+
     def test_chunk_latest_plus_qualifying_ledger_cumulative_passes(self, tmp_path):
         # THE deferred-review fix: a chunk review after the cumulative no
         # longer destroys the PR gate's evidence — the ledger still holds it.
@@ -611,20 +640,33 @@ class TestGateLedgerFallbackStaysHonest:
         assert r.returncode == 1
         assert "wrong-mode" in r.stderr
 
-    def test_qualifying_latest_record_never_consults_ledger(self, tmp_path):
-        # The fallback is for the wrong-kind case ONLY: a stale cumulative in
-        # the latest slot fails on ITS coverage — an older (or even fresher)
-        # ledger record must not be consulted past a qualifying latest record.
-        repo = tmp_path / "repo"
-        _init_repo(repo)
-        reviewed = _commit_file(repo, "app.py", "print(1)\n", "init")
-        head = _commit_file(repo, "core.py", "x = 2\n", "code after review")
-        _append_ledger_event(repo, _cumulative_payload(head))  # would pass!
-        _write_findings(repo, mode=CUMULATIVE_MODE, commit_reviewed=reviewed)
+    def test_stale_sibling_slot_no_covering_ledger_still_blocks(self, tmp_path):
+        # CRT-2K9F honesty: the slot covers a sibling's HEAD (stale here) and
+        # the ledger holds NO record covering THIS HEAD → the gate still blocks
+        # on the slot's stale verdict; the fallback never invents coverage.
+        repo, _x_head, y_head = _interleaved_repo(tmp_path)
+        _append_ledger_event(repo, _cumulative_payload(y_head))  # sibling's, also stale here
+        _write_session_start(repo)
+        _write_findings(repo, mode=CUMULATIVE_MODE, commit_reviewed=y_head)
         r = _run_gate(repo)
         assert r.returncode == 1
         assert "stale" in r.stderr
-        assert "ledger-fallback" not in r.stderr
+        assert "satisfied" not in r.stdout
+
+    def test_covering_slot_record_evaluated_directly_not_via_ledger(self, tmp_path):
+        # The CRT-2K9F rescue is scoped to a STALE slot: a qualifying slot that
+        # COVERS HEAD is evaluated directly — the ledger is never consulted, so
+        # a clean covering slot passes without any fallback message.
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _append_ledger_event(repo, _cumulative_payload(head))  # present but unused
+        _write_session_start(repo)
+        _write_findings(repo, mode=CUMULATIVE_MODE, commit_reviewed=head)
+        r = _run_gate(repo)
+        assert r.returncode == 0, r.stderr
+        assert "satisfied" in r.stdout
+        assert "ledger-fallback" not in r.stderr  # direct eval, no fallback
 
 
 class TestGateLedgerFallbackFreshness:

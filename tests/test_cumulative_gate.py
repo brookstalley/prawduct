@@ -157,6 +157,20 @@ def test_doc_only_delta_since_review_still_covered(tmp_path):
     assert "stale" not in (r.stdout + r.stderr)
 
 
+def test_covering_slot_passes_directly_without_ledger_consult(tmp_path):
+    # CRT-2K9F happy-path-unchanged: a fresh slot cumulative that covers HEAD is
+    # evaluated directly — the new stale-slot ledger rescue routing must not
+    # fire (no needless fallback) when the slot already covers HEAD.
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    head = _commit_file(repo, "app.py", "print(1)\n", "init")
+    _write_findings(repo, commit_reviewed=head)
+    r = _run_gate(repo)
+    assert r.returncode == 0, r.stderr
+    assert "satisfied" in r.stdout
+    assert "ledger-fallback" not in r.stderr
+
+
 # ---------------------------------------------------------------------------
 # Coverage: the failing cases (honest)
 # ---------------------------------------------------------------------------
