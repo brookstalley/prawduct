@@ -544,32 +544,6 @@
   model dimension). Feeds C (the data that would justify deferring per-chunk reviews on short plans).
   (user)
 
-- **[CRT-5T8N]** Single-owner the Learnings Cross-Check & Backlog Reconciliation shared by the cumulative-Critic and the PR reviewer
-  `effort: S · impact: S · area: critic · source: user · added: 2026-06-22 · status: open · stage: ready · related: TEL-6P2D · refs: skills/critic/review-protocol.md, skills/pr/review-protocol.md`
-
-  Problem: After the consume-and-audit redesign (PR reviewer audits the Critic record instead of
-  re-deriving code soundness), two checklist items are still performed by BOTH the cumulative/final
-  Critic and the PR reviewer: (1) Learnings Cross-Check (both scan learnings.md) and (2) Backlog
-  Reconciliation (Critic does it; PR reviewer does a data-consistency variant). This duplicates prompt
-  scope across two agents. It saves prompt tokens/focus, NOT wall-clock (no review run is removed) — a
-  tidy, not a needle-mover; scope accordingly.
-
-  Approach:
-  - B0 (validate FIRST — Principle 15): diff the two protocols' checklists and confirm the overlap is
-    TRUE duplication, not complementary work. Specifically check whether the PR reviewer's
-    release-coherence/data-consistency check (change-log ↔ version ↔ backlog) catches something the
-    Critic's reconciliation does not. Do NOT dedup complementary checks. If complementary, close B as
-    "no-op, confirmed complementary."
-  - B1: assign single ownership for the genuinely-duplicated parts — Critic owns the Learnings
-    Cross-Check and the substantive Backlog Reconciliation; the PR reviewer cites the Critic's result /
-    does only the thin release-coherence delta. Edit skills/critic/review-protocol.md and
-    skills/pr/review-protocol.md to state the single owner explicitly.
-
-  Assurance: must NOT drop any check — only relocate it to exactly one owner.
-  Acceptance: each of the two checks has exactly one named owner across the two protocols; nothing
-  silently dropped; the PR reviewer protocol explicitly references the Critic's result for the
-  relocated checks. Governance-protected files (skills/) → full Critic + PR review. (user)
-
 - **[CRT-9R4K]** Extend cumulative-final to short plans — defer per-chunk Critic reviews into one end-of-plan cumulative
   `effort: M · impact: M · area: building · source: user · added: 2026-06-22 · status: open · stage: requirements · related: TEL-6P2D · refs: methodology/building.md, skills/critic/review-protocol.md, lib/critic_mode.py`
 
@@ -609,6 +583,38 @@
 ## Promoted
 
 ## Archive
+
+- **[CRT-5T8N]** Single-owner the Learnings Cross-Check & Backlog Reconciliation shared by the cumulative-Critic and the PR reviewer
+  `effort: S · impact: S · area: critic · source: user · added: 2026-06-22 · status: shipped · stage: ready · related: TEL-6P2D · refs: skills/critic/review-protocol.md, skills/pr/review-protocol.md · closed-by: single-owner-shared-checks · reviewed: 2026-06-22`
+
+  Problem: After the consume-and-audit redesign (PR reviewer audits the Critic record instead of
+  re-deriving code soundness), two checklist items are still performed by BOTH the cumulative/final
+  Critic and the PR reviewer: (1) Learnings Cross-Check (both scan learnings.md) and (2) Backlog
+  Reconciliation (Critic does it; PR reviewer does a data-consistency variant). This duplicates prompt
+  scope across two agents. It saves prompt tokens/focus, NOT wall-clock (no review run is removed) — a
+  tidy, not a needle-mover; scope accordingly.
+
+  Approach:
+  - B0 (validate FIRST — Principle 15): diff the two protocols' checklists and confirm the overlap is
+    TRUE duplication, not complementary work. Specifically check whether the PR reviewer's
+    release-coherence/data-consistency check (change-log ↔ version ↔ backlog) catches something the
+    Critic's reconciliation does not. Do NOT dedup complementary checks. If complementary, close B as
+    "no-op, confirmed complementary."
+  - B1: assign single ownership for the genuinely-duplicated parts — Critic owns the Learnings
+    Cross-Check and the substantive Backlog Reconciliation; the PR reviewer cites the Critic's result /
+    does only the thin release-coherence delta. Edit skills/critic/review-protocol.md and
+    skills/pr/review-protocol.md to state the single owner explicitly.
+
+  Assurance: must NOT drop any check — only relocate it to exactly one owner.
+  Acceptance: each of the two checks has exactly one named owner across the two protocols; nothing
+  silently dropped; the PR reviewer protocol explicitly references the Critic's result for the
+  relocated checks. Governance-protected files (skills/) → full Critic + PR review. (user)
+
+  Shipped 2026-06-22 on branch feature/single-owner-shared-checks: scoped the PR reviewer's
+  Learnings Cross-Check + Backlog R-1 to the consumed Critic record; R-2 stays unconditional;
+  review-cycle.md names final/cumulative as owner; 2 guard tests; cumulative Critic clean, PR
+  reviewer clean. Archived on-branch per the ship-in-PR contract so it rides in the closing PR.
+  closed-by is the branch/feature scope name (a pre-commit handle, not a SHA).
 
 - **[TEL-4M9X]** Normalize model-id strings in the governance ledger so review-stats can analyze the model dimension
   `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: shipped · stage: ready · related: TEL-6P2D · refs: lib/telemetry.py, .prawduct/.governance-ledger.jsonl, .prawduct/artifacts/reviewer-model-ab-2026-06-10.md · closed-by: telemetry-model-id-normalization · reviewed: 2026-06-22`

@@ -126,7 +126,7 @@ These are fail-closed: when the helper cannot anchor a delta, it refuses to comp
 
 ## Final-Mode Cross-Checks
 
-After completing the goal-based review in `final` mode, run two additional passes that `chunk` mode skips:
+After completing the goal-based review in `final` mode, run two additional passes that `chunk` mode skips. **`final`/`cumulative` is the owner of both cross-checks** — the PR reviewer consumes their result from the cumulative record rather than re-running them (it re-scans only a `verify-resolutions` chain-delta, or a voided record; see `skills/pr/review-protocol.md`), so each runs once per PR:
 
 ### Learnings Cross-Check
 
