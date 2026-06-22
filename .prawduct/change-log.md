@@ -115,7 +115,7 @@ ledger line, so the historical 41 events aggregate correctly with **no rewrite**
 
 ## 2026-06-21: Batch git subprocess fan-out on the SessionStart/Stop hot paths (hot-path-git-batching)
 
-<!-- prawduct: chunks=01 | type=refactor | scope=hot-path-git-batching -->
+<!-- prawduct: chunks=01 | type=refactor | scope=hot-path-git-batching | status=merged -->
 
 **Why:** The `clear` (SessionStart) and `stop` (Stop) hooks spawned more git
 subprocesses than needed — measured 25 on `clear`, dominated by
