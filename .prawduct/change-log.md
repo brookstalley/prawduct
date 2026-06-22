@@ -3,6 +3,29 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-22: Raise the Critic review-protocol.md token budget 3120 → 3350 — relieve an operationally-zero ceiling without abandoning the trim discipline (critic-protocol-budget)
+
+<!-- prawduct: chunks=01 | type=refactor | scope=critic-protocol-budget -->
+
+**Why:** `skills/critic/review-protocol.md` had reached 3116 of its 3120-token
+test ceiling — 4 tokens of headroom, an operational zero that forces a harmful
+trim on the *next* legitimate check. An audit found the file LEAN, not bloated:
+every goal bullet is a specific, severity-mapped check, already compressed across
+many documented passes. The one relocatable block (the findings-JSON field
+glossary) is genuinely useful inline next to its template, so relocating it purely
+to clear the number would fragment the instructions — the anti-pattern the budget
+exists to prevent. And the ceiling is only ~1-2% of a medium/large review's token
+cost (the file loads into a 4-10 min opus review over a full diff + 3 subagents),
+so it is an anti-bloat **discipline** knob, not a material cost control.
+
+**What:** Raised the ceiling to 3350 (+230 tokens ≈ room for 3-4 future checks)
+in `tests/test_v5_methodology.py`, with the rationale recorded in the test
+comment. The discipline posture is **unchanged** — the comment still mandates
+"prefer trim over bump, and relocate per-mode/record detail to `review-cycle.md`
+before adding here." No protocol content changed; this is purely the test
+threshold. Part of the review-streamlining track (alongside the telemetry
+model-id fix and the PR-reviewer single-owner scoping).
+
 ## 2026-06-22: Single-owner the PR reviewer's Learnings Cross-Check & Backlog R-1 — scope them to the consumed Critic record (single-owner-shared-checks)
 
 <!-- prawduct: chunks=01 | type=refactor | scope=single-owner-shared-checks -->
