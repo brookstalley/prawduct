@@ -102,7 +102,7 @@ contract; the groomed item (STH-6Q9D) names the three targets and the affected f
 
 ## Status
 
-- [ ] Chunk 01: Batch untracking + capture-once status + pruned product-code walk
+- [x] Chunk 01: Batch untracking + capture-once status + pruned product-code walk
 
 Context: chunk 01 BUILT and merge-ready (2026-06-21, single work cycle, branch
 `feature/hot-path-git-batching` off `develop`; the sibling

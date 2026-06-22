@@ -58,9 +58,9 @@ stated premises. Builders of each chunk should read this before starting:
 
 ## Status
 
-- [ ] Chunk 01: Retire the misleading `git_sha` — freshness is `test-status`, period
-- [ ] Chunk 02: `--from-junit` ingest — end the double-execution of the suite
-- [ ] Chunk 03: Loud-fail on empty test discovery + document the `tests_dirs:` knob
+- [x] Chunk 01: Retire the misleading `git_sha` — freshness is `test-status`, period
+- [x] Chunk 02: `--from-junit` ingest — end the double-execution of the suite
+- [x] Chunk 03: Loud-fail on empty test discovery + document the `tests_dirs:` knob
 Context: ALL THREE CHUNKS COMPLETE. Ch01 (50c8ecb): `git_sha` retired; PR/Critic
 protocols retargeted at `test-status`; obsolete "record AFTER commit" learning
 replaced. Ch02 (eeb4122): `record --from-junit <report>` ingests an existing JUnit

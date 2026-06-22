@@ -5,6 +5,52 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.1.8
+
+### test-evidence
+
+**Entry:** 2026-06-22: Test-evidence `record` cluster — retire the misleading git_sha, ingest existing JUnit runs, loud-fail on empty discovery (test-evidence)
+
+**Chunks shipped:** 01, 02, 03
+
+### critic-protocol-budget
+
+**Entry:** 2026-06-22: Raise the Critic review-protocol.md token budget 3120 → 3350 — relieve an operationally-zero ceiling without abandoning the trim discipline (critic-protocol-budget)
+
+**Chunks shipped:** 01
+
+### single-owner-shared-checks
+
+**Entry:** 2026-06-22: Single-owner the PR reviewer's Learnings Cross-Check & Backlog R-1 — scope them to the consumed Critic record (single-owner-shared-checks)
+
+**Chunks shipped:** 01
+
+### telemetry-model-id-normalization
+
+**Entry:** 2026-06-22: Fold reviewer model-id aliases to a family label in review-stats so the model dimension isn't fragmented (telemetry-model-id-normalization)
+
+**Chunks shipped:** 01
+
+### hot-path-git-batching
+
+**Entry:** 2026-06-21: Batch git subprocess fan-out on the SessionStart/Stop hot paths (hot-path-git-batching)
+
+**Chunks shipped:** 01
+
+### hook-cli-robustness
+
+**Entry:** 2026-06-21: Hook-CLI robustness bundle — five ready S-effort fixes (hook-cli-robustness)
+
+**Chunks shipped:** 01
+
+### worktree-compat
+
+**Entry:** 2026-06-20: Resolve `.prawduct/` state against the session git worktree — governance gates + critic/pr compose in worktrees (STH-4K7N)
+
+**Chunks shipped:** 01, 02
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.1.7
 
 **Entry:** 2026-06-21: Reconcile the backlog `closed-by:` handle contract — a pre-commit handle (chunk/scope/tag), never a bare SHA (backlog-closed-by-handle)

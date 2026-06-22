@@ -36,8 +36,8 @@ post-merge real-worktree operator check.
 
 ## Status
 
-- [ ] Chunk 01: Worktree-aware `.prawduct/` resolution (code + tests)
-- [ ] Chunk 02: Worktree workflow guidance (methodology + skill notes)
+- [x] Chunk 01: Worktree-aware `.prawduct/` resolution (code + tests)
+- [x] Chunk 02: Worktree workflow guidance (methodology + skill notes)
 <!-- views_enabled: checkboxes flip from change-log status=shipped at release;
      mid-branch progress is tracked in this Context line + git commits. -->
 Context: Plan authored 2026-06-20 on feature/worktree-compat (off develop).

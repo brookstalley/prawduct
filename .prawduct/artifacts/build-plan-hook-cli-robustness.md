@@ -29,7 +29,7 @@ last_validated: null
 
 ## Status
 
-- [ ] Chunk 01: Hook-CLI robustness bundle (5 fixes)
+- [x] Chunk 01: Hook-CLI robustness bundle (5 fixes)
 
 Context: Chunk 01 BUILT and merge-ready (branch feature/hook-cli-robustness, 2026-06-21). All 5 fixes implemented with +14 tests; full suite 1366 pass / 0 fail; evidence current. Cumulative Critic (f208ad2) raised 1 BLOCKING — the plan's own prose backticked git-ref tokens that tripped verify-chunk-refs — resolved in f92a4be (de-backtick) and confirmed by verify-resolutions (chain covers HEAD, satisfies the /pr create gate). General git-ref over-match captured as BLD-3M7K. Checkbox stays [ ] until release flips the change-log entry to status=shipped (regen-views). Next: `/prawduct:pr` when the user is ready (target v2.1.8); CRT-9L2F is the post-release follow-up.
 

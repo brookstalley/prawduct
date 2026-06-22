@@ -5,7 +5,7 @@
 
 ## 2026-06-22: Test-evidence `record` cluster — retire the misleading git_sha, ingest existing JUnit runs, loud-fail on empty discovery (test-evidence)
 
-<!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence | status=merged -->
+<!-- prawduct: chunks=01,02,03 | type=feature | release=v2.1.8 | status=shipped | scope=test-evidence -->
 
 **Why:** Three independent fixes on the `test-evidence record` surface, bundled
 into one PR for review economy (a code survey confirmed they share the surface,
@@ -40,7 +40,7 @@ halves **silently**, reading downstream as false missing-coverage.
 
 ## 2026-06-22: Raise the Critic review-protocol.md token budget 3120 → 3350 — relieve an operationally-zero ceiling without abandoning the trim discipline (critic-protocol-budget)
 
-<!-- prawduct: chunks=01 | type=refactor | scope=critic-protocol-budget | status=merged -->
+<!-- prawduct: chunks=01 | type=refactor | release=v2.1.8 | status=shipped | scope=critic-protocol-budget -->
 
 **Why:** `skills/critic/review-protocol.md` had reached 3116 of its 3120-token
 test ceiling — 4 tokens of headroom, an operational zero that forces a harmful
@@ -63,7 +63,7 @@ model-id fix and the PR-reviewer single-owner scoping).
 
 ## 2026-06-22: Single-owner the PR reviewer's Learnings Cross-Check & Backlog R-1 — scope them to the consumed Critic record (single-owner-shared-checks)
 
-<!-- prawduct: chunks=01 | type=refactor | scope=single-owner-shared-checks | status=merged -->
+<!-- prawduct: chunks=01 | type=refactor | release=v2.1.8 | status=shipped | scope=single-owner-shared-checks -->
 
 **Why:** After the consume-and-audit redesign (the PR reviewer audits the Critic
 record instead of re-deriving code soundness), the PR reviewer *still* re-ran two
@@ -92,7 +92,7 @@ only references it), so the ownership statement landed there.
 
 ## 2026-06-22: Fold reviewer model-id aliases to a family label in review-stats so the model dimension isn't fragmented (telemetry-model-id-normalization)
 
-<!-- prawduct: chunks=01 | type=fix | scope=telemetry-model-id-normalization | status=merged -->
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.8 | status=shipped | scope=telemetry-model-id-normalization -->
 
 **Why:** `review-stats` groups reviews by role × model × mode, but one model is
 recorded under several id strings (`opus`, `claude-opus-4-8`,
@@ -115,7 +115,7 @@ ledger line, so the historical 41 events aggregate correctly with **no rewrite**
 
 ## 2026-06-21: Batch git subprocess fan-out on the SessionStart/Stop hot paths (hot-path-git-batching)
 
-<!-- prawduct: chunks=01 | type=refactor | scope=hot-path-git-batching | status=merged -->
+<!-- prawduct: chunks=01 | type=refactor | release=v2.1.8 | status=shipped | scope=hot-path-git-batching -->
 
 **Why:** The `clear` (SessionStart) and `stop` (Stop) hooks spawned more git
 subprocesses than needed — measured 25 on `clear`, dominated by
@@ -149,7 +149,7 @@ deliverable. Full suite 1365 pass / 0 fail.
 
 ## 2026-06-21: Hook-CLI robustness bundle — five ready S-effort fixes (hook-cli-robustness)
 
-<!-- prawduct: chunks=01 | type=fix | scope=hook-cli-robustness | status=merged -->
+<!-- prawduct: chunks=01 | type=fix | release=v2.1.8 | status=shipped | scope=hook-cli-robustness -->
 
 **Why:** Five independent, ready, S-effort robustness/correctness gaps in the
 framework's own hook CLI + governance libs accumulated on the backlog (from
@@ -184,7 +184,7 @@ natural follow-up once this ships.
 
 ## 2026-06-20: Resolve `.prawduct/` state against the session git worktree — governance gates + critic/pr compose in worktrees (STH-4K7N)
 
-<!-- prawduct: chunks=01,02 | type=fix | scope=worktree-compat | status=merged -->
+<!-- prawduct: chunks=01,02 | type=fix | release=v2.1.8 | status=shipped | scope=worktree-compat -->
 
 **Why:** Host repos increasingly *mandate* git worktrees for WIP (a stable
 primary checkout serving the plugin live; isolation for parallel agents), but

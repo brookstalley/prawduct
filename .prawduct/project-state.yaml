@@ -467,8 +467,6 @@ views_enabled: true
 # complete and released; their build-plan files are retained as historical
 # artifacts alongside the prior vN plans.
 
-active_build_plan: artifacts/build-plan-worktree-compat.md
-
 #
 # v2.0.5 (2026-06-04) shipped FOUR batched scopes together — roi-batch (#58),
 # roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
@@ -601,6 +599,9 @@ scope_rollups:
   critic-mode-consolidation:
     chunks: ["01"]
     releases: ["v2.1.4"]
+  critic-protocol-budget:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
   critic-session-guard:
     chunks: ["1"]
     releases: ["v2.0.14"]
@@ -619,9 +620,15 @@ scope_rollups:
   gate-soundness:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.1.0"]
+  hook-cli-robustness:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
   hook-decomp:
     chunks: ["1", "2", "3", "4", "5", "6", "7"]
     releases: ["v2.0.14"]
+  hot-path-git-batching:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]
@@ -652,6 +659,15 @@ scope_rollups:
   roi-batch-2:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
     releases: ["v2.0.5"]
+  single-owner-shared-checks:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
+  telemetry-model-id-normalization:
+    chunks: ["01"]
+    releases: ["v2.1.8"]
+  test-evidence:
+    chunks: ["01", "02", "03"]
+    releases: ["v2.1.8"]
   upstream-bug-reporting:
     chunks: ["01", "02"]
     releases: ["v2.1.6"]
@@ -682,3 +698,6 @@ scope_rollups:
   work-model:
     chunks: ["1", "2", "3"]
     releases: ["v2.0.13"]
+  worktree-compat:
+    chunks: ["01", "02"]
+    releases: ["v2.1.8"]
