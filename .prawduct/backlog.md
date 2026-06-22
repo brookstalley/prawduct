@@ -495,6 +495,132 @@
   parser family as the shipped BLD-2R9X (glob metacharacters) and BLD-8F2Q (`path::symbol`); this
   covers token classes those two fixes don't reach. (critic)
 
+- **[TEL-4M9X]** Normalize model-id strings in the governance ledger so review-stats can analyze the model dimension
+  `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: open · stage: ready · related: TEL-6P2D · refs: lib/telemetry.py, .prawduct/.governance-ledger.jsonl, .prawduct/artifacts/reviewer-model-ab-2026-06-10.md`
+
+  Problem: `review-stats` aggregates by `role × model × mode`, but the SAME model is recorded under
+  several id strings — `opus`, `claude-opus-4-8`, and `claude-opus-4-8[1m]` are all the same model,
+  while `fable`/`sonnet` are genuinely different. This fragments the model dimension into noise. The
+  2026-06-22 review-stats run split critic-opus reviews across three buckets (1 + 6 + others), making
+  per-model yield unreadable — which defeats the exact A/B question the telemetry was built to answer
+  (see reviewer-model-ab artifact).
+
+  Approach:
+  - Canonicalize the model-id at the aggregation key in lib/telemetry.py (read-time fold) AND at
+    write-time where the review.* ledger event is created, so new events are clean and the existing 41
+    immutable events still aggregate correctly without rewriting the append-only ledger.
+  - Collapse opus aliases (`opus`, `claude-opus-4-8`, `claude-opus-4-8[1m]`) → one canonical `opus`
+    family label; keep `fable`, `sonnet`, `haiku` distinct; unknown id → passthrough.
+  - Put the mapping in ONE shared helper so future model ids are a one-line add.
+
+  Assurance impact: pure measurement/observability fix — changes no gate behavior and adds no review
+  runs. Zero assurance risk.
+
+  Acceptance:
+  - review-stats shows opus variants collapsed to one bucket per (role, mode); fable stays separate.
+  - The historical 41 events aggregate correctly with NO rewrite of the ledger file.
+  - Unit test covers the canonicalization map (opus aliases→opus; fable→fable; unknown→passthrough).
+
+  Open decision: normalize the aggregation key only vs. add a persisted `model_family` field —
+  recommend aggregation-key normalization + shared helper (lighter; preserves the raw string). This is
+  the FIRST deliverable of the evidence-driven-pruning track and must land before any per-model or
+  per-leg pruning can be data-justified. Being started immediately (will be promoted on a feature
+  branch off develop). (user)
+
+- **[TEL-6P2D]** review-stats windowing + zero-yield pruning-candidate flag + a documented pruning protocol (no auto-cut)
+  `effort: S · impact: M · area: telemetry · source: user · added: 2026-06-22 · status: open · stage: design · related: TEL-4M9X, CRT-9R4K, CRT-5T8N · refs: lib/telemetry.py, methodology/building.md`
+
+  Problem: We want to retire/lighten review legs that demonstrably catch nothing, WITHOUT guessing.
+  Today review-stats has no window and no "this leg looks unproductive" signal, and there is no written
+  protocol for how a cut is justified/approved. The 2026-06-22 data (post-A1) is too thin per bucket
+  (1–8 reviews) to act on, so the immediate need is to accumulate clean data and stand up the decision
+  machinery.
+
+  Approach:
+  - Add `review-stats --since=<window>` (time-based e.g. 30d AND/OR last-N reviews) so trailing-window
+    yield is readable, not just all-time.
+  - Flag any (role × mode [× code-path]) leg with ≥N reviews and 0 actionable (B/W) findings over the
+    window as a HUMAN-REVIEWED pruning candidate — surfaced in the report, NEVER auto-applied.
+  - Write the pruning protocol into methodology: a review leg may be lightened/retired only when (a) ≥N
+    reviews in window, (b) 0 actionable yield, (c) a human signs off, AND (d) it ships with a regression
+    test proving a non-eligible case still gets the full review (the trivial-fast-path lesson: a
+    skip-gate needs the MOST adversarial coverage).
+  - Name the PR reviewer (pr-scoped) as the standing WATCH-TARGET: as of 2026-06-22 it is the lowest
+    yield-per-run (9 reviews, ~1 actionable, ~46 min wall-clock total), BUT its low yield is confounded
+    — its job includes confirming the Critic was right + release-readiness, where an empty result is
+    partly success. Do NOT cut it on current data; instrument and watch.
+
+  Assurance: preserved by construction — every cut is gated behind data + human sign-off + a regression
+  test; the flag is advisory only.
+
+  Open design decisions: threshold N (proposal ≥10 reviews/0 actionable before flagging); window
+  semantics (time vs count — recommend both, default time); whether to break the flag down by
+  code-path/scope (a leg may be productive on governance diffs, dead on docs). Depends on A1 (clean
+  model dimension). Feeds C (the data that would justify deferring per-chunk reviews on short plans).
+  (user)
+
+- **[CRT-5T8N]** Single-owner the Learnings Cross-Check & Backlog Reconciliation shared by the cumulative-Critic and the PR reviewer
+  `effort: S · impact: S · area: critic · source: user · added: 2026-06-22 · status: open · stage: ready · related: TEL-6P2D · refs: skills/critic/review-protocol.md, skills/pr/review-protocol.md`
+
+  Problem: After the consume-and-audit redesign (PR reviewer audits the Critic record instead of
+  re-deriving code soundness), two checklist items are still performed by BOTH the cumulative/final
+  Critic and the PR reviewer: (1) Learnings Cross-Check (both scan learnings.md) and (2) Backlog
+  Reconciliation (Critic does it; PR reviewer does a data-consistency variant). This duplicates prompt
+  scope across two agents. It saves prompt tokens/focus, NOT wall-clock (no review run is removed) — a
+  tidy, not a needle-mover; scope accordingly.
+
+  Approach:
+  - B0 (validate FIRST — Principle 15): diff the two protocols' checklists and confirm the overlap is
+    TRUE duplication, not complementary work. Specifically check whether the PR reviewer's
+    release-coherence/data-consistency check (change-log ↔ version ↔ backlog) catches something the
+    Critic's reconciliation does not. Do NOT dedup complementary checks. If complementary, close B as
+    "no-op, confirmed complementary."
+  - B1: assign single ownership for the genuinely-duplicated parts — Critic owns the Learnings
+    Cross-Check and the substantive Backlog Reconciliation; the PR reviewer cites the Critic's result /
+    does only the thin release-coherence delta. Edit skills/critic/review-protocol.md and
+    skills/pr/review-protocol.md to state the single owner explicitly.
+
+  Assurance: must NOT drop any check — only relocate it to exactly one owner.
+  Acceptance: each of the two checks has exactly one named owner across the two protocols; nothing
+  silently dropped; the PR reviewer protocol explicitly references the Critic's result for the
+  relocated checks. Governance-protected files (skills/) → full Critic + PR review. (user)
+
+- **[CRT-9R4K]** Extend cumulative-final to short plans — defer per-chunk Critic reviews into one end-of-plan cumulative
+  `effort: M · impact: M · area: building · source: user · added: 2026-06-22 · status: open · stage: requirements · related: TEL-6P2D · refs: methodology/building.md, skills/critic/review-protocol.md, lib/critic_mode.py`
+
+  Opportunity: For a multi-chunk feature every chunk gets its own opus fork Critic review, then the
+  cumulative re-reviews all of them (the deliberate local-vs-integration redundancy). For SHORT plans
+  this is the biggest avoidable wall-clock: N per-chunk runs a single end-of-plan cumulative would
+  cover. The 2026-06-22 chunk-mode yield is low (~1 actionable across 7 reviews) — MILD supporting
+  evidence only; early-detection value is not captured by finding-count, so this is a judgment call,
+  not a data verdict.
+
+  Tradeoff (USER owns it — Principle 23): deferring per-chunk reviews trades EARLY detection for a
+  bigger blast radius — a flaw introduced in chunk 1 surfaces only at end-of-plan, costing more rework
+  to unwind. Eligibility bounds that risk.
+
+  Requirements to pin FIRST (C0 — why this is stage:requirements, not ready):
+  - Decide the acceptable-tradeoff bounds: under what plan shape is deferring early detection
+    acceptable? Proposal: chunk-count ≤ 3 AND risk tier = standard AND NEVER escalate-tier
+    (governance/contract-path scope always gets per-chunk review). User to confirm/adjust.
+  - Confirm composition with the existing cumulative-final Type (today: commit last chunk, run
+    cumulative once = chunk review + PR record). C generalizes that to cover ALL chunks of a short
+    eligible plan, not just the last.
+
+  Design (C1, after requirements): eligibility predicate in lib/critic_mode.py + the build cycle in
+  methodology/building.md (eligible short plan marks intermediate chunks "review deferred to
+  end-of-plan cumulative"); resolve how a deferred plan interacts with the stop-hook Critic gate and
+  session boundaries (a plan spanning sessions cannot defer past a session end without a gate record).
+
+  Guardrail (C2 — MANDATORY, load-bearing): ship with a regression test proving a NON-eligible plan
+  (4+ chunks OR escalate-tier) STILL gets per-chunk reviews. The retired PR trivial-fast-path failed
+  precisely because it shipped with zero adversarial coverage — a skip-gate needs the MOST adversarial
+  coverage.
+
+  Assurance: preserved only if the eligibility predicate + C2 regression test hold and the bounded
+  early-detection loss is explicitly accepted by the user. Gated behind A's accumulated data OR an
+  explicit user accept-the-tradeoff decision. (user)
+
 ## Promoted
 
 ## Archive
