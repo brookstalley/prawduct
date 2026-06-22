@@ -229,6 +229,7 @@ def _build_evidence_fields(
 
     referenced: list[str] = []
     unjudged: list[str] = []
+    judgeable = 0
     for f in changed:
         fp = cwd / f
         if not fp.is_file():
@@ -244,10 +245,28 @@ def _build_evidence_fields(
             # Symbol-less Python (re-export __init__, constants module).
             unjudged.append(f)
             continue
+        judgeable += 1
         if _has_reference(test_texts, symbols):
             referenced.append(f)
         # else: a judged Python file with no test reference — the legitimate
         # gap `verify-coverage` exists to catch. It stays out of both lists.
+
+    # Zero test discovery while there ARE judgeable files is almost always a
+    # misconfigured tests dir (monorepo / engine subdir whose tests live outside
+    # repo-root `tests/`), not a real coverage gap: every judgeable file then
+    # reads as unreferenced and the gate raises a false missing-coverage. Fail
+    # LOUD instead of silently writing empty halves (TST-2H9P). Gated on
+    # `judgeable` so a genuinely test-less doc/config change stays quiet.
+    if judgeable and not test_files:
+        searched = ", ".join(str(d) for d in tests_dirs) or "(none)"
+        print(
+            f"warning: {judgeable} changed Python file(s) to judge but NO test "
+            f"files found under {searched} — they will all read as unreferenced "
+            "(a false missing-coverage gate). If this repo keeps tests outside "
+            "repo-root tests/ (monorepo / engine subdir), set tests_dirs: in "
+            ".prawduct/project-state.yaml (whitespace-separated roots).",
+            file=sys.stderr,
+        )
 
     return {
         "verifier": VERIFIER_NAME,

@@ -342,6 +342,52 @@ class TestMultipleTestsDirs:
         assert evidence["tests_executed"] == ["tests/test_core.py"]
 
 
+class TestEmptyDiscoveryWarns:
+    """TST-2H9P: zero test discovery while judgeable files changed is a LOUD
+    warning naming the `tests_dirs:` knob, not a silent empty evidence half — a
+    monorepo whose tests live outside repo-root `tests/` otherwise gets a false
+    missing-coverage gate.
+    """
+
+    def test_warns_when_judgeable_files_but_no_tests_found(self, mini_repo: Path):
+        # A changed Python file with symbols, but discovery points at an empty
+        # dir → nothing can reference it. The verifier must say so on stderr.
+        (mini_repo / "src" / "feature.py").write_text(
+            "def brand_new():\n    return 2\n"
+        )
+        (mini_repo / "notests").mkdir()
+        result = _run_verifier(
+            mini_repo, "--base", "main", "--tests-dir", "notests",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "no test files" in result.stderr.lower()
+        assert "tests_dirs" in result.stderr
+        evidence = json.loads(result.stdout)
+        assert evidence["tests_executed"] == []
+        assert "src/feature.py" not in evidence["changes_referenced"]
+
+    def test_silent_when_no_judgeable_files_changed(self, mini_repo: Path):
+        # Only a non-Python file changed → nothing judgeable → no warning, even
+        # with an empty tests dir (avoid noise on genuinely test-less changes).
+        (mini_repo / "README.md").write_text("# docs\n")
+        (mini_repo / "notests").mkdir()
+        result = _run_verifier(
+            mini_repo, "--base", "main", "--tests-dir", "notests",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "no test files" not in result.stderr.lower()
+
+    def test_no_warning_when_tests_are_found(self, mini_repo: Path):
+        # mini_repo's default `tests/` is populated → a changed, referenced file
+        # produces no false warning.
+        (mini_repo / "src" / "core.py").write_text(
+            "def existing_helper():\n    return 99\n"
+        )
+        result = _run_verifier(mini_repo, "--base", "main")
+        assert result.returncode == 0, result.stderr
+        assert "no test files" not in result.stderr.lower()
+
+
 class TestOutputModes:
     """--output and --merge-into write modes."""
 

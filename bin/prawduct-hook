@@ -1300,6 +1300,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         if base:
             merge_cmd += ["--base", base]
         mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)
+        if mp.stderr.strip():
+            # Forward the verifier's warnings (e.g. zero test discovery —
+            # TST-2H9P); capture_output would otherwise swallow them.
+            print(mp.stderr.rstrip(), file=sys.stderr)
         if mp.returncode != 0:
             print(
                 f"note: F4a coverage overlay did not complete (exit "

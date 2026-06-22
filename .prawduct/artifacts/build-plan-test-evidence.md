@@ -61,17 +61,17 @@ stated premises. Builders of each chunk should read this before starting:
 - [ ] Chunk 01: Retire the misleading `git_sha` — freshness is `test-status`, period
 - [ ] Chunk 02: `--from-junit` ingest — end the double-execution of the suite
 - [ ] Chunk 03: Loud-fail on empty test discovery + document the `tests_dirs:` knob
-Context: Chunks 01 + 02 COMPLETE. Ch01 (50c8ecb): `git_sha` retired; PR/Critic
+Context: ALL THREE CHUNKS COMPLETE. Ch01 (50c8ecb): `git_sha` retired; PR/Critic
 protocols retargeted at `test-status`; obsolete "record AFTER commit" learning
-replaced. Ch02: `record --from-junit <report>` ingests an existing JUnit run
-instead of re-running the suite (ends the double-execution); rejects combination
-with extra args / `test_command`; methodology Verify documents the single-run flow
-(a lossless trim of the adjacent In-flight paragraph kept building.md under its
-4850-token ceiling). Critic chunk-mode: 0 blocking, 0 warnings, 1 NOTE (building.md
-omits the explicit `pytest --junit-xml=<f>` producing step — left as-is: accurate +
-sufficient, and re-adding it would re-breach the ceiling). 1365 tests pass (7 new).
-Next: Chunk 03 (loud-fail on empty test discovery + document `tests_dirs:`;
-cumulative-final → the one `/critic cumulative` = the PR gate).
+replaced. Ch02 (eeb4122): `record --from-junit <report>` ingests an existing JUnit
+run instead of re-running the suite (ends the double-execution). Ch03: verifier
+fails LOUD when zero tests are discovered while judgeable Python files changed
+(naming the `tests_dirs:` knob) instead of silently writing empty halves, and
+`record` now forwards the verifier's stderr; the `tests_dirs:` knob was already
+documented (hook docstring + Verify line), so no further building.md edit was
+needed (it's at its token ceiling) — the warning message is the actionable doc.
+1368 tests pass (3 new). Cumulative Critic = the `/prawduct:pr create` gate; backlog
+TST-4K2P/7M3K/2H9P stay `promoted` until the PR ships them (user drives `/pr`).
 
 ## Scaffolding
 
