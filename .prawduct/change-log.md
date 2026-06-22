@@ -5,7 +5,7 @@
 
 ## 2026-06-22: Raise the Critic review-protocol.md token budget 3120 → 3350 — relieve an operationally-zero ceiling without abandoning the trim discipline (critic-protocol-budget)
 
-<!-- prawduct: chunks=01 | type=refactor | scope=critic-protocol-budget -->
+<!-- prawduct: chunks=01 | type=refactor | scope=critic-protocol-budget | status=merged -->
 
 **Why:** `skills/critic/review-protocol.md` had reached 3116 of its 3120-token
 test ceiling — 4 tokens of headroom, an operational zero that forces a harmful
@@ -28,7 +28,7 @@ model-id fix and the PR-reviewer single-owner scoping).
 
 ## 2026-06-22: Single-owner the PR reviewer's Learnings Cross-Check & Backlog R-1 — scope them to the consumed Critic record (single-owner-shared-checks)
 
-<!-- prawduct: chunks=01 | type=refactor | scope=single-owner-shared-checks -->
+<!-- prawduct: chunks=01 | type=refactor | scope=single-owner-shared-checks | status=merged -->
 
 **Why:** After the consume-and-audit redesign (the PR reviewer audits the Critic
 record instead of re-deriving code soundness), the PR reviewer *still* re-ran two
@@ -57,7 +57,7 @@ only references it), so the ownership statement landed there.
 
 ## 2026-06-22: Fold reviewer model-id aliases to a family label in review-stats so the model dimension isn't fragmented (telemetry-model-id-normalization)
 
-<!-- prawduct: chunks=01 | type=fix | scope=telemetry-model-id-normalization -->
+<!-- prawduct: chunks=01 | type=fix | scope=telemetry-model-id-normalization | status=merged -->
 
 **Why:** `review-stats` groups reviews by role × model × mode, but one model is
 recorded under several id strings (`opus`, `claude-opus-4-8`,
