@@ -115,7 +115,7 @@ ledger line, so the historical 41 events aggregate correctly with **no rewrite**
 
 ## 2026-06-21: Hook-CLI robustness bundle — five ready S-effort fixes (hook-cli-robustness)
 
-<!-- prawduct: chunks=01 | type=fix | scope=hook-cli-robustness -->
+<!-- prawduct: chunks=01 | type=fix | scope=hook-cli-robustness | status=merged -->
 
 **Why:** Five independent, ready, S-effort robustness/correctness gaps in the
 framework's own hook CLI + governance libs accumulated on the backlog (from
