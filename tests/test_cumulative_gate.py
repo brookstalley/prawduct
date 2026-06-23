@@ -472,6 +472,22 @@ def test_scope_clean_non_chain_prior_still_demotes(tmp_path):
     assert "no-actionable-findings" in reason
 
 
+def test_scope_excludes_untracked_noncode_noise(tmp_path):
+    # STH-6T9W: an untracked non-code file (an operator-dropped note) must NOT
+    # enter the delta scope, while an untracked CODE file still does — symmetric
+    # with the stop-hook gate's filter (true-positive preserved).
+    repo, anchor, _ = _chain_repo(tmp_path)
+    _write_findings(
+        repo, commit_reviewed=anchor, mode=CUMULATIVE_MODE, files_reviewed=["app.py"],
+    )
+    (repo / "note.txt").write_text("a stray operator note\n")  # untracked, non-code
+    (repo / "extra.py").write_text("z = 9\n")  # untracked, code
+    scope, reason = _scope(repo)
+    assert "note.txt" not in scope, scope
+    assert "extra.py" in scope, scope
+    assert "core.py" in scope  # the committed fix already in the delta
+
+
 def test_scope_no_anchor_in_reason_for_non_chain_prior(tmp_path):
     # Actionable chunk-mode prior computes a scope but must NOT advertise a
     # chain anchor — the Critic would otherwise embed a bogus one.

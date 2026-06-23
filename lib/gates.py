@@ -391,6 +391,69 @@ def _chain_anchor(data: dict) -> str | None:
     return None
 
 
+# STH-6T9W — untracked operator-dropped noise must not inflate the
+# verify-resolutions chunk-diff scope. An untracked NON-CODE file outside every
+# work root (a stray note, a bug report dropped at the repo root) is not part of
+# the reviewed work, but counting it grows the chunk diff past what the prior
+# review's ``files_reviewed`` covers — and since ``validate_critic_findings``
+# forbids an empty-scope record, a waiver becomes the only exit on an otherwise
+# clean, fully-reviewed tree (training waiver-reaching). The exclusion below is
+# applied symmetric with the ``_is_metadata_path`` one at both scope sites, and
+# is narrow by design: tracked files, code files (any location), and non-code
+# files UNDER a work root all stay in scope — only untracked, non-code files
+# outside the work roots drop out. A gate-level predicate (not a change to
+# ``gitstate._get_session_changed_files``) keeps the blast radius minimal.
+
+
+def _untracked_files(project_dir: Path) -> set[str]:
+    """Untracked, non-ignored files (``git ls-files --others --exclude-standard``)
+    as repo-relative paths. Empty set on any git failure — fail-closed: a file we
+    cannot prove untracked is never dropped from scope."""
+    proc = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return set()
+    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+
+
+def _tracked_work_roots(project_dir: Path) -> set[str]:
+    """Top-level directory names that hold at least one TRACKED file — the repo's
+    real source/test/governance roots, discovered from git rather than hardcoded
+    so the check adapts to any product's layout (``src/``, ``app/``, ``lib/``,
+    ``tests/``, ``skills/`` …). Empty set on any git failure."""
+    proc = subprocess.run(
+        ["git", "ls-files"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return set()
+    return {
+        line.strip().split("/", 1)[0]
+        for line in proc.stdout.splitlines()
+        if "/" in line.strip()
+    }
+
+
+def _is_untracked_noncode_noise(rel_path: str, work_roots: set[str]) -> bool:
+    """True when ``rel_path`` is a non-code file outside every work root — an
+    operator-dropped note, not reviewed work (STH-6T9W). Non-code = suffix not in
+    ``gitstate._PRODUCT_CODE_SUFFIXES`` (the canonical code-suffix set); a file
+    under a work root (``tests/fixture.json``, ``skills/x.md``) is presumed real
+    work and kept. The CALLER restricts this to untracked paths — a tracked
+    non-code file is always real work and never reaches here."""
+    if "/" in rel_path and rel_path.split("/", 1)[0] in work_roots:
+        return False
+    return Path(rel_path).suffix not in gitstate._PRODUCT_CODE_SUFFIXES
+
+
 def _compute_verify_resolutions_scope(
     prawduct_dir: Path, project_dir: Path
 ) -> tuple[list[str], str]:
@@ -536,6 +599,7 @@ def _compute_verify_resolutions_scope(
         line.strip() for line in diff_proc.stdout.splitlines() if line.strip()
     }
 
+    untracked: set[str] = set()
     ls_proc = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
         cwd=str(project_dir),
@@ -544,21 +608,28 @@ def _compute_verify_resolutions_scope(
         timeout=30,
     )
     if ls_proc.returncode == 0:
-        delta_files.update(
+        untracked = {
             line.strip() for line in ls_proc.stdout.splitlines() if line.strip()
-        )
+        }
+        delta_files.update(untracked)
 
-    # Filter metadata before threshold and scope union. The session-end
-    # gate already ignores ``_is_metadata_path`` files (``.prawduct/``,
-    # ``.claude/settings.json``, etc.) when computing the chunk diff;
-    # counting them here would inflate ``delta_files`` against the
-    # widening threshold and falsely demote a legitimate fix flow whose
-    # only delta beyond the prior surface is incidental state churn
-    # (the very ``.critic-findings.json`` the prior review wrote,
-    # ``.session-reflected``, ``.session-git-baseline``, etc.). Symmetric
-    # with ``_verify_resolutions_gate_check`` — both sides of "what
-    # counts as a chunk file" agree.
-    delta_files = {f for f in delta_files if not gitstate._is_metadata_path(f)}
+    # Filter metadata + untracked operator-dropped noise before threshold and
+    # scope union. The session-end gate already ignores ``_is_metadata_path``
+    # files (``.prawduct/``, ``.claude/settings.json``, etc.) when computing the
+    # chunk diff; counting them here would inflate ``delta_files`` against the
+    # widening threshold and falsely demote a legitimate fix flow whose only
+    # delta beyond the prior surface is incidental state churn (the very
+    # ``.critic-findings.json`` the prior review wrote, ``.session-reflected``,
+    # ``.session-git-baseline``, etc.). STH-6T9W adds the symmetric exclusion of
+    # untracked, non-code files outside the work roots (operator notes). Both
+    # filters are mirrored in ``_verify_resolutions_gate_check`` — the two sides
+    # of "what counts as a chunk file" agree.
+    work_roots = _tracked_work_roots(project_dir)
+    delta_files = {
+        f for f in delta_files
+        if not gitstate._is_metadata_path(f)
+        and not (f in untracked and _is_untracked_noncode_noise(f, work_roots))
+    }
 
     # Demotion: when the delta has grown well past the prior review's
     # surface, a verify pass would mislead — most of what changed wasn't
@@ -639,9 +710,15 @@ def _verify_resolutions_gate_check(
         )
     scope = {f for f in files_reviewed if isinstance(f, str) and f.strip()}
 
+    # Drop metadata and untracked operator-dropped noise from the chunk diff —
+    # symmetric with ``_compute_verify_resolutions_scope`` (STH-6T9W). A stray
+    # untracked note must not push an otherwise-in-scope tree out of scope.
+    untracked = _untracked_files(project_dir)
+    work_roots = _tracked_work_roots(project_dir)
     session_changed = {
         f for f in gitstate._get_session_changed_files(project_dir)
         if not gitstate._is_metadata_path(f)
+        and not (f in untracked and _is_untracked_noncode_noise(f, work_roots))
     }
 
     out_of_scope = sorted(session_changed - scope)

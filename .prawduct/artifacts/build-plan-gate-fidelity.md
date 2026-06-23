@@ -52,13 +52,14 @@ a one-line confirm or a redirect closes the gap — no spike needed.
 - [ ] Chunk 06: work-model tripwire suppresses prose/path-fragment noise (WMK-4Q9T)
 
 Context: Plan authored and approved; both HIGH-impact policy forks confirmed by the user
-(Chunk 04 file-type-exempt→NOTE; Chunk 06 filter-noise-stay-always-on). Remaining
-assumptions (ch 05 exclude, one-PR) stand as vetoable. Stage A (ch 01–02) plus Chunk 03
-shipped to the branch — each with a clean chunk-mode Critic pass; full suite green (1419).
-(Status checkboxes stay `[ ]` until release — views_enabled flips them from the change-log
-at ship time.) Next: Chunk 04 (verify-coverage file-type floor) — touches `lib/coverage.py`,
-`lib/gates.py`, and `skills/critic/review-cycle.md` (NOT trivial-eligible; watch the
-review-cycle.md token budget when softening F4b).
+(Chunk 04 file-type-exempt→NOTE; Chunk 06 filter-noise-stay-always-on). Stage A (ch 01–02)
+plus Stage B chunks 03–05 are shipped to the branch — each with a clean chunk-mode Critic
+pass; full suite green (1447). (Status checkboxes stay `[ ]` until release — views_enabled
+flips them from the change-log at ship time.) Next and LAST: Chunk 06 (work-model tripwire
+noise — `lib/work_model_index.py`), `Type: cumulative-final` — its `/prawduct:critic
+cumulative` against `merge-base...HEAD` is BOTH the final review and the `/prawduct:pr
+create` gate. Note for ch 06: the F4b prose actually lives in `skills/critic/review-protocol.md`
+(not review-cycle.md as the plan's surface lists say) — already reconciled for ch 04.
 
 ## Scaffolding
 

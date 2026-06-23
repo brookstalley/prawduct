@@ -127,6 +127,69 @@ class TestSatisfySessionGateVerifyResolutionsScope:
         assert satisfied is False
         assert "src/new_module.py" in reason
 
+    # STH-6T9W — an untracked, non-code file outside the work roots is operator
+    # noise and must not push an otherwise-in-scope tree out of scope.
+    def _patch_untracked(self, monkeypatch, *, untracked, work_roots):
+        monkeypatch.setattr(gates, "_untracked_files", lambda d: set(untracked))
+        monkeypatch.setattr(gates, "_tracked_work_roots", lambda d: set(work_roots))
+
+    def test_untracked_noncode_note_does_not_inflate_scope(self, tmp_path, monkeypatch):
+        pr = self._fresh_vr(
+            tmp_path, monkeypatch,
+            session_changed=["src/app.py", "scratch/note.txt"],
+        )
+        self._patch_untracked(
+            monkeypatch, untracked={"scratch/note.txt"}, work_roots={"src", "tests"}
+        )
+        # src/app.py is in scope; the stray untracked note is excluded as noise.
+        assert gates.critic_findings_satisfy_session_gate(pr, tmp_path) == (True, "")
+
+    def test_untracked_code_file_still_counts(self, tmp_path, monkeypatch):
+        """True-positive preserved: an untracked CODE file is real new work and
+        still pushes the tree out of scope."""
+        pr = self._fresh_vr(
+            tmp_path, monkeypatch,
+            session_changed=["src/app.py", "newpkg/feature.py"],
+        )
+        self._patch_untracked(
+            monkeypatch, untracked={"newpkg/feature.py"}, work_roots={"src"}
+        )
+        satisfied, reason = gates.critic_findings_satisfy_session_gate(pr, tmp_path)
+        assert satisfied is False
+        assert "newpkg/feature.py" in reason
+
+    def test_untracked_noncode_under_work_root_still_counts(self, tmp_path, monkeypatch):
+        """Over-exclusion guard: a non-code file UNDER a work root (a test
+        fixture, a governance doc) is presumed real work and stays in scope."""
+        pr = self._fresh_vr(
+            tmp_path, monkeypatch,
+            session_changed=["src/app.py", "tests/fixture.json"],
+        )
+        self._patch_untracked(
+            monkeypatch, untracked={"tests/fixture.json"}, work_roots={"src", "tests"}
+        )
+        satisfied, reason = gates.critic_findings_satisfy_session_gate(pr, tmp_path)
+        assert satisfied is False
+        assert "tests/fixture.json" in reason
+
+
+class TestUntrackedNoncodeNoisePredicate:
+    """Unit coverage of the STH-6T9W classifier both scope filters route through."""
+
+    def test_noncode_outside_roots_is_noise(self):
+        assert gates._is_untracked_noncode_noise("scratch/note.txt", {"src", "tests"})
+        assert gates._is_untracked_noncode_noise("stray.md", set())
+        assert gates._is_untracked_noncode_noise("incoming-bugs/x.md", {"src"})
+
+    def test_code_file_is_never_noise(self):
+        assert not gates._is_untracked_noncode_noise("anywhere/new.py", set())
+        assert not gates._is_untracked_noncode_noise("x.ts", {"src"})
+        assert not gates._is_untracked_noncode_noise("newpkg/mod.go", {"src"})
+
+    def test_noncode_under_work_root_is_kept(self):
+        assert not gates._is_untracked_noncode_noise("tests/fixture.json", {"tests"})
+        assert not gates._is_untracked_noncode_noise("src/data.yaml", {"src", "tests"})
+
 
 class TestBriefingAdvisoryUsesSharedGate:
     """The regression STH-4F7C fixes: the session-start advisory must warn on a
