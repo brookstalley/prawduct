@@ -248,6 +248,46 @@ def _looks_like_file_path(token: str) -> bool:
     return True
 
 
+# Chunk-heading delimiters separating the id from the name. The canonical
+# convention is the colon (``### Chunk NN:``); the others are consumer house
+# styles the walker tolerates (em-dash ``—``, en-dash ``–``, hyphen ``-``).
+# Only the FIRST delimiter terminates the id — chunk names routinely contain
+# hyphens, so a later one in the name must not be mistaken for the id boundary.
+_CHUNK_HEADING_DELIMS = ":—–-"
+# Accepted heading prefixes: the canonical h3 form plus the h2 house style
+# (BLD-5J8N). ``#### Chunk`` (four-hash, wrong depth) matches neither.
+_CHUNK_HEADING_PREFIXES = ("### Chunk ", "## Chunk ")
+
+
+def _chunk_heading_id(stripped: str) -> str | None:
+    """Return a chunk *heading* line's leading-zero-normalized id, else ``None``.
+
+    Accepts both the canonical ``### Chunk NN:`` (h3 + colon) and the consumer
+    house style ``## Chunk NN —`` (h2 + em-dash / en-dash / hyphen) — Postel-style
+    robustness to downstream plan styles, so ``verify-chunk-refs`` stops crying
+    "chunk not found" on a chunk that plainly exists (BLD-5J8N). prawduct's own
+    template/convention stays ``### Chunk N:``; this only widens what is READ.
+
+    The id is the token before the first delimiter in ``_CHUNK_HEADING_DELIMS``
+    and must be purely numeric: ``### Chunk 01 AAA — name`` (number, space, title,
+    then a downstream em-dash) yields the non-numeric token ``"01 AAA"`` → ``None``,
+    so it is left to fail as a genuinely-malformed heading exactly as before.
+    """
+    for prefix in _CHUNK_HEADING_PREFIXES:
+        if stripped.startswith(prefix):
+            rest = stripped[len(prefix):]
+            cut = len(rest)
+            for i, ch in enumerate(rest):
+                if ch in _CHUNK_HEADING_DELIMS:
+                    cut = i
+                    break
+            head = rest[:cut].strip()
+            if head.isdigit():
+                return head.lstrip("0") or "0"
+            return None
+    return None
+
+
 def _chunk_section_lines(
     content: str, chunk_id: str
 ) -> tuple[bool, list[tuple[int, str]]]:
@@ -255,12 +295,16 @@ def _chunk_section_lines(
 
     The one canonical chunk-section walk: name-anchored with leading-zero
     tolerance (``"02"`` matches ``### Chunk 2:`` and vice versa), stops at the
-    next sibling ``### Chunk`` or ``## `` heading, and drops fenced code blocks
-    (project-structure diagrams aren't load-bearing prose). Returns
-    ``(found, [(line_num, raw_line), ...])`` with 1-based line numbers into
-    ``content``. This skeleton was previously copied in the three chunk-field
-    parsers below and ``lib.critic_mode``'s ``**Critic mode:**`` reader; all
-    four now fold onto it.
+    next sibling chunk or ``## `` heading, and drops fenced code blocks
+    (project-structure diagrams aren't load-bearing prose). Heading recognition
+    is delegated to ``_chunk_heading_id``, which accepts both the canonical
+    ``### Chunk NN:`` and the consumer ``## Chunk NN —`` house style (BLD-5J8N) —
+    because the chunk-heading branch runs (and ``continue``s) before the ``## ``
+    section-terminator below, an h2 chunk header anchors its own section without
+    tripping that terminator. Returns ``(found, [(line_num, raw_line), ...])``
+    with 1-based line numbers into ``content``. This skeleton was previously
+    copied in the three chunk-field parsers below and ``lib.critic_mode``'s
+    ``**Critic mode:**`` reader; all four now fold onto it.
     """
     target = chunk_id.lstrip("0") or "0"
     in_section = False
@@ -268,11 +312,8 @@ def _chunk_section_lines(
     section_lines: list[tuple[int, str]] = []
     for line_num, line in enumerate(content.splitlines(), start=1):
         stripped = line.strip()
-        if stripped.startswith("### Chunk "):
-            # Heading format: "### Chunk NN: Name"
-            rest = stripped[len("### Chunk "):]
-            head = rest.split(":", 1)[0].strip()
-            head_norm = head.lstrip("0") or "0"
+        head_norm = _chunk_heading_id(stripped)
+        if head_norm is not None:
             if in_section:
                 # Entered a sibling chunk; stop accumulating.
                 break
@@ -282,7 +323,7 @@ def _chunk_section_lines(
         if not in_section:
             continue
         if stripped.startswith("## "):
-            # Left the Build Chunks section entirely.
+            # Left the Build Chunks section entirely (a non-chunk h2 heading).
             break
         if stripped.startswith("```"):
             in_fence = not in_fence
@@ -297,9 +338,10 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     """Extract backticked file-path references from a single chunk's section
     in ``.prawduct/artifacts/build-plan.md``.
 
-    The section is located by name (``### Chunk <chunk_id>:`` prefix, leading
-    zeros tolerant), and parsing stops at the next ``### `` or ``## `` heading
-    — sibling chunks' refs are NOT returned. Fenced code blocks (```...```)
+    The section is located by name via ``_chunk_section_lines`` (the canonical
+    ``### Chunk <chunk_id>:`` or the ``## Chunk <id> —`` house style — BLD-5J8N;
+    leading zeros tolerant), and parsing stops at the next sibling chunk or
+    ``## `` heading — sibling chunks' refs are NOT returned. Fenced code blocks (```...```)
     are skipped because project-structure diagrams aren't load-bearing prose.
     Paths preceded by the word ``new`` on the same line are skipped as
     intra-chunk forward references (files the chunk creates rather than
@@ -367,8 +409,8 @@ def _parse_build_plan_chunk_type(
     author fixes the typo instead of getting silent fall-through.
 
     Section discovery is the shared ``_chunk_section_lines`` walker —
-    name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
-    fenced code blocks are skipped.
+    name-anchored on ``### Chunk <chunk_id>:`` (or the ``## Chunk <id> —`` house
+    style — BLD-5J8N) with leading-zero tolerance; fenced code blocks are skipped.
     """
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
@@ -409,8 +451,8 @@ def _parse_build_plan_chunk_trivial_rationale(
     next field.
 
     Section discovery is the shared ``_chunk_section_lines`` walker —
-    name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
-    fenced code blocks are skipped.
+    name-anchored on ``### Chunk <chunk_id>:`` (or the ``## Chunk <id> —`` house
+    style — BLD-5J8N) with leading-zero tolerance; fenced code blocks are skipped.
     """
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():

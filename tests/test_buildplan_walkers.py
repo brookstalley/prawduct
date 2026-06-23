@@ -213,6 +213,70 @@ class TestChunkSectionLines:
         for line_num, line in lines:
             assert content_lines[line_num - 1] == line
 
+    # BLD-5J8N — the walker also accepts the consumer house style
+    # `## Chunk NN —` (h2 + em-dash / en-dash / hyphen), not only the canonical
+    # `### Chunk NN:` (h3 + colon). prawduct's own plans stay canonical; this
+    # widens what is READ so verify-chunk-refs stops crying "chunk not found".
+
+    def test_h2_emdash_heading_is_found(self):
+        plan = (
+            "## Build Chunks\n\n"
+            "## Chunk 01 — first thing\n\n"
+            "- **Type:** code\n"
+            "- touches `lib/foo.py` here\n\n"
+            "## Chunk 02 — second thing\n\n"
+            "- **Type:** doc-only\n"
+        )
+        found, lines = _chunk_section_lines(plan, "01")
+        assert found
+        body = [ln for _n, ln in lines]
+        assert any("**Type:** code" in ln for ln in body)
+        assert any("lib/foo.py" in ln for ln in body)
+        # The sibling h2 chunk stops the section — chunk 02's field not leaked.
+        assert not any("doc-only" in ln for ln in body)
+
+    def test_h2_emdash_stops_at_non_chunk_h2(self):
+        # An h2 chunk header must not trip the `## ` section-terminator for its
+        # OWN section, but a non-chunk `## ` heading still terminates it.
+        plan = (
+            "## Build Chunks\n\n"
+            "## Chunk 01 — only\n\n"
+            "- **Type:** code\n\n"
+            "## Governance Checkpoints\n\n"
+            "- not part of the chunk\n"
+        )
+        found, lines = _chunk_section_lines(plan, "1")
+        assert found
+        assert not any("not part of the chunk" in ln for _n, ln in lines)
+
+    def test_en_dash_and_hyphen_delimiters_accepted(self):
+        for heading in ("## Chunk 03 – en-dash name", "## Chunk 03 - hyphen name"):
+            plan = f"## Build Chunks\n\n{heading}\n\n- **Type:** code\n"
+            found, _lines = _chunk_section_lines(plan, "03")
+            assert found, heading
+
+    def test_h3_emdash_without_colon_is_found(self):
+        # h3 + em-dash (no colon) — the id still terminates at the em-dash.
+        plan = "## Build Chunks\n\n### Chunk 04 — no colon here\n\n- **Type:** code\n"
+        found, _lines = _chunk_section_lines(plan, "04")
+        assert found
+
+    def test_number_then_space_then_title_is_not_a_match(self):
+        # `### Chunk 01 AAA — do a thing`: number, SPACE, title, THEN em-dash.
+        # The id token ("01 AAA") is non-numeric, so this stays a genuine
+        # negative — BLD-5J8N only accepts a delimiter immediately after the id.
+        plan = "## Build Chunks\n\n### Chunk 01 AAA — do a thing\n\n- **Type:** code\n"
+        found, lines = _chunk_section_lines(plan, "01")
+        assert not found
+        assert lines == []
+
+    def test_four_hash_chunk_heading_is_not_a_match(self):
+        # `#### Chunk` (four-hash, wrong depth) matches neither prefix.
+        plan = "## Build Chunks\n\n#### Chunk 05: nested\n\n- **Type:** code\n"
+        found, lines = _chunk_section_lines(plan, "05")
+        assert not found
+        assert lines == []
+
 
 # ---------------------------------------------------------------------------
 # 2. Consolidation pins — the deleted mirrors must stay deleted

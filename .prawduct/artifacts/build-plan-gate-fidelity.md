@@ -53,9 +53,12 @@ a one-line confirm or a redirect closes the gap — no spike needed.
 
 Context: Plan authored and approved; both HIGH-impact policy forks confirmed by the user
 (Chunk 04 file-type-exempt→NOTE; Chunk 06 filter-noise-stay-always-on). Remaining
-assumptions (ch 01 combine, ch 03 loosen, ch 05 exclude, one-PR) stand as vetoable.
-Not yet started. To begin building: set active_build_plan → this file, promote the 7
-backlog items to Promoted, branch off develop, read /prawduct:building, begin Chunk 01.
+assumptions (ch 05 exclude, one-PR) stand as vetoable. Stage A (ch 01–02) plus Chunk 03
+shipped to the branch — each with a clean chunk-mode Critic pass; full suite green (1419).
+(Status checkboxes stay `[ ]` until release — views_enabled flips them from the change-log
+at ship time.) Next: Chunk 04 (verify-coverage file-type floor) — touches `lib/coverage.py`,
+`lib/gates.py`, and `skills/critic/review-cycle.md` (NOT trivial-eligible; watch the
+review-cycle.md token budget when softening F4b).
 
 ## Scaffolding
 

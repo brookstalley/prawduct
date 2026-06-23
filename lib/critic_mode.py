@@ -597,7 +597,8 @@ def _git_aware_progress(
 def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | None:
     """Return ``chunk_id``'s declared ``**Critic mode:**`` token, or ``None``.
 
-    Finds that chunk's ``### Chunk <id>:`` detail section and reads its
+    Finds that chunk's detail section (``### Chunk <id>:`` or the
+    ``## Chunk <id> —`` house style — BLD-5J8N) and reads its
     ``- **Critic mode:** <value>`` field. Returns the short-token value
     only when it is one of the recognized modes; an absent, blank, or
     unrecognized value yields ``None`` (fall through to inference rather
@@ -608,8 +609,9 @@ def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | No
     feature branch (CRT-7B4M), otherwise the first ``- [ ]`` chunk via
     ``buildplan_refs._current_chunk_id_from_status``. Section discovery is
     the shared ``buildplan_refs._chunk_section_lines`` walker: name-anchored
-    on ``### Chunk <id>:`` with leading-zero tolerance, fenced code blocks
-    skipped, stop at the next sibling chunk or top-level section.
+    on ``### Chunk <id>:`` (or the ``## Chunk <id> —`` house style — BLD-5J8N)
+    with leading-zero tolerance, fenced code blocks skipped, stop at the next
+    sibling chunk or top-level section.
     """
     if chunk_id is None:
         return None

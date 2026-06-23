@@ -24,6 +24,7 @@ import sys
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 from lib import core as _mod  # noqa: E402
+from lib.buildplan_refs import _chunk_section_lines  # noqa: E402
 resolve_build_plan_path = _mod.resolve_build_plan_path
 read_str_yaml_key = _mod.read_str_yaml_key
 BUILD_PLAN_POINTER_KEY = _mod.BUILD_PLAN_POINTER_KEY
@@ -209,43 +210,33 @@ def _status_chunk_ids(content: str) -> list[str]:
     return ids
 
 
-def _parseable_body_chunk_ids(content: str) -> set[str]:
-    """Leading-zero-normalized IDs of parseable ``### Chunk <id>:`` headings.
-
-    Replicates the matcher the production parsers use: three-hash + ``Chunk ``
-    + a colon. A ``#### Chunk`` (four-hash), a missing colon, or an em-dash
-    heading is NOT counted — which is exactly the silent-defeat we guard.
-    """
-    found: set[str] = set()
-    for line in content.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("### Chunk "):
-            continue
-        rest = stripped[len("### Chunk "):]
-        if ":" not in rest:  # parsers split on ":" — no colon, no match
-            continue
-        head = rest.split(":", 1)[0].strip()
-        found.add(head.lstrip("0") or "0")
-    return found
-
-
 def _assert_status_chunks_parse(content: str) -> None:
-    """Every ``## Status`` chunk ID must resolve to a parseable body heading."""
-    body = _parseable_body_chunk_ids(content)
+    """Every ``## Status`` chunk ID must resolve to a body section the PRODUCTION
+    walker can find.
+
+    Delegates to ``buildplan_refs._chunk_section_lines`` (BLD-5J8N) rather than
+    re-implementing the heading matcher, so this guard tracks the runtime parser
+    exactly — including the widened ``## Chunk NN —`` (h2/em-dash) acceptance —
+    and cannot silently drift from it. A ``#### Chunk`` (four-hash, wrong depth)
+    or a number-then-title heading with no delimiter after the id is still NOT
+    found, which is precisely the silent-defeat this guard exists to catch.
+    """
     unresolved = [
         cid for cid in _status_chunk_ids(content)
-        if (cid.lstrip("0") or "0") not in body
+        if not _chunk_section_lines(content, cid)[0]
     ]
     assert not unresolved, (
-        f"Status chunk IDs with no parseable `### Chunk <id>:` heading: "
-        f"{unresolved}. A `#### Chunk`/missing-colon/wrong-depth heading "
-        f"silently defeats the `### Chunk ` parsers — fix the heading depth/form."
+        f"Status chunk IDs with no body section the runtime parser can find: "
+        f"{unresolved}. A `#### Chunk` (four-hash/wrong depth) or a "
+        f"number-then-title heading with no delimiter after the id silently "
+        f"defeats `_chunk_section_lines` — fix the heading depth/form."
     )
 
 
 class TestActiveBuildPlanChunkHeadingsParse:
-    """Guard: the active build plan's `## Status` chunk IDs each map to a
-    parseable `### Chunk <id>:` body heading (three-hash, colon form).
+    """Guard: the active build plan's `## Status` chunk IDs each map to a body
+    section the runtime walker can find — the canonical `### Chunk <id>:` (h3 +
+    colon) or the tolerated `## Chunk <id> —` (h2 + em-dash) house style (BLD-5J8N).
 
     Scope is **test-only** for this batch; a runtime-check-for-any-product
     variant (the hook flagging the active plan at session start) is deferred —
@@ -293,13 +284,28 @@ class TestActiveBuildPlanChunkHeadingsParse:
         with pytest.raises(AssertionError):
             _assert_status_chunks_parse(malformed)
 
-    def test_fixture_missing_colon_heading_fails(self):
-        # `### Chunk 01 AAA` (no colon) — the parsers split on ":" and miss it.
-        malformed = (
+    def test_fixture_h2_emdash_heading_parses(self):
+        # BLD-5J8N: the consumer house style `## Chunk NN — Name` (h2 + em-dash)
+        # now PARSES — the runtime walker anchors the body section for the
+        # status id, so the guard no longer flags a plan written this way.
+        house_style = (
             "## Status\n"
             "- [ ] Chunk 01: AAA — do a thing\n"
             "## Build Chunks\n"
-            "### Chunk 01 AAA — do a thing\n"
+            "## Chunk 01 — AAA do a thing\n"
+            "**Type:** code\n"
+        )
+        _assert_status_chunks_parse(house_style)  # no AssertionError
+
+    def test_fixture_no_delimiter_heading_fails(self):
+        # `### Chunk 01 AAA do a thing` — number, space, title, no delimiter
+        # after the id. The id token ("01 AAA do a thing") is non-numeric, so
+        # the runtime walker can't anchor it — a genuine-malformed negative.
+        malformed = (
+            "## Status\n"
+            "- [ ] Chunk 01: AAA\n"
+            "## Build Chunks\n"
+            "### Chunk 01 AAA do a thing\n"
             "**Type:** code\n"
         )
         with pytest.raises(AssertionError):
