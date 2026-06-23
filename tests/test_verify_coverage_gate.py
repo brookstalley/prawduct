@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from lib.coverage import coverage_exempt_globs, is_non_executable_path
+
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "bin" / "prawduct-hook"
 
@@ -183,16 +185,87 @@ class TestJudgedGapsStillBlock:
         assert "src/a.py" not in result.stderr
 
 
+class TestNonExecutableFilesAreExempt:
+    """COV-8R2K: prose docs + non-code config are exempt from the symbol-grep
+    floor — reported as an informational NOTE, never BLOCKING — so a doc/config
+    change on an otherwise-clean tree no longer forces a waiver or a token
+    reference-test. The floor keeps its teeth on executable files."""
+
+    def test_md_only_change_passes_as_note(self, gated_repo: Path):
+        (gated_repo / "docs.md").write_text("# new docs\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "docs only")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "missing-coverage" not in result.stderr
+        assert "non-executable" in result.stdout  # reported, not gated
+
+    def test_yaml_only_change_passes(self, gated_repo: Path):
+        (gated_repo / "config.yaml").write_text("key: value\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "config only")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "missing-coverage" not in result.stderr
+
+    def test_mixed_change_only_executable_blocks(self, gated_repo: Path):
+        """A .md + .toml + an uncovered .py: only the .py BLOCKS — the
+        true-positive a relaxed floor must still catch."""
+        (gated_repo / "notes.md").write_text("# notes\n")
+        (gated_repo / "settings.toml").write_text("a = 1\n")
+        (gated_repo / "src" / "untested.py").write_text("def x():\n    return 1\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "mixed")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 1
+        assert "missing-coverage: src/untested.py" in result.stderr
+        assert "notes.md" not in result.stderr
+        assert "settings.toml" not in result.stderr
+
+    def test_override_glob_exempts_extra_path(self, gated_repo: Path):
+        """The optional project-state ``coverage_exempt_paths`` override exempts
+        a path whose extension looks executable but isn't (e.g. a generated
+        .py fixture) — the anti-opinionated-default escape hatch."""
+        (gated_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+            "coverage_exempt_paths:\n"
+            "  - generated/*\n"
+        )
+        (gated_repo / "generated").mkdir()
+        (gated_repo / "generated" / "schema.py").write_text("X = 1\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "generated")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "missing-coverage" not in result.stderr
+
+
 class TestLegacyEvidenceCompat:
     def test_evidence_without_unjudged_field_keeps_old_behavior(
         self, gated_repo: Path
     ):
         """Product-authored evidence predating the field: absent ⇒ empty, so
-        an on-disk doc file not in changes_referenced still blocks — the
-        producer that doesn't declare unjudged files gets the old contract."""
-        (gated_repo / "NOTES.md").write_text("notes\n")
+        an on-disk EXECUTABLE file not in changes_referenced still blocks — the
+        producer that doesn't declare unjudged files gets the old contract.
+        (Uses a .py file, not a doc: COV-8R2K now exempts non-executable files
+        by type regardless of the unjudged field, so a .md no longer demonstrates
+        gating — the legacy-compat contract under test is the absent⇒empty
+        field, which only an executable file can still exercise.)"""
+        (gated_repo / "src" / "legacy.py").write_text("def legacy():\n    return 1\n")
         _git(gated_repo, "add", ".")
-        _git(gated_repo, "commit", "-q", "-m", "doc only")
+        _git(gated_repo, "commit", "-q", "-m", "legacy code")
         _write_evidence(gated_repo, changes_referenced=[])
         # Strip the new field to simulate a legacy/product writer.
         evidence_path = gated_repo / ".prawduct" / ".test-evidence.json"
@@ -203,7 +276,7 @@ class TestLegacyEvidenceCompat:
         result = _run_gate(gated_repo)
 
         assert result.returncode == 1
-        assert "missing-coverage: NOTES.md" in result.stderr
+        assert "missing-coverage: src/legacy.py" in result.stderr
 
     def test_wrong_typed_unjudged_field_is_schema_violation(
         self, gated_repo: Path
@@ -221,3 +294,42 @@ class TestLegacyEvidenceCompat:
 
         assert result.returncode == 1
         assert "changes_unjudged" in result.stderr
+
+
+class TestNonExecutableClassifier:
+    """Unit coverage of the pure classifier the gate routes through (COV-8R2K)."""
+
+    @pytest.mark.parametrize(
+        "path",
+        ["docs.md", "config.yaml", "a.yml", "data.json", "p.toml",
+         "x.ini", "y.cfg", "notes.txt", "nested/dir/README.md", "UPPER.MD"],
+    )
+    def test_known_non_executable_extensions(self, path: str):
+        assert is_non_executable_path(path)
+
+    @pytest.mark.parametrize("path", ["src/core.py", "run.sh", "main.go", "Makefile"])
+    def test_executable_paths_are_not_exempt_by_default(self, path: str):
+        assert not is_non_executable_path(path)
+
+    def test_override_glob_exempts_matching_path(self):
+        globs = ("generated/*", "vendor/*")
+        assert is_non_executable_path("generated/schema.py", exempt_globs=globs)
+        assert is_non_executable_path("vendor/lib.py", exempt_globs=globs)
+        assert not is_non_executable_path("src/core.py", exempt_globs=globs)
+
+    def test_exempt_globs_reads_block_list(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "coverage_required: true\n"
+            "coverage_exempt_paths:\n"
+            "  - generated/*\n"
+            "  - 'vendor/*.py'\n"
+        )
+        assert coverage_exempt_globs(tmp_path) == ("generated/*", "vendor/*.py")
+
+    def test_exempt_globs_absent_is_empty(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("coverage_required: true\n")
+        assert coverage_exempt_globs(tmp_path) == ()

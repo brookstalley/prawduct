@@ -1529,9 +1529,20 @@ def verify_coverage(project_dir: Path) -> int:
         f for f in changed
         if f in unjudged or not (project_dir / f).is_file()
     ]
-    missing = [
+    # Non-executable files (prose docs + non-code config) carry no behavior the
+    # symbol-grep floor can vouch for, so a missing reference on them is
+    # informational, not BLOCKING (COV-8R2K). Computed only over files that
+    # would otherwise be missing — unjudged/deleted still take precedence, so the
+    # existing "outside the verifier's judgment" note keeps its exact wording.
+    exempt_globs = coverage.coverage_exempt_globs(project_dir)
+    nonexec = [
         f for f in changed
         if f not in referenced and f not in skipped
+        and coverage.is_non_executable_path(f, exempt_globs=exempt_globs)
+    ]
+    missing = [
+        f for f in changed
+        if f not in referenced and f not in skipped and f not in nonexec
     ]
     if skipped:
         print(
@@ -1539,10 +1550,16 @@ def verify_coverage(project_dir: Path) -> int:
             f"judgment (changes_unjudged / deleted) — reported, not gated "
             f"(level: {coverage_level})."
         )
+    if nonexec:
+        print(
+            f"note: {len(nonexec)} non-executable file(s) (prose docs / non-code "
+            f"config) exempt from the coverage floor — reported, not gated "
+            f"(level: {coverage_level})."
+        )
     if not missing:
         print(
-            f"ok: {len(changed) - len(skipped)} judged changed file(s) covered "
-            f"(level: {coverage_level})"
+            f"ok: {len(changed) - len(skipped) - len(nonexec)} judged changed "
+            f"file(s) covered (level: {coverage_level})"
         )
         return 0
 

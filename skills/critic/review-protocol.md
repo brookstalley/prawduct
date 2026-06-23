@@ -52,7 +52,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
   - No hardcoded secrets or credentials in source code → **BLOCKING**.
   - Auth/authz checks on new endpoints or state-changing operations → **WARNING** if missing.
   - Dependencies without known critical vulnerabilities → **WARNING**.
-- **Symbol coverage (v1.4 F4b):** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
+- **Symbol coverage (v1.4 F4b):** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. The floor applies to **executable files only**: non-executable files (prose docs + non-code config, e.g. `.md`/`.yaml`/`.json`) are exempt and surface as informational `note:` stdout lines — **not** `missing-coverage:`, and **not** a finding to raise on your own (COV-8R2K). Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
 
 ### 2. Nothing Is Missing
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.

@@ -46,6 +46,11 @@ from pathlib import Path
 
 from . import gitstate
 from .buildplan_refs import _looks_like_file_path
+# The block-list YAML reader was promoted to ``lib.core`` (its canonical home,
+# alongside ``read_str_yaml_key`` / ``read_bool_yaml_key``) so ``lib.coverage``
+# can share it (COV-8R2K). Kept as a private alias for this module's call site
+# and the test that imports ``lib.risk._read_list_yaml_key`` by name.
+from .core import read_list_yaml_key as _read_list_yaml_key
 
 # Derived-default risk surfaces (resolution order step 2). Framework-shaped on
 # purpose — the governance machinery itself (skills, gates, the hook) is where
@@ -54,42 +59,6 @@ from .buildplan_refs import _looks_like_file_path
 DERIVED_DEFAULT_SURFACES = ("skills/", "lib/gates*", "bin/*hook*")
 
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
-
-
-def _read_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
-    """Items of a top-level (column-0) ``key:`` block list, or ``None`` when
-    the key is absent/unreadable. Distinguishes declared-but-empty (``[]``,
-    which is exclusive per the resolution order) from undeclared (``None``).
-    Same minimal-YAML discipline as ``core.read_str_yaml_key`` — column-0 key,
-    ``- item`` lines until the next column-0 key, inline comments stripped."""
-    try:
-        content = state_path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    lines = content.splitlines()
-    needle = f"{key}:"
-    for i, raw in enumerate(lines):
-        if raw[:1] in (" ", "\t"):
-            continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith(needle):
-            continue
-        inline = line.split(":", 1)[1].strip()
-        if inline == "[]":
-            return []
-        items: list[str] = []
-        for follow in lines[i + 1:]:
-            if follow[:1] not in (" ", "\t") and follow.strip():
-                break  # next column-0 key — the block ended
-            stripped = follow.split("#", 1)[0].strip()
-            if stripped.startswith("- "):
-                value = stripped[2:].strip().strip("\"'")
-                if value:
-                    items.append(value)
-            elif stripped:
-                break  # non-list content under the key — stop, take what parsed
-        return items
-    return None
 
 
 def _boundary_pattern_paths(prawduct_dir: Path) -> list[str]:

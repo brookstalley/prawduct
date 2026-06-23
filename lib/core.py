@@ -166,6 +166,47 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+def read_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
+    """Items of a top-level (column-0) ``key:`` block list, or ``None`` when the
+    key is absent/unreadable. Distinguishes declared-but-empty (``[]``) from
+    undeclared (``None``).
+
+    The list sibling of ``read_str_yaml_key`` / ``read_bool_yaml_key`` — same
+    no-PyYAML, column-0 discipline: a ``- item`` line sequence under the key,
+    until the next column-0 key; inline ``#`` comments stripped, surrounding
+    quotes trimmed. (Canonical home for the reader `lib.risk` and `lib.coverage`
+    both reach — `risk` keeps the private ``_read_list_yaml_key`` alias.)
+    """
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    lines = content.splitlines()
+    needle = f"{key}:"
+    for i, raw in enumerate(lines):
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        inline = line.split(":", 1)[1].strip()
+        if inline == "[]":
+            return []
+        items: list[str] = []
+        for follow in lines[i + 1:]:
+            if follow[:1] not in (" ", "\t") and follow.strip():
+                break  # next column-0 key — the block ended
+            stripped = follow.split("#", 1)[0].strip()
+            if stripped.startswith("- "):
+                value = stripped[2:].strip().strip("\"'")
+                if value:
+                    items.append(value)
+            elif stripped:
+                break  # non-list content under the key — stop, take what parsed
+        return items
+    return None
+
+
 def read_bool_yaml_key(path: Path, key: str) -> bool:
     """True if ``path`` has a top-level (column-0) ``key: true`` scalar.
 

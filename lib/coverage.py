@@ -32,13 +32,61 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from fnmatch import fnmatch
 from pathlib import Path
 
 from . import buildplan_refs
-from .core import read_str_yaml_key
+from .core import read_list_yaml_key, read_str_yaml_key
 
 _BASE_BRANCH_KEY = "base_branch"
 _DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
+
+# Extensions whose files carry no executable behavior the symbol-grep coverage
+# floor can vouch for — prose docs and non-code config. A changed file with one
+# of these is exempt from the BLOCKING floor and reported as an informational
+# NOTE instead (COV-8R2K), so a docs/config-only change on an otherwise-clean
+# tree no longer forces a waiver or a token reference-test. This generalizes the
+# ``.md`` carve-out the PR doc-only fast path (``_pr_diff_is_doc_only``) already
+# applies; that gate's stricter ``.md``-only contract is deliberately unchanged
+# (a doc-only PR is a narrower claim than a coverage-floor exemption).
+_NON_EXECUTABLE_EXTENSIONS = frozenset({
+    ".md", ".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".txt",
+})
+
+# Optional project-state override: extra glob patterns whose matching files are
+# also treated as non-executable. The safe default (the extension set above)
+# needs a config seam so a repo can exempt a path whose extension *looks*
+# executable but isn't (a generated ``.py`` fixture, vendored data) without
+# neutralizing the whole floor — the anti-"opinionated default" escape hatch.
+_COVERAGE_EXEMPT_PATHS_KEY = "coverage_exempt_paths"
+
+
+def is_non_executable_path(
+    path: str, *, exempt_globs: tuple[str, ...] = ()
+) -> bool:
+    """True when ``path`` carries no executable behavior the coverage floor can
+    judge: a prose/config file by extension (``_NON_EXECUTABLE_EXTENSIONS``), or
+    a repo-relative path matching one of the optional ``exempt_globs``.
+
+    ``exempt_globs`` is the project-configured override (see
+    :func:`coverage_exempt_globs`); matching is ``fnmatch`` over the repo-
+    relative path, so ``generated/*`` or ``vendor/*`` exempt those subtrees.
+    """
+    suffix = Path(path).suffix.lower()
+    if suffix in _NON_EXECUTABLE_EXTENSIONS:
+        return True
+    return any(fnmatch(path, pattern) for pattern in exempt_globs)
+
+
+def coverage_exempt_globs(project_dir: Path) -> tuple[str, ...]:
+    """The optional ``coverage_exempt_paths:`` override from project-state.yaml —
+    extra glob patterns whose matching files :func:`is_non_executable_path`
+    treats as non-executable. Empty tuple when the key is unset or empty.
+    """
+    declared = read_list_yaml_key(
+        project_dir / ".prawduct" / "project-state.yaml", _COVERAGE_EXEMPT_PATHS_KEY
+    )
+    return tuple(declared) if declared else ()
 
 
 def _git_ref_exists(project_dir: Path, ref: str) -> bool:
