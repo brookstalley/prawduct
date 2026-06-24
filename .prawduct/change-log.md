@@ -3,6 +3,69 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-24: doctor↔janitor scope boundary — canonical split + mirrored skill summaries (doctor-janitor)
+
+<!-- prawduct: chunks=01 | type=feature | release=v2.2.0 | scope=doctor-janitor | status=shipped -->
+
+**Why:** The api-design work landed the new API-versioning concern in BOTH a `/prawduct:doctor`
+check (#9) and a `/prawduct:janitor` theme, exposing that the line between the two "health check"
+skills was never written down (`GOV-9K2T`). Nothing told a maintainer which skill a new concern
+belongs to, so the next cross-cutting concern would reopen the same question.
+
+**What:**
+- **NEW `docs/doctor-vs-janitor.md`** — the canonical boundary: the three-axis split (subject /
+  action-model / question-type), the placement rule for a new concern, the "legitimately both"
+  pattern (API versioning, gitignore) and the handoff adjacencies (Template Currency, backlog).
+- **Mirrored `## Scope & boundary` summaries** in `skills/doctor/SKILL.md` (governance/install
+  conformance — reports & guides) and `skills/janitor/SKILL.md` (the product's own codebase craft —
+  surveys & fixes), each pointing to the canonical doc.
+- **gitignore cross-reference** added in both directions — doctor #8 (prawduct contract) ↔ janitor
+  Version Control Hygiene (general hygiene) — the one shared concern that wasn't previously linked.
+- **Methodology index** (`skills/methodology/SKILL.md`) now places both maintenance/health skills
+  on the governance map (it previously named only critic/pr/learnings/backlog).
+- **NEW `tests/test_doctor_janitor_boundary.py`** — structural guard locking the three-place
+  coherence (canonical doc exists; both skills carry the summary, the pointer, and the gitignore
+  cross-ref; the index lists both). No checks were added, removed, or moved — the API check stays
+  in both skills with its two facets delineated.
+
+## 2026-06-24: API design (produced) — pipeline coverage for the product's own exposed-API decisions (api-design)
+
+<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | release=v2.2.0 | scope=api-design | status=shipped -->
+
+**Why:** The framework's largest uncovered cross-cutting concern was the
+product's OWN exposed API. "Versioning" appeared exactly once (discovery.md:15,
+one word in a list) and was dropped at every downstream stage — no artifact
+template, no builder guidance, no Critic check, no matrix row (the consumed-side
+"Foreign API verification" row is a different concern). The motivating product
+(../scriob) ran unversioned for ~697/700 commits on an unchallenged one-word
+deferral, then paid a coordinated breaking-change retrofit when a deploy forced
+the issue. Design stance (user-confirmed): **force the decision, don't mandate
+the answer** — WARNING-severity / dismissable, "none — internal-only" is a valid
+recorded decision, a deferral must be dated with a revisit trigger.
+
+**What:**
+- **Chunk 01 (keystone):** `templates/project-state.yaml` decision-record schema
+  (`design_decisions.api_versioning_approach` + `api_error_model_approach`;
+  commented-out top-level `api_versioning_decided` answer-store fact) + discovery
+  (`discovery.md`:15) / planning (`planning.md`:29) capture points.
+- **Chunk 02:** new `templates/api-contract.md` (transport-neutral — network /
+  library-SDK / on-device / CLI, not HTTP-only) + planning "Exposed API" section
+  + build-plan `**Exposed API:**` field + guard tests.
+- **Chunk 03:** Critic Goal-2 **Exposed API** bullet (`review-protocol.md`) —
+  recorded versioning + error-model decision (or dated deferral) → WARNING each.
+- **Chunk 04:** retroactive detection — doctor health check #9 + a janitor
+  "API Design & Versioning Hygiene" theme (survey, not gate) + `api` shorthand.
+- **Chunk 05 (code):** `lib/api_versioning_probes.py` — an `info`/dismissable
+  post-sync advisory firing when an exposed API is detected but no decision is
+  recorded; polyglot detection (Python imports, JS/Go/Java manifests, openapi/
+  swagger/proto/graphql) via a new skip-dir-aware `Codebase.has_source_matching`.
+- **Chunk 06 (coherence/close):** cross-cutting-concerns "API design (produced)"
+  row + Known-Gaps; OWASP API Top 10 *design*-failure prompt (BOLA, mass
+  assignment, excessive data exposure) in security-model + discovery; two
+  learnings captured.
+- Deferred follow-ups filed: CRT-4Q7K (coded auto-detect Exposed-API trigger),
+  TPL-8H3M (standalone error-model template). 17 new tests; 1428 green.
+
 ## 2026-06-22: Test-evidence `record` cluster — retire the misleading git_sha, ingest existing JUnit runs, loud-fail on empty discovery (test-evidence)
 
 <!-- prawduct: chunks=01,02,03 | type=feature | release=v2.1.8 | status=shipped | scope=test-evidence -->

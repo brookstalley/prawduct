@@ -26,7 +26,7 @@ Artifacts are specification files that guide building. They ensure you think thr
 **Structurally-triggered artifacts** (based on characteristics detected in discovery):
 - *Human interface*: Interaction design, information architecture, accessibility specification, onboarding flow
 - *Runs unattended*: Pipeline architecture, scheduling, monitoring and alerting, failure recovery, configuration management
-- *Programmatic interface*: API contract (operations, request/response formats, error codes, authentication, rate limits)
+- *Programmatic interface* (any surface others call — network service, library/SDK, on-device/platform, or CLI; not just HTTP): API contract — operations, inputs/outputs, error model, **versioning scheme**, **deprecation/compatibility policy**, conventions & evolution rules (template: `templates/api-contract.md`). The versioning, deprecation, and error-model choices are *recorded decisions* (`design_decisions.api_versioning_approach` / `api_error_model_approach`), not silent defaults — a deferral must be dated and carry a revisit trigger.
 - *Multiple party types*: Per-party experience specifications, trust boundary analysis, data isolation rules
 - *Sensitive data*: Deepens existing artifacts (data lifecycle, security model, audit trails) rather than creating new ones
 - *Multi-process or distributed*: System architecture — process topology, communication channels (patterns, endpoints, protocols), concurrency model, persistence boundaries (what's durable vs. ephemeral, what lives where)
@@ -185,6 +185,14 @@ vs. the WARNING form (same chunk with step 0 omitted):
 The Critic finds the `verify-api` step by case-insensitive substring match anywhere in the chunk's Done-when items — exact phrasing doesn't matter, but the literal token `verify-api` should appear.
 
 **Discovery surfaces foreign APIs early.** When discovery flags an external SDK or service in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry that forward into the build plan as `**Foreign API:** <name>` on whichever chunk first touches the wrapper. Annotation in the plan is what triggers the Critic check.
+
+### Exposed API: Versioning, Deprecation & Error Model
+
+The mirror of Foreign API Verification for the interface a product *produces* — and "API" here is any programmatic surface others call (a network service, a library/SDK, an on-device/platform interface, or a CLI), not just HTTP. When a chunk introduces or changes an **exposed** interface, two design decisions must be *recorded*, not left to silence: the **versioning + deprecation/compatibility** scheme and the **error model**. Introducing either later is a breaking change for every consumer; the framework forces the decision — it does not mandate versioning ("none — internal-only" is a valid recorded decision, and a deferral must be dated with a revisit trigger).
+
+**The rule.** A chunk that introduces or changes an exposed API surface declares `**Exposed API:** <name>` in the build plan (alongside `**Foreign API:**`). The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a **WARNING** when a chunk declares `**Exposed API:**` but no versioning decision (or dated deferral) is recorded, and a second **WARNING** when no error-model decision is recorded. Missing `Exposed API:` is safe (no exposed surface in this chunk); declare it only when relevant — the same opt-in model as Foreign API.
+
+**Discovery surfaces it.** When discovery sets `classification.structural.exposes_programmatic_interface`, carry that into the plan as `**Exposed API:** <name>` on whichever chunk first builds the surface — annotation is what triggers the Critic check. The `api-versioning` advisory independently nudges already-built products whose interface has no recorded decision.
 
 ### Visual Change Verification
 

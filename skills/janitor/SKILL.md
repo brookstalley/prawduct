@@ -7,6 +7,15 @@ allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Read, Write, Edit, Glo
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
 
+## Scope & boundary
+
+`janitor` owns the **product's own codebase craft** — are the code, docs, tests, and dependencies
+well-built, current, and proportionate? It **surveys, then fixes** through the standard build cycle.
+For **prawduct governance/install health** — is the repo correctly set up and governed (install
+reference, distribution, anchor, core state, recorded decisions, the gitignore contract)? — use
+**`/prawduct:doctor`**, which reports-and-guides rather than fixes. Full split, and the rule for
+where a new concern belongs: `docs/doctor-vs-janitor.md`.
+
 ## The Janitor's Perspective
 
 Approach this codebase as if seeing it for the first time after months away. The builders who work here daily have adapted to its quirks — your value is fresh eyes. Look for things that are:
@@ -29,7 +38,7 @@ Is the repository's history and branch structure clean and navigable?
 - Branches with no activity within the staleness window (default: 14 days; see Arguments)
 - Branches superseded by other work — started, then abandoned in favor of a different approach
 - Orphaned work that was started but apparently abandoned with no resolution
-- Files that should be ignored but aren't (build artifacts, editor files, secrets) — or vice versa
+- Files that should be ignored but aren't (build artifacts, editor files, secrets) — or vice versa. This is general gitignore hygiene; the prawduct gitignore *contract* (session-file entries, the retired `build-plan.md` entry) is `/prawduct:doctor` Health-Check #8 (`docs/doctor-vs-janitor.md`).
 
 ### Structural Clarity
 
@@ -100,6 +109,21 @@ Are external dependencies current, justified, minimal, and secure?
 - Known security vulnerabilities in current dependency versions
 - Version constraints that are too tight (blocking updates) or too loose (risking breakage)
 
+### API Design & Versioning Hygiene
+
+If this product exposes an API — any programmatic surface others call (a network service, a library/SDK, an on-device/platform interface, or a CLI), not just HTTP/REST — is that contract designed to evolve without breaking its consumers?
+
+- Versioning — is there a recorded versioning scheme and granularity (`design_decisions.api_versioning_approach`), or is the surface unversioned by unexamined default? (`/prawduct:doctor` check #9 flags a missing decision; the `api-versioning` advisory nudges ambiently.)
+- Deprecation & compatibility — is there a sunset/deprecation policy and a breaking-change signal? Are changes additive (tolerant-reader, never remove or repurpose a field) so new versions stay rare?
+- Error model — is the error envelope consistent across the surface (`design_decisions.api_error_model_approach`), or does each operation shape errors differently?
+- Protocol semantics — the correctness conventions for whatever the surface actually is. For HTTP/REST: status codes, PUT vs PATCH, conditional requests / ETags, idempotency keys. For a library/SDK: semver discipline and stable signatures. For a CLI: stable flags, exit codes, and output contracts.
+- Pagination, filtering, sorting, and payload/size limits — present and consistent wherever collections are returned?
+- Wire conventions — the footguns: timestamps (ISO-8601/UTC), money (minor-units or decimal string, never float), casing, opaque IDs, string enums, null/optional semantics.
+- Surface inventory & stability tiers — is the public contract distinguished from internal/admin surfaces, and are experimental/stable/deprecated tiers marked? (The OWASP API9 "improper inventory" failure mode.)
+- Published contract — is there a maintained contract artifact (`templates/api-contract.md`) consumers can rely on, kept current with the code?
+
+Survey, not gate — surface what's undecided or drifting. The recorded *decisions* (versioning, error model) are the only gated parts, and they live in the Critic and the `api-versioning` advisory, not here.
+
 ### Controllability
 
 Can a developer — human or AI agent — control, debug, test, and observe the entire system effectively?
@@ -129,7 +153,7 @@ Arguments are optional. When provided, they adjust the janitor's behavior:
 - **Scope**: Limit investigation to specific themes. Example: `/prawduct:janitor scope=vcs,tests`
 - **Survey only**: Produce findings without executing fixes. Example: `/prawduct:janitor survey-only`
 
-Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `templates`, `tests`, `deps`, `control`, `obsolescence`
+Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `templates`, `tests`, `deps`, `api`, `control`, `obsolescence`
 
 ## Process
 

@@ -35,7 +35,14 @@ last_validated: null
      Proportionate to risk:
      - Low-risk: minimal or no access control (everyone in the family sees everything)
      - Medium-risk: role-based access
-     - High-risk: fine-grained permissions, audit trails -->
+     - High-risk: fine-grained permissions, audit trails
+
+     If the product exposes an API (exposes_programmatic_interface), check the
+     OWASP API Top 10 *design* failure modes — distinct from the authentication above:
+     - Broken object-level authz (BOLA): every object access verifies the caller may see THAT object, not just that they're authenticated
+     - Mass assignment: bind only client-settable fields; never let a request set internal/privileged attributes
+     - Excessive data exposure: return only the fields the consumer needs; don't rely on the client to filter
+     See the api-contract artifact's Security checklist (templates/api-contract.md). -->
 
 ## Data Privacy
 

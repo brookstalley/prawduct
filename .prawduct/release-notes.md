@@ -5,6 +5,22 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.2.0
+
+### doctor-janitor
+
+**Entry:** 2026-06-24: doctor↔janitor scope boundary — canonical split + mirrored skill summaries (doctor-janitor)
+
+**Chunks shipped:** 01
+
+### api-design
+
+**Entry:** 2026-06-24: API design (produced) — pipeline coverage for the product's own exposed-API decisions (api-design)
+
+**Chunks shipped:** 01, 02, 03, 04, 05, 06
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.1.8
 
 ### test-evidence

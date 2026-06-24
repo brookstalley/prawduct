@@ -26,6 +26,9 @@ classification:
     # Runs without user interaction. trigger: scheduled|event-driven|always-on
     runs_unattended: null
     # Exposes or consumes APIs. consumers: internal|external|both
+    # When this exposes an interface, record the versioning + deprecation + error-model
+    # decisions in design_decisions (api_versioning_approach, api_error_model_approach);
+    # the api-versioning advisory nudges until they are recorded.
     exposes_programmatic_interface: null
     # Multiple distinct user types. parties: [list of distinct user types]
     has_multiple_party_types: null
@@ -129,6 +132,14 @@ design_decisions:
   interaction_patterns: []
   accessibility_approach: null
   error_handling_approach: null
+  # API decisions — populate when classification.structural.exposes_programmatic_interface is set.
+  # These record the DECISION (including a deliberate "none — internal-only"), not a mandate to
+  # version. A deferral must be dated and carry a revisit trigger. See the api-contract artifact.
+  # api_versioning_approach: { scheme, deprecation_policy, stability_tiers,
+  #                            status: active|deferred, rationale, revisit_trigger (if deferred), date }
+  api_versioning_approach: null
+  # api_error_model_approach: { envelope (e.g. RFC-7807/problem+json), codes, status, rationale, date }
+  api_error_model_approach: null
   observability_approach: null    # Signal types, correlation context, sensitive data filtering, operational model
   infrastructure_dependencies: null  # External services (DB, queue, auth, APIs), mock boundaries, integration test strategy
   visual_direction: null
@@ -284,6 +295,20 @@ coverage_required: false
 # Default off in v1.4 — opt-in by setting `operator_verification_required: true`.
 
 operator_verification_required: false
+
+# =============================================================================
+# API VERSIONING DECISION (advisory resolution fact, v2.2+)
+# =============================================================================
+# The committed "answer store" fact the `api-versioning` sync probe consults.
+# When the product exposes a programmatic interface (detected from the code —
+# web framework, OpenAPI/proto), the probe raises a dismissable, auto-resolving
+# session advisory until a versioning decision is recorded. Set this to the
+# decision summary (e.g. "uri-path-v1", "header", "none-internal-only",
+# "deferred:<revisit-trigger>") to resolve it — it mirrors
+# design_decisions.api_versioning_approach. Unset/absent = undecided. Recording
+# "none-internal-only" resolves it; this is NOT a mandate to version.
+#
+# api_versioning_decided:
 
 # =============================================================================
 # BACKLOG (structured backlog resolution conditions, v1.7+)
