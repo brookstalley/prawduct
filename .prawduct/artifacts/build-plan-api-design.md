@@ -48,14 +48,14 @@ last_validated: null
 
 ## Status
 
-- [ ] Chunk 01: Keystone — the API decision record + capture-point wiring
-- [ ] Chunk 02: The api-contract artifact template + planning section + build-plan field
-- [ ] Chunk 03: Forward Critic gates (versioning + error-model WARNINGs)
+- [x] Chunk 01: Keystone — the API decision record + capture-point wiring
+- [x] Chunk 02: The api-contract artifact template + planning section + build-plan field
+- [x] Chunk 03: Forward Critic gates (versioning + error-model WARNINGs)
 - [ ] Chunk 04: Retroactive detection — doctor check #9 + janitor hygiene theme
 - [ ] Chunk 05: Migration nudge — the api-versioning advisory probe (CODE)
 - [ ] Chunk 06: Coherence & close — matrix row, OWASP-API security prompt, cumulative review
 
-Context: Plan on feature/api-design-versioning (off develop; gate-fidelity stays separate for its own PR). **Chunk 01 (keystone) DONE** — decision-record schema added to `templates/project-state.yaml` (`design_decisions.api_versioning_approach` + `api_error_model_approach`; commented-out `api_versioning_decided` answer-store fact) and the two capture points wired (`discovery.md`:15, `planning.md`:29). Critic `final`: no BLOCKING; stale-evidence WARNING cleared (1405 green recorded); AC1 wording reconciled to the commented-out fact per Critic NOTE. **Chunk 02 DONE** — new `templates/api-contract.md` (transport-neutral: network/library/on-device/CLI, NOT HTTP-only, per user feedback), planning Exposed-API section, build-plan `**Exposed API:**` field, discovery/planning wording neutralized, + guard tests (1411 green). building.md pointer dropped (at token ceiling; Builder covered by existing Boundary Investigation). User granted token-budget-bump latitude where condensing can't fit — relevant for Chunk 03 (review-protocol.md tight at 3350). Next: **Chunk 03** (Critic Goal-2 versioning + error-model WARNINGs). Code isolated to Chunk 05; Chunks 01-04, 06 are doc-only. Change-log entry added at feature close (bundle-at-release convention).
+Context: Plan on feature/api-design-versioning (off develop; gate-fidelity stays separate for its own PR). **Chunk 01 (keystone) DONE** — decision-record schema added to `templates/project-state.yaml` (`design_decisions.api_versioning_approach` + `api_error_model_approach`; commented-out `api_versioning_decided` answer-store fact) and the two capture points wired (`discovery.md`:15, `planning.md`:29). Critic `final`: no BLOCKING; stale-evidence WARNING cleared (1405 green recorded); AC1 wording reconciled to the commented-out fact per Critic NOTE. **Chunk 02 DONE** — new `templates/api-contract.md` (transport-neutral: network/library/on-device/CLI, NOT HTTP-only, per user feedback), planning Exposed-API section, build-plan `**Exposed API:**` field, discovery/planning wording neutralized, + guard tests (1411 green). building.md pointer dropped (at token ceiling; Builder covered by existing Boundary Investigation). **Chunk 03 DONE** — `skills/critic/review-protocol.md` Goal 2 gained an **Exposed API** bullet beside Foreign-API: versioning+deprecation decision (`api_versioning_approach` present, or a dated deferral w/ revisit trigger) → WARNING if missing; error-model decision (`api_error_model_approach`) → WARNING if missing. No trim needed — the v2.1.8 3120→3350 bump reserved room for exactly these checks (file now 3211/3350). Also flipped the Status checkboxes for Chunks 01/02 (prior sessions tracked completion only in this Context line — coherence fix). Next: **Chunk 04** (doctor check #9 + janitor API-hygiene theme) — the early-feedback milestone. Code isolated to Chunk 05; Chunks 01-04, 06 are doc-only. Change-log entry added at feature close (bundle-at-release convention).
 
 ## Build Chunks
 
