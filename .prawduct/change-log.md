@@ -5,7 +5,7 @@
 
 ## 2026-06-24: API design (produced) — pipeline coverage for the product's own exposed-API decisions (api-design)
 
-<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=api-design -->
+<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=api-design | status=merged -->
 
 **Why:** The framework's largest uncovered cross-cutting concern was the
 product's OWN exposed API. "Versioning" appeared exactly once (discovery.md:15,
