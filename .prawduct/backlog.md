@@ -18,6 +18,17 @@
 
   Deferred follow-up from the api-design feature (cross-cutting-concerns.md Known Gaps). Today the error-model decision lives INSIDE templates/api-contract.md plus the `design_decisions.api_error_model_approach` project-state block. A DEDICATED error-model template/artifact may be wanted if error-envelope design grows in importance (richer error taxonomies, machine-readable problem-details, per-surface error contracts). ENHANCEMENT, not a gap in shipped coverage — the embedded form covers today's needs; extract only when the design surface earns its own artifact. Idea-stage: the trigger is "does error-model design grow?" — re-derive the requirement (what the standalone artifact must capture beyond the embedded block) before any template work. (user)
 
+- **[DOC-5T8N]** Self-document the build-plan Status "derived view" behavior in templates/build-plan.md to prevent hand-editing confusion
+  `effort: S · impact: S · area: templates/docs · source: user · added: 2026-06-24 · status: open · stage: idea · related: VWS-4D8J, CRT-3D9K, CRT-4Q7K, TPL-8H3M · refs: templates/build-plan.md, lib/views.py (extract_status_section, regenerate_status_section), .prawduct/change-log.md`
+
+  Sibling to the named-but-dropped / derived-view learnings from api-design. Problem: when project-state has `views_enabled: true`, a build-plan `## Status` block is a DERIVED view of change-log `status=shipped|merged` tags (regen-views flips checkboxes at merge/release), so `[ ]` on a feature branch is correct, not a forgotten update — but nothing in the plan doc itself says so, and a session that "fixes" the checkboxes by hand has its edits silently overwritten by regen-views (happened during the api-design build: hand-flipped chunks 01/02 to `[x]`, regen-views reset them).
+
+  Fix-shape: add a short explanatory HTML comment to templates/build-plan.md explaining that when `views_enabled` the Status is derived (don't hand-edit; flip via change-log status tags + regen-views; checkboxes track merge/release, dev-progress lives in the Context line). Make it conditional-aware — a repo WITHOUT `views_enabled` hand-maintains the checkboxes.
+
+  Placement nuance (verified against lib/views.py): put the comment ABOVE the `## Status` heading (or in the template's top comment block), NOT inside the Status section body — `extract_status_section` (lib/views.py) spans from the `## Status` line to the next `## ` H2 and `regenerate_status_section` rewrites that block, so a comment placed inside it would be clobbered.
+
+  Idea-stage: a small DX self-documentation fix, but confirm the exact comment text and placement against the current views.py extraction bounds before writing. (user)
+
 - **[GOV-9K2T]** Review the doctor vs janitor scope boundary — clarify the responsibility split and eliminate apparent overlap
   `effort: M · impact: M · area: governance/tooling · source: user · added: 2026-06-24 · status: open · stage: research · refs: skills/doctor/SKILL.md, skills/janitor/SKILL.md, .prawduct/cross-cutting-concerns.md`
 
