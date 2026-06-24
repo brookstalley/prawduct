@@ -26,7 +26,7 @@ Artifacts are specification files that guide building. They ensure you think thr
 **Structurally-triggered artifacts** (based on characteristics detected in discovery):
 - *Human interface*: Interaction design, information architecture, accessibility specification, onboarding flow
 - *Runs unattended*: Pipeline architecture, scheduling, monitoring and alerting, failure recovery, configuration management
-- *Programmatic interface*: API contract (operations, request/response formats, error codes, authentication, rate limits)
+- *Programmatic interface*: API contract — operations, request/response formats, error model, **versioning scheme**, **deprecation/backward-compatibility policy**, conventions & evolution rules, authentication, rate limits. The versioning, deprecation, and error-model choices are *recorded decisions* (`design_decisions.api_versioning_approach` / `api_error_model_approach`), not silent defaults — a deferral must be dated and carry a revisit trigger.
 - *Multiple party types*: Per-party experience specifications, trust boundary analysis, data isolation rules
 - *Sensitive data*: Deepens existing artifacts (data lifecycle, security model, audit trails) rather than creating new ones
 - *Multi-process or distributed*: System architecture — process topology, communication channels (patterns, endpoints, protocols), concurrency model, persistence boundaries (what's durable vs. ephemeral, what lives where)

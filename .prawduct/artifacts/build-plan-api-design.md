@@ -55,7 +55,7 @@ last_validated: null
 - [ ] Chunk 05: Migration nudge — the api-versioning advisory probe (CODE)
 - [ ] Chunk 06: Coherence & close — matrix row, OWASP-API security prompt, cumulative review
 
-Context: Plan authored 2026-06-24 on feature/api-design-versioning (off develop; gate-fidelity stays separate for its own PR). Nothing built yet. Next: read /prawduct:building, then Chunk 01 (keystone). Code is isolated to Chunk 05; Chunks 01-04, 06 are doc-only.
+Context: Plan on feature/api-design-versioning (off develop; gate-fidelity stays separate for its own PR). **Chunk 01 (keystone) DONE** — decision-record schema added to `templates/project-state.yaml` (`design_decisions.api_versioning_approach` + `api_error_model_approach`; commented-out `api_versioning_decided` answer-store fact) and the two capture points wired (`discovery.md`:15, `planning.md`:29). Critic `final`: no BLOCKING; stale-evidence WARNING cleared (1405 green recorded); AC1 wording reconciled to the commented-out fact per Critic NOTE. Next: **Chunk 02** (api-contract template + planning Exposed-API section + build-plan `**Exposed API:**` field). Code isolated to Chunk 05; Chunks 01-04, 06 are doc-only. Change-log entry added at feature close (bundle-at-release convention).
 
 ## Build Chunks
 
@@ -68,13 +68,13 @@ Context: Plan authored 2026-06-24 on feature/api-design-versioning (off develop;
 - **Artifacts consumed:** this plan; `.prawduct/cross-cutting-concerns.md` (the coverage model); `templates/project-state.yaml`, `methodology/discovery.md`, `methodology/planning.md`.
 
 - **Deliverables:**
-  1. `templates/project-state.yaml` — under `design_decisions`, add an `api_versioning_approach` block (sub-fields: `scheme`, `deprecation_policy`, `stability_tiers`, `status` [active|deferred], `rationale`, `revisit_trigger`, `date`) and a separate `api_error_model_approach` block (`envelope`, `status`, `rationale`), each commented in the house style and defaulting `null`. Add a top-level resolution fact `api_versioning_decided: null` near the other top-level opt-in facts (`coverage_required` ~L252, `operator_verification_required` ~L286), with a comment that it is the advisory-probe suppression fact (set non-null when the decision is recorded). Keep `classification.structural.exposes_programmatic_interface` as the trigger SIGNAL — add a one-line cross-ref comment pointing at the new decision block.
+  1. `templates/project-state.yaml` — under `design_decisions`, add an `api_versioning_approach` block (sub-fields: `scheme`, `deprecation_policy`, `stability_tiers`, `status` [active|deferred], `rationale`, `revisit_trigger`, `date`) and a separate `api_error_model_approach` block (`envelope`, `status`, `rationale`), each commented in the house style and defaulting `null`. Add a top-level `api_versioning_decided` answer-store fact, documented as a commented-out optional key (matching the backlog resolution-fact convention near `operator_verification_required` ~L286) — absent/null both read as undecided; a product adds the live key when it records its decision, which suppresses the probe. Keep `classification.structural.exposes_programmatic_interface` as the trigger SIGNAL — add a one-line cross-ref comment pointing at the new decision block.
   2. `methodology/discovery.md` — the "Exposes programmatic interface" line (line 15): expand the implication from a passing list to *decisions to record* — versioning, deprecation/backward-compat, and error model — and note these are captured (not just noted). Keep it tight (the OWASP-API security prompt lands in Chunk 06; reference it forward there).
   3. `methodology/planning.md` — the structurally-triggered artifact line for *Programmatic interface* (line 29): the API-contract checklist currently reads "operations, request/response formats, error codes, authentication, rate limits" and **omits versioning**. Add versioning, deprecation/compatibility, and the conventions/evolution dimension.
 
 - **Tests:** none new (doc/template/config only). Guard: the project-state template must remain valid YAML and any existing template-shape test must pass.
 - **Acceptance criteria:**
-  1. `templates/project-state.yaml` parses as valid YAML; new blocks present with house-style comments; `api_versioning_decided` is a top-level scalar (column 0).
+  1. `templates/project-state.yaml` parses as valid YAML; new decision blocks present with house-style comments; `api_versioning_decided` documented as a commented-out top-level answer-store fact (matching the resolution-fact convention) — absent/null both read as undecided by the Chunk 05 probe.
   2. Full suite green: `python3 -m pytest -q` (no regressions).
   3. discovery.md:15 and planning.md:29 name versioning + deprecation + error model explicitly.
 - **Critic mode:** final

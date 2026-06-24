@@ -12,7 +12,7 @@ Before you can build anything well, you need to understand what kind of thing yo
 
 - **Runs unattended** — Operates without humans watching. Signals: "automatically", "cron", "monitors", "runs in background". Implications: need failure recovery, monitoring, alerting, scheduling. Silent failure is the default — design against it.
 
-- **Exposes programmatic interface** — Other systems call it. Signals: "API", "webhook", "endpoint", "integration". Implications: need API contracts, versioning, consumer documentation, error codes.
+- **Exposes programmatic interface** — Other systems call it. Signals: "API", "webhook", "endpoint", "integration". Implications: need an API contract (operations, request/response, error model, auth) plus three *recorded* decisions — versioning scheme, deprecation/backward-compatibility policy, and error model — since adding any of them later is a breaking change for every consumer. Record the decision (including a deliberate "none — internal-only") in `design_decisions.api_versioning_approach`; a deferral must be dated and carry a revisit trigger.
 
 - **Has multiple party types** — Different user types with different privileges. Signals: "buyers and sellers", "admin panel", "teachers and students". Implications: need per-party specs, trust boundaries, data isolation.
 
