@@ -8,6 +8,24 @@
 ## Open
 
 
+- **[GOV-9K2T]** Review the doctor vs janitor scope boundary — clarify the responsibility split and eliminate apparent overlap
+  `effort: M · impact: M · area: governance/tooling · source: user · added: 2026-06-24 · status: open · stage: research · refs: skills/doctor/SKILL.md, skills/janitor/SKILL.md, .prawduct/cross-cutting-concerns.md`
+
+  Surfaced during the api-design cross-cutting work, where the new API-versioning concern landed in BOTH a `/prawduct:doctor` check (#9) and a `/prawduct:janitor` theme — exposing that the line between the two skills is fuzzy. Both are framed as "health check": doctor = "health-check, repair, and maintain an already-onboarded Prawduct repo"; janitor = "periodic codebase maintenance — systematic health check across VCS hygiene, code quality, docs, tests, deps, controllability."
+
+  Hypothesis to confirm or redraw: doctor = prawduct GOVERNANCE/install health (is this repo correctly set up and governed — install reference, distribution, anchor, core state, discovery captured, gitignore contract); janitor = the product's OWN codebase craft health (is the code/docs/tests well-maintained).
+
+  Audit for: (1) duplicated/overlapping checks across the two skills; (2) a clear rule for which skill a new concern belongs to (or legitimately both, and why); (3) whether the API check should stay in both or consolidate. Research-stage — investigation/audit, not yet a buildable task; route to discovery to advance the stage. (user)
+
+- **[SEC-4Q7H]** Audit auth/authz as a holistic cross-cutting concern — confirm coherent pipeline coverage across ALL surfaces, not fragmented per-surface
+  `effort: M · impact: M · area: governance/security · source: user · added: 2026-06-24 · status: open · stage: research · refs: .prawduct/cross-cutting-concerns.md (Security + Data-privacy rows), build-plan-api-design.md, skills/critic/review-cycle.md (Goal 1 auth completeness), templates/ (security-model artifact)`
+
+  Surfaced during the api-design cross-cutting work (build-plan-api-design.md), where API auth was deliberately NOT duplicated into the API-design concern because auth belongs to the Security pipeline (Security + Data-privacy rows in cross-cutting-concerns.md; Critic Goal-1 auth completeness; security-model artifact). This audit verifies that placement is sound: trace auth/authz across the FULL pipeline (discovery structural detection → security-model artifact → builder guidance → Critic checks) and confirm it is treated coherently across ALL surfaces (API, human-interface, multi-party, unattended) rather than ad-hoc per surface.
+
+  Look specifically for: object-level authorization / BOLA (OWASP API Top 10 #1) coverage; session vs token models; multi-party trust-boundary enforcement; and whether the security-model template prompts auth decisions strongly enough.
+
+  Outcome: either confirm coverage is sound or identify the gaps (likely a follow-on to the api-design work). Research-stage — this is an audit/investigation, not yet a buildable task; route to discovery to advance the stage. (user)
+
 - **[COV-5H3N]** resolve-base ignores origin/HEAD and defaults to main on gitflow repos — silent wrong-base inflates review scope and breaks stamp-merged + build-plan lifecycle
   `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: open · stage: design · related: PR-2H8N, REL-7P3X, MIG-6B0R · refs: lib/coverage.py (_resolve_base_branch, _DEFAULT_BASE_CANDIDATES), lib/migrate_plugin.py, skills/onboard, incoming-bugs/archive/resolve-base-ignores-origin-head-defaults-to-main-on-gitflow-repos.md`
 
