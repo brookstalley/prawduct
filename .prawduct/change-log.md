@@ -5,7 +5,7 @@
 
 ## 2026-06-24: doctor↔janitor scope boundary — canonical split + mirrored skill summaries (doctor-janitor)
 
-<!-- prawduct: chunks=01 | type=feature | scope=doctor-janitor -->
+<!-- prawduct: chunks=01 | type=feature | scope=doctor-janitor | status=merged -->
 
 **Why:** The api-design work landed the new API-versioning concern in BOTH a `/prawduct:doctor`
 check (#9) and a `/prawduct:janitor` theme, exposing that the line between the two "health check"
