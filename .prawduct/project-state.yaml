@@ -530,8 +530,14 @@ views_enabled: true
 # 2026-06-24: pointed at the in-progress api-design plan (close the framework's
 # largest uncovered cross-cutting concern — the product's OWN exposed API:
 # versioning, deprecation, error model; branch feature/api-design-versioning off
-# develop).
-active_build_plan: artifacts/build-plan-api-design.md
+# develop). MERGED to develop (PR #108, release-pending); the plan file is RETAINED
+# in artifacts/ and its ## Status regens at the v2.1.8 release via its frontmatter
+# scope: api-design (REL-4T8N resolves scope→plan from the change-log, not this
+# pointer) — so repointing below does not orphan it.
+# 2026-06-24: repointed at the doctor↔janitor boundary plan (GOV-9K2T; branch
+# feature/doctor-janitor-boundary off develop) so the stop-hook Critic gate tracks
+# the active work.
+active_build_plan: artifacts/build-plan-doctor-janitor.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

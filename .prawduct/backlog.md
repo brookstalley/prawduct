@@ -29,15 +29,6 @@
 
   Idea-stage: a small DX self-documentation fix, but confirm the exact comment text and placement against the current views.py extraction bounds before writing. (user)
 
-- **[GOV-9K2T]** Review the doctor vs janitor scope boundary — clarify the responsibility split and eliminate apparent overlap
-  `effort: M · impact: M · area: governance/tooling · source: user · added: 2026-06-24 · status: open · stage: research · refs: skills/doctor/SKILL.md, skills/janitor/SKILL.md, .prawduct/cross-cutting-concerns.md`
-
-  Surfaced during the api-design cross-cutting work, where the new API-versioning concern landed in BOTH a `/prawduct:doctor` check (#9) and a `/prawduct:janitor` theme — exposing that the line between the two skills is fuzzy. Both are framed as "health check": doctor = "health-check, repair, and maintain an already-onboarded Prawduct repo"; janitor = "periodic codebase maintenance — systematic health check across VCS hygiene, code quality, docs, tests, deps, controllability."
-
-  Hypothesis to confirm or redraw: doctor = prawduct GOVERNANCE/install health (is this repo correctly set up and governed — install reference, distribution, anchor, core state, discovery captured, gitignore contract); janitor = the product's OWN codebase craft health (is the code/docs/tests well-maintained).
-
-  Audit for: (1) duplicated/overlapping checks across the two skills; (2) a clear rule for which skill a new concern belongs to (or legitimately both, and why); (3) whether the API check should stay in both or consolidate. Research-stage — investigation/audit, not yet a buildable task; route to discovery to advance the stage. (user)
-
 - **[SEC-4Q7H]** Audit auth/authz as a holistic cross-cutting concern — confirm coherent pipeline coverage across ALL surfaces, not fragmented per-surface
   `effort: M · impact: M · area: governance/security · source: user · added: 2026-06-24 · status: open · stage: research · refs: .prawduct/cross-cutting-concerns.md (Security + Data-privacy rows), build-plan-api-design.md, skills/critic/review-cycle.md (Goal 1 auth completeness), templates/ (security-model artifact)`
 
@@ -660,6 +651,15 @@
 _(no items in flight)_
 
 ## Archive
+
+- **[GOV-9K2T]** Review the doctor vs janitor scope boundary — clarify the responsibility split and eliminate apparent overlap
+  `effort: M · impact: M · area: governance/tooling · source: user · added: 2026-06-24 · status: shipped · stage: research · closed-by: doctor-janitor · refs: skills/doctor/SKILL.md, skills/janitor/SKILL.md, .prawduct/cross-cutting-concerns.md · reviewed: 2026-06-24`
+
+  Surfaced during the api-design cross-cutting work, where the new API-versioning concern landed in BOTH a `/prawduct:doctor` check (#9) and a `/prawduct:janitor` theme — exposing that the line between the two skills is fuzzy. Both are framed as "health check": doctor = "health-check, repair, and maintain an already-onboarded Prawduct repo"; janitor = "periodic codebase maintenance — systematic health check across VCS hygiene, code quality, docs, tests, deps, controllability."
+
+  Hypothesis to confirm or redraw: doctor = prawduct GOVERNANCE/install health (is this repo correctly set up and governed — install reference, distribution, anchor, core state, discovery captured, gitignore contract); janitor = the product's OWN codebase craft health (is the code/docs/tests well-maintained).
+
+  Audit for: (1) duplicated/overlapping checks across the two skills; (2) a clear rule for which skill a new concern belongs to (or legitimately both, and why); (3) whether the API check should stay in both or consolidate. Research-stage — investigation/audit, not yet a buildable task; route to discovery to advance the stage. (user)
 
 <!-- Bundle: test-evidence cluster — shipped in v2.1.8 (scope=test-evidence, #104).
      Shared surface: `prawduct-hook test-evidence record` (bin/prawduct-hook).
