@@ -45,6 +45,7 @@ Developer preferences for how code is written in this project. Captured during d
 - **Protected branches**: none enforced (direct workflow)
 - **PR creation**: wait_for_user — only create PRs when explicitly asked
 - **PR merge**: wait_for_user — present the PR for user review before merging
+- **PR merge strategy**: merge commit (`gh pr merge --merge`) — preserve each chunk's commit on the integration branch; do not squash. (Overrides the `/pr` skill's squash default. The `develop`→`main` release is a tree-set promotion, not a merge, so feature→`develop` granularity doesn't affect it.)
 
 ---
 
@@ -74,7 +75,7 @@ Each preference is enforced by one of three mechanisms. This table is the source
 | Naming (snake_case / PascalCase / UPPER_SNAKE) | Critic *(would be linter; no linter configured — see "Linting" above)* | Reviewer reads diff against this preference |
 | Error handling (return-value based; exceptions at boundaries) | Critic | Reviewer judges what counts as a "boundary" per the definition above |
 | Class-based test grouping (allows scenario-based class names) | Critic | Reviewer judges whether grouping is sensible — strict `Test<FuncName>` would over-enforce |
-| Branching / PR creation / PR merge (Workflow) | Session config | Read by `building.md`, `/pr`, etc. at decision points |
+| Branching / PR creation / PR merge / PR merge strategy (Workflow) | Session config | Read by `building.md`, `/pr`, etc. at decision points |
 | All others (Language, Version, Style, Type annotations, Testing strategy, File organization) | Critic | Reviewer reads diff against this preference |
 
 **Rule for adding a new preference:** assign a mechanism. If the preference can be expressed as "every file/function/config matches pattern X with named exceptions" → write a test. If it requires understanding intent → assign to Critic. Never leave a preference unassigned — that's how preferences silently become aspirational.

@@ -100,6 +100,21 @@ Are external dependencies current, justified, minimal, and secure?
 - Known security vulnerabilities in current dependency versions
 - Version constraints that are too tight (blocking updates) or too loose (risking breakage)
 
+### API Design & Versioning Hygiene
+
+If this product exposes an API — any programmatic surface others call (a network service, a library/SDK, an on-device/platform interface, or a CLI), not just HTTP/REST — is that contract designed to evolve without breaking its consumers?
+
+- Versioning — is there a recorded versioning scheme and granularity (`design_decisions.api_versioning_approach`), or is the surface unversioned by unexamined default? (`/prawduct:doctor` check #9 flags a missing decision; the `api-versioning` advisory nudges ambiently.)
+- Deprecation & compatibility — is there a sunset/deprecation policy and a breaking-change signal? Are changes additive (tolerant-reader, never remove or repurpose a field) so new versions stay rare?
+- Error model — is the error envelope consistent across the surface (`design_decisions.api_error_model_approach`), or does each operation shape errors differently?
+- Protocol semantics — the correctness conventions for whatever the surface actually is. For HTTP/REST: status codes, PUT vs PATCH, conditional requests / ETags, idempotency keys. For a library/SDK: semver discipline and stable signatures. For a CLI: stable flags, exit codes, and output contracts.
+- Pagination, filtering, sorting, and payload/size limits — present and consistent wherever collections are returned?
+- Wire conventions — the footguns: timestamps (ISO-8601/UTC), money (minor-units or decimal string, never float), casing, opaque IDs, string enums, null/optional semantics.
+- Surface inventory & stability tiers — is the public contract distinguished from internal/admin surfaces, and are experimental/stable/deprecated tiers marked? (The OWASP API9 "improper inventory" failure mode.)
+- Published contract — is there a maintained contract artifact (`templates/api-contract.md`) consumers can rely on, kept current with the code?
+
+Survey, not gate — surface what's undecided or drifting. The recorded *decisions* (versioning, error model) are the only gated parts, and they live in the Critic and the `api-versioning` advisory, not here.
+
 ### Controllability
 
 Can a developer — human or AI agent — control, debug, test, and observe the entire system effectively?
@@ -129,7 +144,7 @@ Arguments are optional. When provided, they adjust the janitor's behavior:
 - **Scope**: Limit investigation to specific themes. Example: `/prawduct:janitor scope=vcs,tests`
 - **Survey only**: Produce findings without executing fixes. Example: `/prawduct:janitor survey-only`
 
-Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `templates`, `tests`, `deps`, `control`, `obsolescence`
+Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `templates`, `tests`, `deps`, `api`, `control`, `obsolescence`
 
 ## Process
 

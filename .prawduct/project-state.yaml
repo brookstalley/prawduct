@@ -527,6 +527,11 @@ views_enabled: true
 # change-log entry carries status=merged once its merge runs stamp-merged; all are
 # release-pending until the develop→main v2.1.8 promotion flips their entries to
 # status=shipped and regen-views flips each plan's ## Status via its scope= tag.
+# 2026-06-24: pointed at the in-progress api-design plan (close the framework's
+# largest uncovered cross-cutting concern — the product's OWN exposed API:
+# versioning, deprecation, error model; branch feature/api-design-versioning off
+# develop).
+active_build_plan: artifacts/build-plan-api-design.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
