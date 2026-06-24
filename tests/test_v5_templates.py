@@ -64,6 +64,16 @@ class TestProjectStateV5Fields:
         assert "work_in_progress" not in state
         assert "build_plan" not in state
 
+    def test_api_decision_fields(self, state: dict, raw: str):
+        """api-design adds the recorded API decisions under design_decisions, and
+        the api_versioning_decided answer-store fact stays commented-out (absent
+        live, documented in a comment) per the resolution-fact convention."""
+        dd = state["design_decisions"]
+        assert dd["api_versioning_approach"] is None
+        assert dd["api_error_model_approach"] is None
+        assert "api_versioning_decided" not in state   # commented-out, not a live key
+        assert "api_versioning_decided" in raw         # documented in a comment
+
     def test_v4_fields_preserved(self, state: dict):
         """All v4 fields that should persist are present."""
         for field in ["classification", "product_definition", "technical_decisions",
@@ -302,3 +312,51 @@ class TestProjectPreferencesPBT:
                 lower = line.lower()
                 assert "hypothesis" in lower or "proptest" in lower
                 break
+
+
+# =============================================================================
+# api-contract.md — the artifact for a product's OWN exposed API (api-design)
+# =============================================================================
+
+
+class TestApiContractTemplate:
+    """Guards the api-contract artifact template: the three recorded decisions,
+    transport-agnostic framing (NOT HTTP-only), and the surfaced breadth."""
+
+    def setup_method(self):
+        self.content = read_template("api-contract.md")
+
+    def test_frontmatter(self):
+        assert "artifact: api-contract" in self.content
+
+    def test_gated_decisions_present(self):
+        # The three recorded decisions the Critic and advisory track.
+        assert "## Versioning" in self.content
+        assert "## Error Model" in self.content
+        assert "Deprecation" in self.content
+        # Mirrored into project-state design_decisions.
+        assert "api_versioning_approach" in self.content
+        assert "api_error_model_approach" in self.content
+
+    def test_force_the_decision_not_mandate(self):
+        # Stance: a recorded "none — internal-only" / dated deferral satisfies it.
+        assert "internal-only" in self.content
+        assert "deferral" in self.content.lower()
+
+    def test_transport_agnostic_not_http_only(self):
+        # Must cover non-network surfaces, not just HTTP/REST (do not regress).
+        lower = self.content.lower()
+        assert "library" in lower and "sdk" in lower
+        assert "cli" in lower
+        assert "on-device" in lower or "platform" in lower
+        assert "not just an http" in lower or "don't assume http" in lower
+        # ...while still naming the network protocols as examples.
+        for proto in ["REST", "GraphQL", "gRPC"]:
+            assert proto in self.content
+
+    def test_surfaced_breadth(self):
+        # Breadth carried as prose, not gates.
+        assert "OWASP" in self.content and "BOLA" in self.content  # API-specific security
+        assert "stability" in self.content.lower()                  # surface inventory / tiers
+        assert "ISO-8601" in self.content                           # wire conventions
+        assert "tolerant reader" in self.content.lower()            # evolution rules

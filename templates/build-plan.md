@@ -325,6 +325,16 @@ Context: [What's done, what's next, key decisions. Updated after each chunk.]
 
        Omit the field entirely when no foreign API is involved — the Critic
        check doesn't fire. -->
+- **Exposed API:** [optional — omit unless this chunk introduces or changes a programmatic interface this product EXPOSES for others to call. Not just HTTP: a network service, a library/SDK, an on-device/platform interface, or a CLI. Format: `<name>`]
+  <!-- Mirror of Foreign API, for the interface you PRODUCE. When this chunk
+       builds or changes an exposed surface, declare it here. The Critic's Goal 2
+       then checks that the versioning/deprecation decision
+       (design_decisions.api_versioning_approach, or a dated deferral) AND the
+       error-model decision (api_error_model_approach) are recorded — missing
+       either → WARNING. Detail lives in the api-contract artifact
+       (templates/api-contract.md). Force-the-decision, not mandate-versioning:
+       a recorded "none — internal-only" satisfies it. Omit when this chunk
+       exposes no API surface — the check doesn't fire. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/critic <mode>` run (using the mode declared above) and blocking findings resolved
