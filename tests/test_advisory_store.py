@@ -231,6 +231,29 @@ class TestCodebase:
         cb = Codebase(root=tmp_path)
         assert cb.has_imports(["anthropic"]) is False
 
+    def test_has_source_matching_existence(self, tmp_path: Path):
+        (tmp_path / "openapi.yaml").write_text("openapi: 3.0.0\n")
+        cb = Codebase(root=tmp_path)
+        # needles omitted → existence alone is the signal
+        assert cb.has_source_matching(["openapi*.yaml", "*.proto"]) is True
+        assert cb.has_source_matching(["*.proto"]) is False
+        assert cb.has_source_matching([]) is False
+
+    def test_has_source_matching_content(self, tmp_path: Path):
+        (tmp_path / "package.json").write_text('{"dependencies": {"express": "^4"}}\n')
+        cb = Codebase(root=tmp_path)
+        assert cb.has_source_matching(["package.json"], ['"express"']) is True
+        assert cb.has_source_matching(["package.json"], ['"fastify"']) is False
+
+    def test_has_source_matching_skips_vendored_dirs(self, tmp_path: Path):
+        nm = tmp_path / "node_modules" / "dep"
+        nm.mkdir(parents=True)
+        (nm / "package.json").write_text('{"dependencies": {"express": "^4"}}\n')
+        cb = Codebase(root=tmp_path)
+        # the only express manifest is vendored → pruned, no match (existence or content)
+        assert cb.has_source_matching(["package.json"], ['"express"']) is False
+        assert cb.has_source_matching(["package.json"]) is False
+
 
 # ---------------------------------------------------------------------------
 # Registry

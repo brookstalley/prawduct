@@ -162,6 +162,38 @@ class Codebase:
                 return True
         return False
 
+    def has_source_matching(self, globs: Iterable[str], needles: Iterable[str] | None = None) -> bool:
+        """True if any file matching one of ``globs`` exists under ``root`` —
+        and, when ``needles`` is given, contains at least one needle substring.
+
+        The skip-dir-aware, content-capable companion to
+        :meth:`has_files_matching` (which is existence-only and does NOT prune
+        vendored trees like ``node_modules``). ``globs`` are matched recursively
+        with the same ``_SCAN_SKIP_DIRS`` pruning as :meth:`has_imports`, so a
+        bare manifest name (``package.json``, ``go.mod``) finds the project's own
+        file at any depth without descending into vendored dependencies. Built
+        for the api-versioning probe's polyglot detection: dependency-manifest
+        content scans (``package.json`` / ``go.mod`` / ``pom.xml`` framework
+        tokens) and language-agnostic IDL/spec-file existence (openapi / swagger
+        / ``*.proto``). Reads are best-effort — an unreadable or non-UTF-8 file is
+        skipped, never raised — so the scan stays non-raising like its siblings.
+        """
+        patterns = [g for g in globs if g]
+        if not patterns:
+            return False
+        wanted = [n for n in (needles or ()) if n]
+        for g in patterns:
+            for path in self._iter_source_files(g):
+                if not wanted:
+                    return True  # existence alone is the signal
+                try:
+                    text = path.read_text()
+                except (OSError, UnicodeDecodeError):
+                    continue
+                if any(n in text for n in wanted):
+                    return True
+        return False
+
     def _iter_source_files(self, pattern: str):
         for path in self.root.rglob(pattern):
             if any(part in _SCAN_SKIP_DIRS for part in path.relative_to(self.root).parts):
