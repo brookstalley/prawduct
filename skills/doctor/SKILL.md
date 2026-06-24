@@ -10,6 +10,14 @@ You are managing prawduct product-repo health under the **plugin** distribution 
 
 This skill is for a repo that is **already onboarded**. To set up a new or existing repo, use **`/prawduct:onboard`** instead.
 
+## Scope & boundary
+
+`doctor` owns **prawduct governance/install conformance** — is *this repo* correctly set up and
+governed (install reference, distribution, anchor, core state, discovery captured, gitignore
+contract, recorded decisions)? It **reports and guides**; it does not fix the product's own code.
+For the product's **own codebase craft** — code/docs/tests/dependency quality and currency — use
+**`/prawduct:janitor`**. Full split, and the rule for where a new concern belongs: `docs/doctor-vs-janitor.md`.
+
 ## Context Detection
 
 1. If an explicit target path was provided → `doctor` runs in the *current* product repo, not on a target path. If they meant to **set up** that path, send them to **`/prawduct:onboard <path>`**; if they meant to **health-check a different** repo, have them `cd` there and re-run. Either way, stop here.
@@ -35,7 +43,7 @@ Plugin-native — read the consumer's OWN `.prawduct/` and `.claude/` with Read 
 5. **Core state present** — `.prawduct/` has `project-state.yaml`, `learnings.md`, `backlog.md`, `change-log.md`, and `artifacts/`.
 6. **Discovery captured** — if the repo shows product-definition work (source code, or markdown under `docs/`), `project-state.yaml` should have `classification` and `product_definition` filled, not template-default (`domain: null` / `vision: null`). Template-default state alongside real product work means discovery was skipped — the docs-first / brownfield onboarding gap the **DISCOVERY NOT CAPTURED** session-briefing nudge also flags. Recommend **`/prawduct:discovery`** (reconciliation mode reads the existing docs/code and backfills `project-state.yaml`). A repo with no product work yet is fine — discovery comes when building starts.
 7. **External backlog files** — if `TODO.md` / `BACKLOG.md` / `ROADMAP.md` / `IDEAS.md` exist in the repo root or `.github/` and aren't recorded in `backlog_external_imports`, report them and recommend **`/prawduct:backlog import <path>`** (don't auto-import — the user confirms). This is the explicit health-check surface for the same signal the `external-backlog-detected` session-start advisory raises ambiently; both resolve on `backlog_external_imports`.
-8. **Gitignore contract** — `.gitignore` should carry the session-file entries and must NOT ignore retired entries (`.prawduct/artifacts/build-plan.md` — build plans are tracked artifacts; an ignored plan plus the tracked `active_build_plan:` pointer breaks every other clone). Stale line present or session entries missing → run `prawduct-hook update-gitignore` (it prints any `unignored:` paths — advise `git add` on those that exist on disk).
+8. **Gitignore contract** — `.gitignore` should carry the session-file entries and must NOT ignore retired entries (`.prawduct/artifacts/build-plan.md` — build plans are tracked artifacts; an ignored plan plus the tracked `active_build_plan:` pointer breaks every other clone). Stale line present or session entries missing → run `prawduct-hook update-gitignore` (it prints any `unignored:` paths — advise `git add` on those that exist on disk). This checks the prawduct *contract* only; general gitignore hygiene (build artifacts, editor files, secrets) is the janitor's Version Control Hygiene theme (`docs/doctor-vs-janitor.md`).
 9. **API versioning decision** — if the repo exposes an API (`classification.structural.exposes_programmatic_interface: true`, or a Glob-able `openapi`/`swagger` spec or `*.proto` file in the tree — the `api-versioning` advisory additionally scans source for web-framework imports, which this read/Glob-only check does not) but no versioning decision is recorded (`api_versioning_decided` unset *and* `design_decisions.api_versioning_approach` null), report **degraded** and recommend recording the decision — a versioning + deprecation scheme, or an explicit dated deferral with a revisit trigger (`/prawduct:discovery` / `/prawduct:planning` capture it; `templates/api-contract.md` details it). Read-and-guide only — present the one-line `project-state.yaml` edit, don't auto-edit (consistent with #6/#7 and Enable-Gate). This is the on-demand health-check surface for the same signal the `api-versioning` session-start advisory raises ambiently; both resolve on a recorded decision. "API" is any programmatic surface others call (network service, library/SDK, on-device/platform, CLI) — an internal-only surface records "none — internal-only" and is healthy.
 
 Classify and report:

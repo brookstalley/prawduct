@@ -7,6 +7,15 @@ allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Read, Write, Edit, Glo
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
 
+## Scope & boundary
+
+`janitor` owns the **product's own codebase craft** — are the code, docs, tests, and dependencies
+well-built, current, and proportionate? It **surveys, then fixes** through the standard build cycle.
+For **prawduct governance/install health** — is the repo correctly set up and governed (install
+reference, distribution, anchor, core state, recorded decisions, the gitignore contract)? — use
+**`/prawduct:doctor`**, which reports-and-guides rather than fixes. Full split, and the rule for
+where a new concern belongs: `docs/doctor-vs-janitor.md`.
+
 ## The Janitor's Perspective
 
 Approach this codebase as if seeing it for the first time after months away. The builders who work here daily have adapted to its quirks — your value is fresh eyes. Look for things that are:
@@ -29,7 +38,7 @@ Is the repository's history and branch structure clean and navigable?
 - Branches with no activity within the staleness window (default: 14 days; see Arguments)
 - Branches superseded by other work — started, then abandoned in favor of a different approach
 - Orphaned work that was started but apparently abandoned with no resolution
-- Files that should be ignored but aren't (build artifacts, editor files, secrets) — or vice versa
+- Files that should be ignored but aren't (build artifacts, editor files, secrets) — or vice versa. This is general gitignore hygiene; the prawduct gitignore *contract* (session-file entries, the retired `build-plan.md` entry) is `/prawduct:doctor` Health-Check #8 (`docs/doctor-vs-janitor.md`).
 
 ### Structural Clarity
 

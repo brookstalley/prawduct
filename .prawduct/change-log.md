@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-24: doctor↔janitor scope boundary — canonical split + mirrored skill summaries (doctor-janitor)
+
+<!-- prawduct: chunks=01 | type=feature | scope=doctor-janitor -->
+
+**Why:** The api-design work landed the new API-versioning concern in BOTH a `/prawduct:doctor`
+check (#9) and a `/prawduct:janitor` theme, exposing that the line between the two "health check"
+skills was never written down (`GOV-9K2T`). Nothing told a maintainer which skill a new concern
+belongs to, so the next cross-cutting concern would reopen the same question.
+
+**What:**
+- **NEW `docs/doctor-vs-janitor.md`** — the canonical boundary: the three-axis split (subject /
+  action-model / question-type), the placement rule for a new concern, the "legitimately both"
+  pattern (API versioning, gitignore) and the handoff adjacencies (Template Currency, backlog).
+- **Mirrored `## Scope & boundary` summaries** in `skills/doctor/SKILL.md` (governance/install
+  conformance — reports & guides) and `skills/janitor/SKILL.md` (the product's own codebase craft —
+  surveys & fixes), each pointing to the canonical doc.
+- **gitignore cross-reference** added in both directions — doctor #8 (prawduct contract) ↔ janitor
+  Version Control Hygiene (general hygiene) — the one shared concern that wasn't previously linked.
+- **Methodology index** (`skills/methodology/SKILL.md`) now places both maintenance/health skills
+  on the governance map (it previously named only critic/pr/learnings/backlog).
+- **NEW `tests/test_doctor_janitor_boundary.py`** — structural guard locking the three-place
+  coherence (canonical doc exists; both skills carry the summary, the pointer, and the gitignore
+  cross-ref; the index lists both). No checks were added, removed, or moved — the API check stays
+  in both skills with its two facets delineated.
+
 ## 2026-06-24: API design (produced) — pipeline coverage for the product's own exposed-API decisions (api-design)
 
 <!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=api-design | status=merged -->
