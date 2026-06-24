@@ -5,7 +5,7 @@
 
 ## 2026-06-24: doctor↔janitor scope boundary — canonical split + mirrored skill summaries (doctor-janitor)
 
-<!-- prawduct: chunks=01 | type=feature | scope=doctor-janitor | status=merged -->
+<!-- prawduct: chunks=01 | type=feature | release=v2.2.0 | scope=doctor-janitor | status=shipped -->
 
 **Why:** The api-design work landed the new API-versioning concern in BOTH a `/prawduct:doctor`
 check (#9) and a `/prawduct:janitor` theme, exposing that the line between the two "health check"
@@ -30,7 +30,7 @@ belongs to, so the next cross-cutting concern would reopen the same question.
 
 ## 2026-06-24: API design (produced) — pipeline coverage for the product's own exposed-API decisions (api-design)
 
-<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=api-design | status=merged -->
+<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | release=v2.2.0 | scope=api-design | status=shipped -->
 
 **Why:** The framework's largest uncovered cross-cutting concern was the
 product's OWN exposed API. "Versioning" appeared exactly once (discovery.md:15,

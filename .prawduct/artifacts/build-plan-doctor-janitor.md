@@ -29,7 +29,7 @@ and the deliverable shape are each statable in one sentence. The user confirmed 
 <!-- Derived view (views_enabled: true): checkboxes regen from change-log status=shipped
      tags via regen-views. Do NOT hand-edit — add a tagged change-log entry instead. -->
 
-- [ ] Chunk 01: doctor↔janitor boundary — canonical doc + mirrored skill summaries + gitignore cross-ref + guard test
+- [x] Chunk 01: doctor↔janitor boundary — canonical doc + mirrored skill summaries + gitignore cross-ref + guard test
 Context: Sole chunk. Ships as one PR (Type: cumulative-final → the chunk review IS the cumulative gate). Closes GOV-9K2T.
 
 ### Chunk 01: doctor↔janitor boundary
