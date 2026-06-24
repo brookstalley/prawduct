@@ -8,6 +8,16 @@
 ## Open
 
 
+- **[CRT-4Q7K]** Coded auto-detect variant of the `**Exposed API:**` Critic trigger — fire the versioning/error-model Goal-2 check on API-exposing chunks even when the author didn't declare it
+  `effort: M · impact: M · area: critic/governance · source: user · added: 2026-06-24 · status: open · stage: idea · related: SEC-4Q7H, GOV-9K2T · refs: .prawduct/cross-cutting-concerns.md (Known Gaps), templates/api-contract.md, skills/critic/review-cycle.md (Goal 2)`
+
+  Deferred follow-up from the api-design feature (cross-cutting-concerns.md Known Gaps). Today the API versioning / error-model Goal-2 Critic check fires only when a chunk author declares `**Exposed API:** <name>` in the build plan — an opt-in trigger mirroring the existing Foreign-API convention. A stronger guarantee would AUTO-DETECT API-exposing chunks from boundary-patterns globs / code (the surfaces a chunk actually touches) so an undeclared chunk still gets the versioning/error-model check, closing the "author forgot to declare it" hole. ENHANCEMENT, not a gap in shipped coverage — the opt-in path works; this hardens it against omission. Idea-stage: needs a design pass on the detection signal (boundary-patterns globs vs diff inspection) and its false-positive posture before it's buildable. Governance-protected (skills/critic) → full Critic + PR review. (user)
+
+- **[TPL-8H3M]** Standalone error-model artifact/template — extract the error-envelope decision from api-contract.md if error-model design grows
+  `effort: M · impact: M · area: templates/artifacts · source: user · added: 2026-06-24 · status: open · stage: idea · related: CRT-4Q7K · refs: .prawduct/cross-cutting-concerns.md (Known Gaps), templates/api-contract.md, .prawduct/project-state.yaml (design_decisions.api_error_model_approach)`
+
+  Deferred follow-up from the api-design feature (cross-cutting-concerns.md Known Gaps). Today the error-model decision lives INSIDE templates/api-contract.md plus the `design_decisions.api_error_model_approach` project-state block. A DEDICATED error-model template/artifact may be wanted if error-envelope design grows in importance (richer error taxonomies, machine-readable problem-details, per-surface error contracts). ENHANCEMENT, not a gap in shipped coverage — the embedded form covers today's needs; extract only when the design surface earns its own artifact. Idea-stage: the trigger is "does error-model design grow?" — re-derive the requirement (what the standalone artifact must capture beyond the embedded block) before any template work. (user)
+
 - **[GOV-9K2T]** Review the doctor vs janitor scope boundary — clarify the responsibility split and eliminate apparent overlap
   `effort: M · impact: M · area: governance/tooling · source: user · added: 2026-06-24 · status: open · stage: research · refs: skills/doctor/SKILL.md, skills/janitor/SKILL.md, .prawduct/cross-cutting-concerns.md`
 
