@@ -355,6 +355,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.subagent-briefing.md",
     ".prawduct/.gates-waived",
     ".prawduct/.advisories.json",
+    ".prawduct/.work-model-index.json",
     ".prawduct/reflections.md",
     # NOTE: .prawduct/artifacts/build-plan.md is deliberately NOT here —
     # build plans are tracked artifacts (gate-soundness ch.3); this loop
@@ -749,9 +750,47 @@ def cmd_critic_end(project_dir: Path) -> int:
 # =============================================================================
 
 
-def cmd_stop(project_dir: Path) -> int:
-    """Check governance gates before session end."""
+def _read_stop_stdin() -> dict:
+    """Parse the Stop-hook JSON payload Claude Code writes to stdin (session_id,
+    transcript_path, ``background_tasks``, …). Fail-soft above all: an
+    interactive TTY, empty stdin, or malformed JSON yields ``{}`` so the gate
+    degrades to its no-signal behavior (block as before). Never raises — a read
+    error must not crash the session-end gate. Uses the same stdin-read pattern
+    as ``cmd_user_prompt_submit`` but stays SILENT on failure (no stderr note):
+    a routine Stop with no/empty/garbage payload is the common case, and the safe
+    fallback (``{}`` → block exactly as before) is the correct outcome, so there
+    is nothing worth surfacing."""
+    try:
+        # An interactive terminal (a human running the hook by hand) has no
+        # JSON to read and would block on read(); skip it. The harness always
+        # provides a closed pipe, so this guard only affects manual invocation.
+        if sys.stdin is None or sys.stdin.isatty():
+            return {}
+        raw = sys.stdin.read()
+    except Exception:  # prawduct:allow prawduct/broad-except -- a stdin read error must never crash the gate
+        return {}
+    if not raw or not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
+    """Check governance gates before session end.
+
+    ``stop_input`` is the parsed Stop-hook stdin payload (the dispatch passes
+    ``_read_stop_stdin()``); ``None`` defaults to ``{}`` so direct callers and
+    tests keep working. Its ``background_tasks`` array (Claude Code v2.1.145+)
+    drives the STH-3W7F deferral: while harness-tracked background work is in
+    flight, the would-be blockers are DEFERRED to the next Stop rather than
+    blocking now (the session can't end anyway — the harness re-wakes it). The
+    deferral is stateless, so it re-arms automatically once the array empties.
+    """
     prawduct_dir = get_prawduct_dir(project_dir)
+    stop_input = stop_input or {}
 
     # Skip if no .prawduct directory
     if not prawduct_dir.is_dir():
@@ -759,6 +798,12 @@ def cmd_stop(project_dir: Path) -> int:
 
     blockers: list[str] = []
     canary_findings: list[str] = []
+
+    # STH-3W7F: is harness-tracked background work still producing the diff?
+    # When so, defer the session-end blockers (return 0 + a note) instead of
+    # blocking — the gate re-arms on the next Stop once the work lands. Computed
+    # once here; used to skip the PR network probe and to convert blockers below.
+    defer_active, in_flight_tasks = _gates().background_tasks_in_flight(stop_input)
 
     # New-gate attribution (design §5a): load the plugin version + gate registry
     # once, then prefix every blocker with "[prawduct vX · gate: <name>]" so a
@@ -1012,7 +1057,10 @@ def cmd_stop(project_dir: Path) -> int:
     pr_reviews_dir = prawduct_dir / ".pr-reviews"
     pr_would_block = False
     pr_block_branch = ""
-    if has_changes and not doc_only:
+    # STH-3W7F: skip the `gh pr list` network probe entirely while background
+    # work is in flight — the Stop is being deferred regardless, so paying for
+    # the network call (and any PR block it would raise) buys nothing.
+    if has_changes and not doc_only and not defer_active:
         try:
             branch_result = subprocess.run(
                 ["git", "branch", "--show-current"],
@@ -1093,6 +1141,29 @@ def cmd_stop(project_dir: Path) -> int:
         print("GATE WAIVERS (this session, .gates-waived):", file=sys.stderr)
         for note in waiver_notes:
             print(f"  {note}", file=sys.stderr)
+
+    # STH-3W7F deferral: harness-tracked background work is still producing the
+    # diff, so the gate(s) below would fire on work that isn't finished and a
+    # session that can't end anyway (the harness re-wakes it when the job lands).
+    # DEFER — not skip: return 0 with a note now; the gate is stateless and
+    # re-arms on the next Stop once `background_tasks` empties, so the Critic /
+    # reflection still fire when the work actually lands. This is the in-flight
+    # classification, not a demotion to an ignorable warning.
+    if blockers and defer_active:
+        print("", file=sys.stderr)
+        print(
+            f"GATES DEFERRED — {len(in_flight_tasks)} background task(s) in flight; "
+            "the diff isn't final and the session can't end yet, so the gate(s) "
+            "below are deferred to the next Stop (NOT skipped — they fire once the "
+            "work lands):",
+            file=sys.stderr,
+        )
+        for task in in_flight_tasks:
+            print(f"  · {task}", file=sys.stderr)
+        for blocker in blockers:
+            # First line of each blocker names the gate — enough to show what's pending.
+            print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
+        return 0
 
     # Report blockers or exit clean
     if blockers:
@@ -2491,7 +2562,7 @@ def main() -> int:
     elif command == "user-prompt-submit":
         return cmd_user_prompt_submit(project_dir)
     elif command == "stop":
-        return cmd_stop(project_dir)
+        return cmd_stop(project_dir, _read_stop_stdin())
     elif command == "test-status":
         return cmd_test_status(project_dir)
     elif command == "validate-evidence":

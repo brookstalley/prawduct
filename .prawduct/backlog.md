@@ -322,55 +322,6 @@
   unconditionally; this is pure ergonomics. Filed from the rigor-and-stance cumulative Critic
   (Complete Delivery — the plan deferred this). (builder)
 
-- **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
-  `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: open · stage: ready · partial: floor+design shipped via #60 (code fix pending) · related: STH-7K2A · reviewed: 2026-06-10`
-
-  Filed by a Hallucinote session (`incoming-bugs/stop-gate-blocks-on-in-flight-background-work.md`) and
-  **confirmed firsthand** in the roi-batch-2 session: the `critic-review` + `reflection` Stop gates fire
-  on "tracked files changed, no Critic/reflection yet" with NO awareness of in-flight background work.
-  While a background `Workflow`/`Task` is still generating the diff, ending the turn (the natural thing
-  while awaiting an async run) trips the block, and every subsequent yield re-fires it until the job
-  completes (roi-batch-2 absorbed ~15 block-loops over the ~12-min HOOK lane). The two available
-  outcomes both misfit: SPIN (absorb a block every turn) or WAIVE — but `.gates-waived` means "cannot be
-  satisfied THIS session" (`docs/waivers.md`), which is FALSE here (the gate WILL be satisfied minutes
-  later), so waiving overloads the semantics and pollutes the archive with a "can't satisfy" reason for
-  work that was satisfied. Distinct from [STH-7K2A] (a same-signature loop COUNTER that escalates/
-  downgrades after N fires): this is about *deferral when a live tracked job exists*, not loop-counting —
-  though a unified design could cover both. Remediation options (from the report): (1) background-aware
-  deferral — before blocking, the Stop hook checks for a live tracked background job (workflow run dir /
-  task registry) and DEFERS, re-running the gate on the next Stop after completion; (2) a first-class
-  `.gates-deferred` state (reason + expected-completion) distinct from a waiver, so the archive records
-  "deferred pending async run"; (3) minimal — sanction an in-flight-work waiver reason-prefix in
-  `docs/waivers.md` to stop the semantic overload. Open design problem: the Stop hook is a subprocess and
-  has no guaranteed handle on "is a Workflow still running" — the detection signal (a live workflow run
-  dir under the session dir?) is harness-version-dependent and needs verification before (1) is viable;
-  (3) is the cheap, safe floor. Filed 2026-06-04. (user)
-
-  **DESIGN + safe floor shipped (evidence-deferral, 2026-06-04 — chunk 02).** Investigation
-  corrected the framing: the report's option (3) "sanction an in-flight WAIVER" is actually WRONG —
-  waiving the Critic gate while background work is in flight would SKIP the Critic the completed
-  work still needs (the waiver persists the session, auto-clears next). So the agent is NOT forced
-  to choose between two bad options: SPIN is the *correct* behavior (wait, then run the Critic when
-  the job lands); the only real defect is the NOISE of repeated harmless blocks during a legitimate
-  wait. Shipped floor: `methodology/building.md` Gate-waivers now states "in-flight background work
-  is NOT a waiver case — wait, don't waive," so the semantic-overload temptation is removed.
-  Detection finding (rules out option 1 for now): the Stop hook (`prawduct-hook stop`) does NOT read
-  stdin, so it has no `transcript_path`/`session_id`; even if it did, inspecting
-  `subagents/workflows/*/journal.jsonl` can't distinguish a LIVE run from a CRASHED one (`started >
-  result` matches both; the journal persists after completion) — harness-version-dependent, unsafe
-  to build. Recommended REAL fix (option 2, refined): a SELF-DECLARED `.prawduct/.gates-deferred`
-  file (the AGENT knows it launched background work; the hook can't detect it) that the Stop hook
-  honors to defer the gate EXACTLY ONCE, then auto-rearms (clears itself on the deferred fire) — so
-  it quiets the wait WITHOUT ever permanently skipping the Critic (the next Stop re-checks normally;
-  the harness's pending-background-work keeps the session alive across the deferred fire). Distinct
-  archive semantics from a waiver ("deferred pending async run," not "unsatisfiable"). This needs a
-  Stop-hook code change + a guard test that a deferred gate re-arms; deferred from the doc-floor
-  chunk on proportionality. Could unify with [STH-7K2A] (both quiet a re-firing gate). (builder)
-
-  Groom 2026-06-10: design is done and the floor shipped — the remaining work is just the
-  `.gates-deferred` one-shot deferral (Stop-hook code + re-arm guard test). Effort dropped L → M;
-  stage advanced to ready.
-
 - **[STH-4D2X]** Decide whether the trivial/doc-only file-set gate should also protect a consumer's own `.claude/skills/`
   `effort: M · impact: M · area: stop-hook · source: builder · added: 2026-06-03 · status: open · stage: requirements · related: STH-1W5N · reviewed: 2026-06-10`
 
@@ -650,6 +601,61 @@
 _(no items in flight)_
 
 ## Archive
+
+- **[STH-3W7F]** Stop gate blocks session end while a tracked background workflow/task is still producing the diff
+  `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-04 · status: shipped · stage: ready · closed-by: stop-gate-defer · related: STH-7K2A · reviewed: 2026-06-25`
+
+  Filed by a Hallucinote session (`incoming-bugs/stop-gate-blocks-on-in-flight-background-work.md`) and
+  **confirmed firsthand** in the roi-batch-2 session: the `critic-review` + `reflection` Stop gates fire
+  on "tracked files changed, no Critic/reflection yet" with NO awareness of in-flight background work.
+  While a background `Workflow`/`Task` is still generating the diff, ending the turn (the natural thing
+  while awaiting an async run) trips the block, and every subsequent yield re-fires it until the job
+  completes (roi-batch-2 absorbed ~15 block-loops over the ~12-min HOOK lane). The two available
+  outcomes both misfit: SPIN (absorb a block every turn) or WAIVE — but `.gates-waived` means "cannot be
+  satisfied THIS session" (`docs/waivers.md`), which is FALSE here (the gate WILL be satisfied minutes
+  later), so waiving overloads the semantics and pollutes the archive with a "can't satisfy" reason for
+  work that was satisfied. Distinct from [STH-7K2A] (a same-signature loop COUNTER that escalates/
+  downgrades after N fires): this is about *deferral when a live tracked job exists*, not loop-counting —
+  though a unified design could cover both. Remediation options (from the report): (1) background-aware
+  deferral — before blocking, the Stop hook checks for a live tracked background job (workflow run dir /
+  task registry) and DEFERS, re-running the gate on the next Stop after completion; (2) a first-class
+  `.gates-deferred` state (reason + expected-completion) distinct from a waiver, so the archive records
+  "deferred pending async run"; (3) minimal — sanction an in-flight-work waiver reason-prefix in
+  `docs/waivers.md` to stop the semantic overload. Open design problem: the Stop hook is a subprocess and
+  has no guaranteed handle on "is a Workflow still running" — the detection signal (a live workflow run
+  dir under the session dir?) is harness-version-dependent and needs verification before (1) is viable;
+  (3) is the cheap, safe floor. Filed 2026-06-04. (user)
+
+  **DESIGN + safe floor shipped (evidence-deferral, 2026-06-04 — chunk 02).** Investigation
+  corrected the framing: the report's option (3) "sanction an in-flight WAIVER" is actually WRONG —
+  waiving the Critic gate while background work is in flight would SKIP the Critic the completed
+  work still needs (the waiver persists the session, auto-clears next). So the agent is NOT forced
+  to choose between two bad options: SPIN is the *correct* behavior (wait, then run the Critic when
+  the job lands); the only real defect is the NOISE of repeated harmless blocks during a legitimate
+  wait. Shipped floor: `methodology/building.md` Gate-waivers now states "in-flight background work
+  is NOT a waiver case — wait, don't waive," so the semantic-overload temptation is removed.
+  Detection finding (rules out option 1 for now): the Stop hook (`prawduct-hook stop`) does NOT read
+  stdin, so it has no `transcript_path`/`session_id`; even if it did, inspecting
+  `subagents/workflows/*/journal.jsonl` can't distinguish a LIVE run from a CRASHED one (`started >
+  result` matches both; the journal persists after completion) — harness-version-dependent, unsafe
+  to build. Recommended REAL fix (option 2, refined): a SELF-DECLARED `.prawduct/.gates-deferred`
+  file (the AGENT knows it launched background work; the hook can't detect it) that the Stop hook
+  honors to defer the gate EXACTLY ONCE, then auto-rearms (clears itself on the deferred fire) — so
+  it quiets the wait WITHOUT ever permanently skipping the Critic (the next Stop re-checks normally;
+  the harness's pending-background-work keeps the session alive across the deferred fire). Distinct
+  archive semantics from a waiver ("deferred pending async run," not "unsatisfiable"). This needs a
+  Stop-hook code change + a guard test that a deferred gate re-arms; deferred from the doc-floor
+  chunk on proportionality. Could unify with [STH-7K2A] (both quiet a re-firing gate). (builder)
+
+  Groom 2026-06-10: design is done and the floor shipped — the remaining work is just the
+  `.gates-deferred` one-shot deferral (Stop-hook code + re-arm guard test). Effort dropped L → M;
+  stage advanced to ready.
+
+  RESOLUTION (2026-06-25, closed-by=stop-gate-defer): the remaining `.gates-deferred` one-shot
+  deferral — the code fix left pending after the 2026-06-04 floor+design (chunk 02) — shipped, so the
+  item is fully delivered and archived. The earlier `partial:` metadata note ("floor+design shipped
+  via #60 (code fix pending)") is superseded by this completion; the floor+design history above is
+  preserved verbatim.
 
 - **[VWS-7N3K]** regen-views aborts the entire regen (release-notes + scope_rollups never written) when no build plan resolves; YAML-null pointer reads as the string "null"
   `effort: M · impact: H · area: views · source: report-bug · added: 2026-06-24 · status: shipped · stage: ready · closed-by: regen-views-null-plan · related: STH-5P2W, REL-4T8N, BLD-4Q9X · refs: lib/core.py (read_str_yaml_key, resolve_build_plan_path), lib/views.py (_plan_status_results, plan_regen), bin/prawduct-hook (inline _read_str_yaml_key / _resolve_build_plan_path mirrors + regen-views handler), incoming-bugs/archive/regen-views-aborts-whole-regen-when-no-build-plan-resolves.md, incoming-bugs/archive/regen-views-aborts-when-active-build-plan-is-yaml-null.md · reviewed: 2026-06-24`

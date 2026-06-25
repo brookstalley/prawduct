@@ -230,6 +230,59 @@ def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
     return out
 
 
+def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
+    """Decide whether harness-tracked background work is still in flight, from
+    the Stop-hook ``background_tasks`` array (Claude Code v2.1.145+; STH-3W7F).
+
+    When a coordinating agent launches a background ``Workflow``/``Task`` and
+    yields, the Stop hook fires while the diff is still being produced — the
+    Critic/reflection gate would block on "files changed, no review yet" even
+    though there is nothing to review yet AND the session cannot actually end
+    (the harness re-wakes it when the job lands). This helper detects that state
+    so the gate can DEFER (not skip) the block to a later Stop.
+
+    Degradation ladder — the permissive direction (suppressing the block) is
+    taken ONLY on a clearly-present, non-empty list; every uncertain case falls
+    to the blocking default (fail-closed for a gate = keep blocking):
+
+      - ``background_tasks`` ABSENT (older client, registry unreachable, no
+        stdin) → ``(False, [])`` — behave exactly as without the signal.
+      - present & EMPTY (genuinely idle) → ``(False, [])`` — block as today.
+      - present & NON-EMPTY → ``(True, [labels])`` — defer.
+      - any malformed shape (non-dict input, non-list value, list with no
+        usable entries) → ``(False, [])`` — never defer on garbage.
+
+    ``labels`` summarize each in-flight task as ``<type>:<name|id>`` for the
+    deferral note. No filtering by task type: a session with any live tracked
+    task is "paused waiting" anyway, and the deferral re-arms every Stop, so
+    over-deferral is cheap (the gate fires the instant the array empties).
+    """
+    if not isinstance(stop_input, dict):
+        return False, []
+    tasks = stop_input.get("background_tasks")
+    if not isinstance(tasks, list) or not tasks:
+        return False, []
+    labels: list[str] = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        ttype = task.get("type")
+        ttype = ttype.strip() if isinstance(ttype, str) and ttype.strip() else "task"
+        # Prefer the human-meaningful identifier per type, fall back to id.
+        ident = None
+        for key in ("name", "agent_type", "description", "command", "id"):
+            val = task.get(key)
+            if isinstance(val, str) and val.strip():
+                ident = val.strip()
+                break
+        label = f"{ttype}:{ident}" if ident else ttype
+        # Keep the note compact — a description/command can be long.
+        labels.append(label[:80])
+    if not labels:
+        return False, []
+    return True, labels
+
+
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
 _CRITIC_MODE_FINAL = "final (full review, ready for push)"
 _CRITIC_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"
