@@ -88,6 +88,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.subagent-briefing.md",
     ".prawduct/.gates-waived",
     ".prawduct/.advisories.json",
+    ".prawduct/.work-model-index.json",
     ".prawduct/reflections.md",
     "__pycache__/",
 ]

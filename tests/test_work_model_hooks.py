@@ -144,9 +144,37 @@ def test_corrupt_index_recovers_by_rebuilding(repo: Path):
     json.loads(index_path.read_text())  # corrupt file was replaced with valid JSON
 
 
+INDEX_RELPATH = ".prawduct/.work-model-index.json"
+
+
 def test_index_is_gitignored():
     gitignore = (ROOT / ".gitignore").read_text()
-    assert ".prawduct/.work-model-index.json" in gitignore
+    assert INDEX_RELPATH in gitignore
+
+
+def test_index_is_in_gitignore_contract():
+    """The runtime-generated index must be in the canonical contract list that
+    propagates to product repos — not just this framework repo's hand-edited
+    ``.gitignore``. Regression for the original ship: the SessionStart/
+    UserPromptSubmit hooks generated the index in every governed repo, but
+    ``update_gitignore`` never wrote an ignore line for it, so onboarded
+    products carried it as permanent untracked noise. ``TestSessionGitignoreMirror``
+    pins the hook's ``_SESSION_GITIGNORED_PATHS`` in sync, so asserting the
+    core contract covers both lists."""
+    sys.path.insert(0, str(ROOT))
+    from lib.core import GITIGNORE_ENTRIES  # noqa: PLC0415
+
+    assert INDEX_RELPATH in GITIGNORE_ENTRIES
+
+
+def test_update_gitignore_writes_index_line(repo: Path):
+    """End-to-end: a freshly reconciled product ``.gitignore`` ignores the index,
+    so consuming repos self-heal on next session instead of accruing noise."""
+    sys.path.insert(0, str(ROOT))
+    from lib.core import update_gitignore  # noqa: PLC0415
+
+    update_gitignore(repo)
+    assert INDEX_RELPATH in (repo / ".gitignore").read_text()
 
 
 # --- Corpus widening (review-fixes Chunk 2) ---------------------------------

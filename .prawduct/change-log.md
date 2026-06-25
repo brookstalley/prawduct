@@ -3,6 +3,33 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-25: work-model vocabulary index is now gitignored in product repos (work-model-index-gitignore)
+
+<!-- prawduct: chunks=01 | type=bugfix | scope=work-model-index-gitignore -->
+
+**Why:** The work-model feature (PR #71) generates a derived vocabulary index at
+`.prawduct/.work-model-index.json` on every session (the SessionStart `build-index` hook and the
+UserPromptSubmit `user-prompt-submit` hook, both gated only on `.prawduct/` existing — so it fires
+in *every* governed repo). It was always meant to be ephemeral/gitignored, and PR #71 added the
+ignore line to *this framework repo's own* `.gitignore` — but never to the canonical contract that
+propagates to product repos. So onboarded products generated the file every session with no ignore
+rule for it, carrying it as permanent untracked noise. The original test
+(`test_index_is_gitignored`) only checked this repo's hand-edited `.gitignore`, so it passed while
+the real propagation gap went uncaught.
+
+**What:**
+- **Add the entry to both contract lists** — `lib/core.py::GITIGNORE_ENTRIES` (what
+  `update_gitignore` writes into product `.gitignore` files on onboard/doctor) and the import-light
+  inline mirror `bin/prawduct-hook::_SESSION_GITIGNORED_PATHS` (the `_untrack_session_files`
+  un-track set). `TestSessionGitignoreMirror` already pins the two in sync.
+- **Self-heal for existing products** — `update_gitignore` adds the missing line on the next
+  session, and once it is in `_SESSION_GITIGNORED_PATHS` any repo that already committed the file by
+  accident gets it `git rm --cached` by `_untrack_session_files`.
+- **Strengthen the regression net** — `tests/test_work_model_hooks.py` gains
+  `test_index_is_in_gitignore_contract` (asserts the contract list, not just this repo's
+  `.gitignore`) and `test_update_gitignore_writes_index_line` (end-to-end: a freshly reconciled
+  product `.gitignore` ignores the index).
+
 ## 2026-06-25: Stop hook defers session-end gates while harness-tracked background work is in flight (stop-gate-defer)
 
 <!-- prawduct: chunks=01 | type=bugfix | scope=stop-gate-defer | status=merged -->
