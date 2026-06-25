@@ -653,6 +653,9 @@ scope_rollups:
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]
+  regen-views-null-plan:
+    chunks: ["01"]
+    releases: ["v2.2.1"]
   release-tooling:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.0.6"]
