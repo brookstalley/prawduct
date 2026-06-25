@@ -285,7 +285,12 @@ _DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
 
 
 def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
-    """Value of a top-level (column-0) ``key: value`` scalar, or None."""
+    """Value of a top-level (column-0) ``key: value`` scalar, or None.
+
+    Inline mirror of ``lib.core.read_str_yaml_key`` (parity-pinned by
+    TestProductHookMirrorParity). An empty value or the YAML null literal
+    (``null`` / ``~``, case-insensitive) reads as None — ``active_build_plan:
+    null`` means "unset" (VWS-7N3K)."""
     try:
         content = state_path.read_text(encoding="utf-8")
     except OSError:
@@ -298,7 +303,9 @@ def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
         if not line.startswith(needle):
             continue
         value = line.split(":", 1)[1].strip().strip("\"'")
-        return value or None
+        if not value or value.lower() in ("null", "~"):
+            return None
+        return value
     return None
 
 

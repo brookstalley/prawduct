@@ -3,6 +3,41 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-24: regen-views no longer aborts when no build plan resolves; YAML-null pointer reads as unset (regen-views-null-plan)
+
+<!-- prawduct: chunks=01 | type=bugfix | scope=regen-views-null-plan | status=shipped | release=v2.2.1 -->
+
+**Why:** On a clean release boundary — change-log carries `release=`/`status=shipped` entries but
+no build plan resolves and `active_build_plan` is `null`/unset — `prawduct-hook regen-views` raised
+`FileNotFoundError: build-plan not found at .prawduct/null` and exited 2 **before** regenerating the
+plan-independent `release-notes.md` and `scope_rollups`, blocking `docs/release-process.md` step 3.
+Reported twice upstream from the Hallucinote repo (v1.6.0, then v1.6.1 after it recurred) and live in
+this repo too (the SessionStart briefing fired `'null' resolved to .prawduct/null`). Two layers
+(`VWS-7N3K`): the column-0 pointer reader treated the YAML `null` literal as the truthy string
+`"null"` (resolving to the phantom `.prawduct/null`), and `_plan_status_results` raised on *any*
+unresolved plan rather than treating "no active plan" as a legitimate no-op under the multi-scope
+model (`REL-4T8N`).
+
+**What:**
+- **Normalize the YAML null literal at the pointer reader** — `lib/core.py::read_str_yaml_key` (and
+  its parity-pinned inline mirror `bin/prawduct-hook::_read_str_yaml_key`) now read `null` / `~`
+  (case-insensitive) / empty as `None`, mirroring the opt-out
+  `lib/views.py::_parse_build_plan_frontmatter_scope` already honors for `scope:`. `active_build_plan:
+  null` now resolves to the default plan (not `.prawduct/null`), and the STH-5P2W briefing guard no
+  longer mis-fires on the canonical "no active plan" opt-out.
+- **Degrade gracefully when no plan resolves** — `lib/views.py::_plan_status_results` returns no
+  status results (a no-op) instead of raising when `plan_paths` is empty AND the pointer is
+  unset/null, so `plan_regen` still regenerates release-notes + scope-rollups. The loud
+  `FileNotFoundError` is preserved for a genuine misconfiguration: an *explicitly-pinned*
+  `active_build_plan` that resolves to a missing file.
+- **Tests** — null/`~` normalization + resolver fallback + hook-mirror parity
+  (`tests/test_build_plan_resolution.py`); zero-plan graceful-degrade vs. pinned-missing-raises at
+  both the `plan_regen` and `regen-views` command levels (`tests/test_views.py`); briefing no longer
+  warns on `active_build_plan: null` (`tests/test_briefing_functions.py`). The prior
+  `test_missing_build_plan_returns_nonzero` (which pinned the buggy abort-on-absent-plan contract)
+  was split into the corrected `test_unset_pointer_missing_plan_returns_zero_and_regenerates_views`
+  and the preserved `test_pinned_missing_plan_returns_nonzero`.
+
 ## 2026-06-24: doctor↔janitor scope boundary — canonical split + mirrored skill summaries (doctor-janitor)
 
 <!-- prawduct: chunks=01 | type=feature | release=v2.2.0 | scope=doctor-janitor | status=shipped -->

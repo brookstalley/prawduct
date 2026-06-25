@@ -33,7 +33,12 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .core import read_bool_yaml_key, resolve_build_plan_path
+from .core import (
+    BUILD_PLAN_POINTER_KEY,
+    read_bool_yaml_key,
+    read_str_yaml_key,
+    resolve_build_plan_path,
+)
 
 
 TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
@@ -884,10 +889,17 @@ def _plan_status_results(
     are de-duped by resolved path (two scopes → one file, or the pointer
     coinciding with a scope mapping).
 
-    Backward-compat: when no scope-tagged plan and no existing pointer/default
-    plan resolve, fall back to the historical single-plan contract — resolve via
-    :func:`resolve_build_plan_path` and raise ``FileNotFoundError`` if it is
-    missing, exactly as the pre-REL-4T8N single-plan path did.
+    When no scope-tagged plan and no existing pointer/default plan resolve, the
+    behavior splits on whether a plan is genuinely *expected* (VWS-7N3K):
+
+    * An ``active_build_plan`` pointer that is SET but resolves to a missing file
+      is a real misconfiguration — raise ``FileNotFoundError`` (preserving the
+      historical single-plan contract and keeping the STH-5P2W briefing guard
+      meaningful).
+    * An unset/null pointer with no resolvable plan is a legitimate "no active
+      plan" state under the multi-scope model — return no status results (a
+      no-op) so :func:`plan_regen` still regenerates the plan-independent
+      release-notes and scope-rollups views instead of aborting the whole regen.
     """
     entries = parse_change_log(change_log_content)
     relevant_scopes = set(collect_release_pending_scopes(entries))
@@ -914,12 +926,18 @@ def _plan_status_results(
         _add(pointer_plan)
 
     if not plan_paths:
-        # Back-compat: no scope-tagged plan resolved AND no pointer/default plan
-        # exists. Preserve today's contract — require the resolved plan.
-        fallback = resolve_build_plan_path(prawduct_dir)
-        if not fallback.exists():
+        # No scope-tagged plan resolved AND no pointer/default plan exists on
+        # disk. Distinguish a genuine misconfiguration from a legitimate "no
+        # active plan" (VWS-7N3K): an EXPLICITLY-pinned pointer to a missing file
+        # is an error worth raising; an unset/null pointer is a clean-release
+        # no-op that must NOT take down the plan-independent views.
+        pointer = read_str_yaml_key(
+            prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY
+        )
+        if pointer is not None:
+            fallback = resolve_build_plan_path(prawduct_dir)
             raise FileNotFoundError(f"build-plan not found at {fallback}")
-        plan_paths.append(fallback)
+        return []
 
     results: list[ViewRegenResult] = []
     for plan_path in plan_paths:

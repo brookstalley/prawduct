@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.2.1
+
+**Entry:** 2026-06-24: regen-views no longer aborts when no build plan resolves; YAML-null pointer reads as unset (regen-views-null-plan)
+
+**Chunks shipped:** 01
+
+**Scope:** regen-views-null-plan
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.2.0
 
 ### doctor-janitor
