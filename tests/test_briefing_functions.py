@@ -522,6 +522,15 @@ class TestAssembleSessionBriefingSections:
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "active_build_plan" not in out
 
+    def test_null_pointer_no_warning(self, tmp_path):
+        # VWS-7N3K: `active_build_plan: null` is the canonical "no active plan"
+        # opt-out — it must NOT trip the dangling-pointer guard (which used to
+        # mis-fire with "'null' resolved to .prawduct/null").
+        self._state(tmp_path, "active_build_plan: null\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "MISSING" not in out
+        assert ".prawduct/null" not in out
+
     def test_handoff_pointer_when_present(self, tmp_path):
         pr = self._state(tmp_path, "")
         (pr / ".session-handoff.md").write_text("prior")
