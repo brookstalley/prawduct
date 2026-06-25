@@ -5,7 +5,7 @@
 
 ## 2026-06-25: work-model vocabulary index is now gitignored in product repos (work-model-index-gitignore)
 
-<!-- prawduct: chunks=01 | type=bugfix | scope=work-model-index-gitignore -->
+<!-- prawduct: chunks=01 | type=bugfix | scope=work-model-index-gitignore | status=merged -->
 
 **Why:** The work-model feature (PR #71) generates a derived vocabulary index at
 `.prawduct/.work-model-index.json` on every session (the SessionStart `build-index` hook and the
