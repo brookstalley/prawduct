@@ -355,6 +355,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.subagent-briefing.md",
     ".prawduct/.gates-waived",
     ".prawduct/.advisories.json",
+    ".prawduct/.work-model-index.json",
     ".prawduct/reflections.md",
     # NOTE: .prawduct/artifacts/build-plan.md is deliberately NOT here —
     # build plans are tracked artifacts (gate-soundness ch.3); this loop
