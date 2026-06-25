@@ -45,7 +45,7 @@ Nothing is demoted to an ignorable warning (honors the standing
 
 ## Status
 
-- [ ] Chunk 01: Defer session-end gates while harness-tracked background work is in flight
+- [x] Chunk 01: Defer session-end gates while harness-tracked background work is in flight
 
 ## Build Chunks
 

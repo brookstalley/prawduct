@@ -5,6 +5,22 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.2.2
+
+### work-model-index-gitignore
+
+**Entry:** 2026-06-25: work-model vocabulary index is now gitignored in product repos (work-model-index-gitignore)
+
+**Chunks shipped:** 01
+
+### stop-gate-defer
+
+**Entry:** 2026-06-25: Stop hook defers session-end gates while harness-tracked background work is in flight (stop-gate-defer)
+
+**Chunks shipped:** 01
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.2.1
 
 **Entry:** 2026-06-24: regen-views no longer aborts when no build plan resolves; YAML-null pointer reads as unset (regen-views-null-plan)

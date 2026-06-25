@@ -5,7 +5,7 @@
 
 ## 2026-06-25: work-model vocabulary index is now gitignored in product repos (work-model-index-gitignore)
 
-<!-- prawduct: chunks=01 | type=bugfix | scope=work-model-index-gitignore | status=merged -->
+<!-- prawduct: chunks=01 | type=bugfix | scope=work-model-index-gitignore | release=v2.2.2 | status=shipped -->
 
 **Why:** The work-model feature (PR #71) generates a derived vocabulary index at
 `.prawduct/.work-model-index.json` on every session (the SessionStart `build-index` hook and the
@@ -32,7 +32,7 @@ the real propagation gap went uncaught.
 
 ## 2026-06-25: Stop hook defers session-end gates while harness-tracked background work is in flight (stop-gate-defer)
 
-<!-- prawduct: chunks=01 | type=bugfix | scope=stop-gate-defer | status=merged -->
+<!-- prawduct: chunks=01 | type=bugfix | scope=stop-gate-defer | release=v2.2.2 | status=shipped -->
 
 **Why:** A coordinating agent that launches a background `Workflow`/`Task` and yields trips the
 Stop-hook Critic/reflection gate on every turn (`files changed, no Critic yet`) — but the diff isn't
