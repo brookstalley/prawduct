@@ -5,7 +5,7 @@
 
 ## 2026-06-24: regen-views no longer aborts when no build plan resolves; YAML-null pointer reads as unset (regen-views-null-plan)
 
-<!-- prawduct: chunks=01 | type=bugfix | scope=regen-views-null-plan -->
+<!-- prawduct: chunks=01 | type=bugfix | scope=regen-views-null-plan | status=merged -->
 
 **Why:** On a clean release boundary — change-log carries `release=`/`status=shipped` entries but
 no build plan resolves and `active_build_plan` is `null`/unset — `prawduct-hook regen-views` raised
