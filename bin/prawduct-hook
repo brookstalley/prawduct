@@ -754,8 +754,11 @@ def _read_stop_stdin() -> dict:
     transcript_path, ``background_tasks``, …). Fail-soft above all: an
     interactive TTY, empty stdin, or malformed JSON yields ``{}`` so the gate
     degrades to its no-signal behavior (block as before). Never raises — a read
-    error must not crash the session-end gate. Mirrors the stdin read in
-    ``cmd_user_prompt_submit``."""
+    error must not crash the session-end gate. Uses the same stdin-read pattern
+    as ``cmd_user_prompt_submit`` but stays SILENT on failure (no stderr note):
+    a routine Stop with no/empty/garbage payload is the common case, and the safe
+    fallback (``{}`` → block exactly as before) is the correct outcome, so there
+    is nothing worth surfacing."""
     try:
         # An interactive terminal (a human running the hook by hand) has no
         # JSON to read and would block on read(); skip it. The harness always
