@@ -146,6 +146,7 @@ def run_plugin_hook(
     git_status: str = "",
     branch: str = "main",
     mock_bin: Path | None = None,
+    stdin: str = "",
 ) -> subprocess.CompletedProcess:
     """Invoke bin/prawduct-hook as Claude Code would: CLAUDE_PLUGIN_ROOT points
     at the plugin (this repo), CLAUDE_PROJECT_DIR at the consuming repo, and a
@@ -153,6 +154,11 @@ def run_plugin_hook(
     write-isolation assertion can snapshot the project dir cleanly. Extra
     positional ``*args`` are passed through as subcommand argv (e.g.
     ``run_plugin_hook("clear", proj, "--session-start")``).
+
+    ``stdin`` is fed to the child as ``input=`` — Claude Code writes a JSON
+    payload to a Stop hook's stdin (``background_tasks`` etc.); the default
+    ``""`` gives a clean closed pipe (EOF), which the hook reads as "no signal"
+    so existing callers keep their pre-STH-3W7F behavior.
     """
     if mock_bin is None:
         mock_bin = project_dir.parent / "_mock_bin"
@@ -171,7 +177,7 @@ def run_plugin_hook(
     }
     return subprocess.run(
         ["python3", str(HOOK), command, *args],
-        capture_output=True, text=True, env=env, timeout=20,
+        capture_output=True, text=True, env=env, timeout=20, input=stdin,
     )
 
 
@@ -324,6 +330,106 @@ class TestPluginStopGate:
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
         assert result.returncode == 2, (result.stdout, result.stderr)
         assert "CRITIC" in result.stderr
+
+
+class TestPluginStopGateBackgroundDefer:
+    """STH-3W7F: while harness-tracked background work is in flight, the Stop
+    hook DEFERS the session-end blockers (exit 0 + a note) instead of blocking,
+    because the diff isn't final and the session can't end anyway. The deferral
+    is stateless — it re-arms the instant `background_tasks` empties — so the
+    Critic still fires when the work lands. Fixture mirrors TestPluginStopGate:
+    active plan + code diff + NO findings is the state that blocks today (exit 2);
+    these tests pin that a non-empty `background_tasks` stdin converts it to 0.
+    """
+
+    _CODE_DIFF = " M src/app.py"
+
+    def _active_plan_repo(self, tmp_path) -> Path:
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented the chunk and verified all tests pass cleanly."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        _make_session_start(prawduct)
+        return prawduct
+
+    @staticmethod
+    def _stdin(tasks) -> str:
+        return json.dumps({"background_tasks": tasks, "session_crons": []})
+
+    def test_defers_while_background_work_in_flight(self, tmp_path):
+        """Non-empty background_tasks -> exit 0 with a deferral note, NOT a block."""
+        self._active_plan_repo(tmp_path)
+        stdin = self._stdin([{"id": "wf-1", "type": "workflow", "name": "build-pipeline"}])
+        result = run_plugin_hook("stop", tmp_path, git_status=self._CODE_DIFF, stdin=stdin)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" in result.stderr
+        # The note names the in-flight task and the deferred gate, and is explicit
+        # that the gate is deferred, not skipped.
+        assert "workflow:build-pipeline" in result.stderr
+        assert "deferred:" in result.stderr
+        assert "NOT skipped" in result.stderr
+
+    def test_blocks_when_background_tasks_empty(self, tmp_path):
+        """Present-but-empty array = genuinely idle -> block exactly as today."""
+        self._active_plan_repo(tmp_path)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=self._CODE_DIFF, stdin=self._stdin([])
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "CRITIC" in result.stderr
+        assert "GATES DEFERRED" not in result.stderr
+
+    def test_blocks_when_stdin_absent(self, tmp_path):
+        """No stdin (older client / no signal) -> block as today (no regression)."""
+        self._active_plan_repo(tmp_path)
+        result = run_plugin_hook("stop", tmp_path, git_status=self._CODE_DIFF, stdin="")
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "CRITIC" in result.stderr
+
+    def test_blocks_on_malformed_stdin(self, tmp_path):
+        """Garbage stdin must fail-soft to the blocking default, never defer."""
+        self._active_plan_repo(tmp_path)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=self._CODE_DIFF, stdin="not json {{{"
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "CRITIC" in result.stderr
+        assert "GATES DEFERRED" not in result.stderr
+
+    def test_deferral_rearms_when_work_lands(self, tmp_path):
+        """Deferral is stateless: a deferred Stop (work in flight -> 0) followed by
+        an idle Stop on the same fixture (empty array -> 2) proves the gate
+        re-arms. Not a one-shot waiver, not a persisted skip."""
+        self._active_plan_repo(tmp_path)
+        in_flight = run_plugin_hook(
+            "stop", tmp_path, git_status=self._CODE_DIFF,
+            stdin=self._stdin([{"id": "t-1", "type": "subagent", "agent_type": "Explore"}]),
+        )
+        assert in_flight.returncode == 0, (in_flight.stdout, in_flight.stderr)
+        landed = run_plugin_hook(
+            "stop", tmp_path, git_status=self._CODE_DIFF, stdin=self._stdin([])
+        )
+        assert landed.returncode == 2, (landed.stdout, landed.stderr)
+        assert "CRITIC" in landed.stderr
+
+    def test_fresh_findings_pass_regardless_of_in_flight(self, tmp_path):
+        """When the gate is already satisfied (fresh blocking-free findings), an
+        in-flight array changes nothing — still a clean exit 0, no deferral note
+        (there was no blocker to defer)."""
+        prawduct = self._active_plan_repo(tmp_path)
+        (prawduct / ".critic-findings.json").write_text(json.dumps({
+            "findings": [], "files_reviewed": ["src/app.py"], "summary": "No issues found.",
+        }))
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=self._CODE_DIFF,
+            stdin=self._stdin([{"id": "wf-1", "type": "workflow", "name": "x"}]),
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
 
 
 class TestPluginStopGateRegressions:

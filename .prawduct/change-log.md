@@ -3,6 +3,38 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-25: Stop hook defers session-end gates while harness-tracked background work is in flight (stop-gate-defer)
+
+<!-- prawduct: chunks=01 | type=bugfix | scope=stop-gate-defer -->
+
+**Why:** A coordinating agent that launches a background `Workflow`/`Task` and yields trips the
+Stop-hook Critic/reflection gate on every turn (`files changed, no Critic yet`) — but the diff isn't
+final and the session *can't* end (the harness re-wakes it when the job lands), so each block is pure
+noise. One reported session absorbed ~15 block-loops over a ~12-min lane (`STH-3W7F`). The
+2026-06-04 investigation ruled out auto-detection because the Stop hook could not then see live
+jobs; that premise is now obsolete — Claude Code puts a `background_tasks` array on the Stop event
+(v2.1.145+; verified against installed 2.1.191).
+
+**What:**
+- **Auto-detect, don't self-declare** — the Stop hook reads its stdin payload
+  (`bin/prawduct-hook::_read_stop_stdin`, fail-soft) and, via the pure decision helper
+  `lib/gates.py::background_tasks_in_flight`, defers the session-end blockers when harness-tracked
+  work is in flight: `cmd_stop` returns 0 with a `GATES DEFERRED` note (and skips the `gh pr list`
+  probe) instead of exit 2. This supersedes the half-designed self-declared `.gates-deferred` marker
+  (STH-3W7F option b) — auto-detect needs no agent action and can't drift or be abused.
+- **Defer, never skip** — the deferral is stateless (recomputed from the live array every Stop), so
+  it re-arms the instant `background_tasks` empties; the Critic/reflection still fire when the work
+  lands. This is fixing the in-flight *classification*, not demoting a blocker to an ignorable
+  warning.
+- **Degradation ladder keeps the gate sound** — `background_tasks` absent (older client / registry
+  unreachable / no stdin), empty (idle), or malformed all fall to the existing blocking behavior;
+  only a clearly-present non-empty list defers. Untrackable external waits (CI, a remote queue) leave
+  the array empty and still block (the STH-3W7F option-d TTL escape hatch is deferred as a separate item).
+- **Docs + tests** — `methodology/building.md`'s in-flight floor now describes the shipped
+  auto-defer; `tests/test_stop_gate_defer.py` (new) unit-tests the full ladder, and
+  `tests/test_plugin_runtime.py` gains a `stdin=` param + end-to-end defer / block / re-arm /
+  no-regression cases.
+
 ## 2026-06-24: regen-views no longer aborts when no build plan resolves; YAML-null pointer reads as unset (regen-views-null-plan)
 
 <!-- prawduct: chunks=01 | type=bugfix | scope=regen-views-null-plan | status=shipped | release=v2.2.1 -->
