@@ -148,7 +148,11 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     Mirrors the column-0 idiom used by ``is_views_enabled`` and bin/prawduct-hook's
     ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
     missing/unreadable file or absent key. Surrounding quotes and inline ``#``
-    comments are stripped; an empty value reads as None.
+    comments are stripped; an empty value, or the YAML null literal (``null`` /
+    ``~``, case-insensitive), reads as None — so ``active_build_plan: null`` means
+    "unset", the same opt-out :func:`lib.views._parse_build_plan_frontmatter_scope`
+    already honors for ``scope:`` (VWS-7N3K). Without this, a literal ``null``
+    survived as the truthy string ``"null"`` and resolved to ``.prawduct/null``.
     """
     try:
         content = state_path.read_text(encoding="utf-8")
@@ -162,7 +166,9 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
         if not line.startswith(needle):
             continue
         value = line.split(":", 1)[1].strip().strip("\"'")
-        return value or None
+        if not value or value.lower() in ("null", "~"):
+            return None
+        return value
     return None
 
 

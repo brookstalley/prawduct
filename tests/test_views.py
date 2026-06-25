@@ -1465,6 +1465,83 @@ class TestApplyRegen:
         assert not (prawduct_dir / "release-notes.md").exists()
 
 
+class TestPlanRegenNoResolvablePlan:
+    """VWS-7N3K: a clean release boundary — change-log has release/shipped
+    entries but no build plan resolves — must regenerate the plan-independent
+    release-notes + scope-rollups views, NOT abort the whole regen. The hard
+    FileNotFoundError fires only when a plan is genuinely expected (an
+    explicitly-pinned but missing ``active_build_plan``)."""
+
+    @staticmethod
+    def _dir(tmp_path: Path, state: str, change_log: str) -> Path:
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True)
+        (prawduct_dir / "project-state.yaml").write_text(state)
+        (prawduct_dir / "change-log.md").write_text(change_log)
+        # Deliberately NO build-plan.md and no scope-tagged plan file on disk.
+        return prawduct_dir
+
+    _CHANGE_LOG = (
+        "## 2026-06-24: ship\n"
+        "<!-- prawduct: chunks=01 | release=v1.6.1 | status=shipped | scope=aud -->\n"
+    )
+
+    def test_null_pointer_no_plan_regenerates_independent_views(self, tmp_path: Path):
+        # The exact reported scenario: active_build_plan: null, no resolvable plan.
+        prawduct_dir = self._dir(
+            tmp_path,
+            "views_enabled: true\nactive_build_plan: null\n",
+            self._CHANGE_LOG,
+        )
+        enabled, results = views.plan_regen(prawduct_dir)  # must NOT raise
+        assert enabled is True
+        names = [r.name for r in results]
+        assert "status" not in names  # no status view when no plan resolves
+        assert "release-notes" in names and "scope-rollups" in names
+        # The consumer-facing release-notes view DOES regenerate (was the symptom).
+        rn = next(r for r in results if r.name == "release-notes")
+        assert rn.action == "create"
+
+    def test_unset_pointer_no_plan_does_not_raise(self, tmp_path: Path):
+        # Pointer entirely absent (not even null) — same legitimate no-op.
+        prawduct_dir = self._dir(
+            tmp_path, "views_enabled: true\n", self._CHANGE_LOG
+        )
+        enabled, results = views.plan_regen(prawduct_dir)  # must NOT raise
+        assert enabled is True
+        assert "status" not in [r.name for r in results]
+        assert "release-notes" in [r.name for r in results]
+
+    def test_explicitly_pinned_missing_plan_still_raises(self, tmp_path: Path):
+        # A SET pointer to a missing file is a genuine misconfiguration — the
+        # loud FileNotFoundError must survive (keeps STH-5P2W's guard meaningful).
+        prawduct_dir = self._dir(
+            tmp_path,
+            "views_enabled: true\nactive_build_plan: artifacts/gone-plan.md\n",
+            "## 2026-06-24: untagged note\n",
+        )
+        with pytest.raises(FileNotFoundError):
+            views.plan_regen(prawduct_dir)
+
+    def test_null_pointer_with_existing_default_plan_still_regenerates_status(
+        self, tmp_path: Path
+    ):
+        # Regression guard for the historical single-plan path: a null pointer
+        # with an EXISTING artifacts/build-plan.md still regenerates that plan's
+        # status (the no-op only applies when nothing resolves).
+        prawduct_dir = self._dir(
+            tmp_path,
+            "views_enabled: true\nactive_build_plan: null\n",
+            self._CHANGE_LOG,
+        )
+        (prawduct_dir / "artifacts" / "build-plan.md").write_text(
+            "## Status\n- [ ] Chunk 01: A\n"
+        )
+        enabled, results = views.plan_regen(prawduct_dir)
+        assert enabled is True
+        assert "status" in [r.name for r in results]
+
+
 # =============================================================================
 # Multi-scope regen (REL-4T8N): scope→plan map, scope enumeration, diagnostics,
 # and plan_regen flipping every release-pending plan in one pass.
@@ -1937,10 +2014,36 @@ class TestRegenViewsCommand:
         assert result.returncode != 0
         assert "change-log" in result.stderr.lower()
 
-    def test_missing_build_plan_returns_nonzero(self, tmp_path: Path):
+    def test_unset_pointer_missing_plan_returns_zero_and_regenerates_views(
+        self, tmp_path: Path
+    ):
+        # VWS-7N3K (contract change): with NO pointer and no resolvable plan, a
+        # clean release boundary must regenerate the plan-independent views and
+        # exit 0 — NOT abort the whole regen. This replaces the prior
+        # `test_missing_build_plan_returns_nonzero`, which pinned the buggy
+        # contract where an absent plan took down release-notes + scope-rollups.
         product = tmp_path / "product"
         (product / ".prawduct" / "artifacts").mkdir(parents=True)
         (product / ".prawduct" / "project-state.yaml").write_text("views_enabled: true\n")
+        (product / ".prawduct" / "change-log.md").write_text(
+            "## 2026-06-24: ship\n"
+            "<!-- prawduct: chunks=01 | release=v1.6.1 | status=shipped | scope=aud -->\n"
+        )
+        # No build-plan.md, no scope-tagged plan for `aud` → nothing resolves.
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stderr
+        # The consumer-facing release-notes view regenerated despite no plan.
+        assert (product / ".prawduct" / "release-notes.md").exists()
+
+    def test_pinned_missing_plan_returns_nonzero(self, tmp_path: Path):
+        # The genuine-misconfiguration case is preserved: an EXPLICITLY-pinned
+        # `active_build_plan` that resolves to no file is a loud error (exit 2),
+        # keeping the STH-5P2W briefing guard meaningful.
+        product = tmp_path / "product"
+        (product / ".prawduct" / "artifacts").mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "views_enabled: true\nactive_build_plan: artifacts/gone-plan.md\n"
+        )
         (product / ".prawduct" / "change-log.md").write_text("## x\n")
         result = _run_regen(product)
         assert result.returncode != 0

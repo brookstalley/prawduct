@@ -92,6 +92,14 @@ class TestResolveBuildPlanPath:
         resolved = resolve_build_plan_path(prawduct)
         assert resolved == prawduct / "artifacts" / ".prawduct" / "odd-plan.md"
 
+    def test_null_pointer_falls_back_to_default(self, tmp_path: Path):
+        # VWS-7N3K: `active_build_plan: null` must behave like an absent pointer
+        # (fall back to the default plan), NOT resolve to the phantom
+        # `.prawduct/null` that mis-fired the STH-5P2W briefing guard.
+        prawduct = _prawduct(tmp_path, "active_build_plan: null\n")
+        resolved = resolve_build_plan_path(prawduct)
+        assert resolved == prawduct / "artifacts" / "build-plan.md"
+
     def test_default_constant(self):
         assert DEFAULT_BUILD_PLAN_REL == "artifacts/build-plan.md"
         assert BUILD_PLAN_POINTER_KEY == "active_build_plan"
@@ -120,6 +128,35 @@ class TestReadStrYamlKey:
 
     def test_missing_file_returns_none(self, tmp_path: Path):
         assert read_str_yaml_key(tmp_path / "nope.yaml", "active_build_plan") is None
+
+    def test_null_literal_reads_as_none(self, tmp_path: Path):
+        # VWS-7N3K: the YAML null literal is the canonical "no active plan" form;
+        # it must read as unset, not as the truthy string "null".
+        p = tmp_path / "s.yaml"
+        p.write_text("active_build_plan: null\n")
+        assert read_str_yaml_key(p, "active_build_plan") is None
+
+    def test_tilde_literal_reads_as_none(self, tmp_path: Path):
+        p = tmp_path / "s.yaml"
+        p.write_text("active_build_plan: ~\n")
+        assert read_str_yaml_key(p, "active_build_plan") is None
+
+    def test_null_literal_case_insensitive(self, tmp_path: Path):
+        p = tmp_path / "s.yaml"
+        p.write_text("active_build_plan: NULL\n")
+        assert read_str_yaml_key(p, "active_build_plan") is None
+
+    def test_null_with_inline_comment_reads_as_none(self, tmp_path: Path):
+        p = tmp_path / "s.yaml"
+        p.write_text("active_build_plan: null  # no plan between build plans\n")
+        assert read_str_yaml_key(p, "active_build_plan") is None
+
+    def test_value_containing_null_substring_preserved(self, tmp_path: Path):
+        # Only the bare null/~ literal normalizes — a real path that merely
+        # contains "null" is a value, not the opt-out.
+        p = tmp_path / "s.yaml"
+        p.write_text("active_build_plan: artifacts/nullable-plan.md\n")
+        assert read_str_yaml_key(p, "active_build_plan") == "artifacts/nullable-plan.md"
 
 
 class TestProductHookMirrorParity:
@@ -150,6 +187,21 @@ class TestProductHookMirrorParity:
         p = tmp_path / "s.yaml"
         p.write_text('active_build_plan: "artifacts/y-plan.md"  # c\n')
         assert _hook._read_str_yaml_key(p, "active_build_plan") == read_str_yaml_key(p, "active_build_plan")
+
+    def test_str_key_null_parity(self, tmp_path: Path):
+        # VWS-7N3K: both mirrors normalize the YAML null literal to None.
+        for literal in ("null", "~", "NULL"):
+            p = tmp_path / "s.yaml"
+            p.write_text(f"active_build_plan: {literal}\n")
+            assert _hook._read_str_yaml_key(p, "active_build_plan") is None
+            assert _hook._read_str_yaml_key(p, "active_build_plan") == read_str_yaml_key(
+                p, "active_build_plan"
+            )
+
+    def test_null_pointer_resolve_parity(self, tmp_path: Path):
+        prawduct = _prawduct(tmp_path, "active_build_plan: null\n")
+        assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
+        assert _hook._resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
 
 
 class TestSessionGitignoreMirror:
