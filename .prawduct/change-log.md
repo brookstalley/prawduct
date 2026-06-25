@@ -5,7 +5,7 @@
 
 ## 2026-06-25: Stop hook defers session-end gates while harness-tracked background work is in flight (stop-gate-defer)
 
-<!-- prawduct: chunks=01 | type=bugfix | scope=stop-gate-defer -->
+<!-- prawduct: chunks=01 | type=bugfix | scope=stop-gate-defer | status=merged -->
 
 **Why:** A coordinating agent that launches a background `Workflow`/`Task` and yields trips the
 Stop-hook Critic/reflection gate on every turn (`files changed, no Critic yet`) — but the diff isn't
