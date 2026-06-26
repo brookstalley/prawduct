@@ -3,6 +3,46 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-06-26: kill the test-evidence double-run at its source + a non-JUnit on-ramp (test-evidence-single-run)
+
+<!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence-single-run | release=v2.2.3 | status=shipped -->
+
+**Why:** An upstream report (COV-3R9K, from scriob) said consumers run the suite twice per
+chunk. A multi-agent investigation (a consumer map of every `.test-evidence.json` /
+`changes_referenced` reader, empirical `git diff` traces in throwaway repos, the
+TST-4K2P/TST-7M3K history, and three adversarial verifiers) found the double-run is **not**
+gate-forced: freshness is session-scoped (`lib/gates.py:tests_are_current` compares `timestamp`
+to `.session-start` — no `git_sha`/HEAD/tree-hash since TST-4K2P), and `changes_referenced` is
+produced by `git diff --name-only <base>` (base→**working tree**, content-based) — commit-invariant
+on a real base branch. The report's cited `git diff base...HEAD` membership-shift was a
+misdiagnosis. The real cause is a **retired** "record AFTER the final commit / SHA must equal HEAD"
+habit (declared obsolete at `learnings.md:270-272`) that outlived the `git_sha` it papered over.
+The investigation also surfaced an **agnosticism gap**: the recorder is JUnit-XML-coupled (default
+pytest, `test_command:` requires `{junit_xml}`, `--from-junit` ingests JUnit), so a non-JUnit
+toolchain (embedded HIL, a bespoke harness) had no first-class on-ramp — counter to Prawduct's
+language/platform-agnostic stance.
+
+**What:**
+- **`--from-counts passed=N failed=M skipped=K [duration=S]`** (`bin/prawduct-hook` `cmd_test_evidence`)
+  — record pass/fail/skip counts supplied directly, the language-/runner-agnostic on-ramp for any
+  toolchain that can't emit JUnit XML. Runs nothing; rejects a second source.
+- **`--no-rerun` (alias `--restamp`)** — reuse the existing record's counts and refresh the
+  `timestamp` + F4a coverage half against the current tree, with no suite run. The cheap refresh
+  after a rename / force-add shifted `changes_referenced` (the two real coverage-half shifts an
+  adversarial verifier confirmed). Trust posture matches `--from-junit`; **no** content/tree-hash.
+- **HEAD~1 fallback-base advisory** — the recorder and the standalone `bin/test-reference-verify`
+  warn (naming `base_branch:`) when the diff base resolves to the moving `HEAD~1` fallback, the one
+  path where a no-op commit genuinely shifts the changed-file set. Advisory only; resolution unchanged.
+- **`methodology/building.md`** — the Verify *Code:* bullet now prescribes recording **once, at
+  Verify, not after committing** (a commit doesn't stale session-scoped evidence; `test-status` stays
+  green), and names the mechanism-neutral on-ramps. Two duplicated "no pre-existing exception"
+  clauses were trimmed to offset the addition (the <4950-token cap held — no bump).
+- **Backlog** — COV-3R9K reframed with the verified diagnosis and closed; the stale "record after
+  commit" stopgap in the TST-4K2P content-hash item marked **SUPERSEDED**; new **COV-4M2J** filed for
+  the Python-only coverage floor (the bring-your-own-verifier escape is the current workaround).
+- **Deliberately NOT done:** content-/tree-hash or `git_sha`/HEAD freshness (removed pre-v1.4 for
+  chronic false positives; TST-4K2P explicitly rejected re-adding it). Freshness stays session-scoped.
+
 ## 2026-06-25: work-model vocabulary index is now gitignored in product repos (work-model-index-gitignore)
 
 <!-- prawduct: chunks=01 | type=bugfix | scope=work-model-index-gitignore | release=v2.2.2 | status=shipped -->

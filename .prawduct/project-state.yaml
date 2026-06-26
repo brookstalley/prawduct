@@ -696,6 +696,9 @@ scope_rollups:
   test-evidence:
     chunks: ["01", "02", "03"]
     releases: ["v2.1.8"]
+  test-evidence-single-run:
+    chunks: ["01", "02", "03"]
+    releases: ["v2.2.3"]
   upstream-bug-reporting:
     chunks: ["01", "02"]
     releases: ["v2.1.6"]
