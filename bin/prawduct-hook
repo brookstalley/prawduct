@@ -1277,8 +1277,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     here; that mechanism was removed pre-v1.4 for chronic false positives.
 
     Usage: ``prawduct-hook test-evidence record [--from-junit <report>]
-    [--from-counts passed=N failed=M skipped=K [duration=S]] [-- <extra pytest
-    args>]``
+    [--from-counts passed=N failed=M skipped=K [duration=S]] [--no-rerun] [--
+    <extra pytest args>]``
 
     ``--from-junit <report>`` (TST-7M3K) ingests a JUnit XML the builder already
     produced instead of re-running the suite — the build cycle ran the suite once;
@@ -1293,6 +1293,16 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     ``--from-junit`` it runs nothing (exit status derives from ``failed``) and
     rejects a second source (``--from-junit`` / ``test_command:`` / extra args).
     ``passed`` and ``failed`` are required; ``skipped``/``duration`` default to 0.
+
+    ``--no-rerun`` (alias ``--restamp``) reuses the existing record's counts and
+    refreshes only the ``timestamp`` + the F4a coverage half against the current
+    tree — the cheap refresh after a rename / force-add shifted
+    ``changes_referenced``, with no suite run and no re-supplied counts. The
+    original ``command`` is preserved. Trust posture matches ``--from-junit``: the
+    operator asserts the tree's test-relevant content is unchanged since the last
+    real run. Requires an existing ``.test-evidence.json``; rejects a second
+    source. (No tree/content hash verifies the assertion — that mechanism was
+    removed pre-v1.4 for chronic false positives and is deliberately not back.)
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``).
@@ -1321,7 +1331,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             "usage: prawduct-hook test-evidence record "
             "[--from-junit <report>] "
             "[--from-counts passed=N failed=M skipped=K [duration=S]] "
-            "[-- <pytest args>]",
+            "[--no-rerun] [-- <pytest args>]",
             file=sys.stderr,
         )
         return 2
@@ -1330,15 +1340,13 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # produced instead of re-running the suite — the gate stops paying for the
     # suite twice per stamp. Parsed before the `--` separator so both
     # `record --from-junit r.xml` and `record -- --from-junit r.xml` work.
-    # At most one ingest source: --from-junit (JUnit XML) XOR --from-counts (raw
-    # counts). Both present is a contradiction — reject before parsing either.
-    if "--from-junit" in rest and "--from-counts" in rest:
-        print(
-            "error: --from-junit and --from-counts are mutually exclusive — one "
-            "ingests a JUnit report, the other takes raw pass/fail counts.",
-            file=sys.stderr,
-        )
-        return 2
+    # --no-rerun/--restamp: reuse the existing record's counts (no run, no new
+    # counts supplied) and refresh the timestamp + F4a half against the tree.
+    no_rerun = False
+    for _flag in ("--no-rerun", "--restamp"):
+        if _flag in rest:
+            no_rerun = True
+            rest = [t for t in rest if t != _flag]
 
     from_junit = None
     if "--from-junit" in rest:
@@ -1366,6 +1374,25 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         if from_counts is None:
             print(f"error: {counts_err}", file=sys.stderr)
             return 2
+
+    # At most one count source: a real run (default), --from-junit (JUnit XML),
+    # --from-counts (raw counts), or --no-rerun (reuse the existing record).
+    _sources = [
+        name
+        for name, on in (
+            ("--from-junit", from_junit is not None),
+            ("--from-counts", from_counts is not None),
+            ("--no-rerun/--restamp", no_rerun),
+        )
+        if on
+    ]
+    if len(_sources) > 1:
+        print(
+            "error: " + " and ".join(_sources) + " are mutually exclusive — "
+            "choose one evidence source.",
+            file=sys.stderr,
+        )
+        return 2
 
     extra = rest
     if extra and extra[0] == "--":  # tolerate the conventional `--` separator
@@ -1417,6 +1444,25 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
 
+    if no_rerun:
+        # Restamp reuses the existing record's counts, so a runner source is a
+        # contradiction.
+        if extra:
+            print(
+                "error: extra args are not allowed with --no-rerun/--restamp — "
+                "it reuses the existing record; nothing is run.",
+                file=sys.stderr,
+            )
+            return 2
+        if test_command:
+            print(
+                "error: --no-rerun/--restamp cannot be combined with a declared "
+                "test_command — one reuses the existing record, the other runs "
+                "the suite. Use one or the other.",
+                file=sys.stderr,
+            )
+            return 2
+
     if test_command:
         if extra:
             print(
@@ -1436,7 +1482,43 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
 
-    if from_counts is not None:
+    if no_rerun:
+        # Restamp: reuse the existing record's counts (no run). The F4a overlay
+        # below re-derives the changed-file half against the current tree, so a
+        # rename/force-add that shifted changes_referenced is refreshed without
+        # paying for the suite again. Trust posture matches --from-junit: the
+        # operator asserts the tree's test-relevant content is unchanged.
+        if not evidence_path.is_file():
+            print(
+                "error: --no-rerun/--restamp needs an existing "
+                ".prawduct/.test-evidence.json to reuse; none found. Run a full "
+                "record first.",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            prior = json.loads(evidence_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"error: existing evidence is unreadable ({exc}); run a full record.",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            passed = int(prior["passed"])
+            failed = int(prior["failed"])
+            skipped = int(prior["skipped"])
+        except (KeyError, TypeError, ValueError) as exc:
+            print(
+                f"error: existing evidence is missing valid counts ({exc}); run a "
+                "full record.",
+                file=sys.stderr,
+            )
+            return 2
+        duration = prior.get("duration_seconds", 0)
+        prior_command = prior.get("command", "(unknown)")
+        proc = None
+    elif from_counts is not None:
         # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
         # The F4a overlay below still recomputes the changed-file half against
         # the tree, so a Python repo using --from-counts keeps coverage evidence
@@ -1521,8 +1603,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 pass
 
     # Aggregate across ALL top-level <testsuite> elements (skipped entirely when
-    # counts were supplied directly via --from-counts — there is no XML root).
-    if from_counts is None:
+    # counts come from --from-counts or --no-rerun — there is no XML root).
+    if from_counts is None and not no_rerun:
         # pytest emits one <testsuite>, but `test_command` invites arbitrary
         # runners (jest-junit, go-junit-report, merged CI reports) whose
         # <testsuites> roots carry many — reading only the first silently
@@ -1551,7 +1633,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     record = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "command": (
-            f"--from-counts passed={passed} failed={failed} skipped={skipped}"
+            prior_command
+            if no_rerun
+            else f"--from-counts passed={passed} failed={failed} skipped={skipped}"
             if from_counts is not None
             else f"--from-junit {from_junit}"
             if from_junit is not None
@@ -1578,6 +1662,17 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # Overlay the F4a coverage half via the existing verifier (reuse, not
     # duplicate). Best-effort — the base record above is already schema-valid.
     base, _ = _coverage()._coverage_resolve_base(project_dir)
+    if base == "HEAD~1":
+        # HEAD~1 is a MOVING ref: committing advances it, so changes_referenced
+        # can shift across a no-op commit. Only fires when no origin/main, main,
+        # or base_branch: resolves — name the knob that stabilizes it.
+        print(
+            "warning: diff base resolved to the moving HEAD~1 fallback (no "
+            "origin/main, main, or base_branch:) — committing advances HEAD~1, so "
+            "changes_referenced can shift across a commit. Set base_branch: in "
+            ".prawduct/project-state.yaml to a stable branch.",
+            file=sys.stderr,
+        )
     verifier = Path(_plugin_root()) / "bin" / "test-reference-verify"
     if verifier.is_file():
         merge_cmd = [
@@ -2521,7 +2616,7 @@ _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force]|critic-begin|critic-end|"
     "stop|build-index|user-prompt-submit|test-status|validate-evidence|"
-    "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K] [-- pytest args]|"
+    "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"

@@ -1492,6 +1492,150 @@ class TestFromCountsIngest:
         assert res.returncode == 2
         assert "test_command" in res.stderr
 
+    def test_head_tilde1_base_emits_advisory(self, tmp_path):
+        # A repo NOT on main with no origin → the recorder's overlay base falls
+        # back to the moving HEAD~1; record warns (naming base_branch:) even via
+        # an ingest mode that runs nothing.
+        repo = tmp_path / "fc_h1"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "a.py").write_text("def a():\n    return 1\n")
+        _git(repo, "init", "-b", "work")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c0")
+        (repo / "b.py").write_text("def b():\n    return 2\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0")
+        assert res.returncode == 0, res.stderr
+        assert "head~1" in res.stderr.lower()
+        assert "base_branch" in res.stderr
+
+
+class TestNoRerunRestamp:
+    """`record --no-rerun` (alias --restamp) reuses the existing record's counts
+    and refreshes the timestamp + F4a half against the current tree — no suite
+    run. The sanctioned cheap refresh after a rename/force-add shifted
+    changes_referenced; trust posture matches --from-junit.
+    """
+
+    def _repo(self, tmp_path, body: str = "def test_ok():\n    assert True\n") -> Path:
+        repo = tmp_path / "nr"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text(body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def test_reuses_counts_and_refreshes_without_running(self, tmp_path):
+        # Seed a record via --from-counts (no run) in a repo whose own test would
+        # FAIL if run. A restamp reflecting the seeded counts (7 passed) proves no
+        # suite ran.
+        repo = self._repo(tmp_path, "def test_bad():\n    assert False\n")
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=7", "failed=0", "skipped=0").returncode == 0
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 0, res.stderr
+        after = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (after["passed"], after["failed"], after["skipped"]) == (7, 0, 0)
+        assert _run_in(repo, "validate-evidence").returncode == 0
+
+    def test_refreshes_changes_referenced_against_current_tree(self, tmp_path):
+        # The feature's stated purpose: restamp re-derives the F4a coverage half
+        # against the CURRENT tree. Seed on a clean tree (nothing changed vs
+        # main), then modify a referenced source file and restamp — the changed
+        # file must now appear in changes_referenced, with no suite run.
+        repo = tmp_path / "nr2"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "mod.py").write_text("def feature():\n    return 1\n")
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_mod.py").write_text(
+            "from mod import feature\n\ndef test_feature():\n    assert feature() == 1\n"
+        )
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=1", "failed=0").returncode == 0
+        seeded = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "mod.py" not in seeded["changes_referenced"]
+        (repo / "mod.py").write_text("def feature():\n    return 2\n")
+        assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
+        after = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "mod.py" in after["changes_referenced"]
+
+    def test_restamp_alias_works(self, tmp_path):
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=3", "failed=0").returncode == 0
+        assert _run_in(repo, "test-evidence", "record", "--restamp").returncode == 0
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 3
+
+    def test_failing_prior_record_stays_failing(self, tmp_path):
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=1", "failed=2").returncode == 1
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["failed"] == 2
+
+    def test_preserves_prior_command(self, tmp_path):
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=1", "failed=0").returncode == 0
+        before = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
+        after = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert after["command"] == before["command"]
+
+    def test_missing_evidence_is_clean_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 2
+        assert "existing" in res.stderr.lower()
+
+    def test_malformed_evidence_is_clean_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / ".test-evidence.json").write_text("{not json")
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 2
+        assert "unreadable" in res.stderr.lower()
+
+    def test_evidence_missing_counts_is_clean_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / ".test-evidence.json").write_text(
+            json.dumps({"timestamp": "2026-01-01T00:00:00Z"})
+        )
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 2
+        assert "counts" in res.stderr.lower()
+
+    def test_rejects_combination_with_from_junit(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun",
+                      "--from-junit", "r.xml")
+        assert res.returncode == 2
+        assert "mutually exclusive" in res.stderr.lower()
+
+    def test_rejects_combination_with_from_counts(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun",
+                      "--from-counts", "passed=1", "failed=0")
+        assert res.returncode == 2
+        assert "mutually exclusive" in res.stderr.lower()
+
+    def test_rejects_extra_args(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun", "--", "-k", "foo")
+        assert res.returncode == 2
+        assert "no-rerun" in res.stderr.lower() or "restamp" in res.stderr.lower()
+
 
 class TestTestEvidenceKnobs:
     """Gate-soundness ch.2: `test_command:` / `tests_dirs:` in

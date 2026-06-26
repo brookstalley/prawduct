@@ -476,6 +476,53 @@ class TestBaseResolution:
         assert "verifier" in evidence
 
 
+class TestHeadTilde1Advisory:
+    """The verifier warns when the diff base AUTO-resolves to the moving HEAD~1
+    fallback (no origin/main or main) — committing advances HEAD~1, so the
+    changed-file set can shift across a commit. Advisory only; resolution is
+    unchanged. Explicit --base or a resolvable main/origin/main → no warning.
+    """
+
+    def _repo_without_main(self, tmp_path: Path) -> Path:
+        # NOT on main, no origin → the base ladder falls through to HEAD~1.
+        repo = tmp_path / "h1"
+        repo.mkdir()
+        _git(repo, "init", "-b", "work")
+        (repo / "a.py").write_text("def a():\n    return 1\n")
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_a.py").write_text(
+            "from a import a\n\ndef test_a():\n    assert a() == 1\n"
+        )
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "c0")
+        (repo / "b.py").write_text("def b():\n    return 2\n")
+        (repo / "tests" / "test_b.py").write_text(
+            "from b import b\n\ndef test_b():\n    assert b() == 2\n"
+        )
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def test_warns_when_base_auto_resolves_to_head_tilde1(self, tmp_path):
+        repo = self._repo_without_main(tmp_path)
+        result = _run_verifier(repo)  # no --base → auto-detect
+        assert result.returncode == 0, result.stderr
+        assert "head~1" in result.stderr.lower()
+        assert "base_branch" in result.stderr
+
+    def test_no_warning_with_explicit_base(self, tmp_path):
+        repo = self._repo_without_main(tmp_path)
+        result = _run_verifier(repo, "--base", "HEAD~1")
+        assert result.returncode == 0, result.stderr
+        assert "head~1" not in result.stderr.lower()
+
+    def test_no_warning_when_main_resolves(self, mini_repo: Path):
+        # mini_repo is on main → auto-resolves to main, never HEAD~1.
+        result = _run_verifier(mini_repo)
+        assert result.returncode == 0, result.stderr
+        assert "head~1" not in result.stderr.lower()
+
+
 class TestSelfCompat:
     """The verifier's emitted shape must satisfy the schema validator that
     the plugin runtime (bin/prawduct-hook validate-evidence) uses.
