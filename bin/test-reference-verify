@@ -337,6 +337,17 @@ def main(argv: list[str] | None = None) -> int:
     if base is None:
         print(f"error: cannot resolve diff base — {base_reason}", file=sys.stderr)
         return 2
+    if args.base is None and base == "HEAD~1":
+        # HEAD~1 is a MOVING ref: committing advances it, so the changed-file set
+        # can shift across a no-op commit. Only auto-resolves here when no
+        # origin/main or main exists — name the knobs that stabilize it.
+        print(
+            "warning: diff base auto-resolved to the moving HEAD~1 fallback (no "
+            "origin/main or main) — committing advances HEAD~1, so the changed-file "
+            "set can shift across a commit. Pass --base or set base_branch: in "
+            ".prawduct/project-state.yaml to a stable branch.",
+            file=sys.stderr,
+        )
 
     try:
         fields = _build_evidence_fields(repo, base, tests_dirs)

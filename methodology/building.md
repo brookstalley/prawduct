@@ -54,7 +54,7 @@ The Confidence Check runs at a chunk's *start*; requirements also arrive *during
 
 **Establish a clean baseline.** Before starting the first work cycle of a session, establish a clean state:
 
-- *Tests*: Run the full test suite. Every test must pass. Fix any failures — there is no "pre-existing" exception.
+- *Tests*: Run the full test suite. Every test must pass. Fix any failures.
 - *Git state*: Check for uncommitted changes. Commit or stash unrelated work. A dirty working tree blurs the boundary between what you built and what was already there. For medium+ work, create a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Review any compliance findings from the session briefing. Address or explicitly acknowledge each one.
 
@@ -83,7 +83,7 @@ Add observability alongside features, not after. If the observability strategy c
 
 **Verify.** Two layers:
 
-- *Code:* Run the full suite once. Check `prawduct-hook test-status` first — exit 0 means this session's evidence passed, so re-running is wasteful. Record via `prawduct-hook test-evidence record` — or `--from-junit <f>` to ingest an existing run instead of re-running (TST-7M3K). Non-default suites: `test_command:`/`tests_dirs:`.
+- *Code:* Record **once**, at Verify — **not** after committing: a commit doesn't stale session-scoped evidence, so `test-status` stays green. Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain, no JUnit), `--no-rerun` (restamp). Non-default suites: `test_command:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -191,7 +191,7 @@ Tests are the most important artifact you produce during building. They're contr
 
 **Tests never weaken.** Don't delete tests or relax assertions to make code pass. Test consolidation is fine — name the reason in the change-log. Fix the code, never the test. This is Principle 1, and it's a bright line.
 
-**All tests pass, always.** There is no "pre-existing" exception. Diagnose and fix every failure.
+**All tests pass, always.** Diagnose and fix every failure.
 
 **Test coverage is proportionate.** Match coverage to risk. Every product needs at least: happy path, error handling for likely failures, and edge cases for anything involving money, data, or safety.
 
