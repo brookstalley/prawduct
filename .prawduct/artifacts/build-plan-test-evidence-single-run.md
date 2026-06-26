@@ -77,9 +77,15 @@ chose the scope below.
 - [ ] Chunk 01: `--from-counts` — generic non-JUnit result on-ramp
 - [ ] Chunk 02: `--no-rerun` restamp + HEAD~1 fallback-base advisory
 - [ ] Chunk 03: mechanism-neutral methodology + backlog hygiene (cumulative-final)
-Context: Plan created (feature/test-evidence-single-run, off develop). Building
-Chunk 01 first. Backlog COV-3R9K is the originating item (reframe + file the
-coverage-floor residual in Chunk 03).
+Context: ALL THREE CHUNKS COMPLETE (feature/test-evidence-single-run, off
+develop). Ch01 (d1b5299): --from-counts agnostic on-ramp + TestFromCountsIngest.
+Ch02 (2bc7369): --no-rerun/--restamp restamp + HEAD~1 advisory (recorder +
+verifier) + tests. Ch03: methodology Verify bullet rewritten (record once, not
+after commit; names on-ramps; <4950 token cap held by trimming two "no
+pre-existing exception" duplicates), backlog reconciled (COV-3R9K reframed+closed,
+COV-4M2J filed, stopgap SUPERSEDED), change-log entry + regen-views done.
+Checkboxes stay [ ] until v2.2.3 release flips status=merged→shipped. Cumulative
+Critic = the /prawduct:pr create gate (run after committing Ch03).
 
 ## Scaffolding
 
