@@ -1568,6 +1568,22 @@ class TestNoRerunRestamp:
         after = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert "mod.py" in after["changes_referenced"]
 
+    def test_restamp_flips_stale_record_to_current(self, tmp_path):
+        # The freshness-refresh reason to restamp: a record from before this
+        # session reads stale; --no-rerun re-stamps the timestamp (reusing counts,
+        # no run) so test-status reads current again.
+        repo = self._repo(tmp_path)
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=2", "failed=0").returncode == 0
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        ev["timestamp"] = "2000-01-01T00:00:00Z"  # backdate → stale
+        ev_path.write_text(json.dumps(ev))
+        assert _run_in(repo, "test-status").returncode == 1, "expected stale"
+        assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
+        assert _run_in(repo, "test-status").returncode == 0, "expected current after restamp"
+
     def test_restamp_alias_works(self, tmp_path):
         repo = self._repo(tmp_path)
         assert _run_in(repo, "test-evidence", "record", "--from-counts",
