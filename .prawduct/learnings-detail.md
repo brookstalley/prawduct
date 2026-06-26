@@ -6,6 +6,34 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When you add an ingest/IO surface to a platform-agnostic framework, expose the minimal data primitive — not one ecosystem's file format — or you silently lock out the toolchains the agnosticism promised
+
+**Pattern**: test-evidence-single-run (2026-06-26, v2.2.3). An upstream report (COV-3R9K, scriob)
+said consumers run the suite twice per chunk. A multi-agent investigation found the double-run was
+NOT gate-forced (freshness is session-scoped; `changes_referenced` is base→working-tree
+content-based, commit-invariant) — it came from a retired "record after the final commit" habit.
+While scoping the fix, the user asked: "prawduct is supposed to be language/platform agnostic — are
+we breaking embedded/non-Python users?" Auditing the recorder showed it was JUnit-XML-coupled: the
+default runner is pytest, the `test_command:` knob REQUIRES a `{junit_xml}` placeholder, and
+`--from-junit` ingests JUnit. JUnit is a broad de-facto standard (pytest/vitest/ctest/nextest/
+gotestsum all emit it), so `test_command:` already made the recorder runner-agnostic FOR
+JUnit-emitters — but a bespoke HIL rig or custom harness that can't emit JUnit had only two off-road
+options: hand-write `.test-evidence.json` (the gap TST-6V2N closed) or write a JUnit adapter.
+
+**Fix**: `--from-counts passed=N failed=M skipped=K [duration=S]` — the minimum viable test result
+is pass/fail/skip counts; forcing those through JUnit XML WAS the coupling. The on-ramp records
+counts directly (no run), so any toolchain participates. The Python-only COVERAGE floor (symbol-grep
+in `bin/test-reference-verify`) is a separate, larger gap, split to COV-4M2J.
+
+**Two lessons**: (1) When you add an ingest path to an agnostic framework, ask which real toolchains
+CANNOT produce its format BEFORE shipping — agnostic-for-X is not agnostic. (2) A bug report's stated
+root cause is a hypothesis: the report blamed a three-dot `git diff base...HEAD` shift, but the
+producers use two-arg `git diff <base>` (base→worktree, commit-invariant); verifying against source
+(not recalling, not trusting the report) redirected the whole fix from the report's suggested
+content-hash (a deliberately-rejected mechanism, pre-v1.4 + TST-4K2P) to documentation + the on-ramp.
+Relates to Bring Expertise (#7), Honest Confidence (#5), Verify-don't-guess, Proportional Effort
+(#11).
+
 ## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version) — `regen-views` resolves plans by it and a version there silently skips Status flipping at release
 
 **Pattern**: v2.1.8 batch release (2026-06-22). The `hook-cli-robustness` branch was built
