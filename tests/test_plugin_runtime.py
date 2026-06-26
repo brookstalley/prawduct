@@ -1368,6 +1368,131 @@ class TestFromJunitIngest:
         assert "test_command" in res.stderr
 
 
+class TestFromCountsIngest:
+    """`record --from-counts passed=N failed=M skipped=K [duration=S]` records
+    counts supplied directly — the language-/runner-agnostic on-ramp for a
+    toolchain that cannot emit JUnit XML (embedded HIL, a bespoke harness). Like
+    `--from-junit` it runs nothing.
+    """
+
+    def _repo(self, tmp_path, body: str = "def test_ok():\n    assert True\n") -> Path:
+        repo = tmp_path / "fc"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text(body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def test_records_counts_without_running_the_suite(self, tmp_path):
+        # The repo's OWN test would FAIL if run; the counts claim 5 passed, 0
+        # failed. A record reflecting the counts (exit 0, 5 passed) proves the
+        # suite was never executed — a non-JUnit toolchain recorded evidence.
+        repo = self._repo(tmp_path, "def test_bad():\n    assert False\n")
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=5", "failed=0", "skipped=1", "duration=3.2")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (5, 0, 1)
+        assert ev["duration_seconds"] == 3.2
+        assert "git_sha" not in ev
+        assert "--from-counts" in ev["command"]
+        # the plugin's own validator accepts what the plugin produced
+        assert _run_in(repo, "validate-evidence").returncode == 0
+
+    def test_skipped_and_duration_default_to_zero(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=3", "failed=0")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (3, 0, 0)
+        assert ev["duration_seconds"] == 0
+
+    def test_makes_test_status_current(self, tmp_path):
+        repo = self._repo(tmp_path)
+        _make_session_start(repo / ".prawduct", offset_seconds=-120)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=2", "failed=0").returncode == 0
+        assert _run_in(repo, "test-status").returncode == 0
+
+    def test_failing_counts_exit_nonzero(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=2", "failed=1")
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["failed"] == 1 and ev["passed"] == 2
+
+    def test_missing_required_key_is_usage_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-counts", "passed=2")
+        assert res.returncode == 2
+        assert "failed" in res.stderr.lower()
+
+    def test_unknown_key_is_usage_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=2", "failed=0", "bogus=1")
+        assert res.returncode == 2
+        assert "unknown key" in res.stderr.lower()
+
+    def test_non_integer_count_is_usage_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=lots", "failed=0")
+        assert res.returncode == 2
+        assert "integer" in res.stderr.lower()
+
+    def test_negative_count_is_usage_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=-1", "failed=0")
+        assert res.returncode == 2
+        assert ">= 0" in res.stderr
+
+    def test_duplicate_key_is_usage_error(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=1", "passed=2", "failed=0")
+        assert res.returncode == 2
+        assert "duplicate" in res.stderr.lower()
+
+    def test_tolerates_double_dash_separator(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-counts", "--",
+                      "passed=4", "failed=0")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 4
+
+    def test_rejects_combination_with_from_junit(self, tmp_path):
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", "r.xml",
+                      "--from-counts", "passed=1", "failed=0")
+        assert res.returncode == 2
+        assert "mutually exclusive" in res.stderr.lower()
+
+    def test_rejects_extra_args(self, tmp_path):
+        repo = self._repo(tmp_path)
+        # tokens before --from-counts are stray args; an ingest mode runs nothing.
+        res = _run_in(repo, "test-evidence", "record", "-k", "foo",
+                      "--from-counts", "passed=1", "failed=0")
+        assert res.returncode == 2
+        assert "from-counts" in res.stderr.lower()
+
+    def test_rejects_combination_with_test_command(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0")
+        assert res.returncode == 2
+        assert "test_command" in res.stderr
+
+
 class TestTestEvidenceKnobs:
     """Gate-soundness ch.2: `test_command:` / `tests_dirs:` in
     project-state.yaml replace the hardcoded `sys.executable -m pytest`-from-

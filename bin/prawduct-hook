@@ -1205,6 +1205,58 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 # =============================================================================
 
 
+def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
+    """Parse ``--from-counts`` ``key=value`` tokens into a counts dict.
+
+    The language-/runner-agnostic on-ramp: the minimum viable test result is
+    pass/fail/skip counts, so a toolchain that cannot emit JUnit XML (embedded
+    HIL, a bespoke harness) records evidence without faking a report. Accepts
+    ``passed=`` / ``failed=`` (required, non-negative ints), ``skipped=``
+    (optional int, default 0), and ``duration=`` (optional non-negative float
+    seconds, default 0.0). Returns ``(counts, "")`` on success or
+    ``(None, reason)`` on any malformed input.
+    """
+    allowed = ("passed", "failed", "skipped", "duration")
+    vals: dict = {}
+    for tok in tokens:
+        if "=" not in tok:
+            return None, (
+                "--from-counts expects key=value tokens "
+                f"(e.g. passed=12 failed=0 skipped=1), got {tok!r}"
+            )
+        key, _, raw = tok.partition("=")
+        key = key.strip()
+        if key not in allowed:
+            return None, (
+                f"--from-counts: unknown key {key!r} "
+                "(allowed: passed, failed, skipped, duration)"
+            )
+        if key in vals:
+            return None, f"--from-counts: duplicate key {key!r}"
+        if key == "duration":
+            try:
+                num = float(raw)
+            except ValueError:
+                return None, f"--from-counts: duration must be a number, got {raw!r}"
+        else:
+            try:
+                num = int(raw)
+            except ValueError:
+                return None, f"--from-counts: {key} must be an integer, got {raw!r}"
+        if num < 0:
+            return None, f"--from-counts: {key} must be >= 0, got {raw!r}"
+        vals[key] = num
+    missing = [k for k in ("passed", "failed") if k not in vals]
+    if missing:
+        return None, (
+            "--from-counts requires at least passed=N and failed=N "
+            f"(missing: {', '.join(missing)})"
+        )
+    vals.setdefault("skipped", 0)
+    vals.setdefault("duration", 0.0)
+    return vals, ""
+
+
 def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     """Run the suite and WRITE ``.prawduct/.test-evidence.json`` (TST-6V2N).
 
@@ -1225,7 +1277,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     here; that mechanism was removed pre-v1.4 for chronic false positives.
 
     Usage: ``prawduct-hook test-evidence record [--from-junit <report>]
-    [-- <extra pytest args>]``
+    [--from-counts passed=N failed=M skipped=K [duration=S]] [-- <extra pytest
+    args>]``
 
     ``--from-junit <report>`` (TST-7M3K) ingests a JUnit XML the builder already
     produced instead of re-running the suite — the build cycle ran the suite once;
@@ -1233,6 +1286,13 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     read as-is (no run), so it cannot be combined with extra pytest args or a
     declared ``test_command:``. Exit status then derives from the report's failure
     count rather than a process.
+
+    ``--from-counts passed=N failed=M skipped=K [duration=S]`` records pass/fail/
+    skip counts supplied directly — the language-/runner-agnostic on-ramp for a
+    toolchain that cannot emit JUnit XML (embedded HIL, a bespoke harness). Like
+    ``--from-junit`` it runs nothing (exit status derives from ``failed``) and
+    rejects a second source (``--from-junit`` / ``test_command:`` / extra args).
+    ``passed`` and ``failed`` are required; ``skipped``/``duration`` default to 0.
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``).
@@ -1259,7 +1319,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     if not argv or argv[0] != "record":
         print(
             "usage: prawduct-hook test-evidence record "
-            "[--from-junit <report>] [-- <pytest args>]",
+            "[--from-junit <report>] "
+            "[--from-counts passed=N failed=M skipped=K [duration=S]] "
+            "[-- <pytest args>]",
             file=sys.stderr,
         )
         return 2
@@ -1268,6 +1330,16 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # produced instead of re-running the suite — the gate stops paying for the
     # suite twice per stamp. Parsed before the `--` separator so both
     # `record --from-junit r.xml` and `record -- --from-junit r.xml` work.
+    # At most one ingest source: --from-junit (JUnit XML) XOR --from-counts (raw
+    # counts). Both present is a contradiction — reject before parsing either.
+    if "--from-junit" in rest and "--from-counts" in rest:
+        print(
+            "error: --from-junit and --from-counts are mutually exclusive — one "
+            "ingests a JUnit report, the other takes raw pass/fail counts.",
+            file=sys.stderr,
+        )
+        return 2
+
     from_junit = None
     if "--from-junit" in rest:
         i = rest.index("--from-junit")
@@ -1279,6 +1351,22 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             return 2
         from_junit = rest[i + 1]
         del rest[i : i + 2]
+
+    # --from-counts <key=value>... (agnostic on-ramp): a runner that cannot emit
+    # JUnit XML (embedded HIL, a bespoke harness) records pass/fail/skip counts
+    # directly. Consumes the remaining tokens after the flag as key=value pairs.
+    from_counts = None
+    if "--from-counts" in rest:
+        j = rest.index("--from-counts")
+        count_tokens = rest[j + 1 :]
+        del rest[j:]
+        if count_tokens and count_tokens[0] == "--":  # tolerate the `--` separator
+            count_tokens = count_tokens[1:]
+        from_counts, counts_err = _parse_evidence_counts(count_tokens)
+        if from_counts is None:
+            print(f"error: {counts_err}", file=sys.stderr)
+            return 2
+
     extra = rest
     if extra and extra[0] == "--":  # tolerate the conventional `--` separator
         extra = extra[1:]
@@ -1311,6 +1399,24 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
 
+    if from_counts is not None:
+        # Counts are recorded as given, so a runner source is a contradiction.
+        if extra:
+            print(
+                "error: extra args are not allowed with --from-counts — the "
+                "counts are recorded as given; nothing is run.",
+                file=sys.stderr,
+            )
+            return 2
+        if test_command:
+            print(
+                "error: --from-counts cannot be combined with a declared "
+                "test_command — one records given counts, the other runs the "
+                "suite. Use one or the other.",
+                file=sys.stderr,
+            )
+            return 2
+
     if test_command:
         if extra:
             print(
@@ -1330,7 +1436,17 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
 
-    if from_junit is not None:
+    if from_counts is not None:
+        # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
+        # The F4a overlay below still recomputes the changed-file half against
+        # the tree, so a Python repo using --from-counts keeps coverage evidence
+        # and a non-Python repo honestly gets an empty referenced set.
+        passed = from_counts["passed"]
+        failed = from_counts["failed"]
+        skipped = from_counts["skipped"]
+        duration = from_counts["duration"]
+        proc = None
+    elif from_junit is not None:
         # Ingest mode: parse the JUnit report the builder already produced. No
         # temp file, no subprocess, and we must NOT delete the caller's report.
         junit = Path(from_junit)
@@ -1404,26 +1520,29 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             except OSError:
                 pass
 
-    # Aggregate across ALL top-level <testsuite> elements, not just the first:
-    # pytest emits one, but `test_command` invites arbitrary runners
-    # (jest-junit, go-junit-report, merged CI reports) whose <testsuites>
-    # roots carry many — reading only the first silently undercounted the
-    # evidence the freshness and Critic gates trust. Direct children only
-    # (not iter()) so Ant-style nested suites aren't double-counted.
-    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
-    if not suites:
-        print(
-            "error: the test run produced no <testsuite> (no tests collected?)",
-            file=sys.stderr,
-        )
-        return 2
-    total = sum(int(s.get("tests", "0")) for s in suites)
-    failures = sum(int(s.get("failures", "0")) for s in suites)
-    errors = sum(int(s.get("errors", "0")) for s in suites)
-    skipped = sum(int(s.get("skipped", "0")) for s in suites)
-    duration = sum(float(s.get("time", "0") or "0") for s in suites)
-    passed = total - failures - errors - skipped
-    failed = failures + errors
+    # Aggregate across ALL top-level <testsuite> elements (skipped entirely when
+    # counts were supplied directly via --from-counts — there is no XML root).
+    if from_counts is None:
+        # pytest emits one <testsuite>, but `test_command` invites arbitrary
+        # runners (jest-junit, go-junit-report, merged CI reports) whose
+        # <testsuites> roots carry many — reading only the first silently
+        # undercounted the evidence the freshness and Critic gates trust. Direct
+        # children only (not iter()) so Ant-style nested suites aren't
+        # double-counted.
+        suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+        if not suites:
+            print(
+                "error: the test run produced no <testsuite> (no tests collected?)",
+                file=sys.stderr,
+            )
+            return 2
+        total = sum(int(s.get("tests", "0")) for s in suites)
+        failures = sum(int(s.get("failures", "0")) for s in suites)
+        errors = sum(int(s.get("errors", "0")) for s in suites)
+        skipped = sum(int(s.get("skipped", "0")) for s in suites)
+        duration = sum(float(s.get("time", "0") or "0") for s in suites)
+        passed = total - failures - errors - skipped
+        failed = failures + errors
 
     # Base record carries the pytest half PLUS schema-valid placeholder F4a
     # fields, so the file is self-sufficient even if the F4a overlay below is
@@ -1432,7 +1551,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     record = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "command": (
-            f"--from-junit {from_junit}"
+            f"--from-counts passed={passed} failed={failed} skipped={skipped}"
+            if from_counts is not None
+            else f"--from-junit {from_junit}"
             if from_junit is not None
             else test_command
             if test_command
@@ -2399,7 +2520,8 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force]|critic-begin|critic-end|"
-    "stop|build-index|user-prompt-submit|test-status|validate-evidence|test-evidence record [-- pytest args]|"
+    "stop|build-index|user-prompt-submit|test-status|validate-evidence|"
+    "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K] [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
