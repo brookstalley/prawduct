@@ -542,7 +542,7 @@ views_enabled: true
 # regen-views via the plan's frontmatter scope=. (work-model-index-gitignore shipped in
 # the same release but is plan-less.) No plan is active; the files are retained as
 # historical artifacts.
-active_build_plan: null
+active_build_plan: build-plan-test-evidence-single-run.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
