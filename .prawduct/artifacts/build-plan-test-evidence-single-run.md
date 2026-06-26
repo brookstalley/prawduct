@@ -74,9 +74,9 @@ chose the scope below.
 
 ## Status
 
-- [ ] Chunk 01: `--from-counts` — generic non-JUnit result on-ramp
-- [ ] Chunk 02: `--no-rerun` restamp + HEAD~1 fallback-base advisory
-- [ ] Chunk 03: mechanism-neutral methodology + backlog hygiene (cumulative-final)
+- [x] Chunk 01: `--from-counts` — generic non-JUnit result on-ramp
+- [x] Chunk 02: `--no-rerun` restamp + HEAD~1 fallback-base advisory
+- [x] Chunk 03: mechanism-neutral methodology + backlog hygiene (cumulative-final)
 Context: ALL THREE CHUNKS COMPLETE (feature/test-evidence-single-run, off
 develop). Ch01 (d1b5299): --from-counts agnostic on-ramp + TestFromCountsIngest.
 Ch02 (2bc7369): --no-rerun/--restamp restamp + HEAD~1 advisory (recorder +
