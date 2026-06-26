@@ -5,7 +5,7 @@
 
 ## 2026-06-26: kill the test-evidence double-run at its source + a non-JUnit on-ramp (test-evidence-single-run)
 
-<!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence-single-run | release=v2.2.3 | status=merged -->
+<!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence-single-run | release=v2.2.3 -->
 
 **Why:** An upstream report (COV-3R9K, from scriob) said consumers run the suite twice per
 chunk. A multi-agent investigation (a consumer map of every `.test-evidence.json` /
