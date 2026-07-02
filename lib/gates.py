@@ -1190,7 +1190,7 @@ def _ledger_fallback_record(prawduct_dir: Path):
     **Freshness bound (CRT-8W3F).** Unlike the single-slot findings file,
     the ledger keeps every review forever — so "newest qualifying" alone
     would let a days-old cumulative from prior work satisfy the PR gate
-    whenever only ``.md`` changed since. A qualifying event is therefore
+    whenever only ``.md`` or ``.prawduct/`` metadata changed since. A qualifying event is therefore
     accepted only when its envelope ``ts`` is ``>= .session-start`` (the
     same ISO-8601 string comparison :func:`tests_are_current` uses). Fail
     closed: a missing/unreadable session marker, or a qualifying event with
