@@ -768,6 +768,37 @@
   `skills/pr/SKILL.md` merge-flow step 6, `docs/release-process.md`, `stamp_merged` in
   `lib/views.py`, several learnings. (planning)
 
+- **[DOC-8N4F]** Change-log template's `status=` vocabulary contradicts views.py flip semantics — scaffolded header misleads gitflow repos about when Status checkboxes flip
+  `effort: S · impact: M · area: change-log/templates · source: report-bug · added: 2026-07-02 · status: open · stage: ready · related: REL-4Q9V, DOC-5T8N, VWS-6R4T · refs: templates/change-log.md, lib/views.py (VALID_STATUS_VALUES, ChangeLogEntry.shipped_chunks, stamp_merged), incoming-bugs/archive/change-log-template-says-merged-flips-status-checkboxes-but-views-py-only-flips-shipped.md`
+
+  Upstream bug report from scriob (arch-refactor build, prawduct v2.2.3). Reported symptom: their
+  scaffolded change-log header claims "Both `merged` and `shipped` flip the build-plan `## Status`
+  checkboxes", while `lib/views.py` deliberately flips only `status=shipped` — so in a gitflow repo
+  where develop runs far ahead of main, every merged-but-unreleased chunk reads `- [ ]` and the
+  surrounding guidance (commit messages, plan Context lines, a Critic WARN) told the builder the
+  box should already be checked.
+
+  Triage verification (2026-07-02, framework tree + 2.2.3 plugin cache): the CURRENT
+  `templates/change-log.md` does NOT contain the quoted "Both merged and shipped" text — it says
+  checkboxes flip from `status=shipped` (correct). The reporter's header is a product-side stale
+  scaffold/hand-evolved variant. But the template has a REAL vocabulary bug of its own: it lists
+  `status - shipped | in-progress | deferred` while `VALID_STATUS_VALUES` is `{shipped, merged}` —
+  it omits the recognized intermediate `merged` entirely and documents two values that are invalid,
+  which post-VWS-6R4T (changelog-fail-loud) now error loudly for any product following the
+  template's own guidance. Same defect class as reported (template contradicts views.py semantics),
+  different wrong text.
+
+  Fix-shape: align `templates/change-log.md` line ~30 to the real vocabulary — document
+  `shipped | merged` (statusless = feature-branch), state explicitly that only `shipped` flips a
+  checkbox and `merged` is the release-pending intermediate that does NOT flip, per the views.py
+  docstring. Interaction with REL-4Q9V: if the vocabulary shrink ships (drop `merged` +
+  stamp-merged), the template update lands as part of that cascade instead — coordinate rather
+  than double-fix. The report's usability suggestion (surface merged-pending in the Status view,
+  e.g. a `(merged)` annotation, so plans can distinguish "not built" from "merged, awaiting
+  release") is feature-shaped — route it into REL-4Q9V's design rather than this doc fix.
+  Downstream note: scriob's own scaffolded header needs its product-side correction regardless
+  (scaffolded files don't re-sync). (report-bug)
+
 ## Promoted
 
 ## Archive
