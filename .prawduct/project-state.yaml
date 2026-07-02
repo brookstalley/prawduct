@@ -544,7 +544,13 @@ views_enabled: true
 # tag validation, tolerant chunk IDs, regen-views --check. Single chunk,
 # feature/changelog-fail-loud off develop. gate-noise merged (PR #114,
 # release-pending); its plan is RETAINED and regens via scope=gate-noise.
-active_build_plan: artifacts/build-plan-changelog-fail-loud.md
+# 2026-07-02: repointed at gate-exemption-boundary (CRT-5D8Q) — align
+# _record_covers_head to the .md+metadata exemption the chain gap-check already
+# declares; fixes the PR-gate deadlock observed on feature/changelog-fail-loud.
+# Single chunk, Type: cumulative-final, feature/gate-exemption-boundary off develop.
+# changelog-fail-loud merged (PR #115, release-pending); its plan is RETAINED and
+# regens via scope=changelog-fail-loud.
+active_build_plan: artifacts/build-plan-gate-exemption-boundary.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
