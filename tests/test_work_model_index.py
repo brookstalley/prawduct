@@ -278,6 +278,47 @@ def test_verb_homographs_as_nouns_are_not_requirement_shaped():
     assert wmi.is_requirement_shaped("I like this. Build a kanban view")
 
 
+
+# --- Maintenance-verb split (gate-noise, GOV-7T2M) ---------------------------
+# Verbs that act on what already exists (refactor/rename/redesign/rework/
+# remove/replace) are routine-work directives, not requirement carriers: they
+# no longer lower the firing threshold to a single orphan. They stay exempt
+# from orphan reporting — rename/redesign/rework sit above the frequency floor
+# and would otherwise surface as bogus domain terms.
+
+
+def test_maintenance_verbs_are_not_requirement_shaped():
+    assert not wmi.is_requirement_shaped("refactor the retrieval pipeline")
+    assert not wmi.is_requirement_shaped("rename FooBar to BazQux across the repo")
+    assert not wmi.is_requirement_shaped("rework the session digest and remove the shim")
+    assert not wmi.is_requirement_shaped(
+        "Please review the framework for efficiency — then redesign the noisiest gate"
+    )
+
+
+def test_maintenance_prompt_with_single_orphan_is_silent():
+    # The owner's-review-prompt class: a maintenance verb plus one novel term
+    # used to fire at the single-orphan threshold; now needs >= 2 orphans.
+    assert wmi.nudge_for("refactor the provenance handling", PRECISION_INDEX) is None
+    assert wmi.nudge_for("rename the attestation module", PRECISION_INDEX) is None
+
+
+def test_maintenance_prompt_with_two_orphans_still_fires():
+    # The split narrows the trigger, it doesn't blind the catch: genuinely new
+    # domain vocabulary in maintenance phrasing still surfaces via >= 2 orphans.
+    msg = wmi.nudge_for("refactor provenance and attestation handling", PRECISION_INDEX)
+    assert msg is not None and "provenance" in msg and "attestation" in msg
+
+
+def test_maintenance_verbs_are_never_the_orphan():
+    # rename/redesign/rework are NOT absorbed by the frequency floor, so the
+    # orphan exemption must cover the union of both verb sets — a bare drop
+    # from REQUIREMENT_VERBS would have reported the verb itself as the orphan.
+    empty = wmi.build_index([])
+    orphans = wmi.find_orphan_terms("rename and redesign the provenance rework", empty)
+    assert orphans == ["provenance"]
+
+
 def test_requirement_verbs_are_never_the_orphan():
     # "extend"/"integrate" rank above the frequency floor, but a directive verb
     # is never the undocumented domain term — only "telemetry" may surface.
