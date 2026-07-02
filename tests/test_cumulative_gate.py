@@ -162,6 +162,52 @@ def test_doc_only_delta_since_review_still_covered(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_metadata_only_delta_since_review_still_covered(tmp_path):
+    # CRT-5D8Q deadlock regression: a post-cumulative commit touching only
+    # .prawduct/ metadata (e.g. repointing active_build_plan) used to read
+    # "stale" while the verify-resolutions scope helper (rightly) filtered the
+    # same files out — leaving no gate-qualifying path. Coverage now exempts
+    # the same boundary the chain gap-check declares (.md + _is_metadata_path).
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    reviewed = _commit_file(repo, "app.py", "print(1)\n", "code")
+    _commit_file(repo, ".prawduct/project-state.yaml", "k: v\n", "repoint plan")
+    _write_findings(repo, commit_reviewed=reviewed)
+    r = _run_gate(repo)
+    assert r.returncode == 0, f"metadata-only delta must stay covered; stderr={r.stderr}"
+    assert "satisfied" in r.stdout
+    assert "stale" not in (r.stdout + r.stderr)
+
+
+def test_claude_settings_delta_since_review_still_covered(tmp_path):
+    # Exercise the predicate, not one prefix: .claude/settings.json is the
+    # second _METADATA_PREFIXES entry.
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    reviewed = _commit_file(repo, "app.py", "print(1)\n", "code")
+    _commit_file(repo, ".claude/settings.json", "{}\n", "install ref churn")
+    _write_findings(repo, commit_reviewed=reviewed)
+    r = _run_gate(repo)
+    assert r.returncode == 0, r.stderr
+    assert "satisfied" in r.stdout
+
+
+def test_metadata_plus_code_delta_since_review_is_stale(tmp_path):
+    # The exemption must not over-exempt: metadata riding alongside a code
+    # change never launders the code change past the gate (a skip-gate needs
+    # a regression test that the non-eligible case still BLOCKS).
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    reviewed = _commit_file(repo, "app.py", "print(1)\n", "code")
+    _commit_file(repo, ".prawduct/project-state.yaml", "k: v\n", "state")
+    _commit_file(repo, "core.py", "x = 2\n", "code after review")
+    _write_findings(repo, commit_reviewed=reviewed)
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "stale" in r.stderr and "core.py" in r.stderr
+    assert "project-state.yaml" not in r.stderr  # exempt files aren't the story
+
+
 def test_code_delta_since_review_is_stale(tmp_path):
     # THE false-pass fix: a non-doc change since the review means the verdict no
     # longer covers the code being shipped → the gate must FAIL (re-run needed).
@@ -265,6 +311,21 @@ def test_chain_with_doc_only_delta_after_verify_still_passes(tmp_path):
     # reflections/docs committed after the verify pass don't re-stale it.
     repo, anchor, verify_head = _chain_repo(tmp_path)
     _commit_file(repo, "README.md", "# docs\n", "docs after verify")
+    _write_findings(
+        repo, commit_reviewed=verify_head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 0, r.stderr
+    assert "satisfied" in r.stdout
+
+
+def test_chain_metadata_only_delta_after_verify_still_passes(tmp_path):
+    # CRT-5D8Q, chain leg: metadata committed after the verify pass doesn't
+    # re-stale the chain record's own HEAD-coverage either — both call sites
+    # of the coverage rule share the exemption.
+    repo, anchor, verify_head = _chain_repo(tmp_path)
+    _commit_file(repo, ".prawduct/project-state.yaml", "k: v\n", "state after verify")
     _write_findings(
         repo, commit_reviewed=verify_head, mode=VERIFY_MODE,
         files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,

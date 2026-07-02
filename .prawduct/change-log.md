@@ -3,6 +3,33 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-02: PR-gate coverage exempts .prawduct metadata — deadlock fix (gate-exemption-boundary)
+
+<!-- prawduct: chunks=01 | type=fix | scope=gate-exemption-boundary -->
+
+**Why:** CRT-5D8Q, observed live on feature/changelog-fail-loud: `_record_covers_head`
+(the CRT-7M2D coverage rule behind `check-cumulative-critic`) exempted only `.md`, so a
+routine post-cumulative metadata-only commit (repointing `active_build_plan` in
+`project-state.yaml`) marked the record stale — while `_compute_verify_resolutions_scope`
+(rightly) filtered the same files from the verify delta and demoted with
+`no-actionable-findings`. With the ledger-fallback window lapsed, a clean branch could
+not satisfy its own PR gate. The chain gap-check already declared `.md` + metadata as
+the exemption boundary (gate-soundness ch.5); the coverage rule now agrees.
+
+**What:**
+- `lib/gates.py::_record_covers_head` — staleness now ignores files matching
+  `gitstate._is_metadata_path` (`.prawduct/`, `.claude/settings.json`) in addition to
+  `.md`; docstrings and the `stale` stderr wording updated. Fail-closed preserved:
+  metadata riding alongside a code change still reads stale.
+- `tests/test_cumulative_gate.py` — 4 new tests: metadata-only delta covered (cumulative
+  and chain paths), `.claude/settings.json` delta covered, metadata+code delta still
+  stale. Live A/B on this repo's real state: installed v2.2.3 hook exits 1 `chain-stale`
+  on the metadata-only delta; the fixed repo-local hook exits 0 `satisfied`.
+- Prose statements of the old boundary updated: `skills/pr/SKILL.md` Step 2,
+  `skills/critic/review-cycle.md` PR-gate + chain paragraphs, `docs/release-process.md`
+  release-context note (version files still fire the gate there; `project-state.yaml`
+  regeneration no longer contributes).
+
 ## 2026-07-02: fail-loud change-log tag validation + tolerant chunk IDs + regen-views --check (changelog-fail-loud)
 
 <!-- prawduct: chunks=01 | type=feature | scope=changelog-fail-loud | status=merged -->

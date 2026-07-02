@@ -973,7 +973,16 @@ def _record_covers_head(project_dir: Path, commit_reviewed) -> tuple[str, str]:
     """Evaluate the CRT-7M2D coverage rule: does ``commit_reviewed`` cover HEAD?
 
     Coverage = ``commit_reviewed`` resolves to HEAD itself, OR every file
-    changed in ``commit_reviewed..HEAD`` is documentation (``.md``).
+    changed in ``commit_reviewed..HEAD`` is documentation (``.md``) or
+    framework/session metadata (``gitstate._is_metadata_path`` — ``.prawduct/``,
+    ``.claude/settings.json``). The metadata exemption (CRT-5D8Q) aligns this
+    rule with the chain gap-check's boundary: a code review vouches for code,
+    and ``.prawduct/`` state churn can no more invalidate it than a doc edit
+    can. Before the alignment, a routine metadata-only post-review commit
+    (repointing ``active_build_plan``) read ``stale`` here while
+    ``_compute_verify_resolutions_scope`` (rightly) filtered the same files
+    out of the verify delta — deadlocking the PR gate whenever the ledger
+    fallback couldn't rescue it.
 
     Returns ``(status, detail)``:
       - ``("covered", "")``
@@ -1022,12 +1031,15 @@ def _record_covers_head(project_dir: Path, commit_reviewed) -> tuple[str, str]:
             f"git diff {reviewed_sha[:12]}..HEAD failed: {diff_proc.stderr.strip()}"
         )
     changed = [ln.strip() for ln in diff_proc.stdout.splitlines() if ln.strip()]
-    non_doc = [f for f in changed if not f.endswith(".md")]
-    if non_doc:
-        sample = ", ".join(non_doc[:3])
-        more = f" (+{len(non_doc) - 3} more)" if len(non_doc) > 3 else ""
+    non_exempt = [
+        f for f in changed
+        if not f.endswith(".md") and not gitstate._is_metadata_path(f)
+    ]
+    if non_exempt:
+        sample = ", ".join(non_exempt[:3])
+        more = f" (+{len(non_exempt) - 3} more)" if len(non_exempt) > 3 else ""
         return "stale", f"{reviewed_sha[:12]}..{head_sha[:12]}: {sample}{more}"
-    # Only .md changed since the review — coverage holds, no re-run.
+    # Only docs/metadata changed since the review — coverage holds, no re-run.
     return "covered", ""
 
 
@@ -1041,12 +1053,14 @@ def check_cumulative_critic(project_dir: Path) -> int:
 
     1. **A HEAD-covering cumulative record** — ``mode == _CRITIC_MODE_CUMULATIVE``
        and the recorded ``commit_reviewed`` covers HEAD (CRT-7M2D): it IS HEAD,
-       or the only changes since are documentation (``.md``). A clean cumulative
+       or the only changes since are documentation (``.md``) or framework
+       metadata (``_is_metadata_path`` — CRT-5D8Q). A clean cumulative
        review vouches for the *code* being shipped — a code change since the
-       review fails the gate (re-run genuinely needed), a doc-only change does
-       not (no needless re-run). This replaced the mtime-vs-``.session-start``
-       recency check, which both false-passed stale records and forced a full
-       re-run after every inert post-review fix.
+       review fails the gate (re-run genuinely needed), a doc-only or
+       metadata-only change does not (no needless re-run). This replaced the
+       mtime-vs-``.session-start`` recency check, which both false-passed
+       stale records and forced a full re-run after every inert
+       post-review fix.
 
     2. **A chain record** (CRT-4J8W — the run-count fix): ``mode ==
        _CRITIC_MODE_VERIFY_RESOLUTIONS`` with an ``extends_cumulative`` anchor
@@ -1273,8 +1287,8 @@ def _evaluate_pr_gate_record(project_dir: Path, data: dict, source: str) -> int:
                 "Fix, commit, then run /prawduct:critic verify-resolutions — the "
                 "chain record extends this cumulative to HEAD (CRT-4J8W); a full "
                 "cumulative re-run is only needed if this record is gone or the "
-                "delta outgrows the verify scope. (Doc-only — all .md — changes "
-                "since the review never require a re-run.)",
+                "delta outgrows the verify scope. (Doc-only (.md) and .prawduct "
+                "metadata changes since the review never require a re-run.)",
                 file=sys.stderr,
             )
             return 1
