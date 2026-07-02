@@ -63,8 +63,11 @@ governance-protected paths, not by `_is_metadata_path`); any change to
 ## Status
 
 - [ ] Chunk 01: Align `_record_covers_head` to the `.md` + metadata exemption boundary
-Context: Plan authored 2026-07-02 on feature/gate-exemption-boundary (off develop
-@ b3b641f, post PR #115 merge). Not started.
+Context: Chunk 01 built 2026-07-02 (02cbfc0 + NOTE-fix 5be1642); suite 1533/0. Live A/B
+on this repo's real state: installed v2.2.3 hook exits 1 chain-stale on the
+metadata-only delta, fixed repo-local hook exits 0 satisfied. Cumulative Critic clean
+(1 NOTE actioned, chain record extends 02cbfc0 to HEAD). Checkbox flips at release via
+regen-views (entry statusless on branch). Next: /prawduct:pr when asked.
 
 ## Scaffolding
 

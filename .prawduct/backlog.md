@@ -770,14 +770,18 @@
 
 ## Promoted
 
+## Archive
+
 - **[CRT-5D8Q]** PR-gate coverage vs verify-resolutions scope disagree on the metadata exemption — deadlock when the ledger fallback window has lapsed
-  `effort: S · impact: M · area: governance/critic-gate · source: critic · added: 2026-07-02 · status: promoted · stage: ready · related: CRT-8H3R, CRT-2K9F, CRT-4J8W, STH-6T9W · refs: lib/gates.py (_record_covers_head L972, _compute_verify_resolutions_scope L447), .prawduct/artifacts/build-plan-gate-exemption-boundary.md · reviewed: 2026-07-02`
+  `effort: S · impact: M · area: governance/critic-gate · source: critic · added: 2026-07-02 · status: shipped · stage: ready · closed-by: gate-exemption-boundary · related: CRT-8H3R, CRT-2K9F, CRT-4J8W, STH-6T9W · refs: lib/gates.py (_record_covers_head L972, _compute_verify_resolutions_scope L447), .prawduct/artifacts/build-plan-gate-exemption-boundary.md · reviewed: 2026-07-02`
 
   The two gate helpers draw the `.prawduct/` metadata-exemption boundary differently. `_record_covers_head` exempts only `.md` files, so a routine post-cumulative `.prawduct/*.yaml` change (e.g. repointing `active_build_plan`) marks the cumulative record stale. But `_compute_verify_resolutions_scope` exempts ALL `.prawduct/` metadata, so the demanded verify-resolutions pass returns "no-actionable-findings" and the SKILL's literal demotion to `final` yields a non-gate-qualifying record — deadlock when the ledger fallback window has lapsed. Fix-shape: make the two helpers agree on the metadata-exemption boundary. Observed live 2026-07-02 on feature/changelog-fail-loud (Critic hand-anchored a chain record to route around it). Governance-protected (lib/gates.py) → full Critic + PR review. (critic)
 
   Promoted 2026-07-02 into build-plan-gate-exemption-boundary.md (single chunk, feature/gate-exemption-boundary off develop).
 
-## Archive
+  **Shipped 2026-07-02** on `feature/gate-exemption-boundary` (chunk 01, commits 02cbfc0/5be1642):
+  `_record_covers_head` now exempts `.md` + `_is_metadata_path`, matching the chain gap-check and
+  verify-scope boundary; 4 regression tests incl. the live deadlock scenario.
 
 - **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
   `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: changelog-fail-loud · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N, REL-4Q9V · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2), .prawduct/artifacts/build-plan-changelog-fail-loud.md · reviewed: 2026-07-02`
