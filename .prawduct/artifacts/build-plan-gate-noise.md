@@ -44,9 +44,12 @@ evidence; the code paths are small, pure, and fully test-covered.
 ## Status
 
 - [ ] Chunk 01: Work-model tripwire — maintenance-verb split + recursive doc corpus
-Context: Plan authored 2026-07-02 from the pick of GOV-7T2M. Deliverable (1)
-(protocol freshness lines) verified already shipped in PR #104 — descoped. Chunk 01
-is the entire plan.
+Context: Chunk 01 built and committed (e4234b9) 2026-07-02; cumulative Critic clean
+(no blocking/warning; the one NOTE — backlog closure — actioned on-branch: GOV-7T2M
+archived shipped, WMK-4Q9T narrowed to its tokenizer residual, WMK-7D3R noted).
+Deliverable (1) (protocol freshness lines) verified already shipped in PR #104 —
+descoped. Checkbox flips at release via regen-views (entry statusless on branch).
+Next: /prawduct:pr when the user asks; ships at next version bump.
 
 ## Scaffolding
 

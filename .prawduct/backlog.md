@@ -67,9 +67,22 @@
   The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
 
 - **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
-  `effort: M · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q · refs: UserPromptSubmit hook (work-model term extraction), incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md`
+  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-02`
 
   The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
+
+  **Narrowed 2026-07-02 (partial supersession by GOV-7T2M, shipped closed-by=gate-noise):** two
+  of the noise classes are now fixed — maintenance verbs (refactor/rename/redesign/rework/
+  remove/replace) split into MAINTENANCE_VERBS so review/cleanup prompts are no longer
+  requirement-shaped at the single-orphan threshold, and the `docs/`/`methodology/` corpus globs
+  are recursive so doc-subdir vocabulary no longer reads as orphaned. (Review-fixes Chunk 2's
+  precision pass — the common-English frequency floor, lib/common_words.py — had also shipped;
+  the 2026-06-22 recurrence was on top of it.) **Remaining scope:** path-like tokenization —
+  `_WORD` (`[A-Za-z][A-Za-z'-]*`, lib/work_model_index.py:71) still extracts hyphenated
+  path/compound fragments ("incoming-bug" from incoming-bugs/, "wrap-up", "model-id",
+  "cross-linked") as orphan candidates — plus the optional POS/noun-filter and
+  build-intent-scoping legs if the tokenizer fix alone doesn't quiet it. Effort re-sized M→S
+  to match the narrowed scope.
 
 - **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
   `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-06-22`
@@ -461,7 +474,7 @@
   From the 2026-06-09 framework review (skills agent). (1) The nine investigation themes (~100 lines, ~50% of the skill) read once per janitor run — move theme details to a bundled companion file (the pattern the Critic already uses with review-protocol.md etc.) and keep SKILL.md as dispatcher + process. (2) Clarify that Step 2.5 Backlog Health emits read-only NOTE findings and Step 7 Reconcile is where those findings drive /prawduct:backlog update calls — the linkage is currently implicit. (3) Reframe the 'fresh eyes' line toward pattern-detection + infer-and-confirm, and say what to do when the user cannot confirm a preference divergence (file a backlog item rather than resolving unilaterally). (builder)
 
 - **[WMK-7D3R]** Work-model index never rebuilds on artifact deletion — retired vocabulary lingers
-  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q, GOV-7T2M · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-07-02`
 
   From the 2026-06-09 framework review. The staleness check (bin/prawduct-hook, build-index path) compares
   remaining artifact mtimes to the index mtime, so deleting an artifact never triggers a rebuild and its
@@ -469,6 +482,14 @@
   whether to fix (include the artifact file-set in the staleness fingerprint) or document the SessionStart
   rebuild as the intended guarantee. Note: probe precision (false positives on common English) is separate,
   covered by the review-fixes plan Chunk 2. (builder)
+
+  **Re-checked 2026-07-02** at GOV-7T2M ship (gate-noise): still open, content unchanged in kind —
+  gate-noise widened the corpus (`docs/`/`methodology/` now recursive in
+  `_work_model_corpus_paths`) but did not touch the mtime-only staleness check, so the
+  deletion-doesn't-rebuild gap now spans a strictly larger file-set (marginally more relevant,
+  same fix-shape: file-set in the staleness fingerprint, or document SessionStart force-rebuild
+  as the guarantee). The probe-precision thread this item pointed sideways at continued in
+  GOV-7T2M/WMK-4Q9T.
 
 - **[CRT-6J4P]** infer-critic-mode rule-1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
   `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V · refs: lib/critic_mode.py, skills/critic/SKILL.md`
@@ -751,8 +772,10 @@
 
 ## Promoted
 
+## Archive
+
 - **[GOV-7T2M]** Wave 1 Plan A: gate-noise — freshness = `test-status` exit code only (both review protocols) + work-model tripwire verb/corpus fix
-  `effort: S · impact: L · area: gates · source: user · added: 2026-07-02 · status: promoted · stage: ready · accepted-by: @brooks · related: WMK-4Q9T, WMK-7D3R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan A), .prawduct/artifacts/build-plan-gate-noise.md, skills/critic/review-protocol.md, skills/pr/review-protocol.md, lib/work_model_index.py:120-126, bin/prawduct-hook:2661-2675 · reviewed: 2026-07-02`
+  `effort: S · impact: L · area: gates · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: gate-noise · related: WMK-4Q9T, WMK-7D3R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan A), .prawduct/artifacts/build-plan-gate-noise.md, skills/critic/review-protocol.md, skills/pr/review-protocol.md, lib/work_model_index.py:120-126, bin/prawduct-hook:2661-2675 · reviewed: 2026-07-02`
 
   P0. (1) One line in BOTH review protocols: test-evidence freshness is the `test-status` exit
   code; reviewers must never infer staleness from anything else (session-timestamp is the settled
@@ -767,7 +790,13 @@
   in PR #104 — the plan descopes it; remaining scope is the tripwire verb split + recursive
   doc corpus.
 
-## Archive
+  **Shipped 2026-07-02** on `feature/gate-noise` (chunk 01, cumulative Critic clean):
+  MAINTENANCE_VERBS split out of REQUIREMENT_VERBS (still orphan-exempt via _DIRECTIVE_VERBS)
+  + `docs/`/`methodology/` corpus globs made recursive. Deliverable (1) was descoped — already
+  shipped in PR #104 (2026-06-22, TST-4K2P: skills/critic/review-protocol.md:41,
+  skills/pr/review-protocol.md:56). Dedup resolution: WMK-4Q9T is NOT closed by this — the
+  supersession is partial (requirement-shape misfire + doc-subdir recall fixed here; the
+  path-fragment tokenization leg remains) — WMK-4Q9T stays open, narrowed to the residual.
 
 - **[COV-3R9K]** test-evidence double-run after a no-op commit — RUN-half closed (retired "record-after-commit" habit + `--from-counts`/`--no-rerun`); the original F4a-scope-shift diagnosis was a MISDIAGNOSIS
   `effort: M · impact: M · area: coverage · source: user · added: 2026-06-26 · status: shipped · stage: requirements · closed-by: test-evidence-single-run · related: TST-4K2P, TST-7M3K, COV-8R2K, COV-4M2J · refs: methodology/building.md, bin/prawduct-hook, .prawduct/artifacts/build-plan-test-evidence-single-run.md · reviewed: 2026-06-26`
