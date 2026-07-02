@@ -611,17 +611,6 @@
      Waves: 1 = P0 (kill recurring taxes), 2 = P1 (outcome gaps), 3 = P2 (weaker-model scaffolding).
      Each wave item ships as its own small 1-2 chunk plan on its own branch — NOT one monolithic plan. -->
 
-- **[GOV-7T2M]** Wave 1 Plan A: gate-noise — freshness = `test-status` exit code only (both review protocols) + work-model tripwire verb/corpus fix
-  `effort: S · impact: L · area: gates · source: user · added: 2026-07-02 · status: open · stage: ready · related: WMK-4Q9T, WMK-7D3R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan A), skills/critic/review-protocol.md, skills/pr/review-protocol.md, lib/work_model_index.py:120-126, bin/prawduct-hook:2661-2675`
-
-  P0. (1) One line in BOTH review protocols: test-evidence freshness is the `test-status` exit
-  code; reviewers must never infer staleness from anything else (session-timestamp is the settled
-  freshness answer — this closes the residual "reviewer eyeballs staleness" gap). (2) Tripwire:
-  drop refactor/rename/redesign/rework/remove/replace from REQUIREMENT_VERBS and include doc
-  subdirectories in the corpus glob (fired on the owner's own review prompt twice). Largely
-  supersedes WMK-4Q9T — candidate for a `closes:` merge at dedup. High-confidence; proceed to
-  planning without re-running discovery. (user)
-
 - **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
   `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: open · stage: ready · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2)`
 
@@ -762,7 +751,21 @@
 
 ## Promoted
 
-_(no items in flight)_
+- **[GOV-7T2M]** Wave 1 Plan A: gate-noise — freshness = `test-status` exit code only (both review protocols) + work-model tripwire verb/corpus fix
+  `effort: S · impact: L · area: gates · source: user · added: 2026-07-02 · status: promoted · stage: ready · accepted-by: @brooks · related: WMK-4Q9T, WMK-7D3R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan A), .prawduct/artifacts/build-plan-gate-noise.md, skills/critic/review-protocol.md, skills/pr/review-protocol.md, lib/work_model_index.py:120-126, bin/prawduct-hook:2661-2675 · reviewed: 2026-07-02`
+
+  P0. (1) One line in BOTH review protocols: test-evidence freshness is the `test-status` exit
+  code; reviewers must never infer staleness from anything else (session-timestamp is the settled
+  freshness answer — this closes the residual "reviewer eyeballs staleness" gap). (2) Tripwire:
+  drop refactor/rename/redesign/rework/remove/replace from REQUIREMENT_VERBS and include doc
+  subdirectories in the corpus glob (fired on the owner's own review prompt twice). Largely
+  supersedes WMK-4Q9T — candidate for a `closes:` merge at dedup. High-confidence; proceed to
+  planning without re-running discovery. (user)
+
+  **Promoted 2026-07-02:** build plan active at `.prawduct/artifacts/build-plan-gate-noise.md`
+  on `feature/gate-noise`. Deliverable (1) (protocol freshness lines) verified already shipped
+  in PR #104 — the plan descopes it; remaining scope is the tripwire verb split + recursive
+  doc corpus.
 
 ## Archive
 
