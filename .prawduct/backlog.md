@@ -632,23 +632,6 @@
      Waves: 1 = P0 (kill recurring taxes), 2 = P1 (outcome gaps), 3 = P2 (weaker-model scaffolding).
      Each wave item ships as its own small 1-2 chunk plan on its own branch — NOT one monolithic plan. -->
 
-- **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
-  `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: open · stage: ready · accepted-by: @brooks · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N, REL-4Q9V · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2), .prawduct/artifacts/build-plan-changelog-fail-loud.md · reviewed: 2026-07-02`
-
-  P0. The literal-string tag DSL fails partially and SILENTLY (~12 of 71 learnings, duplicate
-  incoming bugs, broke for trenchant's entire lifespan). Fix: validate every tag (`scope=`,
-  `chunks=`, `status=`) against the plan roster at write/check time — no silent partial flips;
-  tolerant chunk-ID matching (zero-padding, separator variants). Consider shrinking the
-  vocabulary: one scope identifier; statusless-until-release as the only lifecycle. Overlaps the
-  REL-9F2T silent-drop family and VWS-4D8J/VWS-7N3K — dedup pass should fold or `closes:` those
-  once this is planned. Prefer deletion over patching. (user)
-
-  — 2026-07-02: claimed by @brooks; build plan authored at
-  `.prawduct/artifacts/build-plan-changelog-fail-loud.md` (branch `feature/changelog-fail-loud`).
-  The "consider shrinking the vocabulary" clause is DESCOPED from that plan per the plan's
-  HIGH-impact assumption (owner asked 2026-07-02, AFK, recommendation applied) — the shrink now
-  lives as its own item, [REL-4Q9V].
-
 - **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
   `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
 
@@ -786,6 +769,27 @@
   `lib/views.py`, several learnings. (planning)
 
 ## Archive
+
+- **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
+  `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: changelog-fail-loud · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N, REL-4Q9V · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2), .prawduct/artifacts/build-plan-changelog-fail-loud.md · reviewed: 2026-07-02`
+
+  P0. The literal-string tag DSL fails partially and SILENTLY (~12 of 71 learnings, duplicate
+  incoming bugs, broke for trenchant's entire lifespan). Fix: validate every tag (`scope=`,
+  `chunks=`, `status=`) against the plan roster at write/check time — no silent partial flips;
+  tolerant chunk-ID matching (zero-padding, separator variants). Consider shrinking the
+  vocabulary: one scope identifier; statusless-until-release as the only lifecycle. Overlaps the
+  REL-9F2T silent-drop family and VWS-4D8J/VWS-7N3K — dedup pass should fold or `closes:` those
+  once this is planned. Prefer deletion over patching. (user)
+
+  — 2026-07-02: claimed by @brooks; build plan authored at
+  `.prawduct/artifacts/build-plan-changelog-fail-loud.md` (branch `feature/changelog-fail-loud`).
+  The "consider shrinking the vocabulary" clause is DESCOPED from that plan per the plan's
+  HIGH-impact assumption (owner asked 2026-07-02, AFK, recommendation applied) — the shrink now
+  lives as its own item, [REL-4Q9V].
+
+  **Shipped 2026-07-02** on `feature/changelog-fail-loud` (chunk 01 built and Critic-cleared,
+  aaaf39a): fail-loud roster validation + tolerant chunk-ID matching + `regen-views --check`
+  shipped. The vocabulary-shrink clause lives on as [REL-4Q9V].
 
 - **[GOV-7T2M]** Wave 1 Plan A: gate-noise — freshness = `test-status` exit code only (both review protocols) + work-model tripwire verb/corpus fix
   `effort: S · impact: L · area: gates · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: gate-noise · related: WMK-4Q9T, WMK-7D3R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan A), .prawduct/artifacts/build-plan-gate-noise.md, skills/critic/review-protocol.md, skills/pr/review-protocol.md, lib/work_model_index.py:120-126, bin/prawduct-hook:2661-2675 · reviewed: 2026-07-02`
