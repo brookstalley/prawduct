@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-02: work-model tripwire — maintenance-verb split + recursive doc corpus (gate-noise)
+
+<!-- prawduct: chunks=01 | type=bugfix | scope=gate-noise -->
+
+**Why:** Wave 1 Plan A of the owner-accepted efficiency-review fix program
+(`.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`, GOV-7T2M). The
+undocumented-requirement tripwire counted maintenance verbs (refactor/rename/redesign/rework/
+remove/replace) as requirement carriers, lowering the firing threshold to a single orphan on
+routine-work prompts — it fired on the owner's own review prompt twice. Separately, the corpus
+glob read only top-level `docs/`/`methodology/` markdown, so governing vocabulary in doc
+subdirectories read as orphan sources. The item's other deliverable — pinning test-evidence
+freshness to the `test-status` exit code in both review protocols — was verified **already
+shipped** in PR #104 (2026-06-22, TST-4K2P) and descoped; the plan records the evidence.
+
+**What:**
+- `lib/work_model_index.py` — verb-set split: `REQUIREMENT_VERBS` drops the six maintenance
+  verbs (they no longer make a prompt requirement-shaped); new `MAINTENANCE_VERBS` holds them,
+  and `find_orphan_terms` exempts the union — a bare drop would have reported
+  rename/redesign/rework (all above the frequency floor) as bogus orphan domain terms.
+- `bin/prawduct-hook` `_work_model_corpus_paths` — `docs/`/`methodology/` globs go recursive
+  (`rglob`). Safe in one direction only: extra corpus vocabulary can only suppress the nudge,
+  never fire it. SessionStart force-rebuilds the index, so no staleness edge from
+  newly-included old files.
+- Tests: 4 new cases (maintenance prompts not requirement-shaped; single-orphan maintenance
+  prompt silent; two-orphan maintenance prompt still fires; maintenance verbs never the
+  orphan) + subdirectory coverage/staleness in the hook corpus tests. Live-hook before/after
+  verified at the repo root: "refactor the noisiest gate" fired on old code, silent on new;
+  "add the noisiest gate" still fires.
+- Baseline repair ridden on this branch: added the missing v2.2.3 `CHANGELOG.md` public-digest
+  entry (release-prep gap; `test_changelog_has_current_version_entry` failed on clean baseline).
+
 ## 2026-06-26: kill the test-evidence double-run at its source + a non-JUnit on-ramp (test-evidence-single-run)
 
 <!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence-single-run | release=v2.2.3 | status=shipped -->

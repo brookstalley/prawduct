@@ -2660,18 +2660,19 @@ def _work_model_load_lib():
 
 def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path]:
     """The governing corpus the vocabulary index is built from: every markdown
-    artifact under ``.prawduct/artifacts/``, plus the repo's CLAUDE.md and any
-    top-level ``docs/`` / ``methodology/`` markdown (review-fixes Chunk 2:
-    framework-domain words in those files must not read as orphans). Missing
-    directories simply contribute nothing — product repos rarely have all of
-    them. Top-level globs are deliberate: subdirectories (docs/examples/, …)
-    hold samples and archives, not governing vocabulary."""
+    artifact under ``.prawduct/artifacts/``, plus the repo's CLAUDE.md and all
+    ``docs/`` / ``methodology/`` markdown, recursively (gate-noise: product
+    repos keep governing vocabulary in doc subdirectories, and the earlier
+    top-level-only globs made those words read as orphans). Widening is safe in
+    one direction only — extra corpus vocabulary can only suppress the nudge,
+    never fire it. Missing directories simply contribute nothing — product
+    repos rarely have all of them."""
     paths = sorted((prawduct_dir / "artifacts").glob("*.md"))
     claude_md = project_dir / "CLAUDE.md"
     if claude_md.is_file():
         paths.append(claude_md)
     for sub in ("docs", "methodology"):
-        paths.extend(sorted((project_dir / sub).glob("*.md")))
+        paths.extend(sorted((project_dir / sub).rglob("*.md")))
     return paths
 
 
