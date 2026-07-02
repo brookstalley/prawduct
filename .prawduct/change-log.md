@@ -5,7 +5,7 @@
 
 ## 2026-07-02: fail-loud change-log tag validation + tolerant chunk IDs + regen-views --check (changelog-fail-loud)
 
-<!-- prawduct: chunks=01 | type=feature | scope=changelog-fail-loud -->
+<!-- prawduct: chunks=01 | type=feature | scope=changelog-fail-loud | status=merged -->
 
 **Why:** Wave 1 Plan B of the owner-accepted efficiency-review fix program
 (`.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`, VWS-6R4T, Overbuilt #2).
