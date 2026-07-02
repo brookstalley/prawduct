@@ -637,18 +637,6 @@
      Waves: 1 = P0 (kill recurring taxes), 2 = P1 (outcome gaps), 3 = P2 (weaker-model scaffolding).
      Each wave item ships as its own small 1-2 chunk plan on its own branch — NOT one monolithic plan. -->
 
-- **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
-  `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
-
-  P0. Target: halve the ~31k-token governance cycle load. Moves: single-source the mode×type
-  matrix (methodology only; template gets a pointer); strip build-plan template (2,774 words,
-  zero filled examples) to a FILLED example + brief comments; fold agent-stance.md into the
-  digest; fold the 4 one-line delegator skills (building/discovery/planning/reflection) into
-  /prawduct:methodology; delete implementation narration (hook internals, bug IDs,
-  withdrawn-model chains, the parser-bug narrative at build-plan.md:22-29) from files weaker
-  models parse; de-Fable-ese compressed sentences; reconcile the 5 documented cross-doc
-  contradictions (listed in the artifact). Largely supersedes MET-7R4J. (user)
-
 - **[CRT-5M9J]** Wave 2: scope check in review — mandated question: does this capability trace to a documented requirement, and is it reachable/consumed end-to-end?
   `effort: S · impact: M · area: critic/pr-protocols · source: user · added: 2026-07-02 · status: open · stage: ready · related: ADR-7X2M · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #2), skills/critic/review-protocol.md, skills/pr/review-protocol.md`
 
@@ -774,6 +762,23 @@
   `lib/views.py`, several learnings. (planning)
 
 ## Promoted
+
+- **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
+  `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: promoted · stage: ready · reviewed: 2026-07-02 · accepted-by: @brooks (feature/prose-diet) · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), .prawduct/artifacts/build-plan-prose-diet.md, methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
+
+  P0. Target: halve the ~31k-token governance cycle load. Moves: single-source the mode×type
+  matrix (methodology only; template gets a pointer); strip build-plan template (2,774 words,
+  zero filled examples) to a FILLED example + brief comments; fold agent-stance.md into the
+  digest; fold the 4 one-line delegator skills (building/discovery/planning/reflection) into
+  /prawduct:methodology; delete implementation narration (hook internals, bug IDs,
+  withdrawn-model chains, the parser-bug narrative at build-plan.md:22-29) from files weaker
+  models parse; de-Fable-ese compressed sentences; reconcile the 5 documented cross-doc
+  contradictions (listed in the artifact). Largely supersedes MET-7R4J. (user)
+
+  Promoted 2026-07-02: build plan authored at .prawduct/artifacts/build-plan-prose-diet.md
+  (branch feature/prose-diet, 3 chunks). The plan pre-delivers STN-4W7R part (a) (advisor-first
+  digest stance rewrite, chunk 03) and MET-2X6F's filled-example-chunk (chunk 01) — those items
+  get updated at close-out, not now. MET-7R4J supersession check is a chunk 03 close-out step.
 
 ## Archive
 

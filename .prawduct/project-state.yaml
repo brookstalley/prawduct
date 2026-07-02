@@ -544,7 +544,7 @@ views_enabled: true
 # tag validation, tolerant chunk IDs, regen-views --check. Single chunk,
 # feature/changelog-fail-loud off develop. gate-noise merged (PR #114,
 # release-pending); its plan is RETAINED and regens via scope=gate-noise.
-active_build_plan: artifacts/build-plan-changelog-fail-loud.md
+active_build_plan: artifacts/build-plan-prose-diet.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
