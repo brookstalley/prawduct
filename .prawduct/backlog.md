@@ -605,6 +605,161 @@
   Decide whether the narrow origin/ exclusion is worth it or the convention (don't backtick git
   refs) suffices. (critic)
 
+<!-- Fix program from the framework efficiency review (owner-accepted 2026-07-02).
+     Parent requirement doc: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md
+     READ IT IN FULL before planning any item below — it carries the evidence these one-liners cannot.
+     Waves: 1 = P0 (kill recurring taxes), 2 = P1 (outcome gaps), 3 = P2 (weaker-model scaffolding).
+     Each wave item ships as its own small 1-2 chunk plan on its own branch — NOT one monolithic plan. -->
+
+- **[GOV-7T2M]** Wave 1 Plan A: gate-noise — freshness = `test-status` exit code only (both review protocols) + work-model tripwire verb/corpus fix
+  `effort: S · impact: L · area: gates · source: user · added: 2026-07-02 · status: open · stage: ready · related: WMK-4Q9T, WMK-7D3R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan A), skills/critic/review-protocol.md, skills/pr/review-protocol.md, lib/work_model_index.py:120-126, bin/prawduct-hook:2661-2675`
+
+  P0. (1) One line in BOTH review protocols: test-evidence freshness is the `test-status` exit
+  code; reviewers must never infer staleness from anything else (session-timestamp is the settled
+  freshness answer — this closes the residual "reviewer eyeballs staleness" gap). (2) Tripwire:
+  drop refactor/rename/redesign/rework/remove/replace from REQUIREMENT_VERBS and include doc
+  subdirectories in the corpus glob (fired on the owner's own review prompt twice). Largely
+  supersedes WMK-4Q9T — candidate for a `closes:` merge at dedup. High-confidence; proceed to
+  planning without re-running discovery. (user)
+
+- **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
+  `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: open · stage: ready · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2)`
+
+  P0. The literal-string tag DSL fails partially and SILENTLY (~12 of 71 learnings, duplicate
+  incoming bugs, broke for trenchant's entire lifespan). Fix: validate every tag (`scope=`,
+  `chunks=`, `status=`) against the plan roster at write/check time — no silent partial flips;
+  tolerant chunk-ID matching (zero-padding, separator variants). Consider shrinking the
+  vocabulary: one scope identifier; statusless-until-release as the only lifecycle. Overlaps the
+  REL-9F2T silent-drop family and VWS-4D8J/VWS-7N3K — dedup pass should fold or `closes:` those
+  once this is planned. Prefer deletion over patching. (user)
+
+- **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
+  `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
+
+  P0. Target: halve the ~31k-token governance cycle load. Moves: single-source the mode×type
+  matrix (methodology only; template gets a pointer); strip build-plan template (2,774 words,
+  zero filled examples) to a FILLED example + brief comments; fold agent-stance.md into the
+  digest; fold the 4 one-line delegator skills (building/discovery/planning/reflection) into
+  /prawduct:methodology; delete implementation narration (hook internals, bug IDs,
+  withdrawn-model chains, the parser-bug narrative at build-plan.md:22-29) from files weaker
+  models parse; de-Fable-ese compressed sentences; reconcile the 5 documented cross-doc
+  contradictions (listed in the artifact). Largely supersedes MET-7R4J. (user)
+
+- **[CRT-5M9J]** Wave 2: scope check in review — mandated question: does this capability trace to a documented requirement, and is it reachable/consumed end-to-end?
+  `effort: S · impact: M · area: critic/pr-protocols · source: user · added: 2026-07-02 · status: open · stage: ready · related: ADR-7X2M · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #2), skills/critic/review-protocol.md, skills/pr/review-protocol.md`
+
+  P1. The metallm blind spot, documented 4x: every reviewer checks work AS SCOPED, never whether
+  the requirement should EXIST or was ever built (scriob shipped 697 commits with an unversioned
+  API on an unchallenged one-word deferral). Fix costs a paragraph: one mandated question in the
+  cumulative and PR protocols pressure-testing scope and end-to-end reachability. (user)
+
+- **[STH-8R3Q]** Wave 2: outcome-checking Critic Stop gate — findings file must show zero unresolved blocking findings, not merely valid schema
+  `effort: S · impact: M · area: stop-hook/gates · source: user · added: 2026-07-02 · status: open · stage: ready · related: STH-4F7C · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Overbuilt #5), lib/gates.py:300-311 (critic_findings_satisfy_session_gate)`
+
+  P1. The Critic Stop gate accepts any schema-valid fresh findings file EVEN WITH unresolved
+  blocking findings — it enforces a proxy (file exists, schema valid), not the outcome (blockers
+  resolved). Make `critic_findings_satisfy_session_gate` check disposition of blocking findings.
+  Gate edit governs the editing session — small blast radius, own branch. (user)
+
+- **[ENV-2W7K]** Wave 2: environments plan — worktree story, gitflow base detection, non-Python coverage floor goes silent, document --from-counts as the paved non-pytest path
+  `effort: L · impact: L · area: environments · source: user · added: 2026-07-02 · status: open · stage: design · related: CRT-6W2N, STH-4K7N, CRT-8D2W, COV-5H3N, COV-4M2J, TST-2H9P · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #1)`
+
+  P1. The framework assumes repo-root Python, single checkout, main-based — violated by engine/
+  subdirs (scriob), .NET/Swift (cordyceps/trenchant), worktrees (incoming bug 2026-06-20:
+  "following one prawduct rule forces you off-protocol on another"), devcontainers (discodon),
+  gitflow (silent wrong-base on every first PR). Scope: a supported worktree story; gitflow base
+  detection that doesn't require knowing `base_branch:` exists; non-Python coverage floor goes
+  SILENT (not noisy) for languages it can't see; document `--from-counts` as the paved non-pytest
+  path. Owner's rule: the worktree piece needs a short design note FIRST, confirmed with the
+  owner, before building. Umbrella over CRT-6W2N/STH-4K7N/COV-5H3N — dedup/`closes:` when
+  planned. (user)
+
+- **[CRT-3F6W]** Wave 2: reviewer-dedup deletion — keep both reviewers; PR reviewer becomes a fresh full-scope release review; delete the record-audit protocol, extends_cumulative chain, and don't-re-scan scoping prose
+  `effort: M · impact: M · area: critic/pr-protocols · source: user · added: 2026-07-02 · status: open · stage: ready · related: CRT-5T8N, CRT-6J4P, CRT-8H3R, CRT-9R4K · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Overbuilt #4), skills/pr/review-protocol.md:19-27`
+
+  P1. Independence is load-bearing — two reviewers stay (PR reviewer independently caught bugs
+  the Critic missed at least twice). What goes is the ~2k words of OVERLAP machinery that exists
+  only to deduplicate two overlapping scopes: the "Critic Record — Evidence, Not Truth" audit
+  protocol, the extends_cumulative chain, verify-resolutions scope math, and the "don't re-scan"
+  scoping prose. The PR review becomes a simple fresh full-scope release review. Prefer deletion
+  over patching. Supersedes CRT-5T8N's single-owner question — candidate `closes:` at dedup. (user)
+
+- **[LRN-7M4D]** Wave 2: memory convergence — learnings + learnings-detail durable, .session-reflected ephemeral, retire per-repo reflections.md accumulation (design note first)
+  `effort: M · impact: M · area: memory/learnings · source: user · added: 2026-07-02 · status: open · stage: design · related: MET-6W3J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #5)`
+
+  P1. The memory triple-track: reflections.md is write-heavy/read-never (discodon: 7,645 lines,
+  nothing retrieves from it); metallm's reflection loop froze while learnings thrived. Converge:
+  learnings + learnings-detail as the durable pair; .session-reflected ephemeral (distilled or
+  discarded at session end); retire per-repo reflections.md accumulation. Owner flagged this
+  convergence directly. Changes the onboarded-repo contract, so it needs a migrate path — write
+  the short design note FIRST and confirm with the owner before building. (user)
+
+- **[MET-8J5R]** Wave 2: plan-shape guidance in planning.md — one plan per scope tag; split heterogeneous work; a plan that won't ship in ~3 sessions is a program; planner pushes back on monolithic requests
+  `effort: S · impact: M · area: methodology/planning · source: user · added: 2026-07-02 · status: open · stage: ready · related: BLD-7W2J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (finding 6a, Wave 2), methodology/planning.md, methodology/building.md`
+
+  P1 (finding 6a). building.md's size ladder reads as an instruction to build ONE big chunked
+  plan; long-lived-plan frictions sat in learnings for weeks without flowing back into
+  planning.md (a Close the Learning Loop failure). Add mechanical heuristics: one plan per scope
+  tag; split when change types differ; a plan that won't ship within ~3 sessions is a program →
+  backlog items + per-wave plans; the planner must push back on monolithic-plan requests. This
+  fix program's own wave structure is the worked example. (user)
+
+- **[DOC-3V7T]** Wave 2: persistence contract for review/research artifacts — first-class home (.prawduct/artifacts/ + naming convention), backlog items link their parent artifact, pick surfaces it
+  `effort: S · impact: M · area: artifacts/convention · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-8J5R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (finding 6b, Wave 2)`
+
+  P1 (finding 6b). Rich review/research output has no first-class home — cross-session surfaces
+  (build-plan Context line, backlog one-liners, .session-handoff.md) are all thin; the efficiency
+  review itself had to hand-roll the workaround (write an artifact, link every item to it).
+  Deliverable is likely just a convention + template + one line in planning.md: artifacts live in
+  .prawduct/artifacts/ with a naming convention; backlog items `refs:` their parent artifact;
+  `pick` surfaces the linked artifact. Avoid building machinery. (user)
+
+- **[STN-4W7R]** Wave 2: advisor-first stance made structural — digest stance-block tone rewrite (rides with MET-3Q8V) + advisory obligations attached to existing checkpoints
+  `effort: M · impact: M · area: agent-stance · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-3Q8V, MET-8J5R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Advisor-first stance, Wave 2), methodology/agent-stance.md, methodology/session-digest.md, methodology/planning.md, methodology/discovery.md, CLAUDE.md (Before Building)`
+
+  P1. Owner directive 2026-07-02: lean into prawduct's role as advisor/expert rather than merely
+  an implementor of whatever the user asks for. Two parts: (a) TONE — when Plan C (MET-3Q8V
+  prose-diet) rewrites the digest, reframe the stance block from a trait list into a lead
+  position: the agent's first duty on any substantive ask is the expert take (risks,
+  stronger/simpler alternative, recommendation), compliance second. (b) STRUCTURE — attach
+  advisory obligations to checkpoints models already hit, because tone exhortations decay on
+  weaker models: plan creation (plan-shape pushback, MET-8J5R), backlog pick ("is this still
+  worth doing?"), discovery start (what the user hasn't thought of — already present), and the
+  Before-Building check gains an explicit "should this be built as asked?" line. Advisorship
+  that lives only in adjectives will not survive under context pressure; advisorship attached to
+  gates will. Parent: framework-efficiency-review-2026-07-02.md "Advisor-first stance" section. (user)
+
+- **[MET-2X6F]** Wave 3: weaker-model scaffolding — filled example chunk, domain-concern checklist seeded by structural characteristics, root-cause stopping rule, 3-4-file size tiebreak, red-baseline protocol
+  `effort: M · impact: M · area: methodology/templates · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-3Q8V, BLD-8N4W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Underspecified #4), templates/build-plan.md, methodology/discovery.md:100, methodology/building.md`
+
+  P2. Judgment offloads with no weaker-model scaffolding: "detect domain concerns dynamically, no
+  hardcoded lists"; no root-cause stopping rule; the 3-4-file size-classification dead zone; no
+  red-baseline protocol; zero filled examples in the build-plan template. Note: the filled
+  example chunk may already land in Wave 1 Plan C (MET-3Q8V) — check before duplicating work. (user)
+
+- **[BLD-8N4W]** Wave 3: subagent-output verification rule in building.md — a subagent's "Done" on a removal is a claim to verify
+  `effort: S · impact: M · area: methodology/building · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-2X6F · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Underspecified #4), methodology/building.md`
+
+  P2. Actual weak-model failures cluster in SUBAGENT quality: premature "Done", over-broad
+  allowlists, 5-15% inventory undercounts (discodon learnings — already a learning there; this
+  closes the loop into methodology). Add the verification rule to building.md. (user)
+
+- **[STH-5D8J]** Wave 3: trivial gate — add a waiver key + product-relative blast radius, or retire it
+  `effort: S · impact: S · area: stop-hook · source: user · added: 2026-07-02 · status: open · stage: design · related: STH-4D2X · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Overbuilt #5)`
+
+  P2. The trivial gate hard-codes prawduct's own dir names as blast radius in product repos and
+  has no waiver key (KNOWN_WAIVER_KEYS lacks "trivial"). Decision needed (patch vs retire): its
+  sibling trivial fast-path already proved fileset-as-detector unsound (built 2026-05-22, fully
+  retired 2026-06-08) — the third-rework-is-a-deletion-signal lens (MET-9W2P) applies. (user)
+
+- **[MET-9W2P]** Wave 3: principle amendment proposal — the third rework of a mechanism is a deletion signal, not a patch signal
+  `effort: S · impact: M · area: principles · source: user · added: 2026-07-02 · status: open · stage: idea · related: STH-5D8J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Structural diagnosis, Wave 3), docs/principles.md`
+
+  P2. Supported 3x in the evidence: freshness fingerprint, trivial fast-path, stop hook (reworked
+  6+ times, never stabilized). Pattern: gate misfires → suppression layer added → suppression
+  layer accretes its own bugs and learnings. Draft the amendment (Principle 19 — Evolving
+  Principles is the vehicle) and confirm wording with the owner. (user)
+
 ## Promoted
 
 _(no items in flight)_
