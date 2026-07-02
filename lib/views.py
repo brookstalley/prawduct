@@ -54,6 +54,27 @@ CHUNK_LINE_RE = re.compile(
 CHUNK_ID_SAFE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
+def normalize_chunk_id(chunk_id: str) -> str:
+    """Canonical form of a chunk ID for matching (VWS-6R4T).
+
+    Matching between a change-log ``chunks=`` tag and a build-plan
+    ``Chunk <id>:`` line was historically literal string equality, so
+    ``chunks=1`` silently failed to flip ``Chunk 01`` — a partial, invisible
+    failure. Tolerance rules, applied to BOTH sides of every comparison:
+
+    * case-insensitive (``A`` ≡ ``a``)
+    * ``_`` and ``-`` unify (``foo_bar`` ≡ ``foo-bar``)
+    * purely-numeric IDs compare by integer value (``1`` ≡ ``01``)
+
+    The zero-strip applies only when the WHOLE ID is digits, so a mixed ID
+    like ``01a`` keeps its digits verbatim and cannot collide with ``1a``.
+    """
+    norm = chunk_id.strip().casefold().replace("_", "-")
+    if norm.isdigit():
+        norm = str(int(norm))
+    return norm
+
+
 @dataclass
 class ChangeLogEntry:
     """A change-log entry with optional tagged metadata."""
@@ -179,9 +200,10 @@ def validate_status_values(entries: list[ChangeLogEntry]) -> list[str]:
     A change-log ``status=`` typo (e.g. ``status=shippd``) silently fails to flip
     a checkbox — the entry parses fine but ``shipped_chunks`` returns ``[]``, so
     the chunk never marks complete and the release driver sees no error. This
-    pure helper surfaces those typos as non-fatal warnings: it flags every entry
-    whose ``status=`` tag is PRESENT but not in ``{shipped, merged}``. Entries
-    with no ``status=`` tag (untagged historical entries) are not flagged.
+    pure helper flags every entry whose ``status=`` tag is PRESENT but not in
+    ``{shipped, merged}``. Entries with no ``status=`` tag (untagged historical
+    entries) are not flagged. The regen-views caller treats these as fatal
+    (fail closed, nothing written — VWS-6R4T); the function itself stays pure.
 
     Returns ``[]`` when every status value is valid or absent.
     """
@@ -208,9 +230,11 @@ def validate_tag_line_multiplicity(entries: list[ChangeLogEntry]) -> list[str]:
     than silently dropping the later ones (VWS-4D8J — a second line's
     ``chunks=`` nearly shipped unflipped at v2.1.0), but the union is a repair,
     not a blessing: this pure helper (mirroring :func:`validate_status_values`)
-    surfaces each multi-tag entry as a non-fatal warning so the author merges
-    the lines. Conflicting scalar keys were kept first-wins; the warning names
-    the ignored values.
+    surfaces each multi-tag entry so the author merges the lines. The caller
+    treats these as WARNINGS — the union produces correct output. Conflicting
+    scalar values across the lines do NOT (first-wins may pick the wrong one);
+    those are surfaced separately by :func:`validate_tag_conflicts` and treated
+    as errors (VWS-6R4T).
 
     Returns ``[]`` when every entry has at most one tag line.
     """
@@ -218,20 +242,40 @@ def validate_tag_line_multiplicity(entries: list[ChangeLogEntry]) -> list[str]:
     for entry in entries:
         if entry.tag_line_count <= 1:
             continue
-        msg = (
+        warnings.append(
             f"change-log entry {entry.title!r} (line {entry.line_number}) has "
             f"{entry.tag_line_count} prawduct tag lines — the canonical format "
-            f"is one per entry; chunks= lists were unioned across them"
+            f"is one per entry; chunks= lists were unioned across them. Merge "
+            f"them into a single tag line."
         )
-        if entry.tag_conflicts:
-            msg += (
-                "; conflicting keys kept first-wins ("
-                + "; ".join(entry.tag_conflicts)
-                + ")"
-            )
-        msg += ". Merge them into a single tag line."
-        warnings.append(msg)
     return warnings
+
+
+def validate_tag_conflicts(entries: list[ChangeLogEntry]) -> list[str]:
+    """Return an error string per entry whose tag lines CONFLICT (VWS-6R4T).
+
+    When multiple tag lines set the same scalar key to different values,
+    :func:`_merge_tag_line` keeps the first and records the loser in
+    ``tag_conflicts`` — a repair that may have picked the wrong value (e.g.
+    two ``status=`` lines disagreeing about whether work shipped). Unlike mere
+    multiplicity (a style problem the union fixes), a conflict means the
+    derived views may be built from the wrong tag, so the caller treats these
+    as fatal: fix the entry, don't guess.
+
+    Returns ``[]`` when no entry has conflicting tag lines.
+    """
+    errors: list[str] = []
+    for entry in entries:
+        if not entry.tag_conflicts:
+            continue
+        errors.append(
+            f"change-log entry {entry.title!r} (line {entry.line_number}) has "
+            f"conflicting values across its {entry.tag_line_count} tag lines "
+            f"(kept first-wins: " + "; ".join(entry.tag_conflicts) + ") — the "
+            f"derived views may be built from the wrong value. Merge the tag "
+            f"lines and resolve the conflict."
+        )
+    return errors
 
 
 def stamp_merged(content: str) -> tuple[str, list[str]]:
@@ -427,9 +471,14 @@ def regenerate_status_section(
     ``(chunk_id, old_state, new_state)`` with ``state`` in ``{" ", "x"}``.
     Non-chunk lines (the ``## Status`` heading, HTML comments, blanks, the
     ``Context:`` line) pass through unchanged. Order is preserved.
+
+    Membership is tested after :func:`normalize_chunk_id` on BOTH sides, so
+    zero-padding / case / separator variants flip correctly (VWS-6R4T) —
+    ``changes`` still reports the plan's verbatim chunk IDs.
     """
     out: list[str] = []
     changes: list[tuple[str, str, str]] = []
+    shipped_norm = {normalize_chunk_id(c) for c in shipped_chunks}
     for line in section_lines:
         m = CHUNK_LINE_RE.match(line)
         if not m:
@@ -437,7 +486,7 @@ def regenerate_status_section(
             continue
         chunk_id = m.group("id")
         current = m.group("state")
-        new_state = "x" if chunk_id in shipped_chunks else " "
+        new_state = "x" if normalize_chunk_id(chunk_id) in shipped_norm else " "
         if current.lower() != new_state:
             changes.append((chunk_id, current, new_state))
         out.append(f"{m.group('prefix')}[{new_state}]{m.group('rest')}")
@@ -522,10 +571,11 @@ def collect_release_pending_scopes(entries: list[ChangeLogEntry]) -> list[str]:
 def diagnose_scope_plan_coverage(
     change_log_content: str, artifacts_dir: Path
 ) -> list[str]:
-    """Warn about release-pending scopes with no plan file + duplicate scopes.
+    """Flag release-pending scopes with no plan file + duplicate scopes.
 
     Pure diagnostic (mirrors :func:`validate_status_values`): the caller
-    (``cmd_regen_views``) prints the returned strings on stderr. Two cases:
+    (``cmd_regen_views``) prints the returned strings on stderr and treats
+    them as fatal (fail closed — VWS-6R4T). Two cases:
 
     * An unreleased scope with NO matching build-plan file — its ``## Status``
       cannot be regenerated, a real release-process error. "Unreleased" covers
@@ -585,6 +635,82 @@ def diagnose_scope_plan_coverage(
                 f"## Status cannot be regenerated."
             )
     return warnings
+
+
+def validate_chunk_roster(
+    change_log_content: str, artifacts_dir: Path
+) -> list[str]:
+    """One error string per ``chunks=`` ID that can never flip a checkbox (VWS-6R4T).
+
+    The silent-partial-flip failure class: a ``chunks=`` ID that matches no
+    ``Chunk <id>:`` line in its plan's ``## Status`` section simply never
+    flips, with no signal — the entry parses fine, the regen "succeeds", and
+    the miss surfaces months later as a stale checkbox. This pure validator
+    makes the miss loud: for every entry whose ``scope=`` resolves to a
+    build-plan FILE (via :func:`build_scope_to_plan_map`), every ``chunks=``
+    ID must match that plan's Status roster after :func:`normalize_chunk_id`
+    on both sides. It also errors when the entry carries chunk IDs but the
+    plan's roster is empty or the ``## Status`` section is absent.
+
+    Validation applies to entries of EVERY status, shipped included —
+    release-prep flips entries to ``shipped`` *before* running regen-views,
+    so a shipped-exempt validator would never fire at the moment it matters.
+
+    Deliberately outside the contract: entries with no ``scope=`` (legacy
+    unfiltered single-plan repos — no roster to resolve against) and scopes
+    with no plan file (historical/retired plans;
+    :func:`diagnose_scope_plan_coverage` owns the unreleased subset of those).
+
+    Returns ``[]`` when every resolvable ``chunks=`` ID matches its roster.
+    """
+    errors: list[str] = []
+    plan_map = build_scope_to_plan_map(artifacts_dir)
+    # Cache per plan file: (verbatim roster IDs, normalized roster set).
+    rosters: dict[Path, tuple[list[str], set[str]]] = {}
+    for entry in parse_change_log(change_log_content):
+        scope = entry.tags.get("scope")
+        chunks = entry.tags.get("chunks")
+        if not (isinstance(scope, str) and scope):
+            continue
+        if not (isinstance(chunks, list) and chunks):
+            continue
+        plan_path = plan_map.get(scope)
+        if plan_path is None:
+            continue
+        if plan_path not in rosters:
+            try:
+                plan_content = plan_path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            _start, _end, section = extract_status_section(plan_content)
+            roster = [
+                m.group("id")
+                for m in (CHUNK_LINE_RE.match(line) for line in section)
+                if m
+            ]
+            rosters[plan_path] = (
+                roster,
+                {normalize_chunk_id(c) for c in roster},
+            )
+        roster, roster_norm = rosters[plan_path]
+        missing = [
+            c
+            for c in chunks
+            if isinstance(c, str) and normalize_chunk_id(c) not in roster_norm
+        ]
+        if missing:
+            roster_desc = (
+                ", ".join(roster)
+                if roster
+                else "(empty — no chunk checkboxes in ## Status)"
+            )
+            errors.append(
+                f"change-log entry {entry.title!r} (line {entry.line_number}) "
+                f"has chunks={','.join(missing)} not present in "
+                f"{plan_path.name}'s ## Status roster [{roster_desc}] — these "
+                f"IDs will never flip a checkbox (scope={scope!r})."
+            )
+    return errors
 
 
 YAML_TOP_LEVEL_KEY_RE = re.compile(r"^(?P<key>[A-Za-z_][A-Za-z0-9_]*):\s*")

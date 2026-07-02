@@ -3,6 +3,38 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-02: fail-loud change-log tag validation + tolerant chunk IDs + regen-views --check (changelog-fail-loud)
+
+<!-- prawduct: chunks=01 | type=feature | scope=changelog-fail-loud -->
+
+**Why:** Wave 1 Plan B of the owner-accepted efficiency-review fix program
+(`.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`, VWS-6R4T, Overbuilt #2).
+The change-log tag DSL's failures were partial and SILENT: a `chunks=` ID that didn't
+literally match the plan's `Chunk <id>:` heading (zero-padding included) simply never
+flipped, a `status=` typo passed with a warning nobody reads, and the documented release
+pre-flight `regen-views --check` didn't exist. This class produced ~12 of this repo's 71
+learnings and broke for trenchant's entire lifespan. The parent's "consider shrinking the
+vocabulary" clause is descoped to REL-4Q9V (recorded HIGH-impact assumption in the plan).
+
+**What:**
+- `lib/views.py` — `normalize_chunk_id()` (case, `-`/`_`, numeric zero-padding) applied to
+  BOTH sides of the checkbox flip; new `validate_chunk_roster()` (every `chunks=` ID on an
+  entry whose `scope=` resolves to a plan file must match that plan's `## Status` roster —
+  shipped entries included, since release-prep flips to shipped BEFORE regen runs); new
+  `validate_tag_conflicts()` (conflicting scalars across tag lines split out of the
+  multiplicity warning — first-wins may pick the wrong value).
+- `bin/prawduct-hook` `cmd_regen_views` — validation is fail-CLOSED: any ERROR (status typo,
+  roster miss, unreleased scope with no plan file, duplicate scope, tag-line conflict)
+  exits 2 with NOTHING written; mere multi-tag-line union stays a WARNING. New `--check`
+  flag: compute + validate + report, write nothing (exit 0 valid / 2 violations) — the
+  release pre-flight two learnings already referenced.
+- `docs/release-process.md` — step 4 opens with the `--check` pre-flight; the two
+  warn-and-proceed sentences updated to the fail-closed contract.
+- Tests: contract change documented — `TestRegenViewsStatusTypoWarning` (warn-and-proceed)
+  rewritten as `TestRegenViewsStatusTypoError` (fail-closed), conflict clause moved from the
+  multiplicity warning test to `TestValidateTagConflicts`; new lib + subprocess coverage for
+  normalization, roster validation, fail-closed writes, and `--check`.
+
 ## 2026-07-02: work-model tripwire — maintenance-verb split + recursive doc corpus (gate-noise)
 
 <!-- prawduct: chunks=01 | type=bugfix | scope=gate-noise | status=merged -->
