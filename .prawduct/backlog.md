@@ -768,6 +768,27 @@
   `skills/pr/SKILL.md` merge-flow step 6, `docs/release-process.md`, `stamp_merged` in
   `lib/views.py`, several learnings. (planning)
 
+- **[SCN-7K4B]** Session-continuity machinery is chunk-granular only — multi-plan programs have no home in project-state/handoff/briefing, so "what's next" collapses to a flat backlog count when a chunk closes
+  `effort: M · impact: M · area: session-continuity · source: reflection · added: 2026-07-02 · status: open · stage: design · related: STN-4W7R, MET-3Q8V, MET-8J5R, DOC-3V7T · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md, .prawduct/project-state.yaml (active_build_plan), lib/briefing.py, methodology/building.md (chunk close-out)`
+
+  Multi-plan programs (e.g. the efficiency-review 3-wave fix program) have no home in
+  project-state/handoff/briefing — continuity machinery is chunk-granular only, so when a chunk
+  closes "what's next" collapses to a flat backlog count. Observed 2026-07-02: agent proposed
+  generic next steps despite Wave 1 Plan C (MET-3Q8V, P0, stage:ready) being the planned next
+  item; parent artifact framework-efficiency-review-2026-07-02.md says "future sessions read it
+  first" but nothing routes sessions to it. Same class as STN-4W7R's thesis: context that depends
+  on the agent remembering decays; context attached to checkpoints survives.
+
+  Fix-shape sketch: an `active_program` pointer (parent artifact + ordered plan roster) in
+  project-state.yaml; briefing surfaces "Program: X — next: item" when the active build plan is
+  complete; handoff template gains a Program-context line; chunk close-out gains an
+  update-program-pointer step.
+
+  Overlap notes (kept separate, cross-linked): MET-8J5R defines when a plan IS a program
+  (planning guidance); DOC-3V7T gives the parent artifact a home and has `pick` surface it. This
+  item is the third leg — the routing/state machinery that carries the program across sessions.
+  Related: STN-4W7R, MET-3Q8V. (reflection)
+
 - **[DOC-8N4F]** Change-log template's `status=` vocabulary contradicts views.py flip semantics — scaffolded header misleads gitflow repos about when Status checkboxes flip
   `effort: S · impact: M · area: change-log/templates · source: report-bug · added: 2026-07-02 · status: open · stage: ready · related: REL-4Q9V, DOC-5T8N, VWS-6R4T · refs: templates/change-log.md, lib/views.py (VALID_STATUS_VALUES, ChangeLogEntry.shipped_chunks, stamp_merged), incoming-bugs/archive/change-log-template-says-merged-flips-status-checkboxes-but-views-py-only-flips-shipped.md`
 
