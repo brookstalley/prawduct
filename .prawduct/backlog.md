@@ -633,7 +633,7 @@
      Each wave item ships as its own small 1-2 chunk plan on its own branch — NOT one monolithic plan. -->
 
 - **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
-  `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: open · stage: ready · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2)`
+  `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: open · stage: ready · accepted-by: @brooks · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N, REL-4Q9V · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2), .prawduct/artifacts/build-plan-changelog-fail-loud.md · reviewed: 2026-07-02`
 
   P0. The literal-string tag DSL fails partially and SILENTLY (~12 of 71 learnings, duplicate
   incoming bugs, broke for trenchant's entire lifespan). Fix: validate every tag (`scope=`,
@@ -642,6 +642,12 @@
   vocabulary: one scope identifier; statusless-until-release as the only lifecycle. Overlaps the
   REL-9F2T silent-drop family and VWS-4D8J/VWS-7N3K — dedup pass should fold or `closes:` those
   once this is planned. Prefer deletion over patching. (user)
+
+  — 2026-07-02: claimed by @brooks; build plan authored at
+  `.prawduct/artifacts/build-plan-changelog-fail-loud.md` (branch `feature/changelog-fail-loud`).
+  The "consider shrinking the vocabulary" clause is DESCOPED from that plan per the plan's
+  HIGH-impact assumption (owner asked 2026-07-02, AFK, recommendation applied) — the shrink now
+  lives as its own item, [REL-4Q9V].
 
 - **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
   `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
@@ -770,7 +776,14 @@
   layer accretes its own bugs and learnings. Draft the amendment (Principle 19 — Evolving
   Principles is the vehicle) and confirm wording with the owner. (user)
 
-## Promoted
+- **[REL-4Q9V]** Vocabulary shrink for the change-log lifecycle — drop `status=merged` and stamp-merged machinery; statusless-until-release as the only lifecycle; one scope identifier
+  `effort: M · impact: M · area: governance/change-log · source: builder · added: 2026-07-02 · status: open · stage: design · related: VWS-6R4T, REL-9F2T · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B "consider shrinking"), .prawduct/artifacts/build-plan-changelog-fail-loud.md (descope assumption + rationale)`
+
+  Deletion-over-patching candidate. Descoped from the changelog-fail-loud plan (VWS-6R4T) per
+  that plan's HIGH-impact assumption. Blocked on the owner confirming the shrink is wanted once
+  fail-loud validation ships — validation removes the P0 urgency. Cascade surfaces:
+  `skills/pr/SKILL.md` merge-flow step 6, `docs/release-process.md`, `stamp_merged` in
+  `lib/views.py`, several learnings. (planning)
 
 ## Archive
 
