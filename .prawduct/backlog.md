@@ -768,6 +768,8 @@
   `skills/pr/SKILL.md` merge-flow step 6, `docs/release-process.md`, `stamp_merged` in
   `lib/views.py`, several learnings. (planning)
 
+## Promoted
+
 ## Archive
 
 - **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
