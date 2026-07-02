@@ -5,7 +5,7 @@
 
 ## 2026-07-02: work-model tripwire — maintenance-verb split + recursive doc corpus (gate-noise)
 
-<!-- prawduct: chunks=01 | type=bugfix | scope=gate-noise -->
+<!-- prawduct: chunks=01 | type=bugfix | scope=gate-noise | status=merged -->
 
 **Why:** Wave 1 Plan A of the owner-accepted efficiency-review fix program
 (`.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`, GOV-7T2M). The
