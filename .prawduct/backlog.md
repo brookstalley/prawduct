@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[CRT-5D8Q]** PR-gate coverage vs verify-resolutions scope disagree on the metadata exemption — deadlock when the ledger fallback window has lapsed
+  `effort: S · impact: M · area: governance/critic-gate · source: critic · added: 2026-07-02 · status: open · stage: ready · related: CRT-8H3R, CRT-2K9F, CRT-4J8W, STH-6T9W · refs: lib/gates.py (_record_covers_head L972, _compute_verify_resolutions_scope L447)`
+
+  The two gate helpers draw the `.prawduct/` metadata-exemption boundary differently. `_record_covers_head` exempts only `.md` files, so a routine post-cumulative `.prawduct/*.yaml` change (e.g. repointing `active_build_plan`) marks the cumulative record stale. But `_compute_verify_resolutions_scope` exempts ALL `.prawduct/` metadata, so the demanded verify-resolutions pass returns "no-actionable-findings" and the SKILL's literal demotion to `final` yields a non-gate-qualifying record — deadlock when the ledger fallback window has lapsed. Fix-shape: make the two helpers agree on the metadata-exemption boundary. Observed live 2026-07-02 on feature/changelog-fail-loud (Critic hand-anchored a chain record to route around it). Governance-protected (lib/gates.py) → full Critic + PR review. (critic)
+
 - **[COV-4M2J]** Coverage floor is Python-only — `bin/test-reference-verify` symbol-grep can't reference non-Python (JS/TS/Go/…) changed files; bring-your-own-verifier via `--merge-into` is the only escape
   `effort: L · impact: M · area: coverage · source: builder · added: 2026-06-26 · status: open · stage: requirements · related: COV-3R9K, COV-8R2K, TST-2H9P · refs: bin/test-reference-verify (symbol-grep floor), lib/coverage.py (changed-files derivation), bin/prawduct-hook (verify-coverage, test-evidence record F4a overlay), skills/critic/review-cycle.md (Goal 1 F4b)`
 
@@ -632,17 +637,6 @@
      Waves: 1 = P0 (kill recurring taxes), 2 = P1 (outcome gaps), 3 = P2 (weaker-model scaffolding).
      Each wave item ships as its own small 1-2 chunk plan on its own branch — NOT one monolithic plan. -->
 
-- **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
-  `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: open · stage: ready · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2)`
-
-  P0. The literal-string tag DSL fails partially and SILENTLY (~12 of 71 learnings, duplicate
-  incoming bugs, broke for trenchant's entire lifespan). Fix: validate every tag (`scope=`,
-  `chunks=`, `status=`) against the plan roster at write/check time — no silent partial flips;
-  tolerant chunk-ID matching (zero-padding, separator variants). Consider shrinking the
-  vocabulary: one scope identifier; statusless-until-release as the only lifecycle. Overlaps the
-  REL-9F2T silent-drop family and VWS-4D8J/VWS-7N3K — dedup pass should fold or `closes:` those
-  once this is planned. Prefer deletion over patching. (user)
-
 - **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
   `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
 
@@ -770,9 +764,39 @@
   layer accretes its own bugs and learnings. Draft the amendment (Principle 19 — Evolving
   Principles is the vehicle) and confirm wording with the owner. (user)
 
+- **[REL-4Q9V]** Vocabulary shrink for the change-log lifecycle — drop `status=merged` and stamp-merged machinery; statusless-until-release as the only lifecycle; one scope identifier
+  `effort: M · impact: M · area: governance/change-log · source: builder · added: 2026-07-02 · status: open · stage: design · related: VWS-6R4T, REL-9F2T · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B "consider shrinking"), .prawduct/artifacts/build-plan-changelog-fail-loud.md (descope assumption + rationale)`
+
+  Deletion-over-patching candidate. Descoped from the changelog-fail-loud plan (VWS-6R4T) per
+  that plan's HIGH-impact assumption. Blocked on the owner confirming the shrink is wanted once
+  fail-loud validation ships — validation removes the P0 urgency. Cascade surfaces:
+  `skills/pr/SKILL.md` merge-flow step 6, `docs/release-process.md`, `stamp_merged` in
+  `lib/views.py`, several learnings. (planning)
+
 ## Promoted
 
 ## Archive
+
+- **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
+  `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: changelog-fail-loud · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N, REL-4Q9V · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2), .prawduct/artifacts/build-plan-changelog-fail-loud.md · reviewed: 2026-07-02`
+
+  P0. The literal-string tag DSL fails partially and SILENTLY (~12 of 71 learnings, duplicate
+  incoming bugs, broke for trenchant's entire lifespan). Fix: validate every tag (`scope=`,
+  `chunks=`, `status=`) against the plan roster at write/check time — no silent partial flips;
+  tolerant chunk-ID matching (zero-padding, separator variants). Consider shrinking the
+  vocabulary: one scope identifier; statusless-until-release as the only lifecycle. Overlaps the
+  REL-9F2T silent-drop family and VWS-4D8J/VWS-7N3K — dedup pass should fold or `closes:` those
+  once this is planned. Prefer deletion over patching. (user)
+
+  — 2026-07-02: claimed by @brooks; build plan authored at
+  `.prawduct/artifacts/build-plan-changelog-fail-loud.md` (branch `feature/changelog-fail-loud`).
+  The "consider shrinking the vocabulary" clause is DESCOPED from that plan per the plan's
+  HIGH-impact assumption (owner asked 2026-07-02, AFK, recommendation applied) — the shrink now
+  lives as its own item, [REL-4Q9V].
+
+  **Shipped 2026-07-02** on `feature/changelog-fail-loud` (chunk 01 built and Critic-cleared,
+  aaaf39a): fail-loud roster validation + tolerant chunk-ID matching + `regen-views --check`
+  shipped. The vocabulary-shrink clause lives on as [REL-4Q9V].
 
 - **[GOV-7T2M]** Wave 1 Plan A: gate-noise — freshness = `test-status` exit code only (both review protocols) + work-model tripwire verb/corpus fix
   `effort: S · impact: L · area: gates · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: gate-noise · related: WMK-4Q9T, WMK-7D3R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan A), .prawduct/artifacts/build-plan-gate-noise.md, skills/critic/review-protocol.md, skills/pr/review-protocol.md, lib/work_model_index.py:120-126, bin/prawduct-hook:2661-2675 · reviewed: 2026-07-02`

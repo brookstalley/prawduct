@@ -540,7 +540,11 @@ views_enabled: true
 # 2026-07-02: gate-noise (Wave 1 Plan A of the efficiency-review fix program,
 # GOV-7T2M) — work-model tripwire maintenance-verb split + recursive doc corpus.
 # Single chunk, Type: cumulative-final, feature/gate-noise off develop.
-active_build_plan: artifacts/build-plan-gate-noise.md
+# 2026-07-02: repointed at changelog-fail-loud (Wave 1 Plan B, VWS-6R4T) — fail-loud
+# tag validation, tolerant chunk IDs, regen-views --check. Single chunk,
+# feature/changelog-fail-loud off develop. gate-noise merged (PR #114,
+# release-pending); its plan is RETAINED and regens via scope=gate-noise.
+active_build_plan: artifacts/build-plan-changelog-fail-loud.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
