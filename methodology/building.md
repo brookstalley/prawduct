@@ -184,7 +184,7 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 
 If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
 
-**The Critic takes time.** Reviews take 1-5 minutes; don't check on it. While it reviews, deep-scrub your own changes — self-review often pre-resolves findings.
+**The Critic takes time.** A `chunk` review takes 1-2 minutes, `final`/`cumulative` 4-10; don't check on it. While it reviews, deep-scrub your own changes — self-review often pre-resolves findings.
 
 **Never write Critic findings yourself.** If the agent is slow, wait. Writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent fails, tell the user and re-invoke.
 

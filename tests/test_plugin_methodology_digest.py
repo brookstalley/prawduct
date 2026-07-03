@@ -28,9 +28,8 @@ DIGEST_HOOK = ROOT / "hooks" / "digest.py"
 DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
 SLIM_DIGEST_SRC = ROOT / "methodology" / "session-digest-slim.md"
 
-# The four methodology guides, each surfaced by a phase reader skill.
+# The four methodology guides, read via `/prawduct:methodology <topic>`.
 PHASES = ("building", "discovery", "planning", "reflection")
-READER_SKILLS = ("methodology", *PHASES)
 
 # Claude Code spills additionalContext over this many characters to a file
 # instead of injecting it inline. The digest must stay comfortably under it.

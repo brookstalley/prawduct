@@ -2,7 +2,7 @@
 description: Prawduct governance overview and methodology guides — the map of how this repo is governed, and the reader for each guide. Invoke for first contact or to see what governance applies here; pass a topic (building|discovery|planning|reflection|principles) to open that guide directly — building BEFORE writing any code against a build plan, discovery before scoping requirements, planning before designing artifacts or a build plan, reflection at work boundaries and before /clear.
 user-invocable: true
 disable-model-invocation: false
-argument-hint: (omit for the overview) | building | discovery | planning | reflection | principles
+argument-hint: "(omit for the overview) | building | discovery | planning | reflection | principles"
 ---
 
 This repo is governed by **Prawduct** — it turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. The full methodology ships with the plugin and is read on demand; this skill is the map and the reader.

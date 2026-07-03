@@ -105,15 +105,21 @@ numbered principles are test-pinned; only stance-overlap trimming inside bodies)
 - [x] Chunk 01: Structural moves — reconcile, single-source, filled-example template
 - [x] Chunk 02: Editorial compression pass over the cycle-load prose
 - [ ] Chunk 03: Fold the redundant surfaces (delegators, agent-stance) + advisor-first digest
-Context: Chunks 01+02 done 2026-07-03 (commits 45c152a, 259e5d2; both Critic-clean).
-Baseline 36,991 est tokens; post-02 running total 27,792 (-24.9%). building.md ratchet
-lowered to <4600; review-protocol kept 3350 (already tighter than post-diet+10%). Critic
-NOTE to carry into chunk 03's cumulative Goal-2 audit: confirm the two trimmed building.md
-elaborations (observability "log from chunk 1" example, CLAUDE.md "new session needs"
-line) were elaboration, not rule loss. Next: Chunk 03 — delete skills/{building,discovery,
-planning,reflection}/ + methodology/agent-stance.md, rewrite references to
-/prawduct:methodology <topic>, advisor-first digest stance block, cumulative Critic,
-backlog hygiene (MET-3Q8V ship, STN-4W7R(a), MET-2X6F, MET-7R4J check).
+Context: Chunks 01+02 done 2026-07-03 (45c152a, 259e5d2; Critic-clean). Chunk 03 work is
+COMPLETE and cumulative-reviewed (b4d569e + close-out commit) but the chunk is deliberately
+NOT marked [x]: the cumulative Critic recorded 1 BLOCKING — measured reduction is
+36,991 → 25,789 est tokens (−30.3%) vs the ≥45% acceptance floor (40–45% honest-residue
+band). Builder + Critic shared assessment: the floor cannot be met without dropping rules
+or the weaker-model anchors; residue enumerated in the change-log entry (chain machinery
+~2.6k = out-of-scope Overbuilt #4; review-protocol audited lean; irreducible behavior
+tables; single-statement rules). AWAITING OWNER DECISION: (a) amend this plan's Success
+floor to the honest figure (~30%) and close MET-3Q8V shipped, or (b) direct a further
+compression pass (realistic yield ~3-5 more points, approaching rule loss). All other
+cumulative findings resolved on-branch: change-log entry written (statusless), 4 backlog
+items reconciled (STN-4W7R(a) delivered/refs repointed, MET-2X6F noted, MET-7R4J trimmed,
+CRT-5Q8W checked — none absorbed), duration-drift + READER_SKILLS + frontmatter-quoting
+notes fixed. MET-3Q8V archival pends the decision. Chunk-02 Goal-2 NOTE confirmed by the
+cumulative: the two trimmed building.md lines were elaboration, not rule loss.
 
 ## Scaffolding
 
