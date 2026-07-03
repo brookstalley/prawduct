@@ -19,7 +19,7 @@ The Critic reviews changes against principles and specifications as a **separate
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
 - **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`. See `review-cycle.md`.
-- **`verify-resolutions`** — Goals 1-3 against the prior review's scope. Target 1-2 min. Demotion rules and the CRT-4J8W chain: `review-cycle.md`.
+- **`verify-resolutions`** — Goals 1-3 against the prior review's scope. Target 1-2 min. Demotion rules and the chain: `review-cycle.md`.
 
 **Default:** mode missing, unrecognized, or inference unconfident → `final` (canonical rule: `review-cycle.md`). Never silently downgrade.
 
@@ -38,7 +38,7 @@ The Critic reviews changes against principles and specifications as a **separate
 Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 1. Nothing Is Broken
-- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal, so never infer staleness from a commit/SHA field in the evidence (it carries none — TST-4K2P). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
+- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
 - No "pre-existing" exception — every finding is yours regardless of when introduced.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
@@ -52,7 +52,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
   - No hardcoded secrets or credentials in source code → **BLOCKING**.
   - Auth/authz checks on new endpoints or state-changing operations → **WARNING** if missing.
   - Dependencies without known critical vulnerabilities → **WARNING**.
-- **Symbol coverage (v1.4 F4b):** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
+- **Symbol coverage:** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
 
 ### 2. Nothing Is Missing
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
@@ -66,7 +66,7 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 - If `infrastructure_dependencies` is declared in project-state.yaml: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when (read source or probe before drafting handlers — see `methodology/planning.md`) → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach` present, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. The produced-surface mirror of Foreign API — see `methodology/planning.md`.
-- **Operator verification (F10):** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
+- **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ### 3. Nothing Is Unintended
 - No unlisted dependencies → **BLOCKING**.
