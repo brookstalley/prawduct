@@ -52,7 +52,7 @@ If you can answer all three, capture them in the build plan's Requirements Confi
 
 ## Reconciling an Existing or Docs-First Product
 
-A product may arrive with material already in hand — an existing codebase, or requirements/architecture/vision docs written outside a discovery session. Onboarding leaves `project-state.yaml` template-default and nothing backfills it automatically — rich product thinking in `docs/`, empty source of truth, so the Critic can't calibrate rigor and the build gates won't engage. When the session briefing's **DISCOVERY NOT CAPTURED** nudge fires (template-default state + product-definition work in the repo), discovery's job is to **reconcile**, not re-interview:
+A product may arrive with material already in hand — an existing codebase, or requirements/architecture/vision docs written outside a discovery session. Onboarding leaves `project-state.yaml` template-default; nothing backfills it automatically, so the Critic can't calibrate rigor and the build gates won't engage. When the session briefing's **DISCOVERY NOT CAPTURED** nudge fires (template-default state + product-definition work in the repo), discovery's job is to **reconcile**, not re-interview:
 
 1. **Read what exists first.** Requirements docs, architecture, a VISION, codebase conventions. Treat these as the user's already-stated answers — don't ask what the docs already say.
 2. **Backfill the source of truth.** Populate `classification` and `product_definition` from the material; detect the six structural characteristics from the docs exactly as you would from conversation.
@@ -112,27 +112,19 @@ After you understand the concept and structural characteristics — typically af
 
 ## Surface Operational Costs
 
-When structural characteristics indicate ongoing costs — `runs_unattended`, external APIs, cloud deployment — surface them during discovery, not after deployment (Principle 9). Infer-confirm-proceed ("Since this calls the OpenAI API, expect a few dollars/month at your usage — precise estimate, or is that enough?"), scaled to risk: low → "should stay within free tiers"; medium → a ballpark ("$10-50/month hosting plus API"); high → itemize cost components and capture constraints.
-
-**Capture to `project-state.yaml`** under `product_definition.nonfunctional.cost_constraints` (user's limits) and `product_definition.cost_estimates` (your estimates).
+When structural characteristics indicate ongoing costs — `runs_unattended`, external APIs, cloud deployment — surface them during discovery, not after deployment (Principle 9). Infer a ballpark and let the user correct, scaled to risk: low → "should stay within free tiers"; medium → a range ("$10-50/month hosting plus API"); high → itemize cost components and capture constraints. **Capture to `project-state.yaml`** under `product_definition.nonfunctional.cost_constraints` (user's limits) and `product_definition.cost_estimates` (your estimates).
 
 ## Surface Accessibility Needs
 
-When `has_human_interface` is detected, accessibility is a structural concern, not an afterthought (Principle 8). State the baseline for a quick veto ("I'll design with standard platform accessibility — contrast, keyboard or alternative navigation, meaningful labels. Any specific needs?"), scaled to risk: low → platform defaults; medium → WCAG 2.1 AA baseline; high → explicit WCAG target, deep accessibility in the spec.
-
-**Capture to `project-state.yaml`** under `design_decisions.accessibility_approach`.
+When `has_human_interface` is detected, accessibility is a structural concern, not an afterthought (Principle 8). State the baseline for a quick veto (contrast, keyboard or alternative navigation, meaningful labels), scaled to risk: low → platform defaults; medium → WCAG 2.1 AA baseline; high → explicit WCAG target, deep accessibility in the spec. **Capture to `project-state.yaml`** under `design_decisions.accessibility_approach`.
 
 ## Surface Error Handling Approach
 
-Every product needs error handling; the question is how much upfront design. State the default ("catch at boundaries, log with context, surface a clear message — anything unusual here?"), scaled to risk: low → standard patterns suffice (build-side test discipline already requires error-case coverage); medium → surface the error taxonomy (recoverable vs. fatal, what the user/caller sees) and capture the approach; high → design the full strategy — taxonomy, recovery patterns, error UX or response contracts, reporting and alerting — as a first-class product-brief section.
-
-**Capture to `project-state.yaml`** under `design_decisions.error_handling_approach`. Test discipline and the Critic validate error cases are actually covered.
+Every product needs error handling; the question is how much upfront design. State the default (catch at boundaries, log with context, surface a clear message), scaled to risk: low → standard patterns suffice (test discipline already requires error-case coverage); medium → surface the error taxonomy (recoverable vs. fatal, what the user/caller sees); high → design the full strategy — taxonomy, recovery patterns, error UX or response contracts, reporting and alerting — as a first-class product-brief section. **Capture to `project-state.yaml`** under `design_decisions.error_handling_approach`; test discipline and the Critic validate error cases are actually covered.
 
 ## Surface Infrastructure Dependencies
 
-When the product needs external services — databases, queues, auth providers, storage, third-party APIs — surface them as testable requirements. The critical question: **what must be real vs. what can be mocked during development?** Establish expectations by inference ("Since this stores user data, I'm assuming Postgres, with integration tests that verify data actually persists — not just mocked calls. Sound right?"), scaled to risk: low → note the dependency, at least one integration test touches real storage; medium → explicit infrastructure list with per-dependency integration-test requirements and declared mock boundaries; high → full dependency map with integration strategy, environment requirements, and mock-boundary documentation.
-
-**Key decisions to surface:** which external services; which are tested real vs. mocked; the development environment strategy (local Docker, test instance, embedded alternative); behavior when a dependency is unavailable (graceful degradation vs. hard failure).
+When the product needs external services — databases, queues, auth providers, storage, third-party APIs — surface them as testable requirements. The critical question: **what must be tested against real instances vs. mocked during development?** Scale to risk: low → note the dependency, at least one integration test touches real storage; medium → explicit infrastructure list with per-dependency integration-test requirements and declared mock boundaries; high → full dependency map with integration strategy, environment requirements, and mock-boundary documentation. Also surface: the development environment strategy (local Docker, test instance, embedded alternative) and behavior when a dependency is unavailable (graceful degradation vs. hard failure).
 
 **Capture to `project-state.yaml`** under `design_decisions.infrastructure_dependencies` — test specifications then require integration tests against declared dependencies, and the Critic verifies code matches what's specified.
 
@@ -140,19 +132,11 @@ When the product needs external services — databases, queues, auth providers, 
 
 ## Surface Observability Needs
 
-Every product has observability needs — even when the answer is "console.error is enough." Products with `runs_unattended`, `exposes_programmatic_interface`, or `multi_process_distributed` need deeper design. State the baseline by inference, scaled to risk: low → error logging to console; medium → structured logging with correlation context, key metrics, health endpoint; high → three-signal observability (logs, metrics, traces), correlation context, sensitive-data filtering, alerting.
-
-**Key decisions to surface:** which signals (logs only → logs + metrics → three-signal); what ties related events together (request/session/domain IDs); whether sensitive data needs filtering from output; the operational model (developer debugging vs. SRE monitoring vs. automated response); whether the development agent will need to query signals during debugging (if so, plan agent-accessible interfaces early).
-
-**Capture to `project-state.yaml`** under `design_decisions.observability_approach`.
+Every product has observability needs — even when the answer is "console.error is enough." Products with `runs_unattended`, `exposes_programmatic_interface`, or `multi_process_distributed` need deeper design. Scale to risk: low → error logging to console; medium → structured logging with correlation context, key metrics, health endpoint; high → three-signal observability (logs, metrics, traces), sensitive-data filtering, alerting. Also surface: what ties related events together (request/session/domain IDs); whether sensitive data needs filtering; the operational model (developer debugging vs. SRE monitoring vs. automated response); whether the development agent will need to query signals during debugging (if so, plan agent-accessible interfaces early). **Capture to `project-state.yaml`** under `design_decisions.observability_approach`.
 
 ## Surface Behavioral Choices
 
-When a feature affects user workflow, ask what behavioral variations exist — users differ on automation, notification, and control. Ship a safe default but make the choice configurable ("This can run automatically or wait for your go-ahead; I'll default to [safe default] — changeable in `project-preferences.md`").
-
-**Common choices:** automatic vs. manual triggers (e.g., PRs); notification level; merge/deploy strategy; backwards compatibility. **The backwards-compatibility question is especially important:** before adding any migration path, fallback, or shim, ask whether an existing deployment actually needs migration. If not, just make the change. Backwards compatibility is a requirement to be elicited, not an assumption to be baked in.
-
-**Capture to `project-preferences.md`** under Workflow — preferences are declared standards the Critic validates code against.
+When a feature affects user workflow, ask what behavioral variations exist — users differ on automation, notification, and control. Ship a safe default but make the choice configurable in `project-preferences.md`. Common choices: automatic vs. manual triggers (e.g., PRs); notification level; merge/deploy strategy; backwards compatibility. **The backwards-compatibility question is especially important:** before adding any migration path, fallback, or shim, ask whether an existing deployment actually needs migration — if not, just make the change. Backwards compatibility is a requirement to be elicited, not an assumption to be baked in. **Capture to `project-preferences.md`** under Workflow — declared standards the Critic validates code against.
 
 ## Identify Boundary Patterns
 
@@ -175,22 +159,16 @@ Discovery scales with the work's size and risk, not with where you are in a time
 
 **Over-discovery**: So many questions the user loses patience. Scale to risk.
 
-**Under-discovery**: Missing a structural characteristic — undetected "handles sensitive data" on a health app drops entire requirement categories. Detect and confirm rather than miss.
+**Under-discovery**: Missing a structural characteristic — undetected "handles sensitive data" on a health app drops entire requirement categories.
 
 **Interrogation mode**: Rigid one-at-a-time questioning. Batch related questions, make inferences, have a conversation.
 
-**Ignoring developer preferences**: Asking what to build but not how. Capture testing, tooling, code style, and architecture preferences early in `project-preferences.md` — read before writing any code.
+**Ignoring developer preferences**: Asking what to build but not how. Capture testing, tooling, code style, and architecture preferences early in `project-preferences.md`.
 
 **Domain blindness**: Not leveraging your own domain knowledge. A marketplace needs trust systems, dispute resolution, payment escrow — surface it; don't wait for the user.
 
-**Overweighting prior art**: Research informs the conversation; it doesn't drive it. A few focused searches are enough.
+**Overweighting prior art**: Research informs the conversation; it doesn't drive it.
 
 **Using prior art to gatekeep**: "This already exists, why build it?" is never the right response — people build for learning, customization, ownership, fun. Surface what exists, then help them build something great.
 
-**Cost blindness**: The user finds out about operational costs after deployment instead of during design.
-
-**Accessibility afterthought**: A human interface with no accessibility baseline. Bolted on later is expensive and incomplete.
-
-**Infrastructure blindness**: Everything mocked, tests pass, product declared complete — but nothing actually persists. Establish what must be tested real vs. mocked.
-
-**Observability afterthought**: Monitoring-implying characteristics with no observability baseline. Like accessibility, cheaper to design in than retrofit.
+**Cost / accessibility / infrastructure / observability blindness**: Each has a Surface section above; the shared failure is skipping the baseline during discovery and paying retrofit cost later — costs discovered after deployment, accessibility bolted on, everything mocked so nothing actually persists, no way to see failures.

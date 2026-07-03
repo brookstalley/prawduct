@@ -86,7 +86,7 @@ An assumption is a decision made on the user's behalf, surfaced for correction �
 
 **A persisted format is always a lock-in decision, regardless of implementation size.** Lock-in is measured by reversal cost, not LOC — a 30-line ledger writer locks a schema every future consumer depends on. A chunk introducing a persisted format must enumerate, in the plan and before designing fields, the questions the data must answer: its consumers' future queries are its requirements, elicited from those consumers, not inferred from the mechanism (see `methodology/building.md` "Decision Research").
 
-**Enumerate the surfaces when a chunk introduces a project-wide concept.** A new build-plan field, governance flag, or convention cascades: product CLAUDE.md, the Critic skill and protocol, the PR protocol, methodology guides, the build-plan template, and their guarding tests — eight-plus surfaces is common. List them up front in the chunk description. An enumerated surface count makes the chunk's true size visible (split it if too large for one Critic pass), and several of those surfaces carry token-budget guardrail tests — anticipating the cascade means the trim is planned, not a chunk-close surprise.
+**Enumerate the surfaces when a chunk introduces a project-wide concept.** A new build-plan field, governance flag, or convention cascades across many files — product CLAUDE.md, the Critic and PR protocols, methodology guides, the template, their guarding tests. List the surfaces up front in the chunk description: the count makes the chunk's true size visible (split it if too large for one Critic pass), and several of those surfaces carry token-budget guardrail tests — anticipate the trim rather than discovering it at chunk-close.
 
 ### Critic Mode Per Chunk
 
@@ -99,9 +99,9 @@ An assumption is a decision made on the user's behalf, surfaced for correction �
 - **Override forward to `cumulative`** on the last chunk of a plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the chunk's review IS the one cumulative pass: commit the chunk, then run `/prawduct:critic cumulative` once — no separate `final` and no explicit `Critic mode:` needed).
 - **Trivial chunks** (typo-level edits inside a larger plan) → waive Critic via `.gates-waived`; for bounded mechanical code changes, prefer `Type: trivial` (below).
 
-**Why this layering:** the per-chunk goals (Nothing Is Broken / Missing / Unintended) catch the high-frequency failures cheaply because they scope to local changes; the final-chunk goals (Coherence, Decisions, Understood, Design, plus cross-checks) need the full diff — coherence is across files — so they belong at the end of the cycle.
+**Why this layering:** the per-chunk goals catch the high-frequency failures cheaply because they scope to local changes; the final-chunk goals need the full diff — coherence is across files — so they belong at the end of the cycle.
 
-**Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Plans that batch-commit at the end break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
+**Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
 
 **Fail-safe default.** If the mode is missing, unrecognized, or inference cannot make a confident call, the review runs `final` (canonical rule: `skills/critic/review-cycle.md`) — but rely on inference rather than omitting the field as a shortcut to `final`.
 
@@ -118,11 +118,11 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 - **`cleanup`** — branch hygiene, file moves, dead-code removal. Critic tolerates a zero diff; structural-only review.
 - **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped" and the stop-hook gate also skips. **The only Type that bypasses Critic enforcement entirely — use deliberately.**
 - **`cumulative-final`** — marker on the last chunk of a multi-chunk plan: the chunk's own review IS the one `/prawduct:critic cumulative` against `merge-base...HEAD` (commit first, run once — cumulative is a strict superset of `final`, so no separate `final`). That review is also the `/prawduct:pr create` gate (Principle 14 at the bundle level).
-- **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small. Two machine-enforced layers at chunk close:
-  1. **File-set bounds (hard):** no edits under `skills/`, `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file deletions; no new files. These are the catastrophic-blast-radius classes regardless of size.
-  2. **Required `**Trivial because:**` rationale (hard):** a non-empty rationale field — empty or absent is BLOCKING at the stop-hook. The rationale is the semantic claim; Critic Goal 3 validates rationale-vs-diff fit.
+- **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small (an 80-LOC project-wide rename can be trivial; a 5-line state-machine change cannot). Two machine-enforced layers at chunk close:
+  1. **File-set bounds (hard):** no edits under `skills/`, `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file deletions; no new files — the catastrophic-blast-radius classes regardless of size.
+  2. **Required `**Trivial because:**` rationale (hard):** non-empty, or BLOCKING at the stop-hook. The rationale is the semantic claim Critic Goal 3 validates against the diff — **strong** rationale names the structural property bounding risk (`"project-wide rename of FooBar to BazQux; no behavior change"`); **weak** rationale describes feeling (`"small change"`) and can't be validated.
 
-  **Size is not a bound** — an 80-LOC project-wide rename can be trivial; a 5-line state-machine change cannot. **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`, `missing-rationale: …`) — fix the violation or change the Type, never both quietly. **Strong rationale** points at the structural property bounding risk (`"project-wide rename of FooBar to BazQux; no behavior change"`); **weak rationale** describes feeling (`"small change"`, `"easy fix"`) and can't be validated against the diff.
+  **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`) — fix the violation or change the Type, never both quietly.
 
 **Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review; `trivial` on a non-eligible chunk produces a named blocker).
 
@@ -132,38 +132,19 @@ The Critic's ref-drift check (Goal 2) verifies backticked file paths in the curr
 
 ### Foreign API Verification
 
-When a chunk wraps a foreign API or SDK — anything whose surface the agent doesn't own — **the first step is reading source or running discovery probes, not drafting handlers from documentation.** Vendor docs lag code; training data lags further. Tests written against an assumed signature pass against fakes mirroring the same assumption, then fail at integration time.
+When a chunk wraps a foreign API or SDK — anything whose surface the agent doesn't own — **the first step is reading source or running discovery probes, not drafting handlers from documentation.** Vendor docs lag code; training data lags further; tests written against an assumed signature pass against fakes mirroring the same assumption, then fail at integration time.
 
-**The rule.** The chunk declares `**Foreign API:** <name>` in the build plan and prepends a `verify-api` step as Done-when step 0 (so existing step numbering is preserved). `verify-api` means, in preference order: read the foreign code directly (SDK source, MCP server source, `.pyi` stubs); run a discovery probe against a live instance and capture the actual response shape; or, if neither is possible, document the docs source consulted and flag the chunk `Requirements Confidence: Medium` with the assumed surface as an open assumption. Fakes and mocks are built *after* `verify-api` confirms the real shape. The cost is one-time per API surface (~5-30 min); it replaces one or more chunk-reworks.
-
-The Critic's Goal 2 emits a **WARNING** when a chunk declares `Foreign API:` but no `verify-api` step appears in Done-when (case-insensitive substring match — the literal token `verify-api` should appear). The shape it looks for:
-
-```
-- **Foreign API:** ableton-live-mcp
-- **Done when:**
-  0. verify-api — read MCP server source for the transport handlers;
-     capture actual response shapes in api-notes-ableton.md
-  1. Acceptance criteria met and tests pass
-  ...
-```
-
-**Discovery surfaces foreign APIs early.** When discovery flags an external SDK in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry it into the plan as `**Foreign API:** <name>` on the chunk that first touches the wrapper — the annotation is what triggers the Critic check.
+**The rule.** The chunk declares `**Foreign API:** <name>` and prepends a `verify-api` step as Done-when step 0 (existing numbering preserved). `verify-api` means, in preference order: read the foreign code directly (SDK/MCP source, `.pyi` stubs); probe a live instance and capture the actual response shape; or, if neither is possible, document the docs consulted and flag the chunk `Requirements Confidence: Medium` with the assumed surface as an open assumption. Fakes are built *after* `verify-api` confirms the real shape. The Critic's Goal 2 emits a **WARNING** when a chunk declares `Foreign API:` but no `verify-api` step appears in Done-when (case-insensitive substring — the literal token `verify-api` should appear; the filled example in `templates/build-plan.md` shows the shape). When discovery flags an external SDK in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry it into the plan on the chunk that first touches the wrapper — the annotation is what triggers the check.
 
 ### Exposed API: Versioning, Deprecation & Error Model
 
-The mirror of Foreign API Verification for the interface a product *produces* — any programmatic surface others call (network service, library/SDK, on-device/platform, or CLI). When a chunk introduces or changes an exposed interface, two design decisions must be *recorded*, not left to silence: the **versioning + deprecation/compatibility** scheme and the **error model** — introducing either later is a breaking change for every consumer. The framework forces the decision, not versioning itself: "none — internal-only" is valid, and a deferral must be dated with a revisit trigger.
+The mirror for the interface a product *produces* — any programmatic surface others call (network service, library/SDK, on-device/platform, or CLI). Two design decisions must be *recorded*, not left to silence: the **versioning + deprecation/compatibility** scheme and the **error model** — introducing either later is a breaking change for every consumer. The framework forces the decision, not versioning itself: "none — internal-only" is valid; a deferral must be dated with a revisit trigger.
 
-**The rule.** The chunk declares `**Exposed API:** <name>`. The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a **WARNING** for a declared `Exposed API:` with no recorded versioning decision (or dated deferral), and a second for no recorded error-model decision. Same opt-in model as Foreign API — declare only when relevant.
-
-**Discovery surfaces it.** When discovery sets `classification.structural.exposes_programmatic_interface`, carry it into the plan on the chunk that first builds the surface. The `api-versioning` advisory independently nudges already-built products with no recorded decision.
+**The rule.** The chunk declares `**Exposed API:** <name>`. The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a **WARNING** for each missing decision. Discovery's `exposes_programmatic_interface` flag carries into the plan on the chunk that first builds the surface; the `api-versioning` advisory independently nudges already-built products.
 
 ### Visual Change Verification
 
-Tests confirm logic; they don't confirm a human-facing surface *looks and reads* right. When a chunk produces a user-visible change — a UI screen, CLI output format, generated-artifact appearance, live external integration — someone has to look at it before merge.
-
-**The rule.** The chunk declares `**Visual change:** yes`. At chunk-close the builder appends an entry to `.prawduct/operator-verification.md` describing what to verify and where. When `operator_verification_required: true` in `project-state.yaml`, `/prawduct:pr create` blocks on pending entries — drain via `prawduct-hook verify-operator-verification <VRF-id>`, or override per-PR with `--accept-pending-verification "rationale"`. The Critic emits a NOTE if a chunk declares the field but no queue entry references it.
-
-Reserve `yes` for changes a test can't speak to: pixel layout, copy and tone, output legibility, the shape of a real third-party response. Omitting the field is safe.
+Tests confirm logic; they don't confirm a human-facing surface *looks and reads* right. A chunk producing a user-visible change — UI screen, CLI output format, generated-artifact appearance, live external integration — declares `**Visual change:** yes` and, at chunk-close, appends an entry to `.prawduct/operator-verification.md` describing what to verify and where. When `operator_verification_required: true`, `/prawduct:pr create` blocks on pending entries — drain via `prawduct-hook verify-operator-verification <VRF-id>`, or override per-PR with `--accept-pending-verification "rationale"`. The Critic emits a NOTE if the field is declared but no queue entry references it. Reserve `yes` for what a test can't speak to: pixel layout, copy and tone, output legibility, the shape of a real third-party response.
 
 ## Common Traps
 

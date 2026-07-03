@@ -84,8 +84,8 @@ Accept flag form for machine callers (`--area=sync --budget=30m --type=quick-win
 
 **Stage-aware routing (the requirements-precede-code guard).** Before presenting any candidate as buildable, read its `stage:`. This is what stops the backlog from being a side-door around Principle 6 (a vague item like *"stories need genre indicators and conventions"* is an undocumented requirement, not a coding task):
 - `stage: ready` (and bug/cleanup items, which are born ready) → present as buildable; proceed to the normal build cycle.
-- `stage: idea | research | requirements` → **do not present as buildable.** Surface it framed as *"this needs <stage> work next"* and route to **`/prawduct:discovery`** — advancing the stage (writing the requirement, doing the research) *is* the work. The agent updates `stage:` (and adds a `refs:` link to the doc it produces) via `update` as the item matures.
-- `stage: design` → route to **`/prawduct:planning`** (requirements clear; architecture/detailed design pending).
+- `stage: idea | research | requirements` → **do not present as buildable.** Surface it framed as *"this needs <stage> work next"* and route to **`/prawduct:methodology discovery`** — advancing the stage (writing the requirement, doing the research) *is* the work. The agent updates `stage:` (and adds a `refs:` link to the doc it produces) via `update` as the item matures.
+- `stage: design` → route to **`/prawduct:methodology planning`** (requirements clear; architecture/detailed design pending).
 - **No `stage:`** → treat as *not yet ready*: don't present it as directly buildable; prompt to assess clarity first (fail toward requirements, not toward code). This is the safe default for the large existing backlog whose items predate the field.
 
 This routing is advisory, not a hard gate — surface the stage and the recommended next step; the user may still choose to override. Don't silently let an early-stage item flow into implementation.

@@ -2,7 +2,7 @@
 
      A FILLED EXAMPLE: a small household grocery-list web app ("Pantry"). Replace the
      content; keep the field labels exactly as written (`**Title Case:**`). The plan
-     defines WHAT to build — for HOW, read `/prawduct:building` first. A plan is
+     defines WHAT to build — for HOW, read `/prawduct:methodology building` first. A plan is
      specific enough when the builder never has to make a technology decision.
 -->
 ---

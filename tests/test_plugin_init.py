@@ -162,7 +162,7 @@ def test_distribution_plugin_recorded(scaffolded: Path):
 def test_static_anchor_present(scaffolded: Path):
     text = (scaffolded / "CLAUDE.md").read_text()
     assert "PRAWDUCT:ANCHOR" in text
-    assert "/prawduct:building" in text  # the anchor points at the build cycle
+    assert "/prawduct:methodology building" in text  # the anchor points at the build cycle
 
 
 def test_install_reference_committed(scaffolded: Path):

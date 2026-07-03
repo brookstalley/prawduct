@@ -68,7 +68,7 @@ def test_fires_on_python_framework_import(tmp_path):
     assert len(out) == 1
     assert out[0].type == "api-versioning"
     assert out[0].priority == "info"
-    assert out[0].recommended_action == "/prawduct:discovery"
+    assert out[0].recommended_action == "/prawduct:methodology discovery"
 
 
 def test_fires_on_django_rest_framework_import(tmp_path):

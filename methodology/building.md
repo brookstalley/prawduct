@@ -137,7 +137,7 @@ Record major decisions in the most affected artifact: what was decided, alternat
 
 **When the user asks you to do work in a subagent, do it** (Principle 23). Delegation is also valuable when chunks are independent and parallelizable, when a well-scoped chunk benefits from a clean context, or when the main context is getting large.
 
-**How to delegate:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:building`, then `.prawduct/.subagent-briefing.md` for project conventions and learnings,"** and instructions to run the full test suite before and after implementation.
+**How to delegate:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`, then `.prawduct/.subagent-briefing.md` for project conventions and learnings,"** and instructions to run the full test suite before and after implementation.
 
 **Parallel chunks:** launch independent chunks as separate subagents, wait for results, run the combined test suite, then proceed to Critic review. Merge conflicts are the main agent's responsibility. Parallel subagents in a *shared* worktree can see each other's partial changes — use worktree isolation (`isolation: "worktree"`) for truly independent chunks. The compliance canary may fire O(agents × edits) during parallel work; that noise is expected — acknowledge it in the session reflection.
 

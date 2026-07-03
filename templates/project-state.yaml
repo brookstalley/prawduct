@@ -257,7 +257,7 @@ scope_rollups: {}
 # `coverage_level` (`referenced` floor vs. `executed` real). The reference
 # verifier at `bin/test-reference-verify` emits the floor; products with
 # non-trivial coverage concerns should plug in a stronger verifier. See
-# `/prawduct:building` "Coverage Evidence".
+# `/prawduct:methodology building` "Coverage Evidence".
 # Default off in v1.4 — schema is checked but content is not enforced.
 
 coverage_required: false

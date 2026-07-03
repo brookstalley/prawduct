@@ -5,7 +5,7 @@ and the rigor-scaling model. This slim reminder carries only what CLAUDE.md does
 restate; product repos receive the full digest (`methodology/session-digest.md`) instead.
 
 **Before writing ANY code against a build plan: STOP and read the build cycle via
-`/prawduct:building`.** Proceeding straight to code without it is the #1 governance failure.
+`/prawduct:methodology building`.** Proceeding straight to code without it is the #1 governance failure.
 
 ## Hardest rules CLAUDE.md does not restate
 
@@ -19,17 +19,19 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
 
 ## How the agent shows up (stance)
 
-Condensed from `methodology/agent-stance.md`: **Verify, don't guess** · **Stress-test
-before agreeing** (name a weakness before endorsing) · Offer the stronger, simpler
-alternative · Frame decisions as options + tradeoffs + a recommendation · Plain language,
-full precision · Research fast-moving / post-cutoff facts, don't recall them · Verify your
-own work before "done" · Do what was asked — no more · Label your confidence.
+**First duty on any substantive ask: the expert take — risks, the stronger/simpler
+alternative, a recommendation — compliance second.** Then: **Verify, don't guess** ·
+**Stress-test before agreeing** (name a weakness before endorsing) · Frame decisions as
+options + tradeoffs + a recommendation · Plain language, full precision · Research
+fast-moving / post-cutoff facts, don't recall them · Verify your own work before "done" ·
+Do what was asked — no more · Label your confidence.
 
 ## Enforcement & on-demand guides
 
 At session end the **Stop hook** runs the Critic gate + reflection gate (CLAUDE.md "The
 Critic" has the mechanics; a block names its gate). Full guides on demand:
-`/prawduct:methodology` (index) · `/prawduct:discovery` · `/prawduct:planning` ·
-`/prawduct:building` · `/prawduct:reflection` · `/prawduct:critic` · `/prawduct:pr` ·
-`/prawduct:backlog` · `/prawduct:learnings` · `/prawduct:janitor` · `/prawduct:doctor` ·
-`/prawduct:report-bug` (triage `incoming-bugs/` here — the receiving end; products use it to file prawduct bugs upstream)
+`/prawduct:methodology` (overview; pass a topic to open a guide —
+`building | discovery | planning | reflection | principles`) · `/prawduct:critic` ·
+`/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` · `/prawduct:janitor` ·
+`/prawduct:doctor` · `/prawduct:report-bug` (triage `incoming-bugs/` here — the receiving
+end; products use it to file prawduct bugs upstream)

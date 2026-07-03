@@ -372,7 +372,7 @@ def test_anchor_inserted_in_place_of_block(repo: Path):
     assert "PRAWDUCT:BEGIN" not in text and "PRAWDUCT:END" not in text
     assert "PRAWDUCT:ANCHOR" in text
     # The few hardest rules + the plugin pointer (design §4).
-    assert "/prawduct:building" in text          # read the build cycle before code
+    assert "/prawduct:methodology building" in text  # read the build cycle before code
     assert "governed by **Prawduct**" in text    # this repo is plugin-governed
     assert "Stop hook" in text and "session end" in text  # enforcement at session end
     # CLAUDE.md is reported as an edit.
