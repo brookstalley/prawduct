@@ -506,7 +506,7 @@
   active plan scope. (reflection)
 
 - **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
-  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/)`
+  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/) · reviewed: 2026-07-03`
 
   If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
   verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
@@ -517,6 +517,15 @@
   --is-ancestor <anchor> HEAD) — if the anchor isn't an ancestor of HEAD, demote to cumulative/final
   instead of computing a divergent delta. Surfaced + self-flagged by the Critic during STH-6Q9D.
   (critic)
+
+  Second live occurrence + soundness escalation (2026-07-03, prose-diet chunk-01 Critic WARNING): a
+  stale single-slot `.critic-findings.json` left by sibling branch feature/gate-exemption-boundary
+  latched verify-resolutions onto a cross-branch delta while reviewing feature/prose-diet. Both
+  `commit_reviewed` and `extends_cumulative` SHAs must be required to be ANCESTORS OF HEAD (mere
+  object-resolution is insufficient) — and the stakes are worse than phantom findings: if the reviewer
+  records the chain anchor, `check-cumulative-critic` could spuriously accept a Goals-1-3 review as
+  cumulative coverage for an unrelated branch's PR. Fail closed: non-ancestor anchor → demote to
+  chunk/final. (critic, chunk-01 prose-diet review)
 
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`

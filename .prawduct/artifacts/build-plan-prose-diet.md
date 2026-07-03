@@ -102,9 +102,15 @@ numbered principles are test-pinned; only stance-overlap trimming inside bodies)
 
 ## Status
 
-- [ ] Chunk 01: Structural moves — reconcile, single-source, filled-example template
+- [x] Chunk 01: Structural moves — reconcile, single-source, filled-example template
 - [ ] Chunk 02: Editorial compression pass over the cycle-load prose
 - [ ] Chunk 03: Fold the redundant surfaces (delegators, agent-stance) + advisor-first digest
+Context: Chunk 01 done 2026-07-03 (commit 45c152a; Critic clean — 1 WARNING deduped into
+CRT-8H3R, template-size NOTE accepted as honest residue at 1,196 words). Baseline captured:
+28,455 words / ~36,991 est tokens; post-01: 26,642 / ~34,634. Next: Chunk 02 editorial
+compression of methodology/{building,discovery,planning,reflection}.md +
+skills/critic/{SKILL,review-protocol,review-cycle,framework-checks}.md, then lower
+token-budget ratchets to post-diet +10%.
 
 ## Scaffolding
 
