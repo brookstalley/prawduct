@@ -21,7 +21,7 @@ The Critic reviews changes against principles and specifications as a **separate
 - **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`. See `review-cycle.md`.
 - **`verify-resolutions`** — Goals 1-3 against the prior review's scope. Target 1-2 min. Demotion rules and the CRT-4J8W chain: `review-cycle.md`.
 
-**Default:** missing/ambiguous → `final`. Never silently downgrade.
+**Default:** mode missing, unrecognized, or inference unconfident → `final` (canonical rule: `review-cycle.md`). Never silently downgrade.
 
 **Chunk type axis.** Chunks declare `Type:` (orthogonal to mode). `Type: designer-handoff` → output "Review skipped — Type: designer-handoff", exit clean (no findings file). Other types adjust per-goal protocol — see `review-cycle.md` "Per-Chunk Type Protocol Selector." Missing/unrecognized → `code` (full protocol).
 

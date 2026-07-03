@@ -109,7 +109,7 @@ This is what makes filling-in *intentional* rather than silent: a High-impact as
 
 **Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk has been committed, so the working-tree diff is just the current chunk's changes. Plans that batch-commit at the end break the assumption — if you need that, override every chunk to `final` (squash-at-end with full-review-per-chunk is heavy but safe; squash-at-end with `chunk`-mode is wrong because the diff scope is unbounded).
 
-**Fail-safe defaults.** If `Critic mode:` is absent and inference cannot make a confident call, both the build cycle and the Critic itself default to `final`. Both layers fail safe to thoroughness — but rely on inference rather than omitting the field as a shortcut to `final`. If you want `final`, let inference pick it for the last chunk or declare it explicitly when overriding earlier.
+**Fail-safe default.** If the mode is missing, unrecognized, or inference cannot make a confident call, the review runs `final` (canonical rule: `skills/critic/review-cycle.md`) — but rely on inference rather than omitting the field as a shortcut to `final`.
 
 See `methodology/building.md` for the runtime behavior (how `/prawduct:critic` infers mode and accepts overrides) and `skills/critic/review-cycle.md` for the per-mode behavior table.
 

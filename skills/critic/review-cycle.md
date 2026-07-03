@@ -29,14 +29,9 @@ Three precedence layers, highest first — all three implemented inside the help
 2. **Plan-level override** — the active build plan's CURRENT chunk (normally the first unchecked `- [ ]` item in the Status section; on a `views_enabled` feature branch, git-derived since the checkboxes don't flip until release — CRT-7B4M) `Critic mode:` field. **As of CRT-3M8Q this override is honored by inference itself**: `infer-critic-mode` reads the current chunk's `**Critic mode:**` field and, when it names a valid mode, returns that mode with rationale `plan-override: <mode>` — *before* walking the inference rules. Previously this field was inert (the Skill-tool args never threaded to the forked skill's `$ARGUMENTS`, and the skill didn't read the plan), so a plan-mandated `final` silently ran as the inferred `chunk`. Now a plan-mandated mode wins over inference. An absent, blank, or unrecognized `Critic mode:` value is ignored and inference proceeds normally.
 3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), used only when neither override applies.
 
-See `methodology/planning.md` "Critic Mode Per Chunk" for the heuristic of when an explicit declaration is worth the override.
+See `methodology/planning.md` "Critic Mode Per Chunk" for the authoring heuristic — what inference will pick per plan shape, and when an explicit declaration is worth the override.
 
-**Heuristic when authoring a build plan** (mostly matches what inference will pick — declare `Critic mode:` only to override):
-- Single-chunk plan → `final` (inference picks this; no declaration needed).
-- Multi-chunk plan → first N-1 chunks `chunk`, last chunk `final` (inference picks this; no declaration needed).
-- Trivial chunks (typo-level edits buried inside a larger plan) → waive entirely via `.gates-waived`.
-
-**Fail-safe default:** if inference cannot anchor a confident pick and the build plan's `Critic mode:` field is absent, the build cycle treats the chunk as `final`. If the Critic itself is invoked with an unrecognized mode argument, it also runs `final`. Both layers fail safe to thoroughness.
+**Fail-safe default (canonical statement):** If the mode is missing, unrecognized, or inference cannot make a confident call, run `final`. Every layer — the build cycle, the inference helper, and the Critic itself — fails safe to thoroughness.
 
 ## Per-Mode Behavior
 
@@ -57,9 +52,7 @@ Read short, write verbose. Verbose makes the JSON self-documenting in briefings 
 
 ### Per-Chunk Type Protocol Selector (v1.4 F6)
 
-Each chunk also declares `Type:` (a separate axis from `Critic mode:`). The two are orthogonal — `Critic mode:` controls *how deep* the review is, `Type:` controls *what kind of work* is being reviewed. The Critic reads both and selects protocol per the matrix below.
-
-Default `Type:` is `code` — fail-closed. A missing or unrecognized `Type:` is treated as `code` (full protocol). The stop-hook helper `_parse_build_plan_chunk_type` surfaces unknown values as an error; the Critic itself should also refuse to honor an unknown Type and default to `code`.
+Each chunk also declares `Type:` — a separate axis from `Critic mode:`; definitions and when to declare each value live in `methodology/planning.md` "Choosing a Chunk Type". The Critic reads both fields and selects protocol per the matrix below. A missing or unrecognized `Type:` is treated as `code` (full protocol, fail-closed) — the Critic refuses to honor an unknown Type.
 
 | Chunk type | When to use | Goals 1 (Broken) | Goal 2 (Missing) | Goal 3 (Unintended) | Test-evidence check | Stop-hook Critic gate |
 |---|---|---|---|---|---|---|
@@ -69,8 +62,6 @@ Default `Type:` is `code` — fail-closed. A missing or unrecognized `Type:` is 
 | `cleanup` | Branch hygiene, file moves, dead-code removal | structural-only (no broken refs) | requirement coverage | scope discipline; tolerate zero diff | skipped | fires |
 | `designer-handoff` | Visual / token / design-asset handoff to a human designer | skipped | skipped | skipped | skipped | **skipped** (formalized carveout — previously a user-memory rule) |
 | `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — the chunk's review IS the one `/prawduct:critic cumulative`: commit the chunk first, then run it once; no separate `final` (cumulative is a strict superset — all 7 goals + cross-checks over `merge-base...HEAD` ⊇ the chunk diff) | — | — | — | fires |
-
-The `Type:` field defaults to `code` when omitted. Declare `Type:` only when it deviates from `code`; minimal-declaration is the v1.4 convention. **The `Type:` axis is the proportional-effort knob (P11) — under-declaring is safe (worst case: redundant Critic time), over-declaring is unsafe (designer-handoff on a code chunk silently skips review).**
 
 When chunk type is `designer-handoff` and the Critic is invoked anyway, output a single line: `Review skipped — Type: designer-handoff (visual handoff; review-by-human)` and exit clean. The exit happens BEFORE `prawduct-hook critic-begin` (SKILL step 1, CRT-6F2N) so no critic-active marker is left to block `clear` until its 30-minute TTL. No findings file is required; the stop-hook gate skip is the structural enforcement.
 

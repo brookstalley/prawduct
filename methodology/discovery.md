@@ -24,7 +24,7 @@ These are independent dimensions, not categories. A product can have any combina
 
 ## Risk Calibration
 
-After detecting structural characteristics, assess risk. Risk drives how much discovery you do:
+After detecting structural characteristics, assess risk. Risk drives how much discovery you do. The counts below are the **typical shape, not a quota** — concrete anchors for calibration, always governed by the pacing judgment in "Read the room on pacing" below:
 
 **Low risk** (family utility, personal tool, 1-3 users): 5-8 questions, 1-2 rounds. Infer aggressively. Move fast.
 

@@ -21,7 +21,7 @@ This is the most important methodology guide. Without reflection, the system rep
 
 The depth of reflection scales with significance. A routine bug fix might warrant a single sentence. A structural failure that required significant recovery warrants deep analysis.
 
-**The stop hook enforces the habit, not the cadence.** It checks that `.session-reflected` exists and has content. If you've been reflecting at work boundaries throughout the session, the gate is already satisfied — no last-minute scramble.
+**The stop hook enforces the habit, not the cadence.** The prescribed cadence is work-boundary reflection; the hook checks only a session-end floor — `.session-reflected` exists and has content. It trusts your judgment about what to reflect on and how deeply. If you've been reflecting at work boundaries throughout the session, the gate is already satisfied — no last-minute scramble. (Per-work-cycle governance is the methodology's responsibility, not the hook's — see `methodology/building.md` "Sessions and Work Cycles".)
 
 ## The Reflection Process
 
@@ -168,12 +168,3 @@ The corresponding detail in `learnings-detail.md` would have the full observatio
 
 Session reflections are written to `.prawduct/.session-reflected` during the session and automatically archived to `.prawduct/reflections.md` on the next session start. This archive is an unbounded historical record intended for framework improvement — it is NOT loaded into session context. It captures the full narrative of how the methodology performed across all sessions, providing the raw material for prawduct evolution.
 
-## The Mechanical Enforcement
-
-The stop hook is the one piece of mechanical enforcement in the learning loop. It checks:
-- Were files modified during this session?
-- If yes, was reflection captured?
-
-If no reflection was captured, the hook blocks session exit with a reminder. This enforces the habit, not the content. The system trusts your judgment about what to reflect on and how deeply — it just ensures you don't skip the habit entirely.
-
-This is the minimum viable enforcement: one hook, one check. The stop hook enforces minimum governance for the session as a whole — at least one reflection exists. Per-work-cycle governance (reflecting after each chunk, after each Critic review) is the methodology's responsibility, not the hook's. See `methodology/building.md` "Sessions and Work Cycles" for the full model.

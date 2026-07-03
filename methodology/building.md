@@ -1,6 +1,6 @@
 # Building: Turning Plans Into Working Software
 
-Building is where plans meet reality. Every unit of work — whether it's the first feature of a new project or chunk 80 of a mature one — follows the same cycle: **understand → plan → build → verify.** What changes is the depth, determined by the work's size and type.
+Building is where plans meet reality. Every unit of work follows the same cycle: **understand → plan → build → verify.** What changes is the depth, determined by the work's size and type.
 
 ## Sessions and Work Cycles
 
@@ -10,9 +10,9 @@ A **work cycle** is one unit of work with its own governance: understand → pla
 
 **Context compaction** is a context-management event, not a session boundary: no hooks, no baseline reset, no governance checkpoint. Anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
-**`/clear` between work cycles is recommended** for cleaner governance. It resets the git baseline (so the next cycle's canary only sees its own changes), archives the previous reflection, and starts fresh context. Not required — multiple work cycles within a single session work correctly.
+**`/clear` between work cycles is recommended** (not required) for cleaner governance. It resets the git baseline (so the next cycle's canary only sees its own changes), archives the previous reflection, and starts fresh context.
 
-**Working in a git worktree.** A work cycle composes in a worktree — run it (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to the worktree (STH-4K7N); no review-in-primary or raw-`gh` workaround is needed. One edge: starting in the primary checkout and entering a worktree *mid*-cycle leaves the SessionStart markers in primary (gate readers fail safe) — launch, or `/clear`, in the worktree to avoid it.
+**Working in a git worktree.** A work cycle composes in a worktree — run it (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to the worktree (STH-4K7N). One edge: starting in the primary checkout and entering a worktree *mid*-cycle leaves the SessionStart markers in primary (gate readers fail safe) — launch, or `/clear`, in the worktree to avoid it.
 
 The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, and advisory **compliance canary** checks run. Per-work-cycle governance (Critic after each chunk, reflection after each significant action) is the methodology's responsibility, not the hook's.
 
@@ -44,7 +44,7 @@ Before any non-trivial work cycle, answer three questions in one sentence each:
 2. **What does success look like?** "User can do X and see Y," not "it works."
 3. **What's out of scope?** What you're deliberately not doing.
 
-If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Fill what you can infer yourself and record each as a vetoable assumption; surface only consequential, unverifiable unknowns, and early. Don't silently build on guesses — that's how unclear requirements become debt. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode (read-only explore + interview before execution) is the native clarify-before-build vehicle. Mirrors the discovery-side self-assessment, the `[ASSUMPTION: …]` recording format, and research triggers (see `methodology/discovery.md` "Calibrate Rigor").
+If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Fill what you can infer yourself and record each as a vetoable assumption; surface only consequential, unverifiable unknowns, and early. Don't silently build on guesses — that's how unclear requirements become debt. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode (read-only explore + interview before execution) is the native clarify-before-build vehicle. Mirrors `methodology/discovery.md` "Calibrate Rigor" — the same self-assessment, `[ASSUMPTION: …]` format, and research triggers.
 
 ### A Requirement Surfaced Mid-Build
 
@@ -60,7 +60,7 @@ The Confidence Check runs at a chunk's *start*; requirements also arrive *during
 
 There is no "pre-existing" exception (tests, broad exceptions, stale artifacts, anything). If you encounter a problem, fix it or flag it with a reason it can't be fixed now. "Pre-existing" is an escape hatch that permanently degrades quality. Every session starts clean.
 
-**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently. Validate that files, modules, and components referenced in the chunk plan still exist — plans go stale when the codebase evolves (module renames, component deletions, API changes). A quick check before starting saves significant rework. Also run `/prawduct:learnings [this chunk's focus]` to check for relevant project rules and preferences before coding.
+**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts. Understand what this chunk delivers, what its acceptance criteria are, and what it depends on. If anything is ambiguous, flag it before building — don't guess silently. Validate that files, modules, and components referenced in the chunk plan still exist — plans go stale when the codebase evolves (module renames, component deletions, API changes). Also run `/prawduct:learnings [this chunk's focus]` to check for relevant project rules and preferences before coding.
 
 **Persist plans immediately.** When scope evolves during a work cycle — new chunks emerge, the plan changes, gaps are discovered — write the updated plan to `build-plan.md` immediately. Conversation context is ephemeral; artifacts persist. A plan that exists only in conversation will be lost on compaction or session end. This is the most common way knowledge is lost across sessions.
 
@@ -106,7 +106,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 ## Session Scope Discipline
 
-Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades when reviewing many chunks at once — the reviewer loses focus across a large diff. Context compaction within a long session can lose governance context (plans, rationale, decisions that existed only in conversation).
+Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades when reviewing many chunks at once, and context compaction within a long session can lose governance context (plans, rationale, decisions that existed only in conversation). This composes with per-chunk review: a multi-chunk plan simply spans multiple sessions — per-chunk reviews accumulate, the final/cumulative review lands with the last chunk, and session boundaries don't reset the plan.
 
 **Complete required governance at chunk boundaries, then affirmatively signal when `/clear` is safe.** Critic review, reflection capture, plan persistence, and backlog updates must be done before the chunk is complete — and the user should not have to guess.
 
@@ -224,7 +224,7 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 - **`cumulative`** — all 7 goals against `merge-base...HEAD`. Gates `/prawduct:pr create`.
 - **`verify-resolutions`** — Goals 1-3 against the prior review's scope; re-review after fixing prior findings.
 
-Inference failure or unrecognized mode → `final`. See `skills/critic/review-cycle.md` (per-mode table) and `skills/critic/review-protocol.md` (goals).
+If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule: `skills/critic/review-cycle.md`; per-mode table there, goals in `skills/critic/review-protocol.md`).
 
 **The Critic takes time.** Reviews take 1-5 minutes; don't check on it. While it reviews, deep-scrub your own changes — self-review often pre-resolves findings.
 
