@@ -103,14 +103,17 @@ numbered principles are test-pinned; only stance-overlap trimming inside bodies)
 ## Status
 
 - [x] Chunk 01: Structural moves — reconcile, single-source, filled-example template
-- [ ] Chunk 02: Editorial compression pass over the cycle-load prose
+- [x] Chunk 02: Editorial compression pass over the cycle-load prose
 - [ ] Chunk 03: Fold the redundant surfaces (delegators, agent-stance) + advisor-first digest
-Context: Chunk 01 done 2026-07-03 (commit 45c152a; Critic clean — 1 WARNING deduped into
-CRT-8H3R, template-size NOTE accepted as honest residue at 1,196 words). Baseline captured:
-28,455 words / ~36,991 est tokens; post-01: 26,642 / ~34,634. Next: Chunk 02 editorial
-compression of methodology/{building,discovery,planning,reflection}.md +
-skills/critic/{SKILL,review-protocol,review-cycle,framework-checks}.md, then lower
-token-budget ratchets to post-diet +10%.
+Context: Chunks 01+02 done 2026-07-03 (commits 45c152a, 259e5d2; both Critic-clean).
+Baseline 36,991 est tokens; post-02 running total 27,792 (-24.9%). building.md ratchet
+lowered to <4600; review-protocol kept 3350 (already tighter than post-diet+10%). Critic
+NOTE to carry into chunk 03's cumulative Goal-2 audit: confirm the two trimmed building.md
+elaborations (observability "log from chunk 1" example, CLAUDE.md "new session needs"
+line) were elaboration, not rule loss. Next: Chunk 03 — delete skills/{building,discovery,
+planning,reflection}/ + methodology/agent-stance.md, rewrite references to
+/prawduct:methodology <topic>, advisor-first digest stance block, cumulative Critic,
+backlog hygiene (MET-3Q8V ship, STN-4W7R(a), MET-2X6F, MET-7R4J check).
 
 ## Scaffolding
 
