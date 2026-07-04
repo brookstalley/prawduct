@@ -45,7 +45,13 @@ filled examples the plan's own Wave-3 thesis protects for weaker models; (e) the
 no-dropped-rule hard constraint — the surviving corpus is predominantly single-statement
 rules. Disposition: recorded as a vetoable outcome for the owner — amend the plan's Success
 floor to the honest figure, or direct a further pass (realistic additional yield ~3-5
-points, approaching rule-loss territory). Chunk 03 remains unchecked pending that decision.
+points, approaching rule-loss territory).
+
+**Owner decision (2026-07-04): option (a).** The Success and Chunk-03 acceptance floors are
+amended to the achieved **−30.3%**; the no-drop constraint held (no rule, gate semantic, or
+checkable bar dropped). The ≥45%/50% target is recorded as a mispriced intuition — the
+residue above is a measurement of rule density, not remaining waste. Chunk 03 marked `[x]`,
+MET-3Q8V archived shipped.
 
 **Classification:** governance
 
