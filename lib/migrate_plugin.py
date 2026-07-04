@@ -83,7 +83,7 @@ committed framework files. The principles, methodology, Critic protocol, and PR
 review live in the plugin and are read on demand (run `/prawduct:methodology`);
 they are intentionally not copied into this repo.
 
-**Before writing any code, STOP and read the build cycle: `/prawduct:building`.**
+**Before writing any code, STOP and read the build cycle: `/prawduct:methodology building`.**
 Skipping it is the #1 governance failure.
 
 The hardest rules (everything else is in the plugin):

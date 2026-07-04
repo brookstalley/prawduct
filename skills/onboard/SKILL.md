@@ -49,7 +49,7 @@ discovery fills them, governance can't calibrate rigor and the build gates can't
 and once the repo shows product work, the session briefing nudges every session
 (**DISCOVERY NOT CAPTURED**).
 
-So tell the user the first thing to do in the product's own session is **`/prawduct:discovery`**:
+So tell the user the first thing to do in the product's own session is **`/prawduct:methodology discovery`**:
 
 - **New / empty repo** → a normal discovery pass captures classification, product
   definition, and preferences into `project-state.yaml`.

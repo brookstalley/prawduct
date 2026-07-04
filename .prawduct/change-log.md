@@ -3,6 +3,58 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-03: prose diet — reconcile, single-source, compress, fold (prose-diet)
+
+<!-- prawduct: chunks=01,02,03 | type=improvement | scope=prose-diet -->
+
+**Why:** Wave 1 Plan C of the owner-accepted efficiency-review fix program
+(`framework-efficiency-review-2026-07-02.md`, MET-3Q8V, Overbuilt #3). The governance
+cycle loaded ~28.5k words of prose that triplicated the mode×type matrix and the stance,
+stated the final-mode fallback 5 ways, contradicted itself in 5 documented places, shipped
+implementation narration (bug-ID citations, hook internals, a parser-bug story inside the
+starter template), and compressed load-bearing rules into sentences weaker models can't parse.
+
+**What:**
+- **Chunk 01 (structural):** contradictions D1–D5 reconciled to read one way at every site
+  (session-cap vs per-chunk review compose; PR readiness not PR action; one canonical
+  fallback statement in `review-cycle.md`; reflection floor ≠ cadence, single explanation in
+  `reflection.md`; discovery counts are "typical shape, not a quota"). D6 single-sourcing:
+  `planning.md` canonical for mode/Type definitions, `review-cycle.md` keeps behavior tables
+  only, template reduced to pointer + field syntax. `templates/build-plan.md` rewritten as a
+  filled example ("Pantry", 2,774 → 1,197 words); parser-bug narrative removed.
+- **Chunk 02 (compression):** the 8 cycle-load prose files rewritten for concision —
+  narration, bug-ID citations, and bump-history deleted; Fable-ese de-compressed; every rule
+  keeps exactly one clear statement. building.md token ratchet lowered 4950 → 4600; new
+  `TestMethodologyProseHygiene` keeps bug-IDs/set-glyphs out of methodology files.
+- **Chunk 03 (fold):** deleted `skills/{building,discovery,planning,reflection}/` and
+  `methodology/agent-stance.md`; `/prawduct:methodology <topic>` is the single reader
+  (absorbing the delegators' load-bearing lines); reference cascade across digests, skills,
+  templates, bin/prawduct-hook ×5, lib ×2, README, MIGRATION, principles.md. Digest stance
+  block rewritten advisor-first (STN-4W7R part a: expert take — risks, stronger/simpler
+  alternative, recommendation — leads; compliance second), 239 words; slim synced.
+
+**Measured outcome (estimator: words × 1.3):** cycle-load set 36,991 → 25,789 est tokens
+(28,455 → 19,838 words), **−30.3%** vs the plan's ≥45% floor (40–45% honest-residue band).
+**The floor is missed and, per the builder's and cumulative Critic's shared assessment,
+cannot be met honestly.** Enumerated residue: (a) ~2.6k est tokens of verify-resolutions
+chain / ledger / scope machinery inside the measured set whose diet is the explicitly
+out-of-scope Overbuilt #4 item; (b) `review-protocol.md` (~3.2k) previously audited LEAN —
+every bullet a severity-mapped check; (c) the behavior tables (mode×type matrix, demotion
+table, per-mode scope) now single-sourced but irreducible; (d) the concrete anchors and
+filled examples the plan's own Wave-3 thesis protects for weaker models; (e) the
+no-dropped-rule hard constraint — the surviving corpus is predominantly single-statement
+rules. Disposition: recorded as a vetoable outcome for the owner — amend the plan's Success
+floor to the honest figure, or direct a further pass (realistic additional yield ~3-5
+points, approaching rule-loss territory).
+
+**Owner decision (2026-07-04): option (a).** The Success and Chunk-03 acceptance floors are
+amended to the achieved **−30.3%**; the no-drop constraint held (no rule, gate semantic, or
+checkable bar dropped). The ≥45%/50% target is recorded as a mispriced intuition — the
+residue above is a measurement of rule density, not remaining waste. Chunk 03 marked `[x]`,
+MET-3Q8V archived shipped.
+
+**Classification:** governance
+
 ## 2026-07-02: fail-loud change-log tag validation + tolerant chunk IDs + regen-views --check (changelog-fail-loud)
 
 <!-- prawduct: chunks=01 | type=feature | scope=changelog-fail-loud | status=merged -->

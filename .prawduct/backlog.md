@@ -241,7 +241,7 @@
   gate events. Feeds TEL-7A4X cross-project aggregation. (builder)
 
 - **[CRT-5Q8W]** Skill prose clarity micro-fixes from the 2026-06-09 review (critic protocol wording, designer-handoff note, backlog pick defaults, framework-checks example)
-  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · closes: PR-3J6W · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md, skills/pr/SKILL.md · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · closes: PR-3J6W · related: PR-3J6W, CRT-6F2N, MET-3Q8V · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md, skills/pr/SKILL.md · reviewed: 2026-07-03`
 
   Batch of small wording fixes from the skills review agent, none changing behavior: (1) critic
   review-protocol.md 'Decide checks from signals below' is vague — state that the resolved MODE
@@ -263,6 +263,20 @@
   1b made imperative in #89). The surviving piece joins this batch as sub-item (6): decide
   PR-review evidence-file retention — archive to .prawduct/.pr-reviews-archive/ vs document why
   deletion is intended. Full original body preserved on the archived PR-3J6W.
+
+  2026-07-03 post-prose-diet check (branch feature/prose-diet; chunks 02-03 rewrote
+  review-protocol/review-cycle/framework-checks): the diet compressed and merged the
+  surrounding text but ABSORBED NONE of the open sub-items — all of (1), (3), (4), (5), (6)
+  still apply, at slightly shifted locations. (1) "Decide checks from signals below" survives
+  verbatim as activation step 6 (review-protocol.md:12); the Modes block above it does map
+  mode→goals with a review-cycle.md pointer, so the residual fix narrows to making step 6
+  reference that mapping. (3) the Learnings Cross-Check (now in review-cycle.md, "Learnings
+  Cross-Check") still assumes learnings are infallible — no latest-learning-wins note. (4)
+  framework-checks.md Check 7: the diet merged the Test/Plan-level-generality bullets into one
+  but added no concrete avoid/prefer example for "strengthening the dynamic generation system".
+  (5) backlog SKILL pick: the diet only repointed the discovery/planning routes to
+  /prawduct:methodology; the score line documents missing→2 ("unknown-middle") but not the
+  combined 2/2 = 1.0 effect, and the stale "(Q6)" label remains. (6) untouched.
 
 - **[MET-5C2H]** Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
   `effort: M · impact: L · area: methodology · source: user · added: 2026-06-08 · status: open · stage: research`
@@ -469,9 +483,22 @@
   the gate-soundness bundle, 2026-06-10. (critic)
 
 - **[MET-7R4J]** Methodology/CLAUDE.md redundancy and prompt-quality pass — hard rules stated 4-6x across always-loaded surfaces
-  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · stage: ready · related: MET-5C2H · refs: CLAUDE.md, docs/principles.md, methodology/building.md, methodology/planning.md, methodology/session-digest.md · reviewed: 2026-06-10`
+  `effort: S · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · stage: ready · related: MET-5C2H, MET-3Q8V · refs: CLAUDE.md, docs/principles.md, methodology/building.md, methodology/planning.md, methodology/session-digest.md · reviewed: 2026-07-03`
 
   From the 2026-06-09 framework review (methodology-as-prompts agent). For Opus/Fable-class models, restating a rule with varied phrasing creates interference, not reinforcement. (1) Consolidate to one canonical statement + cross-refs: Tests Are Contracts appears 6x (CLAUDE.md, principles.md, agent-stance.md, building.md 2x, session-digest.md); the mid-build-requirement rule has 8+ phrasings; the Critic mandate appears 6x with escalating emphasis. (2) Remove emphasis escalation: CLAUDE.md 'STOP. Read this before writing ANY code' caps — prompt-rot pattern that also misstates Critic timing (Critic runs after code). (3) Compress planning.md Foreign API Verification (~40 lines to ~15: rule + when-to-apply + one worked example; move match mechanics to the Critic protocol). (4) Add one sentence to building.md Before You Build: re-review the plan's Open assumptions as code reveals new facts (assumptions are recorded at plan time but never checkpointed mid-build). Note: digest-vs-CLAUDE.md duplication is handled separately by the review-fixes plan Chunk 4 (slim framework-repo digest); this item is the within-file redundancy pass. Token-budget guardrail tests on methodology files will need adjusting downward, not up. (builder)
+
+  2026-07-03 superseded-check (prose-diet cumulative Critic reconciliation, branch
+  feature/prose-diet — MET-3Q8V's own note said prose-diet "largely supersedes" this item).
+  What prose-diet DELIVERED: sub-item (1) largely — `methodology/agent-stance.md` deleted
+  (one whole duplicate surface gone), building.md's Tests-Are-Contracts restatements removed
+  (now 0 in-file; canonical lives in principles.md + CLAUDE.md list + digest), and the
+  mid-build-requirement phrasings compressed by the D1-D6 reconcile; sub-item (3) fully —
+  planning.md Foreign API Verification is now ~17 lines (rule + when-to-apply + pointer to the
+  filled template example). RESIDUE still open, now the whole of this item: sub-item (2) —
+  CLAUDE.md's "**STOP. Read this before writing ANY code**" emphasis-escalation caps survive
+  verbatim (line ~94), still misstating Critic timing; sub-item (4) — building.md still has no
+  mid-build open-assumptions re-review sentence (assumptions recorded at plan time, never
+  checkpointed). Effort trimmed M→S to match the residue.
 
 - **[JNT-9R2K]** Janitor SKILL: move the investigation-theme taxonomy to a companion reference file; close the Step 2.5 to Step 7 backlog loop
   `effort: S · impact: S · area: janitor · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: skills/janitor/SKILL.md · reviewed: 2026-06-10`
@@ -506,7 +533,7 @@
   active plan scope. (reflection)
 
 - **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
-  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/)`
+  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/) · reviewed: 2026-07-03`
 
   If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
   verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
@@ -517,6 +544,15 @@
   --is-ancestor <anchor> HEAD) — if the anchor isn't an ancestor of HEAD, demote to cumulative/final
   instead of computing a divergent delta. Surfaced + self-flagged by the Critic during STH-6Q9D.
   (critic)
+
+  Second live occurrence + soundness escalation (2026-07-03, prose-diet chunk-01 Critic WARNING): a
+  stale single-slot `.critic-findings.json` left by sibling branch feature/gate-exemption-boundary
+  latched verify-resolutions onto a cross-branch delta while reviewing feature/prose-diet. Both
+  `commit_reviewed` and `extends_cumulative` SHAs must be required to be ANCESTORS OF HEAD (mere
+  object-resolution is insufficient) — and the stakes are worse than phantom findings: if the reviewer
+  records the chain anchor, `check-cumulative-critic` could spuriously accept a Goals-1-3 review as
+  cumulative coverage for an unrelated branch's PR. Fail closed: non-ancestor anchor → demote to
+  chunk/final. (critic, chunk-01 prose-diet review)
 
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
@@ -637,18 +673,6 @@
      Waves: 1 = P0 (kill recurring taxes), 2 = P1 (outcome gaps), 3 = P2 (weaker-model scaffolding).
      Each wave item ships as its own small 1-2 chunk plan on its own branch — NOT one monolithic plan. -->
 
-- **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
-  `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
-
-  P0. Target: halve the ~31k-token governance cycle load. Moves: single-source the mode×type
-  matrix (methodology only; template gets a pointer); strip build-plan template (2,774 words,
-  zero filled examples) to a FILLED example + brief comments; fold agent-stance.md into the
-  digest; fold the 4 one-line delegator skills (building/discovery/planning/reflection) into
-  /prawduct:methodology; delete implementation narration (hook internals, bug IDs,
-  withdrawn-model chains, the parser-bug narrative at build-plan.md:22-29) from files weaker
-  models parse; de-Fable-ese compressed sentences; reconcile the 5 documented cross-doc
-  contradictions (listed in the artifact). Largely supersedes MET-7R4J. (user)
-
 - **[CRT-5M9J]** Wave 2: scope check in review — mandated question: does this capability trace to a documented requirement, and is it reachable/consumed end-to-end?
   `effort: S · impact: M · area: critic/pr-protocols · source: user · added: 2026-07-02 · status: open · stage: ready · related: ADR-7X2M · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #2), skills/critic/review-protocol.md, skills/pr/review-protocol.md`
 
@@ -719,7 +743,7 @@
   `pick` surfaces the linked artifact. Avoid building machinery. (user)
 
 - **[STN-4W7R]** Wave 2: advisor-first stance made structural — digest stance-block tone rewrite (rides with MET-3Q8V) + advisory obligations attached to existing checkpoints
-  `effort: M · impact: M · area: agent-stance · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-3Q8V, MET-8J5R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Advisor-first stance, Wave 2), methodology/agent-stance.md, methodology/session-digest.md, methodology/planning.md, methodology/discovery.md, CLAUDE.md (Before Building)`
+  `effort: M · impact: M · area: agent-stance · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-3Q8V, MET-8J5R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Advisor-first stance, Wave 2), methodology/session-digest.md, methodology/planning.md, methodology/discovery.md, CLAUDE.md (Before Building) · reviewed: 2026-07-03`
 
   P1. Owner directive 2026-07-02: lean into prawduct's role as advisor/expert rather than merely
   an implementor of whatever the user asks for. Two parts: (a) TONE — when Plan C (MET-3Q8V
@@ -733,13 +757,29 @@
   that lives only in adjectives will not survive under context pressure; advisorship attached to
   gates will. Parent: framework-efficiency-review-2026-07-02.md "Advisor-first stance" section. (user)
 
+  2026-07-03 (prose-diet cumulative Critic reconciliation, branch feature/prose-diet): part (a)
+  DELIVERED on that branch — chunk 03 rewrote the digest stance block in
+  `methodology/session-digest.md` (~239 words) from trait list to expert-take-leads framing,
+  keeping the checkable bars; slim digest synced. Also this branch deleted
+  `methodology/agent-stance.md` (folded by MET-3Q8V), so the stance's sole operational surface
+  is now `methodology/session-digest.md` — refs repointed accordingly. Part (b) (advisory
+  obligations attached to existing checkpoints: plan creation, backlog pick, discovery start,
+  Before-Building line) remains open and is now the whole of this item.
+
 - **[MET-2X6F]** Wave 3: weaker-model scaffolding — filled example chunk, domain-concern checklist seeded by structural characteristics, root-cause stopping rule, 3-4-file size tiebreak, red-baseline protocol
-  `effort: M · impact: M · area: methodology/templates · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-3Q8V, BLD-8N4W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Underspecified #4), templates/build-plan.md, methodology/discovery.md:100, methodology/building.md`
+  `effort: M · impact: M · area: methodology/templates · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-3Q8V, BLD-8N4W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Underspecified #4), templates/build-plan.md, methodology/discovery.md:100, methodology/building.md · reviewed: 2026-07-03`
 
   P2. Judgment offloads with no weaker-model scaffolding: "detect domain concerns dynamically, no
   hardcoded lists"; no root-cause stopping rule; the 3-4-file size-classification dead zone; no
   red-baseline protocol; zero filled examples in the build-plan template. Note: the filled
   example chunk may already land in Wave 1 Plan C (MET-3Q8V) — check before duplicating work. (user)
+
+  2026-07-03 (prose-diet cumulative Critic reconciliation): the "filled example chunk"
+  deliverable LANDED in prose-diet chunk 01 — `templates/build-plan.md` is now a fully-filled
+  Pantry example (1,197 words), so Wave 3 must NOT redo it. The rest of the item still stands:
+  domain-concern checklist seeded by structural characteristics, root-cause stopping rule,
+  3-4-file size tiebreak, and red-baseline protocol remain undelivered (4 of 5 deliverables
+  open). Item stays open at effort M — the template piece was the smallest of the five.
 
 - **[BLD-8N4W]** Wave 3: subagent-output verification rule in building.md — a subagent's "Done" on a removal is a claim to verify
   `effort: S · impact: M · area: methodology/building · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-2X6F · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Underspecified #4), methodology/building.md`
@@ -776,6 +816,23 @@
 ## Promoted
 
 ## Archive
+
+- **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
+  `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: prose-diet · reviewed: 2026-07-04 · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), .prawduct/artifacts/build-plan-prose-diet.md, methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
+
+  P0. Target: halve the ~31k-token governance cycle load. Moves: single-source the mode×type
+  matrix (methodology only; template gets a pointer); strip build-plan template (2,774 words,
+  zero filled examples) to a FILLED example + brief comments; fold agent-stance.md into the
+  digest; fold the 4 one-line delegator skills (building/discovery/planning/reflection) into
+  /prawduct:methodology; delete implementation narration (hook internals, bug IDs,
+  withdrawn-model chains, the parser-bug narrative at build-plan.md:22-29) from files weaker
+  models parse; de-Fable-ese compressed sentences; reconcile the 5 documented cross-doc
+  contradictions (listed in the artifact). Largely supersedes MET-7R4J. (user)
+
+  Promoted 2026-07-02: build plan authored at .prawduct/artifacts/build-plan-prose-diet.md
+  (branch feature/prose-diet, 3 chunks). The plan pre-delivers STN-4W7R part (a) (advisor-first
+  digest stance rewrite, chunk 03) and MET-2X6F's filled-example-chunk (chunk 01) — those items
+  get updated at close-out, not now. MET-7R4J supersession check is a chunk 03 close-out step.
 
 - **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
   `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: changelog-fail-loud · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N, REL-4Q9V · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2), .prawduct/artifacts/build-plan-changelog-fail-loud.md · reviewed: 2026-07-02`

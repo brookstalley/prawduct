@@ -657,7 +657,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             "product definition, but this repo has product work (code and/or docs/). Until\n"
             "discovery is captured, governance can't calibrate rigor and the build gates\n"
             "won't engage.\n"
-            "  → Run /prawduct:discovery to capture it. If requirements, architecture, or an\n"
+            "  → Run /prawduct:methodology discovery to capture it. If requirements, architecture, or an\n"
             "    existing codebase are already here, discovery RECONCILES them — it reads what\n"
             "    exists and backfills classification, structural characteristics, and product\n"
             "    definition into project-state.yaml rather than starting over."
@@ -894,7 +894,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"
                 "    echo '{\"reflection\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
-                "  `/prawduct:building` (Gate waivers) for when this is appropriate.\n"
+                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
     elif (
         has_changes
@@ -1001,7 +1001,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  re-firing every turn:\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
-                "  `/prawduct:building` (Gate waivers) for when this is appropriate.\n"
+                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
         else:
             blockers.append(_attributed("critic",
@@ -1017,7 +1017,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  this gate stops re-firing every turn:\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. See\n"
-                "  `/prawduct:building` (Gate waivers) for when this is appropriate.\n"
+                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
 
     # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
@@ -1131,7 +1131,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "    echo '{\"pr\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session. PR review is\n"
                 "  the release-readiness gate — waive only when merge will not happen this\n"
-                "  session. See `/prawduct:building` (Gate waivers).\n"
+                "  session. See `/prawduct:methodology building` (Gate waivers).\n"
             ))
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
