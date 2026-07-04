@@ -5,7 +5,7 @@
 
 ## 2026-07-03: prose diet — reconcile, single-source, compress, fold (prose-diet)
 
-<!-- prawduct: chunks=01,02,03 | type=improvement | scope=prose-diet -->
+<!-- prawduct: chunks=01,02,03 | type=improvement | scope=prose-diet | status=merged -->
 
 **Why:** Wave 1 Plan C of the owner-accepted efficiency-review fix program
 (`framework-efficiency-review-2026-07-02.md`, MET-3Q8V, Overbuilt #3). The governance
