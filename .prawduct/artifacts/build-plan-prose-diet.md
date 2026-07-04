@@ -29,16 +29,20 @@ implementation narration (bug IDs, hook internals, a parser-bug story inside the
 template), contradicts itself in 5 documented places, and compresses load-bearing rules
 into identifier-dense sentences weaker models can't parse (building.md:284).
 
-**Success (measured, honest):** the **cycle-load set** — `methodology/*.md` (all 7),
+**Success (measured, achieved):** the **cycle-load set** — `methodology/*.md` (all 7),
 `templates/build-plan.md`, `skills/critic/{SKILL,review-protocol,review-cycle,framework-checks}.md`,
-`skills/{building,discovery,planning,reflection}/SKILL.md` — drops from its measured
-baseline (~28,141 words; capture exact number in chunk 01) by **≥45%, targeting 50%**,
-using the test suite's estimator (`words × 1.3`). Hard constraint: **no rule, gate
-semantics, or checkable bar is dropped** — every behavior the prose specifies must
-survive in exactly one place (Complete Delivery outranks the number; if honest
-preservation lands the cut in 40–45%, report that with the residue enumerated, don't
-delete load-bearing text to hit 50%). The 5 contradictions read one way everywhere.
-Lowered token-budget tests lock the diet in.
+`skills/{building,discovery,planning,reflection}/SKILL.md` — dropped from its measured
+baseline (28,455 words / 36,991 est tokens at b3b641f) to 19,838 words / 25,789 est tokens,
+**−30.3%**, using the test suite's estimator (`words × 1.3`). Hard constraint (held): **no
+rule, gate semantics, or checkable bar was dropped** — every behavior the prose specifies
+survives in exactly one place (Complete Delivery outranks the number). The original floor was
+**≥45%, targeting 50%**; that intuition mispriced the corpus — it assumed triplication was the
+bulk of the mass, but single-sourcing recovered only ~3–4k est tokens, ~2.6k of in-set chain
+machinery was carved out to review Overbuilt #4, and the review program had already certified
+review-protocol lean. Honest preservation over a rule-dense, no-drop corpus reaches ~30%; the
+residue is enumerated in the change-log (`scope=prose-diet`) and is a measurement of rule
+density, not remaining waste. The 5 contradictions read one way everywhere. Lowered
+token-budget tests lock the diet in.
 
 **Out of scope:** the two-reviewer overlap machinery (review Overbuilt #4 — ~2k words of
 chain/scope prose in the critic/pr protocols: separate item); STN-4W7R part (b)
@@ -104,21 +108,20 @@ numbered principles are test-pinned; only stance-overlap trimming inside bodies)
 
 - [x] Chunk 01: Structural moves — reconcile, single-source, filled-example template
 - [x] Chunk 02: Editorial compression pass over the cycle-load prose
-- [ ] Chunk 03: Fold the redundant surfaces (delegators, agent-stance) + advisor-first digest
-Context: Chunks 01+02 done 2026-07-03 (45c152a, 259e5d2; Critic-clean). Chunk 03 work is
-COMPLETE and cumulative-reviewed (b4d569e + close-out commit) but the chunk is deliberately
-NOT marked [x]: the cumulative Critic recorded 1 BLOCKING — measured reduction is
-36,991 → 25,789 est tokens (−30.3%) vs the ≥45% acceptance floor (40–45% honest-residue
-band). Builder + Critic shared assessment: the floor cannot be met without dropping rules
-or the weaker-model anchors; residue enumerated in the change-log entry (chain machinery
-~2.6k = out-of-scope Overbuilt #4; review-protocol audited lean; irreducible behavior
-tables; single-statement rules). AWAITING OWNER DECISION: (a) amend this plan's Success
-floor to the honest figure (~30%) and close MET-3Q8V shipped, or (b) direct a further
-compression pass (realistic yield ~3-5 more points, approaching rule loss). All other
+- [x] Chunk 03: Fold the redundant surfaces (delegators, agent-stance) + advisor-first digest
+Context: Chunks 01+02 done 2026-07-03 (45c152a, 259e5d2; Critic-clean). Chunk 03 COMPLETE
+and cumulative-reviewed (b4d569e + close-out commits). The cumulative Critic's 1 BLOCKING —
+measured reduction 36,991 → 25,789 est tokens (−30.3%) vs the ≥45% acceptance floor — was
+resolved 2026-07-04 by owner decision (a): the Success floor is amended to the honest
+achieved figure (−30.3%). Rationale: the floor cannot be met without dropping rules or the
+weaker-model anchors; the 45–50% intuition mispriced a rule-dense, no-drop corpus (chain
+machinery ~2.6k = out-of-scope Overbuilt #4; review-protocol audited lean; irreducible
+behavior tables; single-statement rules). Residue enumerated in the change-log entry
+(`scope=prose-diet`) — a measurement of rule density, not remaining waste. All other
 cumulative findings resolved on-branch: change-log entry written (statusless), 4 backlog
 items reconciled (STN-4W7R(a) delivered/refs repointed, MET-2X6F noted, MET-7R4J trimmed,
 CRT-5Q8W checked — none absorbed), duration-drift + READER_SKILLS + frontmatter-quoting
-notes fixed. MET-3Q8V archival pends the decision. Chunk-02 Goal-2 NOTE confirmed by the
+notes fixed. MET-3Q8V archived shipped 2026-07-04. Chunk-02 Goal-2 NOTE confirmed by the
 cumulative: the two trimmed building.md lines were elaboration, not rule loss.
 
 ## Scaffolding
@@ -224,8 +227,9 @@ validate` after any `skills/*/SKILL.md` frontmatter change (YAML-quoting learnin
 - **Tests:** suite green; `claude plugin validate` clean; form-family grep sweep
   (Verification Strategy #3) zero hits on active surfaces.
 - **Type:** cumulative-final
-- **Acceptance criteria:** total reduction vs baseline **≥45%** with the honest-residue
-  clause from Success; live checks 4–5 hold; digest < 10k chars, slim ≤ half of full.
+- **Acceptance criteria:** total reduction vs baseline **−30.3%** (amended 2026-07-04 from
+  ≥45% — see Success; the Complete-Delivery honest-residue clause governs); live checks 4–5
+  hold; digest < 10k chars, slim ≤ half of full.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run against merge-base...HEAD and

@@ -507,3 +507,41 @@ exemption union). Why it matters going forward: ~13 more backlog items point at 
 artifact (waves 1-3); every one of them should re-verify its cited file:line evidence and
 empirically probe the predicate it changes before planning. The artifact remains the requirement's
 *evidence and rationale*; it is not a statement of current file state nor a validated design.
+
+## When a plan sets a quantitative reduction/size floor over a corpus you cannot shrink by dropping content, derive the floor from a per-file compressibility sample — not a global intuition
+
+Context: the prose-diet feature (MET-3Q8V) targeted the ~37k est-token governance cycle-load
+set. The build plan's Success clause set a floor of ≥45% reduction, targeting 50%, alongside a
+hard no-drop constraint (no rule, gate semantics, or checkable bar may be lost — Complete
+Delivery outranks the number). The 45–50% figure came from a global intuition that priced
+*triplication* — the mode×type matrix and stance prose repeated across three surfaces — as the
+bulk of the mass.
+
+What actually happened across three chunks: structural single-sourcing + editorial compression +
+folding five instruction surfaces landed the corpus at 36,991 → 25,789 est tokens, **−30.3%**,
+measured with the test suite's `words × 1.3` estimator. The cumulative Critic flagged this as
+BLOCKING against the ≥45% floor. Root-cause, chaining the whys: (1) single-sourcing the
+triplicated matrices recovered only ~3–4k est tokens, not the assumed bulk — the repetition was a
+small fraction of total mass; (2) the corpus's true composition is rule-dense — single-statement
+rules, irreducible behavior tables, and deliberate weaker-model anchors that the no-drop
+constraint forbids compressing further; (3) ~2.6k est tokens of in-set two-reviewer chain
+machinery had already been carved out to a separate backlog item (review Overbuilt #4) by the plan
+itself; (4) the same review program had earlier certified `review-protocol.md` already lean —
+evidence the 50% prior had ignored.
+
+Resolution: the owner chose to amend the Success floor to the honest achieved −30.3% rather than
+direct a further compression pass (whose realistic yield was ~3–5 more points, approaching rule
+loss). This confirmed the provisional lesson recorded at chunk close: a reduction floor set above
+honest reach, over a corpus with a no-drop constraint, is not a stretch goal — it is a latent
+Complete-Delivery violation that detonates at close-out, when the only ways to "hit the number"
+are to drop a load-bearing rule or to miss your own acceptance criterion. The number is a
+*measurement of rule density*, not a measure of remaining waste.
+
+The cheap prevention: before writing a quantitative reduction floor under a no-drop constraint,
+take a per-file compressibility sample — pick 2–3 representative files, estimate honest achievable
+compression on each (what's redundant vs. what's irreducible rule text), and derive the corpus
+floor from that bottom-up estimate. Record the floor as a vetoable assumption with its derivation,
+not as an aspiration handed down from a global "should be halvable" feel. Relates to Complete
+Delivery (#2 — the number must never outrank preservation), Reasoned Decisions (#4 — a floor needs
+a derivation), Honest Confidence (#5 — distinguish a measured estimate from an intuition), and
+Proportional Effort (#11 — a sampling step is cheap insurance against a close-out trade-off).
