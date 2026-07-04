@@ -276,7 +276,9 @@
   but added no concrete avoid/prefer example for "strengthening the dynamic generation system".
   (5) backlog SKILL pick: the diet only repointed the discovery/planning routes to
   /prawduct:methodology; the score line documents missing→2 ("unknown-middle") but not the
-  combined 2/2 = 1.0 effect, and the stale "(Q6)" label remains. (6) untouched. Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
+  combined 2/2 = 1.0 effect, and the stale "(Q6)" label remains. (6) untouched.
+
+- **[MET-5C2H]** Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
   `effort: M · impact: L · area: methodology · source: user · added: 2026-06-08 · status: open · stage: research`
 
   The per-file token-budget tests (`building.md` <4850, critic `review-protocol.md` <3120) are proxies for
