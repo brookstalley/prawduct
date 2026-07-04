@@ -106,9 +106,9 @@ numbered principles are test-pinned; only stance-overlap trimming inside bodies)
 
 ## Status
 
-- [ ] Chunk 01: Structural moves — reconcile, single-source, filled-example template
-- [ ] Chunk 02: Editorial compression pass over the cycle-load prose
-- [ ] Chunk 03: Fold the redundant surfaces (delegators, agent-stance) + advisor-first digest
+- [x] Chunk 01: Structural moves — reconcile, single-source, filled-example template
+- [x] Chunk 02: Editorial compression pass over the cycle-load prose
+- [x] Chunk 03: Fold the redundant surfaces (delegators, agent-stance) + advisor-first digest
 Context: Chunks 01+02 done 2026-07-03 (45c152a, 259e5d2; Critic-clean). Chunk 03 COMPLETE
 and cumulative-reviewed (b4d569e + close-out commits). The cumulative Critic's 1 BLOCKING —
 measured reduction 36,991 → 25,789 est tokens (−30.3%) vs the ≥45% acceptance floor — was

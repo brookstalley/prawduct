@@ -43,7 +43,7 @@ evidence; the code paths are small, pure, and fully test-covered.
 
 ## Status
 
-- [ ] Chunk 01: Work-model tripwire — maintenance-verb split + recursive doc corpus
+- [x] Chunk 01: Work-model tripwire — maintenance-verb split + recursive doc corpus
 Context: Chunk 01 built and committed (e4234b9) 2026-07-02; cumulative Critic clean
 (no blocking/warning; the one NOTE — backlog closure — actioned on-branch: GOV-7T2M
 archived shipped, WMK-4Q9T narrowed to its tokenizer residual, WMK-7D3R noted).

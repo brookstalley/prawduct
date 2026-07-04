@@ -70,7 +70,7 @@ have no plan file and are legitimately historical (the existing exemption is cor
 
 ## Status
 
-- [ ] Chunk 01: Fail-loud tag validation — roster check, tolerant chunk IDs, `--check`
+- [x] Chunk 01: Fail-loud tag validation — roster check, tolerant chunk IDs, `--check`
 Context: Chunk 01 built 2026-07-02; suite 1529/0; live checks pass (--check clean on
 HEAD, regen idempotent, scratch corruption errors loudly exit 2 nothing written,
 chunks=1 vs Chunk 01 tolerant-validates). Checkbox flips at release via regen-views

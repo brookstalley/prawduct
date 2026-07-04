@@ -5,7 +5,7 @@
 
 ## 2026-07-03: prose diet — reconcile, single-source, compress, fold (prose-diet)
 
-<!-- prawduct: chunks=01,02,03 | type=improvement | scope=prose-diet | status=merged -->
+<!-- prawduct: chunks=01,02,03 | type=improvement | scope=prose-diet | release=v2.3.0 | status=shipped -->
 
 **Why:** Wave 1 Plan C of the owner-accepted efficiency-review fix program
 (`framework-efficiency-review-2026-07-02.md`, MET-3Q8V, Overbuilt #3). The governance
@@ -57,7 +57,7 @@ MET-3Q8V archived shipped.
 
 ## 2026-07-02: fail-loud change-log tag validation + tolerant chunk IDs + regen-views --check (changelog-fail-loud)
 
-<!-- prawduct: chunks=01 | type=feature | scope=changelog-fail-loud | status=merged -->
+<!-- prawduct: chunks=01 | type=feature | scope=changelog-fail-loud | release=v2.3.0 | status=shipped -->
 
 **Why:** Wave 1 Plan B of the owner-accepted efficiency-review fix program
 (`.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`, VWS-6R4T, Overbuilt #2).
@@ -89,7 +89,7 @@ vocabulary" clause is descoped to REL-4Q9V (recorded HIGH-impact assumption in t
 
 ## 2026-07-02: work-model tripwire — maintenance-verb split + recursive doc corpus (gate-noise)
 
-<!-- prawduct: chunks=01 | type=bugfix | scope=gate-noise | status=merged -->
+<!-- prawduct: chunks=01 | type=bugfix | scope=gate-noise | release=v2.3.0 | status=shipped -->
 
 **Why:** Wave 1 Plan A of the owner-accepted efficiency-review fix program
 (`.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`, GOV-7T2M). The

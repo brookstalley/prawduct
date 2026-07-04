@@ -5,6 +5,28 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.3.0
+
+### prose-diet
+
+**Entry:** 2026-07-03: prose diet — reconcile, single-source, compress, fold (prose-diet)
+
+**Chunks shipped:** 01, 02, 03
+
+### changelog-fail-loud
+
+**Entry:** 2026-07-02: fail-loud change-log tag validation + tolerant chunk IDs + regen-views --check (changelog-fail-loud)
+
+**Chunks shipped:** 01
+
+### gate-noise
+
+**Entry:** 2026-07-02: work-model tripwire — maintenance-verb split + recursive doc corpus (gate-noise)
+
+**Chunks shipped:** 01
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.2.3
 
 **Entry:** 2026-06-26: kill the test-evidence double-run at its source + a non-JUnit on-ramp (test-evidence-single-run)
