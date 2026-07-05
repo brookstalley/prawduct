@@ -153,7 +153,7 @@ cd prawduct
 claude --plugin-dir . --add-dir .
 ```
 
-This repo is governed by its own plugin — it dogfoods itself. The `--add-dir .` (same path) lets methodology-reading skills (`/prawduct:building`, `/prawduct:critic`, `/prawduct:planning`) load their bundled guides from the out-of-tree plugin; a real marketplace install grants that automatically. See [docs/release-process.md](docs/release-process.md) for the gitflow release model and the release checklist.
+This repo is governed by its own plugin — it dogfoods itself. The `--add-dir .` (same path) lets methodology-reading skills (`/prawduct:methodology building`, `/prawduct:critic`, `/prawduct:methodology planning`) load their bundled guides from the out-of-tree plugin; a real marketplace install grants that automatically. See [docs/release-process.md](docs/release-process.md) for the gitflow release model and the release checklist.
 
 ## Q&A
 

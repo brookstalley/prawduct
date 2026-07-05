@@ -76,113 +76,15 @@ class TestBuildingMethodology:
         assert "/prawduct:backlog" in self.content
 
     def test_token_budget(self):
-        # Bumped from 3900 → 4100 in v1.3.13 (proportional Critic / chunk vs.
-        # final modes). The Modes subsection, mode-aware Critic invocation, and
-        # "Skipping final mode" Common Trap add ~120 tokens of essential
-        # documentation after aggressive trimming. If this test fails again,
-        # prefer trimming over another bump.
-        #
-        # Bumped from 4100 → 4250 in v1.3.15 (Requirements Precede Code).
-        # The new "Before You Build: Confidence Check" section anchors
-        # Principle 6 in the build cycle — three questions, three response
-        # options. Trimmed to ~100 tokens (5 sentences) before bumping.
-        # Further trimming would lose the pedagogical structure the section
-        # depends on. If this test fails again, prefer trimming over another
-        # bump.
-        #
-        # Bumped from 4250 → 4275 in v1.4 Chunk 05 (F1a derived views). The
-        # chunk-close step gains a one-clause pointer that Status may be a
-        # derived view (~13 tokens) — needed so methodology readers know the
-        # full guidance lives in change-log.md schema and product-claude.md
-        # step 10. Trimmed to a parenthetical before bumping.
-        #
-        # Bumped from 4275 → 4375 in v1.4 Chunk 09 (F4b — Critic symbol-coverage
-        # check + methodology principle). The chunk's spec required a new
-        # paragraph under Test Discipline naming the floor verifier, the
-        # `coverage_level` contract, and the `verify-coverage` Critic check
-        # (~75 tokens after aggressive trimming — the floor-vs-executed
-        # distinction is the chunk's reason for existing). If this test
-        # fails again, prefer trimming over another bump.
-        #
-        # Bumped from 4375 → 4400 in v1.4 Chunk 14 (F10 — operator-verification
-        # queue + /pr BLOCKING gate). The chunk-close step gains a one-sentence
-        # pointer naming the queue file, the `Visual change:` declaration, and
-        # the `operator_verification_required` flag — trimmed to ~30 tokens
-        # before bumping by 25. The new chunk-close step is required by the
-        # v1.4 maintenance plan (methodology pipeline coverage); folding it
-        # into "Update build plan Status" was rejected because the enqueue
-        # action is conceptually separate from marking the chunk shipped.
-        #
-        # Bumped from 4400 → 4450 in v1.5 Chunk 03 (`/critic` no-arg mode
-        # inference). The Critic-review step gains the inference invocation
-        # contract — name the helper (`tools/product-hook infer-critic-mode`),
-        # the persisted field (`mode_chosen_by`), the override path, and the
-        # failure fallback (`final`). Trimmed to ~20-token delta over the
-        # original phrasing before bumping; further trimming would lose
-        # either the helper name or the override-reporting protocol that
-        # makes inference tunable. If this test fails again, prefer trimming
-        # over another bump.
-        #
-        # Bumped 4450 → 4560 in evidence-deferral Chunk 02 (STH-3W7F floor):
-        # the Gate-waivers step gains a new, distinct governance clarification —
-        # in-flight background work is NOT a waiver case (wait, don't waive;
-        # waiving skips the Critic the completed work needs). The addition was
-        # already halved (~196 → ~103 tokens) before this bump; the four
-        # remaining sentences are each load-bearing (the rule, why waiving is
-        # wrong, that the block is expected, and the STH-3W7F pointer). The file
-        # sat at the prior ceiling, so a new clarification cannot be added by
-        # trimming itself; trimming UNRELATED prose to fit would violate Scope
-        # Discipline. If this test fails again, prefer trimming over another bump.
-        #
-        # Bumped 4560 → 4650 in cleanup-batch Chunk 06 (MET-7H2D — multi-hop test
-        # guidance). Test Discipline gains one tight bullet: when tested behavior
-        # depends on a SUBSEQUENT invocation (accumulator/coordinator/cursor/retry),
-        # exercise a step beyond the immediate post-state (~46 words / ~50 tokens).
-        # The file already sat at the 4560 ceiling (the evidence-deferral STH-3W7F
-        # clause consumed the prior headroom), so the addition cannot be made by
-        # trimming itself, and trimming UNRELATED prose to fit would violate Scope
-        # Discipline. The bullet is the chunk's whole deliverable and is already
-        # minimal. If this test fails again, prefer trimming over another bump.
-        #
-        # Bumped 4650 → 4720 in rigor-and-stance Chunk 01 (requirements-rigor
-        # model). "Before You Build" gains a terse intentional-inference clause
-        # (fill + record a vetoable assumption; surface only consequential,
-        # unverifiable unknowns, early) + a Plan Mode pointer, and "Decision
-        # Research" gains **volatility** as a major-decision trigger with the
-        # knowledge-vs-volatility remedy split. The CANONICAL model (the
-        # stakes/knowledge/volatility self-assessment, the `[ASSUMPTION: …]`
-        # format, and the Zig / Claude Code / versions examples) was deliberately
-        # placed in discovery.md (which has token headroom) to MINIMIZE this
-        # delta — building.md carries only condensed operational pointers. The
-        # residual ~45 tokens are irreducible without dropping a concept;
-        # trimming UNRELATED prose to fit would violate Scope Discipline. If this
-        # test fails again, prefer trimming over another bump.
-        #
-        # Bumped 4720 → 4850 in work-model Chunk 3 (undocumented-requirement
-        # catch). building.md gains the "A Requirement Surfaced Mid-Build"
-        # callout — the operational tripwire list + triggered response that the
-        # session digest and principles.md §6 both point to BY NAME (so the
-        # section must exist here, its natural build-time home). Condensed hard
-        # first (bulleted list collapsed to one inline sentence, intro halved:
-        # ~230 → ~122 tokens); the file already sat at the 4720 ceiling, so the
-        # irreducible remainder cannot be absorbed by trimming itself, and
-        # trimming UNRELATED prose to fit would violate Scope Discipline (the
-        # rigor-and-stance precedent). If this test fails again, prefer trimming
-        # over another bump.
-        #
-        # Bumped 4850 → 4950 in worktree-compat Chunk 02 (STH-4K7N). building.md
-        # gains the "Working in a git worktree" callout — a genuinely-new, named
-        # methodology concept a build-cycle reader needs (work cycles compose in a
-        # worktree; run /critic and /pr from there; the mid-session-enter marker
-        # edge). Condensed hard first, with the CANONICAL operational detail placed
-        # in the headroom skill files (skills/critic/SKILL.md, skills/pr/SKILL.md)
-        # so building.md carries only the condensed pointer; partly offset by
-        # deleting a verbatim-duplicate sentence ("Conversation context is
-        # ephemeral; artifacts persist." also lives in "Persist plans
-        # immediately"). The residual is irreducible without dropping the concept,
-        # and trimming UNRELATED prose to fit would violate Scope Discipline.
+        # Lowered 4950 -> 4600 in prose-diet Chunk 02 (MET-3Q8V): the editorial
+        # compression pass cut building.md to ~4173 est tokens; the ceiling is
+        # post-diet +10% and exists to LOCK THE DIET IN. The bump-history
+        # narrative that used to live here is in git; the standing posture is
+        # unchanged: prefer trimming over bumping, place canonical detail in
+        # the file that owns the concept (discovery.md for rigor, review-cycle
+        # for per-mode behavior) and keep building.md to condensed pointers.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4950, f"building.md is ~{tokens} tokens, should be <4950"
+        assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 
 
 # =============================================================================
@@ -214,6 +116,40 @@ class TestOtherMethodology:
         assert "phase transition" not in content.lower()
         assert "learnings.md" in content
         assert "learnings-detail.md" in content
+
+
+# =============================================================================
+# Methodology prose hygiene (prose-diet Chunk 02)
+# =============================================================================
+
+
+class TestMethodologyProseHygiene:
+    """Methodology guides teach the method; implementation narration belongs in
+    git history. Two classes the prose-diet removed and this test keeps out:
+    internal bug-ID citations (CRT-/STH-/TST-style tags meaningless to product
+    builders) and set-theory glyphs weaker models parse unreliably. Scope is
+    methodology/*.md only — skills/critic may keep operational IDs where a gate
+    message names them (e.g. the CRT-4J8W chain)."""
+
+    METHODOLOGY_GUIDES = [
+        "methodology/building.md",
+        "methodology/discovery.md",
+        "methodology/planning.md",
+        "methodology/reflection.md",
+    ]
+
+    @pytest.mark.parametrize("rel_path", METHODOLOGY_GUIDES)
+    def test_no_bug_id_citations(self, rel_path: str):
+        import re
+        content = read_file(rel_path)
+        hits = re.findall(r"\b(?:CRT|STH|TST|MET|STN|PRW|REL)-[0-9A-Z]{4}\b", content)
+        assert not hits, f"{rel_path} carries internal bug-ID citations: {hits}"
+
+    @pytest.mark.parametrize("rel_path", METHODOLOGY_GUIDES)
+    def test_no_set_theory_glyphs(self, rel_path: str):
+        content = read_file(rel_path)
+        glyphs = [g for g in ("∪", "⊇", "⊆", "∈", "∅") if g in content]
+        assert not glyphs, f"{rel_path} carries set-theory glyphs: {glyphs}"
 
 
 # =============================================================================
@@ -298,68 +234,12 @@ class TestCriticSkill:
         assert "Instruction Clarity" in self.content
 
     def test_token_budget(self):
-        # Bumped from 3500 → 3700 in v1.3.13 (proportional Critic / chunk vs.
-        # final modes). The Modes section, activation step, goal preamble, and
-        # JSON `mode` field add ~150 tokens of essential documentation for the
-        # new feature.
-        #
-        # Tightened from 3700 → 3200 in v1.4 Chunk 00 (SKILL.md trim-pass).
-        # The Coordinator Pattern was deduplicated, Goal 7's state-modeling
-        # paragraph was condensed, and final-mode-only sections (Learnings
-        # Cross-Check, Backlog Reconciliation) moved to review-cycle.md.
-        # The 500-token reduction in ceiling (not slack — actual slack
-        # against <3200 is small) is reserved for v1.4's F2/F3/F4/F6 Critic
-        # protocol additions. Future Critic prose additions should prefer
-        # `review-cycle.md` (per-mode behavior) or `framework-checks.md`
-        # (framework-only checks). If this test fails again, prefer trimming
-        # over another bump — the Critic skill is loaded fresh on every
-        # invocation and the budget bounds that cost.
-        #
-        # Bumped from 3200 → 3250 in v1.4 Chunk 05 (F1a derived views). Goal 4
-        # gains a "Derived views" bullet that pins the Critic's behavior when
-        # `views_enabled` is true — the change-log tag line, not the regenerated
-        # Status checkbox, is canonical. The check is structural (not a check
-        # the per-product critic-review.md can carry alone, since framework
-        # Critic reviews read SKILL.md directly), and was trimmed to ~35
-        # tokens before bumping.
-        #
-        # Bumped from 3250 → 3325 in v1.4 Chunk 09 (F4b — Critic symbol-coverage
-        # check). Goal 1 gains a `verify-coverage` bullet that maps the helper's
-        # exit codes and stderr-line format to BLOCKING findings, scaled to
-        # `coverage_level` (~50 tokens after aggressive trimming). This is one
-        # of the F4 protocol additions the Chunk 00 trim-pass explicitly
-        # reserved budget for. If this test fails again, prefer trimming over
-        # another bump.
-        #
-        # Lowered from 3325 → 3050 in v1.5 Chunk 00 (Critic proportionality
-        # release). 524-token trim across When-You-Are-Activated, Goal 1,
-        # Goal 4, Goal 7 ("Unmodeled state-based problems" reduced from
-        # ~325 → ~95 tokens), Severity Levels, and Coordinator dispatch
-        # prompt — compression only, no content removed.
-        #
-        # Raised 3050 → 3120 in v2.0.0 Chunk 13: this now measures the plugin's
-        # `skills/critic/review-protocol.md` (the canonical Critic protocol; the
-        # legacy `agents/critic/SKILL.md` was removed when this repo cut over to
-        # the plugin). Its content is identical to the old file; the ~12-token
-        # delta is purely longer plugin-native path strings (`prawduct-hook` vs
-        # `tools/product-hook`, `${CLAUDE_SKILL_DIR}/../../docs/principles.md` vs
-        # `docs/principles.md`) — a one-time structural cost, not content bloat.
-        # ~50-token headroom retained. Continue preferring trim over bump.
-        #
-        # Raised 3120 → 3350 in the v2.1.x review-streamlining track: the file
-        # hit 3116/3120 — 4 tokens, an operational zero. An audit found it LEAN,
-        # not bloated: every goal bullet is a specific, severity-mapped check,
-        # already compressed across many passes; the one relocatable block (the
-        # findings-JSON field glossary at the "Record findings" section) is
-        # genuinely useful inline next to its template, so moving it purely to
-        # clear the number would fragment the instructions — the anti-pattern
-        # this budget exists to prevent. And the ceiling is only ~1-2% of a
-        # medium/large review's token cost (4-10 min of opus over a full diff +
-        # 3 subagents), so it's an anti-bloat DISCIPLINE knob, not a material
-        # cost control — and the discipline lives just as well at a higher
-        # number. +230 tokens ≈ room for 3-4 future checks. Posture UNCHANGED:
-        # prefer trim over bump, and relocate per-mode/record detail to
-        # review-cycle.md before adding here. If this fails again, trim first.
+        # Ceiling 3350 (unchanged by prose-diet Chunk 02): a prior audit found
+        # this file LEAN -- every goal bullet is a specific, severity-mapped
+        # check -- so the diet only removed citation tags (~3212 est tokens
+        # after). 3350 already binds tighter than the diet's post-diet +10%
+        # formula, so it stands. Posture: prefer trim over bump; relocate
+        # per-mode/record detail to review-cycle.md before adding here.
         tokens = estimate_tokens(self.content)
         assert tokens < 3350, f"review-protocol.md is ~{tokens} tokens, should be <3350"
 

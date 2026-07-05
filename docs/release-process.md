@@ -74,16 +74,22 @@ When `develop` is ready to release as `vX.Y.Z`:
    ```
    <!-- prawduct: chunks=01,02,… | release=vX.Y.Z | status=shipped | scope=<plan-scope> -->
    ```
-4. **Regenerate derived views:** `prawduct-hook regen-views`. With `views_enabled`, the build
+4. **Regenerate derived views:** run `prawduct-hook regen-views --check` first — the
+   pre-flight validates every change-log tag against the plan roster without writing
+   anything (exit 2 + ERROR lines name any tag that would fail to flip); fix errors, then
+   run `prawduct-hook regen-views` for real. With `views_enabled`, the build
    plans' `## Status` checkboxes, release notes, and `scope_rollups` are a *derived view* of
    the change-log's `status=shipped` entries — they flip to `[x]` only at this release step.
    Do **not** hand-edit the checkboxes; `regen-views` would revert the edit.
    **Batched releases (multiple scopes in one version):** a single `regen-views` now regenerates
    the `## Status` of **every** release-pending plan in one pass — it enumerates each distinct
    `scope=` in the change-log (`status` ∈ {`shipped`, `merged`}) and resolves it to its build-plan
-   file via that plan's frontmatter `scope:` (REL-4T8N). You no longer point `active_build_plan` at
-   each plan in turn and re-run per scope. A `status=merged` scope with no matching plan file is
-   reported on stderr and skipped (not fatal).
+   file via that plan's frontmatter `scope:` (REL-4T8N). Validation is fail-closed (VWS-6R4T):
+   an unrecognized `status=`, a `chunks=` ID missing from its plan's `## Status` roster, an
+   unreleased scope with no matching plan file, a duplicate `scope:` across plan files, or
+   conflicting tag lines aborts the whole regen (exit 2, nothing written) — no silent partial
+   flips. Chunk-ID matching is tolerant (`chunks=1` flips `Chunk 01`; case and `-`/`_`
+   variants match).
 5. **Tag the release:** `git tag vX.Y.Z` (and push the tag).
 6. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
@@ -98,7 +104,7 @@ Two values are meaningful to the release flow:
   (merge-flow step 6 runs `prawduct-hook stamp-merged` on the integration branch); a
   **statusless tagged entry on the integration branch therefore means the stamp was
   missed**, not that the work is unmerged — step 3 flips it to `shipped` all the same, and
-  `regen-views` warns when such an entry's `scope=` resolves to no plan file.
+  `regen-views` fails loudly (exit 2) when such an entry's `scope=` resolves to no plan file.
   `regen-views` does **not** flip checkboxes for `merged` entries, so the
   build plan's `## Status` stays `[ ]` and the `active_build_plan` pointer is retained until the
   release (see "KEEP the build plan" in `learnings.md` and the `active_build_plan` note in
@@ -108,11 +114,12 @@ Two values are meaningful to the release flow:
 - **`status=shipped`** — the work is in a tagged release. This is the **only** value that
   `regen-views` flips to `[x]` (in `## Status`, release notes, and `scope_rollups`).
 
-Any other `status=` value (including a typo) is treated like "not shipped" — the entry never
-flips its checkboxes — but `regen-views` surfaces it as a stderr WARNING (the VWS-3K7P
-typo-guard), alongside warnings for entries with multiple tag lines (unioned, VWS-4D8J) and for
-unreleased entries whose `scope=` resolves to no plan file. Treat any `regen-views` WARNING at
-release time as a release-process error to fix before tagging.
+Any other `status=` value (including a typo) is a **fatal validation error** (VWS-6R4T,
+promoting the VWS-3K7P typo-guard): `regen-views` exits 2 with an ERROR line and writes
+nothing, as it does for a `chunks=` ID missing from its plan's roster, an unreleased scope
+with no plan file, duplicate scopes, or conflicting tag lines. Entries with multiple
+non-conflicting tag lines are still unioned with a stderr WARNING (VWS-4D8J) — fix the
+format, but the output is correct. Run `regen-views --check` before tagging; it must exit 0.
 
 ## Step 1 mechanics — promoting when `develop` and `main` have diverged
 

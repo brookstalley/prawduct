@@ -28,9 +28,8 @@ DIGEST_HOOK = ROOT / "hooks" / "digest.py"
 DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
 SLIM_DIGEST_SRC = ROOT / "methodology" / "session-digest-slim.md"
 
-# The four methodology guides, each surfaced by a phase reader skill.
+# The four methodology guides, read via `/prawduct:methodology <topic>`.
 PHASES = ("building", "discovery", "planning", "reflection")
-READER_SKILLS = ("methodology", *PHASES)
 
 # Claude Code spills additionalContext over this many characters to a file
 # instead of injecting it inline. The digest must stay comfortably under it.
@@ -146,7 +145,7 @@ class TestDigestHook:
     def test_digest_points_at_load_bearing_readers(self):
         ctx = json.loads(_run_digest(ROOT).stdout)["hookSpecificOutput"]["additionalContext"]
         # The digest's job is to route to on-demand guidance and name the gate.
-        assert "/prawduct:building" in ctx, "must point to the read-before-coding guide"
+        assert "/prawduct:methodology building" in ctx, "must point to the read-before-coding guide"
         assert "/prawduct:methodology" in ctx, "must point to the methodology index"
         assert "Critic" in ctx and "Stop hook" in ctx, "must name the enforcement"
 
@@ -155,7 +154,7 @@ class TestDigestHook:
         # Whatever variant a session receives, it must route to the
         # read-before-coding guide, the index, and name the enforcement.
         text = src.read_text(encoding="utf-8")
-        assert "/prawduct:building" in text
+        assert "/prawduct:methodology building" in text
         assert "/prawduct:methodology" in text
         assert "Critic" in text and "Stop hook" in text
 
@@ -343,67 +342,78 @@ class TestDigestWiring:
 
 
 class TestReaderSkills:
-    @pytest.mark.parametrize("skill", READER_SKILLS)
-    def test_skill_has_description_frontmatter(self, skill):
-        text = (ROOT / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
-        assert text.startswith("---"), f"{skill}/SKILL.md must open with frontmatter"
+    """prose-diet Chunk 03 folded the four thin delegator skills
+    (skills/{building,discovery,planning,reflection}) into the methodology
+    index — one reader skill, four canonical guides, zero duplicate routing
+    surfaces. These tests pin the folded shape."""
+
+    def test_methodology_index_has_description_frontmatter(self):
+        text = (ROOT / "skills" / "methodology" / "SKILL.md").read_text(encoding="utf-8")
+        assert text.startswith("---"), "methodology/SKILL.md must open with frontmatter"
         front = text.split("---", 2)[1]
-        assert "description:" in front, f"{skill} skill requires a description"
+        assert "description:" in front, "methodology skill requires a description"
 
     @pytest.mark.parametrize("phase", PHASES)
-    def test_phase_reader_points_at_canonical_source(self, phase):
-        text = (ROOT / "skills" / phase / "SKILL.md").read_text(encoding="utf-8")
-        ref = f"${{CLAUDE_SKILL_DIR}}/../../methodology/{phase}.md"
-        assert ref in text, f"{phase} reader must read the canonical {ref}"
-        # The traversal target must actually exist at the plugin root (one source).
-        target = ROOT / "skills" / phase / ".." / ".." / "methodology" / f"{phase}.md"
-        assert target.resolve() == (ROOT / "methodology" / f"{phase}.md").resolve()
-        assert target.is_file()
-
-    @pytest.mark.parametrize("phase", PHASES)
-    def test_phase_reader_holds_no_local_copy(self, phase):
-        # Single source of truth: the reader points at the plugin-root guide and
-        # does NOT bundle its own duplicate (which would drift).
-        skill_dir = ROOT / "skills" / phase
-        assert not (skill_dir / f"{phase}.md").exists(), (
-            f"{phase} skill must not carry a local methodology copy"
+    def test_delegator_skill_stays_deleted(self, phase):
+        # The fold is one-way: a re-created skills/<phase>/ delegator would
+        # resurrect the duplicate surface the diet removed.
+        assert not (ROOT / "skills" / phase).exists(), (
+            f"skills/{phase}/ was folded into /prawduct:methodology {phase}; "
+            "do not re-create the delegator"
         )
 
-    def test_index_routes_to_every_guide(self):
+    @pytest.mark.parametrize("phase", PHASES)
+    def test_index_routes_to_canonical_source(self, phase):
+        # The index is now the reader: it must route each topic to the
+        # canonical plugin-root guide, and that guide must exist.
         text = (ROOT / "skills" / "methodology" / "SKILL.md").read_text(encoding="utf-8")
-        for phase in PHASES:
-            assert f"methodology/{phase}.md" in text, f"index must route to {phase}"
+        ref = f"${{CLAUDE_SKILL_DIR}}/../../methodology/{phase}.md"
+        assert ref in text, f"methodology index must read the canonical {ref}"
+        assert (ROOT / "methodology" / f"{phase}.md").is_file()
+
+    def test_index_routes_to_principles(self):
+        text = (ROOT / "skills" / "methodology" / "SKILL.md").read_text(encoding="utf-8")
         assert "docs/principles.md" in text, "index must route to the principles"
-        assert "methodology/agent-stance.md" in text, "index must route to the agent stance"
+
+    def test_index_carries_stop_before_code_line(self):
+        # The building delegator's load-bearing line survives the fold here.
+        text = (ROOT / "skills" / "methodology" / "SKILL.md").read_text(encoding="utf-8")
+        assert "before writing ANY code" in text or "before writing any code" in text
 
 
 class TestAgentStance:
-    """The agent stance (rigor-and-stance Chunk 02) operationalizes the principles
-    into communication/conduct. Its canonical home is methodology/agent-stance.md;
-    the always-on session digest carries a condensed version. The digest is the
-    carrier (not a plugin Output Style) because a force-for-plugin output style
-    HARD-OVERRIDES a consumer's own style and doesn't compose, whereas the
-    SessionStart digest is unconditional AND composable (verified against the
-    Claude Code output-styles docs during design)."""
+    """The agent stance operationalizes the principles into communication and
+    conduct. prose-diet Chunk 03 (STN-4W7R part a) made the always-injected
+    session digest its SOLE operational surface — methodology/agent-stance.md
+    was folded away — and reframed it advisor-first: the expert take (risks,
+    stronger/simpler alternative, recommendation) leads; compliance is second.
+    The digest is the carrier (not a plugin Output Style) because a force-for-
+    plugin output style hard-overrides a consumer's own style and doesn't
+    compose, whereas the SessionStart digest is unconditional AND composable."""
 
-    STANCE_SRC = ROOT / "methodology" / "agent-stance.md"
+    def test_long_form_stance_doc_stays_deleted(self):
+        assert not (ROOT / "methodology" / "agent-stance.md").exists(), (
+            "agent-stance.md was folded into the digest stance block; "
+            "do not re-create the long form"
+        )
 
-    def test_stance_doc_exists_and_nonempty(self):
-        assert self.STANCE_SRC.is_file(), "agent-stance.md must be bundled"
-        assert self.STANCE_SRC.read_text(encoding="utf-8").strip()
-
-    def test_stance_doc_links_to_principles(self):
-        # The stance operationalizes the principles, so it must point back at them.
-        assert "principles.md" in self.STANCE_SRC.read_text(encoding="utf-8")
+    def test_digest_leads_advisor_first(self):
+        digest = DIGEST_SRC.read_text(encoding="utf-8")
+        assert "expert take" in digest, "stance block must lead advisor-first"
+        assert "compliance second" in digest
 
     def test_digest_carries_condensed_stance(self):
-        # The always-on digest is the stance's reach-every-session carrier: it must
-        # point at the full doc and carry the condensed directives (tolerant
-        # substring checks, mirroring TestCommitAttributionDefault).
+        # The always-on digest is the stance's reach-every-session carrier:
+        # the checkable bars survive the fold (tolerant substring checks).
         digest = DIGEST_SRC.read_text(encoding="utf-8")
-        assert "agent-stance.md" in digest, "digest must point at the full stance doc"
         assert "Verify, don't guess" in digest, "digest must carry the condensed stance"
         assert "Stress-test before agreeing" in digest
+        assert "principles.md" in digest, "stance block must point back at the principles"
+
+    def test_slim_digest_carries_condensed_stance(self):
+        slim = SLIM_DIGEST_SRC.read_text(encoding="utf-8")
+        assert "expert take" in slim
+        assert "Verify, don't guess" in slim
 
     def test_digest_carries_rigor_scaling(self):
         # rigor-and-stance Chunk 03 (digest sweep): the always-on layer carries the

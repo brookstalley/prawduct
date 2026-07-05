@@ -137,8 +137,10 @@ class TestAllPluginSkillFrontmatter:
 
     def test_skills_directory_is_populated(self):
         names = {p.parent.name for p in ALL_SKILLS}
-        # The three skills the Chunk-6 bug broke must be in scope of this guard.
-        assert {"discovery", "planning", "reflection"} <= names
+        # Core skills must be in scope of this guard. (The original trio the
+        # Chunk-6 bug broke — discovery/planning/reflection delegators — was
+        # folded into /prawduct:methodology by the prose-diet.)
+        assert {"methodology", "critic", "backlog"} <= names
 
     @pytest.mark.parametrize("skill", ALL_SKILLS, ids=lambda p: p.parent.name)
     def test_frontmatter_parses_with_nonempty_description(self, skill):

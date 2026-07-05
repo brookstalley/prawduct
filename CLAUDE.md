@@ -123,7 +123,7 @@ only the thin governance anchor.
 
 ## The Learning Loop
 
-Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is fresh. Append to `.prawduct/.session-reflected` as you go. By the time the user says `/clear`, reflection is already captured and the handoff is fast.
+Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is fresh. Append to `.prawduct/.session-reflected` as you go. The stop hook enforces only a session-end floor (a reflection exists), not this cadence — by the time the user says `/clear`, reflection should already be captured and the handoff fast.
 
 After every significant action:
 
@@ -174,7 +174,7 @@ When compacting this conversation, preserve:
 - The instruction to re-read CLAUDE.md after compaction
 - The requirement to read `methodology/building.md` before writing any code
 - The requirement for Critic review after each chunk (invoke via `/prawduct:critic`; the stop hook enforces this)
-- The requirement for reflection before session end (the stop hook enforces this)
+- The requirement for reflection at work boundaries (the stop hook enforces only the session-end floor)
 - Any in-progress learnings not yet captured
 
 Do NOT inline methodology file contents during compaction. They are read on demand — summarize what was learned from them, but reference the file path for re-reading.

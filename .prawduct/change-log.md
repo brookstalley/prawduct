@@ -3,6 +3,121 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-03: prose diet — reconcile, single-source, compress, fold (prose-diet)
+
+<!-- prawduct: chunks=01,02,03 | type=improvement | scope=prose-diet | release=v2.3.0 | status=shipped -->
+
+**Why:** Wave 1 Plan C of the owner-accepted efficiency-review fix program
+(`framework-efficiency-review-2026-07-02.md`, MET-3Q8V, Overbuilt #3). The governance
+cycle loaded ~28.5k words of prose that triplicated the mode×type matrix and the stance,
+stated the final-mode fallback 5 ways, contradicted itself in 5 documented places, shipped
+implementation narration (bug-ID citations, hook internals, a parser-bug story inside the
+starter template), and compressed load-bearing rules into sentences weaker models can't parse.
+
+**What:**
+- **Chunk 01 (structural):** contradictions D1–D5 reconciled to read one way at every site
+  (session-cap vs per-chunk review compose; PR readiness not PR action; one canonical
+  fallback statement in `review-cycle.md`; reflection floor ≠ cadence, single explanation in
+  `reflection.md`; discovery counts are "typical shape, not a quota"). D6 single-sourcing:
+  `planning.md` canonical for mode/Type definitions, `review-cycle.md` keeps behavior tables
+  only, template reduced to pointer + field syntax. `templates/build-plan.md` rewritten as a
+  filled example ("Pantry", 2,774 → 1,197 words); parser-bug narrative removed.
+- **Chunk 02 (compression):** the 8 cycle-load prose files rewritten for concision —
+  narration, bug-ID citations, and bump-history deleted; Fable-ese de-compressed; every rule
+  keeps exactly one clear statement. building.md token ratchet lowered 4950 → 4600; new
+  `TestMethodologyProseHygiene` keeps bug-IDs/set-glyphs out of methodology files.
+- **Chunk 03 (fold):** deleted `skills/{building,discovery,planning,reflection}/` and
+  `methodology/agent-stance.md`; `/prawduct:methodology <topic>` is the single reader
+  (absorbing the delegators' load-bearing lines); reference cascade across digests, skills,
+  templates, bin/prawduct-hook ×5, lib ×2, README, MIGRATION, principles.md. Digest stance
+  block rewritten advisor-first (STN-4W7R part a: expert take — risks, stronger/simpler
+  alternative, recommendation — leads; compliance second), 239 words; slim synced.
+
+**Measured outcome (estimator: words × 1.3):** cycle-load set 36,991 → 25,789 est tokens
+(28,455 → 19,838 words), **−30.3%** vs the plan's ≥45% floor (40–45% honest-residue band).
+**The floor is missed and, per the builder's and cumulative Critic's shared assessment,
+cannot be met honestly.** Enumerated residue: (a) ~2.6k est tokens of verify-resolutions
+chain / ledger / scope machinery inside the measured set whose diet is the explicitly
+out-of-scope Overbuilt #4 item; (b) `review-protocol.md` (~3.2k) previously audited LEAN —
+every bullet a severity-mapped check; (c) the behavior tables (mode×type matrix, demotion
+table, per-mode scope) now single-sourced but irreducible; (d) the concrete anchors and
+filled examples the plan's own Wave-3 thesis protects for weaker models; (e) the
+no-dropped-rule hard constraint — the surviving corpus is predominantly single-statement
+rules. Disposition: recorded as a vetoable outcome for the owner — amend the plan's Success
+floor to the honest figure, or direct a further pass (realistic additional yield ~3-5
+points, approaching rule-loss territory).
+
+**Owner decision (2026-07-04): option (a).** The Success and Chunk-03 acceptance floors are
+amended to the achieved **−30.3%**; the no-drop constraint held (no rule, gate semantic, or
+checkable bar dropped). The ≥45%/50% target is recorded as a mispriced intuition — the
+residue above is a measurement of rule density, not remaining waste. Chunk 03 marked `[x]`,
+MET-3Q8V archived shipped.
+
+**Classification:** governance
+
+## 2026-07-02: fail-loud change-log tag validation + tolerant chunk IDs + regen-views --check (changelog-fail-loud)
+
+<!-- prawduct: chunks=01 | type=feature | scope=changelog-fail-loud | release=v2.3.0 | status=shipped -->
+
+**Why:** Wave 1 Plan B of the owner-accepted efficiency-review fix program
+(`.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`, VWS-6R4T, Overbuilt #2).
+The change-log tag DSL's failures were partial and SILENT: a `chunks=` ID that didn't
+literally match the plan's `Chunk <id>:` heading (zero-padding included) simply never
+flipped, a `status=` typo passed with a warning nobody reads, and the documented release
+pre-flight `regen-views --check` didn't exist. This class produced ~12 of this repo's 71
+learnings and broke for trenchant's entire lifespan. The parent's "consider shrinking the
+vocabulary" clause is descoped to REL-4Q9V (recorded HIGH-impact assumption in the plan).
+
+**What:**
+- `lib/views.py` — `normalize_chunk_id()` (case, `-`/`_`, numeric zero-padding) applied to
+  BOTH sides of the checkbox flip; new `validate_chunk_roster()` (every `chunks=` ID on an
+  entry whose `scope=` resolves to a plan file must match that plan's `## Status` roster —
+  shipped entries included, since release-prep flips to shipped BEFORE regen runs); new
+  `validate_tag_conflicts()` (conflicting scalars across tag lines split out of the
+  multiplicity warning — first-wins may pick the wrong value).
+- `bin/prawduct-hook` `cmd_regen_views` — validation is fail-CLOSED: any ERROR (status typo,
+  roster miss, unreleased scope with no plan file, duplicate scope, tag-line conflict)
+  exits 2 with NOTHING written; mere multi-tag-line union stays a WARNING. New `--check`
+  flag: compute + validate + report, write nothing (exit 0 valid / 2 violations) — the
+  release pre-flight two learnings already referenced.
+- `docs/release-process.md` — step 4 opens with the `--check` pre-flight; the two
+  warn-and-proceed sentences updated to the fail-closed contract.
+- Tests: contract change documented — `TestRegenViewsStatusTypoWarning` (warn-and-proceed)
+  rewritten as `TestRegenViewsStatusTypoError` (fail-closed), conflict clause moved from the
+  multiplicity warning test to `TestValidateTagConflicts`; new lib + subprocess coverage for
+  normalization, roster validation, fail-closed writes, and `--check`.
+
+## 2026-07-02: work-model tripwire — maintenance-verb split + recursive doc corpus (gate-noise)
+
+<!-- prawduct: chunks=01 | type=bugfix | scope=gate-noise | release=v2.3.0 | status=shipped -->
+
+**Why:** Wave 1 Plan A of the owner-accepted efficiency-review fix program
+(`.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`, GOV-7T2M). The
+undocumented-requirement tripwire counted maintenance verbs (refactor/rename/redesign/rework/
+remove/replace) as requirement carriers, lowering the firing threshold to a single orphan on
+routine-work prompts — it fired on the owner's own review prompt twice. Separately, the corpus
+glob read only top-level `docs/`/`methodology/` markdown, so governing vocabulary in doc
+subdirectories read as orphan sources. The item's other deliverable — pinning test-evidence
+freshness to the `test-status` exit code in both review protocols — was verified **already
+shipped** in PR #104 (2026-06-22, TST-4K2P) and descoped; the plan records the evidence.
+
+**What:**
+- `lib/work_model_index.py` — verb-set split: `REQUIREMENT_VERBS` drops the six maintenance
+  verbs (they no longer make a prompt requirement-shaped); new `MAINTENANCE_VERBS` holds them,
+  and `find_orphan_terms` exempts the union — a bare drop would have reported
+  rename/redesign/rework (all above the frequency floor) as bogus orphan domain terms.
+- `bin/prawduct-hook` `_work_model_corpus_paths` — `docs/`/`methodology/` globs go recursive
+  (`rglob`). Safe in one direction only: extra corpus vocabulary can only suppress the nudge,
+  never fire it. SessionStart force-rebuilds the index, so no staleness edge from
+  newly-included old files.
+- Tests: 4 new cases (maintenance prompts not requirement-shaped; single-orphan maintenance
+  prompt silent; two-orphan maintenance prompt still fires; maintenance verbs never the
+  orphan) + subdirectory coverage/staleness in the hook corpus tests. Live-hook before/after
+  verified at the repo root: "refactor the noisiest gate" fired on old code, silent on new;
+  "add the noisiest gate" still fires.
+- Baseline repair ridden on this branch: added the missing v2.2.3 `CHANGELOG.md` public-digest
+  entry (release-prep gap; `test_changelog_has_current_version_entry` failed on clean baseline).
+
 ## 2026-06-26: kill the test-evidence double-run at its source + a non-JUnit on-ramp (test-evidence-single-run)
 
 <!-- prawduct: chunks=01,02,03 | type=feature | scope=test-evidence-single-run | release=v2.2.3 | status=shipped -->

@@ -120,10 +120,23 @@ def _in_floor(t: str) -> bool:
 REQUIREMENT_VERBS: frozenset[str] = frozenset(
     """
     add build implement create support integrate migrate introduce extend
-    enable disable remove replace rename refactor redesign rework wire ship
-    write expose persist enforce
+    enable disable wire ship write expose persist enforce
     """.split()
 )
+
+# Maintenance verbs act on what already exists: a refactor/rename directive is
+# routine work, not a new requirement entering undocumented, so these never
+# make a prompt requirement-shaped (gate-noise — the old combined set made the
+# tripwire fire on review/cleanup prompts at the single-orphan threshold).
+# They are still directive vocabulary, so find_orphan_terms exempts them like
+# REQUIREMENT_VERBS: rename/redesign/rework sit above the frequency floor and
+# would otherwise surface as bogus domain terms.
+MAINTENANCE_VERBS: frozenset[str] = frozenset(
+    "refactor rename redesign rework remove replace".split()
+)
+
+# The orphan exemption covers both roles of directive vocabulary.
+_DIRECTIVE_VERBS: frozenset[str] = REQUIREMENT_VERBS | MAINTENANCE_VERBS
 
 # Harness-injected (non-user-authored) content that flows through the
 # UserPromptSubmit hook: task notifications, command transcripts, system
@@ -194,13 +207,14 @@ def salient_terms(prompt: str) -> list[str]:
 def find_orphan_terms(prompt: str, index: dict) -> list[str]:
     """Salient prompt terms that appear in NO governing artifact and are not
     common English (the frequency floor — high-frequency words are never
-    flagged, regardless of corpus). Requirement verbs are directive vocabulary,
-    not domain terms — "extend X" must never report *extend* as the orphan."""
+    flagged, regardless of corpus). Directive verbs — requirement AND
+    maintenance — are not domain terms: "extend X" must never report *extend*
+    as the orphan, nor "rename X" *rename*."""
     vocab = set(index.get("vocab", ()))
     return [
         t
         for t in salient_terms(prompt)
-        if t not in vocab and not _in_floor(t) and t not in REQUIREMENT_VERBS
+        if t not in vocab and not _in_floor(t) and t not in _DIRECTIVE_VERBS
     ]
 
 

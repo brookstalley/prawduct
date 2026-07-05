@@ -177,21 +177,24 @@ def test_update_gitignore_writes_index_line(repo: Path):
     assert INDEX_RELPATH in (repo / ".gitignore").read_text()
 
 
-# --- Corpus widening (review-fixes Chunk 2) ---------------------------------
+# --- Corpus widening (review-fixes Chunk 2; recursive since gate-noise) ------
 # CLAUDE.md, docs/, and methodology/ feed the index alongside
-# .prawduct/artifacts/, so framework-domain words stop reading as orphans.
+# .prawduct/artifacts/ — including doc SUBDIRECTORIES, so governing vocabulary
+# nested under docs/<area>/ stops reading as orphans.
 
 
 def test_index_covers_claude_md_docs_and_methodology(repo: Path):
     (repo / "CLAUDE.md").write_text("# Repo\n## Doxastic budgeting\n", encoding="utf-8")
     (repo / "docs").mkdir()
     (repo / "docs" / "notes.md").write_text("## Telemetry provenance\n", encoding="utf-8")
+    (repo / "docs" / "design").mkdir()
+    (repo / "docs" / "design" / "adr.md").write_text("## Attestation ledger\n", encoding="utf-8")
     (repo / "methodology").mkdir()
     (repo / "methodology" / "m.md").write_text("## Reflection cadence\n", encoding="utf-8")
 
     _run("build-index", repo)
     vocab = set(json.loads((repo / ".prawduct" / ".work-model-index.json").read_text())["vocab"])
-    assert {"doxastic", "telemetry", "provenance", "cadence"} <= vocab
+    assert {"doxastic", "telemetry", "provenance", "cadence", "attestation", "ledger"} <= vocab
 
     # Covered by the widened corpus -> silent, even though requirement-shaped.
     res = _run("user-prompt-submit", repo, '{"prompt":"extend the telemetry provenance"}')
@@ -200,9 +203,10 @@ def test_index_covers_claude_md_docs_and_methodology(repo: Path):
 
 
 def test_index_rebuilds_when_a_docs_file_is_newer(repo: Path):
-    """Staleness must track the WIDENED corpus, not just .prawduct/artifacts/."""
-    (repo / "docs").mkdir()
-    docs_file = repo / "docs" / "notes.md"
+    """Staleness must track the WIDENED corpus, not just .prawduct/artifacts/ —
+    including a file nested in a docs subdirectory (recursive since gate-noise)."""
+    (repo / "docs" / "design").mkdir(parents=True)
+    docs_file = repo / "docs" / "design" / "notes.md"
     docs_file.write_text("## Notes\n", encoding="utf-8")
     _run("build-index", repo)
     index_path = repo / ".prawduct" / ".work-model-index.json"

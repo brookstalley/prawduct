@@ -1,19 +1,18 @@
 ---
-description: Prawduct governance overview and methodology index — the map of how this repo is governed (principles, the agent stance, the build cycle, the on-demand guides). Invoke for first contact, to see what governance applies here, or pass a topic (building|discovery|planning|reflection|principles|stance) to open that guide directly.
+description: Prawduct governance overview and methodology guides — the map of how this repo is governed, and the reader for each guide. Invoke for first contact or to see what governance applies here; pass a topic (building|discovery|planning|reflection|principles) to open that guide directly — building BEFORE writing any code against a build plan, discovery before scoping requirements, planning before designing artifacts or a build plan, reflection at work boundaries and before /clear.
 user-invocable: true
 disable-model-invocation: false
-argument-hint: (omit for the overview) | building | discovery | planning | reflection | principles | stance
+argument-hint: "(omit for the overview) | building | discovery | planning | reflection | principles"
 ---
 
-This repo is governed by **Prawduct** — it turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. The full methodology ships with the plugin and is read on demand; this skill is the map.
+This repo is governed by **Prawduct** — it turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. The full methodology ships with the plugin and is read on demand; this skill is the map and the reader.
 
-**If `$ARGUMENTS` names a topic, open that guide with the Read tool and stop:**
-- `building` → `${CLAUDE_SKILL_DIR}/../../methodology/building.md`
-- `discovery` → `${CLAUDE_SKILL_DIR}/../../methodology/discovery.md`
-- `planning` → `${CLAUDE_SKILL_DIR}/../../methodology/planning.md`
-- `reflection` → `${CLAUDE_SKILL_DIR}/../../methodology/reflection.md`
+**If `$ARGUMENTS` names a topic, open that guide with the Read tool, then apply it to the work at hand:**
+- `building` → `${CLAUDE_SKILL_DIR}/../../methodology/building.md` — **STOP: read this before writing ANY code against a build plan** (skipping it is the #1 governance failure). Then match rigor to risk and run `/prawduct:critic` after medium+ work as the plan's "Done when" steps direct.
+- `discovery` → `${CLAUDE_SKILL_DIR}/../../methodology/discovery.md` — ask the fewest questions that most change the outcome. If the repo has existing docs/code but a template-default `project-state.yaml` (the **DISCOVERY NOT CAPTURED** nudge), run the guide's reconciliation mode — backfill from the material, don't re-interview.
+- `planning` → `${CLAUDE_SKILL_DIR}/../../methodology/planning.md` — artifact templates ship at `${CLAUDE_SKILL_DIR}/../../templates/`; generate in dependency order and validate intermediate outputs before building on them.
+- `reflection` → `${CLAUDE_SKILL_DIR}/../../methodology/reflection.md` — reflect at work boundaries, not only session end; close the loop from observation to changed behavior.
 - `principles` → `${CLAUDE_SKILL_DIR}/../../docs/principles.md`
-- `stance` → `${CLAUDE_SKILL_DIR}/../../methodology/agent-stance.md`
 
 $ARGUMENTS
 
@@ -21,11 +20,11 @@ $ARGUMENTS
 
 Every unit of work follows **understand → plan → build → verify → Critic → reflect**, scaled by size (trivial → build + verify; medium → + build plan + Critic; large → discovery + chunked build + Critic per chunk) and type. Read the guide for the phase you're entering — actually read it, don't work from memory:
 
-- `/prawduct:discovery` — before discovery (new product, or unfilled `project-state.yaml` sections)
-- `/prawduct:planning` — before designing artifacts or a build plan
-- `/prawduct:building` — **before writing any code** against a plan (the #1 thing not to skip)
-- `/prawduct:reflection` — at work boundaries and before `/clear`
+- `/prawduct:methodology discovery` — before discovery (new product, or unfilled `project-state.yaml` sections)
+- `/prawduct:methodology planning` — before designing artifacts or a build plan
+- `/prawduct:methodology building` — **before writing any code** against a plan (the #1 thing not to skip)
+- `/prawduct:methodology reflection` — at work boundaries and before `/clear`
 
-The 23 principles (Quality · Product · Process · Learning · Judgment) guide every decision — read the full set with `/prawduct:methodology principles`. How the agent should communicate and act — the working voice that operationalizes them (verify don't guess, stress-test before agreeing, frame decisions, research fast-moving domains) — is the agent stance: `/prawduct:methodology stance`. Governance is enforced structurally: the plugin's Stop hook runs the Critic + reflection gates at session end, so a code change against an active build plan with no review or reflection blocks the session.
+The 23 principles (Quality · Product · Process · Learning · Judgment) guide every decision — read the full set with `/prawduct:methodology principles`. How the agent communicates and acts while applying them — advisor first (expert take before compliance), verify don't guess, stress-test before agreeing, frame decisions — is the stance block in the always-injected session digest (`methodology/session-digest.md`). Governance is enforced structurally: the plugin's Stop hook runs the Critic + reflection gates at session end, so a code change against an active build plan with no review or reflection blocks the session.
 
-Quality review runs through `/prawduct:critic` (independent review after medium+ work) and `/prawduct:pr` (release readiness). Look up project rules with `/prawduct:learnings <topic>` and deferred work with `/prawduct:backlog`. Keep the repo healthy with `/prawduct:doctor` (prawduct governance/install conformance — reports and guides) and `/prawduct:janitor` (the product's own codebase craft — surveys and fixes); their split is `docs/doctor-vs-janitor.md`.
+Quality review runs through `/prawduct:critic` (independent review after medium+ work) and `/prawduct:pr` (release readiness). Look up project rules with `/prawduct:learnings <topic>` and deferred work with `/prawduct:backlog`. Keep the repo healthy with `/prawduct:doctor` (prawduct governance/install conformance) and `/prawduct:janitor` (the product's own codebase craft); their split is `docs/doctor-vs-janitor.md`.

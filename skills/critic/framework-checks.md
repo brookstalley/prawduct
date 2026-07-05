@@ -14,8 +14,7 @@ These checks apply only when reviewing skill files, template files, or framework
 
 - If a modification adds a specific concern as an enumerated item rather than strengthening the dynamic generation system, it fails this check.
 - If a modification strengthens a general principle or structural amplification rule so the LLM naturally surfaces the concern for any relevant product, it passes.
-- **Test:** Mentally apply the modified skill to three very different products. Does the modification help with all three, or only the product that triggered it?
-- **Plan-level generality:** When reviewing design plans, working notes, or proposed approaches (not just skill file changes): mentally apply the planned approach to three very different products (e.g., a web app, a CLI tool, and firmware). Does the approach help all three, or does it assume one product type? Plans that name a specific technology as *the* solution where a general principle would serve better fail this check — the technology should be positioned as one implementation of the general principle.
+- **Test:** Mentally apply the modified skill — or, for design plans and proposed approaches, the planned approach — to three very different products (e.g., a web app, a CLI tool, and firmware). Does it help all three, or only the product that triggered it? Plans that name a specific technology as *the* solution where a general principle would serve better fail this check — position the technology as one implementation of the general principle.
 
 **Severity guide:**
 - Enumerated concern that doesn't generalize → **blocking**

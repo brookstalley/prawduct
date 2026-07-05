@@ -34,7 +34,7 @@ from lib import gitstate  # noqa: E402
 # Stable substrings the briefing emits — pinned so a reword that drops the routing
 # target or the "reconcile" affordance is caught.
 _NUDGE = "DISCOVERY NOT CAPTURED"
-_ROUTE = "/prawduct:discovery"
+_ROUTE = "/prawduct:methodology discovery"
 _PREFS_CRITICAL = "MUST create .prawduct/artifacts/project-preferences.md"
 
 _UNCAPTURED_STATE = (

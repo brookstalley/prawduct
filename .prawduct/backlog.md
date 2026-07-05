@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[CRT-5D8Q]** PR-gate coverage vs verify-resolutions scope disagree on the metadata exemption — deadlock when the ledger fallback window has lapsed
+  `effort: S · impact: M · area: governance/critic-gate · source: critic · added: 2026-07-02 · status: open · stage: ready · related: CRT-8H3R, CRT-2K9F, CRT-4J8W, STH-6T9W · refs: lib/gates.py (_record_covers_head L972, _compute_verify_resolutions_scope L447)`
+
+  The two gate helpers draw the `.prawduct/` metadata-exemption boundary differently. `_record_covers_head` exempts only `.md` files, so a routine post-cumulative `.prawduct/*.yaml` change (e.g. repointing `active_build_plan`) marks the cumulative record stale. But `_compute_verify_resolutions_scope` exempts ALL `.prawduct/` metadata, so the demanded verify-resolutions pass returns "no-actionable-findings" and the SKILL's literal demotion to `final` yields a non-gate-qualifying record — deadlock when the ledger fallback window has lapsed. Fix-shape: make the two helpers agree on the metadata-exemption boundary. Observed live 2026-07-02 on feature/changelog-fail-loud (Critic hand-anchored a chain record to route around it). Governance-protected (lib/gates.py) → full Critic + PR review. (critic)
+
 - **[COV-4M2J]** Coverage floor is Python-only — `bin/test-reference-verify` symbol-grep can't reference non-Python (JS/TS/Go/…) changed files; bring-your-own-verifier via `--merge-into` is the only escape
   `effort: L · impact: M · area: coverage · source: builder · added: 2026-06-26 · status: open · stage: requirements · related: COV-3R9K, COV-8R2K, TST-2H9P · refs: bin/test-reference-verify (symbol-grep floor), lib/coverage.py (changed-files derivation), bin/prawduct-hook (verify-coverage, test-evidence record F4a overlay), skills/critic/review-cycle.md (Goal 1 F4b)`
 
@@ -67,9 +72,22 @@
   The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
 
 - **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
-  `effort: M · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q · refs: UserPromptSubmit hook (work-model term extraction), incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md`
+  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-02`
 
   The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
+
+  **Narrowed 2026-07-02 (partial supersession by GOV-7T2M, shipped closed-by=gate-noise):** two
+  of the noise classes are now fixed — maintenance verbs (refactor/rename/redesign/rework/
+  remove/replace) split into MAINTENANCE_VERBS so review/cleanup prompts are no longer
+  requirement-shaped at the single-orphan threshold, and the `docs/`/`methodology/` corpus globs
+  are recursive so doc-subdir vocabulary no longer reads as orphaned. (Review-fixes Chunk 2's
+  precision pass — the common-English frequency floor, lib/common_words.py — had also shipped;
+  the 2026-06-22 recurrence was on top of it.) **Remaining scope:** path-like tokenization —
+  `_WORD` (`[A-Za-z][A-Za-z'-]*`, lib/work_model_index.py:71) still extracts hyphenated
+  path/compound fragments ("incoming-bug" from incoming-bugs/, "wrap-up", "model-id",
+  "cross-linked") as orphan candidates — plus the optional POS/noun-filter and
+  build-intent-scoping legs if the tokenizer fix alone doesn't quiet it. Effort re-sized M→S
+  to match the narrowed scope.
 
 - **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
   `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-06-22`
@@ -223,7 +241,7 @@
   gate events. Feeds TEL-7A4X cross-project aggregation. (builder)
 
 - **[CRT-5Q8W]** Skill prose clarity micro-fixes from the 2026-06-09 review (critic protocol wording, designer-handoff note, backlog pick defaults, framework-checks example)
-  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · closes: PR-3J6W · related: PR-3J6W, CRT-6F2N · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md, skills/pr/SKILL.md · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · closes: PR-3J6W · related: PR-3J6W, CRT-6F2N, MET-3Q8V · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md, skills/pr/SKILL.md · reviewed: 2026-07-03`
 
   Batch of small wording fixes from the skills review agent, none changing behavior: (1) critic
   review-protocol.md 'Decide checks from signals below' is vague — state that the resolved MODE
@@ -245,6 +263,20 @@
   1b made imperative in #89). The surviving piece joins this batch as sub-item (6): decide
   PR-review evidence-file retention — archive to .prawduct/.pr-reviews-archive/ vs document why
   deletion is intended. Full original body preserved on the archived PR-3J6W.
+
+  2026-07-03 post-prose-diet check (branch feature/prose-diet; chunks 02-03 rewrote
+  review-protocol/review-cycle/framework-checks): the diet compressed and merged the
+  surrounding text but ABSORBED NONE of the open sub-items — all of (1), (3), (4), (5), (6)
+  still apply, at slightly shifted locations. (1) "Decide checks from signals below" survives
+  verbatim as activation step 6 (review-protocol.md:12); the Modes block above it does map
+  mode→goals with a review-cycle.md pointer, so the residual fix narrows to making step 6
+  reference that mapping. (3) the Learnings Cross-Check (now in review-cycle.md, "Learnings
+  Cross-Check") still assumes learnings are infallible — no latest-learning-wins note. (4)
+  framework-checks.md Check 7: the diet merged the Test/Plan-level-generality bullets into one
+  but added no concrete avoid/prefer example for "strengthening the dynamic generation system".
+  (5) backlog SKILL pick: the diet only repointed the discovery/planning routes to
+  /prawduct:methodology; the score line documents missing→2 ("unknown-middle") but not the
+  combined 2/2 = 1.0 effect, and the stale "(Q6)" label remains. (6) untouched.
 
 - **[MET-5C2H]** Holistic context/token-budget audit — manage what fills the context window, don't dodge ceilings
   `effort: M · impact: L · area: methodology · source: user · added: 2026-06-08 · status: open · stage: research`
@@ -451,9 +483,22 @@
   the gate-soundness bundle, 2026-06-10. (critic)
 
 - **[MET-7R4J]** Methodology/CLAUDE.md redundancy and prompt-quality pass — hard rules stated 4-6x across always-loaded surfaces
-  `effort: M · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · stage: ready · related: MET-5C2H · refs: CLAUDE.md, docs/principles.md, methodology/building.md, methodology/planning.md, methodology/session-digest.md · reviewed: 2026-06-10`
+  `effort: S · impact: M · area: methodology · source: builder · added: 2026-06-09 · status: open · stage: ready · related: MET-5C2H, MET-3Q8V · refs: CLAUDE.md, docs/principles.md, methodology/building.md, methodology/planning.md, methodology/session-digest.md · reviewed: 2026-07-03`
 
   From the 2026-06-09 framework review (methodology-as-prompts agent). For Opus/Fable-class models, restating a rule with varied phrasing creates interference, not reinforcement. (1) Consolidate to one canonical statement + cross-refs: Tests Are Contracts appears 6x (CLAUDE.md, principles.md, agent-stance.md, building.md 2x, session-digest.md); the mid-build-requirement rule has 8+ phrasings; the Critic mandate appears 6x with escalating emphasis. (2) Remove emphasis escalation: CLAUDE.md 'STOP. Read this before writing ANY code' caps — prompt-rot pattern that also misstates Critic timing (Critic runs after code). (3) Compress planning.md Foreign API Verification (~40 lines to ~15: rule + when-to-apply + one worked example; move match mechanics to the Critic protocol). (4) Add one sentence to building.md Before You Build: re-review the plan's Open assumptions as code reveals new facts (assumptions are recorded at plan time but never checkpointed mid-build). Note: digest-vs-CLAUDE.md duplication is handled separately by the review-fixes plan Chunk 4 (slim framework-repo digest); this item is the within-file redundancy pass. Token-budget guardrail tests on methodology files will need adjusting downward, not up. (builder)
+
+  2026-07-03 superseded-check (prose-diet cumulative Critic reconciliation, branch
+  feature/prose-diet — MET-3Q8V's own note said prose-diet "largely supersedes" this item).
+  What prose-diet DELIVERED: sub-item (1) largely — `methodology/agent-stance.md` deleted
+  (one whole duplicate surface gone), building.md's Tests-Are-Contracts restatements removed
+  (now 0 in-file; canonical lives in principles.md + CLAUDE.md list + digest), and the
+  mid-build-requirement phrasings compressed by the D1-D6 reconcile; sub-item (3) fully —
+  planning.md Foreign API Verification is now ~17 lines (rule + when-to-apply + pointer to the
+  filled template example). RESIDUE still open, now the whole of this item: sub-item (2) —
+  CLAUDE.md's "**STOP. Read this before writing ANY code**" emphasis-escalation caps survive
+  verbatim (line ~94), still misstating Critic timing; sub-item (4) — building.md still has no
+  mid-build open-assumptions re-review sentence (assumptions recorded at plan time, never
+  checkpointed). Effort trimmed M→S to match the residue.
 
 - **[JNT-9R2K]** Janitor SKILL: move the investigation-theme taxonomy to a companion reference file; close the Step 2.5 to Step 7 backlog loop
   `effort: S · impact: S · area: janitor · source: builder · added: 2026-06-09 · status: open · stage: ready · refs: skills/janitor/SKILL.md · reviewed: 2026-06-10`
@@ -461,7 +506,7 @@
   From the 2026-06-09 framework review (skills agent). (1) The nine investigation themes (~100 lines, ~50% of the skill) read once per janitor run — move theme details to a bundled companion file (the pattern the Critic already uses with review-protocol.md etc.) and keep SKILL.md as dispatcher + process. (2) Clarify that Step 2.5 Backlog Health emits read-only NOTE findings and Step 7 Reconcile is where those findings drive /prawduct:backlog update calls — the linkage is currently implicit. (3) Reframe the 'fresh eyes' line toward pattern-detection + infer-and-confirm, and say what to do when the user cannot confirm a preference divergence (file a backlog item rather than resolving unilaterally). (builder)
 
 - **[WMK-7D3R]** Work-model index never rebuilds on artifact deletion — retired vocabulary lingers
-  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q, GOV-7T2M · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-07-02`
 
   From the 2026-06-09 framework review. The staleness check (bin/prawduct-hook, build-index path) compares
   remaining artifact mtimes to the index mtime, so deleting an artifact never triggers a rebuild and its
@@ -469,6 +514,14 @@
   whether to fix (include the artifact file-set in the staleness fingerprint) or document the SessionStart
   rebuild as the intended guarantee. Note: probe precision (false positives on common English) is separate,
   covered by the review-fixes plan Chunk 2. (builder)
+
+  **Re-checked 2026-07-02** at GOV-7T2M ship (gate-noise): still open, content unchanged in kind —
+  gate-noise widened the corpus (`docs/`/`methodology/` now recursive in
+  `_work_model_corpus_paths`) but did not touch the mtime-only staleness check, so the
+  deletion-doesn't-rebuild gap now spans a strictly larger file-set (marginally more relevant,
+  same fix-shape: file-set in the staleness fingerprint, or document SessionStart force-rebuild
+  as the guarantee). The probe-precision thread this item pointed sideways at continued in
+  GOV-7T2M/WMK-4Q9T.
 
 - **[CRT-6J4P]** infer-critic-mode rule-1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
   `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V · refs: lib/critic_mode.py, skills/critic/SKILL.md`
@@ -480,7 +533,7 @@
   active plan scope. (reflection)
 
 - **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
-  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/)`
+  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/) · reviewed: 2026-07-03`
 
   If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
   verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
@@ -491,6 +544,15 @@
   --is-ancestor <anchor> HEAD) — if the anchor isn't an ancestor of HEAD, demote to cumulative/final
   instead of computing a divergent delta. Surfaced + self-flagged by the Critic during STH-6Q9D.
   (critic)
+
+  Second live occurrence + soundness escalation (2026-07-03, prose-diet chunk-01 Critic WARNING): a
+  stale single-slot `.critic-findings.json` left by sibling branch feature/gate-exemption-boundary
+  latched verify-resolutions onto a cross-branch delta while reviewing feature/prose-diet. Both
+  `commit_reviewed` and `extends_cumulative` SHAs must be required to be ANCESTORS OF HEAD (mere
+  object-resolution is insufficient) — and the stakes are worse than phantom findings: if the reviewer
+  records the chain anchor, `check-cumulative-critic` could spuriously accept a Goals-1-3 review as
+  cumulative coverage for an unrelated branch's PR. Fail closed: non-ancestor anchor → demote to
+  chunk/final. (critic, chunk-01 prose-diet review)
 
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
@@ -605,11 +667,217 @@
   Decide whether the narrow origin/ exclusion is worth it or the convention (don't backtick git
   refs) suffices. (critic)
 
+<!-- Fix program from the framework efficiency review (owner-accepted 2026-07-02).
+     Parent requirement doc: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md
+     READ IT IN FULL before planning any item below — it carries the evidence these one-liners cannot.
+     Waves: 1 = P0 (kill recurring taxes), 2 = P1 (outcome gaps), 3 = P2 (weaker-model scaffolding).
+     Each wave item ships as its own small 1-2 chunk plan on its own branch — NOT one monolithic plan. -->
+
+- **[CRT-5M9J]** Wave 2: scope check in review — mandated question: does this capability trace to a documented requirement, and is it reachable/consumed end-to-end?
+  `effort: S · impact: M · area: critic/pr-protocols · source: user · added: 2026-07-02 · status: open · stage: ready · related: ADR-7X2M · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #2), skills/critic/review-protocol.md, skills/pr/review-protocol.md`
+
+  P1. The metallm blind spot, documented 4x: every reviewer checks work AS SCOPED, never whether
+  the requirement should EXIST or was ever built (scriob shipped 697 commits with an unversioned
+  API on an unchallenged one-word deferral). Fix costs a paragraph: one mandated question in the
+  cumulative and PR protocols pressure-testing scope and end-to-end reachability. (user)
+
+- **[STH-8R3Q]** Wave 2: outcome-checking Critic Stop gate — findings file must show zero unresolved blocking findings, not merely valid schema
+  `effort: S · impact: M · area: stop-hook/gates · source: user · added: 2026-07-02 · status: open · stage: ready · related: STH-4F7C · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Overbuilt #5), lib/gates.py:300-311 (critic_findings_satisfy_session_gate)`
+
+  P1. The Critic Stop gate accepts any schema-valid fresh findings file EVEN WITH unresolved
+  blocking findings — it enforces a proxy (file exists, schema valid), not the outcome (blockers
+  resolved). Make `critic_findings_satisfy_session_gate` check disposition of blocking findings.
+  Gate edit governs the editing session — small blast radius, own branch. (user)
+
+- **[ENV-2W7K]** Wave 2: environments plan — worktree story, gitflow base detection, non-Python coverage floor goes silent, document --from-counts as the paved non-pytest path
+  `effort: L · impact: L · area: environments · source: user · added: 2026-07-02 · status: open · stage: design · related: CRT-6W2N, STH-4K7N, CRT-8D2W, COV-5H3N, COV-4M2J, TST-2H9P · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #1)`
+
+  P1. The framework assumes repo-root Python, single checkout, main-based — violated by engine/
+  subdirs (scriob), .NET/Swift (cordyceps/trenchant), worktrees (incoming bug 2026-06-20:
+  "following one prawduct rule forces you off-protocol on another"), devcontainers (discodon),
+  gitflow (silent wrong-base on every first PR). Scope: a supported worktree story; gitflow base
+  detection that doesn't require knowing `base_branch:` exists; non-Python coverage floor goes
+  SILENT (not noisy) for languages it can't see; document `--from-counts` as the paved non-pytest
+  path. Owner's rule: the worktree piece needs a short design note FIRST, confirmed with the
+  owner, before building. Umbrella over CRT-6W2N/STH-4K7N/COV-5H3N — dedup/`closes:` when
+  planned. (user)
+
+- **[CRT-3F6W]** Wave 2: reviewer-dedup deletion — keep both reviewers; PR reviewer becomes a fresh full-scope release review; delete the record-audit protocol, extends_cumulative chain, and don't-re-scan scoping prose
+  `effort: M · impact: M · area: critic/pr-protocols · source: user · added: 2026-07-02 · status: open · stage: ready · related: CRT-5T8N, CRT-6J4P, CRT-8H3R, CRT-9R4K · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Overbuilt #4), skills/pr/review-protocol.md:19-27`
+
+  P1. Independence is load-bearing — two reviewers stay (PR reviewer independently caught bugs
+  the Critic missed at least twice). What goes is the ~2k words of OVERLAP machinery that exists
+  only to deduplicate two overlapping scopes: the "Critic Record — Evidence, Not Truth" audit
+  protocol, the extends_cumulative chain, verify-resolutions scope math, and the "don't re-scan"
+  scoping prose. The PR review becomes a simple fresh full-scope release review. Prefer deletion
+  over patching. Supersedes CRT-5T8N's single-owner question — candidate `closes:` at dedup. (user)
+
+- **[LRN-7M4D]** Wave 2: memory convergence — learnings + learnings-detail durable, .session-reflected ephemeral, retire per-repo reflections.md accumulation (design note first)
+  `effort: M · impact: M · area: memory/learnings · source: user · added: 2026-07-02 · status: open · stage: design · related: MET-6W3J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #5)`
+
+  P1. The memory triple-track: reflections.md is write-heavy/read-never (discodon: 7,645 lines,
+  nothing retrieves from it); metallm's reflection loop froze while learnings thrived. Converge:
+  learnings + learnings-detail as the durable pair; .session-reflected ephemeral (distilled or
+  discarded at session end); retire per-repo reflections.md accumulation. Owner flagged this
+  convergence directly. Changes the onboarded-repo contract, so it needs a migrate path — write
+  the short design note FIRST and confirm with the owner before building. (user)
+
+- **[MET-8J5R]** Wave 2: plan-shape guidance in planning.md — one plan per scope tag; split heterogeneous work; a plan that won't ship in ~3 sessions is a program; planner pushes back on monolithic requests
+  `effort: S · impact: M · area: methodology/planning · source: user · added: 2026-07-02 · status: open · stage: ready · related: BLD-7W2J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (finding 6a, Wave 2), methodology/planning.md, methodology/building.md`
+
+  P1 (finding 6a). building.md's size ladder reads as an instruction to build ONE big chunked
+  plan; long-lived-plan frictions sat in learnings for weeks without flowing back into
+  planning.md (a Close the Learning Loop failure). Add mechanical heuristics: one plan per scope
+  tag; split when change types differ; a plan that won't ship within ~3 sessions is a program →
+  backlog items + per-wave plans; the planner must push back on monolithic-plan requests. This
+  fix program's own wave structure is the worked example. (user)
+
+- **[DOC-3V7T]** Wave 2: persistence contract for review/research artifacts — first-class home (.prawduct/artifacts/ + naming convention), backlog items link their parent artifact, pick surfaces it
+  `effort: S · impact: M · area: artifacts/convention · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-8J5R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (finding 6b, Wave 2)`
+
+  P1 (finding 6b). Rich review/research output has no first-class home — cross-session surfaces
+  (build-plan Context line, backlog one-liners, .session-handoff.md) are all thin; the efficiency
+  review itself had to hand-roll the workaround (write an artifact, link every item to it).
+  Deliverable is likely just a convention + template + one line in planning.md: artifacts live in
+  .prawduct/artifacts/ with a naming convention; backlog items `refs:` their parent artifact;
+  `pick` surfaces the linked artifact. Avoid building machinery. (user)
+
+- **[STN-4W7R]** Wave 2: advisor-first stance made structural — digest stance-block tone rewrite (rides with MET-3Q8V) + advisory obligations attached to existing checkpoints
+  `effort: M · impact: M · area: agent-stance · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-3Q8V, MET-8J5R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Advisor-first stance, Wave 2), methodology/session-digest.md, methodology/planning.md, methodology/discovery.md, CLAUDE.md (Before Building) · reviewed: 2026-07-03`
+
+  P1. Owner directive 2026-07-02: lean into prawduct's role as advisor/expert rather than merely
+  an implementor of whatever the user asks for. Two parts: (a) TONE — when Plan C (MET-3Q8V
+  prose-diet) rewrites the digest, reframe the stance block from a trait list into a lead
+  position: the agent's first duty on any substantive ask is the expert take (risks,
+  stronger/simpler alternative, recommendation), compliance second. (b) STRUCTURE — attach
+  advisory obligations to checkpoints models already hit, because tone exhortations decay on
+  weaker models: plan creation (plan-shape pushback, MET-8J5R), backlog pick ("is this still
+  worth doing?"), discovery start (what the user hasn't thought of — already present), and the
+  Before-Building check gains an explicit "should this be built as asked?" line. Advisorship
+  that lives only in adjectives will not survive under context pressure; advisorship attached to
+  gates will. Parent: framework-efficiency-review-2026-07-02.md "Advisor-first stance" section. (user)
+
+  2026-07-03 (prose-diet cumulative Critic reconciliation, branch feature/prose-diet): part (a)
+  DELIVERED on that branch — chunk 03 rewrote the digest stance block in
+  `methodology/session-digest.md` (~239 words) from trait list to expert-take-leads framing,
+  keeping the checkable bars; slim digest synced. Also this branch deleted
+  `methodology/agent-stance.md` (folded by MET-3Q8V), so the stance's sole operational surface
+  is now `methodology/session-digest.md` — refs repointed accordingly. Part (b) (advisory
+  obligations attached to existing checkpoints: plan creation, backlog pick, discovery start,
+  Before-Building line) remains open and is now the whole of this item.
+
+- **[MET-2X6F]** Wave 3: weaker-model scaffolding — filled example chunk, domain-concern checklist seeded by structural characteristics, root-cause stopping rule, 3-4-file size tiebreak, red-baseline protocol
+  `effort: M · impact: M · area: methodology/templates · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-3Q8V, BLD-8N4W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Underspecified #4), templates/build-plan.md, methodology/discovery.md:100, methodology/building.md · reviewed: 2026-07-03`
+
+  P2. Judgment offloads with no weaker-model scaffolding: "detect domain concerns dynamically, no
+  hardcoded lists"; no root-cause stopping rule; the 3-4-file size-classification dead zone; no
+  red-baseline protocol; zero filled examples in the build-plan template. Note: the filled
+  example chunk may already land in Wave 1 Plan C (MET-3Q8V) — check before duplicating work. (user)
+
+  2026-07-03 (prose-diet cumulative Critic reconciliation): the "filled example chunk"
+  deliverable LANDED in prose-diet chunk 01 — `templates/build-plan.md` is now a fully-filled
+  Pantry example (1,197 words), so Wave 3 must NOT redo it. The rest of the item still stands:
+  domain-concern checklist seeded by structural characteristics, root-cause stopping rule,
+  3-4-file size tiebreak, and red-baseline protocol remain undelivered (4 of 5 deliverables
+  open). Item stays open at effort M — the template piece was the smallest of the five.
+
+- **[BLD-8N4W]** Wave 3: subagent-output verification rule in building.md — a subagent's "Done" on a removal is a claim to verify
+  `effort: S · impact: M · area: methodology/building · source: user · added: 2026-07-02 · status: open · stage: ready · related: MET-2X6F · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Underspecified #4), methodology/building.md`
+
+  P2. Actual weak-model failures cluster in SUBAGENT quality: premature "Done", over-broad
+  allowlists, 5-15% inventory undercounts (discodon learnings — already a learning there; this
+  closes the loop into methodology). Add the verification rule to building.md. (user)
+
+- **[STH-5D8J]** Wave 3: trivial gate — add a waiver key + product-relative blast radius, or retire it
+  `effort: S · impact: S · area: stop-hook · source: user · added: 2026-07-02 · status: open · stage: design · related: STH-4D2X · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 3, Overbuilt #5)`
+
+  P2. The trivial gate hard-codes prawduct's own dir names as blast radius in product repos and
+  has no waiver key (KNOWN_WAIVER_KEYS lacks "trivial"). Decision needed (patch vs retire): its
+  sibling trivial fast-path already proved fileset-as-detector unsound (built 2026-05-22, fully
+  retired 2026-06-08) — the third-rework-is-a-deletion-signal lens (MET-9W2P) applies. (user)
+
+- **[MET-9W2P]** Wave 3: principle amendment proposal — the third rework of a mechanism is a deletion signal, not a patch signal
+  `effort: S · impact: M · area: principles · source: user · added: 2026-07-02 · status: open · stage: idea · related: STH-5D8J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Structural diagnosis, Wave 3), docs/principles.md`
+
+  P2. Supported 3x in the evidence: freshness fingerprint, trivial fast-path, stop hook (reworked
+  6+ times, never stabilized). Pattern: gate misfires → suppression layer added → suppression
+  layer accretes its own bugs and learnings. Draft the amendment (Principle 19 — Evolving
+  Principles is the vehicle) and confirm wording with the owner. (user)
+
+- **[REL-4Q9V]** Vocabulary shrink for the change-log lifecycle — drop `status=merged` and stamp-merged machinery; statusless-until-release as the only lifecycle; one scope identifier
+  `effort: M · impact: M · area: governance/change-log · source: builder · added: 2026-07-02 · status: open · stage: design · related: VWS-6R4T, REL-9F2T · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B "consider shrinking"), .prawduct/artifacts/build-plan-changelog-fail-loud.md (descope assumption + rationale)`
+
+  Deletion-over-patching candidate. Descoped from the changelog-fail-loud plan (VWS-6R4T) per
+  that plan's HIGH-impact assumption. Blocked on the owner confirming the shrink is wanted once
+  fail-loud validation ships — validation removes the P0 urgency. Cascade surfaces:
+  `skills/pr/SKILL.md` merge-flow step 6, `docs/release-process.md`, `stamp_merged` in
+  `lib/views.py`, several learnings. (planning)
+
 ## Promoted
 
-_(no items in flight)_
-
 ## Archive
+
+- **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
+  `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: prose-diet · reviewed: 2026-07-04 · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), .prawduct/artifacts/build-plan-prose-diet.md, methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
+
+  P0. Target: halve the ~31k-token governance cycle load. Moves: single-source the mode×type
+  matrix (methodology only; template gets a pointer); strip build-plan template (2,774 words,
+  zero filled examples) to a FILLED example + brief comments; fold agent-stance.md into the
+  digest; fold the 4 one-line delegator skills (building/discovery/planning/reflection) into
+  /prawduct:methodology; delete implementation narration (hook internals, bug IDs,
+  withdrawn-model chains, the parser-bug narrative at build-plan.md:22-29) from files weaker
+  models parse; de-Fable-ese compressed sentences; reconcile the 5 documented cross-doc
+  contradictions (listed in the artifact). Largely supersedes MET-7R4J. (user)
+
+  Promoted 2026-07-02: build plan authored at .prawduct/artifacts/build-plan-prose-diet.md
+  (branch feature/prose-diet, 3 chunks). The plan pre-delivers STN-4W7R part (a) (advisor-first
+  digest stance rewrite, chunk 03) and MET-2X6F's filled-example-chunk (chunk 01) — those items
+  get updated at close-out, not now. MET-7R4J supersession check is a chunk 03 close-out step.
+
+- **[VWS-6R4T]** Wave 1 Plan B: changelog-fail-loud — regen-views validates every change-log tag against the plan roster and errors loudly; tolerant chunk-ID matching
+  `effort: M · impact: L · area: change-log/views · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: changelog-fail-loud · related: REL-9F2T, REL-2N8K, REL-6C3W, VWS-4D8J, VWS-7N3K, BLD-5J8N, REL-4Q9V · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B, Overbuilt #2), .prawduct/artifacts/build-plan-changelog-fail-loud.md · reviewed: 2026-07-02`
+
+  P0. The literal-string tag DSL fails partially and SILENTLY (~12 of 71 learnings, duplicate
+  incoming bugs, broke for trenchant's entire lifespan). Fix: validate every tag (`scope=`,
+  `chunks=`, `status=`) against the plan roster at write/check time — no silent partial flips;
+  tolerant chunk-ID matching (zero-padding, separator variants). Consider shrinking the
+  vocabulary: one scope identifier; statusless-until-release as the only lifecycle. Overlaps the
+  REL-9F2T silent-drop family and VWS-4D8J/VWS-7N3K — dedup pass should fold or `closes:` those
+  once this is planned. Prefer deletion over patching. (user)
+
+  — 2026-07-02: claimed by @brooks; build plan authored at
+  `.prawduct/artifacts/build-plan-changelog-fail-loud.md` (branch `feature/changelog-fail-loud`).
+  The "consider shrinking the vocabulary" clause is DESCOPED from that plan per the plan's
+  HIGH-impact assumption (owner asked 2026-07-02, AFK, recommendation applied) — the shrink now
+  lives as its own item, [REL-4Q9V].
+
+  **Shipped 2026-07-02** on `feature/changelog-fail-loud` (chunk 01 built and Critic-cleared,
+  aaaf39a): fail-loud roster validation + tolerant chunk-ID matching + `regen-views --check`
+  shipped. The vocabulary-shrink clause lives on as [REL-4Q9V].
+
+- **[GOV-7T2M]** Wave 1 Plan A: gate-noise — freshness = `test-status` exit code only (both review protocols) + work-model tripwire verb/corpus fix
+  `effort: S · impact: L · area: gates · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: gate-noise · related: WMK-4Q9T, WMK-7D3R · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan A), .prawduct/artifacts/build-plan-gate-noise.md, skills/critic/review-protocol.md, skills/pr/review-protocol.md, lib/work_model_index.py:120-126, bin/prawduct-hook:2661-2675 · reviewed: 2026-07-02`
+
+  P0. (1) One line in BOTH review protocols: test-evidence freshness is the `test-status` exit
+  code; reviewers must never infer staleness from anything else (session-timestamp is the settled
+  freshness answer — this closes the residual "reviewer eyeballs staleness" gap). (2) Tripwire:
+  drop refactor/rename/redesign/rework/remove/replace from REQUIREMENT_VERBS and include doc
+  subdirectories in the corpus glob (fired on the owner's own review prompt twice). Largely
+  supersedes WMK-4Q9T — candidate for a `closes:` merge at dedup. High-confidence; proceed to
+  planning without re-running discovery. (user)
+
+  **Promoted 2026-07-02:** build plan active at `.prawduct/artifacts/build-plan-gate-noise.md`
+  on `feature/gate-noise`. Deliverable (1) (protocol freshness lines) verified already shipped
+  in PR #104 — the plan descopes it; remaining scope is the tripwire verb split + recursive
+  doc corpus.
+
+  **Shipped 2026-07-02** on `feature/gate-noise` (chunk 01, cumulative Critic clean):
+  MAINTENANCE_VERBS split out of REQUIREMENT_VERBS (still orphan-exempt via _DIRECTIVE_VERBS)
+  + `docs/`/`methodology/` corpus globs made recursive. Deliverable (1) was descoped — already
+  shipped in PR #104 (2026-06-22, TST-4K2P: skills/critic/review-protocol.md:41,
+  skills/pr/review-protocol.md:56). Dedup resolution: WMK-4Q9T is NOT closed by this — the
+  supersession is partial (requirement-shape misfire + doc-subdir recall fixed here; the
+  path-fragment tokenization leg remains) — WMK-4Q9T stays open, narrowed to the residual.
 
 - **[COV-3R9K]** test-evidence double-run after a no-op commit — RUN-half closed (retired "record-after-commit" habit + `--from-counts`/`--no-rerun`); the original F4a-scope-shift diagnosis was a MISDIAGNOSIS
   `effort: M · impact: M · area: coverage · source: user · added: 2026-06-26 · status: shipped · stage: requirements · closed-by: test-evidence-single-run · related: TST-4K2P, TST-7M3K, COV-8R2K, COV-4M2J · refs: methodology/building.md, bin/prawduct-hook, .prawduct/artifacts/build-plan-test-evidence-single-run.md · reviewed: 2026-06-26`

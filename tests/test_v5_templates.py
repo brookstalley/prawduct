@@ -184,6 +184,49 @@ class TestBoundaryPatternsTemplate:
 
 
 # =============================================================================
+# build-plan.md — Filled-example template (prose-diet Chunk 01)
+# =============================================================================
+
+
+class TestBuildPlanTemplate:
+    """The build-plan template is a FILLED EXAMPLE, not a placeholder skeleton.
+
+    The prose-diet rewrite (MET-3Q8V Chunk 01, pre-delivering MET-2X6F) replaced
+    ~200 bracketed placeholders with a realistic small product so plan authors
+    copy working shapes instead of decoding field comments. Guard the two
+    properties that rewrite established."""
+
+    @pytest.fixture
+    def template(self) -> str:
+        return read_template("build-plan.md")
+
+    def test_chunk_01_is_filled(self, template: str):
+        """`### Chunk 01:` exists and its heading carries real content, not a
+        `[Name]`-style bracket placeholder."""
+        idx = template.index("### Chunk 01:")
+        heading = template[idx:].split("\n", 1)[0]
+        rest = heading[len("### Chunk 01:"):].strip()
+        assert rest, "Chunk 01 heading is empty"
+        assert not rest.startswith("["), f"Chunk 01 heading is a placeholder: {heading!r}"
+
+    def test_no_parser_bug_narrative(self, template: str):
+        """The v1.5.1 `_detect_active_scope` caveat story must not ride inside
+        the starter template (implementation narration ≠ template guidance)."""
+        assert "_detect_active_scope" not in template
+
+    def test_pinned_field_labels_survive(self, template: str):
+        """Field labels the Critic substring-matches stay string-identical."""
+        for label in [
+            "**Description:**", "**Depends on:**", "**Deliverables:**",
+            "**Tests:**", "**Acceptance criteria:**", "**Done when:**",
+            "**Critic mode:**", "**Type:**", "**Foreign API:**",
+            "**Visual change:**", "**Level:**",
+            "**Open assumptions / unknowns:**",
+        ]:
+            assert label in template, f"field label {label} missing from template"
+
+
+# =============================================================================
 # Critic skill — PBT check (plugin source-of-truth)
 # =============================================================================
 

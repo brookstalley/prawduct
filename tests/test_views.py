@@ -291,7 +291,9 @@ class TestValidateTagLineMultiplicity:
         assert "2 prawduct tag lines" in warnings[0]
         assert "unioned" in warnings[0]
 
-    def test_conflicts_named_in_warning(self):
+    def test_conflicts_not_in_multiplicity_warning(self):
+        # Conflicting scalars are validate_tag_conflicts' job now (VWS-6R4T);
+        # the multiplicity warning covers only the style problem.
         entries = views.parse_change_log(
             "## X\n"
             "<!-- prawduct: status=shipped -->\n"
@@ -299,8 +301,7 @@ class TestValidateTagLineMultiplicity:
         )
         warnings = views.validate_tag_line_multiplicity(entries)
         assert len(warnings) == 1
-        assert "first-wins" in warnings[0]
-        assert "ignored 'merged'" in warnings[0]
+        assert "first-wins" not in warnings[0]
 
     def test_one_warning_per_multi_tag_entry(self):
         entries = views.parse_change_log(
@@ -310,6 +311,164 @@ class TestValidateTagLineMultiplicity:
         )
         warnings = views.validate_tag_line_multiplicity(entries)
         assert len(warnings) == 2
+
+
+class TestValidateTagConflicts:
+    def test_conflicting_scalars_are_errors(self):
+        entries = views.parse_change_log(
+            "## X\n"
+            "<!-- prawduct: status=shipped -->\n"
+            "<!-- prawduct: status=merged -->\n"
+        )
+        errors = views.validate_tag_conflicts(entries)
+        assert len(errors) == 1
+        assert "first-wins" in errors[0]
+        assert "ignored 'merged'" in errors[0]
+
+    def test_union_without_conflict_is_clean(self):
+        # Multiple tag lines whose scalars AGREE (or don't overlap) union
+        # cleanly — multiplicity is a warning elsewhere, not a conflict.
+        entries = views.parse_change_log(
+            "## X\n"
+            "<!-- prawduct: chunks=01 | status=shipped -->\n"
+            "<!-- prawduct: chunks=02 | status=shipped -->\n"
+        )
+        assert views.validate_tag_conflicts(entries) == []
+
+    def test_single_tag_line_is_clean(self):
+        entries = views.parse_change_log(
+            "## X\n<!-- prawduct: chunks=01 | status=shipped -->\n"
+        )
+        assert views.validate_tag_conflicts(entries) == []
+
+
+class TestNormalizeChunkId:
+    def test_numeric_zero_padding(self):
+        assert views.normalize_chunk_id("01") == views.normalize_chunk_id("1")
+        assert views.normalize_chunk_id("007") == views.normalize_chunk_id("7")
+        assert views.normalize_chunk_id("0") == "0"
+
+    def test_case_insensitive(self):
+        assert views.normalize_chunk_id("A") == views.normalize_chunk_id("a")
+
+    def test_separators_unify(self):
+        assert views.normalize_chunk_id("foo_bar") == views.normalize_chunk_id(
+            "foo-bar"
+        )
+
+    def test_mixed_ids_keep_digits_verbatim(self):
+        # Zero-strip applies only to purely-numeric IDs: "01a" must NOT
+        # collide with "1a".
+        assert views.normalize_chunk_id("01a") == "01a"
+        assert views.normalize_chunk_id("01a") != views.normalize_chunk_id("1a")
+
+    def test_whitespace_stripped(self):
+        assert views.normalize_chunk_id(" 01 ") == "1"
+
+
+class TestValidateChunkRoster:
+    def _arrange(self, tmp_path, plan_content: str) -> "Path":
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "build-plan-feat.md").write_text(
+            "---\nartifact: build-plan\nscope: feat\n---\n" + plan_content
+        )
+        return artifacts
+
+    def test_miss_names_entry_id_and_roster(self, tmp_path):
+        artifacts = self._arrange(
+            tmp_path, "## Status\n- [ ] Chunk 01: A\n- [ ] Chunk 02: B\n"
+        )
+        errors = views.validate_chunk_roster(
+            "## E\n<!-- prawduct: chunks=03 | scope=feat | status=merged -->\n",
+            artifacts,
+        )
+        assert len(errors) == 1
+        assert "chunks=03" in errors[0]
+        assert "01, 02" in errors[0]
+        assert "build-plan-feat.md" in errors[0]
+
+    def test_tolerant_match_suppresses_zero_padding_miss(self, tmp_path):
+        # The historical false miss: chunks=1 against a `Chunk 01:` roster.
+        artifacts = self._arrange(tmp_path, "## Status\n- [ ] Chunk 01: A\n")
+        errors = views.validate_chunk_roster(
+            "## E\n<!-- prawduct: chunks=1 | scope=feat | status=shipped -->\n",
+            artifacts,
+        )
+        assert errors == []
+
+    def test_shipped_entries_validated_too(self, tmp_path):
+        # Release-prep flips to shipped BEFORE running regen-views, so
+        # shipped entries with a resolvable plan are inside the contract.
+        artifacts = self._arrange(tmp_path, "## Status\n- [ ] Chunk 01: A\n")
+        errors = views.validate_chunk_roster(
+            "## E\n<!-- prawduct: chunks=09 | scope=feat | status=shipped -->\n",
+            artifacts,
+        )
+        assert len(errors) == 1
+
+    def test_scope_without_plan_file_skipped(self, tmp_path):
+        # Historical/retired plans: no file to validate against — the
+        # unreleased subset is diagnose_scope_plan_coverage's job.
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        errors = views.validate_chunk_roster(
+            "## E\n<!-- prawduct: chunks=01 | scope=gone | status=shipped -->\n",
+            artifacts,
+        )
+        assert errors == []
+
+    def test_scopeless_entry_skipped(self, tmp_path):
+        # Legacy unfiltered single-plan repos: no scope= → no roster to
+        # resolve against; outside the contract.
+        artifacts = self._arrange(tmp_path, "## Status\n- [ ] Chunk 01: A\n")
+        errors = views.validate_chunk_roster(
+            "## E\n<!-- prawduct: chunks=99 | status=shipped -->\n",
+            artifacts,
+        )
+        assert errors == []
+
+    def test_empty_roster_with_chunks_is_error(self, tmp_path):
+        artifacts = self._arrange(tmp_path, "## Status\nContext: no boxes.\n")
+        errors = views.validate_chunk_roster(
+            "## E\n<!-- prawduct: chunks=01 | scope=feat | status=merged -->\n",
+            artifacts,
+        )
+        assert len(errors) == 1
+        assert "empty" in errors[0]
+
+    def test_clean_change_log_no_errors(self, tmp_path):
+        artifacts = self._arrange(
+            tmp_path, "## Status\n- [x] Chunk 01: A\n- [ ] Chunk 02: B\n"
+        )
+        errors = views.validate_chunk_roster(
+            "## E1\n<!-- prawduct: chunks=01 | scope=feat | status=shipped -->\n"
+            "## E2\n<!-- prawduct: chunks=02 | scope=feat | status=merged -->\n",
+            artifacts,
+        )
+        assert errors == []
+
+
+class TestTolerantStatusFlip:
+    """VWS-6R4T: chunk-ID matching is normalized on both sides of the flip."""
+
+    def test_unpadded_tag_flips_padded_roster(self):
+        section = ["## Status", "- [ ] Chunk 01: A", "- [ ] Chunk 02: B"]
+        new_lines, changes = views.regenerate_status_section(section, {"1"})
+        assert "- [x] Chunk 01: A" in new_lines
+        assert "- [ ] Chunk 02: B" in new_lines
+        assert changes == [("01", " ", "x")]
+
+    def test_case_and_separator_variants_flip(self):
+        section = ["## Status", "- [ ] Chunk Foo_Bar: A", "- [ ] Chunk B: b"]
+        new_lines, _ = views.regenerate_status_section(section, {"foo-bar", "b"})
+        assert "- [x] Chunk Foo_Bar: A" in new_lines
+        assert "- [x] Chunk B: b" in new_lines
+
+    def test_exact_match_still_flips(self):
+        section = ["## Status", "- [ ] Chunk 01: A"]
+        new_lines, _ = views.regenerate_status_section(section, {"01"})
+        assert "- [x] Chunk 01: A" in new_lines
 
 
 class TestCollectShippedChunks:
@@ -1930,10 +2089,12 @@ def _make_product_repo(
     return product
 
 
-def _run_regen(product_dir: Path) -> subprocess.CompletedProcess:
+def _run_regen(
+    product_dir: Path, *extra_args: str
+) -> subprocess.CompletedProcess:
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(product_dir)}
     return subprocess.run(
-        ["python3", str(HOOK_PATH), "regen-views"],
+        ["python3", str(HOOK_PATH), "regen-views", *extra_args],
         capture_output=True,
         text=True,
         env=env,
@@ -2180,12 +2341,13 @@ class TestRegenViewsImportError:
         )
 
 
-class TestRegenViewsStatusTypoWarning:
-    """VWS-3K7P: a change-log `status=` typo is surfaced on stderr as a
-    NON-fatal warning — regen still succeeds (exit 0) and still flips the
-    valid entries; only the typoed entry fails to flip (as it always did)."""
+class TestRegenViewsStatusTypoError:
+    """VWS-3K7P → VWS-6R4T: a change-log `status=` typo is now FATAL. The
+    typoed entry would silently never flip, so regen fails closed — exit 2,
+    ERROR on stderr, and NOTHING written (not even the valid entries — a
+    partial flip is the failure class the fail-closed contract forbids)."""
 
-    def test_typo_warns_on_stderr_non_fatal(self, tmp_path: Path):
+    def test_typo_errors_and_writes_nothing(self, tmp_path: Path):
         product = _make_product_repo(
             tmp_path,
             views_enabled=True,
@@ -2203,14 +2365,13 @@ class TestRegenViewsStatusTypoWarning:
             ),
         )
         result = _run_regen(product)
-        # Non-fatal: command still succeeds.
-        assert result.returncode == 0, result.stderr
-        # Warning surfaced on stderr, naming the bad value.
+        assert result.returncode == 2, result.stdout + result.stderr
         assert "shippd" in result.stderr
-        assert "warning" in result.stderr.lower()
+        assert "ERROR" in result.stderr
+        assert "no views written" in result.stderr
         new_plan = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
-        # Valid entry flipped; typoed entry did NOT flip (flip rule unchanged).
-        assert "- [x] Chunk 00: A" in new_plan
+        # Fail closed: NOTHING flipped, valid entry included.
+        assert "- [ ] Chunk 00: A" in new_plan
         assert "- [ ] Chunk 01: B" in new_plan
 
     def test_no_warning_when_all_valid(self, tmp_path: Path):
@@ -2262,6 +2423,173 @@ class TestRegenViewsMultiTagLineWarning:
         assert "- [x] Chunk 00: A" in new_plan
         assert "- [x] Chunk 01: B" in new_plan
         assert "- [ ] Chunk 02: C" in new_plan
+
+
+def _make_scoped_product_repo(
+    tmp_path: Path, *, change_log: str, plan_status: str, scope: str = "feat"
+) -> Path:
+    """Product repo whose build plan declares a frontmatter scope (VWS-6R4T)."""
+    product = tmp_path / "product"
+    (product / ".prawduct" / "artifacts").mkdir(parents=True)
+    (product / ".prawduct" / "project-state.yaml").write_text("views_enabled: true\n")
+    (product / ".prawduct" / "change-log.md").write_text(change_log)
+    (product / ".prawduct" / "artifacts" / f"build-plan-{scope}.md").write_text(
+        f"---\nartifact: build-plan\nscope: {scope}\n---\n{plan_status}"
+    )
+    return product
+
+
+class TestRegenViewsFailClosed:
+    """VWS-6R4T: any tag validation error aborts the whole regen — exit 2,
+    ERROR on stderr, NOTHING written (no silent partial flips)."""
+
+    def test_roster_miss_errors_and_writes_nothing(self, tmp_path: Path):
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: good\n"
+                "<!-- prawduct: chunks=01 | scope=feat | status=shipped |"
+                " release=v1.0.0 -->\n"
+                "\n"
+                "## 2026-07-02: bad chunk id\n"
+                "<!-- prawduct: chunks=07 | scope=feat | status=shipped -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n- [ ] Chunk 02: B\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "chunks=07" in result.stderr
+        assert "never flip" in result.stderr
+        # Fail closed across ALL views: plan untouched, release-notes absent.
+        plan = (
+            product / ".prawduct" / "artifacts" / "build-plan-feat.md"
+        ).read_text()
+        assert "- [ ] Chunk 01: A" in plan
+        assert not (product / ".prawduct" / "release-notes.md").exists()
+
+    def test_tolerant_id_variant_is_not_an_error_and_flips(self, tmp_path: Path):
+        # chunks=1 against a `Chunk 01:` roster: the exact case the tolerant
+        # matcher exists for — validates clean AND flips.
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: unpadded\n"
+                "<!-- prawduct: chunks=1 | scope=feat | status=shipped -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stderr
+        plan = (
+            product / ".prawduct" / "artifacts" / "build-plan-feat.md"
+        ).read_text()
+        assert "- [x] Chunk 01: A" in plan
+
+    def test_conflicting_tag_lines_error(self, tmp_path: Path):
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: conflicted\n"
+                "<!-- prawduct: chunks=01 | scope=feat | status=shipped -->\n"
+                "<!-- prawduct: status=merged -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 2
+        assert "conflicting" in result.stderr.lower()
+        plan = (
+            product / ".prawduct" / "artifacts" / "build-plan-feat.md"
+        ).read_text()
+        assert "- [ ] Chunk 01: A" in plan
+
+    def test_unreleased_scope_without_plan_errors(self, tmp_path: Path):
+        # Promoted from WARNING (REL-4T8N warn-and-skip): a merged scope with
+        # no plan file means its Status can never regenerate — fatal now.
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: merged into develop\n"
+                "<!-- prawduct: chunks=01 | scope=ghost | status=merged -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 2
+        assert "ghost" in result.stderr
+        assert "no matching build-plan file" in result.stderr
+
+    def test_shipped_scope_without_plan_still_exempt(self, tmp_path: Path):
+        # Historical/retired plans stay exempt — a shipped scope with no file
+        # is expected (predates scope: frontmatter or plan was retired).
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: historical\n"
+                "<!-- prawduct: chunks=01 | scope=old | status=shipped |"
+                " release=v0.9.0 -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stderr
+
+    def test_duplicate_scope_across_plans_errors(self, tmp_path: Path):
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: e\n"
+                "<!-- prawduct: chunks=01 | scope=feat | status=merged -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        (product / ".prawduct" / "artifacts" / "build-plan-second.md").write_text(
+            "---\nartifact: build-plan\nscope: feat\n---\n## Status\n"
+        )
+        result = _run_regen(product)
+        assert result.returncode == 2
+        assert "duplicate scope" in result.stderr.lower()
+
+
+class TestRegenViewsCheckFlag:
+    """`regen-views --check`: validate + report, never write (VWS-6R4T)."""
+
+    def test_check_clean_exits_zero_and_writes_nothing(self, tmp_path: Path):
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: pending flip\n"
+                "<!-- prawduct: chunks=01 | scope=feat | status=shipped |"
+                " release=v1.0.0 -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product, "--check")
+        assert result.returncode == 0, result.stderr
+        assert "check passed" in result.stdout
+        # Pending writes are REPORTED (not errors) and NOT applied.
+        assert "[check]" in result.stdout
+        plan = (
+            product / ".prawduct" / "artifacts" / "build-plan-feat.md"
+        ).read_text()
+        assert "- [ ] Chunk 01: A" in plan  # unflipped
+        assert not (product / ".prawduct" / "release-notes.md").exists()
+
+    def test_check_with_violation_exits_two_and_writes_nothing(
+        self, tmp_path: Path
+    ):
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: bad\n"
+                "<!-- prawduct: chunks=09 | scope=feat | status=shipped -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product, "--check")
+        assert result.returncode == 2
+        assert "chunks=09" in result.stderr
+        assert not (product / ".prawduct" / "release-notes.md").exists()
 
 
 # =============================================================================

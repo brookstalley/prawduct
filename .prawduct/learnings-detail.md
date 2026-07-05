@@ -486,3 +486,62 @@ The decision-research trigger list already names **lock-in** as a research trigg
 ## A test asserting the framework repo's OWN state instead of the propagated contract gives false coverage — assert the contract that reaches consumer repos
 
 The plugin's defaults reach onboarded products only through **canonical carriers**, never through this framework repo's own files: gitignore defaults via `lib/core.py::GITIGNORE_ENTRIES` (written into a product `.gitignore` by `update_gitignore` on onboard/doctor) and its import-light inline mirror `bin/prawduct-hook::_SESSION_GITIGNORED_PATHS` (the `_untrack_session_files` set); format legends via `templates/`; default-behavior changes via `methodology/session-digest.md`. Dogfooding this repo creates a blind spot: state the framework repo *also* generates (because the plugin is active here too) can be made quiet by a hand-edit to *this* repo's tracked files, which does nothing for products. The work-model vocabulary index (PR #71) is the canonical instance. Two hooks generate `.prawduct/.work-model-index.json` on every session in *every* `.prawduct/`-bearing repo (SessionStart `build-index`, UserPromptSubmit `user-prompt-submit`). PR #71 correctly intended it ephemeral/gitignored and added the ignore line to this framework repo's own `.gitignore` (line 25) — but never to `GITIGNORE_ENTRIES` or `_SESSION_GITIGNORED_PATHS`. Result: `update_gitignore` never wrote an ignore rule for it into any product, so every onboarded repo regenerated the file each session and carried it as permanent untracked noise (the reported symptom). The damning part is the *test*: `tests/test_work_model_hooks.py::test_index_is_gitignored` existed and **passed continuously** — because it asserted `(ROOT / ".gitignore")`, i.e. *this repo's* file, the one surface that has no bearing on products. A green guard test on the wrong surface is worse than no test: it reads as "covered." Discovered 2026-06-25 from a user report that the file was noisy in both this repo (where it's actually fine) and consuming repos (where it wasn't). Fix: add `.prawduct/.work-model-index.json` to both contract lists (`TestSessionGitignoreMirror` pins them in sync); existing products self-heal — `update_gitignore` adds the line next session, and `_untrack_session_files` `git rm --cached`s it if a repo already committed it. The regression net was rebuilt to assert the *contract*: `test_index_is_in_gitignore_contract` (the entry is in `GITIGNORE_ENTRIES`) and `test_update_gitignore_writes_index_line` (end-to-end — a freshly reconciled product `.gitignore` contains the line). Fix-shape, general: when a feature ships any propagated default (an ignore line, a format field, a digest behavior), write the regression test against the canonical carrier AND an end-to-end propagation into a fresh `tmp_path` product — never against the framework repo's own dogfood copy; if the only assertion touches a file under this repo's root, ask "would this still hold in a *product* repo?" and if not, the test is false coverage. Same root shape as [[A format's schema legend lives in `templates/` (scaffold-only) — adding an optional field reaches already-onboarded repos only via a migrate/triage *refresh* step, not the template]] — anything living only in the framework repo does not reach onboarded repos. Relates to Tests Are Contracts (#1 — a contract test must test the contract, not the producer's private copy), Validate Before Propagating (#15), Complete Delivery (#2), and Clean Deployment (#10 — dev-time dogfood state masking a product-facing defect).
+
+## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written
+
+Full context (2026-07-02, gate-noise / GOV-7T2M, Wave 1 Plan A of the efficiency-review fix
+program): The parent artifact `framework-efficiency-review-2026-07-02.md` carried two claims
+that were wrong by build time. (1) "residual gap: review protocols still let reviewers eyeball
+staleness" — but PR #104 (2026-06-22, TST-4K2P cluster) had added "that exit code is the *only*
+freshness signal" to both `skills/critic/review-protocol.md:41` and `skills/pr/review-protocol.md:56`
+ten days before the review was written; the audit agents missed it. Found via
+`git log -S 'freshness signal'` on the cited files before planning. Descoping it avoided adding
+a duplicate line to a protocol sitting at its 3350-token ceiling. (2) The literal instruction
+"drop refactor/rename/redesign/rework/remove/replace from REQUIREMENT_VERBS" ignored the set's
+second role: `find_orphan_terms` exempts these verbs from being reported as orphans, and a
+3-line probe showed rename/redesign/rework are NOT absorbed by the `_in_floor` frequency floor —
+a bare drop would make "rename the FooBar module" report *rename* itself as the orphan (a brand-new
+false-positive class in a fix whose whole purpose was killing false positives). The fix became a
+two-set split (REQUIREMENT_VERBS for requirement-shape, MAINTENANCE_VERBS added to the orphan
+exemption union). Why it matters going forward: ~13 more backlog items point at this same parent
+artifact (waves 1-3); every one of them should re-verify its cited file:line evidence and
+empirically probe the predicate it changes before planning. The artifact remains the requirement's
+*evidence and rationale*; it is not a statement of current file state nor a validated design.
+
+## When a plan sets a quantitative reduction/size floor over a corpus you cannot shrink by dropping content, derive the floor from a per-file compressibility sample — not a global intuition
+
+Context: the prose-diet feature (MET-3Q8V) targeted the ~37k est-token governance cycle-load
+set. The build plan's Success clause set a floor of ≥45% reduction, targeting 50%, alongside a
+hard no-drop constraint (no rule, gate semantics, or checkable bar may be lost — Complete
+Delivery outranks the number). The 45–50% figure came from a global intuition that priced
+*triplication* — the mode×type matrix and stance prose repeated across three surfaces — as the
+bulk of the mass.
+
+What actually happened across three chunks: structural single-sourcing + editorial compression +
+folding five instruction surfaces landed the corpus at 36,991 → 25,789 est tokens, **−30.3%**,
+measured with the test suite's `words × 1.3` estimator. The cumulative Critic flagged this as
+BLOCKING against the ≥45% floor. Root-cause, chaining the whys: (1) single-sourcing the
+triplicated matrices recovered only ~3–4k est tokens, not the assumed bulk — the repetition was a
+small fraction of total mass; (2) the corpus's true composition is rule-dense — single-statement
+rules, irreducible behavior tables, and deliberate weaker-model anchors that the no-drop
+constraint forbids compressing further; (3) ~2.6k est tokens of in-set two-reviewer chain
+machinery had already been carved out to a separate backlog item (review Overbuilt #4) by the plan
+itself; (4) the same review program had earlier certified `review-protocol.md` already lean —
+evidence the 50% prior had ignored.
+
+Resolution: the owner chose to amend the Success floor to the honest achieved −30.3% rather than
+direct a further compression pass (whose realistic yield was ~3–5 more points, approaching rule
+loss). This confirmed the provisional lesson recorded at chunk close: a reduction floor set above
+honest reach, over a corpus with a no-drop constraint, is not a stretch goal — it is a latent
+Complete-Delivery violation that detonates at close-out, when the only ways to "hit the number"
+are to drop a load-bearing rule or to miss your own acceptance criterion. The number is a
+*measurement of rule density*, not a measure of remaining waste.
+
+The cheap prevention: before writing a quantitative reduction floor under a no-drop constraint,
+take a per-file compressibility sample — pick 2–3 representative files, estimate honest achievable
+compression on each (what's redundant vs. what's irreducible rule text), and derive the corpus
+floor from that bottom-up estimate. Record the floor as a vetoable assumption with its derivation,
+not as an aspiration handed down from a global "should be halvable" feel. Relates to Complete
+Delivery (#2 — the number must never outrank preservation), Reasoned Decisions (#4 — a floor needs
+a derivation), Honest Confidence (#5 — distinguish a measured estimate from an intuition), and
+Proportional Effort (#11 — a sampling step is cheap insurance against a close-out trade-off).

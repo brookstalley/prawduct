@@ -1,389 +1,168 @@
-<!-- Build Plan Template
-     Tier: 1 (Source of Truth)
+<!-- Build Plan Template — Tier 1 (Source of Truth)
 
-     This plan defines WHAT to build. For HOW to build (governance, test discipline,
-     Critic review, session handoff), read `/prawduct:building` before starting.
-
-     The build plan must be specific enough that the builder can execute without making
-     technology decisions. If the builder would need to guess, the plan is underspecified.
+     A FILLED EXAMPLE: a small household grocery-list web app ("Pantry"). Replace the
+     content; keep the field labels exactly as written (`**Title Case:**`). The plan
+     defines WHAT to build — for HOW, read `/prawduct:methodology building` first. A plan is
+     specific enough when the builder never has to make a technology decision.
 -->
 ---
 artifact: build-plan
 version: 2
-# Optional. When set to a non-null string (and `views_enabled: true` in
-# project-state.yaml), `regen-views` filters change-log entries to this
-# scope when flipping Status checkboxes — prevents cross-version chunk-ID
-# collisions (e.g., v1.4's `chunks=05 | scope=v1.4 | status=shipped`
-# flipping v1.5's chunk 05). Set to a scope tag like `v1.5.1` for
-# multi-version products that reuse chunk numbering across releases.
-#
-# CAVEAT (v1.5.1): the `scope: null` default below + the parser treating
-# null as absent + the change-log inference fallback together produce a
-# subtle behavior — if your change-log already has any `scope=` tagged
-# entry from a prior release, _detect_active_scope will INFER that prior
-# scope rather than treating null as explicit opt-out. To get genuinely
-# unfiltered Status flipping, either (a) leave change-log entries
-# untagged (no `scope=` tag in their `<!-- prawduct: ... -->` line),
-# or (b) set this field to the same scope your in-flight chunks use
-# (which is the common case for multi-version products anyway). Tracked
-# at .prawduct/backlog.md as a v1.5.2 candidate fix.
-scope: null
+# scope: change-log scope tag (with `views_enabled`, regen-views flips Status
+# checkboxes from entries matching it). Use your in-flight chunks' tag; null is fine
+# for single-version products.
+scope: pantry-v1
 depends_on:
   - artifact: product-brief
   - artifact: data-model
   - artifact: test-specifications
   - artifact: dependency-manifest
   - artifact: operational-spec
-last_validated: null
+last_validated: 2026-07-03
 ---
 
 ## Requirements Confidence
 
-<!--
-  Self-assessed confidence that requirements are clear enough to build well.
-  Required field. Forces an explicit acknowledgment of clarity (or its absence)
-  before chunks proceed. See Principle 6 — Requirements Precede Code.
+<!-- Honest self-assessment (Principle 6). High: problem, success, and scope each
+     statable in one sentence. Medium: assumptions inferred — list them. Low: unknowns
+     named + what would resolve them. Not a gate; committing to a level forces honesty. -->
 
-  - **High** — Problem, success criteria, and scope each statable in one
-    sentence. No significant unknowns. Build can proceed.
-  - **Medium** — Most is clear, but specific aspects are inferred or assumed.
-    List the assumptions; chunks may need to revisit them.
-  - **Low** — Significant unknowns remain. List them and what would resolve
-    them. Either Chunk 01 closes the gap, or you proceed knowing you're
-    building on soft ground — that's a deliberate choice, not silent risk.
+**Level:** High
 
-  This field is the artifact-level expression of the readiness check the
-  builder runs before any work cycle. Be honest: self-assessed High that
-  turns out to be Low is more dangerous than honest Low.
--->
+**Why:** Problem, success criteria, and scope were confirmed with the user in one discovery round; no fast-moving or post-cutoff dependencies.
 
-**Level:** [High | Medium | Low]
+**Open assumptions / unknowns:** [ASSUMPTION: single household, no auth beyond a shared device | MED impact | user can override]
 
-**Why:** [One sentence — what makes confidence what it is]
-
-**Open assumptions / unknowns:** [List each answer you *inferred* rather than confirmed, as a vetoable assumption: `[ASSUMPTION: <what you assumed> | HIGH/MED/LOW impact | user can correct / override / defer]`. If High with nothing inferred, "None." See `methodology/discovery.md` "Calibrate Rigor".]
-
-**What would raise confidence:** [If Medium/Low, what discovery, decision, or research closes the gap? If High, "N/A."]
+**What would raise confidence:** N/A
 
 ## Status
 
-<!--
-  Track chunk progress and cross-session context here. This section replaces
-  WIP entries in project-state.yaml — the build plan is the single source of
-  truth for what's being built and where you are.
+<!-- The cross-session handoff. Mark `[x]` when a chunk's "Done when" steps are all
+     satisfied; keep Context current. When `views_enabled`, checkboxes regenerate from
+     tagged change-log entries — update the tag, don't hand-flip. -->
 
-  Update after each chunk completes. A chunk is complete when its "Done when"
-  steps are all satisfied (acceptance criteria pass, /critic run, committed).
-  Include a Context line with enough detail for a different agent (or you
-  after /clear) to pick up where you left off.
-
-  The session start hook reads this section to assemble the session briefing.
-
-  Derived view (when `views_enabled: true` in project-state.yaml): the `[ ]`/`[x]`
-  checkboxes below are regenerated by `prawduct-hook regen-views` from
-  `status=shipped` tagged entries in change-log.md. Chunk titles, the Context
-  line, and HTML comments are author-curated and never touched by regen.
-  When views are enabled, mark a chunk shipped by adding/updating a tagged
-  change-log entry — do NOT hand-edit the checkboxes (regen will overwrite).
--->
-
-- [ ] Chunk 01: [Name]
-<!-- Add more chunks as you define them below -->
-Context: [What's done, what's next, key decisions. Updated after each chunk.]
+- [ ] Chunk 01: Walking skeleton — list page backed by SQLite
+- [ ] Chunk 02: Add and check off items, grouped by store section
+- [ ] Chunk 03: Barcode lookup via OpenFoodFacts
+Context: Plan approved 2026-07-03; nothing built yet. Next: Chunk 01.
 
 ## Scaffolding
 
-<!--
-  Exact commands to initialize the project. This is where abstract technology decisions
-  (e.g., "React + Vite") become concrete instructions (e.g., "run npm create vite@latest").
-
-  Include:
-  - Project initialization command(s)
-  - Dependency installation (list every package from dependency-manifest)
-  - Build tool configuration
-  - Test runner setup
-  - Verification: what commands prove the scaffold works (e.g., "npm run dev starts without errors")
--->
-
 ### Project Initialization
 
-[Exact commands to create the project]
+`uv init pantry && cd pantry && uv add fastapi uvicorn jinja2 && uv add --dev pytest httpx`
 
 ### Dependencies
 
-[Exact npm install / pip install / etc. commands, listing every package]
+fastapi (routing), uvicorn (server), jinja2 (templates), sqlite3 (stdlib storage); dev: pytest, httpx (test client). Rationale per package in `dependency-manifest.md`.
 
 ### Build & Test Configuration
 
-<!--
-  Test infrastructure must match the test strategy in test-specifications.md.
-  The Builder must be able to run "test this level" and "test everything" without
-  making decisions about where files live or how runners are configured.
-
-  Include:
-  - Test directory structure: where each level's test files live. Low-risk
-    products can use a single test directory; medium/high-risk should separate
-    unit, integration, and e2e directories.
-  - Test runner configuration per level: how to run unit tests alone, integration
-    tests alone, e2e tests alone, and all together.
-  - Mock/stub library setup: when the test strategy calls for mocking external
-    services, configure the mock library here.
-  - Coverage tool setup: always configure coverage measurement. Low-risk products
-    measure without enforcing thresholds. Medium/high-risk products set coverage
-    targets from NFRs.
--->
-
-[Configuration files to create or modify, with their contents]
+Single `tests/` directory (low-risk product); `uv run pytest -q` runs everything. Coverage measured with `--cov=pantry`, no threshold enforced.
 
 ### Scaffold Verification
 
-[Commands to run that prove the scaffold is working: build succeeds, dev server starts, test runner executes]
+`uv run uvicorn pantry.main:app` serves a placeholder page at :8000; `uv run pytest -q` passes with the smoke test.
 
 ### Verification Strategy
 
-<!--
-  Every product needs a verification approach — how the builder confirms the
-  product works beyond tests, by exercising it as users or consumers would.
+<!-- How the builder confirms each chunk works beyond tests, as users would experience
+     it. Scale to complexity; verification infrastructure is dev-only (Principle 10). -->
 
-  The approach depends on structural characteristics and what tools are available.
-  Describe the strategy. For simple products, this may be one line ("run the
-  binary and check output"). For products with human interfaces, it may involve
-  screenshots, browser automation, or MCP tools. For APIs, contract tests or
-  direct calls. For pipelines, output inspection.
-
-  Keep it proportionate. Don't build elaborate verification infrastructure for
-  a personal utility.
-
-  All verification infrastructure is development-only (Principle #10).
--->
-
-[How the builder verifies the product works beyond tests. Describe the approach, scaled to product complexity.]
+Run the server and click through the core flow (add item → see it listed → check it off) after each chunk. Chunk 03 additionally probes the live OpenFoodFacts API before any client code is written.
 
 ## Project Structure
 
-<!--
-  Directory layout and file naming conventions. Derived from the data model
-  and structural characteristics. The Builder follows this structure exactly.
--->
-
 ```
-[project-root]/
-├── [directory structure here]
+pantry/
+├── pantry/            # app package: main.py (routes), store.py (SQLite access)
+├── templates/         # Jinja2 pages
+└── tests/
 ```
 
 ### Module Boundaries
 
-[Which directories/modules own which concerns. The Builder must not cross these boundaries.]
+Routes never touch SQLite directly — persistence goes through `store.py`. Templates render data passed by routes; no logic in templates.
 
 ## Build Chunks
 
-<!--
-  Ordered list of build tasks. Each chunk delivers one piece of functionality.
-  For UI apps, prefer feature-first: each chunk delivers one user-visible flow end-to-end.
+<!-- Chunks are vertical slices, dependency-ordered, each reviewable in one Critic pass;
+     Chunk 01 is a thin slice through every layer. The Critic existence-checks backticked
+     paths in the current chunk's section — prefix paths the chunk CREATES with "new".
 
-  Chunk ordering:
-  1. Scaffold (always first)
-  2. Core data entities
-  3. Feature chunks by user value (highest value first)
-  4. Polish (last)
+     Optional fields are declared only when they apply — missing is always the safe
+     default. Field reference:
+       `Critic mode:` / `Type:` — methodology/planning.md "Critic Mode Per Chunk" /
+         "Choosing a Chunk Type"; behavior tables in skills/critic/review-cycle.md.
+         Mode missing, unrecognized, or inference unconfident → the review runs `final`.
+       `Foreign API:` / `Exposed API:` / `Visual change:` — methodology/planning.md.
+       `Trivial because:` — required iff `Type: trivial`. -->
 
-  Each chunk must specify:
-  - What to build (description + deliverables)
-  - What artifacts to read (which specs govern this chunk)
-  - What tests to write (mapped from test-specifications)
-  - Acceptance criteria (concrete, verifiable)
-  - Critic mode (optional — `/critic` infers from git + plan state; declare only to override)
-  - Dependencies (which chunks must complete first)
-  - Done-when steps (acceptance + Critic + commit — use the standard list)
--->
+### Chunk 01: Walking skeleton — list page backed by SQLite
 
-### Chunk 01: [Name]
-
-- **Description:** [What this chunk delivers]
-- **Depends on:** [chunk IDs, or "none" for scaffold]
-- **Artifacts consumed:** [Which artifact files the Builder reads for this chunk]
-- **Deliverables:** [Specific files or components produced]
-  <!-- File-path refs (backticked paths containing `/`) in the current chunk's
-       section are verified to exist on disk by the Critic's Goal 2
-       (build-plan ref drift check). Files this chunk *creates* should be
-       preceded by the word "new" on the same line — e.g. "new
-       `skills/foo/bar.md`" — to flag them as forward refs. Future-chunk
-       sections (Chunk N+1, N+2, …) are never checked; forward references
-       there are fine. A `path::symbol` token (e.g. `lib/views.py::some_fn`) is
-       tolerated — only the pre-`::` path is existence-checked; the symbol is
-       ignored. -->
-
-- **Tests:** [Test scenarios from test-specifications that apply to this chunk]
-  <!-- For medium/high-risk products, note which test levels this chunk introduces
-       or extends (e.g., "adds unit tests for scoring logic, integration test for
-       DB persistence, extends E2E test for full score flow"). -->
-- **Acceptance criteria:** [Concrete checks — "npm test passes", "page renders scores", etc.]
-- **Critic mode:** [optional — omit and let `/critic` infer, or pick one to override: `chunk` | `final` | `cumulative` | `verify-resolutions`]
-  <!-- The field is OPTIONAL. At runtime `/critic` (no args) infers the mode from
-       git state + build-plan position via `prawduct-hook infer-critic-mode`
-       and records `mode_chosen_by` as the helper's verbatim rationale string
-       (e.g., "rule-3 final: ..."), or as the literal string `"explicit-args"`
-       when a slash-command argument overrode inference. Inference
-       picks `chunk` for non-final chunks of a multi-chunk plan and `final` for
-       the last chunk — the common case needs no declaration. Declare `Critic
-       mode:` explicitly only when you need to override inference (e.g., forcing
-       `final` on an early keystone chunk, or `cumulative` when batching).
-       Trivial chunks (typo-level edits inside a larger plan) waive Critic
-       entirely via `.gates-waived`.
-
-       Four modes:
-       - `chunk` (Goals 1-3, target 1-2 min) — fast per-chunk review.
-       - `final` (all 7 goals + cross-checks, target 4-10 min) — end-of-cycle
-         synthesis. Default if inference fails or the field is absent.
-       - `cumulative` (all 7 goals against `merge-base...HEAD`, target 4-10 min) —
-         the `/pr create` gate; can also be triggered by declaring
-         `Type: cumulative-final` on the last chunk.
-       - `verify-resolutions` (Goals 1-3 against prior review's scope, target
-         1-2 min) — re-review mode after fixing prior BLOCKING/WARNING findings.
-
-       Missing field → inference. Unrecognized override → `final` (fail-safe).
-       See `skills/critic/review-cycle.md` for full per-mode behavior. -->
-
-- **Type:** [optional — defaults to `code`. Allowed: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`]
-  <!-- The Type axis is orthogonal to Critic mode — mode controls how deep the
-       review is; Type controls what kind of work is under review (v1.4 F6).
-       Declare Type only when it deviates from `code` (minimal-declaration
-       convention). Missing or unrecognized values fall back to `code` — the
-       full Critic protocol — so under-declaration is safe.
-
-       - `code`: code or behavior changes (default).
-       - `doc-only`: prose-only edits (methodology, templates, comments). Critic
-         skips test-evidence checks; the stop-hook Critic gate still fires unless
-         the session is empirically doc-only too (file extensions).
-       - `cleanup`: branch hygiene, file moves, dead-code removal. Critic tolerates
-         a zero diff; structural-only review.
-       - `designer-handoff`: visual / token / design-asset handoff to a human
-         designer. Critic returns "Review skipped — Type: designer-handoff" and
-         the stop-hook gate is also skipped. **Use deliberately — this is the
-         only Type that bypasses Critic enforcement.**
-       - `cumulative-final`: marker on the last chunk of a multi-chunk plan;
-         the chunk's own review IS the one `/critic cumulative` against
-         `merge-base...HEAD` — commit the chunk first, then run it once; no
-         separate `final` (cumulative is a strict superset; see Done-when
-         step 4 below).
-       - `trivial`: semantically simple change whose risk is low *because the
-         author can name why* — not because LOC is small. **Structural bounds
-         (machine-enforced):** chunk diff has no edits under `skills/`,
-         `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file
-         deletions; no new files. Size is unbounded — an 80-LOC project-wide
-         rename can be trivial; a 5-line state-machine change cannot. **Requires
-         `**Trivial because:**` field** below; the rationale is the semantic
-         claim that Critic Goal 3 (rationale-vs-diff fit) validates. Over-
-         declaring is unsafe and BLOCKING: violating any bound OR omitting
-         rationale produces a named blocker, never a silent carveout.
-
-       See `skills/critic/review-cycle.md` "Per-Chunk Type Protocol Selector"
-       for the full per-type protocol matrix. -->
-- **Trivial because:** [required when `Type: trivial`; omit otherwise]
-  <!-- One or two sentences naming what makes this change semantically simple.
-       Strong rationale points at the structural property that bounds risk:
-         - "project-wide rename of FooBar to BazQux; no behavior change"
-         - "add type annotations to public API; no logic change"
-         - "appends two learning entries to .prawduct/learnings.md; no code,
-            no tests, no behavior"
-       Weak rationale to avoid (Critic Goal 3 will WARN/BLOCK):
-         - "small change", "easy fix", "quick update" — describes feeling,
-           not structure; can't be validated against the diff.
-       The Critic compares this claim to the actual diff in Chunk 05's
-       rationale-vs-diff fit check. Misfit (e.g., claims rename but diff
-       adds new function bodies) → BLOCKING for scope expansion. Empty
-       rationale → BLOCKING at the stop-hook (parser returns
-       `missing-rationale`). -->
-- **Visual change:** [optional — `yes` if the chunk produces a user-visible change that needs human verification before merge (UI screen, CLI output format, generated artifact appearance, live external integration). Otherwise omit.]
-  <!-- When declared `yes`, append an entry to `.prawduct/operator-verification.md`
-       at chunk-close describing what to verify and where. When
-       `operator_verification_required: true` in project-state.yaml, `/pr create`
-       blocks on pending entries; drain via
-       `prawduct-hook verify-operator-verification <VRF-id>`, or
-       override per-PR with `--accept-pending-verification "rationale"`. The
-       Critic emits a NOTE if a chunk declares `Visual change: yes` but no
-       queue entry references it. Methodology: `methodology/building.md`
-       chunk-close step. -->
-- **Foreign API:** [optional — omit unless this chunk wraps a foreign API/SDK. Format: `<name>` (e.g., `ableton-live-mcp`, `stripe-js-sdk`)]
-  <!-- When this chunk wraps a foreign API or SDK whose surface the project
-       doesn't own (vendor APIs, MCP servers, third-party libraries with
-       non-trivial wrappers), declare `**Foreign API:** <name>` here. The
-       Critic's Goal 2 then verifies the chunk's Done-when includes a
-       `verify-api` step (read source or run discovery probes before drafting
-       handlers) — missing step → WARNING. Carries forward
-       `infrastructure_dependencies` flagged in discovery (see
-       `methodology/planning.md` "Foreign API Verification").
-
-       Example (verify-api prepended as step 0, existing numbering preserved):
-         **Foreign API:** ableton-live-mcp
-         **Done when:**
-           0. verify-api — read MCP server source for the resource handlers
-              this chunk wraps; capture actual response shapes in
-              `.prawduct/artifacts/api-notes-ableton.md`
-           1. Acceptance criteria met and tests pass
-           ...
-
-       Omit the field entirely when no foreign API is involved — the Critic
-       check doesn't fire. -->
-- **Exposed API:** [optional — omit unless this chunk introduces or changes a programmatic interface this product EXPOSES for others to call. Not just HTTP: a network service, a library/SDK, an on-device/platform interface, or a CLI. Format: `<name>`]
-  <!-- Mirror of Foreign API, for the interface you PRODUCE. When this chunk
-       builds or changes an exposed surface, declare it here. The Critic's Goal 2
-       then checks that the versioning/deprecation decision
-       (design_decisions.api_versioning_approach, or a dated deferral) AND the
-       error-model decision (api_error_model_approach) are recorded — missing
-       either → WARNING. Detail lives in the api-contract artifact
-       (templates/api-contract.md). Force-the-decision, not mandate-versioning:
-       a recorded "none — internal-only" satisfies it. Omit when this chunk
-       exposes no API surface — the check doesn't fire. -->
+- **Description:** Prove the path: one page renders grocery items from SQLite. Layers connect end-to-end before any feature widens.
+- **Depends on:** none
+- **Artifacts consumed:** `data-model.md` (Item entity), `test-specifications.md` §1
+- **Deliverables:** new `pantry/main.py`, new `pantry/store.py`, new `templates/list.html`, seeded dev database
+- **Tests:** unit — `store.py` CRUD; integration — GET / renders seeded items (httpx)
+- **Acceptance criteria:** `uv run pytest -q` passes; browser shows the seeded list at /
 - **Done when:**
   1. Acceptance criteria met and tests pass
-  2. `/critic <mode>` run (using the mode declared above) and blocking findings resolved
+  2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
-  <!-- Backlog hygiene (strongly advised): at chunk close, review open
-       `.prawduct/backlog.md` items whose `area:` overlaps this chunk and update
-       affected ones via `/prawduct:backlog` (shipped → status=shipped; partly
-       addressed → note + leave open; obsolete → dropped). The framework never
-       infers status (D4); this explicit pass is what keeps the backlog honest. -->
-  <!-- If `Foreign API:` is declared above, add as step 0 (runs before tests
-       and implementation):
-         0. `verify-api` — read foreign source or run discovery probes; capture
-            actual signatures in chunk notes or a referenced artifact.
-       On the final chunk of a multi-cycle branch (or any time a PR will be
-       opened for this work), also add as step 4:
-         4. `/critic cumulative` run against `merge-base...HEAD` and blocking
-            findings resolved — this is the structural gate for `/pr create`,
-            and on a `Type: cumulative-final` chunk it IS the chunk's review
-            (commit first; no separate `final`). -->
 
-<!-- Repeat for each chunk -->
+### Chunk 02: Add and check off items, grouped by store section
+
+- **Description:** The daily flow: add an item with a store section, check it off, checked items archive. Lands the item state machine the app depends on.
+- **Depends on:** Chunk 01
+- **Artifacts consumed:** `product-brief.md` core flow 1, `test-specifications.md` §2
+- **Deliverables:** POST routes in `pantry/main.py`, state transitions in `pantry/store.py` (open → checked → archived), form UI in `templates/list.html`
+- **Tests:** unit — state transitions including double-check-off; integration — full add → check → archive cycle (one step beyond the immediate post-state)
+- **Acceptance criteria:** user can add an item and see it under its section; checking it moves it to "done" without error
+- **Critic mode:** final
+  <!-- Override: inference would pick `chunk` mid-plan, but this chunk lands the
+       state-machine keystone — worth the full review now. -->
+- **Visual change:** yes — form layout and section grouping need a human look before merge
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 03: Barcode lookup via OpenFoodFacts
+
+- **Description:** Enter a barcode → prefill the item name from OpenFoodFacts, with graceful manual fallback when the API is unreachable.
+- **Depends on:** Chunk 02
+- **Artifacts consumed:** `dependency-manifest.md` (OpenFoodFacts entry)
+- **Deliverables:** `pantry/lookup.py` client with offline fallback, lookup route + UI field
+- **Tests:** unit — response parsing against the captured real shape; integration — lookup route with the client faked (fake built after verify-api, never before)
+- **Acceptance criteria:** a known barcode prefills the name; API down → the form still works manually
+- **Type:** cumulative-final
+  <!-- Last chunk: its review IS the one `/prawduct:critic cumulative` — commit
+       first, run it once, no separate `final`. -->
+- **Foreign API:** openfoodfacts-http
+- **Done when:**
+  0. verify-api — probe the live API for two barcodes; capture the actual response shape in `.prawduct/artifacts/api-notes-off.md`
+  1. Acceptance criteria met and tests pass
+  2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
+  3. Chunk marked `[x]` in Status
+
+<!-- Rarely-used optional fields, shown once for syntax:
+- **Type:** trivial
+- **Trivial because:** project-wide rename of ListItem to Item; no behavior change
+- **Exposed API:** pantry-http-api   (requires recorded versioning + error-model decisions)
+-->
 
 ## Early Feedback Milestone
 
-<!--
-  Identify the first chunk where the user can interact with the product.
-  This should be no later than chunk 3 for most products.
--->
+<!-- The first chunk where the user can interact with the product — chunk 3 at latest
+     for most products. -->
 
-**Milestone chunk:** [chunk ID]
-**What the user can do:** [Description of the interactive experience at this point]
+**Milestone chunk:** 01
+**What the user can do:** open the list page and see real items from the database.
 
 ## Governance Checkpoints
 
-<!--
-  When the Critic runs a full cross-chunk review (not just per-chunk review).
-  Typically: after the early feedback milestone and after all chunks complete.
--->
+**Commit & PR cadence:** commit per chunk after its Critic review passes (per-chunk commit is what scopes `chunk`-mode reviews). The last chunk's `cumulative` review makes the branch PR-ready — `/prawduct:pr create` is gated on it and runs when the user asks for a PR.
 
-**Commit & PR cadence:** [e.g., "Commit per chunk after `/critic <mode>` passes; PR after the last chunk's one `/critic cumulative` (its review AND the PR gate) passes."]
-<!--
-  Per-chunk commit is the default and the contract for `chunk`-mode Critic
-  reviews — each chunk's diff scope is the working tree against the previous
-  chunk's commit. Squash-at-end plans are out of scope (no `Critic base SHA:`
-  tracking yet); if you genuinely need it, deferred to backlog.
-
-  Cumulative-Critic gate: `/pr create` calls `prawduct-hook check-cumulative-critic`
-  and refuses to open a PR without a fresh, blocking-free `cumulative` record.
-  Plan for cumulative review wall-time (~4-10 min) as part of the final chunk.
--->
-
-- After chunk [ID]: [Review type and rationale]
+- After chunk 01: confirm the architecture (routes → store → SQLite) before widening.
+- After chunk 03 (cumulative): full-bundle review; verify the offline fallback has real coverage.

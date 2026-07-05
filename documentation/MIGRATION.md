@@ -24,7 +24,7 @@ framework files in the tree.
 
 > **Developing the framework itself?** Skip the install and load your working copy instead:
 > `claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct`. The `--add-dir` (same
-> path) lets methodology-reading skills (`/prawduct:building`, `/prawduct:critic`) load their
+> path) lets methodology-reading skills (`/prawduct:methodology building`, `/prawduct:critic`) load their
 > bundled guides out-of-tree. `--plugin-dir` alone is enough for `/prawduct:migrate`; a real
 > marketplace install needs neither flag.
 
@@ -71,7 +71,7 @@ prawduct ever placed," only known framework files.
   `backlog`, `prawduct-advisory`, `prawduct-doctor`
 - `tools/product-hook` and the framework `tools/lib/*` runtime
 - The framework protocol docs `.prawduct/critic-review.md`, `.prawduct/pr-review.md`,
-  `.prawduct/build-governance.md` (the plugin's bundled protocols + `/prawduct:building` govern now)
+  `.prawduct/build-governance.md` (the plugin's bundled protocols + `/prawduct:methodology building` govern now)
 - The now-inert `.prawduct/sync-manifest.json`
 
 **Edited in place** (your content preserved):
