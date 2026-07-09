@@ -146,7 +146,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
    - **Design reviewer** — Goals 4 (Everything Is Coherent), 7 (The Design Is Sound).
    - **Sustainability reviewer** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood).
 
-3. **Aggregate**: collect findings; if multiple subagents flag the same issue, keep highest severity; write the combined review in the standard output format below and persist `.prawduct/.critic-findings.json`.
+3. **Aggregate — synchronously, before returning**: wait for every reviewer subagent to finish, then collect findings; if multiple subagents flag the same issue, keep highest severity; write the combined review in the standard output format below and persist `.prawduct/.critic-findings.json`, then append the `review.critic` ledger event. The coordinator is done only once both writes have landed for HEAD — returning after the subagents report but before consolidation/writeback is exactly the fork-and-return miss that leaves `check-cumulative-critic` deadlocked (CRT-9K7T); `critic-end` verifies this at exit.
 
 ## Output Format
 

@@ -195,8 +195,14 @@ class TestCriticBeginEndCLI:
         # A parseable server-side timestamp so review_active can age it.
         datetime.strptime(payload["started_at"], "%Y-%m-%dT%H:%M:%SZ")
 
+        # CRT-9K7T: critic-end ALWAYS clears the marker first (the CRT-3X9D
+        # resilience contract), but now also verifies the review persisted a
+        # record covering HEAD. No review was written here, so it exits non-zero
+        # (loud) while STILL removing the marker — the property this test pins.
+        # The persistence-assertion cases live in test_critic_end_assertion.py.
         end = run_plugin_hook("critic-end", tmp_path)
-        assert end.returncode == 0, end.stderr
+        assert end.returncode == 1
+        assert "did not persist" in end.stderr
         assert not marker.is_file()
 
     def test_end_is_idempotent_when_absent(self, tmp_path):

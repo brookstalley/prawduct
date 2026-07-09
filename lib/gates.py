@@ -1156,6 +1156,111 @@ def check_branch_pushed(project_dir: Path) -> int:
     return 1
 
 
+def critic_end(project_dir: Path) -> int:
+    """Body of ``prawduct-hook critic-end`` (CRT-9K7T). Two responsibilities:
+
+    1. **Always clear the critic-active marker first** — the CRT-3X9D resilience
+       contract (a review that ends must never leave ``clear`` bricked) holds
+       regardless of what the assertion below finds.
+    2. **Verify the review persisted for HEAD.** A fork-and-return coordinator
+       can report success without landing its two writes — the consolidated
+       ``.critic-findings.json`` and the ``review.critic`` ledger anchor — which
+       silently deadlocks ``check-cumulative-critic`` (``chain-missing-anchor``)
+       later, forcing a full re-run. When the marker was present (a review was
+       genuinely completing), assert BOTH writes cover current HEAD and exit
+       non-zero with an actionable message otherwise, turning that silent
+       failure loud at the point of completion. The caller's fix is to re-run
+       the writeback (write findings, ``ledger-append``), never to hand-author
+       either file.
+
+    Exit 0 when no marker was present (idempotent cleanup — a manual call, a
+    TTL-swept marker, or a designer-handoff that never began one), or when both
+    writes cover HEAD. Exit 1 when a review was active but its record does not
+    cover HEAD. Git-unavailable → cannot verify → exit 0 with a note (never
+    block on infrastructure; the PR gate remains the backstop).
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    from . import critic_marker  # noqa: PLC0415 — lazy keeps gates' import DAG light
+
+    had_marker = critic_marker.clear_marker(prawduct_dir)
+    if not had_marker:
+        return 0
+
+    try:
+        head_proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- cannot verify without git; never block on infra
+        print(
+            f"critic-end: marker cleared; could not resolve HEAD to verify "
+            f"persistence ({exc!r}) — skipping the check.",
+            file=sys.stderr,
+        )
+        return 0
+    if head_proc.returncode != 0:
+        print(
+            "critic-end: marker cleared; could not resolve HEAD to verify "
+            f"persistence ({head_proc.stderr.strip()}) — skipping the check.",
+            file=sys.stderr,
+        )
+        return 0
+    head_sha = head_proc.stdout.strip()
+
+    problems: list[str] = []
+
+    # Write 1 — the consolidated findings record must cover HEAD.
+    findings_path = prawduct_dir / ".critic-findings.json"
+    if not findings_path.is_file():
+        problems.append(".critic-findings.json is absent")
+    else:
+        reviewed: str | None = None
+        try:
+            data = json.loads(findings_path.read_text())
+            cr = data.get("commit_reviewed") if isinstance(data, dict) else None
+            reviewed = cr if isinstance(cr, str) and cr.strip() else None
+        except (json.JSONDecodeError, OSError) as exc:
+            problems.append(f".critic-findings.json unreadable ({exc})")
+            reviewed = head_sha  # avoid a duplicate "no commit_reviewed" complaint
+        if reviewed is None:
+            problems.append(".critic-findings.json has no commit_reviewed")
+        elif reviewed != head_sha:
+            problems.append(
+                f".critic-findings.json commit_reviewed {reviewed[:12]} != HEAD "
+                f"{head_sha[:12]}"
+            )
+
+    # Write 2 — the review.critic ledger anchor must cover HEAD. This is the
+    # write check-cumulative-critic keys on; its absence is chain-missing-anchor.
+    from . import ledger  # noqa: PLC0415 — lazy; avoids a gates<->ledger import cycle
+
+    ledger_head = ledger.latest_review_critic_head(prawduct_dir)
+    if ledger_head is None:
+        problems.append("no review.critic event in the governance ledger")
+    elif ledger_head != head_sha:
+        problems.append(
+            f"latest review.critic ledger head {ledger_head[:12]} != HEAD "
+            f"{head_sha[:12]}"
+        )
+
+    if problems:
+        print(
+            "critic-end: marker cleared, but the review did not persist a record "
+            f"covering HEAD ({head_sha[:12]}): {'; '.join(problems)}. A coordinator "
+            "that returned before its writeback landed leaves check-cumulative-critic "
+            "deadlocked (chain-missing-anchor). Re-run the writeback — write "
+            ".critic-findings.json for HEAD, then `prawduct-hook ledger-append "
+            "--event review.critic ...` — never hand-author either file.",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"critic-end: marker cleared; findings record + review.critic ledger anchor "
+        f"both cover HEAD ({head_sha[:12]})."
+    )
+    return 0
+
+
 def check_cumulative_critic(project_dir: Path) -> int:
     """Structural gate for `/prawduct:pr create`: require a fresh cumulative-Critic record.
 

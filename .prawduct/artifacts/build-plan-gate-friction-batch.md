@@ -26,7 +26,7 @@ last_validated: 2026-07-09
 - [ ] Chunk 02: PR merge push-completeness guard (`check-branch-pushed`)
 - [ ] Chunk 03: Critic coordinator writeback reliability — exit-time assertion
 - [ ] Chunk 04: Merge-aware "delete the plan" nudge (cumulative-final)
-Context: On branch `feature/gate-friction-batch` off `develop`. Chunks 01–02 DONE on-branch (01: shared metadata predicate, +7 gate tests; 02: check-branch-pushed merge guard, +4 tests) — checkboxes stay `[ ]` until v-release stamps `status=shipped`. Baseline caveat: 2 pre-existing xdist cross-file-pollution flakes in `test_pr_reviewer.py::TestStopPrReviewGate` (pass alone / as a file — TST-6H2Q, NOT introduced here). Next: Chunk 03 (critic-end writeback assertion).
+Context: On branch `feature/gate-friction-batch` off `develop`. Chunks 01–03 DONE on-branch (01: shared metadata predicate, +7 gate tests; 02: check-branch-pushed merge guard, +6 tests; 03: critic-end persistence assertion + synchronous-writeback prose, +6 tests) — checkboxes stay `[ ]` until v-release stamps `status=shipped`. Baseline caveat: 2 pre-existing xdist cross-file-pollution flakes in `test_pr_reviewer.py::TestStopPrReviewGate` (pass alone / as a file — TST-6H2Q, NOT introduced here). Next: Chunk 04 (merge-aware delete-plan nudge, cumulative-final).
 
 ## Why one plan / one PR
 

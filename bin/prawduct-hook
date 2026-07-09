@@ -737,12 +737,17 @@ def cmd_critic_begin(project_dir: Path) -> int:
 
 
 def cmd_critic_end(project_dir: Path) -> int:
-    """Clear the critic-active marker at the end of a review. Idempotent — exit 0
-    whether or not a marker was present (a crashed review's marker also expires
-    by TTL and is swept at the next session start)."""
-    prawduct_dir = get_prawduct_dir(project_dir)
-    _critic_marker().clear_marker(prawduct_dir)
-    return 0
+    """Clear the critic-active marker at the end of a review AND verify the
+    review persisted a record covering HEAD (CRT-9K7T). Thin wrapper — body
+    lives in ``lib.gates.critic_end``.
+
+    Always clears the marker first (the CRT-3X9D resilience contract). When a
+    marker was present, exits non-zero if ``.critic-findings.json`` or the
+    ``review.critic`` ledger anchor does not cover HEAD — turning a fork-and-
+    return coordinator's silent writeback miss into a loud failure instead of a
+    later ``check-cumulative-critic`` deadlock. Exit 0 when no marker was
+    present (idempotent cleanup) or both writes cover HEAD."""
+    return _gates().critic_end(project_dir)
 
 
 # =============================================================================

@@ -307,3 +307,24 @@ def iter_events_newest_first(prawduct_dir: Path):
             )
             continue
         yield lineno, event
+
+
+def latest_review_critic_head(prawduct_dir: Path) -> str | None:
+    """The envelope ``git.head`` of the most recent ``review.critic`` event, or
+    ``None`` when the ledger holds none (or the newest one has no recorded head).
+
+    Read-only. The ``critic-end`` exit-time assertion (CRT-9K7T) uses this to
+    confirm the coordinator actually appended the ledger anchor for the commit
+    it reviewed — the second write (alongside ``.critic-findings.json``) that a
+    fork-and-return coordinator can silently skip, and the one
+    ``check-cumulative-critic`` gates on (``chain-missing-anchor``)."""
+    for _lineno, event in iter_events_newest_first(prawduct_dir):
+        if event.get("event") != "review.critic":
+            continue
+        git = event.get("git")
+        if isinstance(git, dict):
+            head = git.get("head")
+            if isinstance(head, str) and head.strip():
+                return head
+        return None
+    return None

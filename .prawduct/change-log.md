@@ -5,7 +5,7 @@
 
 ## 2026-07-09: gate-friction batch — unify governance-metadata doc-only predicate (gate-friction-batch)
 
-<!-- prawduct: chunks=01,02 | type=fix | scope=gate-friction-batch -->
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=gate-friction-batch -->
 
 **Why:** Six PR/critic fast-paths split on "what is not code": three judged by `.md`
 suffix alone (treating all `.prawduct/` state as code), three by `gitstate._is_metadata_path`
@@ -37,7 +37,28 @@ so the cumulative-Critic PR gate could not be satisfied (COV-2P7F umbrella).
   validate local HEAD, so a post-push commit was silently dropped from the merge.
 - Wired as a hard step into `skills/pr/SKILL.md` Merge Flow before the squash.
 - Tests (`tests/test_check_branch_pushed.py`, real bare-`origin` remote): pushed passes;
-  unpushed-commit, never-pushed, and detached-HEAD each fail loud.
+  unpushed-commit, local-behind-remote, diverged, never-pushed, and detached-HEAD each fail loud.
+
+**What (Chunk 03 — CRT-9K7T, corroborated by discodon CRT-8F3K):**
+- `prawduct-hook critic-end` (`lib/gates.py::critic_end`) now, when a review was active
+  (marker present), verifies the review PERSISTED a record covering HEAD before returning
+  success: both `.critic-findings.json` `commit_reviewed == HEAD` AND the newest
+  `review.critic` governance-ledger anchor's `git.head == HEAD` (the write
+  `check-cumulative-critic` keys on — its absence is the `chain-missing-anchor` deadlock).
+  On a miss it exits non-zero with an actionable message; it ALWAYS clears the marker first
+  (CRT-3X9D resilience). A fork-and-return coordinator's silent writeback miss becomes a loud
+  failure at the point of completion instead of a cryptic PR-gate deadlock and full re-run.
+- Root-cause prose: `skills/critic/SKILL.md` (steps 7–8) + `review-protocol.md` aggregate step
+  now state the completion contract — the coordinator persists BOTH writes synchronously
+  BEFORE returning; "reviewers returned" ≠ "done" = "persisted-for-HEAD"; critic-end verifies.
+- New read-only `lib/ledger.py::latest_review_critic_head`. Tests
+  (`tests/test_critic_end_assertion.py`, real git + real ledger-append): both-cover-HEAD
+  passes; stale findings, missing/stale ledger anchor, and absent findings each fail loud
+  while still clearing the marker; no-marker is an idempotent pass.
+- Scope honesty: the assertion catches the variant where the coordinator REACHES critic-end
+  but skipped the writeback, and the prose fix targets the return-before-writeback root cause;
+  the variant where the coordinator never reaches critic-end at all remains caught by the
+  marker TTL + the PR gate (the existing backstops).
 
 **Classification:** governance
 
