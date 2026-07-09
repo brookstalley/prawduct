@@ -5,7 +5,7 @@
 
 ## 2026-07-09: gate-friction batch — unify governance-metadata doc-only predicate (gate-friction-batch)
 
-<!-- prawduct: chunks=01,02,03 | type=fix | scope=gate-friction-batch -->
+<!-- prawduct: chunks=01,02,03,04 | type=fix | scope=gate-friction-batch -->
 
 **Why:** Six PR/critic fast-paths split on "what is not code": three judged by `.md`
 suffix alone (treating all `.prawduct/` state as code), three by `gitstate._is_metadata_path`
@@ -59,6 +59,16 @@ so the cumulative-Critic PR gate could not be satisfied (COV-2P7F umbrella).
   but skipped the writeback, and the prose fix targets the return-before-writeback root cause;
   the variant where the coordinator never reaches critic-end at all remains caught by the
   marker TTL + the PR gate (the existing backstops).
+
+**What (Chunk 04 — BRF-6K2D):**
+- `lib/briefing.py` staleness scan: the "delete the plan" nudge is now merge-aware. Before
+  recommending deletion of a completed plan, `_plan_work_possibly_unmerged` checks two signals
+  — WIP recorded on another branch, or the current feature branch's HEAD not yet an ancestor
+  of the base (`git merge-base --is-ancestor`) — and, when the work is plausibly unmerged,
+  says "keep the plan until it merges (deleting now would orphan unshipped work)" instead.
+  Fails toward the prior "delete" nudge on any git/base uncertainty, so it only ADDS a
+  keep-recommendation on positive evidence. Tests (`tests/test_briefing_merge_aware_plan.py`,
+  real git): merged-on-base → delete; feature-branch-unmerged → keep; foreign-branch WIP → keep.
 
 **Classification:** governance
 

@@ -36,7 +36,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from . import backlog, buildplan_refs, gates, gitstate
+from . import backlog, buildplan_refs, coverage, gates, gitstate
 from .core import (
     BUILD_PLAN_POINTER_KEY,
     atomic_write_text,
@@ -80,6 +80,57 @@ def _extract_dependency_names(dep_file: Path) -> list[str]:
             return []
 
     return []
+
+
+def _plan_work_possibly_unmerged(project_dir: Path, prawduct_dir: Path) -> tuple[bool, str]:
+    """Best-effort: is the build plan's work plausibly still UNMERGED, so
+    recommending its deletion would orphan live, unshipped work (BRF-6K2D)?
+
+    Returns ``(unmerged, reason)``. Two independent signals, either sufficient:
+
+    1. **Foreign-branch WIP** — WIP is recorded for a branch other than the
+       current one. A build plan is often session-local and persists across a
+       branch switch, so an unmerged feature branch's plan can surface while the
+       session sits on the integration branch (the exact BRF-6K2D repro).
+    2. **Feature branch ahead of base** — the current branch is not the base and
+       its HEAD is NOT an ancestor of the base, i.e. it carries commits the base
+       doesn't have yet (the plan's work, unmerged).
+
+    Fails toward ``(False, "")`` — the prior "delete" nudge — whenever nothing is
+    detectable (no base, git error, on the base branch with no foreign WIP), so
+    this only ADDS a keep-recommendation on positive evidence of unmerged work,
+    never suppresses a legitimate one silently."""
+    current_branch = _get_current_branch(project_dir)
+
+    # Signal 1: WIP on another branch.
+    try:
+        others = _get_other_branch_wip(prawduct_dir, current_branch)
+    except Exception:  # prawduct:allow prawduct/broad-except -- best-effort; fall through
+        others = []
+    if others:
+        other_branch = others[0].split(":", 1)[0].strip()
+        return True, f"WIP recorded on another branch ({other_branch})"
+
+    # Signal 2: current feature branch not yet merged into the base.
+    try:
+        base, _reason = coverage._resolve_base_branch(project_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- base resolution is best-effort
+        base = None
+    if base:
+        base_name = base.rsplit("/", 1)[-1]
+        if current_branch != base_name:
+            try:
+                proc = subprocess.run(
+                    ["git", "merge-base", "--is-ancestor", "HEAD", base],
+                    cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+                )
+                # rc 0 = HEAD is an ancestor of base (merged); rc 1 = NOT (unmerged).
+                if proc.returncode == 1:
+                    return True, f"branch '{current_branch}' is not merged into {base}"
+            except Exception:  # prawduct:allow prawduct/broad-except -- best-effort; fall through to prior behavior
+                pass
+
+    return False, ""
 
 
 def staleness_scan(project_dir: Path) -> list[str]:
@@ -147,23 +198,44 @@ def staleness_scan(project_dir: Path) -> list[str]:
     if build_plan_path.is_file():
         try:
             status = buildplan_refs._parse_build_plan_status(prawduct_dir)
+            # Merge-awareness (BRF-6K2D): only recommend DELETING a completed
+            # plan when its work isn't still unmerged — otherwise deleting
+            # orphans live, unshipped work. When unmerged, say "keep until
+            # merged" instead of "delete".
+            unmerged, unmerged_reason = _plan_work_possibly_unmerged(
+                project_dir, prawduct_dir
+            )
             if status.get("current_chunk"):
                 pass  # Active work — not stale
             elif status.get("_has_status_items"):
                 # All items checked — work complete
-                findings.append(
-                    f"build plan: {build_plan_label} has all chunks complete — "
-                    "if work is done, delete the plan"
-                )
+                if unmerged:
+                    findings.append(
+                        f"build plan: {build_plan_label} has all chunks complete but "
+                        f"{unmerged_reason} — keep the plan until it merges (deleting "
+                        "now would orphan unshipped work)"
+                    )
+                else:
+                    findings.append(
+                        f"build plan: {build_plan_label} has all chunks complete — "
+                        "if work is done, delete the plan"
+                    )
             else:
                 # No Status items — check WIP as fallback for old-style repos
                 current_branch = _get_current_branch(project_dir)
                 wip = _parse_wip(prawduct_dir, branch=current_branch)
                 if not wip.get("description"):
-                    findings.append(
-                        f"build plan: {build_plan_label} exists but no active work — "
-                        "if work is complete, delete the plan"
-                    )
+                    if unmerged:
+                        findings.append(
+                            f"build plan: {build_plan_label} exists but no active work "
+                            f"on this branch — {unmerged_reason}, so keep the plan until "
+                            "it merges rather than deleting"
+                        )
+                    else:
+                        findings.append(
+                            f"build plan: {build_plan_label} exists but no active work — "
+                            "if work is complete, delete the plan"
+                        )
         except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
 
