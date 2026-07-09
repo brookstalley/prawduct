@@ -106,7 +106,31 @@ def test_doc_only_branch_exempt(tmp_path):
     _commit_file(repo, "docs/notes.md", "notes\n", "doc change")
     result = _run_probe(repo)
     assert result.returncode == 0, result.stderr
-    assert "doc-only" in result.stdout
+    assert "no entry required" in result.stdout
+
+
+def test_prawduct_metadata_only_branch_exempt(tmp_path):
+    # A branch whose only non-.md change is `.prawduct/` governance metadata
+    # (state churn, ledger, evidence) is metadata, not code — no change-log
+    # entry required (COV-2P7F / CRT-5D8Q).
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(
+        repo, ".prawduct/.governance-ledger.jsonl", '{"event":"x"}\n', "ledger churn"
+    )
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "no entry required" in result.stdout
+
+
+def test_protected_md_change_still_requires_entry(tmp_path):
+    # A `skills/*.md` change is behavioral logic (governance-protected) even
+    # though it is `.md` — it must still require a change-log entry, so the
+    # broadened doc/metadata exemption cannot swallow it (PR-5K8D guard).
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "skills/foo/SKILL.md", "prose\n", "skill prose change")
+    result = _run_probe(repo)
+    assert result.returncode == 1, result.stdout
+    assert "no-entry" in result.stderr
 
 
 def test_empty_diff_exempt(tmp_path):

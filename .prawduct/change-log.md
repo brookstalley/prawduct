@@ -3,6 +3,34 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-09: gate-friction batch — unify governance-metadata doc-only predicate (gate-friction-batch)
+
+<!-- prawduct: chunks=01 | type=fix | scope=gate-friction-batch -->
+
+**Why:** Six PR/critic fast-paths split on "what is not code": three judged by `.md`
+suffix alone (treating all `.prawduct/` state as code), three by `gitstate._is_metadata_path`
+(excusing `.prawduct/` + `.claude/settings.json`). The disagreement is the CRT-5D8Q deadlock
+— a branch whose entire diff is `.prawduct/` state was simultaneously "stale, re-run" (per
+`_record_covers_head`) and "empty delta, nothing changed" (per `_compute_verify_resolutions_scope`),
+so the cumulative-Critic PR gate could not be satisfied (COV-2P7F umbrella).
+
+**What (Chunk 01):**
+- New single-source predicate in `lib/buildplan_refs.py`: `is_doc_or_metadata` (`.md` OR
+  `_is_metadata_path`) and `is_nonbehavioral_path` (doc-or-metadata AND not
+  governance-protected — `skills/`, `methodology/`, `templates/`, root `CLAUDE.md` stay code
+  even as `.md`, PR-5K8D guard preserved).
+- Routed onto it: `_pr_diff_is_doc_only` and `check_change_log_entry` (`lib/coverage.py`),
+  `_record_covers_head` and the `_evaluate_pr_gate_record` chain scope-gap (`lib/gates.py`).
+  A `.prawduct/`-only branch is now consistently metadata (no re-stale, no change-log-entry
+  requirement); a `skills/*.md` change still re-stales / still needs an entry.
+- Prose reconciled to "docs/metadata" at every site that described the old `.md`-only rule
+  (`skills/pr/SKILL.md`, `skills/critic/review-cycle.md`).
+- Tests: positive `.prawduct/`-metadata coverage + negative protected-`.md` regression added
+  to the change-log gate, cumulative gate, and doc-only PR gate (the `_record_covers_head`
+  `.prawduct/` case had no coverage before).
+
+**Classification:** governance
+
 ## 2026-07-03: prose diet — reconcile, single-source, compress, fold (prose-diet)
 
 <!-- prawduct: chunks=01,02,03 | type=improvement | scope=prose-diet | release=v2.3.0 | status=shipped -->

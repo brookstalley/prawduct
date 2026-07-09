@@ -998,6 +998,19 @@ class TestDocOnlyProtectedPaths:
         r = _run_in(gitflow_repo, "check-pr-doc-only")
         assert r.returncode == 0, (r.stdout, r.stderr)
 
+    def test_prawduct_metadata_only_pr_is_doc_only(self, gitflow_repo):
+        # COV-2P7F: a PR whose only non-.md change is `.prawduct/` governance
+        # metadata (state churn, ledger, evidence) is metadata, not code — it
+        # takes the doc-only fast path, unifying with the metadata-aware gates.
+        self._use_develop_base(gitflow_repo)
+        target = gitflow_repo / ".prawduct" / ".governance-ledger.jsonl"
+        target.write_text('{"event":"x"}\n')
+        _git(gitflow_repo, "add", ".prawduct/.governance-ledger.jsonl")
+        _git(gitflow_repo, "commit", "-m", "metadata-only churn")
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+
 
 class TestVerifyOperatorVerificationSubcommand:
     """`prawduct-hook verify-operator-verification <VRF-id>` (Chunk 11) is the

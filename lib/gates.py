@@ -1022,12 +1022,18 @@ def _record_covers_head(project_dir: Path, commit_reviewed) -> tuple[str, str]:
             f"git diff {reviewed_sha[:12]}..HEAD failed: {diff_proc.stderr.strip()}"
         )
     changed = [ln.strip() for ln in diff_proc.stdout.splitlines() if ln.strip()]
-    non_doc = [f for f in changed if not f.endswith(".md")]
-    if non_doc:
-        sample = ", ".join(non_doc[:3])
-        more = f" (+{len(non_doc) - 3} more)" if len(non_doc) > 3 else ""
+    # Coverage holds when the only changes since the review are non-behavioral —
+    # docs or `.prawduct/` governance metadata — but NOT governance-protected
+    # prose (a `skills/*.md` change is behavioral and re-stales the record).
+    # Same shared predicate the doc-only PR gate and verify-resolutions scope
+    # use, so all fast-paths judge the `.prawduct/` boundary identically
+    # (COV-2P7F / CRT-5D8Q).
+    behavioral = [f for f in changed if not buildplan_refs.is_nonbehavioral_path(f)]
+    if behavioral:
+        sample = ", ".join(behavioral[:3])
+        more = f" (+{len(behavioral) - 3} more)" if len(behavioral) > 3 else ""
         return "stale", f"{reviewed_sha[:12]}..{head_sha[:12]}: {sample}{more}"
-    # Only .md changed since the review — coverage holds, no re-run.
+    # Only docs / `.prawduct/` metadata changed since the review — no re-run.
     return "covered", ""
 
 
@@ -1361,8 +1367,7 @@ def _evaluate_pr_gate_record(project_dir: Path, data: dict, source: str) -> int:
         ]
         gap = sorted(
             f for f in changed
-            if not f.endswith(".md")
-            and not gitstate._is_metadata_path(f)
+            if not buildplan_refs.is_nonbehavioral_path(f)
             and f not in files_reviewed
         )
         if gap:

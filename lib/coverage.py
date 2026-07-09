@@ -132,11 +132,13 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
 
 
 def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
-    """Shared helper: is the PR diff (``merge-base...HEAD``) all ``.md``?
+    """Shared helper: is the PR diff (``merge-base...HEAD``) docs/metadata only?
 
     Returns ``(is_doc_only, status_message)``. ``is_doc_only`` is True only
-    when the diff is non-empty, every file ends in ``.md``, AND no file is
-    governance-protected (``skills/``, ``methodology/``, ``templates/``,
+    when the diff is non-empty, every file is documentation or governance
+    metadata (``.md`` OR ``.prawduct/`` / ``.claude/settings.json`` — a branch
+    entirely under ``.prawduct/`` is metadata, not code; COV-2P7F), AND no file
+    is governance-protected (``skills/``, ``methodology/``, ``templates/``,
     root ``CLAUDE.md`` — PR-5K8D). The status
     message names the specific reason for False (``no-base``, ``git-failed``,
     ``empty-diff``, ``not-doc-only: <files>``) so both the CLI gate and the
@@ -162,11 +164,14 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     if not files:
         return False, f"empty-diff: no files changed in {base}...HEAD"
 
-    non_md = [f for f in files if not f.endswith(".md")]
-    if non_md:
-        sample = ", ".join(non_md[:3])
-        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
-        return False, f"not-doc-only: PR includes non-.md files: {sample}{more}"
+    # "Not code" = documentation (.md) OR framework/session metadata
+    # (`.prawduct/`, `.claude/settings.json`) — a branch entirely under
+    # `.prawduct/` is governance metadata, not code (COV-2P7F / CRT-5D8Q).
+    non_doc = [f for f in files if not buildplan_refs.is_doc_or_metadata(f)]
+    if non_doc:
+        sample = ", ".join(non_doc[:3])
+        more = f" (+{len(non_doc) - 3} more)" if len(non_doc) > 3 else ""
+        return False, f"not-doc-only: PR includes non-doc files: {sample}{more}"
 
     # Governance-protected paths are never doc-only even as .md: fork-skill
     # prose, methodology, and templates ARE behavioral logic here, so a
@@ -180,7 +185,7 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
         more = f" (+{len(protected) - 3} more)" if len(protected) > 3 else ""
         return False, f"not-doc-only: governance-protected paths in PR: {sample}{more}"
 
-    return True, f"doc-only: {len(files)} file(s) in {base}...HEAD all .md"
+    return True, f"doc-only: {len(files)} file(s) in {base}...HEAD are docs/metadata"
 
 
 _CHANGE_LOG_REL_PATH = ".prawduct/change-log.md"
@@ -197,8 +202,9 @@ def check_change_log_entry(project_dir: Path) -> int:
     `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs on failure.
 
     Exit 0 when:
-      * the diff is empty or all-``.md`` (doc-only work needs no entry), or
-      * a non-``.md`` diff includes ``.prawduct/change-log.md`` AND that diff
+      * the diff is empty or entirely docs/``.prawduct/`` metadata (doc /
+        governance-metadata work needs no entry), or
+      * a behavioral diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
         existing entry's text does not vouch for new work.
 
@@ -228,17 +234,24 @@ def check_change_log_entry(project_dir: Path) -> int:
         return 1
 
     files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    non_md = [f for f in files if not f.endswith(".md")]
+    # Behavioral = not (doc or `.prawduct/` metadata), OR governance-protected
+    # even as `.md` (a `skills/*.md` change is behavioral logic and DOES need an
+    # entry). A branch entirely under `.prawduct/` is metadata → no entry
+    # required (COV-2P7F / CRT-5D8Q).
+    behavioral = [f for f in files if not buildplan_refs.is_nonbehavioral_path(f)]
     if not files:
         print(f"empty-diff: no files changed in {base}...HEAD — no entry required.")
         return 0
-    if not non_md:
-        print(f"doc-only: all {len(files)} changed file(s) are .md — no entry required.")
+    if not behavioral:
+        print(
+            f"doc/metadata-only: all {len(files)} changed file(s) are docs or "
+            f".prawduct/ metadata — no entry required."
+        )
         return 0
 
     if _CHANGE_LOG_REL_PATH not in files:
-        sample = ", ".join(non_md[:3])
-        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
+        sample = ", ".join(behavioral[:3])
+        more = f" (+{len(behavioral) - 3} more)" if len(behavioral) > 3 else ""
         print(
             f"no-entry: branch changes code ({sample}{more}) but "
             f"{_CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "

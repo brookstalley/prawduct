@@ -157,9 +157,41 @@ def test_doc_only_delta_since_review_still_covered(tmp_path):
     assert "stale" not in (r.stdout + r.stderr)
 
 
+def test_prawduct_metadata_delta_since_review_still_covered(tmp_path):
+    # CRT-5D8Q: a delta entirely under `.prawduct/` (governance metadata — state
+    # churn, ledger, evidence) is NOT code, so the clean cumulative still vouches
+    # for HEAD. Previously `_record_covers_head` used `.md`-only and marked this
+    # `stale`, deadlocking against the metadata-aware verify-resolutions scope.
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    reviewed = _commit_file(repo, "app.py", "print(1)\n", "code")
+    _commit_file(
+        repo, ".prawduct/.governance-ledger.jsonl", '{"event":"x"}\n', "state churn"
+    )  # HEAD moves, but only .prawduct/ metadata changed
+    _write_findings(repo, commit_reviewed=reviewed)
+    r = _run_gate(repo)
+    assert r.returncode == 0, f".prawduct/ metadata delta must stay covered; stderr={r.stderr}"
+    assert "satisfied" in r.stdout
+    assert "stale" not in (r.stdout + r.stderr)
+
+
 # ---------------------------------------------------------------------------
 # Coverage: the failing cases (honest)
 # ---------------------------------------------------------------------------
+
+
+def test_protected_md_delta_since_review_is_stale(tmp_path):
+    # PR-5K8D guard: a `skills/*.md` change is behavioral logic even though it is
+    # `.md`, so the broadened doc/metadata coverage must NOT swallow it — the
+    # record re-stales and forces a re-review.
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    reviewed = _commit_file(repo, "app.py", "print(1)\n", "code")
+    _commit_file(repo, "skills/foo/SKILL.md", "prose\n", "skill prose after review")
+    _write_findings(repo, commit_reviewed=reviewed)
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "stale" in r.stderr and "skills/foo/SKILL.md" in r.stderr
 
 
 def test_code_delta_since_review_is_stale(tmp_path):
@@ -307,6 +339,25 @@ def test_chain_scope_gap_fails(tmp_path):
     r = _run_gate(repo)
     assert r.returncode == 1
     assert "chain-scope-gap" in r.stderr and "core.py" in r.stderr
+
+
+def test_chain_scope_gap_counts_protected_md(tmp_path):
+    # PR-5K8D guard at the chain call site: a `skills/*.md` change in X..HEAD is
+    # behavioral logic (governance-protected), so even though it is `.md` it must
+    # count as an unreviewed scope gap and break the chain — the broadened
+    # metadata/doc exclusion must not excuse it.
+    repo, anchor, head = _chain_repo(tmp_path)
+    protected_head = _commit_file(
+        repo, "skills/foo/SKILL.md", "prose\n", "skill prose in chain range"
+    )
+    _write_findings(
+        repo, commit_reviewed=protected_head, mode=VERIFY_MODE,
+        files_reviewed=["app.py", "core.py"],  # skill prose NOT reviewed
+        extends_cumulative=anchor,
+    )
+    r = _run_gate(repo)
+    assert r.returncode == 1
+    assert "chain-scope-gap" in r.stderr and "skills/foo/SKILL.md" in r.stderr
 
 
 def test_chain_unresolved_anchor_fails(tmp_path):

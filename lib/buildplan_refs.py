@@ -503,6 +503,28 @@ def protected_path_violation(path: str) -> str | None:
     return None
 
 
+def is_doc_or_metadata(path: str) -> bool:
+    """True when *path* is documentation (``.md``) OR framework/session
+    metadata (``.prawduct/``, ``.claude/settings.json`` — via
+    ``gitstate._is_metadata_path``). This is the "not behavioral by suffix or
+    location" half of the classification; it does NOT account for governance-
+    protected paths (a ``skills/*.md`` file is ``.md`` yet behavioral). Callers
+    that must exclude protected prose use :func:`is_nonbehavioral_path`."""
+    return path.endswith(".md") or gitstate._is_metadata_path(path)
+
+
+def is_nonbehavioral_path(path: str) -> bool:
+    """The single "this changed file is not behavioral code" predicate every
+    PR / cumulative-Critic fast-path shares (COV-2P7F / CRT-5D8Q). True iff
+    *path* is doc-or-metadata AND not governance-protected — so ``.md`` docs
+    and ``.prawduct/`` state qualify, but ``skills/``, ``methodology/``,
+    ``templates/``, and root ``CLAUDE.md`` (behavioral logic even as ``.md``)
+    never do. Reconciles the historically-split ``.md``-only vs
+    ``_is_metadata_path`` boundaries onto one source of truth: a diff entirely
+    under ``.prawduct/`` is governance metadata, not code."""
+    return is_doc_or_metadata(path) and protected_path_violation(path) is None
+
+
 def _classify_trivial_change(
     *,
     path: str,

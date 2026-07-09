@@ -26,7 +26,7 @@ last_validated: 2026-07-09
 - [ ] Chunk 02: PR merge push-completeness guard (`check-branch-pushed`)
 - [ ] Chunk 03: Critic coordinator writeback reliability — exit-time assertion
 - [ ] Chunk 04: Merge-aware "delete the plan" nudge (cumulative-final)
-Context: Plan approved 2026-07-09; on branch `feature/gate-friction-batch` off `develop`. Baseline: full suite green in isolation; 2 pre-existing xdist cross-file-pollution flakes in `test_pr_reviewer.py::TestStopPrReviewGate` (pass alone / as a file — filed separately, NOT introduced here). Next: Chunk 01.
+Context: On branch `feature/gate-friction-batch` off `develop`. Chunk 01 DONE on-branch (shared metadata predicate landed; +6 gate tests; affected suites green in isolation) — checkbox stays `[ ]` until v-release stamps `status=shipped`. Baseline caveat: 2 pre-existing xdist cross-file-pollution flakes in `test_pr_reviewer.py::TestStopPrReviewGate` (pass alone / as a file — TST-6H2Q, NOT introduced here). Next: Chunk 02 (check-branch-pushed).
 
 ## Why one plan / one PR
 
@@ -58,7 +58,7 @@ Per chunk: (1) run the affected test files **in isolation** (`pytest tests/test_
 - **Tests:** `tests/test_cumulative_gate.py`, `tests/test_change_log_entry_gate.py`, `tests/test_gitstate_porcelain.py`, `tests/test_trivial_fileset_gate.py`. Add the currently-missing coverage:
   - `_record_covers_head` treats a `.prawduct/**` non-`.md` delta since review as **covered** (none exists today — Explore confirmed).
   - `check_change_log_entry` exempts a `.prawduct/**`-only (non-`.md`) branch.
-  - **Negative regression per broadened fast-path (mandatory, learning "give every skip-gate a regression test that a non-eligible case still BLOCKS"):** a `skills/foo.md` edit and a real `lib/*.py` change each still fail doc-only / still require a change-log entry / still stale the record. The `protected_path_violation` guard must be proven, not assumed.
+  - **Negative regression per broadened fast-path (mandatory, learning "give every skip-gate a regression test that a non-eligible case still BLOCKS"):** a `skills/*.md` edit and a real `lib/*.py` change each still fail doc-only / still require a change-log entry / still stale the record. The `protected_path_violation` guard must be proven, not assumed.
 - **Acceptance criteria:** the CRT-5D8Q scenario (branch diff entirely under `.prawduct/`) resolves consistently across `_record_covers_head` and `_compute_verify_resolutions_scope` — no deadlock; all four test files pass in isolation; every negative-regression test BLOCKS.
 - **Critic mode:** final
   <!-- Override: keystone. The predicate's coherence is across coverage.py + gates.py + gitstate.py + skill prose — a cross-file property the chunk-mode diff can't see. -->
