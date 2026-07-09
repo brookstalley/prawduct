@@ -5,7 +5,7 @@
 
 ## 2026-07-09: gate-friction batch — unify governance-metadata doc-only predicate (gate-friction-batch)
 
-<!-- prawduct: chunks=01 | type=fix | scope=gate-friction-batch -->
+<!-- prawduct: chunks=01,02 | type=fix | scope=gate-friction-batch -->
 
 **Why:** Six PR/critic fast-paths split on "what is not code": three judged by `.md`
 suffix alone (treating all `.prawduct/` state as code), three by `gitstate._is_metadata_path`
@@ -28,6 +28,16 @@ so the cumulative-Critic PR gate could not be satisfied (COV-2P7F umbrella).
 - Tests: positive `.prawduct/`-metadata coverage + negative protected-`.md` regression added
   to the change-log gate, cumulative gate, and doc-only PR gate (the `_record_covers_head`
   `.prawduct/` case had no coverage before).
+
+**What (Chunk 02 — PR-7T2K):**
+- New `prawduct-hook check-branch-pushed` (`lib/gates.py::check_branch_pushed`): asserts
+  `origin/<current-branch>` resolves to exactly local HEAD, failing loud on a detached HEAD,
+  a never-pushed branch, or unpushed local commits (naming the count and that the squash
+  would DROP them). `/prawduct:pr` squash-merges `origin/<branch>` while the other gates
+  validate local HEAD, so a post-push commit was silently dropped from the merge.
+- Wired as a hard step into `skills/pr/SKILL.md` Merge Flow before the squash.
+- Tests (`tests/test_check_branch_pushed.py`, real bare-`origin` remote): pushed passes;
+  unpushed-commit, never-pushed, and detached-HEAD each fail loud.
 
 **Classification:** governance
 

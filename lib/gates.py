@@ -1037,6 +1037,125 @@ def _record_covers_head(project_dir: Path, commit_reviewed) -> tuple[str, str]:
     return "covered", ""
 
 
+def _rev_count(project_dir: Path, range_spec: str) -> str:
+    """``git rev-list --count <range_spec>`` as a string, or ``"?"`` on any
+    failure — a cosmetic count for a remediation message, never load-bearing."""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-list", "--count", range_spec],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- the count is cosmetic; the gate already knows it fails
+        return "?"
+    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else "?"
+
+
+def check_branch_pushed(project_dir: Path) -> int:
+    """Pre-merge gate for the `/prawduct:pr` Merge Flow: the branch about to be
+    squash-merged must be fully pushed (PR-7T2K).
+
+    `/prawduct:pr` merges ``origin/<branch>`` (the GitHub PR head), but the
+    Create / coverage / cumulative-Critic gates all validate *local* HEAD — so a
+    commit made after the last push is silently dropped from the squash-merge.
+    This asserts ``origin/<current-branch>`` resolves to exactly local HEAD.
+
+    Exit 0 when the current branch's remote-tracking ``origin/<branch>`` head
+    equals local HEAD. Exit 1 — fail loud, because a merge that silently drops
+    commits is worse than a false block — when HEAD is detached (no branch to
+    push), the branch has no ``origin/<branch>`` (never pushed), the remote head
+    lags local HEAD (unpushed commits), or git is unavailable. stderr names the
+    specific reason with the remediation.
+    """
+    try:
+        branch_proc = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if git is unavailable
+        print(
+            f"git-unavailable: could not read current branch ({exc!r}). "
+            "Push and merge by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    branch = branch_proc.stdout.strip()
+    if branch_proc.returncode != 0 or not branch:
+        print(
+            "detached-head: no current branch to verify — checkout the PR branch "
+            "before merging.",
+            file=sys.stderr,
+        )
+        return 1
+
+    remote_ref = f"origin/{branch}"
+    try:
+        head_proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+        remote_proc = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{remote_ref}^{{commit}}"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if git is unavailable
+        print(
+            f"git-unavailable: could not resolve commits ({exc!r}). "
+            "Push and merge by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    if head_proc.returncode != 0:
+        print(
+            f"git-failed: could not resolve HEAD: {head_proc.stderr.strip()}. "
+            "Push and merge by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    if remote_proc.returncode != 0:
+        print(
+            f"branch-not-pushed: {remote_ref} does not exist — the branch was "
+            f"never pushed. Run `git push -u origin {branch}` before merging.",
+            file=sys.stderr,
+        )
+        return 1
+
+    head_sha = head_proc.stdout.strip()
+    remote_sha = remote_proc.stdout.strip()
+    if head_sha == remote_sha:
+        print(f"pushed: {remote_ref} is at HEAD ({head_sha[:12]}) — safe to merge.")
+        return 0
+
+    # Direction-aware: count commits each side is ahead so the remediation is
+    # accurate whether local has unpushed work (the DROP case), the remote is
+    # ahead (local stale), or the two have diverged.
+    ahead = _rev_count(project_dir, f"{remote_ref}..HEAD")  # local-only commits
+    behind = _rev_count(project_dir, f"HEAD..{remote_ref}")  # remote-only commits
+    detail = f"local HEAD {head_sha[:12]} != {remote_ref} {remote_sha[:12]}"
+    if ahead and ahead != "0" and behind and behind != "0":
+        print(
+            f"diverged: {branch} and {remote_ref} have diverged ({ahead} local, "
+            f"{behind} remote commit(s); {detail}). `/prawduct:pr` squash-merges "
+            f"{remote_ref} — reconcile (push/pull) so HEAD matches what merges.",
+            file=sys.stderr,
+        )
+    elif behind and behind != "0":
+        print(
+            f"local-behind-remote: {remote_ref} is ahead of local HEAD by {behind} "
+            f"commit(s) ({detail}). `/prawduct:pr` squash-merges {remote_ref}, so the "
+            f"merge would include commits not in your validated local HEAD — pull "
+            f"and re-validate before merging.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"unpushed-commits: {ahead} local commit(s) on {branch} are not in "
+            f"{remote_ref} ({detail}). `/prawduct:pr` squash-merges {remote_ref}, so "
+            f"these would be DROPPED — run `git push` before merging.",
+            file=sys.stderr,
+        )
+    return 1
+
+
 def check_cumulative_critic(project_dir: Path) -> int:
     """Structural gate for `/prawduct:pr create`: require a fresh cumulative-Critic record.
 

@@ -2097,6 +2097,12 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
     return _gates().check_cumulative_critic(project_dir)
 
 
+def cmd_check_branch_pushed(project_dir: Path) -> int:
+    """Pre-merge push-completeness gate for `/prawduct:pr` Merge Flow. Thin
+    wrapper — body lives in ``lib.gates.check_branch_pushed`` (PR-7T2K)."""
+    return _gates().check_branch_pushed(project_dir)
+
+
 def cmd_verify_coverage(project_dir: Path) -> int:
     """Critic Goal-1 coverage gate. Thin wrapper — body lives in
     ``lib.gates.verify_coverage`` (STH-9V4K ch.6)."""
@@ -2650,7 +2656,7 @@ _USAGE = (
     "review-stats [--json]|classify-diff-risk [<base>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
-    "check-pr-doc-only|check-change-log-entry|regen-views [--check]|stamp-merged|"
+    "check-pr-doc-only|check-change-log-entry|check-branch-pushed|regen-views [--check]|stamp-merged|"
     "infer-critic-mode [args]|"
     "compute-verify-resolutions-scope|resolve-base|advisory <subcmd> [args]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
@@ -2816,6 +2822,8 @@ def main() -> int:
         return cmd_test_evidence(project_dir, sys.argv[2:])
     elif command == "check-cumulative-critic":
         return cmd_check_cumulative_critic(project_dir)
+    elif command == "check-branch-pushed":
+        return cmd_check_branch_pushed(project_dir)
     elif command == "verify-chunk-refs":
         chunk_id = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_verify_chunk_refs(project_dir, chunk_id)
