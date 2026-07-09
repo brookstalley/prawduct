@@ -26,7 +26,7 @@ last_validated: 2026-07-09
 - [ ] Chunk 02: PR merge push-completeness guard (`check-branch-pushed`)
 - [ ] Chunk 03: Critic coordinator writeback reliability — exit-time assertion
 - [ ] Chunk 04: Merge-aware "delete the plan" nudge (cumulative-final)
-Context: On branch `feature/gate-friction-batch` off `develop`. All 4 chunks DONE on-branch (01: shared metadata predicate, +7 gate tests; 02: check-branch-pushed merge guard, +6 tests; 03: critic-end persistence assertion + synchronous-writeback prose, +6 tests; 04: merge-aware delete-plan nudge, +3 tests) — checkboxes stay `[ ]` until v-release stamps `status=shipped`. Baseline caveat: 2 pre-existing xdist cross-file-pollution flakes in `test_pr_reviewer.py::TestStopPrReviewGate` (pass alone / as a file — TST-6H2Q, NOT introduced here). Next: cumulative Critic (Chunk 04 is cumulative-final) → PR when the user asks.
+Context: On branch `feature/gate-friction-batch` off `develop`. All 4 chunks DONE + cumulative-reviewed on `feature/gate-friction-batch` (6 commits). Cumulative Critic clean after resolving 6 warnings (notably: narrowed the doc-only exemption to `.prawduct/` so a `.claude/settings.json` change can't skip PR review); verify-resolutions chain extends the cumulative and covers HEAD → `check-cumulative-critic` satisfied (PR-ready). Backlog: COV-2P7F, CRT-5D8Q, PR-7T2K, CRT-9K7T, BRF-6K2D archived shipped. Suite 1558 green. Checkboxes stay `[ ]` until v-release stamps `status=shipped`. Baseline caveat: 2 pre-existing xdist flakes in `test_pr_reviewer.py::TestStopPrReviewGate` (TST-6H2Q, NOT introduced here). Awaiting: user to request `/prawduct:pr` (not pushed yet).
 
 ## Why one plan / one PR
 
