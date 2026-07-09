@@ -14,7 +14,7 @@ Three review layers are explicitly distinct (table at the end): the per-chunk Cr
 6. Read `.prawduct/learnings.md` for project-specific patterns.
 7. Review against the goals below.
 
-**You may be skipped.** `/prawduct:pr create` skips this review only for a doc-only bundle (every file in `merge-base...HEAD` is `.md`). There is no code-side trivial fast-path — it was retired as unsound (rationale in `skills/pr/SKILL.md` Step 1b). If the caller invoked you anyway, run the full review — the fast-path is a caller-side optimization, not a reviewer-side waiver. Fail closed: when in doubt, review.
+**You may be skipped.** `/prawduct:pr create` skips this review only for a docs/metadata bundle (every file in `merge-base...HEAD` is documentation (`.md`) or `.prawduct/` governance metadata). There is no code-side trivial fast-path — it was retired as unsound (rationale in `skills/pr/SKILL.md` Step 1b). If the caller invoked you anyway, run the full review — the fast-path is a caller-side optimization, not a reviewer-side waiver. Fail closed: when in doubt, review.
 
 ## The Critic Record — Evidence, Not Truth
 

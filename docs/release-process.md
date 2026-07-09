@@ -171,10 +171,11 @@ If you nonetheless reach the cumulative-Critic gate during a release — e.g. yo
 check-cumulative-critic` by hand against the release-prep commit — a non-zero exit is **expected and
 benign**, not a gate to satisfy:
 
-- **Why it fires:** release-prep necessarily touches non-`.md` files (the `version` strings in
-  `.claude-plugin/plugin.json` + `VERSION`, and the `regen-views`-regenerated `scope_rollups` in
-  `project-state.yaml`). The CRT-7M2D coverage gate only excuses a doc-only (`.md`) delta since the
-  recorded review, so these version/derived-view edits read as "code changed since review" → exit 1.
+- **Why it fires:** release-prep necessarily touches behavioral files outside the exemption — the
+  `version` strings in `.claude-plugin/plugin.json` + `VERSION`. The coverage gate excuses a
+  docs (`.md`) or `.prawduct/`-metadata delta since the recorded review (so the `regen-views`-
+  regenerated `scope_rollups` in `.prawduct/project-state.yaml` no longer trips it, COV-2P7F), but
+  the plugin.json/VERSION edits read as "code changed since review" → exit 1.
 - **Why it's benign:** the operative pre-release reviews already happened — each feature had a clean
   cumulative Critic at its feature→`develop` merge, and the release-readiness PR reviewer ran on each
   feature PR. The release adds no new behavior, only version bookkeeping.

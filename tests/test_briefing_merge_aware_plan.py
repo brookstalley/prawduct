@@ -94,6 +94,42 @@ def test_feature_branch_unmerged_says_keep(tmp_path):
     assert any("feature/x" in f for f in findings)
 
 
+def test_feature_branch_already_ancestor_says_delete(tmp_path):
+    # On a feature branch whose HEAD IS an ancestor of the base (no commits of
+    # its own yet) → merged/reachable → the plan is safe to delete (signal-2
+    # is-ancestor rc==0 path).
+    repo = _setup(tmp_path, base_branch="main")
+    _git(repo, "checkout", "--quiet", "-b", "feature/at-base")  # same commit as main
+    findings = _plan_findings(repo)
+    assert any("delete the plan" in f for f in findings), findings
+    assert not any("keep the plan until it merges" in f for f in findings)
+
+
+def test_relative_head_fallback_base_does_not_suppress(tmp_path):
+    # No main/master/develop and no configured base_branch → _resolve_base_branch
+    # falls back to the relative `HEAD~1` ref. `merge-base --is-ancestor HEAD
+    # HEAD~1` is always false, which must NOT nonsensically suppress the nudge.
+    repo = tmp_path / "repo"
+    (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+    _git(repo, "init", "--quiet", "-b", "work")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "T")
+    _git(repo, "config", "commit.gpgsign", "false")
+    (repo / ".prawduct" / "project-state.yaml").write_text(
+        "active_build_plan: artifacts/build-plan-test.md\n"  # no base_branch
+    )
+    (repo / ".prawduct" / "artifacts" / "build-plan-test.md").write_text(_PLAN)
+    (repo / "a.py").write_text("a=1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "c1", "--quiet")
+    (repo / "b.py").write_text("b=1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "c2", "--quiet")  # ≥2 commits so HEAD~1 resolves
+    findings = _plan_findings(repo)
+    assert any("delete the plan" in f for f in findings), findings
+    assert not any("HEAD~1" in f for f in findings)  # no nonsensical base in the message
+
+
 def test_foreign_branch_wip_says_keep(tmp_path):
     # On the base branch, but WIP is recorded for another (unmerged) branch —
     # the shared plan may belong to it, so keep rather than delete.

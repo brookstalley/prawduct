@@ -102,11 +102,9 @@ def _plan_work_possibly_unmerged(project_dir: Path, prawduct_dir: Path) -> tuple
     never suppresses a legitimate one silently."""
     current_branch = _get_current_branch(project_dir)
 
-    # Signal 1: WIP on another branch.
-    try:
-        others = _get_other_branch_wip(prawduct_dir, current_branch)
-    except Exception:  # prawduct:allow prawduct/broad-except -- best-effort; fall through
-        others = []
+    # Signal 1: WIP on another branch. (Any error propagates to staleness_scan's
+    # own best-effort handler — no redundant local catch to mask defects.)
+    others = _get_other_branch_wip(prawduct_dir, current_branch)
     if others:
         other_branch = others[0].split(":", 1)[0].strip()
         return True, f"WIP recorded on another branch ({other_branch})"
@@ -116,7 +114,11 @@ def _plan_work_possibly_unmerged(project_dir: Path, prawduct_dir: Path) -> tuple
         base, _reason = coverage._resolve_base_branch(project_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- base resolution is best-effort
         base = None
-    if base:
+    # A branch-name base only. The `HEAD~1` fallback (no main/develop/origin and
+    # no configured base_branch) is a relative ref: `merge-base --is-ancestor
+    # HEAD HEAD~1` is ALWAYS false, which would permanently and nonsensically
+    # suppress the nudge — treat it as "no base signal" instead.
+    if base and "~" not in base and not base.startswith("HEAD"):
         base_name = base.rsplit("/", 1)[-1]
         if current_branch != base_name:
             try:

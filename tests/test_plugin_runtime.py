@@ -1011,6 +1011,22 @@ class TestDocOnlyProtectedPaths:
         r = _run_in(gitflow_repo, "check-pr-doc-only")
         assert r.returncode == 0, (r.stdout, r.stderr)
 
+    def test_claude_settings_json_is_not_doc_only(self, gitflow_repo):
+        # COV-2P7F guard: the review-skip exemption is `.prawduct/` ONLY, NOT the
+        # wider `_is_metadata_path` set — `.claude/settings.json` can carry hooks
+        # (command execution) and permissions, so a branch touching it must NOT
+        # skip the cumulative-Critic + PR-reviewer gates.
+        self._use_develop_base(gitflow_repo)
+        target = gitflow_repo / ".claude" / "settings.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('{"hooks": {}}\n')
+        _git(gitflow_repo, "add", ".claude/settings.json")
+        _git(gitflow_repo, "commit", "-m", "settings change")
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert "not-doc-only" in (r.stdout + r.stderr)
+
 
 class TestVerifyOperatorVerificationSubcommand:
     """`prawduct-hook verify-operator-verification <VRF-id>` (Chunk 11) is the

@@ -1065,6 +1065,13 @@ def check_branch_pushed(project_dir: Path) -> int:
     push), the branch has no ``origin/<branch>`` (never pushed), the remote head
     lags local HEAD (unpushed commits), or git is unavailable. stderr names the
     specific reason with the remediation.
+
+    **Scope: local tracking ref, no fetch.** This compares against the *local*
+    ``origin/<branch>`` ref, which only advances on ``fetch``/``push`` — so it
+    reliably catches the target case (a local commit made after the last push)
+    but not a divergence created on the remote by another machine since the last
+    fetch. That is deliberate: a gate must not perform network IO that can hang
+    the merge flow. Run ``git fetch`` first if remote-side certainty is needed.
     """
     try:
         branch_proc = subprocess.run(

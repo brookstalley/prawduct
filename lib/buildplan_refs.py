@@ -504,13 +504,21 @@ def protected_path_violation(path: str) -> str | None:
 
 
 def is_doc_or_metadata(path: str) -> bool:
-    """True when *path* is documentation (``.md``) OR framework/session
-    metadata (``.prawduct/``, ``.claude/settings.json`` — via
-    ``gitstate._is_metadata_path``). This is the "not behavioral by suffix or
-    location" half of the classification; it does NOT account for governance-
-    protected paths (a ``skills/*.md`` file is ``.md`` yet behavioral). Callers
-    that must exclude protected prose use :func:`is_nonbehavioral_path`."""
-    return path.endswith(".md") or gitstate._is_metadata_path(path)
+    """True when *path* is documentation (``.md``) OR ``.prawduct/`` governance
+    state (backlog, change-log, learnings, project-state, session markers,
+    ledger, evidence). This is the "not behavioral by suffix or location" half
+    of the review-skip classification.
+
+    Deliberately NARROWER than ``gitstate._is_metadata_path``: it does NOT
+    include ``.claude/settings.json``. The review-SCOPE helpers excuse
+    settings.json (churn there doesn't re-stale a code review), but for the
+    review-SKIP fast-paths a settings.json change must NOT skip the PR review
+    gates — it can carry hooks (command execution) and permissions, i.e.
+    behavioral/security-relevant logic. COV-2P7F scoped this exemption to
+    ``.prawduct/`` only. It also does NOT account for governance-protected
+    paths (a ``skills/*.md`` file is ``.md`` yet behavioral); callers that must
+    exclude protected prose use :func:`is_nonbehavioral_path`."""
+    return path.endswith(".md") or path.startswith(".prawduct/")
 
 
 def is_nonbehavioral_path(path: str) -> bool:
