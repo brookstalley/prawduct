@@ -545,3 +545,39 @@ not as an aspiration handed down from a global "should be halvable" feel. Relate
 Delivery (#2 — the number must never outrank preservation), Reasoned Decisions (#4 — a floor needs
 a derivation), Honest Confidence (#5 — distinguish a measured estimate from an intuition), and
 Proportional Effort (#11 — a sampling step is cheap insurance against a close-out trade-off).
+
+## When a governance checkpoint verifies a required side-effect happened, put it OUTSIDE the control flow that produces the side-effect
+
+**Context (critic-persistence-redesign, 2026-07-09/10).** Claude Code v2.1.198 flipped Agent
+subagents to background-by-default. The Critic's final/cumulative coordinator was a `context: fork`
+skill that dispatched 3 reviewers and *resumed inline* to persist (write findings → ledger anchor →
+critic-end). Under background-by-default the fork returns before the resume, so the writeback never
+ran: reviews were silently lost, surfacing only later as a check-cumulative-critic deadlock (CRT-9K7T).
+
+**The trap.** A prior hardening (gate-friction-batch Chunk 03) added a HEAD-coverage assertion
+INSIDE critic-end. But the failure mode is "critic-end never reached" — so the assertion, living
+inside the flow that fails, could never fire on that flow's own failure. Verifying persistence at
+the skippable step is worthless when the step is skipped.
+
+**The fix (Option A).** Decouple model judgment from deterministic persistence:
+1. The floor is OUTSIDE the flow — a lingering `.critic-active` marker caught at session end
+   (a state critic-end would have cleared). This is Chunk 01, built first, on purpose.
+2. Persistence is a pure function of durable on-disk state — reviewers write partials; a
+   deterministic, idempotent, fail-closed `critic-consolidate` merges them (NO model in the write
+   path), so no fork/background/resume behavior can bypass it.
+3. Event-driven fast path (SubagentStop → consolidate) for latency, but the session-end backstop
+   is the enforcing floor — a two-tier design that degrades gracefully if the fast path misfires.
+
+**Process notes worth keeping.**
+- Verified the post-cutoff harness facts (background-by-default date, SubagentStop existence,
+  plugin `agents/` auto-discovery, agent-type/matcher semantics) via `claude-code-guide` + empirical
+  reasoning, NOT recall — the whole fix hinged on facts recall would have gotten wrong.
+- Honest limitation (Principle 5): the harness firing the SubagentStop hook and resolving the
+  plugin `critic-reviewer` agent type can't be exercised until the plugin ships this branch (the
+  session runs the plugin from cache, not the working tree). Captured as operator-verification
+  VRF-002; the command bodies + consolidation core are exhaustively unit-tested meanwhile. When the
+  thing under test is the installed governance machinery itself, "self-validating" needs the fix to
+  be *live* first — flag the gap, don't fake the validation.
+- Token-budget friction: adding a subsystem's prose to a lean instruction file (review-protocol.md,
+  3350-token ceiling) meant RELOCATING record detail to review-cycle.md, not expanding — the
+  prose-diet lever, and the budget test earned its keep by forcing it.
