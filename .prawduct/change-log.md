@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-10: Single-PR bookkeeping — no post-merge commits on the integration branch (single-pr-bookkeeping)
+
+<!-- prawduct: chunks=01,02 | type=fix | scope=single-pr-bookkeeping | release=v2.3.2 | status=shipped -->
+
+**Why:** Consumers whose integration branches are protected (commits land only by PR) were
+forced into a **second, bookkeeping-only PR** after every feature merge: the merge flow's
+post-merge `stamp-merged` chore commit, trunk repos' `status=shipped` flips, and build-plan
+retirement all required commits directly on the integration branch. Live report from a
+product repo mid-build ("Want me to close out #1 and #2 in a small follow-up PR? It's the
+only way to land those on protected develop"). The release-integrity value of REL-9F2T
+never lived in the stamp — it lives in the `check-change-log-entry` probe, the "flip every
+unreleased entry" release rule, and fail-closed regen validation, all retained.
+
+**What:**
+- **Chunk 01 (lib/hook):** a statusless *tagged* change-log entry is first-class
+  release-pending state — `collect_release_pending_scopes` enumerates its scope (batched
+  releases regenerate its plan with no stamp ever applied); the
+  `diagnose_scope_plan_coverage` label stops implying a missed stamp; `stamp-merged` is
+  deprecated (kept callable + convergent, announces deprecation on stderr).
+- **Chunk 02 (flows):** `/prawduct:pr` create flow gains Step 1d — *the PR carries its own
+  bookkeeping* (backlog archives, change-log status, derived views, trunk plan retirement
+  all ride in the branch, atomic with the merge); merge-flow post-merge steps commit
+  nothing (stamp step removed; missed bookkeeping folds into the next PR — never a
+  housekeeping-only PR); `templates/change-log.md` rewritten (its status roster listed
+  values regen-views treats as fatal, and it instructed post-merge stamping);
+  release-process status model rewritten (statusless = expected release-pending; `merged` =
+  accepted legacy); backlog-skill clause + planning.md cross-refs aligned; new guardrail
+  test pins "no flow instructs a post-merge integration-branch commit".
+
 ## 2026-07-09: Critic persistence redesign — independent review that can't silently fail (critic-persistence-redesign)
 
 <!-- prawduct: chunks=01,02,03,04,05 | type=fix | scope=critic-persistence-redesign | release=v2.3.1 | status=shipped -->

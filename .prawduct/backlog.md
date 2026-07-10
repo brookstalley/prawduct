@@ -83,10 +83,17 @@
 
   Outcome: either confirm coverage is sound or identify the gaps (likely a follow-on to the api-design work). Research-stage — this is an audit/investigation, not yet a buildable task; route to discovery to advance the stage. (user)
 
-- **[COV-5H3N]** resolve-base ignores origin/HEAD and defaults to main on gitflow repos — silent wrong-base inflates review scope and breaks stamp-merged + build-plan lifecycle
-  `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: open · stage: design · related: PR-2H8N, REL-7P3X, MIG-6B0R · refs: lib/coverage.py (_resolve_base_branch, _DEFAULT_BASE_CANDIDATES), lib/migrate_plugin.py, skills/onboard, incoming-bugs/archive/resolve-base-ignores-origin-head-defaults-to-main-on-gitflow-repos.md`
+- **[COV-5H3N]** resolve-base ignores origin/HEAD and defaults to main on gitflow repos — silent wrong-base inflates review scope and misroutes PR bookkeeping + build-plan lifecycle
+  `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: open · stage: design · related: PR-2H8N, REL-7P3X, MIG-6B0R · refs: lib/coverage.py (_resolve_base_branch, _DEFAULT_BASE_CANDIDATES), lib/migrate_plugin.py, skills/onboard, incoming-bugs/archive/resolve-base-ignores-origin-head-defaults-to-main-on-gitflow-repos.md · reviewed: 2026-07-10`
 
   When base_branch: is unset in project-state.yaml, _resolve_base_branch falls back to the hardcoded candidate list (origin/main, main, HEAD~1) and returns the first that resolves — even when the repo's declared default branch (origin/HEAD) is develop. The wrong base flows into the cumulative-Critic base, PR-reviewer base, coverage diff, classify-diff-risk, and the stamp-merged guard, so a 2-commit feature off develop is reviewed/gated as the entire develop..main promotion range, and stamp-merged refuses on develop ("integration base is main"), and Merge-Flow step 8 can take the build-plan-DELETE branch for a release-pending merge. Reported v2.1.4 from Discodon; every gitflow consumer hits it on its first PR unless they know the base_branch knob. THIS repo masks it (base_branch: develop is set). Fix-shape (either alone closes most of the gap; both is best): (1) make the default branch-aware — consult `git symbolic-ref --short refs/remotes/origin/HEAD` before the hardcoded list, prefer it when it resolves and isn't main-family (trunk repos with origin/HEAD=main unaffected); optionally warn instead of silently picking main when both a main-family branch and a non-main origin/HEAD exist. (2) set base_branch: at onboarding/migration time when origin/HEAD is non-main, so freshly-migrated gitflow repos start correct. Governance-protected (lib/) → full Critic + PR review.
+
+  **Note 2026-07-10 (single-pr-bookkeeping):** the stamp-merged branch-guard consequence above
+  is retired — no flow calls stamp-merged anymore (it is deprecated-but-callable only; hard
+  removal tracked as REL-4Q9V). But the item is now MORE load-bearing, not less:
+  `/prawduct:pr` create-flow Step 1d branches trunk-vs-gitflow on resolve-base, so a wrong
+  default base silently misroutes the PR's change-log bookkeeping (statusless-until-release vs
+  shipped-in-PR), on top of the review-scope inflation.
 
 - **[COV-8R2K]** verify-coverage records BLOCKING missing-coverage for non-executable files — prose .md docs AND non-code config (YAML) — forcing waivers or token reference-tests on otherwise-clean chunks
   `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: open · stage: design · related: TST-4K2P · refs: bin/prawduct-hook (verify-coverage), lib/coverage.py, skills/critic/review-cycle.md (Goal 1 rule F4b), incoming-bugs/archive/verify-coverage-records-blocking-missing-coverage-for-prose-docs.md, incoming-bugs/archive/check-pr-trivial-passes-feature-clusters-that-only-touch-existing-files.md`
@@ -836,14 +843,23 @@
   layer accretes its own bugs and learnings. Draft the amendment (Principle 19 — Evolving
   Principles is the vehicle) and confirm wording with the owner. (user)
 
-- **[REL-4Q9V]** Vocabulary shrink for the change-log lifecycle — drop `status=merged` and stamp-merged machinery; statusless-until-release as the only lifecycle; one scope identifier
-  `effort: M · impact: M · area: governance/change-log · source: builder · added: 2026-07-02 · status: open · stage: design · related: VWS-6R4T, REL-9F2T · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B "consider shrinking"), .prawduct/artifacts/build-plan-changelog-fail-loud.md (descope assumption + rationale)`
+- **[REL-4Q9V]** Vocabulary shrink for the change-log lifecycle — hard-remove `status=merged` and the deprecated stamp-merged machinery; one scope identifier (future major)
+  `effort: M · impact: M · area: governance/change-log · source: builder · added: 2026-07-02 · status: open · stage: design · related: VWS-6R4T, REL-9F2T · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan B "consider shrinking"), .prawduct/artifacts/build-plan-changelog-fail-loud.md (descope assumption + rationale) · reviewed: 2026-07-10`
 
   Deletion-over-patching candidate. Descoped from the changelog-fail-loud plan (VWS-6R4T) per
   that plan's HIGH-impact assumption. Blocked on the owner confirming the shrink is wanted once
   fail-loud validation ships — validation removes the P0 urgency. Cascade surfaces:
-  `skills/pr/SKILL.md` merge-flow step 6, `docs/release-process.md`, `stamp_merged` in
-  `lib/views.py`, several learnings. (planning)
+  `docs/release-process.md`, `stamp_merged` in `lib/views.py`, several learnings. (planning)
+
+  **Delivery note 2026-07-10 (feature/single-pr-bookkeeping) — lifecycle half shipped; item
+  stays open, narrowed to the hard-removal half.** Statusless-until-release is now the
+  documented + code-supported lifecycle: `collect_release_pending_scopes` enumerates statusless
+  tagged scopes; the `/prawduct:pr` merge-flow stamp step is removed (merge-flow step 6 no
+  longer exists — cascade list above updated accordingly); create-flow Step 1d establishes "the
+  PR carries its own bookkeeping"; `docs/release-process.md` + the template are rewritten.
+  Remaining scope (deferred to a future major): drop `merged` from `VALID_STATUS_VALUES`,
+  delete `stamp_merged`/`cmd_stamp_merged` (currently deprecated-but-callable with a stderr
+  notice), and the "one scope identifier" vocabulary consolidation.
 
 ## Promoted
 

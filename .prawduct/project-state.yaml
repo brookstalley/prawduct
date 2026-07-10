@@ -548,6 +548,12 @@ views_enabled: true
 # v2.3.1 (2026-07-10): critic-persistence-redesign shipped; entry flipped to
 # status=shipped; the pointer is cleared. No release-pending plans remain. Plan
 # files are RETAINED as historical artifacts and regen via their scope= tags.
+# 2026-07-10: repointed at single-pr-bookkeeping — retire post-merge integration-
+# branch commits (stamp-merged chore commit, trunk shipped flips); bookkeeping
+# rides in the PR. feature/single-pr-bookkeeping off develop, 2 chunks.
+# v2.3.2 (2026-07-10): single-pr-bookkeeping shipped (PR #118); entry flipped to
+# status=shipped; pointer cleared. No release-pending plans remain. Plan files
+# are RETAINED as historical artifacts and regen via their scope= tags.
 active_build_plan: null
 
 # =============================================================================
@@ -705,6 +711,9 @@ scope_rollups:
   single-owner-shared-checks:
     chunks: ["01"]
     releases: ["v2.1.8"]
+  single-pr-bookkeeping:
+    chunks: ["01", "02"]
+    releases: ["v2.3.2"]
   stop-gate-defer:
     chunks: ["01"]
     releases: ["v2.2.2"]

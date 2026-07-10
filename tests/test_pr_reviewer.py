@@ -457,11 +457,13 @@ class TestPrReviewSkillContent:
         assert "evidence file" in content
 
     def test_merge_flow_buildplan_cleanup_is_conditioned(self):
-        """PR-7Q3M: build-plan cleanup (merge-flow step 8 since the step-6
-        stamp-merged insertion; originally step 7) must branch on whether THIS
-        merge is the release — delete at the release surface, RETAIN while
-        release-pending — not unconditionally delete. Guards against a revert
-        to the old develop-merge=release assumption."""
+        """PR-7Q3M: build-plan lifecycle (merge-flow step 7 since the
+        single-pr-bookkeeping restructure; originally step 7, briefly step 8
+        during the stamp-merged era) must branch on whether THIS merge is the
+        release — retire at the release surface (in the closing PR, per
+        create-flow Step 1d), RETAIN while release-pending — not
+        unconditionally delete. Guards against a revert to the old
+        develop-merge=release assumption."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
         # The discriminator is resolve-base, and BOTH branches must be present.
         assert "resolve-base" in content, "cleanup step must branch on resolve-base"
@@ -469,8 +471,27 @@ class TestPrReviewSkillContent:
         assert "active_build_plan" in content, (
             "deletion must resolve the pointer, not a hardcoded build-plan.md path"
         )
-        # The release-pending branch must be tied to the develop base / status=merged.
-        assert "release-pending" in content or "status=merged" in content
+        # The release-pending branch must be tied to the develop base / statusless entry.
+        assert "release-pending" in content
+
+    def test_no_flow_requires_post_merge_integration_branch_commit(self):
+        """single-pr-bookkeeping: the whole point — no flow may instruct a
+        commit to the integration branch outside a PR. The retired stamp-merged
+        merge-flow step (post-merge chore commit) forced protected-branch
+        consumers into a second, bookkeeping-only PR. Guards against the
+        pattern's reintroduction: bookkeeping rides IN the feature PR
+        (create-flow Step 1d), and the merge flow explicitly has nothing to
+        commit."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        assert "stamp-merged" not in content, (
+            "the merge flow must not reintroduce the post-merge stamp commit"
+        )
+        assert "carries its own bookkeeping" in content, (
+            "the create flow must carry the bookkeeping-rides-in-the-PR step"
+        )
+        assert "nothing to commit" in content.lower(), (
+            "the merge flow must state the post-merge steps commit nothing"
+        )
 
     def test_create_flow_redirects_release_promotion(self):
         """REL-8K3M: the /pr skill must detect a release/integration context

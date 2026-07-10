@@ -64,13 +64,14 @@ When `develop` is ready to release as `vX.Y.Z`:
 2. **Bump the version** in `.claude-plugin/plugin.json` `version` **and** the `VERSION` file
    (they mirror each other). This is the release trigger — without it, nothing ships.
 3. **Flip the change-log entries** for the shipped work to `status=shipped` — **every
-   unreleased entry, statusless OR `status=merged`**, not just the `merged` ones. The
-   `/prawduct:pr` merge flow stamps `status=merged` (step 6, `prawduct-hook stamp-merged`),
-   but a missed stamp leaves an entry statusless, and a statusless entry silently skipped
-   here never flips its checkboxes and never reaches release notes (v2.0.14 shipped 8 of 10
-   entries that way — REL-2N8K). Enumerate ALL tagged entries above the prior `release=vX`
-   boundary; also add the `release=vX.Y.Z` tag (the `scope=` tag normally already exists
-   from the build):
+   unreleased entry, statusless OR legacy `status=merged`**. Entries arrive at release-prep
+   **statusless by design**: a feature PR adds its entry with no `status=`, and that
+   statusless tagged entry IS the release-pending state (no post-merge stamp exists —
+   requiring one forced protected-branch repos into bookkeeping-only PRs). A statusless
+   entry silently skipped here never flips its checkboxes and never reaches release notes
+   (v2.0.14 shipped 8 of 10 entries that way — REL-2N8K). Enumerate ALL tagged entries
+   above the prior `release=vX` boundary; also add the `release=vX.Y.Z` tag (the `scope=`
+   tag normally already exists from the build):
    ```
    <!-- prawduct: chunks=01,02,… | release=vX.Y.Z | status=shipped | scope=<plan-scope> -->
    ```
@@ -97,22 +98,30 @@ When `develop` is ready to release as `vX.Y.Z`:
 
 ### Change-log `status=` values
 
-Two values are meaningful to the release flow:
+Three states are meaningful to the release flow:
 
-- **`status=merged`** — the work is merged to `develop` but **not yet in a tagged release**
-  (release-pending). The `/prawduct:pr` merge flow applies this stamp mechanically
-  (merge-flow step 6 runs `prawduct-hook stamp-merged` on the integration branch); a
-  **statusless tagged entry on the integration branch therefore means the stamp was
-  missed**, not that the work is unmerged — step 3 flips it to `shipped` all the same, and
-  `regen-views` fails loudly (exit 2) when such an entry's `scope=` resolves to no plan file.
-  `regen-views` does **not** flip checkboxes for `merged` entries, so the
-  build plan's `## Status` stays `[ ]` and the `active_build_plan` pointer is retained until the
-  release (see "KEEP the build plan" in `learnings.md` and the `active_build_plan` note in
-  `project-state.yaml`). This is the develop-phase intermediate that step 3 flips to `shipped`.
-  The `/prawduct:pr` merge flow honors this: a feature→`develop` merge **retains** the plan and
-  pointer (merge-flow step 8), while a merge whose base is the release surface deletes them.
+- **Statusless (tagged)** — the normal **release-pending** state: the entry merged to
+  `develop` inside its feature PR (the entry's presence on the integration branch IS the
+  proof of merge — no stamp needed, and none is applied; the old post-merge
+  `stamp-merged` chore commit forced consumers with protected integration branches into a
+  second, bookkeeping-only PR, so it was retired). Step 3 flips it to `shipped` at
+  release; `regen-views` enumerates its `scope=` as release-pending and fails loudly
+  (exit 2) when that scope resolves to no plan file. It does **not** flip checkboxes, so
+  the build plan's `## Status` stays `[ ]` and the plan + `active_build_plan` pointer are
+  retained until the release (see "KEEP the build plan" in `learnings.md`). The
+  `/prawduct:pr` merge flow honors this: a feature→`develop` merge **retains** the plan
+  and pointer (merge-flow step 7), while on a trunk repo the closing PR itself carries the
+  `status=shipped` entry and the plan retirement (create-flow Step 1d).
+- **`status=merged`** — **legacy** synonym of the statusless state, applied by the retired
+  merge-flow stamp step (`prawduct-hook stamp-merged`, now deprecated). Accepted
+  indefinitely — older logs carry it — and treated identically to statusless by step 3 and
+  by the regen diagnostics.
 - **`status=shipped`** — the work is in a tagged release. This is the **only** value that
   `regen-views` flips to `[x]` (in `## Status`, release notes, and `scope_rollups`).
+
+On a repo whose integration branch is **protected** (commits land only by PR), release-prep
+itself rides in a PR — that one release PR is the only bookkeeping vehicle the flow ever
+needs; no per-feature housekeeping commit exists anywhere in the lifecycle.
 
 Any other `status=` value (including a typo) is a **fatal validation error** (VWS-6R4T,
 promoting the VWS-3K7P typo-guard): `regen-views` exits 2 with an ERROR line and writes
