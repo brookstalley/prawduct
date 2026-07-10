@@ -26,13 +26,22 @@
      Recognized keys:
        chunks   - comma-separated chunk IDs (zero-padded, must match
                   build-plan.md ## Status headers exactly: `Chunk 00:`)
-       release  - version string (used by release-notes view, future)
-       status   - shipped | in-progress | deferred
-                  `shipped` means MERGED TO MAINLINE — per-chunk timing.
-                  Tag chunks `status=shipped` as soon as the merge commit lands;
-                  inclusion in a tagged release is tracked separately via
-                  `release=vN.M.P` (set when a release entry consolidates one
-                  or more shipped chunks).
+       release  - version string (used by the release-notes view)
+       status   - shipped | merged (legacy). Write a new entry with NO
+                  status= on the feature branch: a statusless tagged entry
+                  is the release-pending state, and it becomes "merged" by
+                  construction when its PR lands — no stamp, no post-merge
+                  bookkeeping commit (protected branches take commits only
+                  by PR). Flip to `shipped` as part of release-prep when
+                  the integration branch is released (gitflow), or write
+                  `status=shipped` directly in the closing PR when the
+                  PR's base IS the release surface (trunk; include
+                  `release=vN.M.P` when the product tracks versions —
+                  release-notes groups by it) — either way the tag merges
+                  atomically with the work it describes.
+                  `merged` is a legacy stamp some logs carry; it is treated
+                  as statusless. Any other value (including a typo) is a
+                  fatal regen-views error — fix it, don't invent states.
        scope    - rollup identifier (e.g., v1.4)
 
      With `views_enabled: true`, the Status checkboxes in build-plan.md are a

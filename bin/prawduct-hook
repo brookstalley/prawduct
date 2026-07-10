@@ -2530,13 +2530,14 @@ def cmd_bug_inbox(project_dir: Path) -> int:
 def cmd_stamp_merged(project_dir: Path) -> int:
     """Stamp ``status=merged`` onto statusless tagged change-log entries.
 
-    The `/prawduct:pr` merge flow runs this on the integration branch right
-    after the squash-merge + pull (merge-flow step 6) — it is the mechanical
-    half of the statusless → merged transition the lifecycle documents but
-    nothing previously applied (REL-2N8K: most entries reached release-prep
-    statusless and a literal release-checklist reading silently dropped them).
-    Convergent by design: every statusless tagged entry is stamped, so a stamp
-    missed by an earlier merge is repaired by the next one.
+    DEPRECATED — no flow runs this anymore (single-pr-bookkeeping). A
+    statusless tagged entry is first-class release-pending state: the entry
+    rides in the feature PR, so its presence on the integration branch
+    already proves the work is merged. The post-merge stamp commit this
+    command fed forced consumers with protected integration branches into a
+    second, bookkeeping-only PR. The command stays callable (stamping is
+    harmless, convergent, and idempotent) and announces its deprecation on
+    stderr; removal is deferred to a future major.
 
     Branch guard: stamping asserts "this work is integrated," which is only
     true ON the integration branch — running on a feature branch would lie.
@@ -2550,6 +2551,14 @@ def cmd_stamp_merged(project_dir: Path) -> int:
           not claim success on a broken install — mirrors regen-views)
       2 - I/O error (missing/unreadable change-log)
     """
+    print(
+        "deprecated: stamp-merged is no longer part of any flow — a "
+        "statusless tagged entry IS the release-pending state, and the "
+        "release checklist flips statusless and merged entries alike. "
+        "Stamping remains harmless; the command may be removed in a future "
+        "major version.",
+        file=sys.stderr,
+    )
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)

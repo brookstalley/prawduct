@@ -1775,6 +1775,29 @@ class TestCollectReleasePendingScopes:
         scopes = views.collect_release_pending_scopes(views.parse_change_log(change_log))
         assert scopes == []  # wip status excluded; shipped-without-scope contributes no scope
 
+    def test_statusless_tagged_scope_is_release_pending(self):
+        """single-pr-bookkeeping: a statusless tagged entry IS the
+        release-pending state — no stamp-merged pass required for its scope
+        to be enumerated at a batched release."""
+        change_log = (
+            "## 2026-07-10: statusless (newest)\n"
+            "<!-- prawduct: chunks=01 | scope=delta -->\n"
+            "## 2026-07-09: merged (legacy stamp)\n"
+            "<!-- prawduct: chunks=01 | status=merged | scope=beta -->\n"
+        )
+        scopes = views.collect_release_pending_scopes(views.parse_change_log(change_log))
+        assert scopes == ["delta", "beta"]
+
+    def test_statusless_without_scope_and_typo_status_still_excluded(self):
+        change_log = (
+            "## 2026-07-10: statusless, no scope\n"
+            "<!-- prawduct: chunks=01 -->\n"
+            "## 2026-07-09: typoed status\n"
+            "<!-- prawduct: chunks=01 | status=shippd | scope=typo -->\n"
+        )
+        scopes = views.collect_release_pending_scopes(views.parse_change_log(change_log))
+        assert scopes == []  # no scope to contribute; typo is the typo-guard's finding
+
 
 class TestDiagnoseScopePlanCoverage:
     def test_merged_scope_without_plan_file_warns(self, tmp_path: Path):
@@ -1828,6 +1851,10 @@ class TestDiagnoseScopePlanCoverage:
         assert len(warnings) == 1
         assert "orphan" in warnings[0]
         assert "statusless" in warnings[0]
+        # single-pr-bookkeeping: statusless is the expected release-pending
+        # state, not a missed stamp — the label must not blame the author.
+        assert "release-pending" in warnings[0]
+        assert "stamp" not in warnings[0]
 
     def test_statusless_tagged_scope_with_plan_file_is_clean(self, tmp_path: Path):
         artifacts = tmp_path / "artifacts"
@@ -2659,6 +2686,9 @@ class TestStampMergedCommand:
             "status=merged"
             in (repo / ".prawduct" / "change-log.md").read_text()
         )
+        # single-pr-bookkeeping: no flow runs this anymore — the command
+        # still works (harmless, convergent) but says so.
+        assert "deprecated" in result.stderr
 
     def test_refuses_on_feature_branch(self, tmp_path: Path):
         repo = _make_git_product_repo(

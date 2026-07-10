@@ -17,9 +17,12 @@ Recognized keys:
 * ``chunks``  comma-separated chunk IDs (zero-padded, matching build-plan headers)
 * ``release`` version string (used by release-notes view, Chunk 06)
 * ``status``  ``shipped`` | ``merged`` — the two recognized values. Only
-  ``shipped`` flips a checkbox to ``[x]``; ``merged`` is the release-pending
-  intermediate (PR merged to develop, develop→main release still pending) and
-  does NOT flip a checkbox.
+  ``shipped`` flips a checkbox to ``[x]``. A tagged entry with NO ``status=``
+  is the normal release-pending state: the entry rides in the feature PR, so
+  its presence on the integration branch means the work is merged — no stamp
+  required (single-pr-bookkeeping). ``merged`` is an accepted legacy synonym
+  of that state (older logs carry it from the retired ``stamp-merged`` flow
+  step); neither flips a checkbox.
 * ``scope``   rollup identifier, e.g., ``v1.4``
 
 Entries without a tag line are ignored — untagged historical entries coexist
@@ -281,13 +284,22 @@ def validate_tag_conflicts(entries: list[ChangeLogEntry]) -> list[str]:
 def stamp_merged(content: str) -> tuple[str, list[str]]:
     """Stamp ``status=merged`` onto every statusless *tagged* entry.
 
-    The change-log lifecycle is statusless (feature branch) → ``merged``
-    (integrated) → ``shipped`` (released), but the merge flow historically
-    never applied the middle stamp, so most entries reached release-prep
-    statusless and a literal reading of the release checklist silently dropped
-    them (REL-2N8K — v2.0.14 shipped 8 of 10 entries unflipped). This pure
-    function is the stamping mechanism the ``stamp-merged`` hook command (and
-    `/prawduct:pr` merge-flow step 6) applies on the integration branch.
+    DEPRECATED — no flow applies this stamp anymore. A statusless tagged
+    entry is now first-class release-pending state: the entry rides in the
+    feature PR, so its presence on the integration branch already proves the
+    work is merged, and requiring a post-merge stamp commit forced consumers
+    with protected integration branches into a second, bookkeeping-only PR
+    (single-pr-bookkeeping). The function is kept because stamping remains
+    harmless and idempotent, existing logs carry ``merged`` entries, and the
+    ``stamp-merged`` hook command stays callable (with a deprecation notice)
+    so consumer muscle-memory doesn't hit an unknown-command error.
+
+    Historical context: the stamp was added for REL-2N8K (v2.0.14 shipped 8
+    of 10 entries unflipped because a literal reading of the release
+    checklist skipped statusless entries). The durable fixes for that
+    incident are the ones still active — the ``check-change-log-entry`` PR
+    probe, the "flip every unreleased entry, statusless OR merged" release
+    rule, and fail-closed regen validation.
 
     Semantics — deliberately convergent and idempotent: EVERY entry that has a
     tag line and no ``status=`` key is stamped, not only the just-merged
@@ -546,20 +558,25 @@ def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
 
 
 def collect_release_pending_scopes(entries: list[ChangeLogEntry]) -> list[str]:
-    """Distinct ``scope=`` values from shipped/merged entries, newest-first.
+    """Distinct ``scope=`` values from unreleased/shipped entries, newest-first.
 
-    Enumerates every scope that has at least one change-log entry whose
-    ``status`` is in :data:`VALID_STATUS_VALUES` (``shipped`` or ``merged``), in
-    change-log order (newest-first by file position), de-duplicated. ``merged``
-    is the release-pending intermediate; ``shipped`` is the just-released (or
-    historical) state. Both are included so ``regen-views`` flips the right
-    plans regardless of which value the release operator used (the v2.0.5
-    release, for instance, tagged its four scopes ``status=shipped`` directly).
+    Enumerates every scope that has at least one *tagged* change-log entry
+    that is statusless, ``status=merged``, or ``status=shipped``, in
+    change-log order (newest-first by file position), de-duplicated. A
+    statusless tagged entry is the normal release-pending state (the entry
+    merged inside its feature PR — single-pr-bookkeeping); ``merged`` is the
+    accepted legacy stamp for the same state; ``shipped`` is the
+    just-released (or historical) state. All three are included so
+    ``regen-views`` flips the right plans regardless of which convention the
+    log carries. A tag with an unrecognized ``status=`` (a typo) is excluded —
+    the typo-guard owns that finding.
     """
     seen: set[str] = set()
     ordered: list[str] = []
     for entry in entries:
-        if entry.tags.get("status") not in VALID_STATUS_VALUES:
+        status = entry.tags.get("status")
+        statusless_tagged = status is None and entry.tag_line_count > 0
+        if status not in VALID_STATUS_VALUES and not statusless_tagged:
             continue
         scope = entry.tags.get("scope")
         if isinstance(scope, str) and scope and scope not in seen:
@@ -579,9 +596,10 @@ def diagnose_scope_plan_coverage(
 
     * An unreleased scope with NO matching build-plan file — its ``## Status``
       cannot be regenerated, a real release-process error. "Unreleased" covers
-      both ``status=merged`` (release-pending) and **statusless tagged**
-      entries (the merge-flow stamp was missed — REL-9F2T audit finding: a
-      statusless entry with a bad ``scope=`` was undetected until release).
+      both **statusless tagged** entries (the normal release-pending state —
+      single-pr-bookkeeping; first flagged by the REL-9F2T audit, where a
+      statusless entry with a bad ``scope=`` was undetected until release)
+      and the legacy ``status=merged`` stamp.
       A ``status=shipped`` scope with no file is deliberately NOT flagged:
       its plan is a retired historical artifact or predates the ``scope:``
       frontmatter convention, so the absence is expected, not an error.
@@ -616,10 +634,10 @@ def diagnose_scope_plan_coverage(
         if status == "merged":
             label = "release-pending (status=merged)"
         elif status is None and entry.tag_line_count > 0:
-            # A statusless TAGGED entry is unreleased work whose merge-flow
-            # status=merged stamp was missed — same release-integrity stakes,
-            # previously invisible to this diagnostic (REL-9F2T).
-            label = "unreleased (statusless — merge stamp missed?)"
+            # A statusless TAGGED entry is the normal release-pending state
+            # (single-pr-bookkeeping) — same release-integrity stakes as
+            # status=merged, so the no-plan-file check applies equally.
+            label = "unreleased (statusless — release-pending)"
         else:
             # shipped (retired plan is expected), typos (typo-guard owns
             # those), and untagged historical entries.
