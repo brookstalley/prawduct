@@ -548,7 +548,7 @@ views_enabled: true
 # flipped to status=shipped; the pointer is cleared. No release-pending plans remain.
 # All three build-plan files are RETAINED as historical artifacts and regen via their
 # scope= tags.
-active_build_plan: null
+active_build_plan: artifacts/build-plan-critic-persistence-redesign.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
