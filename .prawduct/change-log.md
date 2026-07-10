@@ -5,7 +5,7 @@
 
 ## 2026-07-09: Critic persistence redesign — independent review that can't silently fail (critic-persistence-redesign)
 
-<!-- prawduct: chunks=01,02,03,04,05 | type=fix | scope=critic-persistence-redesign -->
+<!-- prawduct: chunks=01,02,03,04,05 | type=fix | scope=critic-persistence-redesign | status=merged -->
 
 **Why:** Claude Code v2.1.198 (2026-07-01) flipped `Agent` subagents to background-by-default.
 The Critic's `final`/`cumulative` coordinator is a `context: fork` skill that dispatched 3 review
