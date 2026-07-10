@@ -762,6 +762,57 @@ def cmd_critic_consolidate(project_dir: Path) -> int:
     return critic_consolidate.consolidate(project_dir)
 
 
+def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
+    """SubagentStop trigger: consolidate Critic partials as each reviewer finishes.
+
+    Registered for the ``critic-reviewer`` agent type. Runs `critic-consolidate`
+    best-effort — it no-ops until every roster role has reported, then merges
+    exactly once, so firing per-reviewer is safe and idempotent. This hook is
+    ADVISORY: it ALWAYS exits 0 and never blocks the subagent. The enforcing gate
+    is the session-end backstop (cmd_stop) — if this trigger somehow never fires
+    (matcher drift, a harness change), the lingering marker still blocks at
+    session end, so consolidation is event-driven-fast but session-end-guaranteed.
+
+    ``stop_input`` is the parsed SubagentStop stdin: ``cwd`` locates the project
+    (the reviewer's cwd is the project root), ``agent_type`` is the dispatched
+    agent name (scoped ``prawduct:critic-reviewer`` for a plugin agent). The
+    matcher already scopes us to critic-reviewer; the ``agent_type`` check is
+    defense-in-depth against matcher-config drift.
+    """
+    stop_input = stop_input or {}
+
+    # Prefer the payload cwd (the subagent ran in the project root); fall back to
+    # the dispatched project_dir. get_prawduct_dir then walks up to find .prawduct.
+    cwd = stop_input.get("cwd")
+    if isinstance(cwd, str) and cwd.strip():
+        candidate = Path(cwd)
+        if candidate.is_dir():
+            project_dir = candidate
+
+    # Defensive agent-type gate: if the payload names an agent that is not a
+    # critic-reviewer, there is nothing for us to consolidate. Accept both the
+    # bare name and the plugin-scoped `prawduct:critic-reviewer` form.
+    agent_type = stop_input.get("agent_type")
+    if (
+        isinstance(agent_type, str)
+        and agent_type.strip()
+        and not agent_type.strip().endswith("critic-reviewer")
+    ):
+        return 0
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+
+        critic_consolidate.consolidate(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a SubagentStop hook must never block the subagent; the session-end backstop is the enforcing gate
+        print(f"subagent-stop: consolidation deferred to session end ({exc})", file=sys.stderr)
+    # Always advisory — never propagate consolidate's exit code as a block.
+    return 0
+
+
 # =============================================================================
 # stop command
 # =============================================================================
@@ -2710,6 +2761,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force]|critic-begin|critic-end|critic-consolidate|"
+    "subagent-stop|"
     "stop|build-index|user-prompt-submit|test-status|validate-evidence|"
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
     "check-cumulative-critic|"
@@ -2872,6 +2924,8 @@ def main() -> int:
         return cmd_critic_end(project_dir)
     elif command == "critic-consolidate":
         return cmd_critic_consolidate(project_dir)
+    elif command == "subagent-stop":
+        return cmd_subagent_stop(project_dir, _read_stop_stdin())
     elif command == "build-index":
         return cmd_build_index(project_dir)
     elif command == "user-prompt-submit":

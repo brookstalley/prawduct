@@ -29,7 +29,7 @@ untouched by construction. The one unknown (fork-dispatched subagent survival) w
 - [x] Chunk 01: Session-end abandoned-review backstop — the guaranteed loud floor
 - [x] Chunk 02: `critic-consolidate` + partial/manifest schema — the deterministic core
 - [x] Chunk 03: `critic-reviewer` agent type + coordinator dispatch rewrite (partials, no resume)
-- [ ] Chunk 04: `SubagentStop` hook — event-driven consolidation trigger
+- [x] Chunk 04: `SubagentStop` hook — event-driven consolidation trigger
 - [ ] Chunk 05: Evolve the backstop to consolidate-or-block; reconcile messages (cumulative-final)
 Context: New branch `feature/critic-persistence-redesign` off `develop`. Fixes the v2.1.198
 background-by-default breakage of the Critic coordinator (design: `critic-persistence-redesign.md`,
