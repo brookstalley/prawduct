@@ -1,6 +1,10 @@
 ---
 artifact: design-note
-scope: critic-persistence-redesign
+# scope intentionally empty (opt-out): the build-plan owns the
+# critic-persistence-redesign scope for derived views; this design-note only
+# depends on it (a design-note is not a plan and must not co-own the scope, or
+# regen-views sees a duplicate scope owner).
+scope:
 status: built — all 5 chunks landed (see build-plan-critic-persistence-redesign.md)
 created: 2026-07-09
 depends_on: [build-plan-critic-persistence-redesign.md]
