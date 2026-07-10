@@ -27,7 +27,7 @@ untouched by construction. The one unknown (fork-dispatched subagent survival) w
 ## Status
 
 - [x] Chunk 01: Session-end abandoned-review backstop — the guaranteed loud floor
-- [ ] Chunk 02: `critic-consolidate` + partial/manifest schema — the deterministic core
+- [x] Chunk 02: `critic-consolidate` + partial/manifest schema — the deterministic core
 - [ ] Chunk 03: `critic-reviewer` agent type + coordinator dispatch rewrite (partials, no resume)
 - [ ] Chunk 04: `SubagentStop` hook — event-driven consolidation trigger
 - [ ] Chunk 05: Evolve the backstop to consolidate-or-block; reconcile messages (cumulative-final)
