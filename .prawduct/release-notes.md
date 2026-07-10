@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.3.2
+
+**Entry:** 2026-07-10: Single-PR bookkeeping — no post-merge commits on the integration branch (single-pr-bookkeeping)
+
+**Chunks shipped:** 01, 02
+
+**Scope:** single-pr-bookkeeping
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.3.1
 
 **Entry:** 2026-07-09: Critic persistence redesign — independent review that can't silently fail (critic-persistence-redesign)

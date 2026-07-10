@@ -5,7 +5,7 @@
 
 ## 2026-07-10: Single-PR bookkeeping — no post-merge commits on the integration branch (single-pr-bookkeeping)
 
-<!-- prawduct: chunks=01,02 | type=fix | scope=single-pr-bookkeeping -->
+<!-- prawduct: chunks=01,02 | type=fix | scope=single-pr-bookkeeping | release=v2.3.2 | status=shipped -->
 
 **Why:** Consumers whose integration branches are protected (commits land only by PR) were
 forced into a **second, bookkeeping-only PR** after every feature merge: the merge flow's
