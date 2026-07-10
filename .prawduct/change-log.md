@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-10: Critic consolidation tolerates `files: []` on a finding (critic-empty-files-tolerance)
+
+<!-- prawduct: chunks=01 | type=fix | scope=critic-empty-files-tolerance | release=v2.3.3 | status=shipped -->
+
+**Why:** A downstream product (discodon) hit a hard `critic-consolidate` fail-close: one
+reviewer partial carried a process/evidence finding with `"files": []`, and
+`validate_partial` required a *non-empty* list whenever the key was present — so the whole
+consolidation aborted and the gate kept reading the stale record. But `files: []` and an
+*omitted* `files` key are semantically identical ("this finding isn't about a specific
+file"), reviewers are only *told* to omit it, and a model naturally emits `[]`. Fail-closing
+the entire review over a distinction that carries no meaning is exactly the silently-lost-review
+failure class this module exists to prevent (follow-on to critic-persistence-redesign).
+
+**What:**
+- `lib/critic_consolidate.py` — new `_str_list` helper (a possibly-empty list of non-empty
+  strings); `validate_partial` accepts an empty `files` list instead of requiring
+  `_nonempty_str_list`. `[]` is normalized away downstream — `merge_findings` only keeps
+  truthy files, so `[]` and omission produce byte-identical canonical records. The
+  non-empty requirement is retained where it must hold (`goals`, `roster`, `files_reviewed`).
+- `tests/test_critic_consolidate.py` — three regression tests: `files: []` accepted, a list
+  containing an empty string still rejected, and `[]` normalized out of the canonical record.
+
 ## 2026-07-10: Single-PR bookkeeping — no post-merge commits on the integration branch (single-pr-bookkeeping)
 
 <!-- prawduct: chunks=01,02 | type=fix | scope=single-pr-bookkeeping | release=v2.3.2 | status=shipped -->

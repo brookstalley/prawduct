@@ -156,6 +156,25 @@ class TestValidatePartial:
         ok, reason = cc.validate_partial(p)
         assert ok, reason
 
+    def test_finding_with_empty_files_accepted(self):
+        # A process/evidence finding with ``files: []`` (semantically identical
+        # to omitting the key) must NOT fail-close the consolidation.
+        p = _partial("correctness", "abc", findings=[
+            {"name": "Stale test-status", "goal": "Nothing Is Broken",
+             "severity": "warning", "recommendation": "Re-run", "files": []}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_finding_files_with_empty_string_rejected(self):
+        p = _partial("correctness", "abc", findings=[
+            {"name": "x", "goal": "g", "severity": "warning",
+             "recommendation": "y", "files": ["a.py", ""]}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert not ok
+        assert "files" in reason
+
     @pytest.mark.parametrize("mutate,frag", [
         (lambda p: p.pop("role"), "role"),
         (lambda p: p.pop("commit_reviewed"), "commit_reviewed"),
@@ -235,6 +254,19 @@ class TestMergeFindings:
             "goal": "Nothing Is Broken", "severity": "blocking",
             "summary": "Broken thing", "recommendation": "Fix it", "files": ["a.py"],
         }]
+
+    def test_empty_files_normalized_out_of_record(self):
+        # ``files: []`` must be dropped from the canonical entry — the same shape
+        # an omitted key produces — so the record stays schema-clean.
+        merged = cc.merge_findings([_partial("correctness", "a", findings=[
+            {"name": "Stale evidence", "goal": "Nothing Is Broken",
+             "severity": "warning", "recommendation": "Re-run", "files": []}
+        ])])
+        assert merged == [{
+            "goal": "Nothing Is Broken", "severity": "warning",
+            "summary": "Stale evidence", "recommendation": "Re-run",
+        }]
+        assert "files" not in merged[0]
 
     def test_dedup_keeps_highest_severity(self):
         # Same (goal, name, files) reported by two reviewers at differing severity.
