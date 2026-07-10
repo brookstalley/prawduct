@@ -37,7 +37,14 @@ the writeback never ran: the review was **silently lost** and surfaced later onl
 unchanged, so downstream gates are untouched. Live validation of the harness firing the
 SubagentStop hook + resolving the plugin `critic-reviewer` agent type is deferred to VRF-002 (it
 can't be exercised until the plugin ships this branch). Closes CRT-9K7T; files CRT-4B7X
-(consolidate concurrency double-ledger edge, low). Full suite 1603 passed.
+(consolidate concurrency double-ledger edge, low).
+
+**Pre-merge hardening (post-review follow-ups):** `critic-begin` resets `.critic-partials/` so a
+waived/stale-failed review's leftovers can't merge into a fresh dispatch at the same HEAD; builders
+run `critic-consolidate` before reading findings after a coordinator review (SubagentStop becomes
+latency-only, not correctness-bearing); per-role cross-check ownership wired (sustainability →
+Learnings + Backlog, design → Framework-Specific Checks — the coordinator rewrite had orphaned
+them); Gate 2a backstop messages made cause-neutral. Full suite 1606 passed.
 
 ## 2026-07-03: prose diet — reconcile, single-source, compress, fold (prose-diet)
 
