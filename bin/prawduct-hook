@@ -195,8 +195,18 @@ def _critic_marker():
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
     from lib import critic_marker  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
-
     return critic_marker
+
+
+def _critic_consolidate():
+    """Lazy-import the deterministic Critic-consolidation core (lib/critic_consolidate).
+    Same idiom as _critic_marker(). The Stop-hook backstop reads `pending_state` and
+    calls `consolidate` through here to self-heal an abandoned coordinator review."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+    return critic_consolidate
 
 
 def _reject_unknown_args(
@@ -1032,50 +1042,101 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     if rationale_error:
                         trivial_block_reason = rationale_error
 
-    # Gate 2a (Chunk 01, CRT-9K7T follow-up): an ABANDONED Critic review — the
-    # .critic-active marker is still set because critic-begin ran but critic-end
-    # never did. With Agent subagents now background-by-default, a coordinator
-    # fork can dispatch its reviewers, return before resuming, and never run
-    # steps 7-8 (findings write, ledger anchor, critic-end). Chunk 03's assertion
-    # lives INSIDE critic-end, so it cannot fire on this "never-reaches-critic-end"
-    # variant; the lingering marker is the out-of-fork signal that the review
-    # never completed. Catch it loudly at session end rather than let it silently
-    # deadlock check-cumulative-critic in a later session. Read-only PRESENCE
-    # (marker_present, NOT review_active): the Stop hook must never sweep the
-    # marker it is gating on. Same firing conditions as the Critic gate; deferred
-    # with the other blockers while background work is in flight (defer_active) —
-    # that deferral is what separates an in-flight review (subagents still
-    # running) from an abandoned one.
+    # Gate 2a (Chunk 05, CRT-9K7T follow-up): an ABANDONED coordinator Critic
+    # review — the .critic-active marker is still set because critic-begin ran but
+    # consolidation never landed. With Agent subagents background-by-default, a
+    # coordinator fork dispatches its reviewers and returns before persisting; the
+    # lingering marker is the out-of-fork signal, and it lives OUTSIDE the flow
+    # that fails (so it catches a review that never reached its writeback). The
+    # backstop now CONSOLIDATES-OR-BLOCKS as a pure function of the partials on
+    # disk (Chunk 02's pending_state / consolidate):
+    #   • complete partials → self-heal: run critic-consolidate (deterministic, no
+    #     model re-run). Success clears the marker + writes findings, so the normal
+    #     freshness gate below takes over; a stale/failed consolidation blocks.
+    #   • incomplete partials → block naming the missing reviewer(s) to re-dispatch.
+    #   • marker but no manifest → a single-pass (or never-dispatched) review that
+    #     crashed: block, re-run /prawduct:critic.
+    # Read-only PRESENCE for the marker (marker_present, NOT review_active): the
+    # gate must never sweep the marker it reads. Deferred with the other blockers
+    # while reviewers are still in flight (defer_active) — the deferral is what
+    # separates an in-flight review from an abandoned one, so the self-heal only
+    # runs once the background reviewers have landed.
     abandoned_critic = False
+    marker_present = False
     if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
         try:
-            abandoned_critic = _critic_marker().marker_present(prawduct_dir)
+            marker_present = _critic_marker().marker_present(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-            abandoned_critic = False
-    if abandoned_critic:
+            marker_present = False
+    if marker_present:
         if "critic" in waivers:
             waiver_notes.append(
                 f"critic: waived ({waivers['critic']}) — .critic-active marker still present"
             )
-        else:
+        elif defer_active:
+            # Reviewers still running (background_tasks non-empty): don't self-heal
+            # or block yet — emit a deferrable blocker so the deferral note fires and
+            # re-arms next Stop once the array empties.
+            abandoned_critic = True
             blockers.append(_attributed("critic",
-                "CRITIC REVIEW (not completed): a review set the .critic-active marker but\n"
-                "  critic-end never cleared it — so its writeback (findings + ledger anchor)\n"
-                "  likely never landed. With Agent subagents running in the background by\n"
-                "  default, a coordinator fork can dispatch its reviewers and return before\n"
-                "  resuming to consolidate and persist.\n"
+                "CRITIC REVIEW (in flight): reviewers are still running; consolidation\n"
+                "  will run as they finish. (Deferred while background work is in flight.)\n"
+            ))
+        else:
+            _escape = (
                 "\n"
-                "  If the review FINISHED, run its completion so persistence is verified:\n"
-                "    prawduct-hook critic-end   # asserts findings + ledger cover HEAD, clears the marker\n"
-                "  If it did NOT complete (no findings written), re-run the review:\n"
-                "    /prawduct:critic\n"
-                "\n"
-                "  Escape hatch: if a review genuinely cannot complete this session, clear the\n"
-                "  marker or declare a waiver so this gate stops re-firing every turn:\n"
+                "  Escape hatch: if a review genuinely cannot complete this session, clear\n"
+                "  the marker and declare a waiver so this gate stops re-firing every turn:\n"
                 "    rm .prawduct/.critic-active\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session.\n"
-            ))
+            )
+            try:
+                state, missing = _critic_consolidate().pending_state(prawduct_dir)
+            except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                state, missing = "unreadable", []
+            if state == "complete":
+                # Self-heal: consolidate deterministically. Success clears the marker
+                # and writes findings the freshness gate then accepts; failure (HEAD
+                # moved since dispatch, malformed partial) leaves the marker → block.
+                try:
+                    rc = _critic_consolidate().consolidate(project_dir)
+                except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                    rc = 1
+                if rc == 0 and not _critic_marker().marker_present(prawduct_dir):
+                    waiver_notes.append(
+                        "critic: self-healed abandoned review — consolidated reviewer "
+                        "partials into findings + ledger anchor; marker cleared."
+                    )
+                else:
+                    abandoned_critic = True
+                    blockers.append(_attributed("critic",
+                        "CRITIC REVIEW (stale): every reviewer reported, but the reviewed\n"
+                        "  commit no longer covers HEAD (new commits landed since dispatch),\n"
+                        "  so consolidation could not persist. Re-run the review at HEAD:\n"
+                        "    /prawduct:critic\n"
+                        + _escape
+                    ))
+            elif state == "incomplete":
+                abandoned_critic = True
+                missing_str = ", ".join(missing) if missing else "one or more reviewers"
+                blockers.append(_attributed("critic",
+                    "CRITIC REVIEW (incomplete): a coordinator review is pending but not\n"
+                    f"  every reviewer reported. Missing partial(s): {missing_str}.\n"
+                    "  Re-dispatch the missing reviewer(s), or re-run the whole review:\n"
+                    "    /prawduct:critic\n"
+                    + _escape
+                ))
+            else:  # "none" (marker, no manifest) or "unreadable"
+                abandoned_critic = True
+                blockers.append(_attributed("critic",
+                    "CRITIC REVIEW (not completed): a review set the .critic-active marker\n"
+                    "  but never recorded findings — no coordinator manifest is present, so\n"
+                    "  a single-pass review or a coordinator dispatch crashed before writing.\n"
+                    "  Re-run the review:\n"
+                    "    /prawduct:critic\n"
+                    + _escape
+                ))
 
     critic_would_block = False
     # STH-4F7C: freshness (STH-6B4R strict-`>` whole-second compare), schema

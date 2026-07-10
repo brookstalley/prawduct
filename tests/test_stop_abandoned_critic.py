@@ -108,6 +108,39 @@ def _set_marker(prawduct: Path) -> None:
     )
 
 
+# The mock git's `rev-parse HEAD` (see _write_mock_git) — the manifest/partials
+# must claim this commit so consolidate's HEAD-coverage check resolves to "covered".
+_MOCK_HEAD = "deadbeefdeadbeef"
+_FINAL_MODE = "final (full review, ready for push)"
+_ROSTER = ["correctness", "design", "sustainability"]
+
+
+def _write_manifest(prawduct: Path, *, commit: str = _MOCK_HEAD) -> None:
+    d = prawduct / ".critic-partials"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "manifest.json").write_text(json.dumps({
+        "mode": _FINAL_MODE, "mode_chosen_by": "rule-3", "roster": _ROSTER,
+        "commit_reviewed": commit, "files_reviewed": ["src/app.py"],
+        "scope": "demo", "model": "opus",
+    }))
+
+
+def _write_partial(prawduct: Path, role: str, *, commit: str = _MOCK_HEAD) -> None:
+    d = prawduct / ".critic-partials"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{role}.json").write_text(json.dumps({
+        "role": role, "goals": "1-3", "commit_reviewed": commit,
+        "model": "opus", "duration_seconds": 60, "findings": [],
+        "summary": f"{role} clean.",
+    }))
+
+
+def _write_complete_review(prawduct: Path, *, commit: str = _MOCK_HEAD) -> None:
+    _write_manifest(prawduct, commit=commit)
+    for role in _ROSTER:
+        _write_partial(prawduct, role, commit=commit)
+
+
 class TestAbandonedReviewBlocks:
     def test_lingering_marker_blocks_with_actionable_message(self, tmp_path):
         prawduct = _active_plan_repo(tmp_path)
@@ -118,9 +151,10 @@ class TestAbandonedReviewBlocks:
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
         assert _ABANDONED_MSG in result.stderr
-        # Actionable: names both recovery paths.
-        assert "critic-end" in result.stderr
+        # Actionable: names the re-run path and the escape hatch (Chunk 05 dropped
+        # the interim "run critic-end" advice — consolidate now owns persistence).
         assert "/prawduct:critic" in result.stderr
+        assert "rm .prawduct/.critic-active" in result.stderr
 
     def test_abandoned_block_suppresses_generic_findings_block(self, tmp_path):
         """One cause → one block. With the marker present AND no findings, the
@@ -214,3 +248,65 @@ class TestWaiverAndDeferral:
             f"an in-flight review must DEFER, not block. stderr={result.stderr!r}"
         )
         assert "DEFERRED" in result.stderr
+
+
+class TestChunk05ConsolidateOrBlock:
+    """The evolved backstop reads the on-disk partials state and consolidates or
+    blocks accordingly (critic-persistence-redesign Ch.05)."""
+
+    def test_complete_partials_self_heal(self, tmp_path):
+        """Marker + complete partials at HEAD → the Stop hook runs
+        critic-consolidate itself (no model re-run): findings land, marker clears,
+        session ends clean."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        _write_complete_review(prawduct)
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 0, (
+            f"complete partials must self-heal to a clean exit. "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        # Findings written by the self-heal; marker cleared; partials consumed.
+        assert (prawduct / ".critic-findings.json").is_file()
+        assert not (prawduct / ".critic-active").is_file()
+        assert not (prawduct / ".critic-partials").exists()
+        assert "self-healed" in result.stderr
+
+    def test_incomplete_partials_block_naming_missing(self, tmp_path):
+        """Marker + manifest but a missing reviewer → block naming who's missing;
+        do NOT self-heal (a partial review must not persist as complete)."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        _write_manifest(prawduct)
+        _write_partial(prawduct, "correctness")
+        _write_partial(prawduct, "design")
+        # sustainability missing.
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2, f"stderr={result.stderr!r}"
+        assert "incomplete" in result.stderr.lower()
+        assert "sustainability" in result.stderr
+        # Nothing persisted; marker + manifest intact for re-dispatch.
+        assert not (prawduct / ".critic-findings.json").is_file()
+        assert (prawduct / ".critic-partials" / "manifest.json").is_file()
+
+    def test_marker_no_manifest_blocks(self, tmp_path):
+        """Marker but no coordinator manifest (a crashed single-pass or
+        never-dispatched review) → block, re-run /prawduct:critic."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        # No manifest/partials written.
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert "not completed" in result.stderr.lower()
+        assert "/prawduct:critic" in result.stderr
+        assert not (prawduct / ".critic-findings.json").is_file()
+
+    def test_self_heal_still_no_sweep_on_incomplete(self, tmp_path):
+        """The incomplete-block path must not sweep the marker it reads (the
+        signal the next Stop re-checks)."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        _write_manifest(prawduct)
+        _write_partial(prawduct, "correctness")
+        _run_stop(tmp_path, status=_CODE_DIFF)
+        assert (prawduct / ".critic-active").is_file()

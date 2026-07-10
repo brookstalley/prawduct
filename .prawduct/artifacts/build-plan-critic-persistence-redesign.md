@@ -30,7 +30,7 @@ untouched by construction. The one unknown (fork-dispatched subagent survival) w
 - [x] Chunk 02: `critic-consolidate` + partial/manifest schema — the deterministic core
 - [x] Chunk 03: `critic-reviewer` agent type + coordinator dispatch rewrite (partials, no resume)
 - [x] Chunk 04: `SubagentStop` hook — event-driven consolidation trigger
-- [ ] Chunk 05: Evolve the backstop to consolidate-or-block; reconcile messages (cumulative-final)
+- [x] Chunk 05: Evolve the backstop to consolidate-or-block; reconcile messages (cumulative-final)
 Context: New branch `feature/critic-persistence-redesign` off `develop`. Fixes the v2.1.198
 background-by-default breakage of the Critic coordinator (design: `critic-persistence-redesign.md`,
 Option A). Chunk 01 is already BUILT + tested (moved here from gate-friction-batch, which ships its
