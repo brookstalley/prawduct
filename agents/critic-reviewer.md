@@ -24,8 +24,12 @@ summary, and the **commit under review** (a SHA). The role → goal mapping (def
 `review-protocol.md`, read it from your skill/critic directory):
 
 - **correctness** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended).
-- **design** — Goals 4 (Everything Is Coherent), 7 (The Design Is Sound).
-- **sustainability** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood).
+- **design** — Goals 4 (Everything Is Coherent), 7 (The Design Is Sound); ALSO run the
+  Framework-Specific Checks (`review-protocol.md`) when the diff touches framework
+  instruction files or templates.
+- **sustainability** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood);
+  ALSO run the Learnings Cross-Check and Backlog Reconciliation (`review-cycle.md`
+  "Final-Mode Cross-Checks") and emit their results as NOTE findings in your partial.
 
 ## What to do
 

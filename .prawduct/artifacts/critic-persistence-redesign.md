@@ -57,9 +57,10 @@ on-disk state that a hook runs — never something a model has to "come back and
 2. **Dispatch (coordinator setup).** `/prawduct:critic` (final/cumulative) resolves mode, runs
    `critic-begin`, writes a **manifest** `.prawduct/.critic-partials/manifest.json`
    (`mode`, `mode_chosen_by`, `roster`, `commit_reviewed = HEAD@dispatch`, `scope`, `chunk`,
-   model tier), then dispatches the 3 `critic-reviewer` subagents (correctness / design+sustainability
-   — the design/sustainability reviewer also owns the Learnings + Backlog cross-checks and emits them
-   as NOTEs in its partial, keeping consolidation model-free).
+   model tier), then dispatches the 3 `critic-reviewer` subagents (correctness / design /
+   sustainability — the sustainability reviewer also owns the Learnings + Backlog cross-checks and
+   the design reviewer the Framework-Specific Checks, each emitted as findings in their own partial,
+   keeping consolidation model-free).
 
 3. **`prawduct-hook critic-consolidate`** (deterministic, idempotent). Reads manifest + all roster
    partials. If every roster role is present AND every partial's `commit_reviewed == manifest HEAD ==

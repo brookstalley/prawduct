@@ -301,8 +301,23 @@ class TestChunk05ConsolidateOrBlock:
         result = _run_stop(tmp_path, status=_CODE_DIFF)
         assert result.returncode == 2
         assert "not completed" in result.stderr.lower()
+        assert "no coordinator manifest is present" in result.stderr
         assert "/prawduct:critic" in result.stderr
         assert not (prawduct / ".critic-findings.json").is_file()
+
+    def test_unreadable_manifest_blocks_with_accurate_cause(self, tmp_path):
+        """Marker + corrupt manifest → block, but the message must not claim
+        'no manifest is present' (the manifest exists; it is unreadable)."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "manifest.json").write_text("{not json")
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert "not completed" in result.stderr.lower()
+        assert "unreadable or schema-invalid" in result.stderr
+        assert "no coordinator manifest is present" not in result.stderr
 
     def test_self_heal_still_no_sweep_on_incomplete(self, tmp_path):
         """The incomplete-block path must not sweep the marker it reads (the

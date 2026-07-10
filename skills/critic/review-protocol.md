@@ -121,7 +121,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final` and `cumulative` modes only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern), then walk `.prawduct/backlog.md` and emit **NOTE** findings for items resolved.
+**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern), then walk `.prawduct/backlog.md`, emitting **NOTE** findings for items resolved.
 
 ## Severity Levels
 
@@ -136,7 +136,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ### Coordinator Pattern
 
-Persistence is **decoupled from the review** (critic-persistence-redesign): the coordinator no longer resumes to aggregate — v2.1.198 backgrounds `Agent` subagents, so that resume never fired and reviews were lost. Reviewers write partials; `critic-consolidate` merges them into `.critic-findings.json` + the ledger anchor (no model in writes). See `critic-persistence-redesign.md`.
+Persistence is **decoupled from the review** (`critic-persistence-redesign.md` — the coordinator never resumes to aggregate): reviewers write partials; `critic-consolidate` merges them into `.critic-findings.json` + the ledger anchor (no model in writes).
 
 1. **Assess** (coordinator): read project state, run git diff, list changed files, and determine signals (size, type, boundaries). Run `prawduct-hook classify-diff-risk` — its verdict picks the tier chain (highest first; `reviewer-model-ab-2026-06-10.md`): `escalate` → `model: fable`, then `opus`; `standard` → `opus`, then `sonnet`. Use the first the harness accepts (fall back on a withdrawn model or dispatch error). Record what ran as the manifest `model`.
 
@@ -147,10 +147,10 @@ Persistence is **decoupled from the review** (critic-persistence-redesign): the 
    > "Critic reviewer (`<ROLE>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. NO tests/builds. Write ONLY your partial to `.critic-partials/<ROLE>.json`; nothing else."
 
    - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
-   - **design reviewer** (role `design`) — Goals 4, 7.
-   - **sustainability reviewer** (role `sustainability`) — Goals 5, 6.
+   - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
+   - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial).
 
-4. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until every roster role reports, then merges once); the session-end backstop is the floor if it never fires. You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
+4. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once); the session-end backstop is the floor if it never fires. You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
 
 ## Output Format
 
@@ -176,9 +176,9 @@ Persistence is **decoupled from the review** (critic-persistence-redesign): the 
 
 If no findings: "No issues found. Changes are ready to proceed."
 
-**Proportionality for minor changes:** Quick assessment is sufficient for typos and formatting. Full analysis for behavioral or structural changes.
+**Proportionality:** quick assessment for typos/formatting; full analysis for behavioral or structural changes.
 
-**Record findings:** Write to `.prawduct/.critic-findings.json`:
+**Record findings (single-pass only — coordinator reviews persist via `critic-consolidate`):** Write to `.prawduct/.critic-findings.json`:
 
 ```json
 {

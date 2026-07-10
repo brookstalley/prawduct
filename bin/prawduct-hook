@@ -1122,9 +1122,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 else:
                     abandoned_critic = True
                     blockers.append(_attributed("critic",
-                        "CRITIC REVIEW (stale): every reviewer reported, but the reviewed\n"
-                        "  commit no longer covers HEAD (new commits landed since dispatch),\n"
-                        "  so consolidation could not persist. Re-run the review at HEAD:\n"
+                        "CRITIC REVIEW (consolidation failed): every reviewer reported, but\n"
+                        "  the partials could not be consolidated — the specific cause is on\n"
+                        "  stderr above (e.g. HEAD moved since dispatch, a malformed partial,\n"
+                        "  or a ledger failure). Fix the cause or re-run the review:\n"
                         "    /prawduct:critic\n"
                         + _escape
                     ))
@@ -1140,10 +1141,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 ))
             else:  # "none" (marker, no manifest) or "unreadable"
                 abandoned_critic = True
+                if state == "unreadable":
+                    cause = (
+                        "  a coordinator manifest exists but is unreadable or schema-invalid,\n"
+                        "  so the pending review cannot be consolidated.\n"
+                    )
+                else:
+                    cause = (
+                        "  no coordinator manifest is present, so a single-pass review or a\n"
+                        "  coordinator dispatch crashed before writing.\n"
+                    )
                 blockers.append(_attributed("critic",
                     "CRITIC REVIEW (not completed): a review set the .critic-active marker\n"
-                    "  but never recorded findings — no coordinator manifest is present, so\n"
-                    "  a single-pass review or a coordinator dispatch crashed before writing.\n"
+                    "  but never recorded findings —\n"
+                    + cause +
                     "  Re-run the review:\n"
                     "    /prawduct:critic\n"
                     + _escape
