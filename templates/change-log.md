@@ -35,8 +35,10 @@
                   by PR). Flip to `shipped` as part of release-prep when
                   the integration branch is released (gitflow), or write
                   `status=shipped` directly in the closing PR when the
-                  PR's base IS the release surface (trunk) — either way the
-                  tag merges atomically with the work it describes.
+                  PR's base IS the release surface (trunk; include
+                  `release=vN.M.P` when the product tracks versions —
+                  release-notes groups by it) — either way the tag merges
+                  atomically with the work it describes.
                   `merged` is a legacy stamp some logs carry; it is treated
                   as statusless. Any other value (including a typo) is a
                   fatal regen-views error — fix it, don't invent states.
