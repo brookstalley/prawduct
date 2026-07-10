@@ -1,9 +1,9 @@
 ---
 artifact: design-note
-scope: gate-friction-batch
-status: proposed — awaiting owner sign-off
+scope: critic-persistence-redesign
+status: built — all 5 chunks landed (see build-plan-critic-persistence-redesign.md)
 created: 2026-07-09
-depends_on: [build-plan-gate-friction-batch.md]
+depends_on: [build-plan-critic-persistence-redesign.md]
 ---
 
 # Critic Persistence Redesign — Independent Review That Can't Silently Fail

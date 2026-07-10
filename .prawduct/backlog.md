@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[CRT-4B7X]** critic-consolidate concurrency — two near-simultaneous SubagentStop firings each write a `review.critic` ledger line (duplicate telemetry)
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-07-09 · status: open · stage: ready · related: CRT-9K7T, TEL-2B6K · refs: .prawduct/.governance-ledger.jsonl`
+
+  Two near-simultaneous SubagentStop firings can both pass the completeness check and each write a `review.critic` ledger line — a duplicate telemetry entry. Correctness and gates are unaffected (the findings file is single-slot and check-cumulative reads newest-first); only review-stats double-counts. Fix-shape: a lightweight lock / rename-guard around the consolidate merge so exactly one firing wins. Surfaced by the critic-persistence-redesign cumulative review (NOTE). (critic)
+
 - **[COV-2P7F]** Unify the "`.prawduct/**` is governance-metadata, not code" predicate across ALL PR fast-paths (not just `.md`)
   `effort: M · impact: M · area: coverage · source: user · added: 2026-07-09 · status: open · stage: design · related: CRT-5D8Q, COV-5H3N, COV-8R2K, PR-5K8D · refs: lib/gates.py (_record_covers_head, _compute_verify_resolutions_scope), lib/coverage.py (cmd_check_pr_doc_only), bin/prawduct-hook, incoming-bugs/archive/2026-06-13-governance-metadata-fix-triggers-full-code-pr-gates.md`
 
@@ -33,11 +38,6 @@
   `effort: M · impact: M · area: pr · source: user · added: 2026-07-09 · status: open · stage: ready · related: PR-2H8N`
 
   The PR gates (change-log entry, cumulative-critic, evidence) validate the LOCAL commits, but `gh pr merge --squash` squashes what's on origin/<branch>. A commit made after the last push — very often the change-log entry the gate itself just forced the builder to add — never reaches origin, so the squash-merge silently drops it and the merged result is missing content the gates confirmed present. Reported by hallucinote (~June). Fix-shape: /prawduct:pr (or a PR gate) should assert `git rev-parse origin/<branch>` == local HEAD (branch fully pushed) before allowing merge, and fail loud with "unpushed commits — push before merging" otherwise. Governance-protected → full Critic + PR review.
-
-- **[CRT-9K7T]** Forked `/prawduct:critic` coordinator never writes `.critic-findings.json` and leaves a stale `.critic-active` marker
-  `effort: M · impact: M · area: critic · source: critic · added: 2026-07-09 · status: open · stage: ready · related: CRT-7Q2T, CRT-2K9F, STH-6T9W, CRT-6F2N · refs: skills/critic/SKILL.md, .prawduct/.critic-findings.json, .prawduct/.critic-active`
-
-  In forked/coordinator mode (final + verify-resolutions, 3-subagent pattern), the reviewer subagents complete and return full reviews via task-notifications, but the coordinator never writes the consolidated `.prawduct/.critic-findings.json` (it stays frozen at a prior review's timestamp), and `.critic-active` is left present with a now-dead pid (must `rm -f` before the next run). Impact: stop-hook / cumulative-critic gates read a stale/foreign record, so they cannot confirm a review ran for the current changeset even though it did and all findings were resolved; the builder cannot sanctioned-ly write the file themselves, forcing a manual gate waiver every time. Observed 4x in one session on prawduct plugin v2.3.0 (discodon, filed there as CRT-8F3K, area prawduct-upstream). A related variant seen in cordyceps (2026-07-02): the forked coordinator returns BEFORE its background reviewers finish, so a network drop + re-invoke spawns a duplicate reviewer fleet (wasted cost) and aggregation only completes via a manual "aggregation-only" re-invoke. Fix-shape: make the coordinator reliably write the consolidated findings file and clear `.critic-active` on completion; consider an idempotent/resume-aggregation coordinator that reattaches to in-flight reviewers instead of re-spawning. Governance-protected → full Critic + PR review. Cross-repo (2 consumers), post-2.3.0. (critic)
 
 - **[CRT-5D8Q]** PR-gate coverage vs verify-resolutions scope disagree on the metadata exemption — deadlock when the ledger fallback window has lapsed
   `effort: S · impact: M · area: governance/critic-gate · source: critic · added: 2026-07-02 · status: open · stage: ready · related: CRT-8H3R, CRT-2K9F, CRT-4J8W, STH-6T9W · refs: lib/gates.py (_record_covers_head L972, _compute_verify_resolutions_scope L447)`
@@ -848,6 +848,11 @@
 ## Promoted
 
 ## Archive
+
+- **[CRT-9K7T]** Forked `/prawduct:critic` coordinator never writes `.critic-findings.json` and leaves a stale `.critic-active` marker
+  `effort: M · impact: M · area: critic · source: critic · added: 2026-07-09 · status: shipped · stage: ready · closed-by: critic-persistence-redesign · reviewed: 2026-07-09 · related: CRT-7Q2T, CRT-2K9F, STH-6T9W, CRT-6F2N · refs: skills/critic/SKILL.md, .prawduct/.critic-findings.json, .prawduct/.critic-active`
+
+  In forked/coordinator mode (final + verify-resolutions, 3-subagent pattern), the reviewer subagents complete and return full reviews via task-notifications, but the coordinator never writes the consolidated `.prawduct/.critic-findings.json` (it stays frozen at a prior review's timestamp), and `.critic-active` is left present with a now-dead pid (must `rm -f` before the next run). Impact: stop-hook / cumulative-critic gates read a stale/foreign record, so they cannot confirm a review ran for the current changeset even though it did and all findings were resolved; the builder cannot sanctioned-ly write the file themselves, forcing a manual gate waiver every time. Observed 4x in one session on prawduct plugin v2.3.0 (discodon, filed there as CRT-8F3K, area prawduct-upstream). A related variant seen in cordyceps (2026-07-02): the forked coordinator returns BEFORE its background reviewers finish, so a network drop + re-invoke spawns a duplicate reviewer fleet (wasted cost) and aggregation only completes via a manual "aggregation-only" re-invoke. Fix-shape: make the coordinator reliably write the consolidated findings file and clear `.critic-active` on completion; consider an idempotent/resume-aggregation coordinator that reattaches to in-flight reviewers instead of re-spawning. Governance-protected → full Critic + PR review. Cross-repo (2 consumers), post-2.3.0. (critic)
 
 - **[MET-3Q8V]** Wave 1 Plan C: prose-diet — single-source the mode/type matrix, strip the build-plan template to a filled example, fold agent-stance + delegator skills, reconcile the 5 contradictions
   `effort: L · impact: L · area: methodology/prose · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: prose-diet · reviewed: 2026-07-04 · related: MET-7R4J, MET-5C2H, CRT-5Q8W · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 1 Plan C, Overbuilt #3), .prawduct/artifacts/build-plan-prose-diet.md, methodology/planning.md:97-137, templates/build-plan.md:222-281, methodology/building.md:284`
