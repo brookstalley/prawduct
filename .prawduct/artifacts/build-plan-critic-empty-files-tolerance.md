@@ -19,7 +19,7 @@ last_validated: null
 
 ## Status
 
-- [ ] Chunk 01: Accept empty `files` list on a finding without fail-closing consolidation
+- [x] Chunk 01: Accept empty `files` list on a finding without fail-closing consolidation
 Context: **Done** (Critic final: 0 blocking, 0 warning, 1 note — change-log entry added). `lib/critic_consolidate.py`: new `_str_list` helper (possibly-empty list of non-empty strings); `validate_partial` uses it for the per-finding `files` field instead of `_nonempty_str_list`. `tests/test_critic_consolidate.py` +3 regression tests (`[]` accepted, list-with-empty-string rejected, `[]` normalized out of the canonical record). 1611 tests pass.
 
 ## Build Chunks

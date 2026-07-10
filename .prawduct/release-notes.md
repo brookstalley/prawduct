@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.3.3
+
+**Entry:** 2026-07-10: Critic consolidation tolerates `files: []` on a finding (critic-empty-files-tolerance)
+
+**Chunks shipped:** 01
+
+**Scope:** critic-empty-files-tolerance
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.3.2
 
 **Entry:** 2026-07-10: Single-PR bookkeeping — no post-merge commits on the integration branch (single-pr-bookkeeping)

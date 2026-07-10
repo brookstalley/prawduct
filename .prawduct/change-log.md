@@ -5,7 +5,7 @@
 
 ## 2026-07-10: Critic consolidation tolerates `files: []` on a finding (critic-empty-files-tolerance)
 
-<!-- prawduct: chunks=01 | type=fix | scope=critic-empty-files-tolerance -->
+<!-- prawduct: chunks=01 | type=fix | scope=critic-empty-files-tolerance | release=v2.3.3 | status=shipped -->
 
 **Why:** A downstream product (discodon) hit a hard `critic-consolidate` fail-close: one
 reviewer partial carried a process/evidence finding with `"files": []`, and

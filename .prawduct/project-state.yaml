@@ -627,6 +627,9 @@ scope_rollups:
   cleanup-batch:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.0.5"]
+  critic-empty-files-tolerance:
+    chunks: ["01"]
+    releases: ["v2.3.3"]
   critic-mode-branch-fix:
     chunks: ["01"]
     releases: ["v2.0.16"]
