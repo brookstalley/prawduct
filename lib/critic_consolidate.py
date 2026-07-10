@@ -86,6 +86,11 @@ def _nonempty_str_list(val) -> bool:
     return isinstance(val, list) and bool(val) and all(_nonempty_str(v) for v in val)
 
 
+def _str_list(val) -> bool:
+    """A list — possibly empty — of non-empty strings."""
+    return isinstance(val, list) and all(_nonempty_str(v) for v in val)
+
+
 def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
@@ -126,8 +131,14 @@ def validate_partial(data) -> tuple[bool, str]:
                 f"finding[{idx}] severity {f['severity']!r} not in "
                 f"{sorted(_SEVERITY_RANK)}"
             )
-        if "files" in f and not _nonempty_str_list(f["files"]):
-            return False, f"finding[{idx}] 'files' must be a non-empty list of strings"
+        # ``files`` is optional attribution. Reviewers are told to *omit* it for
+        # non-file-specific findings (e.g. process/evidence NOTEs), but a model
+        # naturally emits ``[]`` for "no files" — semantically identical to
+        # omission. Accept an empty list rather than fail-closing the whole
+        # consolidation over a distinction that carries no meaning; ``[]`` is
+        # normalized away downstream (``merge_findings`` only keeps truthy files).
+        if "files" in f and not _str_list(f["files"]):
+            return False, f"finding[{idx}] 'files' must be a list of non-empty strings"
     return True, ""
 
 
