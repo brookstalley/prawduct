@@ -740,8 +740,18 @@ def cmd_critic_begin(project_dir: Path) -> int:
 
     Called at the start of a /prawduct:critic review. No-op (still exit 0)
     outside an onboarded repo — there is no session to protect.
+
+    Also resets `.critic-partials/`: consolidate removes partials only on
+    success, so a waived or stale-failed coordinator review leaves them behind —
+    and a leftover partial at the SAME commit as a fresh dispatch would merge as
+    if the new reviewer had written it. Deterministic here (the coordinator fork
+    has no rm in its allow-list), so every review starts from a clean dir.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
+    consolidate = _critic_consolidate()
+    if consolidate.partials_dir(prawduct_dir).is_dir():
+        consolidate.remove_partials(prawduct_dir)
+        print("PRAWDUCT: cleared leftover .critic-partials from a prior review.")
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
     return 0
@@ -1088,6 +1098,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  Escape hatch: if a review genuinely cannot complete this session, clear\n"
                 "  the marker and declare a waiver so this gate stops re-firing every turn:\n"
                 "    rm .prawduct/.critic-active\n"
+                "    rm -rf .prawduct/.critic-partials\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                 "  Empty reasons are rejected; the file auto-clears next session.\n"
             )

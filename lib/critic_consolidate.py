@@ -421,7 +421,7 @@ def consolidate(project_dir: Path) -> int:
     # Persisted + anchored. Clear the critic-active marker and remove the
     # partials so a repeat call (or a straggler SubagentStop) is a clean no-op.
     critic_marker.clear_marker(prawduct_dir)
-    _remove_partials(prawduct_dir)
+    remove_partials(prawduct_dir)
 
     blocking, warning, note = _severity_counts(record["findings"])
     print(
@@ -432,10 +432,14 @@ def consolidate(project_dir: Path) -> int:
     return 0
 
 
-def _remove_partials(prawduct_dir: Path) -> None:
+def remove_partials(prawduct_dir: Path) -> None:
     """Remove the manifest + every partial + the partials directory. Best-effort
     and idempotent — a missing file is fine (the point is that nothing pending
-    remains)."""
+    remains). Public: ``critic-begin`` also calls this so every review starts
+    from a clean partials dir — consolidate removes partials only on success,
+    so a waived or stale-failed review leaves them behind, and a leftover
+    partial at the same commit as a fresh dispatch would otherwise merge as if
+    the new reviewer had written it."""
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return

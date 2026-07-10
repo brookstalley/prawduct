@@ -155,6 +155,9 @@ class TestAbandonedReviewBlocks:
         # the interim "run critic-end" advice — consolidate now owns persistence).
         assert "/prawduct:critic" in result.stderr
         assert "rm .prawduct/.critic-active" in result.stderr
+        # The waiver must also clean up leftover partials — otherwise the next
+        # dispatch at the same HEAD could merge a stale partial as current work.
+        assert "rm -rf .prawduct/.critic-partials" in result.stderr
 
     def test_abandoned_block_suppresses_generic_findings_block(self, tmp_path):
         """One cause → one block. With the marker present AND no findings, the
