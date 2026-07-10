@@ -964,6 +964,51 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     if rationale_error:
                         trivial_block_reason = rationale_error
 
+    # Gate 2a (Chunk 01, CRT-9K7T follow-up): an ABANDONED Critic review — the
+    # .critic-active marker is still set because critic-begin ran but critic-end
+    # never did. With Agent subagents now background-by-default, a coordinator
+    # fork can dispatch its reviewers, return before resuming, and never run
+    # steps 7-8 (findings write, ledger anchor, critic-end). Chunk 03's assertion
+    # lives INSIDE critic-end, so it cannot fire on this "never-reaches-critic-end"
+    # variant; the lingering marker is the out-of-fork signal that the review
+    # never completed. Catch it loudly at session end rather than let it silently
+    # deadlock check-cumulative-critic in a later session. Read-only PRESENCE
+    # (marker_present, NOT review_active): the Stop hook must never sweep the
+    # marker it is gating on. Same firing conditions as the Critic gate; deferred
+    # with the other blockers while background work is in flight (defer_active) —
+    # that deferral is what separates an in-flight review (subagents still
+    # running) from an abandoned one.
+    abandoned_critic = False
+    if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
+        try:
+            abandoned_critic = _critic_marker().marker_present(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            abandoned_critic = False
+    if abandoned_critic:
+        if "critic" in waivers:
+            waiver_notes.append(
+                f"critic: waived ({waivers['critic']}) — .critic-active marker still present"
+            )
+        else:
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW (not completed): a review set the .critic-active marker but\n"
+                "  critic-end never cleared it — so its writeback (findings + ledger anchor)\n"
+                "  likely never landed. With Agent subagents running in the background by\n"
+                "  default, a coordinator fork can dispatch its reviewers and return before\n"
+                "  resuming to consolidate and persist.\n"
+                "\n"
+                "  If the review FINISHED, run its completion so persistence is verified:\n"
+                "    prawduct-hook critic-end   # asserts findings + ledger cover HEAD, clears the marker\n"
+                "  If it did NOT complete (no findings written), re-run the review:\n"
+                "    /prawduct:critic\n"
+                "\n"
+                "  Escape hatch: if a review genuinely cannot complete this session, clear the\n"
+                "  marker or declare a waiver so this gate stops re-firing every turn:\n"
+                "    rm .prawduct/.critic-active\n"
+                "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                "  Empty reasons are rejected; the file auto-clears next session.\n"
+            ))
+
     critic_would_block = False
     # STH-4F7C: freshness (STH-6B4R strict-`>` whole-second compare), schema
     # validation, and the v1.5 Chunk 02 verify-resolutions scope subset check
@@ -974,7 +1019,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # the dedicated blocker variant below so the builder knows which files
     # widened the scope.
     verify_resolutions_block_reason = ""
-    if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
+    # Skip the findings-freshness gate when the abandoned-marker blocker already
+    # fired: both describe one underlying cause (the review never landed), and the
+    # abandoned message is the accurate, actionable one — don't double-block.
+    if (
+        has_changes and has_build_plan and not doc_only
+        and not designer_handoff_skip and not abandoned_critic
+    ):
         critic_would_block = True
         try:
             satisfied, verify_resolutions_block_reason = (
