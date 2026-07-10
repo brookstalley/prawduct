@@ -131,22 +131,26 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ## Review Execution
 
-- **`chunk` mode and `final` trivial/small**: single-pass.
+- **`chunk`, `verify-resolutions`, and `final` trivial/small**: single-pass — the fork reviews and persists it itself (steps 7-8); no subagents.
 - **`final` medium/large and `cumulative`**: coordinator pattern (below).
 
 ### Coordinator Pattern
 
-1. **Assess** (coordinator): read project state, run git diff, list changed files with what each does, and determine signals (size, type, boundaries crossed). For `final`/`cumulative`, also run `prawduct-hook classify-diff-risk` — its stdout verdict picks the dispatch tier (`chunk`/`verify-resolutions` always stay default-tier).
+Persistence is **decoupled from the review** (critic-persistence-redesign): the coordinator no longer resumes to aggregate — v2.1.198 backgrounds `Agent` subagents, so that resume never fired and reviews were lost. Reviewers write partials; `critic-consolidate` merges them into `.critic-findings.json` + the ledger anchor (no model in writes). See `critic-persistence-redesign.md`.
 
-2. **Dispatch** three parallel review subagents via the Agent tool on the verdict's **tier chain** (highest first; `reviewer-model-ab-2026-06-10.md`): `escalate` → `model: fable`, then `opus`; `standard` → `opus`, then `sonnet`. Use the first the harness accepts; **fall back** on a **withdrawn**/unrecognized model or dispatch error. Record what ran in `model`. Each receives the project directory, the changed-files list, and the signals summary. Prompt template (substitute `<NAME>` / `<GOALS>`):
+1. **Assess** (coordinator): read project state, run git diff, list changed files, and determine signals (size, type, boundaries). Run `prawduct-hook classify-diff-risk` — its verdict picks the tier chain (highest first; `reviewer-model-ab-2026-06-10.md`): `escalate` → `model: fable`, then `opus`; `standard` → `opus`, then `sonnet`. Use the first the harness accepts (fall back on a withdrawn model or dispatch error). Record what ran as the manifest `model`.
 
-   > "Critic review subagent (`<NAME>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. NO tests — code analysis only. Report using the Critic output format."
+2. **Write the manifest** `.prawduct/.critic-partials/manifest.json` — the source of truth for the pending review (keys: `review-cycle.md` "Recording Reviews"; validators: `lib/critic_consolidate.py`). Its `files_reviewed` must be non-empty — it becomes the record's `files_reviewed`, which a clean (zero-finding) review can't reconstruct.
 
-   - **Correctness reviewer** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended).
-   - **Design reviewer** — Goals 4 (Everything Is Coherent), 7 (The Design Is Sound).
-   - **Sustainability reviewer** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood).
+3. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) on step 1's tier. Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>`):
 
-3. **Aggregate**: collect findings; if multiple subagents flag the same issue, keep highest severity; write the combined review in the standard output format below and persist `.prawduct/.critic-findings.json`.
+   > "Critic reviewer (`<ROLE>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. NO tests/builds. Write ONLY your partial to `.critic-partials/<ROLE>.json`; nothing else."
+
+   - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
+   - **design reviewer** (role `design`) — Goals 4, 7.
+   - **sustainability reviewer** (role `sustainability`) — Goals 5, 6.
+
+4. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until every roster role reports, then merges once); the session-end backstop is the floor if it never fires. You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
 
 ## Output Format
 
