@@ -68,7 +68,11 @@ blocking.
 - [ ] Chunk 01: Statusless is release-pending — lib + hook
 - [ ] Chunk 02: Flow prose cascade — PR skill, release process, template
 Context: plan authored 2026-07-10 from the user's protected-branch friction
-report; investigation in-session (all stamp consumers mapped).
+report; investigation in-session (all stamp consumers mapped). Chunk 01 done
+2026-07-10 (collect_release_pending_scopes enumerates statusless-tagged
+scopes; diagnose label reworded; stamp-merged deprecated-but-callable; Critic
+verify-resolutions delta — no findings). Checkboxes stay [ ] until release
+(derived view).
 
 ## Scaffolding
 

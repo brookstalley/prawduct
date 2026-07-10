@@ -54,7 +54,7 @@ Artifact depth scales to risk: a personal utility gets a 1-page brief and minima
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
 
-**Plan lifecycle on gitflow.** When authoring a new plan while the prior plan's work is merged-but-unreleased, leave `active_build_plan` pointing at the pending plan until the release ships (the release flips its change-log entries and regenerates Status). Write the new plan under a scope-named file (`build-plan-<scope>.md`) and repoint after the release (see `/prawduct:pr` merge-flow step 8). Build plans are tracked artifacts — commit them.
+**Plan lifecycle on gitflow.** When authoring a new plan while the prior plan's work is merged-but-unreleased, leave `active_build_plan` pointing at the pending plan until the release ships (the release flips its change-log entries and regenerates Status). Write the new plan under a scope-named file (`build-plan-<scope>.md`) and repoint after the release (see `/prawduct:pr` merge-flow step 7). Build plans are tracked artifacts — commit them.
 
 ### Requirements Confidence
 
