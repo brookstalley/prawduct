@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v2.3.1
+
+**Entry:** 2026-07-09: Critic persistence redesign — independent review that can't silently fail (critic-persistence-redesign)
+
+**Chunks shipped:** 01, 02, 03, 04, 05
+
+**Scope:** critic-persistence-redesign
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.3.0
 
 ### prose-diet

@@ -92,6 +92,22 @@ def clear_marker(prawduct_dir: Path) -> bool:
         return False
 
 
+def marker_present(prawduct_dir: Path) -> bool:
+    """Is the critic-active marker file present right now? Non-mutating.
+
+    Distinct from :func:`review_active`: this reports raw presence with NO TTL
+    and NO sweep. The TTL/sweep in ``review_active`` exist so a crashed review
+    can't brick ``clear`` forever — a *liveness* question. This answers a
+    different one the Stop hook needs (CRT-9K7T follow-up): *did a review that
+    ran ``critic-begin`` ever reach ``critic-end``?* A present marker means it
+    did NOT (``critic-end`` always clears first), so steps 7-8 — findings write,
+    ledger anchor — likely never landed either. The Stop hook must only INSPECT
+    this, never sweep it (that would erase the very signal it blocks on and
+    silently mutate the session it is gating), so this stays read-only.
+    """
+    return _marker_path(prawduct_dir).is_file()
+
+
 def _marker_age_seconds(marker: Path) -> float | None:
     """Age of the marker in seconds from its embedded ``started_at``, falling
     back to file mtime. Returns None only if neither signal is readable (treated

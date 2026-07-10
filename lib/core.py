@@ -78,6 +78,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.bug-inbox",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.critic-partials/",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews/",

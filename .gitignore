@@ -34,3 +34,6 @@ __pycache__/
 
 # Untracked drop-box for externally-filed bug reports (triaged into .prawduct/backlog.md).
 incoming-bugs/
+
+# Prawduct session files
+.prawduct/.critic-partials/

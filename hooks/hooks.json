@@ -65,6 +65,18 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "critic-reviewer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook\" subagent-stop",
+            "statusMessage": "Prawduct: consolidating Critic partials…"
+          }
+        ]
+      }
     ]
   }
 }
