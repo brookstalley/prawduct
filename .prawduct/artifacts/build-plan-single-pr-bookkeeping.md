@@ -71,8 +71,15 @@ Context: plan authored 2026-07-10 from the user's protected-branch friction
 report; investigation in-session (all stamp consumers mapped). Chunk 01 done
 2026-07-10 (collect_release_pending_scopes enumerates statusless-tagged
 scopes; diagnose label reworded; stamp-merged deprecated-but-callable; Critic
-verify-resolutions delta — no findings). Checkboxes stay [ ] until release
-(derived view).
+verify-resolutions delta — no findings). Chunk 02 done 2026-07-10 (Step 1d
+added, merge-flow stamp step removed + steps renumbered 6-8→6-7, template/
+release-process/backlog-skill/planning.md cascade, guardrail test pins the
+no-post-merge-commit invariant; cumulative Critic 0 blocking + 3 warnings all
+resolved on-branch — learnings drift, trunk release= guidance, honest trunk
+convergence — verified by chain record at 87511b6; REL-4Q9V narrowed to the
+hard-removal half, COV-5H3N annotated more load-bearing). All chunks built;
+the cumulative + chain record IS the PR gate. Checkboxes stay [ ] until
+release (derived view).
 
 ## Scaffolding
 
