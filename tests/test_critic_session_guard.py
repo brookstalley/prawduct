@@ -204,6 +204,32 @@ class TestCriticBeginEndCLI:
         result = run_plugin_hook("critic-end", tmp_path)
         assert result.returncode == 0, result.stderr
 
+    def test_begin_clears_leftover_partials(self, tmp_path):
+        """A waived or stale-failed coordinator review leaves .critic-partials/
+        behind (consolidate removes them only on success). A leftover partial at
+        the same commit as a fresh dispatch would merge as if the new reviewer
+        wrote it, so critic-begin resets the dir — every review starts clean."""
+        prawduct = _prawduct(tmp_path)
+        partials = prawduct / ".critic-partials"
+        partials.mkdir()
+        (partials / "manifest.json").write_text("{}")
+        (partials / "correctness.json").write_text("{}")
+
+        begin = run_plugin_hook("critic-begin", tmp_path)
+        assert begin.returncode == 0, begin.stderr
+        assert not partials.exists(), (
+            "critic-begin must remove leftover partials from a prior review"
+        )
+        assert "leftover .critic-partials" in begin.stdout
+        assert (prawduct / cm.MARKER_NAME).is_file()
+
+    def test_begin_without_partials_stays_quiet(self, tmp_path):
+        prawduct = _prawduct(tmp_path)
+        begin = run_plugin_hook("critic-begin", tmp_path)
+        assert begin.returncode == 0, begin.stderr
+        assert "leftover" not in begin.stdout
+        assert (prawduct / cm.MARKER_NAME).is_file()
+
 
 class TestDesignerHandoffMarkerOrdering:
     """CRT-6F2N — the designer-handoff early exit must precede critic-begin.

@@ -27,7 +27,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
-  yourself — the independence is the whole value.
+  yourself — the independence is the whole value. After a coordinator review (medium/large
+  `final`, `cumulative`), run `prawduct-hook critic-consolidate` before reading the findings
+  (idempotent no-op if the SubagentStop trigger already landed them — never read a stale file).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver

@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-09: Critic persistence redesign — independent review that can't silently fail (critic-persistence-redesign)
+
+<!-- prawduct: chunks=01,02,03,04,05 | type=fix | scope=critic-persistence-redesign -->
+
+**Why:** Claude Code v2.1.198 (2026-07-01) flipped `Agent` subagents to background-by-default.
+The Critic's `final`/`cumulative` coordinator is a `context: fork` skill that dispatched 3 review
+subagents and **resumed inline** to persist (SKILL steps 7-8: write `.critic-findings.json` →
+ledger anchor → `critic-end`). Under background-by-default the fork returns before that resume, so
+the writeback never ran: the review was **silently lost** and surfaced later only as a
+`check-cumulative-critic` deadlock (CRT-9K7T). A checkpoint placed *inside* the flow that fails
+(the `critic-end` HEAD assertion) can't catch a flow that never reaches it.
+
+**What (Option A — decouple model judgment from deterministic persistence):**
+- **Chunk 01:** session-end backstop — `cmd_stop` blocks on a lingering `.critic-active` marker
+  (the out-of-fork signal a review never persisted), read-only, deferring while background work is
+  in flight. The guaranteed floor beneath every other mechanism.
+- **Chunk 02:** `lib/critic_consolidate.py` + `prawduct-hook critic-consolidate` — reviewers write
+  per-role partials; a deterministic, idempotent, fail-closed command merges them (union + dedup,
+  highest severity) into `.critic-findings.json` + the ledger anchor, HEAD-coverage-checked, then
+  clears the marker and removes the partials. No model in the write path.
+- **Chunk 03:** `agents/critic-reviewer.md` (restricted tools bind the reviewer — CRT-3X9D becomes
+  structural) + coordinator rewrite: write a manifest, dispatch the reviewers (they write only
+  their partial), STOP — no resume-to-aggregate.
+- **Chunk 04:** `SubagentStop` hook (matcher `critic-reviewer`) → `prawduct-hook subagent-stop`
+  runs consolidation event-driven as each reviewer finishes; advisory (never blocks the subagent).
+- **Chunk 05:** the backstop evolves from block-only to **consolidate-or-block** — complete
+  partials self-heal (run consolidate), incomplete blocks naming the missing reviewer, marker-
+  without-manifest blocks to re-run. Reconciled the coordinator prose (SKILL/review-protocol/
+  review-cycle/CLAUDE.md) to the final flow.
+
+**Independence is strengthened** (no model in the write path) and the findings/ledger schema is
+unchanged, so downstream gates are untouched. Live validation of the harness firing the
+SubagentStop hook + resolving the plugin `critic-reviewer` agent type is deferred to VRF-002 (it
+can't be exercised until the plugin ships this branch). Closes CRT-9K7T; files CRT-4B7X
+(consolidate concurrency double-ledger edge, low).
+
+**Pre-merge hardening (post-review follow-ups):** `critic-begin` resets `.critic-partials/` so a
+waived/stale-failed review's leftovers can't merge into a fresh dispatch at the same HEAD; builders
+run `critic-consolidate` before reading findings after a coordinator review (SubagentStop becomes
+latency-only, not correctness-bearing); per-role cross-check ownership wired (sustainability →
+Learnings + Backlog, design → Framework-Specific Checks — the coordinator rewrite had orphaned
+them); Gate 2a backstop messages made cause-neutral. Full suite 1606 passed.
+
 ## 2026-07-03: prose diet — reconcile, single-source, compress, fold (prose-diet)
 
 <!-- prawduct: chunks=01,02,03 | type=improvement | scope=prose-diet | release=v2.3.0 | status=shipped -->

@@ -87,7 +87,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below.
 
-**Resolve findings.** Fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
+**Resolve findings.** After a **coordinator** review (medium/large `final`, `cumulative`), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — an idempotent no-op when the `SubagentStop` trigger already consolidated, and it guarantees you never read the *previous* review's file if that trigger didn't fire. Then: fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 

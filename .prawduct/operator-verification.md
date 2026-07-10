@@ -30,3 +30,39 @@ open assumption in `artifacts/build-plan-worktree-compat.md`.
 - `/prawduct:pr create` finds the cumulative record and proceeds — no
   review-in-primary / raw-`gh` workaround needed.
 - A normal (non-worktree) session is unchanged.
+
+## VRF-002 — Chunk 04 — SubagentStop fires critic-consolidate for a dispatched critic-reviewer
+
+**Status:** pending
+**Added:** 2026-07-10 (critic-persistence-redesign Chunk 04)
+**Where to verify:** A real Claude Code session in this repo AFTER the plugin is
+updated to a version carrying `agents/critic-reviewer.md` + the `SubagentStop` hook
+(this session runs the plugin from `~/.claude/plugins/cache/.../2.3.0`, so the new
+agent type and hook are NOT yet live — they can't be exercised pre-release).
+
+**Why a human/live check:** three integration facts are unverifiable by code analysis
+(the Chunk 03 Critic note) —
+1. the plugin's `critic-reviewer` agent type resolves when dispatched via the Agent
+   tool (`subagent_type: critic-reviewer` / plugin-scoped `prawduct:critic-reviewer`);
+2. the `SubagentStop` hook matcher `critic-reviewer` actually fires for that agent's
+   completion (matcher-anchoring semantics vary by Claude Code version — the command
+   defends with an `agent_type` endswith-check and is no-op-safe regardless);
+3. the fired hook runs `prawduct-hook subagent-stop` → `critic-consolidate` with a
+   `cwd` that resolves `.prawduct/`.
+
+**Already validated (this session, not needing the live harness):** the command BODY —
+`bin/prawduct-hook subagent-stop` with a SubagentStop-shaped stdin — is pinned by
+`tests/test_subagent_stop.py` (delegates to consolidate, scoped+bare agent_type,
+cwd-locates-project, always exit 0 incl. on a stale consolidation, defensive gate on a
+wrong agent_type). The consolidation core itself is `tests/test_critic_consolidate.py`.
+
+**Verify (post-update, in a real medium+ session that triggers a coordinator review):**
+- Run a `final`/`cumulative` `/prawduct:critic`; confirm the coordinator writes
+  `.prawduct/.critic-partials/manifest.json` and dispatches three `critic-reviewer`
+  subagents that each write `<role>.json`.
+- Confirm that as the reviewers finish, `.critic-findings.json` appears with a
+  `review.critic` ledger anchor and the `.critic-active` marker is cleared — WITHOUT
+  the main loop having run `critic-consolidate` by hand (i.e. the hook did it).
+- If findings do NOT appear event-driven, the session-end backstop must still block on
+  the lingering marker (the floor) — confirm that too, then investigate the matcher
+  string (`prawduct:critic-reviewer` vs `critic-reviewer`) against the installed version.

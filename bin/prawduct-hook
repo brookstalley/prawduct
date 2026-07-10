@@ -195,8 +195,18 @@ def _critic_marker():
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
     from lib import critic_marker  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
-
     return critic_marker
+
+
+def _critic_consolidate():
+    """Lazy-import the deterministic Critic-consolidation core (lib/critic_consolidate).
+    Same idiom as _critic_marker(). The Stop-hook backstop reads `pending_state` and
+    calls `consolidate` through here to self-heal an abandoned coordinator review."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+    return critic_consolidate
 
 
 def _reject_unknown_args(
@@ -345,6 +355,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.bug-inbox",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
+    ".prawduct/.critic-partials",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
@@ -729,8 +740,18 @@ def cmd_critic_begin(project_dir: Path) -> int:
 
     Called at the start of a /prawduct:critic review. No-op (still exit 0)
     outside an onboarded repo — there is no session to protect.
+
+    Also resets `.critic-partials/`: consolidate removes partials only on
+    success, so a waived or stale-failed coordinator review leaves them behind —
+    and a leftover partial at the SAME commit as a fresh dispatch would merge as
+    if the new reviewer had written it. Deterministic here (the coordinator fork
+    has no rm in its allow-list), so every review starts from a clean dir.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
+    consolidate = _critic_consolidate()
+    if consolidate.partials_dir(prawduct_dir).is_dir():
+        consolidate.remove_partials(prawduct_dir)
+        print("PRAWDUCT: cleared leftover .critic-partials from a prior review.")
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
     return 0
@@ -742,6 +763,73 @@ def cmd_critic_end(project_dir: Path) -> int:
     by TTL and is swept at the next session start)."""
     prawduct_dir = get_prawduct_dir(project_dir)
     _critic_marker().clear_marker(prawduct_dir)
+    return 0
+
+
+def cmd_critic_consolidate(project_dir: Path) -> int:
+    """Merge complete reviewer partials into the canonical .critic-findings.json.
+
+    The deterministic write path of the redesigned Critic coordinator
+    (critic-persistence-redesign): reviewer subagents write per-role partials;
+    this command — invoked by the SubagentStop hook as each finishes and by the
+    session-end backstop — consolidates them idempotently and fail-closed. See
+    ``lib/critic_consolidate.py`` for the full contract and exit codes."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    return critic_consolidate.consolidate(project_dir)
+
+
+def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
+    """SubagentStop trigger: consolidate Critic partials as each reviewer finishes.
+
+    Registered for the ``critic-reviewer`` agent type. Runs `critic-consolidate`
+    best-effort — it no-ops until every roster role has reported, then merges
+    exactly once, so firing per-reviewer is safe and idempotent. This hook is
+    ADVISORY: it ALWAYS exits 0 and never blocks the subagent. The enforcing gate
+    is the session-end backstop (cmd_stop) — if this trigger somehow never fires
+    (matcher drift, a harness change), the lingering marker still blocks at
+    session end, so consolidation is event-driven-fast but session-end-guaranteed.
+
+    ``stop_input`` is the parsed SubagentStop stdin: ``cwd`` locates the project
+    (the reviewer's cwd is the project root), ``agent_type`` is the dispatched
+    agent name (scoped ``prawduct:critic-reviewer`` for a plugin agent). The
+    matcher already scopes us to critic-reviewer; the ``agent_type`` check is
+    defense-in-depth against matcher-config drift.
+    """
+    stop_input = stop_input or {}
+
+    # Prefer the payload cwd (the subagent ran in the project root); fall back to
+    # the dispatched project_dir. get_prawduct_dir then walks up to find .prawduct.
+    cwd = stop_input.get("cwd")
+    if isinstance(cwd, str) and cwd.strip():
+        candidate = Path(cwd)
+        if candidate.is_dir():
+            project_dir = candidate
+
+    # Defensive agent-type gate: if the payload names an agent that is not a
+    # critic-reviewer, there is nothing for us to consolidate. Accept both the
+    # bare name and the plugin-scoped `prawduct:critic-reviewer` form.
+    agent_type = stop_input.get("agent_type")
+    if (
+        isinstance(agent_type, str)
+        and agent_type.strip()
+        and not agent_type.strip().endswith("critic-reviewer")
+    ):
+        return 0
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+
+        critic_consolidate.consolidate(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a SubagentStop hook must never block the subagent; the session-end backstop is the enforcing gate
+        print(f"subagent-stop: consolidation deferred to session end ({exc})", file=sys.stderr)
+    # Always advisory — never propagate consolidate's exit code as a block.
     return 0
 
 
@@ -964,6 +1052,114 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     if rationale_error:
                         trivial_block_reason = rationale_error
 
+    # Gate 2a (Chunk 05, CRT-9K7T follow-up): an ABANDONED coordinator Critic
+    # review — the .critic-active marker is still set because critic-begin ran but
+    # consolidation never landed. With Agent subagents background-by-default, a
+    # coordinator fork dispatches its reviewers and returns before persisting; the
+    # lingering marker is the out-of-fork signal, and it lives OUTSIDE the flow
+    # that fails (so it catches a review that never reached its writeback). The
+    # backstop now CONSOLIDATES-OR-BLOCKS as a pure function of the partials on
+    # disk (Chunk 02's pending_state / consolidate):
+    #   • complete partials → self-heal: run critic-consolidate (deterministic, no
+    #     model re-run). Success clears the marker + writes findings, so the normal
+    #     freshness gate below takes over; a stale/failed consolidation blocks.
+    #   • incomplete partials → block naming the missing reviewer(s) to re-dispatch.
+    #   • marker but no manifest → a single-pass (or never-dispatched) review that
+    #     crashed: block, re-run /prawduct:critic.
+    # Read-only PRESENCE for the marker (marker_present, NOT review_active): the
+    # gate must never sweep the marker it reads. Deferred with the other blockers
+    # while reviewers are still in flight (defer_active) — the deferral is what
+    # separates an in-flight review from an abandoned one, so the self-heal only
+    # runs once the background reviewers have landed.
+    abandoned_critic = False
+    marker_present = False
+    if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
+        try:
+            marker_present = _critic_marker().marker_present(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            marker_present = False
+    if marker_present:
+        if "critic" in waivers:
+            waiver_notes.append(
+                f"critic: waived ({waivers['critic']}) — .critic-active marker still present"
+            )
+        elif defer_active:
+            # Reviewers still running (background_tasks non-empty): don't self-heal
+            # or block yet — emit a deferrable blocker so the deferral note fires and
+            # re-arms next Stop once the array empties.
+            abandoned_critic = True
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW (in flight): reviewers are still running; consolidation\n"
+                "  will run as they finish. (Deferred while background work is in flight.)\n"
+            ))
+        else:
+            _escape = (
+                "\n"
+                "  Escape hatch: if a review genuinely cannot complete this session, clear\n"
+                "  the marker and declare a waiver so this gate stops re-firing every turn:\n"
+                "    rm .prawduct/.critic-active\n"
+                "    rm -rf .prawduct/.critic-partials\n"
+                "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                "  Empty reasons are rejected; the file auto-clears next session.\n"
+            )
+            try:
+                state, missing = _critic_consolidate().pending_state(prawduct_dir)
+            except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                state, missing = "unreadable", []
+            if state == "complete":
+                # Self-heal: consolidate deterministically. Success clears the marker
+                # and writes findings the freshness gate then accepts; failure (HEAD
+                # moved since dispatch, malformed partial) leaves the marker → block.
+                try:
+                    rc = _critic_consolidate().consolidate(project_dir)
+                except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                    rc = 1
+                if rc == 0 and not _critic_marker().marker_present(prawduct_dir):
+                    waiver_notes.append(
+                        "critic: self-healed abandoned review — consolidated reviewer "
+                        "partials into findings + ledger anchor; marker cleared."
+                    )
+                else:
+                    abandoned_critic = True
+                    blockers.append(_attributed("critic",
+                        "CRITIC REVIEW (consolidation failed): every reviewer reported, but\n"
+                        "  the partials could not be consolidated — the specific cause is on\n"
+                        "  stderr above (e.g. HEAD moved since dispatch, a malformed partial,\n"
+                        "  or a ledger failure). Fix the cause or re-run the review:\n"
+                        "    /prawduct:critic\n"
+                        + _escape
+                    ))
+            elif state == "incomplete":
+                abandoned_critic = True
+                missing_str = ", ".join(missing) if missing else "one or more reviewers"
+                blockers.append(_attributed("critic",
+                    "CRITIC REVIEW (incomplete): a coordinator review is pending but not\n"
+                    f"  every reviewer reported. Missing partial(s): {missing_str}.\n"
+                    "  Re-dispatch the missing reviewer(s), or re-run the whole review:\n"
+                    "    /prawduct:critic\n"
+                    + _escape
+                ))
+            else:  # "none" (marker, no manifest) or "unreadable"
+                abandoned_critic = True
+                if state == "unreadable":
+                    cause = (
+                        "  a coordinator manifest exists but is unreadable or schema-invalid,\n"
+                        "  so the pending review cannot be consolidated.\n"
+                    )
+                else:
+                    cause = (
+                        "  no coordinator manifest is present, so a single-pass review or a\n"
+                        "  coordinator dispatch crashed before writing.\n"
+                    )
+                blockers.append(_attributed("critic",
+                    "CRITIC REVIEW (not completed): a review set the .critic-active marker\n"
+                    "  but never recorded findings —\n"
+                    + cause +
+                    "  Re-run the review:\n"
+                    "    /prawduct:critic\n"
+                    + _escape
+                ))
+
     critic_would_block = False
     # STH-4F7C: freshness (STH-6B4R strict-`>` whole-second compare), schema
     # validation, and the v1.5 Chunk 02 verify-resolutions scope subset check
@@ -974,7 +1170,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # the dedicated blocker variant below so the builder knows which files
     # widened the scope.
     verify_resolutions_block_reason = ""
-    if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
+    # Skip the findings-freshness gate when the abandoned-marker blocker already
+    # fired: both describe one underlying cause (the review never landed), and the
+    # abandoned message is the accurate, actionable one — don't double-block.
+    if (
+        has_changes and has_build_plan and not doc_only
+        and not designer_handoff_skip and not abandoned_critic
+    ):
         critic_would_block = True
         try:
             satisfied, verify_resolutions_block_reason = (
@@ -2641,7 +2843,8 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force]|critic-begin|critic-end|"
+    "{clear [--session-start|--force]|critic-begin|critic-end|critic-consolidate|"
+    "subagent-stop|"
     "stop|build-index|user-prompt-submit|test-status|validate-evidence|"
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
     "check-cumulative-critic|"
@@ -2802,6 +3005,10 @@ def main() -> int:
         return cmd_critic_begin(project_dir)
     elif command == "critic-end":
         return cmd_critic_end(project_dir)
+    elif command == "critic-consolidate":
+        return cmd_critic_consolidate(project_dir)
+    elif command == "subagent-stop":
+        return cmd_subagent_stop(project_dir, _read_stop_stdin())
     elif command == "build-index":
         return cmd_build_index(project_dir)
     elif command == "user-prompt-submit":

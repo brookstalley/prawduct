@@ -159,11 +159,13 @@ When a significant architectural or design change spans multiple chunks, review 
 
 ## Recording Reviews
 
-Every review cycle must produce a findings record — governance without an audit trail is documentation fiction. After each review, write `.prawduct/.critic-findings.json` (see main SKILL.md for format); when no findings exist, record an empty findings array.
+Every review cycle must produce a findings record — governance without an audit trail is documentation fiction. **Single-pass** reviews (chunk, verify-resolutions, final trivial/small) write `.prawduct/.critic-findings.json` themselves (see main SKILL.md for format); when no findings exist, record an empty findings array. **Coordinator** reviews (final medium/large, cumulative) do NOT write it inline — the reviewers write partials and `prawduct-hook critic-consolidate` produces the same canonical record deterministically (the invariant holds; only the writer differs — see `review-protocol.md` "Coordinator Pattern").
+
+**Coordinator manifest** (`.prawduct/.critic-partials/manifest.json`, written at dispatch; schema/validators in `lib/critic_consolidate.py`). Keys: `mode` (verbose string), `mode_chosen_by` (the `infer-critic-mode` rationale), `roster` (`["correctness","design","sustainability"]`), `commit_reviewed` (`git rev-parse HEAD` at dispatch), `files_reviewed` (every changed file briefed to the reviewers — non-empty), `scope` (the build-plan scope for the ledger), and the optional `chunk`, `model` (the tier that ran), and `base_reviewed` (the cumulative merge-base, else null). `critic-consolidate` refuses to persist unless every roster role reported a partial at `commit_reviewed` and that commit still covers HEAD.
 
 ### The Governance-Event Ledger
 
-The findings file is single-slot — each review overwrites the last. The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only history: after writing the findings file, run `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` (SKILL step 7). The helper is the **single writer** — it validates the record and computes the envelope; agents never hand-author JSONL.
+The findings file is single-slot — each review overwrites the last. The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only history: after writing the findings file, run `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` (SKILL step 7) — the single-pass path does this itself; the coordinator path's `critic-consolidate` does it for you. The helper is the **single writer** — it validates the record and computes the envelope; agents never hand-author JSONL.
 
 Each line is one event with an envelope/payload split:
 
