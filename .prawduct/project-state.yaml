@@ -545,10 +545,10 @@ views_enabled: true
 # feature/changelog-fail-loud off develop. gate-noise merged (PR #114,
 # release-pending); its plan is RETAINED and regens via scope=gate-noise.
 # 2026-07-04: v2.3.0 release-prep — prose-diet, changelog-fail-loud, and gate-noise
-# flipped to status=shipped; the pointer is cleared. No release-pending plans remain.
-# All three build-plan files are RETAINED as historical artifacts and regen via their
-# scope= tags.
-active_build_plan: artifacts/build-plan-critic-persistence-redesign.md
+# v2.3.1 (2026-07-10): critic-persistence-redesign shipped; entry flipped to
+# status=shipped; the pointer is cleared. No release-pending plans remain. Plan
+# files are RETAINED as historical artifacts and regen via their scope= tags.
+active_build_plan: null
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -627,6 +627,9 @@ scope_rollups:
   critic-mode-consolidation:
     chunks: ["01"]
     releases: ["v2.1.4"]
+  critic-persistence-redesign:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v2.3.1"]
   critic-protocol-budget:
     chunks: ["01"]
     releases: ["v2.1.8"]
