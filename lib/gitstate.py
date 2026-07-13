@@ -246,43 +246,11 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
     return ""
 
 
-def _session_changes_are_doc_only(project_dir: Path, status_output: str | None = None) -> bool:
-    """Check if all non-metadata session changes are documentation (.md) files.
-
-    Returns True if changes exist but are all .md files — used to skip
-    the reflection gate for doc-only edits. ``status_output`` (STH-6Q9D): an
-    optional pre-captured porcelain snapshot to reuse; ``None`` computes it.
-    """
-    prawduct_dir = get_prawduct_dir(project_dir)
-    baseline_path = prawduct_dir / ".session-git-baseline"
-
-    current = status_output if status_output is not None else git_status_output(project_dir)
-    if current is None:
-        return False
-
-    baseline_lines: set[str] = set()
-    if baseline_path.is_file():
-        try:
-            # Unstripped on both sides — see git_has_session_changes.
-            baseline_lines = set(baseline_path.read_text().splitlines())
-        except (UnicodeDecodeError, OSError):
-            pass
-
-    has_any = False
-    for line in current.splitlines():
-        if line in baseline_lines:
-            continue
-        parsed = parse_porcelain_line(line)
-        if parsed is None:
-            continue
-        filepath = parsed[2]
-        if _is_metadata_path(filepath):
-            continue
-        has_any = True
-        if not filepath.endswith(".md"):
-            return False
-
-    return has_any
+# _session_changes_are_doc_only moved to lib/gates.py as
+# session_changes_all_non_judgeable (kernel-v3 chunk 04): the "doc-only"
+# question is now answered by THE judgeability predicate
+# (coverage_algebra.is_judgeable_path), and coverage_algebra sits above this
+# module in the import DAG.
 
 
 def git_has_code_changes(project_dir: Path, status_output: str | None = None) -> bool:

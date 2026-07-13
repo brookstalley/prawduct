@@ -359,6 +359,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
+    ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
     ".prawduct/.session-reflected",
@@ -582,7 +583,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # (permissions, transient FS) must not traceback the SessionStart hook —
     # a survivor just carries stale state into the new session, which the
     # NOTE names so the user can remove it by hand.
-    for name in (".session-reflected", ".session-start", ".session-git-baseline", ".gates-waived"):
+    for name in (".session-reflected", ".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"):
         f = prawduct_dir / name
         try:
             if f.is_file():
@@ -714,6 +715,38 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
+    # Record HEAD's tree at session start (kernel-v3 chunk 04) — the base of
+    # the Stop-hook Critic gate's coverage question (Q2: composed review
+    # coverage must span this tree → the working tree at session end).
+    # HEAD^{tree}, not a working-tree capture: review facts anchor their base
+    # at HEAD's tree (D8), so this is the tree the session's evidence chain
+    # composes from — pre-session dirt rides inside every reviewed diff.
+    # Best-effort: on failure (unborn HEAD, git error) the marker stays
+    # absent and the gate degrades to a HEAD-tree base at session end
+    # (uncommitted-work jurisdiction), which the NOTE names.
+    try:
+        tree_proc = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+        )
+        if tree_proc.returncode == 0 and tree_proc.stdout.strip():
+            _core().atomic_write_text(
+                prawduct_dir / ".session-base-tree", tree_proc.stdout.strip()
+            )
+        elif baseline is not None:
+            print(
+                "NOTE: could not resolve HEAD^{tree} — the session Critic gate "
+                "will judge uncommitted work only this session",
+                file=sys.stderr,
+            )
+    except (OSError, subprocess.SubprocessError, ImportError) as exc:
+        # Same never-block-session-start posture as the baseline write above.
+        print(
+            f"NOTE: could not write .session-base-tree ({exc}) — the session "
+            "Critic gate will judge uncommitted work only this session",
+            file=sys.stderr,
+        )
+
     # v5: Staleness scan + session briefing + subagent briefing
     try:
         staleness = _briefing().staleness_scan(project_dir)
@@ -750,9 +783,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     No-op (still exit 0) outside an onboarded repo — no session to protect,
     no store to dispatch against. Exit 2 = verify-resolutions scope widened
-    past the demotion threshold (the skill falls back to `final`, same
-    convention as compute-verify-resolutions-scope); exit 1 = any other
-    dispatch failure (reason on stderr).
+    past the demotion threshold (the skill falls back to `final`); exit 1 =
+    any other dispatch failure (reason on stderr).
 
     Also resets `.critic-partials/` before writing the fresh manifest:
     consolidate removes partials only on success, so a waived or stale-failed
@@ -977,7 +1009,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     _gs = _gitstate()
     status_output = _gs.git_status_output(project_dir)
     has_changes = _gs.git_has_session_changes(project_dir, status_output)
-    doc_only = _gs._session_changes_are_doc_only(project_dir, status_output) if has_changes else False
+    # "Doc-only" = no session-changed file is judgeable (THE predicate,
+    # coverage_algebra.is_judgeable_path via gates — kernel-v3 chunk 04). A
+    # governance-protected .md (skills/, methodology/, templates/, CLAUDE.md)
+    # is judgeable, so it no longer skips the reflection/Critic gates.
+    doc_only = _gates().session_changes_all_non_judgeable(project_dir, status_output) if has_changes else False
 
     # Load agent-declared gate waivers (auto-cleared at session start).
     # The convention: a waiver is only NOTED to the user when it actually
@@ -1122,8 +1158,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # backstop now CONSOLIDATES-OR-BLOCKS as a pure function of the partials on
     # disk (Chunk 02's pending_state / consolidate):
     #   • complete partials → self-heal: run critic-consolidate (deterministic, no
-    #     model re-run). Success clears the marker + writes findings, so the normal
-    #     freshness gate below takes over; a stale/failed consolidation blocks.
+    #     model re-run). Success clears the marker + appends the review fact, so
+    #     the composition gate below judges the healed evidence like any other
+    #     (kernel-v3 ch.04); a failed consolidation blocks.
     #   • incomplete partials → block naming the missing reviewer(s) to re-dispatch.
     #   • marker but no manifest → a single-pass (or never-dispatched) review that
     #     crashed: block, re-run /prawduct:critic.
@@ -1169,8 +1206,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 state, missing = "unreadable", []
             if state == "complete":
                 # Self-heal: consolidate deterministically. Success clears the marker
-                # and writes findings the freshness gate then accepts; failure (HEAD
-                # moved since dispatch, malformed partial) leaves the marker → block.
+                # and appends the fact the composition gate then judges; failure
+                # (a malformed partial, a store write error) leaves the marker → block.
                 try:
                     rc = _critic_consolidate().consolidate(project_dir)
                 except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
@@ -1222,17 +1259,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 ))
 
     critic_would_block = False
-    # STH-4F7C: freshness (STH-6B4R strict-`>` whole-second compare), schema
-    # validation, and the v1.5 Chunk 02 verify-resolutions scope subset check
-    # all live in the shared lib gate — one source of truth with the
-    # session-start advisory (briefing._check_previous_session_gates). A
-    # non-empty reason means a fresh, valid verify-resolutions record whose
-    # declared scope the chunk diff has outgrown; it is surfaced verbatim in
-    # the dedicated blocker variant below so the builder knows which files
-    # widened the scope.
-    verify_resolutions_block_reason = ""
-    # Skip the findings-freshness gate when the abandoned-marker blocker already
-    # fired: both describe one underlying cause (the review never landed), and the
+    # Kernel-v3 chunk 04: the gate's question is COMPOSED COVERAGE (Q2) —
+    # does review evidence in the shared store span this session's base tree
+    # → the current working tree, with zero unresolved blocking findings?
+    # (lib/gates.session_review_verdict → coverage_algebra). No findings-file
+    # mtime, no mode labels, no verify-resolutions scope subsets — a review
+    # recorded pre-commit vouches for the verbatim commit from any worktree
+    # or session, and post-review edits leave a coverage gap whose remedy is
+    # a verify-resolutions pass.
+    critic_verdict: dict = {}
+    # Skip the coverage gate when the abandoned-marker blocker already fired:
+    # both describe one underlying cause (the review never landed), and the
     # abandoned message is the accurate, actionable one — don't double-block.
     if (
         has_changes and has_build_plan and not doc_only
@@ -1240,47 +1277,65 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     ):
         critic_would_block = True
         try:
-            satisfied, verify_resolutions_block_reason = (
-                _gates().critic_findings_satisfy_session_gate(prawduct_dir, project_dir)
-            )
-            critic_would_block = not satisfied
+            critic_verdict = _gates().session_review_verdict(project_dir)
+            critic_would_block = critic_verdict.get("status") != "covered"
         except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-            pass
+            critic_verdict = {}
 
     if critic_would_block:
+        _escape_hatch = (
+            "\n"
+            "  Escape hatch: if Critic legitimately cannot run this session — e.g., the chunk\n"
+            "  is in a designer-handoff phase (mark `Type: designer-handoff` in the build plan\n"
+            "  to skip this gate automatically), or the GO/NO-GO is not yet verifiable because\n"
+            "  it depends on a human authoring step or external system — declare a waiver so\n"
+            "  this gate stops re-firing every turn:\n"
+            "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+            "  Empty reasons are rejected; the file auto-clears next session. See\n"
+            "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+        )
+        verdict_status = critic_verdict.get("status", "")
         if "critic" in waivers:
             waiver_notes.append(f"critic: waived ({waivers['critic']})")
-        elif verify_resolutions_block_reason:
+        elif verdict_status == "schema-ahead":
             blockers.append(_attributed("critic",
-                "CRITIC REVIEW (verify-resolutions stale): "
-                f"{verify_resolutions_block_reason}\n"
-                "  Verify-resolutions findings clear the gate only when the current chunk\n"
-                "  diff is within the verify pass's declared scope. The chunk has grown\n"
-                "  beyond that surface, so the prior review's conclusions no longer cover\n"
-                "  what changed. Re-run with a wider mode before ending the session.\n"
-                "\n"
-                "  Escape hatch: if Critic cannot run this session (e.g., wider mode is\n"
-                "  blocked by an external dependency), declare a waiver so this gate stops\n"
-                "  re-firing every turn:\n"
-                "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file auto-clears next session. See\n"
-                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+                "CRITIC REVIEW (evidence from a newer plugin): "
+                f"{critic_verdict.get('reason', '')}\n"
+                "  This session cannot judge those facts, so the gate fails closed rather\n"
+                "  than passing on evidence it cannot read.\n"
+                + _escape_hatch
+            ))
+        elif verdict_status == "blocked":
+            unresolved = critic_verdict.get("unresolved", [])
+            lines = "".join(
+                f"    - {e.get('review_id')}/{e.get('fid')}: {e.get('title', '<no title>')}\n"
+                for e in unresolved[:5]
+            )
+            more = f"    (+{len(unresolved) - 5} more)\n" if len(unresolved) > 5 else ""
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW (unresolved blocking findings): review coverage composes\n"
+                f"  over this session's changes, but carries {len(unresolved)} unresolved BLOCKING finding(s):\n"
+                + lines + more +
+                "  Fix them, then run /prawduct:critic verify-resolutions — it records the\n"
+                "  resolution facts and this same evidence passes (no full re-review).\n"
+                + _escape_hatch
             ))
         else:
+            base = (critic_verdict.get("base") or "")[:12]
+            target = (critic_verdict.get("target") or "")[:12]
+            span = f" ({base} → {target})" if base and target else ""
+            detail = critic_verdict.get("reason", "no review evidence composes")
             blockers.append(_attributed("critic",
-                "CRITIC REVIEW: The build plan includes Critic review in each chunk's \"Done when\" steps,\n"
-                "  but no Critic findings were recorded this session. If you have completed a chunk,\n"
-                "  run `/prawduct:critic` now. It runs as an independent agent\n"
-                "  and records findings to .prawduct/.critic-findings.json\n"
-                "\n"
-                "  Escape hatch: if Critic legitimately cannot run this session — e.g., the chunk\n"
-                "  is in a designer-handoff phase (mark `Type: designer-handoff` in the build plan\n"
-                "  to skip this gate automatically), or the GO/NO-GO is not yet verifiable because\n"
-                "  it depends on a human authoring step or external system — declare a waiver so\n"
-                "  this gate stops re-firing every turn:\n"
-                "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file auto-clears next session. See\n"
-                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+                "CRITIC REVIEW: no composed review coverage spans this session's\n"
+                f"  changes{span}: {detail}\n"
+                "  If you have completed a chunk, run `/prawduct:critic` now. It runs as an\n"
+                "  independent agent and records a review fact the gates compose over.\n"
+                "  If a review already ran and you edited files afterward (fixes, or a\n"
+                "  SELECTIVE commit of only part of the reviewed state), the current tree was\n"
+                "  never reviewed — run /prawduct:critic verify-resolutions to review the\n"
+                "  delta and close the gap. If unreviewed changes were committed mid-session,\n"
+                "  /prawduct:critic cumulative reviews the whole branch span.\n"
+                + _escape_hatch
             ))
 
     # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
@@ -1293,17 +1348,16 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  Either fix the violation or change Type to `code`.\n"
         ))
 
-    # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed, which
-    # already enforces this-session freshness on the findings file. So if we
-    # reach this branch, the findings represent a real review the agent ran
-    # this session; the gate doesn't need to re-check freshness. When all
-    # chunks of a multi-chunk plan are complete but the latest review was
-    # chunk-mode, end-of-cycle synthesis (Coherence, Design, Learnings
-    # Cross-Check, Backlog Reconciliation) hasn't run. Advisory NOT blocking —
-    # chunk-mode reviews are valid mid-cycle, and the builder may legitimately
-    # defer the final review (e.g., next session).
+    # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed (composed
+    # coverage vouches for the current state). The mode is telemetry read from
+    # the latest review FACT in the store (kernel-v3 ch.04 — no gate reads the
+    # findings cache): when all chunks of a multi-chunk plan are complete but
+    # that review ran Goals 1-3 only, end-of-cycle synthesis (Coherence,
+    # Design, Learnings Cross-Check, Backlog Reconciliation) hasn't run.
+    # Advisory NOT blocking — chunk-mode reviews are valid mid-cycle, and the
+    # builder may legitimately defer the final review (e.g., next session).
     if has_changes and not doc_only and not critic_would_block:
-        mode_satisfied, mode_reason = _gates()._critic_session_satisfies_gate(prawduct_dir)
+        mode_satisfied, mode_reason = _gates()._critic_session_satisfies_gate(project_dir)
         if not mode_satisfied:
             print("", file=sys.stderr)
             print(f"NOTE: {mode_reason}", file=sys.stderr)
@@ -2437,47 +2491,6 @@ def cmd_classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
     return risk.classify_diff_risk(project_dir, argv)
 
 
-def cmd_compute_verify_resolutions_scope(project_dir: Path) -> int:
-    """Print the file scope a ``/prawduct:critic verify-resolutions`` pass should review.
-
-    Thin CLI wrapper around ``_compute_verify_resolutions_scope`` (v1.5
-    Chunk 02) so the Critic SKILL can call the canonical helper instead
-    of reimplementing the widening-threshold prose. Defense-in-depth: the
-    Critic's verify-resolutions invocation now computes the same scope
-    the stop-hook gate enforces; drift between the two is no longer
-    possible (v1.5.1 Chunk 03 — backlog 2026-05-21).
-
-    Output format:
-      stdout: one file path per line (the union of prior ``files_reviewed``
-              and files-changed-since-``commit_reviewed``, sorted).
-              Empty stdout when the helper returns no scope.
-      stderr: one line with the helper's reason string.
-
-    Exit codes:
-      0 - scope computed; stdout lists files; stderr reason starts ``ok:``.
-      1 - cannot compute (no prior findings, no ``commit_reviewed``,
-          unreadable findings, no actionable findings, unresolved commit,
-          git failure, invalid files_reviewed). The Critic should fall
-          back to ``/prawduct:critic chunk`` or ``/prawduct:critic final`` and record
-          ``mode_chosen_by: "fallback-no-prior-findings"`` (or similar).
-      2 - scope widened past the demotion threshold
-          (``len(delta) > 2 * len(prior) + 5``). The Critic should fall
-          back to ``/prawduct:critic final`` and record
-          ``mode_chosen_by: "fallback-scope-widened"``.
-    """
-    prawduct_dir = get_prawduct_dir(project_dir)
-    scope, reason = _gates()._compute_verify_resolutions_scope(prawduct_dir, project_dir)
-    if scope:
-        for f in scope:
-            print(f)
-    print(reason, file=sys.stderr)
-    if reason.startswith("ok:"):
-        return 0
-    if reason.startswith("scope-widened:"):
-        return 2
-    return 1
-
-
 def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     """Print ``<mode>|<rationale>`` for the inferred ``/prawduct:critic`` mode.
 
@@ -2938,7 +2951,7 @@ _USAGE = (
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|regen-views [--check]|stamp-merged|"
     "infer-critic-mode [args]|"
-    "compute-verify-resolutions-scope|resolve-base|"
+    "resolve-base|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
     "update-gitignore|"
@@ -3137,8 +3150,6 @@ def main() -> int:
     elif command == "infer-critic-mode":
         args = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else None
         return cmd_infer_critic_mode(project_dir, args)
-    elif command == "compute-verify-resolutions-scope":
-        return cmd_compute_verify_resolutions_scope(project_dir)
     elif command == "resolve-base":
         return cmd_resolve_base(project_dir)
     elif command == "evidence":

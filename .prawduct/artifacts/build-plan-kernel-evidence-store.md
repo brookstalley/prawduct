@@ -46,7 +46,7 @@ write-tree spike (~30 minutes, first Done-when step).
 - [x] Chunk 01: Evidence store walking skeleton — append in one worktree, read from another
 - [x] Chunk 02: Coverage algebra + the one non-judgeable predicate
 - [x] Chunk 03: Deterministic dispatch — code-written manifest, fact-appending consolidate
-- [ ] Chunk 04: Gate cutover — Stop gate and PR gate answer by composition
+- [x] Chunk 04: Gate cutover — Stop gate and PR gate answer by composition
 - [ ] Chunk 05: Prose surfaces — protocols, methodology, digest
 - [ ] Chunk 06: Upgrade posture + end-to-end scenarios (cumulative)
 Context: Owner approved D1/D3 2026-07-12; D3 spike PASSED same day (plain
@@ -76,6 +76,27 @@ commit includes exactly the captured state — selective commits (leaving
 captured-but-uncommitted files behind) produce a coverage gap; chunk 04's
 gate message must name the v-r remedy, and the trajectory review should
 watch this friction in practice.
+Chunk 04 shipped 2026-07-13 (Critic final via coordinator, escalate tier:
+0 blocking / 4 warning / 7 note — all warnings fixed pre-commit: memoized
+diff_fn on the gate hot path, stale-comment sweep, plan/registry
+reconciliation). Both gates now answer by composition: PR gate = Q1
+(merge-base tree → HEAD tree), Stop gate = Q2 (`.session-base-tree` marker
+→ captured working tree, with head-fallback and merge-base-fallback
+degradations recorded as D6 chunk-04 refinements). gates.py 1531→~1060
+LOC (success criterion 5 on track); repros CRT-J4PM + CRT-5D8Q pass
+end-to-end in `tests/scenarios/test_kernel_v3_gate_cutover.py`; 1690 tests.
+Backlog: CRT-5D8Q + CRT-4B7X archived (ship-in-pr); GOV-2R8W (porcelain
+firing guard vs Q2 span) + GOV-6H4P (advisory-surface coarseness) filed.
+Notes for chunks 05-06: (e) `hooks/gates.json` critic entry stamped
+`since: 3.0.0` — release prep must re-stamp if the breaking release numbers
+differently; (f) `lib/critic_mode.py`'s `extends_cumulative` chain arm +
+its dangling `_chain_anchor` docstring ref are chunk-06 vestige-sweep scope
+(recorded in design D6 refinements); (g) new session file
+`.prawduct/.session-base-tree` rides the gitignore contract (core list +
+hook mirror + this repo's .gitignore) — product docs mentioning session
+files may need the addition in chunk 05. Next: Chunk 05 (prose surfaces) —
+then the after-chunk-04 trajectory review checkpoint: gates.py IS
+shrinking, and every deleted check has a named still-blocks regression.
 
 ## Scaffolding
 
@@ -254,7 +275,10 @@ else reads `evidence.jsonl` directly. `.critic-findings.json` is written by
 - **Acceptance criteria:** discovery success criterion 2 verbatim — the
   CRT-J4PM and CRT-5D8Q reproduction scenarios pass without a re-run; no
   gate reads `.critic-findings.json` or any single-slot review file; grep
-  for the deleted symbols returns nothing
+  for the deleted symbols returns nothing at their gate sites (the
+  `lib/critic_mode.py` inference mirror's `extends_cumulative` arm is
+  non-gate code, recorded in the design doc's chunk-04 refinements as
+  chunk-06 vestige-sweep scope)
 - **Critic mode:** final
   <!-- Override: this is the highest-blast-radius chunk — gate semantics for
        every governed repo change here. -->

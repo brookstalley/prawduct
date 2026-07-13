@@ -288,16 +288,20 @@ class TestPluginStopGate:
         assert "`/prawduct:critic`" in result.stderr
         assert "`/critic`" not in result.stderr
 
-    def test_stop_passes_with_fresh_blocking_free_findings(self, tmp_path):
+    def test_findings_cache_alone_no_longer_clears_the_gate(self, tmp_path):
+        # Kernel-v3 chunk 04 still-blocks regression: a fresh, schema-valid,
+        # blocking-free .critic-findings.json is a derived CACHE (D7) — no
+        # gate reads it. Only a review FACT whose trees compose over the
+        # session's changes clears the gate, so this v2-satisfying state now
+        # blocks (real coverage lives in test_session_critic_gate.py and the
+        # gate-cutover scenarios).
         prawduct = self._active_plan_repo(tmp_path)
-        # A fresh, schema-valid, blocking-free findings file clears the gate
-        # (files_reviewed non-empty; mode omitted — it is optional, and bare
-        # short tokens are rejected by validate_critic_findings).
         (prawduct / ".critic-findings.json").write_text(json.dumps({
             "findings": [], "files_reviewed": ["src/app.py"], "summary": "No issues found.",
         }))
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
-        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "no composed review coverage" in result.stderr
 
     def test_stop_passes_with_no_build_plan(self, tmp_path):
         prawduct = tmp_path / ".prawduct"
@@ -416,16 +420,13 @@ class TestPluginStopGateBackgroundDefer:
         assert landed.returncode == 2, (landed.stdout, landed.stderr)
         assert "CRITIC" in landed.stderr
 
-    def test_fresh_findings_pass_regardless_of_in_flight(self, tmp_path):
-        """When the gate is already satisfied (fresh blocking-free findings), an
-        in-flight array changes nothing — still a clean exit 0, no deferral note
-        (there was no blocker to defer)."""
-        prawduct = self._active_plan_repo(tmp_path)
-        (prawduct / ".critic-findings.json").write_text(json.dumps({
-            "findings": [], "files_reviewed": ["src/app.py"], "summary": "No issues found.",
-        }))
+    def test_satisfied_gate_emits_no_deferral_note(self, tmp_path):
+        """When no gate is in play (here: a doc-only diff — the kernel-v3
+        judgeability carveout), an in-flight array changes nothing — still a
+        clean exit 0 and NO deferral note (there was no blocker to defer)."""
+        self._active_plan_repo(tmp_path)
         result = run_plugin_hook(
-            "stop", tmp_path, git_status=self._CODE_DIFF,
+            "stop", tmp_path, git_status=" M docs/notes.md",
             stdin=self._stdin([{"id": "wf-1", "type": "workflow", "name": "x"}]),
         )
         assert result.returncode == 0, (result.stdout, result.stderr)
@@ -455,10 +456,12 @@ class TestPluginStopGateRegressions:
         _make_session_start(prawduct)
         return prawduct
 
-    def test_verify_resolutions_out_of_scope_file_blocks(self, tmp_path):
-        # (a) Findings declare files_reviewed=[a.py] in verify-resolutions mode,
-        # but the current diff also modifies b.py — out of the verify pass's
-        # declared scope, so the (fresh, valid) findings must NOT clear the gate.
+    def test_verify_resolutions_cache_with_out_of_scope_diff_still_blocks(self, tmp_path):
+        # (a) Kernel-v3 chunk 04: the v-r scope-subset mechanism is deleted —
+        # a verify-resolutions findings CACHE clears nothing (no gate reads
+        # it), and a diff beyond what any review saw is simply an uncovered
+        # tree. The v2-blocking state must STILL block (learnings: every
+        # deleted check keeps a still-blocks regression).
         prawduct = self._active_plan_repo(tmp_path)
         (prawduct / ".critic-findings.json").write_text(json.dumps({
             "findings": [],
@@ -470,10 +473,10 @@ class TestPluginStopGateRegressions:
             "stop", tmp_path, git_status=" M a.py\n M b.py",
         )
         assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "no composed review coverage" in result.stderr
+        # The remedy names the verify-resolutions flow (the fact-recording
+        # successor of the deleted scope check).
         assert "verify-resolutions" in result.stderr
-        # The blocker names the out-of-scope widening (b.py is outside scope).
-        assert "outside scope" in result.stderr
-        assert "b.py" in result.stderr
 
     def test_trivial_chunk_outside_fileset_bounds_blocks(self, tmp_path):
         # (b) A chunk declaring Type: trivial that edits skills/ (a catastrophic-
@@ -964,15 +967,18 @@ class TestDocOnlyProtectedPaths:
         )
 
     @pytest.mark.parametrize(
-        ("relpath", "label"),
+        "relpath",
         [
-            ("skills/critic/SKILL.md", "skill-file-edited"),
-            ("methodology/building.md", "methodology-edited"),
-            ("templates/spec.md", "template-edited"),
-            ("CLAUDE.md", "claude-md-edited"),
+            "skills/critic/SKILL.md",
+            "methodology/building.md",
+            "templates/spec.md",
+            "CLAUDE.md",
         ],
     )
-    def test_protected_md_in_pr_is_not_doc_only(self, gitflow_repo, relpath, label):
+    def test_protected_md_in_pr_is_not_doc_only(self, gitflow_repo, relpath):
+        # Kernel-v3 chunk 04: the judgeability predicate answers this (a
+        # protected .md is judgeable), so the message names the file rather
+        # than the retired per-bound violation label.
         self._use_develop_base(gitflow_repo)
         target = gitflow_repo / relpath
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -983,7 +989,7 @@ class TestDocOnlyProtectedPaths:
         r = _run_in(gitflow_repo, "check-pr-doc-only")
         assert r.returncode == 1, (r.stdout, r.stderr)
         out = r.stdout + r.stderr
-        assert label in out and relpath in out
+        assert "not-doc-only" in out and relpath in out
 
     def test_nested_claude_md_is_still_doc_only(self, gitflow_repo):
         # The CLAUDE.md bound is exact-match: a nested foo/CLAUDE.md is

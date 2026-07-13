@@ -170,8 +170,7 @@ def begin_review(
     Returns ``{"status": "ok", "id", "roster", "path", "notes": [...],
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
     "reason", "kind"?}`` where ``kind == "scope-widened"`` tells the CLI to
-    exit 2 (the skill's fall-back-to-final signal, same convention as
-    ``compute-verify-resolutions-scope``).
+    exit 2 (the skill's fall-back-to-final signal).
 
     Per-mode interval (design D8, chunk-03 refinements):
 

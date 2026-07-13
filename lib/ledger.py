@@ -23,7 +23,7 @@ ledger-append`` reads the just-written findings file, validates it,
 computes the envelope itself, and appends ONE line in a single
 ``O_APPEND``-mode write. Validation lives at the append boundary because this
 is the only writer — ``review.critic`` payloads through
-``lib.gates.validate_critic_findings`` (the schema the gates trust),
+``lib.gates.validate_critic_findings`` (the derived-cache schema),
 ``review.pr`` payloads through the same bar the stop-hook PR gate applies
 (``findings`` list + non-empty ``summary``). ``review.critic`` always reads
 the canonical ``.critic-findings.json``; ``review.pr`` requires the caller

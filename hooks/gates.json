@@ -10,8 +10,8 @@
     {
       "id": "critic",
       "name": "critic-review",
-      "since": "1.0.0",
-      "summary": "Critic review is required for each chunk built against a plan"
+      "since": "3.0.0",
+      "summary": "composed review coverage (evidence-store facts) must span this session's changes with zero unresolved blocking findings"
     },
     {
       "id": "pr",

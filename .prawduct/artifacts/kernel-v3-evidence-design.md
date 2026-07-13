@@ -182,6 +182,39 @@ Pure functions over the fact set (no I/O):
 - Composition replaces: `extends_cumulative` chains, mode-label acceptance
   lists, demotion special cases, `_record_covers_head`, doc-only tail rules.
 
+*Chunk 04 refinements (recorded decisions):*
+
+- **Q2's base is a session marker.** `clear --session-start` records
+  `HEAD^{tree}` to `.prawduct/.session-base-tree` (gitignore contract
+  extended). HEAD's tree, NOT a working-tree capture: review facts anchor
+  their base at HEAD's tree (D8), so this is the tree the session's evidence
+  chain composes from — pre-session dirt rides inside every reviewed diff
+  instead of stranding the base off-path. Best-effort write; unborn HEAD
+  leaves it absent.
+- **Marker-missing degradation.** No marker → base = `HEAD^{tree}` at gate
+  time. Jurisdiction shrinks to uncommitted work (exactly the v2 scope)
+  rather than wedging a session that cannot re-run `clear` (pre-upgrade
+  session, mid-session worktree entry).
+- **Merge-base fallback (satisfiability).** A commit made without review
+  leaves a gap no dispatchable review can span from the session base
+  (chunk/final anchor at HEAD's tree — nothing re-anchors at a bygone S).
+  When Q2-from-marker fails but composed coverage of merge-base → working
+  tree exists, the Stop gate accepts it: that is the PR gate's own bar
+  extended to the working tree — strictly stronger evidence about the
+  current state — and requiring an unsatisfiable base would only train
+  waivers (an unsatisfiable gate is worse than no gate).
+- **The synthesis advisory reads the store.** Gate 2.5 (all-chunks-complete
+  → "run final") takes its mode telemetry from the latest review FACT, not
+  the D7 cache — "no gate reads the cache" holds for advisory gates too.
+- **Gate attribution re-announces.** `hooks/gates.json`'s `critic` entry
+  carries `since: 3.0.0` (the planned breaking release) with the
+  composition summary, so upgrading repos get the banner announcement;
+  release prep re-stamps if the version number differs.
+- **Deferred to the chunk-06 vestige sweep:** `lib/critic_mode.py`'s
+  chain-anchor mirror still reads `extends_cumulative` (inference rule 1b's
+  multi-link arm) — nothing writes the field anymore; the cumulative-prior
+  arm keeps working off the cache's `mode`/`commit_reviewed`.
+
 ### D7. Single-slot files become derived caches — or die
 
 `.critic-findings.json` survives only as a code-regenerated view of the

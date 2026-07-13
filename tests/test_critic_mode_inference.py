@@ -1102,64 +1102,9 @@ class TestValidatorAcceptsModeChosenBy:
         assert self.mod.validate_critic_findings(path) is False
 
 
-class TestValidatorExtendsCumulative:
-    """``validate_critic_findings`` must accept the optional CRT-4J8W
-    ``extends_cumulative`` chain anchor and reject malformed shapes —
-    a malformed anchor would silently break the chain check at the PR
-    gate, so writer drift fails at validation."""
-
-    @pytest.fixture(autouse=True)
-    def _module(self):
-        from lib import gates  # noqa: PLC0415
-
-        self.mod = gates
-
-    def _write_findings(self, path: Path, **overrides) -> Path:
-        data = {
-            "files_reviewed": ["bin/prawduct-hook"],
-            "findings": [],
-            "summary": "No issues.",
-        }
-        data.update(overrides)
-        path.write_text(json.dumps(data))
-        return path
-
-    def test_accepts_valid_anchor_dict(self, tmp_path: Path):
-        path = self._write_findings(
-            tmp_path / "findings.json",
-            extends_cumulative={"commit_reviewed": "a" * 40},
-        )
-        assert self.mod.validate_critic_findings(path) is True
-
-    def test_accepts_absent_field(self, tmp_path: Path):
-        path = self._write_findings(tmp_path / "findings.json")
-        assert self.mod.validate_critic_findings(path) is True
-
-    def test_accepts_null_field(self, tmp_path: Path):
-        path = self._write_findings(
-            tmp_path / "findings.json", extends_cumulative=None
-        )
-        assert self.mod.validate_critic_findings(path) is True
-
-    @pytest.mark.parametrize(
-        "bad",
-        [
-            "a" * 40,                       # bare string, not the dict form
-            {},                              # missing commit_reviewed
-            {"commit_reviewed": ""},         # empty anchor
-            {"commit_reviewed": "   "},      # whitespace anchor
-            {"commit_reviewed": 42},         # non-string anchor
-            {"commit_reviewed": None},       # null anchor
-            ["a" * 40],                      # wrong container type
-        ],
-    )
-    def test_rejects_malformed_shapes(self, tmp_path: Path, bad):
-        path = self._write_findings(
-            tmp_path / "findings.json", extends_cumulative=bad
-        )
-        assert self.mod.validate_critic_findings(path) is False
-
-
+# (TestValidatorExtendsCumulative removed — kernel-v3 chunk 04 retired the
+# extends_cumulative chain: no writer emits the field and no gate reads it,
+# so the validator no longer inspects it.)
 # ---------------------------------------------------------------------------
 # Metadata-path classification (file-sync-era prefixes retired post-M4)
 # ---------------------------------------------------------------------------
@@ -1351,61 +1296,7 @@ class TestBranchProgressCRT7B4M:
         assert mode == "chunk", rationale
 
 
-# ---------------------------------------------------------------------------
-# CRT-4J8W chain-anchor parity — gates vs critic_mode mirrors
-# ---------------------------------------------------------------------------
-
-
-class TestChainAnchorParity:
-    """``lib.gates._chain_anchor`` and ``lib.critic_mode._chain_extendable_anchor``
-    are deliberate mirrors (importing ``gates`` from ``critic_mode`` would widen
-    the slash-command shim's import surface), and the "kept in lockstep" comments
-    alone don't enforce it — every other mirror in this repo is test-pinned.
-    Drift would desync what inference *recommends* (a chain verify pass) from
-    what the PR gate *accepts* (the chain record) — a governance-soundness
-    divergence flagged by the 2026-06-10 cumulative review (warning 2)."""
-
-    _CUM = "cumulative (bundle review, ready for merge)"
-    _VER = "verify-resolutions (delta review, prior findings only)"
-    _A, _B = "a" * 40, "b" * 40
-
-    RECORD_SHAPES = [
-        {},
-        {"mode": _CUM, "commit_reviewed": _A},
-        {"mode": _CUM},
-        {"mode": _CUM, "commit_reviewed": "   "},
-        {"mode": _CUM, "commit_reviewed": 42},
-        {"mode": _VER, "commit_reviewed": _A},
-        {"mode": _VER, "commit_reviewed": _A,
-         "extends_cumulative": {"commit_reviewed": _B}},
-        {"mode": _VER, "commit_reviewed": _A,
-         "extends_cumulative": {"commit_reviewed": ""}},
-        {"mode": _VER, "commit_reviewed": _A,
-         "extends_cumulative": {"commit_reviewed": None}},
-        {"mode": _VER, "commit_reviewed": _A, "extends_cumulative": _B},
-        {"mode": _VER, "commit_reviewed": _A, "extends_cumulative": None},
-        {"mode": _VER, "extends_cumulative": {"commit_reviewed": _B}},
-        {"mode": "chunk (lighter pass, not ready for push)", "commit_reviewed": _A},
-        {"mode": "final (full review, ready for push)", "commit_reviewed": _A},
-    ]
-
-    def test_helpers_agree_on_every_record_shape(self):
-        from lib import critic_mode, gates  # noqa: PLC0415
-
-        for record in self.RECORD_SHAPES:
-            assert (
-                gates._chain_anchor(record)
-                == critic_mode._chain_extendable_anchor(record)
-            ), f"mirror drift on record shape: {record!r}"
-
-    def test_verbose_mode_constants_in_lockstep(self):
-        from lib import critic_mode, gates  # noqa: PLC0415
-
-        assert (
-            gates._CRITIC_MODE_CUMULATIVE
-            == critic_mode._MODE_CUMULATIVE_VERBOSE
-        )
-        assert (
-            gates._CRITIC_MODE_VERIFY_RESOLUTIONS
-            == critic_mode._MODE_VERIFY_RESOLUTIONS_VERBOSE
-        )
+# (TestChainAnchorParity removed — kernel-v3 chunk 04 deleted the PR gate's
+# chain-anchor helper; critic_mode's copy is now the only one, so there is
+# no second implementation to hold in lockstep. Its remaining chain arm is
+# slated for the chunk-06 vestige sweep.)

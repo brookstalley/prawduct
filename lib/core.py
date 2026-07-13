@@ -82,6 +82,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews/",
+    ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
     ".prawduct/.session-reflected",
