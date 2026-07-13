@@ -3,7 +3,7 @@ artifact: design
 # scope intentionally empty: design note for the kernel-v3 program; plan scope
 # is owned by build-plan-kernel-evidence-store.md.
 scope:
-status: draft 2026-07-12 — owner review pending on D1/D3 (vetoable assumptions)
+status: approved 2026-07-12 — owner approved D1/D3; D3 spike passed (see plan Context)
 created: 2026-07-12
 depends_on: [kernel-redesign-discovery.md, kernel-inventory-2026-07-12.md]
 ---
@@ -76,12 +76,23 @@ semantics]
 
 - **Append-only** (R5 posture): nothing edits or deletes a line; corrections
   are new facts. Single-slot files become derived caches only (D7).
-- **`schema` on every record** (Q8, C7): readers accept known versions,
-  skip-with-loud-stderr unknown *older* kinds they don't need, and **block
-  with the exact remedy** when a gate-relevant record requires a newer reader
-  (in-session auto-update skew detection, C9 tier 3).
+- **`schema` on every record** (Q8, C7): readers accept supported versions,
+  exclude below-floor records as malformed (attributed), and surface
+  schema-AHEAD records separately so gates **block with the exact remedy** —
+  never silently drop them (in-session auto-update skew detection, C9 tier 3).
 - **`kind` namespaces the store** (Q9): `review`, `resolution` now;
-  `test-run`, `pr-review`, `promotion` reserved for later plans.
+  `test-run`, `pr-review`, `promotion` reserved for later plans. An unknown
+  kind under a supported schema (a newer minor added it) stays in the read
+  result — consumers filter by the kinds they know (`facts_of_kind`), so a
+  future kind can coexist but never satisfy a gate it wasn't written for.
+- **Growth posture** (recorded decision, Critic ch.01): the store is
+  unbounded-but-tiny — one line per review/resolution, a few per working day
+  per repo, and readers re-parse the file per call, which is fine at that
+  scale. No pruning tooling until a real store needs it (the ledger's
+  stance) — and any future compaction must respect composition: never drop a
+  fact on a path the PR gate can still need (in practice facts older than the
+  base branch's merge-base age out). Revisit trigger: `evidence status`
+  reporting parse time or size a human notices.
 - **`id` is fixed at dispatch time** (Q10): consolidate is idempotent —
   a fact with an existing id is never appended twice; readers dedupe by id.
 - Concurrency: one `O_APPEND` write per record (single `os.write` of one

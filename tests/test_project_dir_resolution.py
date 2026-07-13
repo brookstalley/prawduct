@@ -153,8 +153,8 @@ def test_common_dir_identifies_same_repo(tmp_path, gitstate):
     _init_repo(primary)
     _init_repo(other)
     wt = _add_worktree(primary, tmp_path / "wt", "feature")
-    assert gitstate._git_common_dir(primary) == gitstate._git_common_dir(wt)
-    assert gitstate._git_common_dir(primary) != gitstate._git_common_dir(other)
+    assert gitstate.git_common_dir(primary) == gitstate.git_common_dir(wt)
+    assert gitstate.git_common_dir(primary) != gitstate.git_common_dir(other)
 
 
 # ---------------------------------------------------------------------------

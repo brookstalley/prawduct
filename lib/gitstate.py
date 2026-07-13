@@ -46,8 +46,12 @@ def _git_toplevel(cwd: Path) -> Path | None:
         return None
 
 
-def _git_common_dir(cwd: Path) -> Path | None:
+def git_common_dir(cwd: Path) -> Path | None:
     """Resolved shared git common dir for the repo at ``cwd``, or ``None``.
+
+    Public: the kernel-v3 evidence store keys its location off this path
+    (kernel-v3-evidence-design.md D1), so it is a load-bearing contract, not
+    an internal helper.
 
     Worktrees of one repository share a single common dir (the real ``.git``),
     so equality of this path is the identity test for "same repository". The
@@ -107,8 +111,8 @@ def resolve_project_dir(env_project_dir: str | None, cwd: Path) -> Path:
         return top
     if top == env_dir:
         return env_dir
-    common_cwd = _git_common_dir(cwd)
-    if common_cwd is not None and common_cwd == _git_common_dir(env_dir):
+    common_cwd = git_common_dir(cwd)
+    if common_cwd is not None and common_cwd == git_common_dir(env_dir):
         return top  # worktree of the same repo — follow the session
     return env_dir  # unrelated repo (or undeterminable) — honor the launch pin
 

@@ -49,8 +49,11 @@ write-tree spike (~30 minutes, first Done-when step).
 - [ ] Chunk 04: Gate cutover — Stop gate and PR gate answer by composition
 - [ ] Chunk 05: Prose surfaces — protocols, methodology, digest
 - [ ] Chunk 06: Upgrade posture + end-to-end scenarios (cumulative)
-Context: Plan authored 2026-07-12 from GOV-4C7X discovery; nothing built yet.
-Next: owner design review of D1/D3, then Chunk 01.
+Context: Plan authored 2026-07-12; owner approved D1/D3 same day. D3 spike
+PASSED (2026-07-12, plain repo + linked worktree): temp-index write-tree is
+non-mutating (porcelain + real index unchanged), captures untracked, excludes
+gitignored, verbatim commit preserves the tree SHA, and captured objects are
+readable from the other checkout via the shared odb. Chunk 01 built same day.
 
 ## Scaffolding
 
