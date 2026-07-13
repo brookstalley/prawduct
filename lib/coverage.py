@@ -91,6 +91,51 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     )
 
 
+def resolve_merge_base_tree(project_dir: Path) -> dict:
+    """Resolve base branch → merge-base commit → that commit's tree SHA —
+    the shared prelude of every gate/dispatch that anchors an interval at
+    the PR span. One implementation (kernel-v3 ch.06 review dedup):
+    ``gates.check_cumulative_critic``, ``gates._merge_base_verdict``, and
+    ``critic_consolidate.begin_review`` each carried a divergent copy — the
+    same drift class the judgeability-predicate consolidation killed.
+
+    Returns ``{"status": "ok", "base_branch", "merge_base", "tree"}`` or
+    ``{"status": "error", "step": "resolve-base" | "merge-base" |
+    "rev-parse", "reason"}``. ``reason`` carries the full detail; callers
+    map ``step`` onto their own error posture (loud stderr with a per-step
+    remedy, silent degradation, or an error dict).
+    """
+    from . import evidence  # noqa: PLC0415 -- lazy: mirrors the gates/consolidate import posture; avoids import-cycle risk at module load
+
+    base_branch, base_reason = _resolve_base_branch(project_dir)
+    if base_branch is None:
+        return {"status": "error", "step": "resolve-base", "reason": base_reason}
+    rc, merge_base, err = evidence.run_git(
+        project_dir, "merge-base", base_branch, "HEAD"
+    )
+    if rc != 0 or not merge_base:
+        return {
+            "status": "error",
+            "step": "merge-base",
+            "reason": f"merge-base {base_branch}..HEAD failed ({err})",
+        }
+    rc, tree, err = evidence.run_git(
+        project_dir, "rev-parse", f"{merge_base}^{{tree}}"
+    )
+    if rc != 0 or not tree:
+        return {
+            "status": "error",
+            "step": "rev-parse",
+            "reason": f"cannot resolve {merge_base[:12]}^{{tree}} ({err})",
+        }
+    return {
+        "status": "ok",
+        "base_branch": base_branch,
+        "merge_base": merge_base,
+        "tree": tree,
+    }
+
+
 def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:
     """Pick the git diff base for coverage verification. Mirrors
     ``_resolve_base`` in ``bin/test-reference-verify`` so writer (verifier)

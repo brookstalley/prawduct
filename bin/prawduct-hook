@@ -1279,8 +1279,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         try:
             critic_verdict = _gates().session_review_verdict(project_dir)
             critic_would_block = critic_verdict.get("status") != "covered"
-        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-            critic_verdict = {}
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            # Fail closed AND loud (C3): carry the crash into the verdict so
+            # the block message names the internal error instead of
+            # misreporting it as "no review evidence composes". Distinct from
+            # the verdict's own RETURNED "error" status (capture/HEAD
+            # failures), which keeps its legacy rendering — those reasons are
+            # already attributed and remedy-bearing.
+            critic_verdict = {
+                "status": "gate-crash",
+                "reason": f"gate check crashed: {exc!r} — internal error, not a coverage verdict",
+            }
 
     if critic_would_block:
         _escape_hatch = (
@@ -1303,6 +1312,15 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 f"{critic_verdict.get('reason', '')}\n"
                 "  This session cannot judge those facts, so the gate fails closed rather\n"
                 "  than passing on evidence it cannot read.\n"
+                + _escape_hatch
+            ))
+        elif verdict_status == "gate-crash":
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW (gate error): the coverage check itself failed —\n"
+                f"  {critic_verdict.get('reason', 'unknown internal error')}\n"
+                "  This is NOT a coverage verdict: the gate fails closed rather than\n"
+                "  passing on a check it could not complete. Fix the underlying error\n"
+                "  (or report it via /prawduct:report-bug), then retry.\n"
                 + _escape_hatch
             ))
         elif verdict_status == "blocked":

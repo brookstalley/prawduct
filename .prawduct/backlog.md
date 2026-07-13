@@ -146,21 +146,6 @@
   the shipped code dependency it builds on. NOT archived (not a true duplicate — STH-4K7N was the
   code fix, this is the workflow/docs).
 
-- **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
-  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record), .prawduct/.critic-findings.json · reviewed: 2026-06-22`
-
-  Observed live 2026-06-22 while shipping the review-streamlining track (PRs #101/#102/#103). The cumulative-Critic PR gate (lib/gates.py compute_pr_gate) reads the single-slot .prawduct/.critic-findings.json. When two branches' Critic→PR cycles interleave (run branch X's Critic, then branch Y's Critic, then go to PR branch X), Y's Critic has overwritten the single slot with a record that IS the right KIND (a clean cumulative) but covers Y's HEAD, not X's. compute_pr_gate only falls back to the governance ledger when the slot record is the WRONG KIND (_pr_gate_record_qualifies false); a right-kind-but-wrong-HEAD record goes straight to _evaluate_pr_gate_record, fails the coverage check, and exits 1 — it never consults the ledger, where X's own still-valid qualifying record was appended. This session it forced a needless re-run of budget's Critic after B's Critic clobbered budget's slot.
-
-  Fix-shape: when the slot record fails (wrong kind OR fails HEAD-coverage/chain-scope), fall back to the ledger AND make _ledger_fallback_record select the newest qualifying record whose commit_reviewed COVERS THE CURRENT HEAD (CRT-7M2D coverage semantics), not merely the newest session-fresh qualifying record. The CRT-8W3F session-freshness bound stays.
-
-  Workaround today: finish one branch's full Critic→PR cycle before starting the next branch's Critic.
-
-  Assurance: must not loosen the gate — a record that covers HEAD and is clean is exactly as strong as the slot record would have been; this only stops a sibling branch's clean record from masking this branch's. Governance-protected file (lib/gates.py + skills/) → full Critic + PR review.
-
-  Related: CRT-8W3F (ledger-fallback freshness bound, shipped), CRT-4J8W (verify-resolutions chain record, shipped), CRT-7M2D (covers-HEAD semantics). (user)
-
-  Worktree corollary (verified 2026-06-22): the clobber is strictly a within-ONE-working-tree problem. Each git worktree has its own gitignored .prawduct/.critic-findings.json (and .session-start, .governance-ledger.jsonl), so running each branch's Critic->PR cycle in a separate worktree sidesteps the clobber entirely — no shared single slot to overwrite. That makes worktrees an available workaround and lowers this item's urgency; the in-tree fix below still matters for users who switch branches within one tree.
-
 - **[BKL-8T3W]** Backlog-accuracy structural enforcement — surface cross-session "shipped-but-not-removed" Open items (and stale-by-age) so a ready item isn't rebuilt
   `effort: M · impact: M · area: governance/backlog-tooling · source: user · added: 2026-06-21 · status: open · stage: requirements · related: BLD-4K7P · refs: incoming-bugs/archive/backlog-accuracy-stale-check-hook-plus-closed-but-not-removed-critic-goal.md, skills/critic/review-cycle.md, skills/pr/review-protocol.md, lib/backlog_probes.py`
 
@@ -561,8 +546,8 @@
   as the guarantee). The probe-precision thread this item pointed sideways at continued in
   GOV-7T2M/WMK-4Q9T.
 
-- **[CRT-6J4P]** infer-critic-mode rule-1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
-  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V · refs: lib/critic_mode.py, skills/critic/SKILL.md`
+- **[CRT-6J4P]** Mode-inference rule 1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
+  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V, CRT-8H3R · refs: lib/critic_mode.py (_rule_postfix_fix_fires, _cumulative_anchor), skills/critic/SKILL.md · reviewed: 2026-07-13`
 
   Observed 2026-06-10: on a brand-new branch/plan (feature/do-next, first chunk), inference picked
   verify-resolutions extending the PREVIOUS released bundle's cumulative (3c4b627,
@@ -570,8 +555,19 @@
   cross-bundle chaining is surprising; consider bounding rule-1b to the current branch/merge-base or
   active plan scope. (reflection)
 
-- **[CRT-8H3R]** infer-critic-mode / compute-verify-resolutions-scope picks an unsound verify-resolutions chain when the session switched branches
-  `effort: S · impact: M · area: critic/gates · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: infer-critic-mode, compute-verify-resolutions-scope (bin/prawduct-hook + lib/) · reviewed: 2026-07-03`
+  **kernel-v3 refresh (2026-07-13, chunk-06 cumulative review batch).** Still live in v3, with a
+  smaller blast radius. The v2 multi-link chain arm (`extends_cumulative`) died in the cutover,
+  but rule 1b (`_rule_postfix_fix_fires` / `_cumulative_anchor` in `lib/critic_mode.py`) still
+  anchors to whatever cumulative record sits in the single-slot `.critic-findings.json` derived
+  view, with no branch/merge-base/plan bound — so a prior bundle's cumulative can still vouch a
+  verify-resolutions recommendation for a new plan's first chunk. Under v3 the consequence is
+  proportionality only (a verify pass over a surprising cross-bundle delta): the gates compose
+  tree-keyed facts, so coverage stays sound whichever mode gets recommended. Fix shape: bound
+  rule 1b to the current branch/merge-base or active plan scope — same ancestor-guard family as
+  CRT-8H3R; consider fixing both in one pass.
+
+- **[CRT-8H3R]** Mode inference can latch a verify-resolutions dispatch onto a sibling branch's anchor after a branch switch — require anchors to be ancestors of HEAD
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: lib/critic_mode.py (infer_mode rules 1/1b, _commit_resolves, _cumulative_anchor), lib/critic_consolidate.py (_prior_review_fact) · reviewed: 2026-07-13`
 
   If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
   verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
@@ -591,6 +587,24 @@
   records the chain anchor, `check-cumulative-critic` could spuriously accept a Goals-1-3 review as
   cumulative coverage for an unrelated branch's PR. Fail closed: non-ancestor anchor → demote to
   chunk/final. (critic, chunk-01 prose-diet review)
+
+  **kernel-v3 refresh (2026-07-13, chunk-06 cumulative review batch) — the paragraphs above
+  describe v2 mechanisms; read them as history.** The SOUNDNESS half is structurally resolved:
+  `compute-verify-resolutions-scope`, `extends_cumulative` chains, and mode-label gate
+  acceptance were all deleted in the v3 cutover — gates compose tree-keyed review facts
+  (`lib/coverage_algebra.coverage_verdict`), so a sibling branch's review can no longer
+  spuriously satisfy `check-cumulative-critic` for this branch's PR (its tree edges don't chain
+  base→HEAD; the gate fails closed). What SURVIVES is the dispatch-side half: `infer_mode`
+  rules 1/1b (`lib/critic_mode.py`) and `critic-begin`'s prior-fact anchor
+  (`critic_consolidate._prior_review_fact`, resolved via the single-slot
+  `.critic-findings.json` derived view) still check only that the anchor RESOLVES
+  (`_commit_resolves`), not that it is an ancestor of HEAD — after an in-tree branch switch, a
+  sibling branch's record can still latch a verify-resolutions dispatch onto a cross-branch
+  delta (phantom findings, a wasted review pass). Fix shape unchanged from the original: run
+  `git merge-base --is-ancestor <anchor> HEAD` on the rule-1/1b anchor and in
+  `_prior_review_fact`; non-ancestor → demote to chunk/final. Consequence is now
+  proportionality/noise, not gate soundness — impact downgraded M→S accordingly. Sibling fix:
+  CRT-6J4P (bound rule 1b to branch/plan scope) — consider one pass for both.
 
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
@@ -719,14 +733,6 @@
   API on an unchallenged one-word deferral). Fix costs a paragraph: one mandated question in the
   cumulative and PR protocols pressure-testing scope and end-to-end reachability. (user)
 
-- **[STH-8R3Q]** Wave 2: outcome-checking Critic Stop gate — findings file must show zero unresolved blocking findings, not merely valid schema
-  `effort: S · impact: M · area: stop-hook/gates · source: user · added: 2026-07-02 · status: open · stage: ready · related: STH-4F7C · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Overbuilt #5), lib/gates.py:300-311 (critic_findings_satisfy_session_gate)`
-
-  P1. The Critic Stop gate accepts any schema-valid fresh findings file EVEN WITH unresolved
-  blocking findings — it enforces a proxy (file exists, schema valid), not the outcome (blockers
-  resolved). Make `critic_findings_satisfy_session_gate` check disposition of blocking findings.
-  Gate edit governs the editing session — small blast radius, own branch. (user)
-
 - **[ENV-2W7K]** Wave 2: environments plan — worktree story, gitflow base detection, non-Python coverage floor goes silent, document --from-counts as the paved non-pytest path
   `effort: L · impact: L · area: environments · source: user · added: 2026-07-02 · status: open · stage: design · related: CRT-6W2N, STH-4K7N, CRT-8D2W, COV-5H3N, COV-4M2J, TST-2H9P · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #1)`
 
@@ -739,16 +745,6 @@
   path. Owner's rule: the worktree piece needs a short design note FIRST, confirmed with the
   owner, before building. Umbrella over CRT-6W2N/STH-4K7N/COV-5H3N — dedup/`closes:` when
   planned. (user)
-
-- **[CRT-3F6W]** Wave 2: reviewer-dedup deletion — keep both reviewers; PR reviewer becomes a fresh full-scope release review; delete the record-audit protocol, extends_cumulative chain, and don't-re-scan scoping prose
-  `effort: M · impact: M · area: critic/pr-protocols · source: user · added: 2026-07-02 · status: open · stage: ready · related: CRT-5T8N, CRT-6J4P, CRT-8H3R, CRT-9R4K · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Overbuilt #4), skills/pr/review-protocol.md:19-27`
-
-  P1. Independence is load-bearing — two reviewers stay (PR reviewer independently caught bugs
-  the Critic missed at least twice). What goes is the ~2k words of OVERLAP machinery that exists
-  only to deduplicate two overlapping scopes: the "Critic Record — Evidence, Not Truth" audit
-  protocol, the extends_cumulative chain, verify-resolutions scope math, and the "don't re-scan"
-  scoping prose. The PR review becomes a simple fresh full-scope release review. Prefer deletion
-  over patching. Supersedes CRT-5T8N's single-owner question — candidate `closes:` at dedup. (user)
 
 - **[LRN-7M4D]** Wave 2: memory convergence — learnings + learnings-detail durable, .session-reflected ephemeral, retire per-repo reflections.md accumulation (design note first)
   `effort: M · impact: M · area: memory/learnings · source: user · added: 2026-07-02 · status: open · stage: design · related: MET-6W3J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #5)`
@@ -929,7 +925,115 @@
   (test evidence, PR facts, C8 promotion gate, C6 feedback pull, §4.3 deletions) will be carved
   as their predecessors ship.
 
+- **[CRT-7V4N]** Harden evidence-store tree SHAs before they reach git subprocess args — shape-validate hex-SHA form
+  `effort: S · impact: S · area: critic/evidence · source: critic · added: 2026-07-13 · status: open · stage: ready · related: CRT-2K9F · refs: lib/evidence.py (tree_diff, read_facts), lib/gates.py (composition gates), lib/coverage_algebra.py (review_edges)`
+
+  From the chunk-06 cumulative review (kernel-evidence-store bundle f64c22c..69f63a2). Tree SHAs
+  read back from evidence-store facts are passed to the git CLI (`evidence.tree_diff` →
+  `git diff` argv, and the gate paths feeding it) without shape validation — a corrupted or
+  hand-edited fact could inject an arbitrary token into a subprocess argument vector. argv is
+  list-form (no shell), so the exposure is git option injection / confusing failures rather than
+  shell injection — hardening, not an active hole. Fix: validate each SHA at the read/compose
+  boundary against `^([0-9a-f]{40}|[0-9a-f]{64})$` (the review note's `{40,64}` range tightened
+  to the two real lengths, SHA-256-ready); treat a non-conforming SHA like any malformed fact —
+  it weakens coverage (yields no edge), never crashes the gate. (critic)
+
+- **[CRT-2W8J]** Coordinator roster threshold counts non-judgeable files — a metadata-heavy 5-file diff dispatches a full coordinator
+  `effort: S · impact: M · area: critic · source: critic · added: 2026-07-13 · status: open · stage: ready · refs: lib/critic_consolidate.py (_derive_roster, COORDINATOR_FILE_THRESHOLD), lib/coverage_algebra.py (judgeable_files)`
+
+  From the chunk-06 cumulative review (kernel-evidence-store bundle f64c22c..69f63a2).
+  `critic_consolidate._derive_roster` promotes a `final`/`cumulative` dispatch to the full
+  coordinator roster at n >= 5 counted over the RAW changed-file list, so a metadata-heavy diff
+  (e.g. 4 `.prawduct/` files + 1 code file) pays a multi-subagent coordinator review for one
+  judgeable file. Proportionality fix: count `coverage_algebra.judgeable_files(files_changed)`
+  instead — the same single predicate the gates already compose over, so dispatch cost tracks
+  what actually needs review coverage. While in there, check whether
+  `critic_mode._rule_final_fires`' no-plan >=5 heuristic wants the same treatment (its file
+  source already strips metadata — verify, don't assume). (critic)
+
+- **[COV-6T3P]** is_judgeable_path hard-codes ".md = not judgeable unless governance-protected" — markdown-centric products never gate their core work
+  `effort: M · impact: M · area: gates/coverage · source: critic · added: 2026-07-13 · status: open · stage: requirements · related: COV-2P7F · refs: lib/coverage_algebra.py (is_judgeable_path), lib/coverage.py (doc-only fast-path)`
+
+  From the chunk-06 cumulative review (kernel-evidence-store bundle f64c22c..69f63a2). The v3
+  single judgeability predicate (`coverage_algebra.is_judgeable_path`) enshrines ".md changes
+  don't need review coverage unless governance-protected" — right for code products, wrong for a
+  product whose PRODUCT IS the markdown (docs sites, content repos): their core work would never
+  require review coverage. Proposal: a project-preferences knob widening judgeability (e.g. a
+  boolean or per-path globs). NEEDS OWNER INPUT on semantics before design: binary vs
+  path-scoped, interaction with the PR doc-only fast-path, and whether flipping the knob
+  retroactively stales existing composed coverage. Filed at stage=requirements — not buildable
+  as written. (critic)
+
 ## Archive
+
+- **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
+  `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: shipped · stage: design · closed-by: kernel-evidence-store · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record — all deleted in the v3 cutover), .prawduct/.critic-findings.json (no longer read by any gate) · reviewed: 2026-07-13`
+
+  Observed live 2026-06-22 while shipping the review-streamlining track (PRs #101/#102/#103). The cumulative-Critic PR gate (lib/gates.py compute_pr_gate) reads the single-slot .prawduct/.critic-findings.json. When two branches' Critic→PR cycles interleave (run branch X's Critic, then branch Y's Critic, then go to PR branch X), Y's Critic has overwritten the single slot with a record that IS the right KIND (a clean cumulative) but covers Y's HEAD, not X's. compute_pr_gate only falls back to the governance ledger when the slot record is the WRONG KIND (_pr_gate_record_qualifies false); a right-kind-but-wrong-HEAD record goes straight to _evaluate_pr_gate_record, fails the coverage check, and exits 1 — it never consults the ledger, where X's own still-valid qualifying record was appended. This session it forced a needless re-run of budget's Critic after B's Critic clobbered budget's slot.
+
+  Fix-shape: when the slot record fails (wrong kind OR fails HEAD-coverage/chain-scope), fall back to the ledger AND make _ledger_fallback_record select the newest qualifying record whose commit_reviewed COVERS THE CURRENT HEAD (CRT-7M2D coverage semantics), not merely the newest session-fresh qualifying record. The CRT-8W3F session-freshness bound stays.
+
+  Workaround today: finish one branch's full Critic→PR cycle before starting the next branch's Critic.
+
+  Assurance: must not loosen the gate — a record that covers HEAD and is clean is exactly as strong as the slot record would have been; this only stops a sibling branch's clean record from masking this branch's. Governance-protected file (lib/gates.py + skills/) → full Critic + PR review.
+
+  Related: CRT-8W3F (ledger-fallback freshness bound, shipped), CRT-4J8W (verify-resolutions chain record, shipped), CRT-7M2D (covers-HEAD semantics). (user)
+
+  Worktree corollary (verified 2026-06-22): the clobber is strictly a within-ONE-working-tree problem. Each git worktree has its own gitignored .prawduct/.critic-findings.json (and .session-start, .governance-ledger.jsonl), so running each branch's Critic->PR cycle in a separate worktree sidesteps the clobber entirely — no shared single slot to overwrite. That makes worktrees an available workaround and lowers this item's urgency; the in-tree fix below still matters for users who switch branches within one tree.
+
+  **Resolved by design, kernel-v3 evidence store (gate cutover ch.04 + vestige sweep ch.06),
+  2026-07-13.** The single-slot clobber premise is gone: review facts append to the shared,
+  tree-keyed evidence store (`<git-common-dir>/prawduct/evidence.jsonl`) and the PR gate answers
+  by composition (`lib/gates.py` → `lib/coverage_algebra.coverage_verdict`, merge-base tree →
+  HEAD tree, zero unresolved blocking findings). No gate reads the single-slot
+  `.critic-findings.json` any more, and the ledger fallback this item's fix-shape targeted was
+  deleted outright with stays-deleted guards — the chunk-06 cumulative review verified the
+  deletion. Interleaved branch Critic→PR cycles each compose their own facts, so branch Y's
+  review can no longer mask or invalidate branch X's. Archived on
+  `feature/kernel-v3-evidence-store` per the ship-in-PR convention (chunk-06 cumulative review,
+  bundle f64c22c..69f63a2).
+
+- **[STH-8R3Q]** Wave 2: outcome-checking Critic Stop gate — findings file must show zero unresolved blocking findings, not merely valid schema
+  `effort: S · impact: M · area: stop-hook/gates · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: kernel-evidence-store · related: STH-4F7C · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Overbuilt #5), lib/gates.py (session_review_verdict — replaced critic_findings_satisfy_session_gate in the v3 cutover) · reviewed: 2026-07-13`
+
+  P1. The Critic Stop gate accepts any schema-valid fresh findings file EVEN WITH unresolved
+  blocking findings — it enforces a proxy (file exists, schema valid), not the outcome (blockers
+  resolved). Make `critic_findings_satisfy_session_gate` check disposition of blocking findings.
+  Gate edit governs the editing session — small blast radius, own branch. (user)
+
+  **Resolved, kernel-v3 evidence store (gate cutover ch.04), 2026-07-13.** The Stop-hook Critic
+  gate now outcome-checks exactly as this item demanded: `cmd_stop` calls
+  `lib/gates.session_review_verdict` → `coverage_algebra.coverage_verdict`, which passes only
+  when composed review coverage spans session base tree → current working tree with ZERO
+  unresolved blocking findings. The schema-valid-file proxy
+  (`critic_findings_satisfy_session_gate`) is deleted — no gate reads `.critic-findings.json`.
+  Verified by the chunk-06 cumulative review (bundle f64c22c..69f63a2). Archived on
+  `feature/kernel-v3-evidence-store` per the ship-in-PR convention.
+
+- **[CRT-3F6W]** Wave 2: reviewer-dedup deletion — keep both reviewers; PR reviewer becomes a fresh full-scope release review; delete the record-audit protocol, extends_cumulative chain, and don't-re-scan scoping prose
+  `effort: M · impact: M · area: critic/pr-protocols · source: user · added: 2026-07-02 · status: shipped · stage: ready · closed-by: kernel-evidence-store · related: CRT-5T8N, CRT-6J4P, CRT-8H3R, CRT-9R4K · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Overbuilt #4), skills/pr/review-protocol.md · reviewed: 2026-07-13`
+
+  P1. Independence is load-bearing — two reviewers stay (PR reviewer independently caught bugs
+  the Critic missed at least twice). What goes is the ~2k words of OVERLAP machinery that exists
+  only to deduplicate two overlapping scopes: the "Critic Record — Evidence, Not Truth" audit
+  protocol, the extends_cumulative chain, verify-resolutions scope math, and the "don't re-scan"
+  scoping prose. The PR review becomes a simple fresh full-scope release review. Prefer deletion
+  over patching. Supersedes CRT-5T8N's single-owner question — candidate `closes:` at dedup. (user)
+
+  **Resolved by the kernel-v3 cutover (chunks 04–06), 2026-07-13 — the deletion targets are
+  dead; the re-review prescription was superseded.** Every piece of overlap machinery this item
+  ordered deleted is gone: the "Critic Record — Evidence, Not Truth" record-audit protocol no
+  longer appears in `skills/pr/review-protocol.md`, and `extends_cumulative` chains +
+  verify-resolutions scope math were deleted from `lib/gates.py`/`lib/critic_mode.py` with
+  stays-deleted guards. Both reviewers remain, as this item required. One deliberate delta from
+  the prescription: the PR reviewer did NOT become a fresh full-scope re-review — v3 made that
+  unnecessary, because `check-cumulative-critic` structurally verifies composed coverage over
+  the actual trees before the reviewer is dispatched, so it stays release-readiness-scoped. The
+  two surviving "don't re-scan" notes (learnings cross-check, backlog-reconciliation R-1) are
+  deliberate single-owner scoping, not dedup machinery. CRT-5T8N's single-owner question is
+  answered by this design (each check has exactly one owner) — assess it at next triage rather
+  than via the `closes:` this item anticipated. Archived on `feature/kernel-v3-evidence-store`
+  per the ship-in-PR convention (chunk-06 cumulative review, bundle f64c22c..69f63a2).
 
 - **[CRT-5D8Q]** PR-gate coverage vs verify-resolutions scope disagree on the metadata exemption — deadlock when the ledger fallback window has lapsed
   `effort: S · impact: M · area: governance/critic-gate · source: critic · added: 2026-07-02 · status: shipped · stage: ready · closed-by: kernel-evidence-store ch.04 · reviewed: 2026-07-13 · related: CRT-8H3R, CRT-2K9F, CRT-4J8W, STH-6T9W, GOV-4C7X · refs: lib/gates.py (_record_covers_head L972, _compute_verify_resolutions_scope L447), tests/scenarios/test_kernel_v3_gate_cutover.py`

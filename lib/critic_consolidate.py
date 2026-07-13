@@ -223,19 +223,11 @@ def begin_review(
     elif mode_token == "cumulative":
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
-        base_branch, reason = coverage._resolve_base_branch(project_dir)
-        if base_branch is None:
-            return {"status": "error", "reason": f"cannot resolve base: {reason}"}
-        rc, base_commit, err = evidence.run_git(
-            project_dir, "merge-base", base_branch, "HEAD"
-        )
-        if rc != 0 or not base_commit:
-            return {"status": "error", "reason": f"merge-base failed: {err}"}
-        rc, base_tree, err = evidence.run_git(
-            project_dir, "rev-parse", f"{base_commit}^{{tree}}"
-        )
-        if rc != 0 or not base_tree:
-            return {"status": "error", "reason": f"base tree unresolvable: {err}"}
+        resolved = coverage.resolve_merge_base_tree(project_dir)
+        if resolved["status"] != "ok":
+            return {"status": "error", "reason": resolved["reason"]}
+        base_commit = resolved["merge_base"]
+        base_tree = resolved["tree"]
         head_commit = dispatch_commit
         head_tree = capture["head_tree"]  # the committed state, not the dirty tree
         base_reviewed = base_commit

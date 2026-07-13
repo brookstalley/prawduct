@@ -573,19 +573,10 @@ def _merge_base_verdict(
     """Coverage of merge-base tree → ``target`` — the session gate's
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
     the merge base cannot be resolved (the primary verdict then stands)."""
-    base_branch, _reason = coverage._resolve_base_branch(project_dir)
-    if base_branch is None:
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
         return None
-    rc, mb_commit, _err = evidence.run_git(
-        project_dir, "merge-base", base_branch, "HEAD"
-    )
-    if rc != 0 or not mb_commit:
-        return None
-    rc, mb_tree, _err = evidence.run_git(
-        project_dir, "rev-parse", f"{mb_commit}^{{tree}}"
-    )
-    if rc != 0 or not mb_tree:
-        return None
+    mb_tree = resolved["tree"]
     verdict = coverage_algebra.coverage_verdict(facts, mb_tree, target, diff_fn)
     verdict["base"] = mb_tree
     return verdict
@@ -852,26 +843,18 @@ def check_cumulative_critic(project_dir: Path) -> int:
         print(f"{status}: {reason}", file=sys.stderr)
         return 1
 
-    base_branch, base_reason = coverage._resolve_base_branch(project_dir)
-    if base_branch is None:
-        print(
-            f"no-base: {base_reason} — cannot determine the PR span. "
-            "Fix base_branch in project-state.yaml (or fetch the base) and re-run.",
-            file=sys.stderr,
-        )
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        remedy = {
+            "resolve-base": (
+                " — cannot determine the PR span. Fix base_branch in "
+                "project-state.yaml (or fetch the base) and re-run."
+            ),
+            "merge-base": ". Re-run once the branch shares history with its base.",
+        }.get(resolved.get("step", ""), ".")
+        print(f"no-base: {resolved['reason']}{remedy}", file=sys.stderr)
         return 1
-    rc, mb_commit, err = evidence.run_git(project_dir, "merge-base", base_branch, "HEAD")
-    if rc != 0 or not mb_commit:
-        print(
-            f"no-base: merge-base {base_branch}..HEAD failed ({err}). "
-            "Re-run once the branch shares history with its base.",
-            file=sys.stderr,
-        )
-        return 1
-    rc, base_tree, err = evidence.run_git(project_dir, "rev-parse", f"{mb_commit}^{{tree}}")
-    if rc != 0 or not base_tree:
-        print(f"no-base: cannot resolve {mb_commit[:12]}^{{tree}} ({err}).", file=sys.stderr)
-        return 1
+    base_tree = resolved["tree"]
     rc, head_tree, err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
     if rc != 0 or not head_tree:
         print(f"no-head: cannot resolve HEAD^{{tree}} ({err}).", file=sys.stderr)

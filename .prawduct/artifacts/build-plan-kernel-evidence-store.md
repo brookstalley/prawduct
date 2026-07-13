@@ -131,7 +131,7 @@ composes facts across the session boundary. Success criteria 1–4 trace
 test_evidence_store.py::TestErrorPosture + test_cumulative_gate.py::
 TestFailClosed + TestSchemaAheadFailsClosed (e2e); SC2 →
 test_kernel_v3_gate_cutover.py (ch.04); SC3 → TestWorktreeComposition +
-TestSequentialSessions; SC4 → test_critic_marker.py::TestCriticBeginCLI +
+TestSequentialSessions; SC4 → test_critic_consolidate.py::TestCriticBeginCLI +
 test_critic_consolidate.py::TestDeterministicCycleEndToEnd (ch.03).
 Vestige sweep: critic_mode's extends_cumulative multi-link arm deleted
 (design D6 deferral; _chain_extendable_anchor → _cumulative_anchor,
@@ -143,6 +143,22 @@ orphaned .critic-test-findings.json gitignore line removed (all 17
 GITIGNORE_ENTRIES verified alive). Release change-log entry added
 (scope=kernel-evidence-store, release=v3.0.0 pending re-stamp). 1698
 tests.
+Cumulative review (rev-20260713T183208Z-75dbd262, coordinator, escalate
+tier): 0 blocking / 3 warning / 10 note — the store's FIRST fact,
+consolidated live through the new data plane. All warnings fixed in the
+post-cumulative verify-resolutions pass: SC4 trace pointed at a
+nonexistent test file (class lives in test_critic_consolidate.py — both
+citation sites corrected), README layout line still said "checked by the
+Stop hook" (now derived-view wording), and the merge-base→tree resolution
+triplication is consolidated into coverage.resolve_merge_base_tree()
+(gates ×2 + begin_review). Notes taken now: stop-gate crash rendering
+fails closed AND loud ("gate error" block + tests/
+test_stop_gate_error_posture.py), stale cross-refs fixed, growth-posture
+revisit trigger extended to gate latency. Notes routed to backlog:
+CRT-7V4N (tree-SHA shape validation), CRT-2W8J (roster counts judgeable
+files), COV-6T3P (md-centric judgeability knob, needs owner). Backlog
+reconciliation: CRT-2K9F, STH-8R3Q, CRT-3F6W archived (shipped by this
+bundle); CRT-8H3R, CRT-6J4P refreshed to v3 refs. 1700 tests.
 
 ## Scaffolding
 

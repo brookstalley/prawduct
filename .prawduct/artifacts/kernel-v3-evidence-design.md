@@ -92,7 +92,10 @@ semantics]
   stance) — and any future compaction must respect composition: never drop a
   fact on a path the PR gate can still need (in practice facts older than the
   base branch's merge-base age out). Revisit trigger: `evidence status`
-  reporting parse time or size a human notices.
+  reporting parse time or size a human notices, OR gate latency a human
+  notices (Critic ch.06 review: the uncovered-verdict free-edge search
+  probes tree pairs pairwise — O(n²) git subprocesses over the store on
+  the Stop-hook path — so gate latency degrades before parse cost does).
 - **`id` is fixed at dispatch time** (Q10): consolidate is idempotent —
   a fact with an existing id is never appended twice; readers dedupe by id.
 - Concurrency: one `O_APPEND` write per record (single `os.write` of one
@@ -210,10 +213,11 @@ Pure functions over the fact set (no I/O):
   carries `since: 3.0.0` (the planned breaking release) with the
   composition summary, so upgrading repos get the banner announcement;
   release prep re-stamps if the version number differs.
-- **Deferred to the chunk-06 vestige sweep:** `lib/critic_mode.py`'s
-  chain-anchor mirror still reads `extends_cumulative` (inference rule 1b's
-  multi-link arm) — nothing writes the field anymore; the cumulative-prior
-  arm keeps working off the cache's `mode`/`commit_reviewed`.
+- **Vestige sweep (completed, chunk 06):** `lib/critic_mode.py`'s
+  multi-link `extends_cumulative` arm is deleted — nothing wrote the field
+  since the cutover; the cumulative-prior arm works off the cache's
+  `mode`/`commit_reviewed` (helper renamed `_cumulative_anchor`;
+  stays-deleted guards in `tests/test_critic_mode_inference.py`).
 
 ### D7. Single-slot files become derived caches — or die
 

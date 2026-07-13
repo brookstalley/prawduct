@@ -222,7 +222,7 @@ my-product/
 │   │   ├── project-preferences.md  # developer preferences (language, testing, style)
 │   │   └── boundary-patterns.md    # contract surfaces between components
 │   ├── .pr-reviews/             # PR review evidence (gitignored; checked by the Stop hook)
-│   └── .critic-findings.json    # Critic review evidence (gitignored; checked by the Stop hook)
+│   └── .critic-findings.json    # derived view of the latest review fact (gitignored; gates read the evidence store, not this)
 ├── .claude/
 │   └── settings.json            # the committed install reference (marketplace + enabled plugin)
 └── src/, tests/, …              # your product code, your own skills, MCP servers, configs

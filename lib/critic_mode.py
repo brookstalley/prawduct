@@ -74,9 +74,10 @@ from . import buildplan_refs, gitstate
 from .core import resolve_build_plan_path, read_bool_yaml_key
 from .coverage import _resolve_base_branch
 
-# Verbose-string mode constants — used to recognize prior findings'
-# ``mode`` field. Must stay in lockstep with ``bin/prawduct-hook``'s
-# ``_CRITIC_MODE_*`` constants. (Persisted form is verbose; caller-side
+# Verbose-string mode constant — used to recognize prior findings'
+# ``mode`` field. Must stay in lockstep with ``lib.gates``'s
+# ``_CRITIC_MODE_*`` constants and ``critic_consolidate``'s
+# ``MODE_TOKEN_TO_VERBOSE``. (Persisted form is verbose; caller-side
 # short tokens are what we return / accept as ``args``.)
 _MODE_CUMULATIVE_VERBOSE = "cumulative (bundle review, ready for merge)"
 

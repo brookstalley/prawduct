@@ -32,8 +32,8 @@ a named passing test or a pointer to the chunk that proved it):
 3. *Evidence composes across worktrees and sequential sessions* —
    ``TestWorktreeComposition`` and ``TestSequentialSessions`` here.
 4. *No model writes protocol state* —
-   ``tests/test_critic_marker.py::TestCriticBeginCLI`` (code writes the
-   dispatch manifest) and ``tests/test_critic_consolidate.py::
+   ``tests/test_critic_consolidate.py::TestCriticBeginCLI`` (code writes
+   the dispatch manifest) and ``tests/test_critic_consolidate.py::
    TestDeterministicCycleEndToEnd`` (code appends the fact and regenerates
    the derived cache; the model's only write is its judgment partial; ch.03).
 """
