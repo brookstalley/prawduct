@@ -19,13 +19,15 @@ return the first that fires:
      uncommitted diff is non-empty AND is a subset of prior
      ``files_reviewed``. Signal: builder is in the middle of fixing
      findings from the last review.
-  1b. ``verify-resolutions`` (chain, CRT-4J8W) — tree clean, prior record
-     is chain-extendable (cumulative, or a chain record with an
-     ``extends_cumulative`` anchor), and the committed delta since
-     ``commit_reviewed`` has ≥1 non-``.md`` file under the widening
+  1b. ``verify-resolutions`` (post-cumulative fix, CRT-4J8W) — tree clean,
+     prior record is a ``cumulative`` review, and the committed delta since
+     its ``commit_reviewed`` has ≥1 non-``.md`` file under the widening
      threshold. Signal: builder committed a fix after the cumulative; a
-     verify pass extends it to HEAD instead of re-paying a full bundle
-     review.
+     verify pass reviews the delta instead of re-paying a full bundle
+     review. (The v2 multi-link chain arm — a verify record carrying an
+     ``extends_cumulative`` anchor — died in the kernel-v3 cutover: no
+     writer emits the field, and the gates compose facts by tree, so the
+     recommendation no longer needs to propagate anchors.)
   2. ``cumulative`` — working tree is clean (no uncommitted code) AND
      branch is ≥2 commits ahead of the detected base branch AND no
      ``cumulative``-mode findings file exists for current HEAD. Signal:
@@ -76,9 +78,6 @@ from .coverage import _resolve_base_branch
 # ``mode`` field. Must stay in lockstep with ``bin/prawduct-hook``'s
 # ``_CRITIC_MODE_*`` constants. (Persisted form is verbose; caller-side
 # short tokens are what we return / accept as ``args``.)
-_MODE_VERIFY_RESOLUTIONS_VERBOSE = (
-    "verify-resolutions (delta review, prior findings only)"
-)
 _MODE_CUMULATIVE_VERBOSE = "cumulative (bundle review, ready for merge)"
 
 # Short-token caller-side mode names — what ``$ARGUMENTS`` carries and
@@ -180,10 +179,10 @@ def infer_mode(
             "subset of prior files_reviewed (builder is mid-fix)"
         )
 
-    postfix_reason = _rule_postfix_chain_fires(prawduct_dir, project_dir)
+    postfix_reason = _rule_postfix_fix_fires(prawduct_dir, project_dir)
     if postfix_reason:
         return "verify-resolutions", (
-            f"rule-1b verify-resolutions (chain): {postfix_reason}"
+            f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
         )
 
     cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
@@ -263,47 +262,41 @@ def _rule_verify_resolutions_fires(
     return diff_files.issubset(prior_set)
 
 
-def _chain_extendable_anchor(data: dict) -> str | None:
-    """Return the cumulative anchor a verify pass over ``data`` would extend.
+def _cumulative_anchor(data: dict) -> str | None:
+    """Return the prior ``cumulative`` review's ``commit_reviewed`` when
+    ``data`` is one, else ``None`` — the only record kind rule 1b extends.
 
-    Mirrors ``lib.gates._chain_anchor`` (CRT-4J8W) — the one DELIBERATE
-    mirror left in this module (importing ``gates`` here would widen the
-    slash-command shim's import surface), pinned by
-    ``TestChainAnchorParity`` rather than by comment. Chain-extendable: a
-    ``cumulative``-mode record (anchor = its own ``commit_reviewed``) or a
-    ``verify-resolutions``-mode record carrying a valid
-    ``extends_cumulative`` (multi-link propagation). ``None`` otherwise.
+    The v2 multi-link arm (a ``verify-resolutions`` record carrying an
+    ``extends_cumulative`` anchor) was deleted in the kernel-v3 chunk-06
+    vestige sweep: nothing writes the field since the cutover, and the
+    gates compose review FACTS by tree, so mode inference no longer needs
+    to propagate anchors through the single-slot cache. Stays-deleted
+    guards live in ``tests/test_critic_mode_inference.py``.
     """
     commit_reviewed = data.get("commit_reviewed")
     if not isinstance(commit_reviewed, str) or not commit_reviewed.strip():
         return None
-    mode = data.get("mode")
-    if mode == _MODE_CUMULATIVE_VERBOSE:
+    if data.get("mode") == _MODE_CUMULATIVE_VERBOSE:
         return commit_reviewed
-    if mode == _MODE_VERIFY_RESOLUTIONS_VERBOSE:
-        ext = data.get("extends_cumulative")
-        if isinstance(ext, dict):
-            anchor = ext.get("commit_reviewed")
-            if isinstance(anchor, str) and anchor.strip():
-                return anchor
     return None
 
 
-def _rule_postfix_chain_fires(prawduct_dir: Path, project_dir: Path) -> str:
-    """Rule 1b (CRT-4J8W): a committed fix after a chain-extendable review.
+def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
+    """Rule 1b (CRT-4J8W): a committed fix after a cumulative review.
 
-    Fires when the working tree is clean, the prior record is
-    chain-extendable (see :func:`_chain_extendable_anchor`), its
+    Fires when the working tree is clean, the prior record is a
+    ``cumulative`` review (see :func:`_cumulative_anchor`), its
     ``commit_reviewed`` resolves, and the committed delta since it has at
     least one non-``.md`` file while staying under the verify-resolutions
     widening threshold (``len(delta) > 2 * prior + 5`` — mirrored so the
     rule never recommends a mode that would immediately demote). Without
     this rule the canonical no-args ``/prawduct:critic`` after a
     post-cumulative fix falls through to rule 2 and recommends a FULL
-    bundle re-review — the run-count treadmill the chain gate exists to
-    kill. A doc-only (all-``.md``) or empty delta does not fire: the
-    existing record already covers HEAD under the gate's doc-only
-    allowance, so no review is needed at all.
+    bundle re-review — the run-count treadmill this rule exists to kill
+    (under v3 either recommendation records a fact the gates compose;
+    the verify pass is simply the delta-cost one). A doc-only
+    (all-``.md``) or empty delta does not fire: the existing coverage
+    still spans HEAD, so no review is needed at all.
 
     Returns a rationale string when the rule fires, ``""`` otherwise.
     """
@@ -316,7 +309,7 @@ def _rule_postfix_chain_fires(prawduct_dir: Path, project_dir: Path) -> str:
         data = json.loads(findings_path.read_text())
     except (json.JSONDecodeError, OSError):
         return ""
-    anchor = _chain_extendable_anchor(data)
+    anchor = _cumulative_anchor(data)
     if anchor is None:
         return ""
     commit_reviewed = data["commit_reviewed"]  # non-empty str when anchor is not None
@@ -338,7 +331,7 @@ def _rule_postfix_chain_fires(prawduct_dir: Path, project_dir: Path) -> str:
         return ""
     return (
         f"committed delta of {len(delta)} file(s) since the prior "
-        f"chain-extendable review ({commit_reviewed[:12]}); a verify pass "
+        f"cumulative review ({commit_reviewed[:12]}); a verify pass "
         "extends the cumulative's vouching to HEAD at delta-review cost"
     )
 
@@ -363,11 +356,11 @@ def _rule_cumulative_fires(
     if commits_ahead < 2:
         return ""
 
-    # Skip if a record that satisfies the PR gate already covers current
-    # HEAD: a cumulative-mode record, or a chain record (verify-resolutions
-    # with an extends_cumulative anchor — CRT-4J8W). Without the chain arm,
-    # no-args /prawduct:critic right after a successful chain pass would
-    # recommend a pointless full cumulative.
+    # Skip if a cumulative-mode record already covers current HEAD —
+    # re-recommending the bundle review the builder just ran is noise.
+    # (The v2 chain-record arm — verify-resolutions + extends_cumulative —
+    # died in the kernel-v3 chunk-06 vestige sweep: nothing writes the
+    # field, so a record carrying it is v2-era state the gates ignore.)
     head_sha = gitstate._git_head_sha(project_dir)
     findings_path = prawduct_dir / ".critic-findings.json"
     if head_sha and findings_path.is_file():
@@ -375,12 +368,9 @@ def _rule_cumulative_fires(
             data = json.loads(findings_path.read_text())
         except (json.JSONDecodeError, OSError):
             data = {}
-        if data.get("commit_reviewed") == head_sha and (
-            data.get("mode") == _MODE_CUMULATIVE_VERBOSE
-            or (
-                data.get("mode") == _MODE_VERIFY_RESOLUTIONS_VERBOSE
-                and _chain_extendable_anchor(data) is not None
-            )
+        if (
+            data.get("commit_reviewed") == head_sha
+            and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
         ):
             return ""
 

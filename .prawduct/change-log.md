@@ -3,6 +3,38 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-13: Kernel v3 — shared evidence store; review gates answer by composition (kernel-evidence-store)
+
+<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=kernel-evidence-store | release=v3.0.0 -->
+
+**Why:** The v2 review data plane kept evidence in single-slot, per-worktree files judged
+by mode label and mtime — so a chunk-reviewed branch still demanded a redundant cumulative
+re-review (CRT-J4PM), two predicates drew the metadata boundary differently and wedged the
+gate with no exit (CRT-5D8Q), a perfectly good review went "stale" at every session
+boundary, and worktrees couldn't see each other's evidence at all. Models also hand-wrote
+protocol files, so one malformed write could silently lose a review.
+
+**What:** Breaking release (gate attribution `since: 3.0.0`). Review evidence is now
+append-only FACTS in a store shared by all worktrees of the clone
+(`<git-common-dir>/prawduct/evidence.jsonl` — `lib/evidence.py`, D1–D3: tree-keyed capture
+via a temporary index; schema-versioned envelope; idempotent appends). Gates answer by
+composing facts over trees (`lib/coverage_algebra.py`, D6): the PR gate spans merge-base
+tree → HEAD tree, the Stop gate spans session base tree → working tree — no mode labels,
+no mtimes, no `extends_cumulative` chain bookkeeping. The review lifecycle is
+code-written end to end (D8: `critic-begin` writes the dispatch manifest,
+`critic-consolidate` appends the fact and regenerates `.critic-findings.json` as a derived
+view no gate reads); models write only judgment partials. Prose surfaces (protocols,
+methodology, digest) describe the composition data plane. Upgrade posture is zero-touch
+(C9): the store initializes lazily so no consumer needs a migration commit, v2-era state
+files are ignored with a block-with-remedy toward a fresh review, and schema-ahead facts
+fail both gates closed with the update remedy. End-to-end scenario proof:
+`tests/scenarios/test_kernel_v3_gate_cutover.py` (CRT-J4PM/CRT-5D8Q reproductions) +
+`tests/scenarios/test_kernel_v3_upgrade.py` (upgrade posture, worktree + sequential-session
+composition, discovery success criteria 1–4 trace in its module docstring). Chunk 06 also
+swept the plan's vestiges: `lib/critic_mode.py`'s multi-link chain arm (stays-deleted
+guards in `tests/test_critic_mode_inference.py`), dangling `TestChainAnchorParity`
+references, and the orphaned `.critic-test-findings.json` gitignore line.
+
 ## 2026-07-10: Critic consolidation tolerates `files: []` on a finding (critic-empty-files-tolerance)
 
 <!-- prawduct: chunks=01 | type=fix | scope=critic-empty-files-tolerance | release=v2.3.3 | status=shipped -->

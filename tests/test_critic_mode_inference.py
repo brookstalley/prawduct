@@ -99,8 +99,10 @@ def _write_findings(
 ) -> None:
     """Write a ``.critic-findings.json`` for inference rule fixtures.
 
-    ``extends_cumulative`` is the CRT-4J8W chain-anchor SHA; when given it is
-    wrapped in the persisted ``{"commit_reviewed": <sha>}`` dict form.
+    ``extends_cumulative`` is the v2-era CRT-4J8W chain-anchor SHA (wrapped
+    in the persisted ``{"commit_reviewed": <sha>}`` dict form). No writer
+    emits it since the kernel-v3 cutover; the parameter survives ONLY so
+    stays-deleted guards can prove a record carrying it is ignored.
     """
     data: dict = {
         "files_reviewed": files_reviewed or ["src/app.py"],
@@ -348,14 +350,16 @@ class TestRule1VerifyResolutions:
 # ---------------------------------------------------------------------------
 
 
-class TestRule1bPostfixChain:
-    """Rule 1b (CRT-4J8W): a committed non-doc delta after a chain-extendable
-    review (cumulative, or a chain record propagating its anchor) infers
-    ``verify-resolutions`` — the chain pass that extends the cumulative to
-    HEAD — instead of falling through to rule 2's full bundle re-review.
+class TestRule1bPostCumulativeFix:
+    """Rule 1b (CRT-4J8W): a committed non-doc delta after a ``cumulative``
+    review infers ``verify-resolutions`` — the delta-cost pass — instead of
+    falling through to rule 2's full bundle re-review. The v2 multi-link
+    chain arm (a verify record propagating an ``extends_cumulative``
+    anchor) died in the kernel-v3 chunk-06 vestige sweep; its stays-deleted
+    guard lives here.
     """
 
-    def _chain_repo(self, repo: Path) -> str:
+    def _reviewed_branch_repo(self, repo: Path) -> str:
         """main + feature branch ≥2 ahead; returns the cumulative-anchor SHA
         (HEAD at "review time"), BEFORE the post-review fix is committed."""
         _init_repo(repo)
@@ -368,7 +372,7 @@ class TestRule1bPostfixChain:
         return _commit(repo, "feat: b")
 
     def test_fires_for_committed_fix_after_clean_cumulative(self, tmp_path: Path):
-        reviewed = self._chain_repo(tmp_path)
+        reviewed = self._reviewed_branch_repo(tmp_path)
         _write_findings(
             tmp_path / ".prawduct",
             mode="cumulative (bundle review, ready for merge)",
@@ -381,13 +385,13 @@ class TestRule1bPostfixChain:
 
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "verify-resolutions"
-        assert rationale.startswith("rule-1b verify-resolutions (chain):")
+        assert rationale.startswith("rule-1b verify-resolutions (post-cumulative fix):")
 
     def test_takes_precedence_over_rule_2_cumulative(self, tmp_path: Path):
         # Same state satisfies rule 2's win condition (clean tree, ≥2 ahead,
         # no cumulative record at HEAD) — 1b must win or the no-args flow
         # re-pays a full bundle review for every post-cumulative fix.
-        reviewed = self._chain_repo(tmp_path)
+        reviewed = self._reviewed_branch_repo(tmp_path)
         _write_findings(
             tmp_path / ".prawduct",
             mode="cumulative (bundle review, ready for merge)",
@@ -401,10 +405,13 @@ class TestRule1bPostfixChain:
         mode, _ = infer_mode(tmp_path, None)
         assert mode == "verify-resolutions"
 
-    def test_fires_for_chain_record_prior(self, tmp_path: Path):
-        # Multi-link: the prior record is itself a chain record; a second
-        # committed fix still infers a verify pass.
-        anchor = self._chain_repo(tmp_path)
+    def test_v2_chain_record_prior_no_longer_extends(self, tmp_path: Path):
+        # Stays-deleted guard (kernel-v3 ch.06 vestige sweep): a v2-era
+        # multi-link chain record — verify-resolutions carrying an
+        # ``extends_cumulative`` anchor — must NOT extend rule 1b. Nothing
+        # writes the field anymore, so a record carrying it is v2 state;
+        # inference falls through to rule 2's bundle recommendation.
+        anchor = self._reviewed_branch_repo(tmp_path)
         _write(tmp_path, "src/a.py", "# a fixed\n")
         verify_head = _commit(tmp_path, "fix: round 1")
         _write_findings(
@@ -419,12 +426,12 @@ class TestRule1bPostfixChain:
         _commit(tmp_path, "fix: round 2")
 
         mode, rationale = infer_mode(tmp_path, None)
-        assert mode == "verify-resolutions"
-        assert rationale.startswith("rule-1b")
+        assert not rationale.startswith("rule-1b"), rationale
+        assert mode == "cumulative"
 
-    def test_does_not_fire_for_non_chain_prior(self, tmp_path: Path):
-        # A chunk-mode prior is not chain-extendable → rule 2 takes over.
-        reviewed = self._chain_repo(tmp_path)
+    def test_does_not_fire_for_non_cumulative_prior(self, tmp_path: Path):
+        # A chunk-mode prior is not a cumulative → rule 2 takes over.
+        reviewed = self._reviewed_branch_repo(tmp_path)
         _write_findings(
             tmp_path / ".prawduct",
             commit_reviewed=reviewed,  # default mode: chunk
@@ -440,7 +447,7 @@ class TestRule1bPostfixChain:
     def test_does_not_fire_for_doc_only_delta(self, tmp_path: Path):
         # All-.md delta: the existing record already covers HEAD under the
         # gate's doc-only allowance — no review to recommend from 1b.
-        reviewed = self._chain_repo(tmp_path)
+        reviewed = self._reviewed_branch_repo(tmp_path)
         _write_findings(
             tmp_path / ".prawduct",
             mode="cumulative (bundle review, ready for merge)",
@@ -457,7 +464,7 @@ class TestRule1bPostfixChain:
     def test_does_not_fire_when_delta_widens_past_threshold(self, tmp_path: Path):
         # prior surface 1 file → threshold 2*1+5 = 7; 8 changed files would
         # demote inside the verify pass, so 1b must not recommend it.
-        reviewed = self._chain_repo(tmp_path)
+        reviewed = self._reviewed_branch_repo(tmp_path)
         _write_findings(
             tmp_path / ".prawduct",
             mode="cumulative (bundle review, ready for merge)",
@@ -557,11 +564,13 @@ class TestRule2Cumulative:
         # No active plan + no uncommitted code → rule-4 fail-safe → final
         assert mode == "final"
 
-    def test_does_not_fire_when_chain_record_covers_head(self, tmp_path: Path):
-        """A chain record (verify-resolutions + extends_cumulative) at HEAD
-        satisfies the PR gate (CRT-4J8W) — re-firing cumulative right after
-        a successful chain pass would be the pointless review the chain
-        exists to avoid."""
+    def test_v2_chain_record_at_head_no_longer_suppresses(self, tmp_path: Path):
+        """Stays-deleted guard (kernel-v3 ch.06 vestige sweep): a v2-era
+        chain record (verify-resolutions + ``extends_cumulative``) at HEAD
+        no longer suppresses rule 2 — only a ``cumulative`` record at HEAD
+        does. Under v3 the gates answer from composed facts regardless of
+        what this rule recommends, so trusting an unwritten v2 cache field
+        would only steer the builder wrong."""
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
@@ -581,8 +590,7 @@ class TestRule2Cumulative:
         )
 
         mode, _ = infer_mode(tmp_path, None)
-        assert mode != "cumulative"
-        assert mode == "final"  # no plan, clean tree → rule-4 fail-safe
+        assert mode == "cumulative"
 
     def test_does_not_fire_when_no_base_branch(self, tmp_path: Path):
         """Detached/orphan branch without main/master/develop → cumulative
@@ -903,7 +911,7 @@ class TestRationaleFormat:
         "expected_prefix,setup",
         [
             ("rule-1 verify-resolutions:", "verify_resolutions"),
-            ("rule-1b verify-resolutions (chain):", "postfix_chain"),
+            ("rule-1b verify-resolutions (post-cumulative fix):", "postfix_fix"),
             ("rule-2 cumulative:", "cumulative"),
             ("rule-3 final:", "final"),
             ("rule-4 chunk:", "chunk_default"),
@@ -912,7 +920,7 @@ class TestRationaleFormat:
     def test_rationale_starts_with_rule_identifier(
         self, tmp_path: Path, expected_prefix: str, setup: str
     ):
-        if setup == "postfix_chain":
+        if setup == "postfix_fix":
             _init_repo(tmp_path)
             _write(tmp_path, "README.md", "x\n")
             _commit(tmp_path, "initial")
@@ -1298,5 +1306,7 @@ class TestBranchProgressCRT7B4M:
 
 # (TestChainAnchorParity removed — kernel-v3 chunk 04 deleted the PR gate's
 # chain-anchor helper; critic_mode's copy is now the only one, so there is
-# no second implementation to hold in lockstep. Its remaining chain arm is
-# slated for the chunk-06 vestige sweep.)
+# no second implementation to hold in lockstep. Chunk 06's vestige sweep
+# then deleted that copy's multi-link ``extends_cumulative`` arm — the
+# stays-deleted guards live in TestRule1bPostCumulativeFix and the rule-2
+# class above.)

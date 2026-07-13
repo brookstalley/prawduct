@@ -9,10 +9,9 @@ Three concerns:
    (``_count_build_plan_chunks``, ``_chunk_ids_in_status_order``).
 
 2. Consolidation pins: the duplicate bodies deleted from ``lib.critic_mode``
-   and ``lib.gates`` must STAY deleted. This is the inverted analogue of
-   ``TestChainAnchorParity`` — that deliberate mirror must stay EQUAL; these
-   must stay SINGULAR. A source-scan asserts the walk skeletons' anchor
-   literals don't reappear in the consumer modules.
+   and ``lib.gates`` must STAY deleted — a consolidated walk must stay
+   SINGULAR. A source-scan asserts the walk skeletons' anchor literals
+   don't reappear in the consumer modules.
 
 3. Porcelain edge cases through ``critic_mode._get_uncommitted_code_files``'s
    consolidated parse path (``gitstate.parse_porcelain_line``): quoted paths
@@ -220,9 +219,9 @@ class TestChunkSectionLines:
 
 
 class TestConsolidationPins:
-    """Inverse of ``TestChainAnchorParity``: that mirror must stay equal,
-    these must stay singular. A copy quietly reintroduced in a consumer
-    module is the regression this class exists to catch (STH-2K8R)."""
+    """A consolidated walk must stay singular: a copy quietly reintroduced
+    in a consumer module is the regression this class exists to catch
+    (STH-2K8R)."""
 
     CONSOLIDATED_OUT_OF_CRITIC_MODE = (
         "_METADATA_PREFIXES",

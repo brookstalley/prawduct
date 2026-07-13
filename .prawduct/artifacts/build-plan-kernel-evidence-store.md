@@ -48,7 +48,7 @@ write-tree spike (~30 minutes, first Done-when step).
 - [x] Chunk 03: Deterministic dispatch — code-written manifest, fact-appending consolidate
 - [x] Chunk 04: Gate cutover — Stop gate and PR gate answer by composition
 - [x] Chunk 05: Prose surfaces — protocols, methodology, digest
-- [ ] Chunk 06: Upgrade posture + end-to-end scenarios (cumulative)
+- [x] Chunk 06: Upgrade posture + end-to-end scenarios (cumulative)
 Context: Owner approved D1/D3 2026-07-12; D3 spike PASSED same day (plain
 repo + linked worktree; non-mutating, untracked captured, ignored excluded,
 verbatim commit preserves tree, odb shared). Chunks 01–02 shipped 2026-07-13
@@ -115,7 +115,34 @@ to the Getting Started flow). Critic SKILL allowed-tools: +critic-begin *,
 −ledger-append (consolidate is the only ledger writer for reviews).
 No product-doc session-file inventory needed .session-base-tree (checked).
 1689 tests (one net consolidation in the renegotiated PR-scoping class).
-Next: Chunk 06 (upgrade posture + e2e scenarios, cumulative-final).
+Chunk 06 shipped 2026-07-13 — the first session dogfooded via
+--plugin-dir=. (in-repo data plane governing live). New
+tests/scenarios/test_kernel_v3_upgrade.py (9 scenarios, shared subprocess
+harness extracted to kernel_v3_harness.py; cutover test bodies untouched):
+v2-era state (fresh-looking cumulative record at HEAD + ledger, no store)
+blocks both gates with the fresh-review remedy and is never misread as
+current; gate reads leave no migration footprint (store stays uncreated,
+porcelain unchanged — C9 tier 1 observed); the named remedy clears the
+block; schema-ahead facts fail both gates closed with the update remedy
+(tier 3); worktree A reviews → B passes after its own session start;
+session-1 facts satisfy session 2 with no stale warning, and the PR gate
+composes facts across the session boundary. Success criteria 1–4 trace
+(acceptance criterion; also in the scenario file's docstring): SC1 →
+test_evidence_store.py::TestErrorPosture + test_cumulative_gate.py::
+TestFailClosed + TestSchemaAheadFailsClosed (e2e); SC2 →
+test_kernel_v3_gate_cutover.py (ch.04); SC3 → TestWorktreeComposition +
+TestSequentialSessions; SC4 → test_critic_marker.py::TestCriticBeginCLI +
+test_critic_consolidate.py::TestDeterministicCycleEndToEnd (ch.03).
+Vestige sweep: critic_mode's extends_cumulative multi-link arm deleted
+(design D6 deferral; _chain_extendable_anchor → _cumulative_anchor,
+rationale label now "post-cumulative fix", dead
+_MODE_VERIFY_RESOLUTIONS_VERBOSE constant removed) with both dead-arm
+tests renegotiated into stays-deleted guards; dangling
+TestChainAnchorParity docstring refs cleaned (test_buildplan_walkers.py);
+orphaned .critic-test-findings.json gitignore line removed (all 17
+GITIGNORE_ENTRIES verified alive). Release change-log entry added
+(scope=kernel-evidence-store, release=v3.0.0 pending re-stamp). 1698
+tests.
 
 ## Scaffolding
 
