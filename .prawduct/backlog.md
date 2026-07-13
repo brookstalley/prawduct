@@ -111,7 +111,7 @@
   The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
 
 - **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
-  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-02`
+  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M, GOV-4C7X · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-12`
 
   The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
 
@@ -127,6 +127,15 @@
   "cross-linked") as orphan candidates — plus the optional POS/noun-filter and
   build-intent-scoping legs if the tokenizer fix alone doesn't quiet it. Effort re-sized M→S
   to match the narrowed scope.
+
+  **Owner decision 2026-07-12 (kernel-redesign discovery) — resolution is DELETION, not a
+  precision fix.** The work-model term tripwire will be deleted outright (the prompt-term
+  extractor plus the work-model index machinery behind it), superseding the remaining fix-shape
+  legs above (path-tokenization fix, POS/noun-filter, build-intent scoping — all moot).
+  Requirements-precede-code enforcement moves to a review-time scope-check question instead
+  (cf. CRT-5M9J). Subsumed by the governance kernel redesign program GOV-4C7X, which carries
+  the deletion; this item stays open until the deletion actually ships, then archive it
+  `closed-by:` the shipping kernel-redesign plan scope.
 
 - **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
   `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-06-22`
@@ -862,6 +871,31 @@
   notice), and the "one scope identifier" vocabulary consolidation.
 
 ## Promoted
+
+- **[GOV-4C7X]** Governance kernel redesign (v3) — SHA-keyed evidence store + coverage-algebra gates + deterministic Critic data plane
+  `effort: L · impact: L · area: governance/kernel · source: user · added: 2026-07-12 · status: promoted · stage: design · related: CRT-5D8Q, GOV-7T2M, WMK-4Q9T, MIG-6B0R, CRT-9K7T · refs: .prawduct/artifacts/kernel-redesign-discovery.md, .prawduct/artifacts/kernel-inventory-2026-07-12.md, .prawduct/artifacts/build-plan-kernel-evidence-store.md, .prawduct/artifacts/kernel-v3-evidence-design.md · reviewed: 2026-07-12`
+
+  PROGRAM-level item (true effort is XL — a program of small shippable plans; recorded `L`, the
+  metadata-bar scale ceiling). Owner-approved re-architecture per the discovery artifact (owner
+  decisions 2026-07-12). Concerns: evidence model (C1), deterministic data plane (C2), fail-loud
+  invariant (C3), gate posture recalibration (C4), per-repo SHA-keyed store (C5),
+  upstream-feedback pull path (C6), schema versioning (C7), branch-role-aware gates including
+  the MIG-6B0R strip-on-promotion (C8). Subsumes the Wave 2 MECHANISM items of
+  framework-efficiency-review-2026-07-02 (CRT-5M9J scope-check question, STH-8R3Q
+  outcome-checking Stop gate, ENV-2W7K environments plan, CRT-3F6W reviewer-dedup deletion —
+  reconcile/close those against this program as its constituent plans ship; they stay open until
+  then). Also carries WMK-4Q9T's owner-decided tripwire deletion (extractor + index machinery
+  removed; requirements-precede-code becomes a review-time scope-check question). External
+  drivers: discodon upstream reports CRT-8F3K (local counterpart CRT-9K7T, shipped
+  critic-persistence-redesign), CRT-W2NV, CRT-J4PM. Delivery posture: breaking release + doctor
+  migration; opus-level model floor assumed. (user)
+
+  **Promoted 2026-07-12** — first constituent plan authored:
+  `artifacts/build-plan-kernel-evidence-store.md` (C1 evidence store + C2 review data plane,
+  6 chunks, `feature/kernel-v3-evidence-store`); design note
+  `artifacts/kernel-v3-evidence-design.md`. This program item stays the umbrella; later plans
+  (test evidence, PR facts, C8 promotion gate, C6 feedback pull, §4.3 deletions) will be carved
+  as their predecessors ship.
 
 ## Archive
 

@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-07-02
+backlog_last_groomed_at: 2026-07-12
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -554,7 +554,10 @@ views_enabled: true
 # v2.3.2 (2026-07-10): single-pr-bookkeeping shipped (PR #118); entry flipped to
 # status=shipped; pointer cleared. No release-pending plans remain. Plan files
 # are RETAINED as historical artifacts and regen via their scope= tags.
-active_build_plan: null
+# 2026-07-12: repointed at kernel-evidence-store — GOV-4C7X plan 1 of the kernel
+# v3 program (SHA-keyed evidence store + coverage algebra + deterministic Critic
+# data plane). feature/kernel-v3-evidence-store off develop, 6 chunks.
+active_build_plan: artifacts/build-plan-kernel-evidence-store.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
