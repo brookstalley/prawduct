@@ -267,6 +267,11 @@ machinery.*
 - Volatility rule stands: v2.1.198 background-by-default broke the previous
   coordinator inline-resume design. Design only against documented lifecycle
   events + on-disk state.
+- A `--plugin-dir` plugin sharing a name with an installed marketplace plugin
+  **takes precedence for that session** (exception: managed-settings
+  force-enabled/disabled plugins) — verified 2026-07-13, live docs, owner-read.
+  This is what makes `claude --plugin-dir=.` self-hosting sound for chunk 06's
+  dogfooding without uninstalling the marketplace v2.3.3.
 
 ## 7. Assumptions (vetoable)
 
