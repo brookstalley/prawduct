@@ -301,9 +301,7 @@ def _write_pr_evidence(repo: Path, **overrides) -> dict:
         "branch": "feature/example",
         "base": "develop",
         "pr_number": None,
-        "mode": "pr-scoped",
-        "record_consumed": True,
-        "spot_checks": [{"claim": "x pinned by test y", "verified": True}],
+        "mode": "pr",
         "findings": [],
         "summary": "No issues found. PR is ready to create.",
     }

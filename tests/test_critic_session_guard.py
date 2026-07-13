@@ -310,11 +310,20 @@ class TestDesignerHandoffMarkerOrdering:
     """
 
     def test_skill_prose_orders_early_exit_before_critic_begin(self):
+        # kernel-v3 chunk 05: dispatch is `critic-begin --mode <mode> …` (the
+        # bare `run \`prawduct-hook critic-begin\`` step died with the
+        # code-written manifest), and a descriptive mention now precedes the
+        # flow in Structural Constraints — so the ordering pin anchors inside
+        # the Getting Started flow, where the instructions live. The invariant
+        # is unchanged: the early exit must precede the dispatch instruction.
         text = (_ROOT / "skills" / "critic" / "SKILL.md").read_text(encoding="utf-8")
-        exit_pos = text.find("Designer-handoff early exit")
-        begin_pos = text.find("run `prawduct-hook critic-begin`")
-        assert exit_pos != -1, "designer-handoff early-exit instruction missing from SKILL.md"
-        assert begin_pos != -1, "critic-begin instruction missing from SKILL.md"
+        flow_pos = text.find("## Getting Started")
+        assert flow_pos != -1, "Getting Started flow missing from SKILL.md"
+        flow = text[flow_pos:]
+        exit_pos = flow.find("Designer-handoff early exit")
+        begin_pos = flow.find("`prawduct-hook critic-begin --mode")
+        assert exit_pos != -1, "designer-handoff early-exit instruction missing from the flow"
+        assert begin_pos != -1, "critic-begin dispatch instruction missing from the flow"
         assert exit_pos < begin_pos, (
             "the designer-handoff early exit must come before critic-begin "
             "(CRT-6F2N: no critic-active marker for a review that never happens)"

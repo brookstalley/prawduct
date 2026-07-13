@@ -47,7 +47,7 @@ write-tree spike (~30 minutes, first Done-when step).
 - [x] Chunk 02: Coverage algebra + the one non-judgeable predicate
 - [x] Chunk 03: Deterministic dispatch — code-written manifest, fact-appending consolidate
 - [x] Chunk 04: Gate cutover — Stop gate and PR gate answer by composition
-- [ ] Chunk 05: Prose surfaces — protocols, methodology, digest
+- [x] Chunk 05: Prose surfaces — protocols, methodology, digest
 - [ ] Chunk 06: Upgrade posture + end-to-end scenarios (cumulative)
 Context: Owner approved D1/D3 2026-07-12; D3 spike PASSED same day (plain
 repo + linked worktree; non-mutating, untracked captured, ignored excluded,
@@ -97,6 +97,25 @@ hook mirror + this repo's .gitignore) — product docs mentioning session
 files may need the addition in chunk 05. Next: Chunk 05 (prose surfaces) —
 then the after-chunk-04 trajectory review checkpoint: gates.py IS
 shrinking, and every deleted check has a named still-blocks regression.
+Chunk 05 shipped 2026-07-13 (Critic chunk-mode doc-only: 0 blocking /
+0 warning / 1 note). All prose surfaces describe the composition data
+plane; §3-deleted-mechanism greps return zero across skills/, methodology/,
+CLAUDE.md, docs/, agents/, templates/; net governance-prose −171 est
+tokens across the touched set (pr/review-protocol −421 paid for
+building.md's new evidence-model section +204; budgets: building 4434<4600,
+review-protocol 3320<3350). Cascade exceeded the deliverables enumeration
+per the acceptance criterion (Critic note, deliberate): agents/
+critic-reviewer.md (covers-HEAD claim died with the staleness refusal),
+docs/governance-telemetry.md (pr-scoped/pr-full → `pr`),
+docs/project-structure.md + CLAUDE.md layout ("checked by the Stop hook" →
+derived-view), and five prose-pinning test files renegotiated in the open
+(record-audit pins → stays-deleted guards; CRT-6F2N ordering pin re-anchored
+to the Getting Started flow). Critic SKILL allowed-tools: +critic-begin *,
++critic-consolidate, +evidence *; −compute-verify-resolutions-scope,
+−ledger-append (consolidate is the only ledger writer for reviews).
+No product-doc session-file inventory needed .session-base-tree (checked).
+1689 tests (one net consolidation in the renegotiated PR-scoping class).
+Next: Chunk 06 (upgrade posture + e2e scenarios, cumulative-final).
 
 ## Scaffolding
 
