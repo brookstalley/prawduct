@@ -45,7 +45,7 @@ write-tree spike (~30 minutes, first Done-when step).
 
 - [x] Chunk 01: Evidence store walking skeleton — append in one worktree, read from another
 - [x] Chunk 02: Coverage algebra + the one non-judgeable predicate
-- [ ] Chunk 03: Deterministic dispatch — code-written manifest, fact-appending consolidate
+- [x] Chunk 03: Deterministic dispatch — code-written manifest, fact-appending consolidate
 - [ ] Chunk 04: Gate cutover — Stop gate and PR gate answer by composition
 - [ ] Chunk 05: Prose surfaces — protocols, methodology, digest
 - [ ] Chunk 06: Upgrade posture + end-to-end scenarios (cumulative)
@@ -53,17 +53,29 @@ Context: Owner approved D1/D3 2026-07-12; D3 spike PASSED same day (plain
 repo + linked worktree; non-mutating, untracked captured, ignored excluded,
 verbatim commit preserves tree, odb shared). Chunks 01–02 shipped 2026-07-13
 (commits 4ee9f7f, 62d9843; chunk 01 Critic final 0-blocking with all 6
-warnings fixed; chunk 02 Critic chunk-mode clean). Next: Chunk 03. Notes for
-its builder: (1) roster derivation is mode→roles config IN CODE — the skill
-passes only `--mode` (+ chosen-by/chunk) to critic-begin; (2) OPEN POINT the
-chunk's confidence check must close: `verify-resolutions` is single-pass (no
-coordinator/partials), so decide who appends its resolution facts —
-extending consolidate to a single-pass persist path or a dedicated
-`critic-record-resolutions` subcommand; the model must not write them;
-(3) manifest gains v3 fields base_tree/head_tree via evidence.capture_tree;
-existing manifest-schema tests will need extending, not weakening;
-(4) sessions still govern via the INSTALLED v2.3.3 plugin, so in-repo data-
-plane changes are inert until release — verify with repo-local bin/ only.
+warnings fixed; chunk 02 Critic chunk-mode clean). Chunk 03 shipped
+2026-07-13 (Critic chunk-mode: 0 blocking/0 warning/1 note → CRT-6Q2N):
+the open point closed by SINGLE-PASS UNIFICATION — every mode flows
+begin(manifest) → partial(s) → consolidate, single-pass roster is
+["reviewer"], resolutions ride the verify-resolutions partial's payload and
+only that mode's dispatch may carry them (decisions recorded in the design
+doc's D5/D8 chunk-03 refinements). Sessions still govern via the INSTALLED
+v2.3.3 plugin — in-repo data-plane changes stay inert until release; verify
+with repo-local bin/ only. Next: Chunk 04 (gate cutover).
+Chunk 03 shipped notes for chunks 04-05: (a) the Critic SKILL's
+allowed-tools pins `Bash(prawduct-hook critic-begin)` EXACTLY — chunk 05
+must widen it to `critic-begin *` or the `--mode` dispatch is uncallable;
+(b) single-pass unification means SKILL steps 7-8 (hand-written findings,
+ledger-append, critic-end) are replaced by "write your one `reviewer`
+partial, run critic-consolidate"; (c) the v2 verify-resolutions helpers
+(`compute-verify-resolutions-scope`, `_record_covers_head` call sites,
+`extends_cumulative` chain) are now bypassed by begin_review's fact-anchored
+derivation — chunk 04 deletes them at their sites; (d) D3 caveat surfaced
+while testing: a pre-commit review vouches for the commit only when the
+commit includes exactly the captured state — selective commits (leaving
+captured-but-uncommitted files behind) produce a coverage gap; chunk 04's
+gate message must name the v-r remedy, and the trajectory review should
+watch this friction in practice.
 
 ## Scaffolding
 
@@ -188,10 +200,16 @@ else reads `evidence.jsonl` directly. `.critic-findings.json` is written by
   fail-closed reserved for genuine ambiguity (learned rule).
 - **Depends on:** Chunk 02
 - **Artifacts consumed:** `kernel-v3-evidence-design.md` D5, D7, D8
-- **Deliverables:** changed `lib/critic_marker.py` (begin-side manifest),
-  changed `lib/critic_consolidate.py` (fact append + cache regen +
-  resolution facts), updated `tests/test_critic_consolidate.py`, manifest
-  tests alongside
+  (including the chunk-03 refinements recorded there: single-pass
+  unification closes the resolution-fact open point; roster/size rule;
+  per-mode base derivation; no staleness refusal at consolidation)
+- **Deliverables:** changed `lib/critic_consolidate.py` (begin-side
+  manifest AND fact append + cache regen + resolution facts — both ends of
+  the `.critic-partials` contract live in one module; `lib/critic_marker.py`
+  stays the marker-only guard, unchanged), `critic-begin --mode` CLI in
+  `bin/prawduct-hook`, `evidence.tree_diff` (public tree-to-tree diff the
+  chunk-04 gates will inject as `diff_fn`), updated
+  `tests/test_critic_consolidate.py`, manifest tests alongside
 - **Tests:** unit — manifest derivation per mode, missing-partial block
   names the role, double-consolidate appends one fact, cache carries fact
   id and is temp+rename atomic, resolution-fact append; regression — the

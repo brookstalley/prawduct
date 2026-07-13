@@ -343,9 +343,13 @@ def has_fact(project_dir: Path, kind: str, fact_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _git(project_dir: Path, *args: str, env: dict | None = None) -> tuple[int, str, str]:
+def run_git(project_dir: Path, *args: str, env: dict | None = None) -> tuple[int, str, str]:
     """One git call; (returncode, stdout, stderr). Never raises — converts
-    subprocess failures to a nonzero returncode with the message in stderr."""
+    subprocess failures to a nonzero returncode with the message in stderr.
+    Public: the dispatch side of the review data plane (critic_consolidate)
+    shares it — per the module-boundary rule, only this module and git
+    helpers touch disk/git, so callers borrow the runner rather than
+    growing their own (promoted at first external use, chunk 03)."""
     try:
         proc = subprocess.run(
             ["git", *args],
@@ -375,21 +379,21 @@ def capture_tree(project_dir: Path) -> dict:
     env = dict(os.environ)
     env["GIT_INDEX_FILE"] = tmp_name
     try:
-        rc, head_commit, _ = _git(project_dir, "rev-parse", "--verify", "HEAD")
+        rc, head_commit, _ = run_git(project_dir, "rev-parse", "--verify", "HEAD")
         head_commit = head_commit if rc == 0 else None
         head_tree = None
         if head_commit:
-            rc, head_tree_out, _ = _git(project_dir, "rev-parse", "HEAD^{tree}")
+            rc, head_tree_out, _ = run_git(project_dir, "rev-parse", "HEAD^{tree}")
             head_tree = head_tree_out if rc == 0 else None
             # Seed the temp index from HEAD so unchanged paths keep their
             # entries; on an unborn HEAD the empty temp index is correct.
-            rc, _, err = _git(project_dir, "read-tree", "HEAD", env=env)
+            rc, _, err = run_git(project_dir, "read-tree", "HEAD", env=env)
             if rc != 0:
                 return {"status": "error", "reason": f"read-tree failed: {err}"}
-        rc, _, err = _git(project_dir, "add", "-A", env=env)
+        rc, _, err = run_git(project_dir, "add", "-A", env=env)
         if rc != 0:
             return {"status": "error", "reason": f"temp-index add failed: {err}"}
-        rc, tree, err = _git(project_dir, "write-tree", env=env)
+        rc, tree, err = run_git(project_dir, "write-tree", env=env)
         if rc != 0 or not tree:
             return {"status": "error", "reason": f"write-tree failed: {err}"}
         return {
@@ -404,6 +408,21 @@ def capture_tree(project_dir: Path) -> dict:
             os.unlink(tmp_name)
         except OSError:
             pass  # already absent — mkstemp file deleted above, git may not have recreated it
+
+
+def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None":
+    """Paths changed between two tree objects (``git diff --name-only``),
+    or ``None`` when the diff cannot be computed (missing object, git
+    failure) — never guessed, matching ``coverage_algebra.DiffFn``'s
+    contract. This is the diff the gates inject into the algebra and the
+    dispatch side uses for its ``files_changed`` snapshot, so the recorded
+    set and the composed edge-validity check agree by construction."""
+    if not (isinstance(tree_a, str) and tree_a and isinstance(tree_b, str) and tree_b):
+        return None
+    rc, out, _err = run_git(project_dir, "diff", "--name-only", tree_a, tree_b)
+    if rc != 0:
+        return None
+    return [line for line in out.splitlines() if line.strip()]
 
 
 # ---------------------------------------------------------------------------

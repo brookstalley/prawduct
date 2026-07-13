@@ -116,12 +116,19 @@ _ROSTER = ["correctness", "design", "sustainability"]
 
 
 def _write_manifest(prawduct: Path, *, commit: str = _MOCK_HEAD) -> None:
+    # v3 dispatch-manifest shape (kernel v3 ch.03) — tree SHAs are opaque to
+    # the consolidator, so fakes suffice here.
     d = prawduct / ".critic-partials"
     d.mkdir(parents=True, exist_ok=True)
     (d / "manifest.json").write_text(json.dumps({
+        "id": "rev-test-0001",
         "mode": _FINAL_MODE, "mode_chosen_by": "rule-3", "roster": _ROSTER,
-        "commit_reviewed": commit, "files_reviewed": ["src/app.py"],
-        "scope": "demo", "model": "opus",
+        "roster_chosen_by": "test fixture",
+        "commit_reviewed": commit,
+        "base_commit": commit, "base_tree": "basetree000000000000",
+        "head_tree": "headtree000000000000", "head_commit": None,
+        "files_changed": ["src/app.py"], "files_reviewed": ["src/app.py"],
+        "tier": None, "scope": "demo", "chunk": None, "base_reviewed": None,
     }))
 
 

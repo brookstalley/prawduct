@@ -870,6 +870,18 @@
   delete `stamp_merged`/`cmd_stamp_merged` (currently deprecated-but-callable with a stderr
   notice), and the "one scope identifier" vocabulary consolidation.
 
+- **[CRT-6Q2N]** critic-consolidate's ledger anchor lacks an idempotency guard — retry in the ledger-append→remove_partials crash window lands a duplicate `review.critic` line
+  `effort: S · impact: S · area: governance/critic · source: critic · added: 2026-07-13 · status: open · stage: ready · related: CRT-4B7X · refs: .prawduct/artifacts/build-plan-kernel-evidence-store.md, .prawduct/.governance-ledger.jsonl`
+
+  The review-fact and resolution-fact appends are id-idempotent, but the ledger anchor is not: a
+  retry after the crash window between ledger-append and remove_partials (or a re-materialized
+  same-id manifest) lands a duplicate `review.critic` ledger line for the same review id. Benign
+  today — check-cumulative-critic reads the newest qualifying event and the store fact stays
+  single — but worth a guard keyed on the dispatch id. Surfaced by the Critic (NOTE),
+  kernel-evidence-store chunk 03, 2026-07-13. Sibling of CRT-4B7X (same duplicate-ledger-line
+  symptom via concurrent SubagentStop firings); a dispatch-id-keyed guard likely fixes both —
+  merge candidates at next triage. (critic)
+
 ## Promoted
 
 - **[GOV-4C7X]** Governance kernel redesign (v3) — SHA-keyed evidence store + coverage-algebra gates + deterministic Critic data plane

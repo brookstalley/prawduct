@@ -68,11 +68,18 @@ def _partials_dir(repo: Path) -> Path:
 
 
 def _write_manifest(repo: Path, head: str) -> None:
+    # v3 dispatch-manifest shape (kernel v3 ch.03) — tree SHAs are opaque to
+    # the consolidator, so fakes suffice here.
     (_partials_dir(repo) / "manifest.json").write_text(json.dumps({
+        "id": "rev-test-0001",
         "mode": FINAL_MODE, "mode_chosen_by": "rule-3",
         "roster": ["correctness", "design", "sustainability"],
-        "commit_reviewed": head, "files_reviewed": ["src/app.py"],
-        "scope": "demo", "model": "opus",
+        "roster_chosen_by": "test fixture",
+        "commit_reviewed": head,
+        "base_commit": head, "base_tree": "basetree000000000000",
+        "head_tree": "headtree000000000000", "head_commit": None,
+        "files_changed": ["src/app.py"], "files_reviewed": ["src/app.py"],
+        "tier": None, "scope": "demo", "chunk": None, "base_reviewed": None,
     }))
 
 
@@ -144,19 +151,19 @@ class TestSubagentStopNeverBlocks:
         result = _run(repo, {"agent_type": "critic-reviewer", "cwd": str(repo)})
         assert result.returncode == 0
 
-    def test_stale_consolidation_still_exit_0(self, tmp_path):
-        """consolidate() returns 1 when HEAD moved (stale) — subagent-stop must
-        NOT propagate that as a block; it exits 0 and leaves the marker/manifest
-        for the session-end backstop."""
+    def test_failed_consolidation_still_exit_0(self, tmp_path):
+        """consolidate() returns 1 on a fail-closed error (here: a malformed
+        partial; HEAD movement no longer fails in v3 — the fact is appended
+        regardless and coverage composition judges it at gate time) —
+        subagent-stop must NOT propagate that as a block; it exits 0 and
+        leaves the marker/manifest for the session-end backstop."""
         repo = tmp_path / "r"
         head = _init_repo(repo)
         _set_marker(repo)
         _write_manifest(repo, head)
         _full_roster(repo, head)
-        # Move HEAD after dispatch → consolidate would exit 1.
-        (repo / "src" / "app.py").write_text("x = 2\n")
-        _git(repo, "add", "src/app.py")
-        _git(repo, "commit", "-m", "later", "--quiet")
+        # One partial is malformed → consolidate fails closed with exit 1.
+        (repo / PARTIALS_REL / "sustainability.json").write_text("{not json")
         result = _run(repo, {"agent_type": "critic-reviewer", "cwd": str(repo)})
         assert result.returncode == 0, "advisory hook must never block the subagent"
         assert not (repo / FINDINGS_REL).is_file()

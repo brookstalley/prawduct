@@ -154,6 +154,17 @@ never by the builder directly. Q3/Q4 become a join: unresolved-blocking =
 blocking findings minus resolution facts. Append-only stays intact; a waiver
 disposition carries its rationale reference (R7).
 
+*Chunk 03 refinement (closes the plan's open point).* The dispositions
+originate in the verify-resolutions reviewer's **partial** (a `resolutions`
+list — judgment payload, the one model-authored input D8 sanctions);
+`critic-consolidate` validates each entry against the store (the referenced
+`(review_id, fid)` must exist as a recorded finding — a hallucinated or
+typo'd resolution is a loud error, never a silent no-op) and appends the
+facts. Because resolution facts *weaken* gates, they are accepted only from
+a verify-resolutions dispatch: a non-empty `resolutions` list in any other
+mode's partial fails consolidation closed (off-protocol gate-weakening data;
+an empty/omitted list collapses per the tolerant-encoding rule).
+
 ### D6. Coverage algebra
 
 Pure functions over the fact set (no I/O):
@@ -197,6 +208,47 @@ omitting keys, and leaving the previous review's findings looking current
 author anymore. Reviewer *partials* remain freeform-model-written by design
 (they are the judgment payload; the partials + deterministic-merge pattern is
 reconfirmed — schema-forced output still doesn't exist for plugin subagents).
+
+*Chunk 03 refinements (recorded decisions):*
+
+- **Single-pass unification.** Every mode flows begin → partial(s) →
+  consolidate. Single-pass modes (`chunk`, `verify-resolutions`, small
+  `final`/`cumulative`) get roster `["reviewer"]`: the reviewing fork writes
+  one partial and invokes `critic-consolidate` — SKILL steps 7-8
+  (model-written findings file + ledger-append + critic-end) die in chunk 05.
+  This makes consolidate the ONLY writer of the store and the cache (D7
+  verbatim) and deletes the last model-authored canonical file. The fork
+  forgetting to consolidate is floored by the Stop-hook backstop, same as
+  the coordinator path.
+- **Execution shape in code.** Coordinator roster
+  (`correctness`/`design`/`sustainability`) iff mode is `final`/`cumulative`
+  AND `len(files_changed) >= 5` (building.md's size heuristic, one constant);
+  `chunk`/`verify-resolutions` are always single-pass. Recorded as
+  `roster_chosen_by` for Q7.
+- **Per-mode base derivation** (all code, at `critic-begin`): `chunk`/`final`
+  → base = `HEAD` (the uncommitted diff), head = captured working tree;
+  `cumulative` → base = merge-base(`resolve-base`, HEAD), head = `HEAD`
+  (committed state); `verify-resolutions` → base = the prior review FACT's
+  `head_tree` (located via the cache's `fact_id` — the D7 pointer earning
+  its keep), head = captured working tree. `files_changed` is uniformly
+  `git diff --name-only <base_tree> <head_tree>` — true by construction
+  against the edge-validity rule (D6). Tree keying makes a dirty-tree
+  verify-resolutions sound, dissolving the v2 "commit first, then verify"
+  sequencing rule.
+- **No staleness refusal at consolidation.** The v2 consolidate refused when
+  the dispatch commit no longer covered HEAD (`_record_covers_head`). v3
+  appends the fact regardless — it is a true statement about the tree the
+  reviewers saw; whether it suffices is the gate-time composition's question
+  (Q1/Q2). Refusing was the "evidence dies on staleness" defect class.
+- **`tier` is relayed, not computed at begin.** The skill runs
+  `classify-diff-risk` (code) and passes `--tier` through; the value is
+  telemetry (Q6/Q7), never gate-consulted, so relay is acceptable and avoids
+  refactoring `lib/risk.py` mid-plan. Reviewer `model`s come from partials
+  (per-role, D4 roster), not the manifest.
+- **Skew posture at dispatch.** `critic-begin` now requires `--mode`; a bare
+  invocation (a stale cached v2 skill against this hook) fails immediately
+  with the reload remedy (C9 tier 3) instead of running a 4-10 min review
+  that dies at consolidation.
 
 ### D9. Error posture (C3 applied to this plan's surface)
 

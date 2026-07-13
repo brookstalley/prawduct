@@ -735,23 +735,81 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
 # =============================================================================
 
 
-def cmd_critic_begin(project_dir: Path) -> int:
-    """Mark a Critic review as active so session-mutating `clear` refuses to run.
+def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
+    """Dispatch one Critic review: derive + write the manifest (code, never a
+    model — kernel v3 D8) and set the critic-active marker so session-mutating
+    `clear` refuses to run.
 
-    Called at the start of a /prawduct:critic review. No-op (still exit 0)
-    outside an onboarded repo — there is no session to protect.
+    Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
+           [--chosen-by <rationale>] [--chunk <id>] [--scope <s>] [--tier <t>]
 
-    Also resets `.critic-partials/`: consolidate removes partials only on
-    success, so a waived or stale-failed coordinator review leaves them behind —
-    and a leftover partial at the SAME commit as a fresh dispatch would merge as
-    if the new reviewer had written it. Deterministic here (the coordinator fork
-    has no rm in its allow-list), so every review starts from a clean dir.
+    `--mode` is REQUIRED — a bare invocation means a stale cached skill is
+    driving a newer hook (version skew), and refusing at dispatch with the
+    reload remedy beats running a 4-10 minute review whose manifest the
+    consolidator would reject (C9 tier 3 posture).
+
+    No-op (still exit 0) outside an onboarded repo — no session to protect,
+    no store to dispatch against. Exit 2 = verify-resolutions scope widened
+    past the demotion threshold (the skill falls back to `final`, same
+    convention as compute-verify-resolutions-scope); exit 1 = any other
+    dispatch failure (reason on stderr).
+
+    Also resets `.critic-partials/` before writing the fresh manifest:
+    consolidate removes partials only on success, so a waived or stale-failed
+    review leaves them behind — and a leftover partial at the SAME commit as a
+    fresh dispatch would merge as if the new reviewer had written it.
     """
+    flags = {
+        "--mode": "mode_token",
+        "--chosen-by": "chosen_by",
+        "--chunk": "chunk",
+        "--scope": "scope",
+        "--tier": "tier",
+    }
+    opts: dict[str, str] = {}
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg not in flags:
+            print(f"critic-begin: unknown argument {arg!r}", file=sys.stderr)
+            return 1
+        if i + 1 >= len(argv):
+            print(f"critic-begin: {arg} requires a value", file=sys.stderr)
+            return 1
+        opts[flags[arg]] = argv[i + 1]
+        i += 2
+    if "mode_token" not in opts:
+        print(
+            "critic-begin: --mode is required (this plugin's review dispatch "
+            "is code-written). A bare critic-begin means the running skill "
+            "predates this hook — reload the plugin (/reload-plugins or "
+            "restart the session) before reviewing.",
+            file=sys.stderr,
+        )
+        return 1
+
     prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        print("PRAWDUCT: not an onboarded repo — nothing to review or protect.")
+        return 0
+
     consolidate = _critic_consolidate()
-    if consolidate.partials_dir(prawduct_dir).is_dir():
-        consolidate.remove_partials(prawduct_dir)
+    result = consolidate.begin_review(project_dir, **opts)
+    if result["status"] != "ok":
+        print(f"critic-begin: {result['reason']}", file=sys.stderr)
+        return 2 if result.get("kind") == "scope-widened" else 1
+
+    if result["cleared_leftovers"]:
         print("PRAWDUCT: cleared leftover .critic-partials from a prior review.")
+    for note in result["notes"]:
+        print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+    manifest = result["manifest"]
+    print(
+        f"PRAWDUCT: review {result['id']} dispatched — mode {manifest['mode']!r}, "
+        f"roster {', '.join(result['roster'])} ({manifest['roster_chosen_by']}), "
+        f"{len(manifest['files_changed'])} file(s) changed, "
+        f"tree {manifest['head_tree'][:12]}. Manifest: {result['path']}"
+    )
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
     return 0
@@ -767,12 +825,15 @@ def cmd_critic_end(project_dir: Path) -> int:
 
 
 def cmd_critic_consolidate(project_dir: Path) -> int:
-    """Merge complete reviewer partials into the canonical .critic-findings.json.
+    """Merge complete reviewer partials into evidence facts + the derived cache.
 
-    The deterministic write path of the redesigned Critic coordinator
-    (critic-persistence-redesign): reviewer subagents write per-role partials;
-    this command — invoked by the SubagentStop hook as each finishes and by the
-    session-end backstop — consolidates them idempotently and fail-closed. See
+    The deterministic write path of the Critic data plane (kernel v3 D8):
+    reviewers write per-role partials against the code-written dispatch
+    manifest; this command — invoked by the SubagentStop hook as each
+    finishes, by the single-pass reviewing fork as its last step, and by the
+    session-end backstop — appends the review fact (idempotent by dispatch
+    id), appends any resolution facts, and regenerates .critic-findings.json
+    as a derived view carrying its source fact_id. See
     ``lib/critic_consolidate.py`` for the full contract and exit codes."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
@@ -2865,7 +2926,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force]|critic-begin|critic-end|critic-consolidate|"
+    "{clear [--session-start|--force]|critic-begin --mode <m>|critic-end|critic-consolidate|"
     "subagent-stop|"
     "stop|build-index|user-prompt-submit|test-status|validate-evidence|"
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
@@ -3025,7 +3086,7 @@ def main() -> int:
     if command == "clear":
         return cmd_clear(project_dir, sys.argv[2:])
     elif command == "critic-begin":
-        return cmd_critic_begin(project_dir)
+        return cmd_critic_begin(project_dir, sys.argv[2:])
     elif command == "critic-end":
         return cmd_critic_end(project_dir)
     elif command == "critic-consolidate":
