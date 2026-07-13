@@ -897,7 +897,12 @@
   the verdicts on the briefing surface, and key the synthesis advisory's fact read to the
   session's worktree/branch. Governance-protected → full Critic + PR review. (critic)
 
-## Promoted
+- **[TST-6F2R]** `test-evidence record` with no declared test_command falls back to sys.executable pytest — venv-isolated projects record a catastrophic false-red
+  `effort: M · impact: M · area: test-evidence · source: user · added: 2026-07-13 · status: open · stage: ready · related: TST-3E8V, TST-6V2N, TST-7M3K · refs: bin/prawduct-hook (cmd_test_evidence run fallback, ~line 1903), incoming-bugs/archive/test-evidence-record-persists-false-red-when-test-command-undeclared.md`
+
+  Upstream bug from discodon (incoming-bugs/test-evidence-record-persists-false-red-when-test-command-undeclared.md, severity medium). When project-state.yaml declares no `test_command`, `test-evidence record` falls back to running `sys.executable -m pytest` — the HOOK's interpreter, not the project's venv. In venv-isolated projects (pipenv/poetry/conda), collection fails wholesale on ModuleNotFoundError and the record persists a catastrophic false-red (discodon: 0 passed / 5074 failed, all collection-level import errors) to `.prawduct/.test-evidence.json`, polluting test-status. Verified in the current tree at bin/prawduct-hook:1903-1907 (the report's ~1787-1792 line refs have drifted).
+
+  Fix direction per the report: fail loud — refuse to record (or exit 2 with a clear "wrong interpreter?" message) when collection-level import failure dominates the run (a suite where ~everything dies at collection is a launch-environment error, not a red suite) — and/or require an explicit `test_command` instead of guessing the interpreter (make the sys.executable fallback opt-in). Same code region as TST-3E8V (launch-failure handling) and the TST-6V2N-born writer; TST-7M3K/TST-4K2P shipped the surrounding record semantics. Governance-protected (test-status gate input) → full Critic + PR review. (user — upstream report from discodon)
 
 - **[GOV-4C7X]** Governance kernel redesign (v3) — SHA-keyed evidence store + coverage-algebra gates + deterministic Critic data plane
   `effort: L · impact: L · area: governance/kernel · source: user · added: 2026-07-12 · status: promoted · stage: design · related: CRT-5D8Q, GOV-7T2M, WMK-4Q9T, MIG-6B0R, CRT-9K7T · refs: .prawduct/artifacts/kernel-redesign-discovery.md, .prawduct/artifacts/kernel-inventory-2026-07-12.md, .prawduct/artifacts/build-plan-kernel-evidence-store.md, .prawduct/artifacts/kernel-v3-evidence-design.md · reviewed: 2026-07-12`
