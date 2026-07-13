@@ -226,6 +226,7 @@ class TestConsolidationPins:
 
     CONSOLIDATED_OUT_OF_CRITIC_MODE = (
         "_METADATA_PREFIXES",
+        "METADATA_PREFIXES",
         "_is_metadata_path",
         "_git_head_sha",
         "_current_chunk_id_from_status",

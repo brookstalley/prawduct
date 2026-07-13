@@ -155,8 +155,10 @@ def git_has_changes(project_dir: Path, status_output: str | None = None) -> str:
 # are intentionally absent — a plugin repo never carries them, and a
 # product's *own* skill under ``.claude/skills/`` is product code that must
 # be gated, not excused. The single canonical copy — ``lib/critic_mode.py``'s
-# mirror was consolidated onto this one (STH-2K8R).
-_METADATA_PREFIXES = (
+# mirror was consolidated onto this one (STH-2K8R). Public: the kernel-v3
+# coverage algebra's judgeability predicate keys off it (chunk 02), so it is
+# a load-bearing contract like ``git_common_dir``.
+METADATA_PREFIXES = (
     ".prawduct/",
     ".claude/settings.json",
 )
@@ -164,7 +166,7 @@ _METADATA_PREFIXES = (
 
 def _is_metadata_path(filepath: str) -> bool:
     """Check if a file path is framework/session metadata (not user code)."""
-    return any(filepath.startswith(p) for p in _METADATA_PREFIXES)
+    return any(filepath.startswith(p) for p in METADATA_PREFIXES)
 
 
 def parse_porcelain_line(line: str) -> tuple[str, str | None, str] | None:

@@ -1,0 +1,307 @@
+"""Tests for the coverage algebra (kernel-evidence-store ch.02).
+
+Pure-function coverage: facts and a diff table in, verdict out — no git, no
+I/O. The load-bearing cases are the plan's acceptance bar:
+
+* **CRT-J4PM dissolved** — a composition of chunk reviews + a cumulative +
+  a later ``final`` passes the base→HEAD question with NO label consulted
+  and no re-run.
+* **CRT-5D8Q dissolved** — the metadata/doc-only boundary questions get one
+  answer from one predicate (``is_judgeable_path``), pinned pair by pair.
+* **Stricter-never-looser** — partial edges, rebase gaps, malformed bodies,
+  unknown dispositions, and diff failures all weaken coverage; nothing
+  strengthens it except a valid fact, a valid resolution, or a genuinely
+  non-judgeable interval.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from lib import coverage_algebra as ca  # noqa: E402
+
+
+def _diff(table: dict):
+    """A diff_fn backed by a table; unknown pairs -> None (can't compute)."""
+    return lambda a, b: table.get((a, b))
+
+
+def _review(
+    rid: str,
+    src: str,
+    dst: str,
+    changed: list[str],
+    reviewed: "list[str] | None" = None,
+    findings: "list[dict] | None" = None,
+    mode: str = "chunk",
+) -> dict:
+    body = {
+        "base_tree": src,
+        "head_tree": dst,
+        "files_changed": changed,
+        "files_reviewed": changed if reviewed is None else reviewed,
+        "mode": mode,
+        "findings": findings or [],
+    }
+    return {"schema": 1, "kind": "review", "id": rid, "ts": "t", "body": body}
+
+
+def _resolution(rid: str, review_id: str, fid: str, disposition: str = "fixed") -> dict:
+    return {
+        "schema": 1,
+        "kind": "resolution",
+        "id": rid,
+        "ts": "t",
+        "body": {
+            "finding": {"review_id": review_id, "fid": fid},
+            "disposition": disposition,
+        },
+    }
+
+
+BLOCKER = {"fid": "F-1", "severity": "BLOCKING", "title": "broken thing"}
+
+
+# ---------------------------------------------------------------------------
+# The one judgeability predicate (CRT-5D8Q)
+# ---------------------------------------------------------------------------
+
+
+class TestJudgeablePath:
+    """One answer per path class — the boundary v2.3.3 drew three ways."""
+
+    JUDGEABLE = [
+        "lib/gates.py",
+        "bin/prawduct-hook",
+        "src/app.ts",
+        "config.json",
+        "skills/critic/SKILL.md",  # governance-protected .md IS behavior
+        "methodology/building.md",
+        "templates/build-plan.md",
+        "CLAUDE.md",
+    ]
+    NON_JUDGEABLE = [
+        ".prawduct/backlog.md",  # metadata — the CRT-5D8Q boundary, one way
+        ".prawduct/artifacts/build-plan-x.md",
+        ".prawduct/.critic-findings.json",
+        ".claude/settings.json",
+        "docs/notes.md",  # unprotected prose — the doc-only allowance
+        "README.md",
+    ]
+
+    def test_judgeable(self):
+        for path in self.JUDGEABLE:
+            assert ca.is_judgeable_path(path), path
+
+    def test_non_judgeable(self):
+        for path in self.NON_JUDGEABLE:
+            assert not ca.is_judgeable_path(path), path
+
+    def test_judgeable_files_filter(self):
+        mixed = ["lib/a.py", "docs/a.md", ".prawduct/x", "CLAUDE.md"]
+        assert ca.judgeable_files(mixed) == ["lib/a.py", "CLAUDE.md"]
+        assert ca.judgeable_files(None) == []
+
+
+# ---------------------------------------------------------------------------
+# Composition verdicts
+# ---------------------------------------------------------------------------
+
+
+class TestCoverageVerdict:
+    def test_identical_trees_trivially_covered(self):
+        verdict = ca.coverage_verdict([], "t0", "t0", _diff({}))
+        assert verdict["status"] == "covered"
+        assert verdict["path"] == []
+
+    def test_direct_span(self):
+        facts = [_review("r1", "t0", "t1", ["lib/a.py"])]
+        verdict = ca.coverage_verdict(facts, "t0", "t1", _diff({}))
+        assert verdict["status"] == "covered"
+        assert [s["id"] for s in verdict["path"]] == ["r1"]
+
+    def test_two_fact_chain(self):
+        facts = [
+            _review("r1", "t0", "t1", ["lib/a.py"]),
+            _review("r2", "t1", "t2", ["lib/b.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, "t0", "t2", _diff({}))
+        assert verdict["status"] == "covered"
+        assert [s["id"] for s in verdict["path"]] == ["r1", "r2"]
+
+    def test_doc_only_free_edge_tail(self):
+        facts = [_review("r1", "t0", "t1", ["lib/a.py"])]
+        table = {("t1", "t2"): ["docs/readme.md"]}
+        verdict = ca.coverage_verdict(facts, "t0", "t2", _diff(table))
+        assert verdict["status"] == "covered"
+        kinds = [s["kind"] for s in verdict["path"]]
+        assert kinds == ["review", "free"]
+
+    def test_whole_span_doc_only_needs_no_facts(self):
+        table = {("t0", "t1"): ["docs/a.md", "README.md"]}
+        verdict = ca.coverage_verdict([], "t0", "t1", _diff(table))
+        assert verdict["status"] == "covered"
+
+    def test_partial_edge_does_not_compose(self):
+        # The review saw less than its own diff — a judgeable file escaped.
+        facts = [
+            _review("r1", "t0", "t1", ["lib/a.py", "lib/b.py"], reviewed=["lib/a.py"])
+        ]
+        verdict = ca.coverage_verdict(facts, "t0", "t1", _diff({}))
+        assert verdict["status"] == "uncovered"
+
+    def test_unreviewed_non_judgeable_file_does_not_invalidate(self):
+        facts = [
+            _review(
+                "r1", "t0", "t1", ["lib/a.py", "docs/x.md"], reviewed=["lib/a.py"]
+            )
+        ]
+        verdict = ca.coverage_verdict(facts, "t0", "t1", _diff({}))
+        assert verdict["status"] == "covered"
+
+    def test_rebase_gap_does_not_compose(self):
+        # Review covered t1->t2, but a rebase moved the base: nothing spans
+        # t0->t1 and the interval carries judgeable changes.
+        facts = [_review("r1", "t1", "t2", ["lib/a.py"])]
+        table = {("t0", "t1"): ["lib/other.py"]}
+        verdict = ca.coverage_verdict(facts, "t0", "t2", _diff(table))
+        assert verdict["status"] == "uncovered"
+        assert "no evidence path" in verdict["reason"]
+
+    def test_squash_merge_tree_identity_composes(self):
+        # A squash commit carries the SAME tree the review saw — coverage
+        # holds with no knowledge of the new commit SHA.
+        facts = [_review("r1", "t0", "t-reviewed", ["lib/a.py"])]
+        verdict = ca.coverage_verdict(facts, "t0", "t-reviewed", _diff({}))
+        assert verdict["status"] == "covered"
+
+    def test_diff_failure_is_never_a_free_edge(self):
+        verdict = ca.coverage_verdict([], "t0", "t1", _diff({}))  # all None
+        assert verdict["status"] == "uncovered"
+
+    def test_malformed_fact_body_yields_no_edge(self):
+        facts = [
+            {"schema": 1, "kind": "review", "id": "r-bad", "body": {"head_tree": "t1"}},
+            {"schema": 1, "kind": "review", "id": "r-bad2", "body": None},
+        ]
+        verdict = ca.coverage_verdict(facts, "t0", "t1", _diff({}))
+        assert verdict["status"] == "uncovered"
+
+    def test_mode_label_is_never_consulted(self):
+        # A 'chunk'-labeled fact satisfies a span a v2 PR gate would have
+        # rejected by label — composition only reads trees and files.
+        facts = [_review("r1", "t0", "t1", ["lib/a.py"], mode="chunk")]
+        verdict = ca.coverage_verdict(facts, "t0", "t1", _diff({}))
+        assert verdict["status"] == "covered"
+
+
+class TestBlockingAndResolutions:
+    def test_unresolved_blocker_blocks_with_attribution(self):
+        facts = [_review("r1", "t0", "t1", ["lib/a.py"], findings=[BLOCKER])]
+        verdict = ca.coverage_verdict(facts, "t0", "t1", _diff({}))
+        assert verdict["status"] == "blocked"
+        assert verdict["unresolved"] == [
+            {
+                "review_id": "r1",
+                "fid": "F-1",
+                "severity": "BLOCKING",
+                "title": "broken thing",
+            }
+        ]
+
+    def test_resolution_fact_unblocks_without_rerun(self):
+        facts = [
+            _review("r1", "t0", "t1", ["lib/a.py"], findings=[BLOCKER]),
+            _resolution("s1", "r1", "F-1"),
+        ]
+        verdict = ca.coverage_verdict(facts, "t0", "t1", _diff({}))
+        assert verdict["status"] == "covered"
+
+    def test_waived_disposition_also_resolves(self):
+        facts = [
+            _review("r1", "t0", "t1", ["lib/a.py"], findings=[BLOCKER]),
+            _resolution("s1", "r1", "F-1", disposition="waived"),
+        ]
+        assert ca.coverage_verdict(facts, "t0", "t1", _diff({}))["status"] == "covered"
+
+    def test_unknown_disposition_resolves_nothing(self):
+        facts = [
+            _review("r1", "t0", "t1", ["lib/a.py"], findings=[BLOCKER]),
+            _resolution("s1", "r1", "F-1", disposition="ignored"),
+        ]
+        assert ca.coverage_verdict(facts, "t0", "t1", _diff({}))["status"] == "blocked"
+
+    def test_resolution_for_other_review_does_not_leak(self):
+        facts = [
+            _review("r1", "t0", "t1", ["lib/a.py"], findings=[BLOCKER]),
+            _resolution("s1", "r-other", "F-1"),
+        ]
+        assert ca.coverage_verdict(facts, "t0", "t1", _diff({}))["status"] == "blocked"
+
+    def test_blocker_off_path_does_not_haunt(self):
+        # An abandoned state's blocked review is not on the composing path.
+        facts = [
+            _review("r-dead", "t0", "t-dead", ["lib/x.py"], findings=[BLOCKER]),
+            _review("r1", "t0", "t1", ["lib/a.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, "t0", "t1", _diff({}))
+        assert verdict["status"] == "covered"
+
+    def test_warning_and_note_severities_never_block(self):
+        findings = [
+            {"fid": "F-2", "severity": "WARNING", "title": "w"},
+            {"fid": "F-3", "severity": "note", "title": "n"},
+        ]
+        facts = [_review("r1", "t0", "t1", ["lib/a.py"], findings=findings)]
+        assert ca.coverage_verdict(facts, "t0", "t1", _diff({}))["status"] == "covered"
+
+    def test_malformed_findings_entries_do_not_wedge_the_gate(self):
+        facts = [
+            _review(
+                "r1", "t0", "t1", ["lib/a.py"], findings=["garbage", {"severity": 3}]
+            )
+        ]
+        assert ca.coverage_verdict(facts, "t0", "t1", _diff({}))["status"] == "covered"
+
+
+class TestReproScenarios:
+    def test_crt_j4pm_no_rerun_after_label_mismatch(self):
+        """The v2.3.3 deadlock: chunk reviews + a cumulative + a post-fix
+        'final' — the v2 PR gate rejected the final BY LABEL and demanded a
+        fourth identical run. Composition passes it: base→HEAD spans via
+        cumulative (t0→t2) + final (t2→t3), labels never read."""
+        facts = [
+            _review("chunk-a", "t0", "t1", ["lib/a.py"], mode="chunk"),
+            _review("chunk-b", "t1", "t2", ["lib/b.py"], mode="chunk"),
+            _review("cumulative", "t0", "t2", ["lib/a.py", "lib/b.py"], mode="cumulative"),
+            _review("final-after-fix", "t2", "t3", ["lib/a.py"], mode="final"),
+        ]
+        verdict = ca.coverage_verdict(facts, "t0", "t3", _diff({}))
+        assert verdict["status"] == "covered"
+        ids = [s["id"] for s in verdict["path"]]
+        assert ids in (
+            ["cumulative", "final-after-fix"],
+            ["chunk-a", "chunk-b", "final-after-fix"],
+        )
+
+    def test_crt_5d8q_one_boundary_no_deadlock(self):
+        """The v2.3.3 deadlock was two helpers disagreeing on whether
+        .prawduct/ metadata needed coverage. Here both questions — 'does this
+        interval need review?' and 'is this file in scope?' — go through
+        is_judgeable_path, so a metadata-only tail is free BY THE SAME RULE
+        that excludes metadata from edge validity."""
+        facts = [
+            _review(
+                "r1",
+                "t0",
+                "t1",
+                ["lib/a.py", ".prawduct/backlog.md"],
+                reviewed=["lib/a.py"],  # metadata unreviewed — still valid
+            )
+        ]
+        table = {("t1", "t2"): [".prawduct/artifacts/build-plan-x.md"]}
+        verdict = ca.coverage_verdict(facts, "t0", "t2", _diff(table))
+        assert verdict["status"] == "covered"

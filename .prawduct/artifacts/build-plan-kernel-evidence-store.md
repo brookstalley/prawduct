@@ -43,7 +43,7 @@ write-tree spike (~30 minutes, first Done-when step).
 
 ## Status
 
-- [ ] Chunk 01: Evidence store walking skeleton — append in one worktree, read from another
+- [x] Chunk 01: Evidence store walking skeleton — append in one worktree, read from another
 - [ ] Chunk 02: Coverage algebra + the one non-judgeable predicate
 - [ ] Chunk 03: Deterministic dispatch — code-written manifest, fact-appending consolidate
 - [ ] Chunk 04: Gate cutover — Stop gate and PR gate answer by composition
@@ -144,8 +144,11 @@ else reads `evidence.jsonl` directly. `.critic-findings.json` is written by
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `kernel-v3-evidence-design.md` D4–D6; inventory §3
   (the three divergent doc-only sites)
-- **Deliverables:** new `lib/coverage_algebra.py`, the canonical predicate
-  exported from `lib/coverage.py`, new `tests/test_coverage_algebra.py`
+- **Deliverables:** new `lib/coverage_algebra.py` (including
+  `is_judgeable_path`, THE canonical predicate — it lives in the pure module,
+  not `lib/coverage.py` as first drafted; the divergent copies in
+  `lib/coverage.py`/`lib/gates.py` are deleted at their sites in chunk 04),
+  new `tests/test_coverage_algebra.py`
 - **Tests:** table-driven composition cases — direct span, two-fact chain,
   doc-only free-edge tail, partial edge (under-reviewed file set) must NOT
   compose, rebase gap must NOT compose, squash-merge tree-identity must
