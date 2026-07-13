@@ -44,16 +44,26 @@ write-tree spike (~30 minutes, first Done-when step).
 ## Status
 
 - [x] Chunk 01: Evidence store walking skeleton — append in one worktree, read from another
-- [ ] Chunk 02: Coverage algebra + the one non-judgeable predicate
+- [x] Chunk 02: Coverage algebra + the one non-judgeable predicate
 - [ ] Chunk 03: Deterministic dispatch — code-written manifest, fact-appending consolidate
 - [ ] Chunk 04: Gate cutover — Stop gate and PR gate answer by composition
 - [ ] Chunk 05: Prose surfaces — protocols, methodology, digest
 - [ ] Chunk 06: Upgrade posture + end-to-end scenarios (cumulative)
-Context: Plan authored 2026-07-12; owner approved D1/D3 same day. D3 spike
-PASSED (2026-07-12, plain repo + linked worktree): temp-index write-tree is
-non-mutating (porcelain + real index unchanged), captures untracked, excludes
-gitignored, verbatim commit preserves the tree SHA, and captured objects are
-readable from the other checkout via the shared odb. Chunk 01 built same day.
+Context: Owner approved D1/D3 2026-07-12; D3 spike PASSED same day (plain
+repo + linked worktree; non-mutating, untracked captured, ignored excluded,
+verbatim commit preserves tree, odb shared). Chunks 01–02 shipped 2026-07-13
+(commits 4ee9f7f, 62d9843; chunk 01 Critic final 0-blocking with all 6
+warnings fixed; chunk 02 Critic chunk-mode clean). Next: Chunk 03. Notes for
+its builder: (1) roster derivation is mode→roles config IN CODE — the skill
+passes only `--mode` (+ chosen-by/chunk) to critic-begin; (2) OPEN POINT the
+chunk's confidence check must close: `verify-resolutions` is single-pass (no
+coordinator/partials), so decide who appends its resolution facts —
+extending consolidate to a single-pass persist path or a dedicated
+`critic-record-resolutions` subcommand; the model must not write them;
+(3) manifest gains v3 fields base_tree/head_tree via evidence.capture_tree;
+existing manifest-schema tests will need extending, not weakening;
+(4) sessions still govern via the INSTALLED v2.3.3 plugin, so in-repo data-
+plane changes are inert until release — verify with repo-local bin/ only.
 
 ## Scaffolding
 
