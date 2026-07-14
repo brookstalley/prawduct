@@ -175,7 +175,7 @@ A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference
 
 ## Testing Prawduct
 
-Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance (714 tests):
+Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance (1,716 tests):
 
 ```bash
 cd prawduct
@@ -263,7 +263,14 @@ See [`docs/principles.md`](docs/principles.md) for the full principles with rati
 
 ## Recent Changes
 
-Full history is in [CHANGELOG.md](CHANGELOG.md). Highlights:
+Full release notes are in [CHANGELOG.md](CHANGELOG.md). Two major releases define the current architecture:
+
+### 3.0 — Review evidence as a composable fact store
+- Review results are **append-only facts** in a store shared by every worktree of a clone — not single-slot, per-worktree files judged by modification time and a mode label
+- The Critic, PR, and Stop gates **answer by composing those facts over a range of git trees**, which removes three long-standing frictions: a chunk-reviewed branch no longer demands a redundant full re-review, a good review no longer goes "stale" at a session boundary, and parallel worktrees can see each other's review state
+- The review lifecycle is **code-written end to end** — the model contributes only its judgment, so no hand-written protocol file can silently lose a review
+- **Zero-touch upgrade** despite the major version: the store initializes lazily, so no consuming repo needs a migration commit or carries any repo diff
+- New **`.gitignore` contract-drift advisory** — a session-start nudge when a repo's `.gitignore` drifts from the framework's session-file contract, self-resolving once reconciled
 
 ### 2.0 — Plugin distribution
 - Prawduct ships as a **Claude Code plugin** — product repos commit zero framework files, just a small install reference; updates arrive with zero repo diff
@@ -272,7 +279,8 @@ Full history is in [CHANGELOG.md](CHANGELOG.md). Highlights:
 - **`/prawduct:migrate`** — one-command, reversible v1 file-sync → plugin cutover (see [MIGRATION](documentation/MIGRATION.md))
 - Plugin-native onboarding/scaffolding via `/prawduct:onboard` (health-check/repair stays `/prawduct:doctor`)
 - Gitflow release model (see [docs/release-process.md](docs/release-process.md))
-- Backward compatible: existing v1 file-sync repos migrate onto the plugin via `/prawduct:migrate` (one reversible, revertable commit)
+
+Between these two, the **2.1–2.3** line hardened the framework without changing its shape: reviews became proportional, observable (a governance ledger + `review-stats`), and resilient (a persistence redesign so a coordinator review can't be silently lost); the backlog grew lifecycle stages and multi-agent claims; API design joined the cross-cutting concerns; and dozens of gate-soundness and session hot-path fixes landed. See the [CHANGELOG](CHANGELOG.md) for the full stream.
 
 ## License
 
