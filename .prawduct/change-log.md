@@ -3,6 +3,85 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)
+
+<!-- prawduct: type=feature | release=v3.0.3 | status=shipped -->
+<!-- Statusless on a feature branch = release-pending once merged. Medium framework
+     feature, no build plan: an ~89-line additive clause across lib/gates.py +
+     bin/prawduct-hook plus a validation matrix; the design spike served as the plan.
+     One final Critic + a verify-resolutions delta pass. -->
+
+**Parent:** `.prawduct/artifacts/spike-tree-validated-test-evidence.md` — the design spike for
+kernel-v3 §4's deferred "test evidence on the store" item. Advances COV-3R9K suggested-fix-1 (the
+ADDITIVE framing, distinct from the rejected replace-timestamp direction), closes the
+governance-metadata false-re-run and the restart false-stale surfaced in the v3.0.2 session.
+
+**Why:** test-evidence freshness (`tests_are_current`) keyed on the session timestamp (WHEN a run
+happened), not the tree it ran against — so a restart with no change, a `.prawduct/*.yaml` edit,
+or a doc-only edit all re-staled evidence and forced a full re-run. v3 tree-anchored REVIEW
+evidence but left TEST evidence on the timestamp model.
+
+**What:** an ADDITIVE tree-validity clause — `test-status` is current iff session-fresh OR the
+judgeable-scoped working tree is byte-identical to the tree the recorded run ran against
+(`evidence_tree`, captured via `evidence.capture_tree` at `record`; skipped for `--from-counts`).
+A disjunction that only ever relaxes stale→current, so it is structurally incapable of the
+false-STALE class that retired the content-hash fingerprint and `git_sha`. Classifies paths
+(`is_judgeable_path`), never file contents. The env-drift tradeoff (the incidental per-session
+re-run) was accepted by the owner. Validation matrix (§9): 11 relax/stale cases + 2
+fail-toward-stale unit tests; full suite 1727 passed. Review protocols and `building.md` need no
+prose change (they key off the `test-status` exit code).
+
+- `lib/gates.py`: `_test_evidence_tree_valid` helper + the OR-clause in `tests_are_current`;
+  `evidence_tree` optional-schema field.
+- `bin/prawduct-hook` (`cmd_test_evidence`): capture the working-tree SHA; skipped for `--from-counts`.
+- `tests/test_plugin_runtime.py`: `TestTreeValidatedFreshness` (matrix) + `TestTreeValidHelperFailsToStale` (fail-safe).
+- Dropped the spike's proposed `head_tree` field (no consumer reads it).
+
+## 2026-07-14: Test-evidence ingest on-ramps work with a declared test_command (test-evidence-declared-command-onramps)
+
+<!-- prawduct: type=fix | release=v3.0.2 | status=shipped -->
+<!-- Small bugfix, no build plan (a ~73-line CLI-validation relaxation across one
+     hook, its docstring, one methodology bullet, and three tests — proportional
+     effort warranted no plan, so no scope=/chunks=). Parent and provenance below. -->
+
+**Parent:** `methodology/building.md` Verify bullet already promised the ingest on-ramps
+(`--from-junit`, `--from-counts`, `--no-rerun`) as a universal way to record evidence *without*
+re-running — completing the single-run intent of the `test-evidence-single-run` work
+(COV-3R9K, `learnings.md`). The code contradicted that promise for the repos most likely to
+need it. Surfaced by a v3.x product session: a declared-`test_command` repo ran its full
+17,777-test suite, then was forced to re-run the *entire* suite through the hook just to stamp
+evidence, because every cheap on-ramp was rejected when `test_command:` was set.
+
+**Why:** `cmd_test_evidence` hard-rejected `--from-junit`, `--from-counts`, and `--no-rerun`
+whenever `project-state.yaml` declared a `test_command:`. The exclusion assumed "if you declared
+a runnable command, the hook can run it for you, so you don't need the on-ramps" — but the hook
+re-running the declared command pays full-suite cost a *second* time, running the identical
+command the builder just ran. So the products most likely to have large suites and to declare
+their command were the only ones with no way to avoid a redundant full re-run.
+
+**What:** Relaxed the exclusion, scoped by trust posture:
+- **`--from-junit` + declared `test_command:` → allowed.** A declared command MUST emit JUnit
+  (`{junit_xml}` is required), so ingesting the report the canonical command produced is honest,
+  machine-backed evidence — the single-run path for a declared-command repo.
+- **`--no-rerun` + declared `test_command:` → allowed.** Restamp reuses the existing record's
+  counts and re-derives only the F4a coverage half; it introduces no new counts, so no
+  scoped-subset risk.
+- **`--from-counts` + declared `test_command:` → still rejected**, but the error now **redirects
+  to `--from-junit`** (that command emits JUnit, so hand-typed counts — the one path with no
+  artifact — are unnecessary and the weakest posture). This preserves the scoped-subset
+  protection the knob exists for while fixing the discoverability half of the friction.
+- The RUN-path constraints (`{junit_xml}` placeholder, extra-args rejection) are now gated behind
+  a `will_run` flag so they apply only when the suite is actually run, not on ingest/restamp.
+- Docstring + `methodology/building.md` Verify bullet updated to prescribe the declared-command
+  single-run workflow.
+
+**Tests:** `tests/test_plugin_runtime.py` — the from-junit rejection test became an
+ingest-success test (a failing repo-test + passing ingested report → exit 0 proves the declared
+command is not re-run); added a restamp-with-`test_command:` test; the from-counts test now
+asserts the `--from-junit` redirect. Full suite green (1714 passed, 1 skipped, 0 failed).
+Independent Critic review (final, single-pass): **0 blocking**, 1 warning (this change-log
+entry), resolved here.
+
 ## 2026-07-14: Reviewers run on the session model — reviewer-model tiering removed (reviewer-session-model)
 
 <!-- prawduct: type=fix | release=v3.0.1 | status=shipped -->

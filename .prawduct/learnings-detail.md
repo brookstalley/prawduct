@@ -616,3 +616,39 @@ vendor research (two parallel web-research agents ran meanwhile), so GitHub/Line
 informed a separate adopt/build/buy section rather than anchoring the requirements themselves;
 and the sweep was one read-only background agent — cheap insurance against designing to the
 complaint instead of the disease.
+
+---
+
+## Re-attempting a mechanism rejected for a false-positive class: make it ADDITIVE and relax-only (tree-validated test-evidence freshness, 2026-07-14)
+
+Context: the deferred kernel-v3 §4 item ("test evidence on the store") had three live frictions —
+restart false-stale, doc/metadata-edit re-run, chronic per-session re-run — all rooted in
+`tests_are_current` keying freshness on `timestamp >= .session-start` (WHEN the run happened)
+rather than WHAT tree it ran against. The obvious fix ("stamp a tree hash, compare it") was the
+*exact* direction rejected twice before: the content-hash fingerprint (HEAD SHA + sha256 of dirty
+files, v1.3.4→v1.3.8) and `git_sha` (v2.1.8, TST-4K2P) — both rejected for chronic false-STALES,
+a standing and explicit rejection (COV-3R9K, kernel-v3 R10, `coverage_algebra.py:66`).
+
+What made the third attempt land where two failed:
+- **Additive, relax-only shape.** Not "replace the timestamp with a tree check" but "current iff
+  session-fresh OR tree-valid." A disjunction that only moves evidence stale→fresh cannot, by
+  construction, produce a false stale — the failure mode of both predecessors. The immunity is a
+  property of the shape, not of implementation care.
+- **Path-classification, not content-hashing.** The clause diffs two git tree objects
+  (`capture_tree` / `tree_diff`) and filters with `is_judgeable_path` — it never hashes file
+  bytes, so it honors the standing "paths classify, contents don't" rule. Metadata churn (the
+  record's own `.prawduct/.test-evidence.json` write, doc edits) filters out; the verbatim-commit
+  case survives because the *judgeable-scoped* tree is preserved even though the raw tree SHA
+  shifts when `record` writes the evidence file — the stronger, real invariant.
+- **`evidence_tree` is a gate-consumed object, not an eyeball field.** `git_sha` failed partly
+  because review agents *read* it and inferred staleness from a lagging SHA. `evidence_tree` is
+  only ever consumed by the gate's tree-diff — no human/agent reads it as a position signal.
+
+Build-time refinements the design predicted imperfectly: dropped the proposed `head_tree` field
+(no consumer — the clause needs only `tree_diff(evidence_tree, current_tree)`), and excluded
+`--from-counts` from capture (hand-typed counts carry no machine tie to the working tree; this
+also preserved the standing `test_restamp_flips_stale_record_to_current` contract). Validation
+matrix: 11 cases (5 relax-only current, 5 judgeable-change stale, 1 `--from-counts`-stays-stale)
+plus 2 monkeypatch fail-toward-stale unit tests; full suite 1727 passed. The env-drift tradeoff
+(the incidental per-session re-run that catches dep/flake drift with no file footprint) was
+explicitly accepted by the owner as an expensive, undesigned safety net.

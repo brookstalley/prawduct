@@ -67,18 +67,35 @@ _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 # field keep their existing gate behavior.
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
+    # ``evidence_tree`` (spike-tree-validated-test-evidence.md): the working-tree
+    # SHA the recorded run ran against, captured via ``evidence.capture_tree`` at
+    # ``record`` time. Consumed ONLY by the additive tree-validity clause in
+    # ``tests_are_current`` — a str when present, always omitted (never null) when
+    # capture failed or the on-ramp is ``--from-counts``, so old and count-only
+    # records keep exactly their pre-clause timestamp-only behavior.
+    "evidence_tree": (str,),
 }
 
 
 def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     """Decide whether saved test evidence is fresh enough to trust.
 
-    Uses a "trust the cycle" model: evidence is current if it was written
-    during this session (timestamp >= session start) and all tests passed.
-    No tree-hashing or content fingerprinting (those mechanisms were
-    removed pre-v1.4 after chronic false positives from metadata churn) —
-    the build cycle (write code → run tests → Critic reviews) is the
-    trust boundary.
+    Two ways evidence is current, either sufficient (a disjunction), with
+    ``failed == 0`` required for both:
+
+    1. **Session-fresh** — written during this session (timestamp >= session
+       start). The "trust the cycle" model: write code → run tests → Critic
+       reviews is the trust boundary.
+    2. **Tree-valid** — the judgeable-scoped working tree is byte-identical to
+       the tree the recorded run ran against (:func:`_test_evidence_tree_valid`).
+       An *additive* clause (spike-tree-validated-test-evidence.md) that only
+       ever relaxes a timestamp-stale verdict to current, never the reverse:
+       structurally incapable of a false stale, the failure class that retired
+       the removed content-hash "fingerprint" and ``git_sha`` mechanisms. It
+       classifies *paths* (git tree-diff + ``is_judgeable_path``), never file
+       *contents* — the standing ``coverage_algebra`` rule that kept those
+       mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
+       ``--from-counts`` on-ramp) skip clause 2 and behave exactly as before.
 
     Falls back to timestamp-only comparison when no session-start marker
     exists (e.g., running outside a governed session).
@@ -122,12 +139,60 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     if session_start:
         if evidence_ts >= session_start:
             return True, f"evidence from this session ({evidence_ts})"
+        # Timestamp-stale — but the additive tree-validity clause can still
+        # vouch when nothing judgeable has changed since the recorded run. A
+        # relax-only disjunction: it can only turn this stale into current,
+        # never the reverse, so it cannot manufacture a false stale.
+        recorded_tree = evidence.get("evidence_tree")
+        if isinstance(recorded_tree, str) and recorded_tree:
+            tree_valid, tree_reason = _test_evidence_tree_valid(project_dir, recorded_tree)
+            if tree_valid:
+                return True, f"tree-valid despite predating session: {tree_reason}"
         return False, f"evidence predates session ({evidence_ts} < {session_start})"
 
     # No session-start marker — fall back to recency check.
     # Evidence exists with passing tests and a timestamp, but we can't verify
     # it's from this session. Accept it with a note.
     return True, f"evidence has passing tests ({evidence_ts}, no session marker to verify)"
+
+
+def _test_evidence_tree_valid(
+    project_dir: Path, recorded_tree: str
+) -> tuple[bool, str]:
+    """Additive tree-validity clause for :func:`tests_are_current` (clause 2).
+
+    Test evidence is *tree-valid* when the judgeable-scoped diff between the
+    working tree the recorded run ran against (``recorded_tree``) and the
+    current working tree is empty — nothing that needs test coverage changed
+    since the run, so the recorded pass still covers the current state. Uses
+    the same primitives the v3 review gates trust: ``evidence.capture_tree``
+    (temp index, never touches the session — R1), ``evidence.tree_diff``
+    (git-native ``diff --name-only``), and ``coverage_algebra.judgeable_files``
+    (metadata/session churn and non-protected ``.md`` are not judgeable, so
+    the record's own ``.prawduct/.test-evidence.json`` write and doc edits are
+    filtered out). Classifies paths, never file contents.
+
+    Fails toward *not valid* (the caller keeps the timestamp verdict) whenever
+    the tree cannot be captured or diffed, so a git failure can only leave
+    evidence stale — never flip it fresh. Returns ``(is_valid, reason)``.
+    """
+    capture = evidence.capture_tree(project_dir)
+    if capture.get("status") != "ok":
+        return False, f"cannot capture the working tree ({capture.get('reason', 'unknown')})"
+    current_tree = capture["tree"]
+    if current_tree == recorded_tree:
+        return True, f"working tree identical to the recorded run ({recorded_tree[:12]})"
+    changed = evidence.tree_diff(project_dir, recorded_tree, current_tree)
+    if changed is None:
+        return False, "tree diff unavailable (missing object or git failure)"
+    judgeable = coverage_algebra.judgeable_files(changed)
+    if judgeable:
+        preview = ", ".join(judgeable[:3]) + ("…" if len(judgeable) > 3 else "")
+        return False, f"{len(judgeable)} judgeable path(s) changed since the run ({preview})"
+    return True, (
+        f"only non-judgeable paths changed since the run "
+        f"({len(changed)} metadata/doc file(s))"
+    )
 
 
 def _read_session_start(prawduct_dir: Path) -> str:

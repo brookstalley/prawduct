@@ -1363,15 +1363,23 @@ class TestFromJunitIngest:
         assert res.returncode == 2
         assert "from-junit" in res.stderr.lower()
 
-    def test_rejects_combination_with_test_command(self, tmp_path):
-        repo = self._repo(tmp_path)
+    def test_ingests_with_declared_test_command(self, tmp_path):
+        # A declared test_command emits JUnit; the single-run path is to run it
+        # once and ingest its report — NOT re-run inside `record`. The repo's own
+        # test would FAIL if run; ingesting a passing report proves the declared
+        # command was not re-executed. (Was a rejection; the exclusion forced the
+        # exact double-run the on-ramp exists to remove — see change-log.)
+        repo = self._repo(tmp_path, "def test_bad():\n    assert False\n")
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
         )
-        junit = self._junit(repo)
+        junit = self._junit(repo, tests=2, failures=0)
         res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
-        assert res.returncode == 2
-        assert "test_command" in res.stderr
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"]) == (2, 0)
+        assert ev["command"] == f"--from-junit {junit}"
+        assert junit.is_file()  # report read, not consumed
 
 
 class TestFromCountsIngest:
@@ -1489,6 +1497,10 @@ class TestFromCountsIngest:
         assert "from-counts" in res.stderr.lower()
 
     def test_rejects_combination_with_test_command(self, tmp_path):
+        # A declared test_command emits JUnit, so hand-typed counts (no artifact)
+        # stay rejected — but the error redirects to --from-junit, which ingests
+        # that report without a re-run (fixes the discoverability half: the agent
+        # need not guess the escape hatch).
         repo = self._repo(tmp_path)
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
@@ -1497,6 +1509,7 @@ class TestFromCountsIngest:
                       "passed=1", "failed=0")
         assert res.returncode == 2
         assert "test_command" in res.stderr
+        assert "from-junit" in res.stderr.lower()
 
     def test_head_tilde1_base_emits_advisory(self, tmp_path):
         # A repo NOT on main with no origin → the recorder's overlay base falls
@@ -1657,6 +1670,195 @@ class TestNoRerunRestamp:
         res = _run_in(repo, "test-evidence", "record", "--no-rerun", "--", "-k", "foo")
         assert res.returncode == 2
         assert "no-rerun" in res.stderr.lower() or "restamp" in res.stderr.lower()
+
+    def test_allows_restamp_with_declared_test_command(self, tmp_path):
+        # Restamp reuses the existing record's counts and re-derives only the
+        # coverage half — no suite run — so a declared test_command is fine.
+        # Seed via --from-junit (the declared-command ingest path), then restamp.
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        junit = repo / "r.xml"
+        junit.write_text(
+            '<testsuites><testsuite name="pytest" tests="4" failures="0" '
+            'errors="0" skipped="0" time="1.0"></testsuite></testsuites>\n'
+        )
+        assert _run_in(repo, "test-evidence", "record",
+                       "--from-junit", str(junit)).returncode == 0
+        assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 4
+
+
+class TestTreeValidatedFreshness:
+    """spike-tree-validated-test-evidence.md §9 — the build gate for the
+    additive tree-validity clause. Each case seeds a real `record` (which
+    captures `evidence_tree`), backdates the record's timestamp so it PREDATES
+    the session (timestamp alone now reads stale), then asserts the tree clause
+    decides correctly: an unchanged judgeable tree reads `current` across the
+    session boundary; ANY judgeable change reads `stale`. Proves the disjunction
+    only ever relaxes stale->current — structurally incapable of the false-stale
+    that retired the fingerprint and git_sha mechanisms.
+    """
+
+    def _seed(self, tmp_path, name: str) -> Path:
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        # A judgeable src file to mutate in the "stale" cases; the suite itself
+        # is trivial and self-contained so the seed `record` never depends on
+        # import paths.
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0, "seed record"
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        # End-to-end: a real run captures evidence_tree AND the F4a overlay's
+        # existing.update() preserves it.
+        assert isinstance(ev.get("evidence_tree"), str) and ev["evidence_tree"], \
+            "a real run must persist evidence_tree through the F4a overlay"
+        ev["timestamp"] = "2000-01-01T00:00:00Z"  # predate the session
+        ev_path.write_text(json.dumps(ev))
+        return repo
+
+    # --- relax-only: an unchanged judgeable tree stays current across sessions ---
+
+    def test_restart_no_change_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "restart")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "unchanged tree must read current despite predating the session"
+
+    def test_metadata_yaml_edit_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "meta")
+        (repo / ".prawduct" / "project-state.yaml").write_text("views_enabled: true\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            ".prawduct/*.yaml is not judgeable — must stay current"
+
+    def test_non_protected_md_edit_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "doc")
+        (repo / "README.md").write_text("# notes\nchanged\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "a non-protected .md is not judgeable — must stay current"
+
+    def test_untracked_incoming_bug_note_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "bug")
+        (repo / "incoming-bugs").mkdir()
+        (repo / "incoming-bugs" / "report.md").write_text("# bug report\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "an untracked .md note is not judgeable — must stay current"
+
+    def test_verbatim_commit_is_current(self, tmp_path):
+        # Committing the already-recorded state must not invalidate: the tree's
+        # judgeable content is unchanged (only the record's own metadata moved).
+        repo = self._seed(tmp_path, "commit")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "commit recorded state verbatim")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "a verbatim commit preserves the judgeable tree — must stay current"
+
+    # --- correctly stale: any judgeable change re-stales ---
+
+    def test_src_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "src")
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a src edit is judgeable — must read stale"
+
+    def test_test_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "tst")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert 1 == 1\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a test edit is judgeable — must read stale"
+
+    def test_untracked_test_file_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "newtest")
+        (repo / "test_extra.py").write_text("def test_x():\n    assert True\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "an untracked test file is judgeable — must read stale"
+
+    def test_lockfile_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "lock")
+        (repo / "uv.lock").write_text("# dependency footprint changed\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a lockfile is judgeable — a recorded dep change must read stale"
+
+    def test_hook_edit_is_stale(self, tmp_path):
+        # The vetted judgeability predicate makes bin/prawduct-hook judgeable, so
+        # editing it invalidates — closing the inverse false-fresh the old
+        # metadata-filter patch introduced by skipping the hook itself.
+        repo = self._seed(tmp_path, "hook")
+        (repo / "bin").mkdir()
+        (repo / "bin" / "prawduct-hook").write_text("#!/usr/bin/env python3\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "the hook is judgeable — editing it must read stale"
+
+    # --- from-counts stays timestamp-only (captures no tree) ---
+
+    def test_from_counts_captures_no_tree_and_stays_stale_when_backdated(self, tmp_path):
+        # --from-counts is the untied on-ramp: it captures no evidence_tree, so a
+        # backdated count record reads stale (timestamp-only), preserving the
+        # pre-clause contract even though the working tree is unchanged.
+        repo = tmp_path / "counts"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_ok.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=1", "failed=0").returncode == 0
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        assert "evidence_tree" not in ev, "--from-counts must not capture a tree"
+        ev["timestamp"] = "2000-01-01T00:00:00Z"
+        ev_path.write_text(json.dumps(ev))
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "backdated --from-counts is stale (timestamp-only; no tree clause)"
+
+
+class TestTreeValidHelperFailsToStale:
+    """The tree-validity clause must FAIL TOWARD STALE on any git error: a
+    capture or diff failure can only leave evidence stale, never flip it fresh
+    (the false-fresh a gate must never produce). Unit-level with monkeypatch —
+    these fail-safe branches are impractical to trigger through a real repo.
+    """
+
+    def _gates(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+        return gates
+
+    def test_capture_failure_reads_not_valid(self, monkeypatch):
+        gates = self._gates()
+        monkeypatch.setattr(
+            gates.evidence, "capture_tree",
+            lambda project_dir: {"status": "error", "reason": "git exploded"},
+        )
+        ok, reason = gates._test_evidence_tree_valid(ROOT, "deadbeefdeadbeef")
+        assert ok is False and "capture" in reason.lower()
+
+    def test_tree_diff_unavailable_reads_not_valid(self, monkeypatch):
+        gates = self._gates()
+        # capture succeeds but returns a DIFFERENT tree, so the diff path is
+        # reached; tree_diff then returns None (missing object / git failure).
+        monkeypatch.setattr(
+            gates.evidence, "capture_tree",
+            lambda project_dir: {"status": "ok", "tree": "1111111111111111"},
+        )
+        monkeypatch.setattr(
+            gates.evidence, "tree_diff",
+            lambda project_dir, a, b: None,
+        )
+        ok, reason = gates._test_evidence_tree_valid(ROOT, "2222222222222222")
+        assert ok is False and "diff" in reason.lower()
 
 
 class TestTestEvidenceKnobs:
