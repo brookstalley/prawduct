@@ -1,6 +1,6 @@
 ---
 name: critic-reviewer
-description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator (final medium/large and cumulative modes); reviews ONLY its assigned goals through code analysis and writes ONLY its own partial findings file. Not for direct use — the coordinator dispatches it.
+description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator (final/cumulative reviews at 5+ changed files); reviews ONLY its assigned goals through code analysis and writes ONLY its own partial findings file. Not for direct use — the coordinator dispatches it.
 tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Write
 model: inherit
 ---
@@ -73,7 +73,7 @@ whole consolidation closed, so match it exactly):
 
 `files` on a finding is optional (omit when not file-specific). `findings` is `[]` for a
 clean pass. `commit_reviewed` MUST be the SHA you were given — the consolidator checks every
-reviewer reviewed the same commit and that it still covers HEAD; a mismatch fails closed.
+reviewer reviewed the commit the manifest dispatched; a mismatch fails closed.
 
 Your final assistant message is not read by any gate — the partial file is your entire
 output. Once it is written, you are done.

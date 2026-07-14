@@ -2,11 +2,24 @@
 
 Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 6). Holds the gate
 *decision helpers* the Stop hook orchestrates — test-evidence currency + schema
-validation, critic-findings schema + cumulative/verify-resolutions gate logic,
-build-plan chunk counting, and the trivial/build-plan state probes — plus the
-four self-contained gate CLI commands (``test_status`` / ``validate_evidence`` /
-``check_cumulative_critic`` / ``verify_coverage``). The hook keeps thin ``cmd_*``
-wrappers delegating here via the lazy ``_gates()`` accessor.
+validation, the critic-findings cache schema (validated at its writers:
+``critic-consolidate`` and ``ledger-append``), the kernel-v3 composition
+gates, build-plan chunk counting, and the trivial/build-plan state probes —
+plus the four self-contained gate CLI commands (``test_status`` /
+``validate_evidence`` / ``check_cumulative_critic`` / ``verify_coverage``).
+The hook keeps thin ``cmd_*`` wrappers delegating here via the lazy
+``_gates()`` accessor.
+
+**Review gates answer by composition** (kernel-v3-evidence-design.md D6,
+chunk 04). Both review gates load facts via ``lib.evidence`` and delegate the
+verdict to ``lib.coverage_algebra`` — the PR gate asks Q1 (does composed
+coverage span merge-base tree → HEAD tree with zero unresolved blocking
+findings?), the Stop-hook Critic gate asks Q2 (session base tree → current
+working tree). No gate reads ``.critic-findings.json`` (a derived cache for
+builders/briefings, D7), branches on a review's mode label, or compares file
+mtimes against ``.session-start`` — those mechanisms (mode-label acceptance,
+``extends_cumulative`` chains, ``_record_covers_head``, verify-resolutions
+scope subsets, the ledger fallback) are deleted by design, not preserved.
 
 ``cmd_stop`` itself STAYS in the hook (it is the deliberately-inline hot-path
 gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
@@ -15,22 +28,20 @@ gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 were reassigned here (they are gate logic, lib-clean) from the briefing region.
 
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
-(build-plan Status parsing, including ``_count_build_plan_chunks``) and ``core``
+(build-plan Status parsing, including ``_count_build_plan_chunks``),
+``evidence`` / ``coverage_algebra`` (the v3 data plane), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
-mirror), plus the stdlib — the DAG node
-``gitstate``/``coverage``/``buildplan_refs`` ← ``gates``.
+mirror), plus the stdlib.
 """
 
 
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
-from . import buildplan_refs, coverage, gitstate
+from . import buildplan_refs, coverage, coverage_algebra, evidence, gitstate
 from .core import read_bool_yaml_key
 
 
@@ -121,9 +132,9 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
 
 def _read_session_start(prawduct_dir: Path) -> str:
     """Content of the ``.session-start`` marker, or ``""`` when the marker is
-    missing or unreadable. Shared by the test-evidence freshness check
-    (:func:`tests_are_current`) and the PR gate's ledger-fallback freshness
-    bound (CRT-8W3F) — both compare ISO-8601 UTC strings against it."""
+    missing or unreadable. Used by the test-evidence freshness check
+    (:func:`tests_are_current`), which compares ISO-8601 UTC strings
+    against it."""
     try:
         return (prawduct_dir / ".session-start").read_text().strip()
     except OSError:
@@ -376,21 +387,9 @@ def _validate_critic_findings_data(data) -> bool:
                     continue
                 if not isinstance(val, str) or not val.strip():
                     return False
-        # CRT-4J8W — extends_cumulative chains a verify-resolutions record
-        # to the cumulative review it extends, so the PR gate can accept
-        # cumulative@X + clean delta-review covering X..HEAD instead of
-        # forcing a full bundle re-review. Optional; when present and
-        # non-null it must be a dict whose commit_reviewed is a non-empty
-        # string — anything else is writer drift (a malformed anchor would
-        # silently break the chain check at the gate), surfaced here.
-        if "extends_cumulative" in data:
-            ext = data["extends_cumulative"]
-            if ext is not None:
-                if not isinstance(ext, dict):
-                    return False
-                anchor = ext.get("commit_reviewed")
-                if not isinstance(anchor, str) or not anchor.strip():
-                    return False
+        # (The CRT-4J8W ``extends_cumulative`` chain anchor was retired with
+        # the chain gate itself — kernel-v3 chunk 04: composition over store
+        # facts replaced chain bookkeeping, and no writer emits the field.)
         # v1.5 Chunk 03 — mode_chosen_by records which rule fired in the
         # inference helper, or the literal "explicit-args" when the
         # builder overrode inference. Optional for back-compat. When
@@ -413,276 +412,174 @@ def _validate_critic_findings_data(data) -> bool:
         return False
 
 
-def _chain_anchor(data: dict) -> str | None:
-    """Return the cumulative anchor a verify-resolutions pass over ``data``
-    would extend, or ``None`` when the record is not chain-extendable.
+_SESSION_BASE_TREE_MARKER = ".session-base-tree"
 
-    Chain-extendable (CRT-4J8W): a ``cumulative``-mode record (anchor = its
-    own ``commit_reviewed`` — the bundle review being extended), or a
-    ``verify-resolutions``-mode record that itself carries a valid
-    ``extends_cumulative`` (multi-link propagation: the original anchor is
-    carried forward; ``files_reviewed`` accumulates link by link, so the
-    gate's ``X..HEAD ⊆ files_reviewed`` check stays sound, and the
-    scope-widening demotion bounds chain length naturally). Prior BLOCKING
-    findings do NOT disqualify the anchor — the verify pass adjudicates
-    resolution and re-emits anything unresolved, and the PR gate accepts
-    only 0-BLOCKING chain records (build plan gate-soundness ch.5
-    declared decision).
-    """
-    mode = data.get("mode")
-    commit_reviewed = data.get("commit_reviewed")
-    if not isinstance(commit_reviewed, str) or not commit_reviewed.strip():
-        return None
-    if mode == _CRITIC_MODE_CUMULATIVE:
-        return commit_reviewed
-    if mode == _CRITIC_MODE_VERIFY_RESOLUTIONS:
-        ext = data.get("extends_cumulative")
-        if isinstance(ext, dict):
-            anchor = ext.get("commit_reviewed")
-            if isinstance(anchor, str) and anchor.strip():
-                return anchor
+
+def _read_session_base_tree(prawduct_dir: Path) -> str:
+    """Content of the ``.session-base-tree`` marker (the ``HEAD^{tree}`` SHA
+    ``cmd_clear`` recorded at session start), or ``""`` when missing or
+    unreadable — the session gate then degrades to a HEAD-tree base (its
+    jurisdiction shrinks to uncommitted work, exactly the v2 scope)."""
+    try:
+        return (prawduct_dir / _SESSION_BASE_TREE_MARKER).read_text().strip()
+    except OSError:
+        return ""
+
+
+def _store_precheck(read: dict) -> "tuple[str, str] | None":
+    """``None`` when a ``read_facts`` result is usable by a gate; else the
+    ``(status, reason)`` the gate must fail closed on. A schema-ahead fact
+    (written by a NEWER plugin) blocks with the exact remedy — this reader
+    cannot know what it attests, and it may be the freshest review (C9
+    tier 3: never silently drop, never pass)."""
+    if read.get("status") == "error":
+        return "error", str(read.get("reason", "evidence store unreadable"))
+    ahead = read.get("schema_ahead") or []
+    if ahead:
+        schemas = sorted({a.get("schema") for a in ahead if a.get("schema")})
+        return "schema-ahead", (
+            f"{len(ahead)} evidence fact(s) carry schema "
+            f"{'/'.join(str(s) for s in schemas)}, newer than this plugin "
+            "understands — written by a newer prawduct. Update the plugin "
+            "(/reload-plugins or restart Claude Code), then re-run the gate."
+        )
     return None
 
 
-def _compute_verify_resolutions_scope(
-    prawduct_dir: Path, project_dir: Path
-) -> tuple[list[str], str]:
-    """Compute the file scope a ``/prawduct:critic verify-resolutions`` pass should review.
+def session_changes_all_non_judgeable(
+    project_dir: Path, status_output: "str | None" = None
+) -> bool:
+    """True when the session changed files but NONE of them needs review
+    coverage — the "doc-only" carveout, now answered by THE judgeability
+    predicate (``coverage_algebra.is_judgeable_path``, CRT-5D8Q fix) instead
+    of a bare ``.endswith(".md")`` copy. A governance-protected ``.md``
+    (``skills/``, ``methodology/``, ``templates/``, root ``CLAUDE.md``) is
+    judgeable, so editing one no longer skips the reflection/Critic gates.
 
-    Reads the *prior* ``.prawduct/.critic-findings.json`` (the record the
-    builder is about to re-verify) and returns the union of:
-
-      1. ``files_reviewed`` from the prior record — files the Critic already
-         examined — but only when actionable findings (BLOCKING or WARNING)
-         exist. NOTE-only and clean records have nothing to verify.
-      2. Files changed since ``commit_reviewed`` — anchor recorded in Chunk
-         01 — computed as ``git diff --name-only <commit_reviewed>`` plus
-         untracked files. Mirrors ``_coverage_changed_files``'s diff +
-         ls-files-others union so the verify pass sees the same shape the
-         cumulative-Critic flow does.
-
-    Returns ``(scope, reason)``. ``scope`` is sorted; ``reason`` is human-
-    readable. Successful computations return a non-empty scope and a reason
-    prefixed ``ok:``. All other cases return an empty scope and a categorized
-    reason so the caller (Critic agent or stop-hook gate) can fall safely
-    through to ``/prawduct:critic chunk`` or ``/prawduct:critic final``:
-
-      - ``no-findings:`` — prior findings file missing.
-      - ``unreadable-findings:`` — JSON parse or I/O failure.
-      - ``no-commit-reviewed:`` — anchor absent / null / empty. Pre-v1.5
-        records are valid for the schema but cannot serve as a verify
-        baseline; the helper fails closed.
-      - ``no-actionable-findings:`` — only NOTEs (or empty findings). Verify-
-        resolutions has nothing to re-check.
-      - ``invalid-files-reviewed:`` — schema-permitted but unusable
-        (non-list or empty list).
-      - ``unresolved-commit:`` — ``commit_reviewed`` does not resolve in
-        the current repo (rebase, force-push, or simply never on this
-        branch). Cannot compute a delta.
-      - ``git-diff-failed:`` — the diff invocation itself failed.
-      - ``scope-widened:`` — demotion criterion ``len(delta) > 2 * len(prior)
-        + 5`` tripped. The prior surface no longer covers what changed; a
-        partial review would mislead. Fall through to ``/prawduct:critic final``.
-
-    Fail-closed throughout — when the helper cannot anchor a delta it
-    refuses to compute one rather than silently shrinking the review.
+    Replaces ``gitstate._session_changes_are_doc_only`` (one of the three
+    divergent doc-only sites the kernel-v3 inventory flagged); lives here
+    because ``gitstate`` sits below ``coverage_algebra`` in the import DAG.
+    ``status_output`` (STH-6Q9D): optional pre-captured porcelain snapshot.
     """
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not findings_path.is_file():
-        return [], (
-            "no-findings: .prawduct/.critic-findings.json is missing — "
-            "run /prawduct:critic chunk or /prawduct:critic final first"
-        )
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        return [], f"unreadable-findings: {exc}"
-
-    commit_reviewed = data.get("commit_reviewed")
-    if not isinstance(commit_reviewed, str) or not commit_reviewed.strip():
-        return [], (
-            "no-commit-reviewed: prior findings lack commit_reviewed — "
-            "cannot anchor delta. Run /prawduct:critic chunk or /prawduct:critic final."
-        )
-
-    findings = data.get("findings")
-    if not isinstance(findings, list):
-        return [], "invalid-findings: prior findings.findings is not a list"
-    actionable = [
-        f for f in findings
-        if isinstance(f, dict) and f.get("severity") in ("blocking", "warning")
-    ]
-    # CRT-4J8W — a chain-extendable prior (cumulative, or a chain record
-    # propagating its anchor) with no actionable findings is still a valid
-    # verify baseline IF something changed since the review: the pass has a
-    # delta to review and the resulting record extends the cumulative's
-    # vouching to HEAD (the "no-delta" refusal below keeps the original
-    # demotion when there is truly nothing to look at). Non-chain priors
-    # keep today's demotion unchanged.
-    chain_anchor = _chain_anchor(data)
-    if not actionable and chain_anchor is None:
-        return [], (
-            "no-actionable-findings: prior review had no blocking/warning "
-            "findings — verify-resolutions has nothing to verify. "
-            "Run /prawduct:critic chunk or /prawduct:critic final."
-        )
-
-    prior_files = data.get("files_reviewed")
-    if not isinstance(prior_files, list) or not prior_files:
-        return [], (
-            "invalid-files-reviewed: prior findings.files_reviewed is "
-            "missing or empty"
-        )
-    prior_files_set = {f for f in prior_files if isinstance(f, str) and f.strip()}
-
-    # rev-parse with the `^{commit}` peel rejects non-commit refs and SHAs
-    # that don't resolve. fail-closed: any non-0 → no delta computable.
-    proc = subprocess.run(
-        ["git", "rev-parse", "--verify", f"{commit_reviewed}^{{commit}}"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if proc.returncode != 0:
-        return [], (
-            f"unresolved-commit: commit_reviewed {commit_reviewed[:12]} "
-            "does not resolve in the current repo — cannot compute delta. "
-            "Run /prawduct:critic chunk or /prawduct:critic final."
-        )
-
-    diff_proc = subprocess.run(
-        ["git", "diff", "--name-only", commit_reviewed],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if diff_proc.returncode != 0:
-        return [], f"git-diff-failed: {diff_proc.stderr.strip()}"
-    delta_files = {
-        line.strip() for line in diff_proc.stdout.splitlines() if line.strip()
-    }
-
-    ls_proc = subprocess.run(
-        ["git", "ls-files", "--others", "--exclude-standard"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if ls_proc.returncode == 0:
-        delta_files.update(
-            line.strip() for line in ls_proc.stdout.splitlines() if line.strip()
-        )
-
-    # Filter metadata before threshold and scope union. The session-end
-    # gate already ignores ``_is_metadata_path`` files (``.prawduct/``,
-    # ``.claude/settings.json``, etc.) when computing the chunk diff;
-    # counting them here would inflate ``delta_files`` against the
-    # widening threshold and falsely demote a legitimate fix flow whose
-    # only delta beyond the prior surface is incidental state churn
-    # (the very ``.critic-findings.json`` the prior review wrote,
-    # ``.session-reflected``, ``.session-git-baseline``, etc.). Symmetric
-    # with ``_verify_resolutions_gate_check`` — both sides of "what
-    # counts as a chunk file" agree.
-    delta_files = {f for f in delta_files if not gitstate._is_metadata_path(f)}
-
-    # Demotion: when the delta has grown well past the prior review's
-    # surface, a verify pass would mislead — most of what changed wasn't
-    # part of the prior review's scope at all. Threshold mirrors the build
-    # plan (Chunk 02): linear factor 2 plus floor 5 so small priors don't
-    # demote on a single unrelated edit.
-    if len(delta_files) > 2 * len(prior_files_set) + 5:
-        return [], (
-            f"scope-widened: {len(delta_files)} files changed since "
-            f"commit_reviewed (prior surface {len(prior_files_set)} files; "
-            f"demotion threshold len(delta) > 2 * prior + 5). Fall through "
-            "to /prawduct:critic chunk or /prawduct:critic final."
-        )
-
-    # CRT-4J8W — chain-extendable prior with neither actionable findings nor
-    # a delta: nothing to verify AND nothing to extend over; keep the
-    # original demotion semantics rather than running an empty review.
-    if not actionable and not delta_files:
-        return [], (
-            "no-actionable-findings: prior review had no blocking/warning "
-            "findings and nothing changed since commit_reviewed — "
-            "verify-resolutions has nothing to verify. "
-            "Run /prawduct:critic chunk or /prawduct:critic final."
-        )
-
-    scope = sorted(prior_files_set | delta_files)
-    reason = (
-        f"ok: scope = {len(scope)} files "
-        f"(prior surface {len(prior_files_set)} + delta {len(delta_files)} "
-        f"since {commit_reviewed[:12]})"
-    )
-    # CRT-4J8W — tell the Critic which cumulative this verify pass extends,
-    # so it embeds ``extends_cumulative: {"commit_reviewed": <anchor>}`` in
-    # the new record and the PR gate can accept the chain.
-    if chain_anchor is not None:
-        reason += f" extends-cumulative={chain_anchor}"
-    return scope, reason
+    changed = gitstate._get_session_changed_files(project_dir, status_output)
+    non_metadata = [f for f in changed if not gitstate._is_metadata_path(f)]
+    if not non_metadata:
+        return False
+    return not coverage_algebra.judgeable_files(non_metadata)
 
 
-def _verify_resolutions_gate_check(
-    prawduct_dir: Path, project_dir: Path, findings_path: Path
-) -> tuple[bool, str]:
-    """Stop-hook gate helper: when the Critic findings file is in
-    ``verify-resolutions`` mode, accept only when the current chunk diff is
-    a subset of the verify pass's declared scope.
+def _cached_diff_fn(project_dir: Path):
+    """A ``coverage_algebra.DiffFn`` that memoizes ``evidence.tree_diff`` per
+    gate invocation. The BFS probes free edges pairwise across every tree the
+    store mentions, and a gate may run two searches (clean-edges pass, then
+    all-edges) plus the merge-base fallback — without the memo each repeat
+    probe is a fresh ``git diff`` subprocess (Critic ch.04 warning; same
+    one-capture discipline as STH-6Q9D). Cache scope is one verdict call, so
+    staleness cannot leak across gates."""
+    cache: dict[tuple[str, str], "list[str] | None"] = {}
 
-    Returns ``(True, "")`` for any other mode — the standard gate logic
-    applies. For ``verify-resolutions``:
+    def diff_fn(a: str, b: str) -> "list[str] | None":
+        key = (a, b)
+        if key not in cache:
+            cache[key] = evidence.tree_diff(project_dir, a, b)
+        return cache[key]
 
-      - ``(True, "")`` — current session-changed files (excluding metadata
-        paths the regular Critic gate also ignores) are all within the
-        findings' ``files_reviewed`` set.
-      - ``(False, reason)`` — at least one chunk-diff file is outside the
-        declared scope. The verify pass is stale relative to the current
-        diff; the gate keeps the block in place and surfaces the reason so
-        the builder runs ``/prawduct:critic chunk`` or ``/prawduct:critic final`` instead.
+    return diff_fn
 
-    Fail-closed: a JSON read failure or schema gap returns ``(False, reason)``
-    rather than silently clearing the gate (see learnings: "Escape hatches
-    in classification create silent failures").
+
+def session_review_verdict(project_dir: Path) -> dict:
+    """The Stop-hook Critic gate's question, answered by composition (Q2):
+    does composed review coverage span this session's base tree → the current
+    working tree, with zero unresolved blocking findings?
+
+    Replaces the mtime-vs-``.session-start`` freshness check, the
+    verify-resolutions scope-subset check, and every read of
+    ``.critic-findings.json`` at this gate (kernel-v3 chunk 04). Evidence is
+    facts in the shared store; the base is the ``HEAD^{tree}`` recorded at
+    session start (``.session-base-tree``), so a fact recorded pre-commit
+    vouches for the verbatim commit from any worktree or later session.
+
+    Returns one of::
+
+        {"status": "covered", "path": [...], "base": t, "target": t2,
+         "base_source": "marker"|"head-fallback"|"merge-base-fallback"}
+      | {"status": "blocked", "unresolved": [...], ...}   # findings listed
+      | {"status": "uncovered", "reason": str, ...}
+      | {"status": "schema-ahead", "reason": str}
+      | {"status": "error", "reason": str}                # fail closed
+
+    Degradations and fallbacks (each deliberate):
+
+    - Marker missing (pre-upgrade session, mid-session worktree entry) →
+      base = ``HEAD^{tree}`` now. Jurisdiction shrinks to uncommitted work
+      (the v2 scope) rather than wedging a session that cannot re-run
+      ``clear``.
+    - Session base unreachable but merge-base coverage composes → covered.
+      A commit made without review leaves a gap no dispatchable review can
+      span from the session base (chunk/final reviews anchor at HEAD's
+      tree); composed coverage of merge-base → working tree is the PR
+      gate's own bar — strictly stronger evidence about the current state —
+      so requiring an unsatisfiable base instead would only train waivers
+      (chunk-04 refinement, recorded in the design doc).
     """
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        return False, (
-            f"verify-resolutions findings unreadable ({exc}). Run /prawduct:critic "
-            "chunk or /prawduct:critic final."
-        )
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    read = evidence.read_facts(project_dir)
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        status, reason = precheck
+        return {"status": status, "reason": reason}
+    facts = read.get("facts", [])
 
-    if data.get("mode") != _CRITIC_MODE_VERIFY_RESOLUTIONS:
-        return True, ""
+    capture = evidence.capture_tree(project_dir)
+    if capture.get("status") != "ok":
+        return {
+            "status": "error",
+            "reason": f"cannot capture the working tree: {capture.get('reason', 'unknown')}",
+        }
+    target = capture["tree"]
 
-    files_reviewed = data.get("files_reviewed")
-    if not isinstance(files_reviewed, list):
-        return False, (
-            "verify-resolutions findings have no files_reviewed list. "
-            "Run /prawduct:critic chunk or /prawduct:critic final."
-        )
-    scope = {f for f in files_reviewed if isinstance(f, str) and f.strip()}
+    base = _read_session_base_tree(prawduct_dir)
+    base_source = "marker"
+    if not base:
+        base = capture.get("head_tree") or ""
+        base_source = "head-fallback"
+        if not base:
+            return {
+                "status": "error",
+                "reason": (
+                    "no session base tree marker and no HEAD to fall back to — "
+                    "commit an initial state, then re-run /prawduct:critic"
+                ),
+            }
 
-    session_changed = {
-        f for f in gitstate._get_session_changed_files(project_dir)
-        if not gitstate._is_metadata_path(f)
-    }
+    diff_fn = _cached_diff_fn(project_dir)
 
-    out_of_scope = sorted(session_changed - scope)
-    if not out_of_scope:
-        return True, ""
+    verdict = coverage_algebra.coverage_verdict(facts, base, target, diff_fn)
+    if verdict["status"] != "covered" and base_source == "marker":
+        mb_verdict = _merge_base_verdict(project_dir, facts, target, diff_fn)
+        if mb_verdict is not None and (
+            mb_verdict["status"] == "covered"
+            or (mb_verdict["status"] == "blocked" and verdict["status"] == "uncovered")
+        ):
+            verdict = mb_verdict
+            base, base_source = mb_verdict["base"], "merge-base-fallback"
+    verdict.update({"base": base, "target": target, "base_source": base_source})
+    return verdict
 
-    sample = ", ".join(out_of_scope[:3])
-    more = f" (+{len(out_of_scope) - 3} more)" if len(out_of_scope) > 3 else ""
-    return False, (
-        f"verify-resolutions findings declare {len(scope)} file(s) in scope "
-        f"but the current chunk diff includes {len(out_of_scope)} file(s) "
-        f"outside scope ({sample}{more}). Run /prawduct:critic chunk or /prawduct:critic final."
-    )
+
+def _merge_base_verdict(
+    project_dir: Path, facts: list[dict], target: str, diff_fn
+) -> "dict | None":
+    """Coverage of merge-base tree → ``target`` — the session gate's
+    unwedging fallback (see :func:`session_review_verdict`). ``None`` when
+    the merge base cannot be resolved (the primary verdict then stands)."""
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return None
+    mb_tree = resolved["tree"]
+    verdict = coverage_algebra.coverage_verdict(facts, mb_tree, target, diff_fn)
+    verdict["base"] = mb_tree
+    return verdict
 
 
 _CRITIC_MODE_GOALS_1_3_ONLY = frozenset({
@@ -691,87 +588,30 @@ _CRITIC_MODE_GOALS_1_3_ONLY = frozenset({
 })
 
 
-def critic_findings_satisfy_session_gate(
-    prawduct_dir: Path, project_dir: Path
-) -> tuple[bool, str]:
-    """Shared session Critic gate: does ``.critic-findings.json`` vouch for
-    this session's changes?
-
-    Single source of truth (STH-4F7C) for the freshness check previously
-    duplicated — and diverged — between ``cmd_stop``'s blocking gate
-    (``bin/prawduct-hook``) and the session-start advisory
-    (``briefing._check_previous_session_gates``): the advisory copy had not
-    gained the verify-resolutions scope check, so it could report a stale
-    record as satisfying. Satisfied requires ALL of:
-
-    1. ``.critic-findings.json`` and ``.session-start`` both exist;
-    2. findings mtime is strictly newer than session start. STH-6B4R:
-       identical-precision compare — the mtime is formatted to the same
-       whole-second ``%Y-%m-%dT%H:%M:%SZ`` shape ``.session-start`` is
-       written in, so the comparison is order-preserving lexicographic with
-       no format mismatch on either side. Tie rule: ``findings_mtime ==
-       session_start`` is NOT fresh — the strict ``>`` rejects a
-       same-whole-second tie, consistent with the cumulative-critic site's
-       ``<= -> stale``. Only ``_test_status``'s evidence freshness uses
-       ``>=`` (deliberately);
-    3. the findings are schema-valid (:func:`validate_critic_findings`);
-    4. for a ``verify-resolutions`` record, the current session diff is
-       within the declared scope (:func:`_verify_resolutions_gate_check`).
-
-    Returns:
-      - ``(True, "")`` — gate satisfied.
-      - ``(False, "")`` — no qualifying findings (missing, stale, or
-        schema-invalid); the caller phrases its own "review not recorded"
-        message.
-      - ``(False, reason)`` — fresh, valid ``verify-resolutions`` findings
-        whose declared scope the session diff has outgrown; ``reason`` names
-        the widening files (``cmd_stop`` surfaces it verbatim in its
-        dedicated blocker variant).
-
-    No-raise, fail-closed: any unexpected error returns ``(False, "")``.
-    """
-    critic_findings = prawduct_dir / ".critic-findings.json"
-    session_start = _read_session_start(prawduct_dir)
-    if not critic_findings.is_file() or not session_start:
-        return False, ""
-    try:
-        findings_mtime = datetime.fromtimestamp(
-            critic_findings.stat().st_mtime, tz=timezone.utc
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
-        if findings_mtime > session_start and validate_critic_findings(critic_findings):
-            return _verify_resolutions_gate_check(prawduct_dir, project_dir, critic_findings)
-        return False, ""
-    except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session start/end
-        return False, ""
-
-
-def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
-    """Check whether the latest Critic findings satisfy end-of-cycle synthesis.
+def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
+    """Check whether the latest Critic review satisfies end-of-cycle synthesis.
 
     Returns ``(True, "")`` when the gate is satisfied, ``(False, reason)``
     otherwise. The gate is advisory: it fires when a multi-chunk build plan
     has all chunks marked ``[x]`` but the most recent Critic review ran
     Goals 1-3 only — ``chunk`` and ``verify-resolutions`` modes both skip
     end-of-cycle goals (Coherence, Design, Learnings Cross-Check, Backlog
-    Reconciliation, Framework-Specific Checks). v1.5 Chunk 02 extended the
-    case-4 trigger to verify-resolutions so a plan that closes with a delta
-    re-review doesn't silently bypass final-mode synthesis.
+    Reconciliation, Framework-Specific Checks). The mode is telemetry read
+    from the latest ``review`` FACT in the evidence store (kernel-v3 chunk
+    04: no gate — even an advisory one — reads the ``.critic-findings.json``
+    cache); it steers a workflow nudge, never evidence acceptance (D4).
 
     Specific cases (in order):
     1. No build plan, or no chunks declared → satisfied (non-chunked work).
     2. Single-chunk plan → satisfied (the one Critic run is the final).
     3. Multi-chunk plan with incomplete chunks → satisfied (mid-cycle).
-    4. Multi-chunk plan, all chunks ``[x]``, latest mode is in
+    4. Multi-chunk plan, all chunks ``[x]``, latest review fact's mode is in
        ``_CRITIC_MODE_GOALS_1_3_ONLY`` (chunk or verify-resolutions)
        → unsatisfied. Run ``/prawduct:critic final`` for end-of-cycle synthesis.
-    5. Multi-chunk plan, all chunks ``[x]``, latest mode is ``_CRITIC_MODE_FINAL``
-       (or absent — legacy records default to final), or ``_CRITIC_MODE_CUMULATIVE``
-       → satisfied (full goal set ran).
-
-    Caller is expected to invoke this only after the existing critic-required
-    blocker has cleared (i.e. findings exist and ``validate_critic_findings``
-    returned True). Defensive checks here keep the helper standalone-safe.
+    5. Multi-chunk plan, all chunks ``[x]``, latest mode is final/cumulative
+       (or no review fact exists — nothing to judge) → satisfied.
     """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
     if total == 0:
         return True, ""
@@ -780,14 +620,11 @@ def _critic_session_satisfies_gate(prawduct_dir: Path) -> tuple[bool, str]:
     if complete < total:
         return True, ""
 
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not findings_path.is_file():
+    review_facts = evidence.facts_of_kind(evidence.read_facts(project_dir), "review")
+    if not review_facts:
         return True, ""
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return True, ""
-    mode = data.get("mode", _CRITIC_MODE_FINAL)
+    latest_body = review_facts[-1].get("body") or {}
+    mode = latest_body.get("mode", _CRITIC_MODE_FINAL)
     if mode in _CRITIC_MODE_GOALS_1_3_ONLY:
         return False, (
             f"All {total} chunks complete; last Critic review was "
@@ -969,445 +806,113 @@ def validate_evidence(project_dir: Path) -> int:
     return 0
 
 
-def _record_covers_head(project_dir: Path, commit_reviewed) -> tuple[str, str]:
-    """Evaluate the CRT-7M2D coverage rule: does ``commit_reviewed`` cover HEAD?
-
-    Coverage = ``commit_reviewed`` resolves to HEAD itself, OR every file
-    changed in ``commit_reviewed..HEAD`` is documentation (``.md``).
-
-    Returns ``(status, detail)``:
-      - ``("covered", "")``
-      - ``("stale", "<reviewed12>..<head12>: <sample non-doc files>")``
-      - ``("no-anchor", <reason>)`` — ``commit_reviewed`` absent/blank.
-      - ``("unresolved", <reason>)`` — HEAD or ``commit_reviewed`` does not
-        resolve in this repo.
-      - ``("error", <reason>)`` — a git step itself failed. Callers fail
-        closed on all three failure statuses (the gate must not vouch for
-        coverage it can't verify — "Escape hatches in classification create
-        silent failures", learnings.md).
-
-    Shared by the cumulative path and the CRT-4J8W chain path of
-    :func:`check_cumulative_critic` so both judge HEAD-coverage identically.
-    """
-    if not isinstance(commit_reviewed, str) or not commit_reviewed.strip():
-        return "no-anchor", "record lacks a commit_reviewed anchor"
-    try:
-        head_proc = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
-        )
-        reviewed_proc = subprocess.run(
-            ["git", "rev-parse", "--verify", f"{commit_reviewed}^{{commit}}"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
-        )
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if git is unavailable
-        return "error", f"could not resolve commits ({exc!r})"
-    if head_proc.returncode != 0 or reviewed_proc.returncode != 0:
-        return "unresolved", (
-            f"could not resolve HEAD or commit_reviewed ({commit_reviewed[:12]})"
-        )
-    head_sha = head_proc.stdout.strip()
-    reviewed_sha = reviewed_proc.stdout.strip()
-    if reviewed_sha == head_sha:
-        return "covered", ""
-    try:
-        diff_proc = subprocess.run(
-            ["git", "diff", "--name-only", f"{reviewed_sha}..HEAD"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
-        )
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if git diff fails
-        return "error", f"could not diff {reviewed_sha[:12]}..HEAD ({exc!r})"
-    if diff_proc.returncode != 0:
-        return "error", (
-            f"git diff {reviewed_sha[:12]}..HEAD failed: {diff_proc.stderr.strip()}"
-        )
-    changed = [ln.strip() for ln in diff_proc.stdout.splitlines() if ln.strip()]
-    non_doc = [f for f in changed if not f.endswith(".md")]
-    if non_doc:
-        sample = ", ".join(non_doc[:3])
-        more = f" (+{len(non_doc) - 3} more)" if len(non_doc) > 3 else ""
-        return "stale", f"{reviewed_sha[:12]}..{head_sha[:12]}: {sample}{more}"
-    # Only .md changed since the review — coverage holds, no re-run.
-    return "covered", ""
-
-
 def check_cumulative_critic(project_dir: Path) -> int:
-    """Structural gate for `/prawduct:pr create`: require a fresh cumulative-Critic record.
+    """Structural gate for ``/prawduct:pr create`` — Q1, answered by
+    composition (kernel-v3-evidence-design.md D6, chunk 04): does composed
+    review coverage span ``merge-base(base_branch, HEAD)`` → ``HEAD`` *by
+    tree*, with zero unresolved blocking findings on the path?
 
-    Exit 0 only when the Critic findings file exists, parses, is schema-valid
-    (``validate_critic_findings``), contains no unresolved BLOCKING findings
-    (WARNING and NOTE are advisory at the PR gate, matching the PR reviewer's
-    semantics), and is ONE of:
+    Evidence is review/resolution facts in the shared store
+    (``lib.evidence``); the verdict is ``coverage_algebra.coverage_verdict``
+    over them. No mode label is consulted (CRT-J4PM: chunk + cumulative +
+    final facts compose identically), no file mtime is compared, and
+    ``.critic-findings.json`` is never read (D7). A review recorded
+    pre-commit vouches for the verbatim commit because the commit carries
+    the reviewed tree (D3) — so squash-merges stay covered and rebases
+    correctly demand a fresh look.
 
-    1. **A HEAD-covering cumulative record** — ``mode == _CRITIC_MODE_CUMULATIVE``
-       and the recorded ``commit_reviewed`` covers HEAD (CRT-7M2D): it IS HEAD,
-       or the only changes since are documentation (``.md``). A clean cumulative
-       review vouches for the *code* being shipped — a code change since the
-       review fails the gate (re-run genuinely needed), a doc-only change does
-       not (no needless re-run). This replaced the mtime-vs-``.session-start``
-       recency check, which both false-passed stale records and forced a full
-       re-run after every inert post-review fix.
+    Exit 0 — covered. Exit 1 — anything else, with the specific reason and
+    a copy-pasteable remedy on stderr:
 
-    2. **A chain record** (CRT-4J8W — the run-count fix): ``mode ==
-       _CRITIC_MODE_VERIFY_RESOLUTIONS`` with an ``extends_cumulative`` anchor
-       ``X`` that resolves, whose own ``commit_reviewed`` covers HEAD (same
-       rule as above), and where every non-``.md``, non-metadata file changed
-       in ``X..HEAD`` is in the record's ``files_reviewed`` — fail closed on
-       any gap. Soundness: cumulative@X vouches for the bundle; a 0-BLOCKING
-       delta review whose recorded scope covers ``X..HEAD`` extends that
-       vouching to HEAD — the same shape as the doc-only allowance, with
-       scope verification. This turns the fix-after-cumulative path into a
-       1-2 min delta review instead of a full bundle re-review. The ``.md``
-       and metadata exclusions mirror the doc-only allowance and the
-       scope/stop-hook helpers' ``_is_metadata_path`` symmetry (gate-soundness
-       ch.5 declared decision).
-
-    **Ledger fallback** (review-proportionality ch.02): when the latest
-    findings record is the wrong KIND (chunk/final, or verify-resolutions
-    with no chain anchor), the gate scans
-    ``.prawduct/.governance-ledger.jsonl`` newest-first for the first
-    qualifying ``review.critic`` payload and evaluates THAT under the same
-    checks unchanged — a stale or blocking ledger record still fails
-    honestly. The fallback record must additionally be from THIS session
-    (envelope ``ts >= .session-start``; fail closed without the marker —
-    CRT-8W3F, see :func:`_ledger_fallback_record`). Corrupt lines are
-    skipped with a stderr note; no qualifying event → the original
-    wrong-mode / chain-missing-anchor message.
-
-    Exit 1 otherwise. stderr names the specific check that failed so the
-    caller (`/prawduct:pr` skill) can present an actionable message to the user.
+    - ``schema-ahead`` — a fact from a newer plugin exists; update the
+      plugin before trusting any verdict (C9 tier 3, fail closed).
+    - ``blocking`` — coverage composes but carries unresolved BLOCKING
+      findings (listed): fix them, then ``/prawduct:critic
+      verify-resolutions`` records the resolution facts — the same
+      evidence then passes with no full re-review.
+    - ``uncovered`` — no evidence path composes: run ``/prawduct:critic
+      cumulative``. If a pre-commit review was followed by a SELECTIVE
+      commit (only part of the reviewed state committed), the commit's
+      tree was never reviewed — ``/prawduct:critic verify-resolutions``
+      reviews that delta and closes the gap.
     """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    findings_path = prawduct_dir / ".critic-findings.json"
+    read = evidence.read_facts(project_dir)
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        status, reason = precheck
+        print(f"{status}: {reason}", file=sys.stderr)
+        return 1
 
-    if not findings_path.is_file():
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        remedy = {
+            "resolve-base": (
+                " — cannot determine the PR span. Fix base_branch in "
+                "project-state.yaml (or fetch the base) and re-run."
+            ),
+            "merge-base": ". Re-run once the branch shares history with its base.",
+        }.get(resolved.get("step", ""), ".")
+        print(f"no-base: {resolved['reason']}{remedy}", file=sys.stderr)
+        return 1
+    base_tree = resolved["tree"]
+    rc, head_tree, err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+    if rc != 0 or not head_tree:
+        print(f"no-head: cannot resolve HEAD^{{tree}} ({err}).", file=sys.stderr)
+        return 1
+
+    verdict = coverage_algebra.coverage_verdict(
+        read.get("facts", []), base_tree, head_tree, _cached_diff_fn(project_dir)
+    )
+
+    if verdict["status"] == "covered":
+        steps = verdict.get("path", [])
+        reviews = sum(1 for s in steps if s.get("kind") == "review")
+        free = sum(1 for s in steps if s.get("kind") == "free")
+        detail = (
+            f"{reviews} review fact(s) + {free} free edge(s)"
+            if steps
+            else "empty span (base tree == HEAD tree)"
+        )
         print(
-            "missing: no cumulative-Critic findings at "
-            f"{findings_path}. Run /prawduct:critic cumulative before opening a PR.",
+            f"satisfied: composed review coverage spans "
+            f"{base_tree[:12]}..{head_tree[:12]} at HEAD ({detail}, 0 unresolved blocking)."
+        )
+        return 0
+
+    if verdict["status"] == "blocked":
+        unresolved = verdict.get("unresolved", [])
+        print(
+            f"blocking: coverage composes over {base_tree[:12]}..{head_tree[:12]} "
+            f"but carries {len(unresolved)} unresolved BLOCKING finding(s):",
+            file=sys.stderr,
+        )
+        for entry in unresolved[:5]:
+            print(
+                f"  - {entry.get('review_id')}/{entry.get('fid')}: "
+                f"{entry.get('title', '<no title>')}",
+                file=sys.stderr,
+            )
+        if len(unresolved) > 5:
+            print(f"  (+{len(unresolved) - 5} more)", file=sys.stderr)
+        print(
+            "Fix them, then run /prawduct:critic verify-resolutions — it records "
+            "the resolution facts and this same evidence passes (no full re-review).",
             file=sys.stderr,
         )
         return 1
 
-    if not validate_critic_findings(findings_path):
-        print(
-            f"invalid: {findings_path} did not pass schema validation",
-            file=sys.stderr,
-        )
-        return 1
-
-    try:
-        data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        print(f"unreadable: {exc}", file=sys.stderr)
-        return 1
-
-    if _pr_gate_record_qualifies(data):
-        return _evaluate_pr_gate_record(project_dir, data, str(findings_path))
-
-    # Ledger fallback (review-proportionality ch.02): the latest findings
-    # record is the wrong KIND for this gate (a chunk/final review, or a
-    # verify pass with no chain anchor) — but the append-only ledger may
-    # still hold the qualifying review this branch already paid for. Scan
-    # newest-first for the first qualifying ``review.critic`` payload and
-    # evaluate THAT under the same checks unchanged — a stale ledger record
-    # still fails honestly. This dissolves the single-slot conflict: a chunk
-    # review after the cumulative no longer destroys the PR gate's evidence.
-    fallback = _ledger_fallback_record(prawduct_dir)
-    if fallback is not None:
-        lineno, payload, ledger_file = fallback
-        print(
-            f"ledger-fallback: latest findings record (mode "
-            f"{data.get('mode')!r}) does not qualify at the PR gate; "
-            f"evaluating the newest qualifying review.critic event "
-            f"({ledger_file.name} line {lineno}) instead.",
-            file=sys.stderr,
-        )
-        return _evaluate_pr_gate_record(
-            project_dir, payload, f"{ledger_file} line {lineno}, ledger fallback"
-        )
-
-    mode = data.get("mode")
-    if mode == _CRITIC_MODE_VERIFY_RESOLUTIONS:
-        print(
-            "chain-missing-anchor: this verify-resolutions record has no "
-            "extends_cumulative anchor — it re-verifies prior findings but "
-            "cannot certify the bundle. Chain sequence: land all non-.md "
-            "fixes, run /prawduct:critic cumulative once; for fixes AFTER "
-            "the cumulative — fix, commit, then /prawduct:critic "
-            "verify-resolutions (the Critic embeds the anchor when the "
-            "prior record is that cumulative). If the cumulative record is "
-            "gone, re-run /prawduct:critic cumulative.",
-            file=sys.stderr,
-        )
-        return 1
     print(
-        f"wrong-mode: findings mode is {mode!r}, expected cumulative "
-        f"({_CRITIC_MODE_CUMULATIVE!r}) or a chained verify-resolutions "
-        "record (CRT-4J8W). Sequence: land ALL non-.md fixes first, then "
-        "run /prawduct:critic cumulative once; for fixes after the "
-        "cumulative — fix, commit, then /prawduct:critic verify-resolutions "
-        "(the chain record extends the cumulative to HEAD; no full re-run).",
+        f"uncovered: no composed review evidence spans "
+        f"{base_tree[:12]}..{head_tree[:12]} at HEAD "
+        f"({verdict.get('reason', 'no path')}). "
+        "Run /prawduct:critic cumulative — it reviews the whole span and records "
+        "the fact composition needs. If a pre-commit review was followed by a "
+        "selective commit (only part of the reviewed state committed), the "
+        "commit's tree was never reviewed — /prawduct:critic verify-resolutions "
+        "reviews that delta and closes the gap.",
         file=sys.stderr,
     )
     return 1
-
-
-def _pr_gate_record_qualifies(data: dict) -> bool:
-    """Is this record the right KIND for the PR gate — a cumulative, or a
-    verify-resolutions carrying a chain anchor? Kind only; coverage, chain
-    scope, and blocking findings are judged by :func:`_evaluate_pr_gate_record`."""
-    mode = data.get("mode")
-    if mode == _CRITIC_MODE_CUMULATIVE:
-        return True
-    if mode == _CRITIC_MODE_VERIFY_RESOLUTIONS:
-        ext = data.get("extends_cumulative")
-        anchor = ext.get("commit_reviewed") if isinstance(ext, dict) else None
-        return isinstance(anchor, str) and bool(anchor.strip())
-    return False
-
-
-def _ledger_fallback_record(prawduct_dir: Path):
-    """Newest qualifying ``review.critic`` payload from the governance ledger,
-    as ``(lineno, payload, ledger_path)`` — or ``None``. Skips corrupt lines
-    (the reader emits stderr notes), non-review events, schema-invalid
-    payloads, and payloads of the wrong kind. Never raises — the gate must
-    fail with its own honest message, not a fallback crash.
-
-    **Freshness bound (CRT-8W3F).** Unlike the single-slot findings file,
-    the ledger keeps every review forever — so "newest qualifying" alone
-    would let a days-old cumulative from prior work satisfy the PR gate
-    whenever only ``.md`` changed since. A qualifying event is therefore
-    accepted only when its envelope ``ts`` is ``>= .session-start`` (the
-    same ISO-8601 string comparison :func:`tests_are_current` uses). Fail
-    closed: a missing/unreadable session marker, or a qualifying event with
-    no usable ``ts``, yields no fallback — the gate's own wrong-mode /
-    chain-missing-anchor message stands, and the skip is taught on stderr.
-    """
-    try:
-        from . import ledger  # noqa: PLC0415 — lazy keeps gates' import DAG light
-
-        session_start = _read_session_start(prawduct_dir)
-        for lineno, event in ledger.iter_events_newest_first(prawduct_dir):
-            if event.get("event") != "review.critic":
-                continue
-            payload = event.get("review")
-            if not isinstance(payload, dict):
-                continue
-            if not _validate_critic_findings_data(payload):
-                print(
-                    f"ledger: skipping line {lineno} (review payload failed "
-                    "schema validation)",
-                    file=sys.stderr,
-                )
-                continue
-            if not _pr_gate_record_qualifies(payload):
-                continue
-            # Freshness — judged only for records that would otherwise be
-            # selected, so the notes below never fire for unrelated events.
-            ts = event.get("ts")
-            if not isinstance(ts, str) or not ts:
-                print(
-                    f"ledger: skipping line {lineno} (no envelope ts — "
-                    "freshness unverifiable, CRT-8W3F)",
-                    file=sys.stderr,
-                )
-                continue
-            if not session_start:
-                print(
-                    f"ledger: line {lineno} qualifies but there is no "
-                    ".session-start marker to verify it is from this "
-                    "session — failing closed (CRT-8W3F)",
-                    file=sys.stderr,
-                )
-                return None
-            if ts < session_start:
-                print(
-                    f"ledger: skipping line {lineno} (predates session: "
-                    f"{ts} < {session_start} — run /prawduct:critic "
-                    "cumulative this session, CRT-8W3F)",
-                    file=sys.stderr,
-                )
-                continue
-            return lineno, payload, ledger.ledger_path(prawduct_dir)
-    except Exception:  # prawduct:allow prawduct/broad-except -- fallback is best-effort; the gate's own message stands
-        return None
-    return None
-
-
-def _evaluate_pr_gate_record(project_dir: Path, data: dict, source: str) -> int:
-    """Evaluate one kind-qualifying record under the PR-gate checks (commit
-    coverage, chain scope, 0 BLOCKING). Prints the verdict; returns the gate
-    exit code. ``source`` names where the record came from (the findings file,
-    or a ledger line) so the satisfied message stays attributable."""
-    mode = data.get("mode")
-    if mode == _CRITIC_MODE_CUMULATIVE:
-        # CRT-7M2D — judge the record by COMMIT-COVERAGE, not mtime-recency.
-        # The gate's real question is "has the bundle being PR'd had a clean
-        # cumulative review?" — a fact about COMMITS, not timestamps (full
-        # rationale in the docstring; rule mechanics in _record_covers_head).
-        status, detail = _record_covers_head(project_dir, data.get("commit_reviewed"))
-        if status == "no-anchor":
-            print(
-                "no-commit-reviewed: the cumulative record lacks a "
-                "commit_reviewed anchor, so the gate cannot verify it covers "
-                "HEAD. Re-run /prawduct:critic cumulative.",
-                file=sys.stderr,
-            )
-            return 1
-        if status == "unresolved":
-            print(
-                f"unresolved-commit: {detail}. Re-run /prawduct:critic cumulative.",
-                file=sys.stderr,
-            )
-            return 1
-        if status == "error":
-            print(
-                f"coverage-check-failed: {detail}. "
-                "Re-run /prawduct:critic cumulative.",
-                file=sys.stderr,
-            )
-            return 1
-        if status == "stale":
-            print(
-                f"stale: code changed since the cumulative review ({detail}). "
-                "Fix, commit, then run /prawduct:critic verify-resolutions — the "
-                "chain record extends this cumulative to HEAD (CRT-4J8W); a full "
-                "cumulative re-run is only needed if this record is gone or the "
-                "delta outgrows the verify scope. (Doc-only — all .md — changes "
-                "since the review never require a re-run.)",
-                file=sys.stderr,
-            )
-            return 1
-        satisfied_msg = (
-            f"satisfied: cumulative-Critic record covers HEAD and is clean "
-            f"({source})"
-        )
-    elif mode == _CRITIC_MODE_VERIFY_RESOLUTIONS:
-        # CRT-4J8W — the chain path. A verify-resolutions record certifies
-        # the bundle ONLY by extending a cumulative: anchor present, record
-        # at HEAD, and the anchor..HEAD delta inside the record's reviewed
-        # scope. Every check fails closed.
-        ext = data.get("extends_cumulative")
-        anchor = ext.get("commit_reviewed") if isinstance(ext, dict) else None
-        if not isinstance(anchor, str) or not anchor.strip():
-            print(
-                "chain-missing-anchor: this verify-resolutions record has no "
-                "extends_cumulative anchor — it re-verifies prior findings but "
-                "cannot certify the bundle. Chain sequence: land all non-.md "
-                "fixes, run /prawduct:critic cumulative once; for fixes AFTER "
-                "the cumulative — fix, commit, then /prawduct:critic "
-                "verify-resolutions (the Critic embeds the anchor when the "
-                "prior record is that cumulative). If the cumulative record is "
-                "gone, re-run /prawduct:critic cumulative.",
-                file=sys.stderr,
-            )
-            return 1
-        status, detail = _record_covers_head(project_dir, data.get("commit_reviewed"))
-        if status in ("no-anchor", "unresolved", "error"):
-            print(
-                f"chain-coverage-failed: {detail}. Re-run /prawduct:critic "
-                "verify-resolutions (or cumulative).",
-                file=sys.stderr,
-            )
-            return 1
-        if status == "stale":
-            print(
-                f"chain-stale: code changed since the verify-resolutions record "
-                f"({detail}). Commit fixes BEFORE running verify-resolutions — a "
-                "verify record anchored pre-commit can never cover HEAD. Fix, "
-                "commit, then re-run /prawduct:critic verify-resolutions.",
-                file=sys.stderr,
-            )
-            return 1
-        try:
-            anchor_proc = subprocess.run(
-                ["git", "rev-parse", "--verify", f"{anchor}^{{commit}}"],
-                cwd=str(project_dir), capture_output=True, text=True, timeout=30,
-            )
-            chain_diff_proc = subprocess.run(
-                ["git", "diff", "--name-only", f"{anchor}..HEAD"],
-                cwd=str(project_dir), capture_output=True, text=True, timeout=30,
-            )
-        except Exception as exc:  # prawduct:allow prawduct/broad-except -- fail closed if git is unavailable
-            print(
-                f"chain-coverage-failed: could not evaluate the chain range "
-                f"({exc!r}). Re-run /prawduct:critic cumulative.",
-                file=sys.stderr,
-            )
-            return 1
-        if anchor_proc.returncode != 0:
-            print(
-                f"chain-unresolved-anchor: extends_cumulative anchor "
-                f"({anchor[:12]}) does not resolve in this repo — the extended "
-                "cumulative cannot be located (rebase/force-push?). Re-run "
-                "/prawduct:critic cumulative.",
-                file=sys.stderr,
-            )
-            return 1
-        if chain_diff_proc.returncode != 0:
-            print(
-                f"chain-coverage-failed: git diff {anchor[:12]}..HEAD failed: "
-                f"{chain_diff_proc.stderr.strip()}. Re-run /prawduct:critic "
-                "cumulative.",
-                file=sys.stderr,
-            )
-            return 1
-        files_reviewed = {
-            f for f in data.get("files_reviewed", [])
-            if isinstance(f, str) and f.strip()
-        }
-        changed = [
-            ln.strip() for ln in chain_diff_proc.stdout.splitlines() if ln.strip()
-        ]
-        gap = sorted(
-            f for f in changed
-            if not f.endswith(".md")
-            and not gitstate._is_metadata_path(f)
-            and f not in files_reviewed
-        )
-        if gap:
-            sample = ", ".join(gap[:3])
-            more = f" (+{len(gap) - 3} more)" if len(gap) > 3 else ""
-            print(
-                f"chain-scope-gap: {len(gap)} file(s) changed since the extended "
-                f"cumulative ({anchor[:12]}..HEAD) but are not in the verify "
-                f"record's files_reviewed: {sample}{more}. The chain cannot vouch "
-                "for unreviewed code — re-run /prawduct:critic cumulative.",
-                file=sys.stderr,
-            )
-            return 1
-        satisfied_msg = (
-            f"satisfied: verify-resolutions chain extends cumulative "
-            f"{anchor[:12]} and covers HEAD ({source})"
-        )
-    else:
-        # Defensive only — callers pre-filter via _pr_gate_record_qualifies,
-        # so this branch is unreachable today; kept so a future caller that
-        # skips the filter fails closed with the canonical message.
-        print(
-            f"wrong-mode: findings mode is {mode!r}, expected cumulative "
-            f"({_CRITIC_MODE_CUMULATIVE!r}) or a chained verify-resolutions "
-            "record (CRT-4J8W). Sequence: land ALL non-.md fixes first, then "
-            "run /prawduct:critic cumulative once; for fixes after the "
-            "cumulative — fix, commit, then /prawduct:critic verify-resolutions "
-            "(the chain record extends the cumulative to HEAD; no full re-run).",
-            file=sys.stderr,
-        )
-        return 1
-
-    findings = data.get("findings", [])
-    blocking = [f for f in findings if isinstance(f, dict) and f.get("severity") == "blocking"]
-    if blocking:
-        first = blocking[0].get("summary", "<no summary>")
-        print(
-            f"blocking: the Critic record holds {len(blocking)} BLOCKING "
-            f"finding(s). First: {first}. Resolve before opening a PR.",
-            file=sys.stderr,
-        )
-        return 1
-
-    print(satisfied_msg)
-    return 0
 
 
 def verify_coverage(project_dir: Path) -> int:

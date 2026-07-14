@@ -544,13 +544,16 @@ class TestPrReviewSkillContent:
 
 
 class TestPrReviewerScoping:
-    """PR-reviewer scoping (review-proportionality ch.05): the reviewer
-    consumes the gate-qualifying Critic record as evidence, audits it with
-    adversarial spot-checks, and falls back to a full code-soundness pass
-    when the audit fails. Losing any one of these silently reverts the
-    reviewer to re-deriving what the cumulative already certified — the
-    duplication this chunk removed — or, worse, to trusting the record
-    blindly (the independence this chunk preserved)."""
+    """PR-reviewer scoping, kernel-v3 chunk 05 renegotiation: the record-audit
+    protocol (adversarial spot-checks, record voiding, pr-scoped/pr-full run
+    shapes, gate-mirroring record resolution) was DELETED with the coverage
+    algebra cutover — coverage is now computed structurally against the actual
+    trees by `check-cumulative-critic` before the reviewer is dispatched, so
+    there is no asserted record whose truthfulness the reviewer must audit
+    (design §3: "record-audit protocol prose", subsumed by C1's composition;
+    discovery §4.3 Overbuilt #4). The surviving contract these tests pin: the
+    reviewer does NOT re-derive code soundness, owns release readiness, and
+    does not repeat the cumulative Critic's cross-checks."""
 
     @property
     def protocol(self) -> str:
@@ -560,46 +563,41 @@ class TestPrReviewerScoping:
     def skill(self) -> str:
         return (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
 
-    def test_protocol_has_audit_duty(self):
-        """The record is audited (≥2 adversarial spot-checks), never trusted
-        blindly — the independence-preserving half of the scoping."""
+    def test_protocol_consumes_gate_certified_soundness(self):
+        """The reviewer must not re-derive code soundness — the composition
+        gate certifies it structurally before dispatch."""
         content = self.protocol
-        assert "Evidence, Not Truth" in content
-        assert "at least 2 substantive claims" in content
-        assert "adversarial" in content.lower()
+        assert "re-derive code soundness" in content
+        assert "check-cumulative-critic" in content
+        assert "zero unresolved blocking findings" in content
 
-    def test_protocol_has_void_fallback(self):
-        """Any failed spot-check voids the record → full code-soundness pass,
-        stated in the output. Without this, a wrong record scopes the review
-        anyway."""
+    def test_protocol_audit_machinery_stays_deleted(self):
+        """The deleted two-reviewer overlap machinery must not regrow: no
+        spot-check audit, no record voiding, no pr-scoped/pr-full split, no
+        gate-mirroring ledger resolution."""
         content = self.protocol
-        assert "voids the record" in content
-        assert "full code-soundness pass" in content
-        assert "record_consumed" in content
+        for needle in ("Evidence, Not Truth", "spot_checks", "record_consumed",
+                       "pr-scoped", "pr-full", "extends_cumulative",
+                       ".governance-ledger.jsonl"):
+            assert needle not in content, (
+                f"skills/pr/review-protocol.md re-grew deleted audit-protocol "
+                f"term `{needle}` (kernel-v3 §3 deletion)"
+            )
 
-    def test_protocol_resolves_record_like_the_gate(self):
-        """The reviewer's record resolution mirrors check-cumulative-critic:
-        latest findings file when its kind qualifies, else the newest
-        qualifying review.critic ledger event."""
+    def test_protocol_reads_findings_view_for_context(self):
+        """The Critic's judgment stays available as context — the derived
+        findings view and the evidence CLI, not a gate-qualifying record."""
         content = self.protocol
         assert ".critic-findings.json" in content
-        assert ".governance-ledger.jsonl" in content
-        assert "extends_cumulative" in content
+        assert "prawduct-hook evidence list" in content
 
-    def test_protocol_evidence_distinguishes_scoped_from_full(self):
-        """Telemetry separates scoped from full runs by the evidence `mode`
-        field (pr-scoped/pr-full) plus the audit trail (spot_checks)."""
-        content = self.protocol
-        assert "pr-scoped" in content
-        assert "pr-full" in content
-        assert "spot_checks" in content
-
-    def test_skill_hands_record_to_reviewer(self):
-        """Step 3 names the record source for the reviewer (file, or ledger
-        line when Step 2 reported ledger-fallback)."""
+    def test_skill_states_gate_certification(self):
+        """Step 3's reviewer handoff states the gate has passed and scopes the
+        reviewer to release readiness (no ledger-fallback record plumbing)."""
         content = self.skill
-        assert "gate-qualifying Critic record" in content
-        assert "ledger-fallback" in content
+        assert "cumulative-Critic gate has passed" in content
+        assert "release readiness" in content
+        assert "ledger-fallback" not in content
 
     def test_skill_appends_review_pr_ledger_event(self):
         """Step 4 appends the review.pr event so both review roles are in the
@@ -612,20 +610,13 @@ class TestPrReviewerScoping:
             "the skill cannot append the review.pr event."
         )
 
-    def test_learnings_and_backlog_scoped_to_record(self):
-        """B (CRT-5T8N): the PR reviewer's Learnings Cross-Check and Backlog R-1
-        are scoped to the consumed Critic record — skip on a HEAD-covering
-        cumulative (the Critic already scanned the bundle), scan only the
-        chain-delta on a verify-resolutions record, full scan when the record is
-        voided. R-2 (data inconsistency) always runs because the Critic doesn't
-        do it. Guards against a silent revert to unconditional re-scanning (the
-        duplication B removed) or to dropping the chain-delta coverage (the gap
-        B avoided)."""
+    def test_learnings_and_backlog_not_rescanned(self):
+        """The cumulative Critic owns the Learnings Cross-Check and Backlog
+        Reconciliation walk; the PR reviewer must not repeat them. R-2 (data
+        inconsistency) always runs because the Critic doesn't do it."""
         content = self.protocol
-        assert "cumulative Critic owns" in content   # the single-owner statement
-        assert "HEAD-covering" in content            # the skip discriminator
-        assert "chain record" in content             # the verify-resolutions delta case
-        assert "delta" in content
+        assert "Critic owns this scan" in content
+        assert "owns this walk" in content
         assert "always run" in content               # R-2 stays unconditional
 
     def test_critic_cross_checks_named_as_owner(self):

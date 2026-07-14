@@ -46,8 +46,12 @@ def _git_toplevel(cwd: Path) -> Path | None:
         return None
 
 
-def _git_common_dir(cwd: Path) -> Path | None:
+def git_common_dir(cwd: Path) -> Path | None:
     """Resolved shared git common dir for the repo at ``cwd``, or ``None``.
+
+    Public: the kernel-v3 evidence store keys its location off this path
+    (kernel-v3-evidence-design.md D1), so it is a load-bearing contract, not
+    an internal helper.
 
     Worktrees of one repository share a single common dir (the real ``.git``),
     so equality of this path is the identity test for "same repository". The
@@ -107,8 +111,8 @@ def resolve_project_dir(env_project_dir: str | None, cwd: Path) -> Path:
         return top
     if top == env_dir:
         return env_dir
-    common_cwd = _git_common_dir(cwd)
-    if common_cwd is not None and common_cwd == _git_common_dir(env_dir):
+    common_cwd = git_common_dir(cwd)
+    if common_cwd is not None and common_cwd == git_common_dir(env_dir):
         return top  # worktree of the same repo — follow the session
     return env_dir  # unrelated repo (or undeterminable) — honor the launch pin
 
@@ -151,8 +155,10 @@ def git_has_changes(project_dir: Path, status_output: str | None = None) -> str:
 # are intentionally absent — a plugin repo never carries them, and a
 # product's *own* skill under ``.claude/skills/`` is product code that must
 # be gated, not excused. The single canonical copy — ``lib/critic_mode.py``'s
-# mirror was consolidated onto this one (STH-2K8R).
-_METADATA_PREFIXES = (
+# mirror was consolidated onto this one (STH-2K8R). Public: the kernel-v3
+# coverage algebra's judgeability predicate keys off it (chunk 02), so it is
+# a load-bearing contract like ``git_common_dir``.
+METADATA_PREFIXES = (
     ".prawduct/",
     ".claude/settings.json",
 )
@@ -160,7 +166,7 @@ _METADATA_PREFIXES = (
 
 def _is_metadata_path(filepath: str) -> bool:
     """Check if a file path is framework/session metadata (not user code)."""
-    return any(filepath.startswith(p) for p in _METADATA_PREFIXES)
+    return any(filepath.startswith(p) for p in METADATA_PREFIXES)
 
 
 def parse_porcelain_line(line: str) -> tuple[str, str | None, str] | None:
@@ -240,43 +246,11 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
     return ""
 
 
-def _session_changes_are_doc_only(project_dir: Path, status_output: str | None = None) -> bool:
-    """Check if all non-metadata session changes are documentation (.md) files.
-
-    Returns True if changes exist but are all .md files — used to skip
-    the reflection gate for doc-only edits. ``status_output`` (STH-6Q9D): an
-    optional pre-captured porcelain snapshot to reuse; ``None`` computes it.
-    """
-    prawduct_dir = get_prawduct_dir(project_dir)
-    baseline_path = prawduct_dir / ".session-git-baseline"
-
-    current = status_output if status_output is not None else git_status_output(project_dir)
-    if current is None:
-        return False
-
-    baseline_lines: set[str] = set()
-    if baseline_path.is_file():
-        try:
-            # Unstripped on both sides — see git_has_session_changes.
-            baseline_lines = set(baseline_path.read_text().splitlines())
-        except (UnicodeDecodeError, OSError):
-            pass
-
-    has_any = False
-    for line in current.splitlines():
-        if line in baseline_lines:
-            continue
-        parsed = parse_porcelain_line(line)
-        if parsed is None:
-            continue
-        filepath = parsed[2]
-        if _is_metadata_path(filepath):
-            continue
-        has_any = True
-        if not filepath.endswith(".md"):
-            return False
-
-    return has_any
+# _session_changes_are_doc_only moved to lib/gates.py as
+# session_changes_all_non_judgeable (kernel-v3 chunk 04): the "doc-only"
+# question is now answered by THE judgeability predicate
+# (coverage_algebra.is_judgeable_path), and coverage_algebra sits above this
+# module in the import DAG.
 
 
 def git_has_code_changes(project_dir: Path, status_output: str | None = None) -> bool:
