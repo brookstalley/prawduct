@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-14: Reviewers run on the session model — reviewer-model tiering removed (reviewer-session-model)
+
+<!-- prawduct: type=fix | release=v3.0.1 | status=shipped -->
+<!-- Emergency patch, no build plan (a prose/test change across three dispatch
+     surfaces — proportional effort warranted no plan, so no scope=/chunks=). The
+     removed mechanism is PAUSED, not deleted: rationale is retained in lib/risk.py,
+     lib/telemetry.py, the A/B artifact, learnings, and backlog REL-5K8M for a
+     planned restore. -->
+
+**Parent:** User directive (2026-07-14): "prawduct is escalating to fable WAY too often …
+remove anything about deciding what model to use. if the user is on opus, use opus; if the
+user's on fable, use fable. don't try to switch intelligently." Reverses the reviewer-model
+tiering shipped across v2.1.x (`build-plan-reviewer-model-tiering.md`,
+`build-plan-reviewer-model-fallback.md`).
+
+**Why:** Model choice lived entirely in skill *prose*, not code. Three surfaces mapped a diff
+"tier" to a model: `skills/critic/SKILL.md` frontmatter pinned the coordinator to `model: opus`,
+and both `skills/critic/review-protocol.md` and `skills/pr/SKILL.md` mapped `classify-diff-risk`'s
+`escalate` verdict → `model: fable`. Because `escalate` fires for nearly any declared risk
+surface (broad by design), reviews escalated to Fable constantly. The user wants no intelligent
+switching — the reviewer should inherit whatever model the session runs on.
+
+**What:** Removed all reviewer-model selection so reviewers run on the **session model**
+(opus→opus, fable→fable):
+- `skills/critic/SKILL.md` — dropped the `model: opus` frontmatter pin (the fork now inherits the session model).
+- `skills/critic/review-protocol.md` — coordinator dispatches reviewers with no `model:` override (the `critic-reviewer` agent already declares `model: inherit`); `tier` is telemetry only.
+- `skills/pr/SKILL.md` — PR reviewer dispatched with no `model:` override; removed the now-unused `classify-diff-risk` from Step 3 prose and allowed-tools.
+- **Retained** (inert, for the planned restore): the `classify-diff-risk` command + `lib/risk.py`, the Critic `--tier` telemetry (pinned by `test_critic_consolidate.py`), and `review-stats` model-family aggregation. Model-recording plumbing still logs whatever ran.
+- Doc-tail reconciled with PAUSED notes (Critic-flagged): `lib/risk.py` docstring, `lib/telemetry.py` comment, the A/B artifact, the pinned-alias learning (now dormant), and backlog REL-5K8M (paused pending restore).
+
+**Tests:** `tests/preferences/test_reviewer_model_dispatch_prose.py` (renamed from
+`test_risk_escalation_prose.py`) rewritten as regression pins — reviewer-dispatch prose must direct
+the reviewer onto the session model and must not pin `model: fable`/`opus`/`sonnet`; the Critic
+skill frontmatter must carry no `model:` override. Full suite green (1713 passed, 1 skipped).
+Independent Critic review (final, coordinator — 3 reviewers on the **session model**, opus):
+**0 blocking**, 3 warning, 5 note — all warnings/notes were coherence doc-tail + this change-log
+entry, resolved above.
+
 ## 2026-07-13: Session-file .gitignore contract-drift advisory probe (kernel-evidence-store)
 
 <!-- prawduct: type=feature | scope=kernel-evidence-store | release=v3.0.0 | status=shipped -->

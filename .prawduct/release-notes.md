@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.0.1
+
+**Entry:** 2026-07-14: Reviewers run on the session model — reviewer-model tiering removed (reviewer-session-model)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.0.0
 
 **Entry:** 2026-07-13: Session-file .gitignore contract-drift advisory probe (kernel-evidence-store)

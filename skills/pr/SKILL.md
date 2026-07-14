@@ -3,7 +3,7 @@ description: PR lifecycle management — create, update, merge, or check status 
 argument-hint: "[create|update|merge|status]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(gh *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook resolve-base), Bash(prawduct-hook classify-diff-risk), Bash(prawduct-hook ledger-append *), Read, Write, Agent
+allowed-tools: Bash(gh *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook resolve-base), Bash(prawduct-hook ledger-append *), Read, Write, Agent
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -91,7 +91,7 @@ If the user did NOT supply the override flag and pending entries exist, **STOP**
 ### Step 3: Independent review — MANDATORY
 **STOP. Do NOT proceed to step 4 until the reviewer agent has completed and written its evidence file.**
 
-First run `prawduct-hook classify-diff-risk` to resolve the reviewer tier, then pick the model from that tier's **chain** (preference order, highest tier first): `escalate` (the PR scope touches a declared risk surface) → depth tier `model: fable` → `model: opus`; `standard` → default tier `model: opus` → `model: sonnet` — review work doesn't need the session's top tier by default, but governance-critical bundles buy the depth (evidence: `.prawduct/artifacts/reviewer-model-ab-2026-06-10.md`). **Model lineups change** — a tier can be withdrawn (Fable was, 2026-06-12): pass the first model in the chain the harness currently lists as a valid model, and if your preferred model is **withdrawn**/unrecognized or the dispatch errors selecting it, fall back to the next in the chain. Do NOT pass a model you can't confirm is current and rely on silent substitution — a withdrawn `model:` override resolves to the *session* model, not the tier you intended; so when `fable` is withdrawn the depth tier collapses to `model: opus`. Spawn a **separate agent** (via the Task tool) for the independent review with the resolved model, and record which model ran. The reviewer must run in its own context — it has NOT seen your reasoning, and that independence is the point.
+Spawn a **separate agent** (via the Task tool) for the independent review — do **not** pass a `model:` override, so the reviewer runs on the **current session model** (opus reviews as opus, fable as fable). Prawduct no longer selects a reviewer model from the diff's risk tier; the reviewer inherits whatever model the session is on, and intelligent model switching has been removed. Record which model actually ran. The reviewer must run in its own context — it has NOT seen your reasoning, and that independence is the point.
 
 First, compute the evidence file path: take the current branch name, replace every `/` with `--`, append `.json`. For example, `feature/add-auth` becomes `feature--add-auth.json`. The full path is `.prawduct/.pr-reviews/<computed-filename>`.
 
