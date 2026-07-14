@@ -1,6 +1,6 @@
 # Backlog Service — Requirements
 
-`status: draft v2 — evidence-sharpened, awaiting owner review · added: 2026-07-13 · source: discovery session · stage: requirements`
+`status: draft v3 — owner review incorporated 2026-07-14 · added: 2026-07-13 · source: discovery session · stage: requirements`
 
 Predecessor spec for the current git-file system: `documentation/backlog-system-requirements.md` —
 item *semantics* (metadata, stage routing, archive discipline) carry forward; its storage and
@@ -149,9 +149,11 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   no upstream checkout, no drop-box pointer, no git.
 - **XP2** Upstream submissions carry provenance (source product, version, session context) and land
   in a triage state (`submitted`), not straight into the working backlog.
-- **XP3** Submit-without-read: submission rights are grantable without full backlog visibility — a
-  consumer allowed to file must not thereby see the entire private backlog. (The drop-box's one
-  genuinely good property — keep it.)
+- **XP3** (DESCOPED — owner, 2026-07-14) Submit-without-read on a *private* upstream is **not**
+  required: filing into a private project may require access to that project's GitHub. Public
+  projects expose anonymous filing instead (PV3). The drop-box's submit-without-read property is now
+  a nice-to-have that must **not** drive the backend choice — its removal as a hard requirement is
+  what reopens plain GitHub Issues (see Pushback 5).
 
 ### Privacy & access
 
@@ -159,7 +161,10 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   contributors. Inherits repo access where the tracker is repo-adjacent; at minimum mappable to it.
 - **PV2** Agents authenticate with real, scoped, revocable credentials per machine/agent — not a
   shared secret. Attribution (CC4) depends on this.
-- **PV3** Public projects MAY expose a public submission surface; per-project choice.
+- **PV3** Public projects expose a public submission surface: **anonymous filing MUST work** for
+  prawduct itself and for any public downstream repo. "Anonymous" means **no prior relationship with
+  the repo owner** — requiring the filer to hold a GitHub account (or sign up on a self-hosted page)
+  is acceptable friction (owner, 2026-07-14). Private projects need not accept anonymous filing (XP3).
 
 ### Automation enablement
 
@@ -200,8 +205,12 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 
 ### Non-functional
 
-- **NF1** Cost ≈ $0/month at current scale (one operator, a handful of projects, several agents);
-  a knowable ceiling if it grows (Principle 9).
+- **NF1** Cost ≤ ~$10/month **total across the whole portfolio** (owner ceiling, 2026-07-14) —
+  **not** per project. A backend priced per-project, per-workspace, or per-seat-multiplied-by-projects
+  fails at 8+ projects (the owner explicitly rules out $10 × 8). Per-*seat* pricing on a single
+  shared workspace is acceptable only while it stays one seat. $0 remains strongly preferred: under
+  GV4 every adopter inherits whatever cost model prawduct prescribes, so a paid backend taxes the
+  entire ecosystem, not just the owner. A knowable ceiling as usage grows (Principle 9).
 - **NF2** Ops burden near zero. If self-hosted: one boring always-on process, trivial backup (MG2).
 - **NF3** Rate-limit headroom: ~200 write-ops/day/project plus sweep queries must clear any
   third-party backend's limits by 10×. Read amplification (concurrent grooming agents) is served
@@ -229,10 +238,12 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 4. **"Query for similar items" — split.** Structured + lexical search is a MUST; *semantic*
    similarity is a SHOULD (Q3). Don't buy embedding infrastructure before lexical retrieval plus
    agent judgment on the candidates proves insufficient.
-5. **"Follow github repo privacy" — sharpened.** The subtle case is XP3, submit-without-read: a
-   private upstream backlog that consumers can file into but not browse. Plain GitHub Issues on a
-   private repo cannot do this — non-collaborators can't file at all. This single requirement does
-   a lot of work in the adopt-vs-build decision.
+5. **"Follow github repo privacy" — sharpened, then relaxed.** The subtle case was XP3,
+   submit-without-read: a private upstream backlog that consumers can file into but not browse.
+   Plain GitHub Issues on a private repo cannot do this — non-collaborators can't file at all.
+   **The owner descoped this on 2026-07-14** (filing into a private project may require repo access),
+   which *removes* the single requirement that most argued against plain GitHub Issues. Public
+   projects keep anonymous filing via public issues (PV3), which GitHub does natively.
 6. **Requirements you didn't list that matter most:** no-model-in-the-loop CRUD (AG1 — this is
    most of "slow"), offline queue (AG4 — governance must never block on the network), strong claims
    (CC3), mutation history (CC4 — git's audit log was free; replace it), changed-since cursors
@@ -248,26 +259,41 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 
 ## Assumptions (vetoable)
 
+Owner review 2026-07-14 **confirmed** the load-bearing one, and it binds harder than first written:
+prawduct is distributed, GV4 is a hard requirement, and the backend must work for adopters in
+**private repos the owner cannot access** and for **anonymous filers** (see Owner decisions). That
+closes the escape hatch the old HIGH-impact assumption held open.
+
+- **CONFIRMED (owner, 2026-07-14):** GV4 is hard and binds to adopters the owner has no relationship
+  with — private-repo adopters and anonymous filers included. Any backend that only the owner can
+  provision, pay for, or grant access to is disqualified as the *prescribed* backend. (Was:
+  `[ASSUMPTION: … if prawduct is personal tooling, GV4 relaxes and self-hosting gets easier]` — the
+  owner explicitly declined that relaxation.)
 - Verified (2026-07-13 sweep): all backlog-bearing projects live on GitHub, split across at least
   two owners — `pacepace` (scriob, discodon) and `brookstalley` (hallucinote, prawduct).
   `[ASSUMPTION: this two-owner GitHub split is the durable shape — future products land under one
   of these or another GitHub owner | MED impact | affects the org-fields vs labels design fork]`
-- `[ASSUMPTION: single-operator scale today, but prawduct's plugin distribution makes
-  adopter-reproducibility (GV4) a hard requirement | HIGH impact | if prawduct is effectively
-  personal tooling, GV4 relaxes and self-hosting gets much easier]`
 - `[ASSUMPTION: learnings.md and change-log.md stay in git — only the backlog moves | MED impact]`
 - `[ASSUMPTION: AG5 latency numbers are the right order of magnitude | LOW impact]`
 
-## Open questions
+## Owner decisions (2026-07-14)
 
-1. **Who else runs this?** Is the backlog service for you alone, or part of what prawduct offers
-   every adopter? GV4 assumes the latter; it dominates adopt-vs-build more than any feature row.
-2. **Hosting stance** — rank your tolerance: (a) GitHub-native (no new infra; rate limits and the
-   XP3 gap), (b) hosted SaaS (fastest to adopt; lock-in, $, privacy), (c) self-hosted service (full
-   control; you become an operator), (d) local-first/replicated (no server; weaker centrality and
-   cross-project queries).
-3. **How anonymous is upstream filing?** Must XP1 work for consumers with *no* upstream access
-   relationship at all (true third parties), or only for products you also own?
+The three open questions are resolved:
+
+1. **Who else runs this?** Every adopter — not the owner alone. It **must work for adopters in
+   private repos the owner cannot access** (GV4 confirmed hard). This dominates adopt-vs-build: any
+   backend the owner must host, pay for, or grant access to cannot serve those adopters.
+2. **Hosting stance.** The owner is **equally comfortable with (a) GitHub-native, (b) hosted SaaS,
+   and (c) self-hosted** for their *own* operation; (d) local-first is not preferred. Operational
+   tolerance no longer eliminates (b)/(c) — but decision (1) plus the cost ceiling (NF1) and
+   anonymous filing (3) still select **(a) GitHub-native** as the only option satisfying the whole
+   set at $0 with zero per-project scaling. (b)/(c) work for the owner's own portfolio but fail the
+   adopter case.
+3. **Anonymity of filing.** Filing **may require access to the project's GitHub.** Public repos are
+   therefore *truly* no-relationship: anyone with a GitHub account can file, which is acceptable
+   friction (a required account/signup is fine; a prior relationship with the owner is not). Private
+   repos require access — so **XP3 (private submit-without-read) is descoped.** Anonymous filing MUST
+   work for prawduct and public downstream repos; it need not for private ones.
 
 ## Prior art (researched 2026-07-13, live sources)
 
@@ -304,9 +330,12 @@ story. Full agent reports available on request; what matters for the decision:
   API for issue attachments** (workaround: release assets or orphan branch, both API-supported).
   Privacy: issues inherit repo visibility — the only candidate where PV1 is structural, free.
 - **Linear** — best-in-class agent ecosystem (official hosted MCP, agents as non-seat teammates,
-  OpenAI's Symphony uses it as an agent control plane). But: **no custom fields, ever** (stage/
-  effort/impact become labels), no self-host, privacy is manual workspace convention, free tier
-  caps at 250 issues (< discodon today), $120/yr solo. Runner-up.
+  OpenAI's Symphony uses it as an agent control plane). **Per-seat, not per-workspace** (Basic
+  $10/user/mo, verified 2026-06): one workspace holds all teams/projects with unlimited issues on
+  paid — the free tier's **2-team / 250-issue** caps (< discodon today), not any per-project fee,
+  are what force the upgrade. But: **no custom fields, ever** (stage/effort/impact become labels),
+  no self-host, privacy is manual workspace convention, and **human collaborators each cost a seat**
+  (agents don't). Runner-up — viable solo, unreproducible for adopters (GV4).
 - **Jira** — verified anti-fit: ADF JSON comment format, documented stale-read search ("may
   return outdated data"), unpublished token rate limits, multi-second latency complaints.
 - **Self-hosted** (Gitea/Forgejo, GitLab, Plane, Huly) — Gitea/Forgejo is the best power-to-weight
@@ -317,10 +346,20 @@ story. Full agent reports available on request; what matters for the decision:
 
 ## Build / Adopt / Buy
 
-**Buy (hosted SaaS — Linear, Hiveship):** fails on portfolio fit. Linear misses DM1 (no custom
-fields) and PV1 (manual mapping), and per-workspace pricing scales badly across "we always will
-have a lot of projects." Hiveship is category-correct but survival-risk; three of its nearest
-neighbors died within the last year.
+**Buy (hosted SaaS — Linear, Hiveship):** economics reconsidered (2026-07-14), verdict unchanged.
+Linear is **per-seat, not per-workspace** (Basic $10/user/mo): one workspace holds all 8 projects
+as teams with unlimited issues, and a solo owner pays a single ~$10/mo seat — which *meets* the
+corrected NF1 for the owner's own portfolio (the free tier's 2-team / 250-issue caps, not per-project
+fees, are what force paying). So the owner's "per-workspace pricing scares me" is unfounded; the
+real per-seat sting is **human collaborators** (each a full seat — agents are non-seat). Linear still
+loses as the **prescribed** backend on Owner decision (1): under GV4 every adopter would need their
+own workspace and their own paid seat — prawduct cannot prescribe "sign up and pay Linear," and
+private-repo adopters the owner can't reach are unreachable. It also has no native anonymous
+public-filing surface (Owner decision 3), no custom fields (DM1), manual privacy (PV1), and no
+self-host / weaker export (MG2). **Net: genuinely viable for a solo owner in isolation — wrong for a
+distributed plugin.** The only scenario that flips this is relaxing GV4 (prawduct as personal
+tooling, adopters keep files), which the owner declined. Hiveship is category-correct but
+survival-risk; three of its nearest neighbors died within the last year.
 
 **Build (our own tracker):** the 2024-era gap that justified building — structured metadata +
 agent-speed API + privacy inheritance — was closed by GitHub's 2025–26 shipping cadence. The
@@ -358,8 +397,10 @@ requirements GitHub can't satisfy alone are exactly prawduct-shaped glue, and th
 3. **Build `prawduct backlog` adapter** (deterministic CLI in the plugin, no model in the loop)
    implementing the table above; `/prawduct:backlog` keeps its UX as a thin wrapper (GV1).
 4. **Replace the incoming-bugs drop-box** with direct cross-repo filing (XP1) — same-owner
-   portfolio needs nothing extra; third-party consumers file against the public prawduct repo.
-   XP3 (submit-without-read on *private* upstreams) is deferred — revisit if it ever materializes.
+   portfolio needs nothing extra; third-party and anonymous consumers file against the **public**
+   prawduct repo (a GitHub account is the only barrier — Owner decision 3). XP3 (submit-without-read
+   on *private* upstreams) is **descoped**, not merely deferred — the owner accepts that filing a
+   private project requires access to it.
 5. **Phase it:** (a) 1-day spike — `gh` p95 latency, label-encoding round-trip, org-fields check,
    importer dry-run on a small repo (puzzles or metallm); (b) adapter + migrate one mid-size
    project (cordyceps); (c) migrate discodon (317 open + the 1,754-line `backlog-archive.md`) and
@@ -375,3 +416,23 @@ Why this best serves prawduct *and its consumers* (GV4): every adopter whose rep
 already has the backend — no new account, no server, no cost; privacy inheritance is automatic;
 and the adapter ships inside the plugin they already install. Exit stays cheap (MG2: API export
 to files is trivial; the format is the industry's most portable).
+
+### Assign-to-agent: a primitive to use, an autopilot to gate
+
+"Claude agents assignable to issues" (Mainstream tier, above) is **two capabilities**, and prawduct
+wants them on opposite terms:
+
+- **Assignee-as-claim (adopt).** Native issue assignment — to a human *or* a named agent identity —
+  is exactly the **CC3** claim primitive and **CC4** attribution, for free. The adapter should model
+  "who holds this item" on top of native assignment rather than inventing a parallel `accepted-by:`
+  convention. Linear offers the same (agents as non-seat teammates); it is a point for mainstream
+  trackers over a bespoke build, not a GitHub exclusive.
+- **Autonomous issue→PR execution (gate).** GitHub's coding-agent path (`@claude` via
+  `anthropics/claude-code-action`, or org-enabled assign-to-agent) will take an issue and open a PR
+  unattended. Powerful, but it **bypasses the prawduct build cycle** — no stage/requirements gate
+  (Principle 6), no Critic, no reflection. It is safe only for `stage: ready`, well-scoped items,
+  and even then human/CI still gates the merge (the agent cannot self-approve — some independent-review
+  posture survives, but not the Critic specifically). **Doctrine:** the governed cycle stays the
+  default; assign-to-agent is an opt-in fast lane for ready items, and where used it should invoke
+  the prawduct cycle *inside* the action, not raw code-and-PR. This is an adapter workflow-design
+  question, not a backend-selection one — both GitHub and Linear expose this autopilot.
