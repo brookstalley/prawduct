@@ -436,3 +436,12 @@ wants them on opposite terms:
   default; assign-to-agent is an opt-in fast lane for ready items, and where used it should invoke
   the prawduct cycle *inside* the action, not raw code-and-PR. This is an adapter workflow-design
   question, not a backend-selection one — both GitHub and Linear expose this autopilot.
+
+The three mitigations — an **assignment-time gate** (`stage: ready` + linked requirement only), the
+**cycle-in-CI** wrapper above, and a **retro-governance path** that reconciles *any* out-of-band PR
+(agent autopilot, a hand-coded branch, or an external/anonymous contributor's fork) against the
+cycle before merge — are captured as backlog item `MET-6T4K` and treated as adapter-phase work. The
+retro-governance path is the general case and likely the keystone: it extends **GV3**'s
+reconciliation from item↔ship drift to *cycle-compliance* drift, and it is precisely what makes the
+anonymous/third-party filing invited by **PV3** safe to accept — every out-of-band contribution
+gets governed on the way in, not waved through.
