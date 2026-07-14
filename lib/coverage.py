@@ -125,7 +125,14 @@ def diagnose_stale_remote_base(project_dir: Path, base_ref: str) -> dict | None:
     if not base_ref or not base_ref.startswith(prefix):
         return None
     local = base_ref[len(prefix):]
-    if not local or not _git_ref_exists(project_dir, local):
+    if not local:
+        return None
+    # Route every git touch through evidence.run_git (which converts subprocess
+    # failures to a nonzero rc) so the "never raises" contract holds — the module
+    # helper _git_ref_exists uses a bare subprocess.run that could surface
+    # TimeoutExpired/OSError. A missing local branch (rc != 0) is not stale.
+    rc, _, _ = evidence.run_git(project_dir, "rev-parse", "--verify", "--quiet", local)
+    if rc != 0:
         return None
     rc, ahead_out, _ = evidence.run_git(
         project_dir, "rev-list", "--count", f"{base_ref}..{local}"

@@ -129,6 +129,14 @@ class TestDiagnoseStaleRemoteBase:
         # origin/<b> shape, but there is no local branch of that name.
         assert coverage.diagnose_stale_remote_base(repo, "origin/nope") is None
 
+    def test_none_and_no_raise_when_git_fails(self, tmp_path):
+        # The "never raises" contract: a non-git directory makes every git call
+        # fail, and the detector degrades to None rather than propagating an
+        # exception (R-1/R-2 — every touch routes through evidence.run_git).
+        not_a_repo = tmp_path / "bare"
+        not_a_repo.mkdir()
+        assert coverage.diagnose_stale_remote_base(not_a_repo, "origin/main") is None
+
     def test_ancestor_false_when_local_diverged_from_head(self, tmp_path):
         repo = _repo(tmp_path, feature_on_local=False)
         diag = coverage.diagnose_stale_remote_base(repo, "origin/main")
