@@ -444,4 +444,7 @@ cycle before merge — are captured as backlog item `MET-6T4K` and treated as ad
 retro-governance path is the general case and likely the keystone: it extends **GV3**'s
 reconciliation from item↔ship drift to *cycle-compliance* drift, and it is precisely what makes the
 anonymous/third-party filing invited by **PV3** safe to accept — every out-of-band contribution
-gets governed on the way in, not waved through.
+gets governed on the way in, not waved through. Retro-governance is a large enough topic to warrant
+its **own spec later** — it also underpins **onboarding an existing, ungoverned repo** (the same
+retroactive-cycle problem at repo scale) — so it is only *referenced* here, not designed (`MET-6T4K`
+parks it).
