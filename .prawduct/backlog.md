@@ -624,6 +624,12 @@
 - **[REL-5K8M]** Heavier-mechanism option for reviewer-model churn — single-source tier→model registry + drift check
   `effort: M · impact: M · area: governance/release · source: builder · added: 2026-06-12 · status: open · stage: idea · refs: .prawduct/artifacts/build-plan-reviewer-model-fallback.md, documentation/research/open-6-model-tier-registry.md`
 
+  **Paused 2026-07-14 (v3.0.1):** reviewer-model tiering was removed (emergency patch — reviewers
+  run on the session model; change-log `reviewer-session-model`). There is currently no tier→model
+  mapping to single-source, so this item is inert until tiering is restored — fold it into the
+  restore work rather than grooming it standalone. Kept open (not superseded) because the restore
+  is planned.
+
   Deferred from reviewer-model-fallback (2026-06-12). The v2.1.5 fix handled model withdrawal (Fable
   temporarily pulled) with prose-only ordered fallback chains — the user chose the lightest mechanism.
   If model churn recurs or the prose-driven resolution proves error-prone, consider the heavier

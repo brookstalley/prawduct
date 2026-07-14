@@ -3,9 +3,6 @@ description: Independent Critic review — quality governance for product and fr
 user-invocable: true
 disable-model-invocation: false
 context: fork
-# Reviewer tier: opus — the efficiency frontier per
-# .prawduct/artifacts/reviewer-model-ab-2026-06-10.md.
-model: opus
 allowed-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git branch --show-current), Bash(git for-each-ref *), Bash(wc *), Bash(prawduct-hook test-status), Bash(prawduct-hook verify-chunk-refs *), Bash(prawduct-hook infer-critic-mode *), Bash(prawduct-hook resolve-base), Bash(prawduct-hook classify-diff-risk), Bash(prawduct-hook classify-diff-risk *), Bash(prawduct-hook critic-begin *), Bash(prawduct-hook critic-consolidate), Bash(prawduct-hook critic-end), Bash(prawduct-hook evidence *), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---
