@@ -1620,15 +1620,19 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     ``--from-junit <report>`` (TST-7M3K) ingests a JUnit XML the builder already
     produced instead of re-running the suite — the build cycle ran the suite once;
     re-running it inside ``record`` paid for it twice per stamp. The report is
-    read as-is (no run), so it cannot be combined with extra pytest args or a
-    declared ``test_command:``. Exit status then derives from the report's failure
-    count rather than a process.
+    read as-is (no run), so it cannot be combined with extra pytest args. It CAN
+    be combined with a declared ``test_command:`` — that is the single-run path
+    for a declared-command repo: run the canonical command once (it emits JUnit)
+    and ingest its report here, rather than have ``record`` re-run it. Exit status
+    then derives from the report's failure count rather than a process.
 
     ``--from-counts passed=N failed=M skipped=K [duration=S]`` records pass/fail/
     skip counts supplied directly — the language-/runner-agnostic on-ramp for a
     toolchain that cannot emit JUnit XML (embedded HIL, a bespoke harness). Like
     ``--from-junit`` it runs nothing (exit status derives from ``failed``) and
-    rejects a second source (``--from-junit`` / ``test_command:`` / extra args).
+    rejects a second source (``--from-junit`` / extra args). It is also rejected
+    when a ``test_command:`` is declared — that command emits JUnit, so ingest its
+    report with ``--from-junit`` (machine-backed) rather than hand-typed counts.
     ``passed`` and ``failed`` are required; ``skipped``/``duration`` default to 0.
 
     ``--no-rerun`` (alias ``--restamp``) reuses the existing record's counts and
@@ -1637,7 +1641,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     ``changes_referenced``, with no suite run and no re-supplied counts. The
     original ``command`` is preserved. Trust posture matches ``--from-junit``: the
     operator asserts the tree's test-relevant content is unchanged since the last
-    real run. Requires an existing ``.test-evidence.json``; rejects a second
+    real run. Compatible with a declared ``test_command:`` (it introduces no new
+    counts). Requires an existing ``.test-evidence.json``; rejects a second
     source. (No tree/content hash verifies the assertion — that mechanism was
     removed pre-v1.4 for chronic false positives and is deliberately not back.)
 
@@ -1744,21 +1749,17 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     tests_dirs = tests_dirs_raw.split() if tests_dirs_raw else []
 
     if from_junit is not None:
-        # Ingest mode runs nothing, so a runner source (extra pytest args or a
-        # declared test_command) is a contradiction — reject it loudly rather
-        # than silently ignore it.
+        # Ingest mode runs nothing, so extra pytest args are a contradiction.
+        # A declared test_command is NOT: the honest single-run path for a
+        # declared-command repo is to run that canonical command once (it MUST
+        # emit JUnit — {junit_xml} is required) and ingest its report here,
+        # rather than pay for the suite a second time inside `record`. Trust
+        # posture matches the other ingest on-ramps — the operator asserts the
+        # report is the declared command's full output, not a scoped subset.
         if extra:
             print(
                 "error: extra pytest args are not allowed with --from-junit — "
                 "the report is ingested as-is; nothing is run.",
-                file=sys.stderr,
-            )
-            return 2
-        if test_command:
-            print(
-                "error: --from-junit cannot be combined with a declared "
-                "test_command — one ingests an existing report, the other runs "
-                "the suite. Use one or the other.",
                 file=sys.stderr,
             )
             return 2
@@ -1773,17 +1774,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
         if test_command:
+            # A declared test_command MUST emit JUnit ({junit_xml} is required),
+            # so the runner CAN produce a report. Hand-typed counts are both
+            # unnecessary and the weakest posture — no artifact, and they reopen
+            # the scoped-subset trap the knob closes. Redirect to --from-junit,
+            # which ingests that report without a re-run.
             print(
                 "error: --from-counts cannot be combined with a declared "
-                "test_command — one records given counts, the other runs the "
-                "suite. Use one or the other.",
+                "test_command — the declared command emits JUnit, so run it "
+                "once and ingest the report with `--from-junit <report>` "
+                "instead (no re-run, machine-backed evidence).",
                 file=sys.stderr,
             )
             return 2
 
     if no_rerun:
-        # Restamp reuses the existing record's counts, so a runner source is a
-        # contradiction.
+        # Restamp reuses the existing record's counts, so extra pytest args are
+        # a contradiction. A declared test_command is fine: restamp introduces
+        # no new counts (it reuses the prior record — which, on the default run
+        # path, came from the declared command) and only re-derives the F4a
+        # coverage half, so there is no scoped-subset risk.
         if extra:
             print(
                 "error: extra args are not allowed with --no-rerun/--restamp — "
@@ -1791,16 +1801,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        if test_command:
-            print(
-                "error: --no-rerun/--restamp cannot be combined with a declared "
-                "test_command — one reuses the existing record, the other runs "
-                "the suite. Use one or the other.",
-                file=sys.stderr,
-            )
-            return 2
 
-    if test_command:
+    # These constraints govern the RUN path only. When an ingest/restamp on-ramp
+    # is active the declared command is never invoked, so its placeholder and
+    # extra-args rules don't apply — gate them on whether the suite will run.
+    will_run = from_junit is None and from_counts is None and not no_rerun
+    if test_command and will_run:
         if extra:
             print(
                 "error: extra pytest args are not allowed when "

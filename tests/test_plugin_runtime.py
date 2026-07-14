@@ -1363,15 +1363,23 @@ class TestFromJunitIngest:
         assert res.returncode == 2
         assert "from-junit" in res.stderr.lower()
 
-    def test_rejects_combination_with_test_command(self, tmp_path):
-        repo = self._repo(tmp_path)
+    def test_ingests_with_declared_test_command(self, tmp_path):
+        # A declared test_command emits JUnit; the single-run path is to run it
+        # once and ingest its report — NOT re-run inside `record`. The repo's own
+        # test would FAIL if run; ingesting a passing report proves the declared
+        # command was not re-executed. (Was a rejection; the exclusion forced the
+        # exact double-run the on-ramp exists to remove — see change-log.)
+        repo = self._repo(tmp_path, "def test_bad():\n    assert False\n")
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
         )
-        junit = self._junit(repo)
+        junit = self._junit(repo, tests=2, failures=0)
         res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
-        assert res.returncode == 2
-        assert "test_command" in res.stderr
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"]) == (2, 0)
+        assert ev["command"] == f"--from-junit {junit}"
+        assert junit.is_file()  # report read, not consumed
 
 
 class TestFromCountsIngest:
@@ -1489,6 +1497,10 @@ class TestFromCountsIngest:
         assert "from-counts" in res.stderr.lower()
 
     def test_rejects_combination_with_test_command(self, tmp_path):
+        # A declared test_command emits JUnit, so hand-typed counts (no artifact)
+        # stay rejected — but the error redirects to --from-junit, which ingests
+        # that report without a re-run (fixes the discoverability half: the agent
+        # need not guess the escape hatch).
         repo = self._repo(tmp_path)
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
@@ -1497,6 +1509,7 @@ class TestFromCountsIngest:
                       "passed=1", "failed=0")
         assert res.returncode == 2
         assert "test_command" in res.stderr
+        assert "from-junit" in res.stderr.lower()
 
     def test_head_tilde1_base_emits_advisory(self, tmp_path):
         # A repo NOT on main with no origin → the recorder's overlay base falls
@@ -1657,6 +1670,25 @@ class TestNoRerunRestamp:
         res = _run_in(repo, "test-evidence", "record", "--no-rerun", "--", "-k", "foo")
         assert res.returncode == 2
         assert "no-rerun" in res.stderr.lower() or "restamp" in res.stderr.lower()
+
+    def test_allows_restamp_with_declared_test_command(self, tmp_path):
+        # Restamp reuses the existing record's counts and re-derives only the
+        # coverage half — no suite run — so a declared test_command is fine.
+        # Seed via --from-junit (the declared-command ingest path), then restamp.
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        junit = repo / "r.xml"
+        junit.write_text(
+            '<testsuites><testsuite name="pytest" tests="4" failures="0" '
+            'errors="0" skipped="0" time="1.0"></testsuite></testsuites>\n'
+        )
+        assert _run_in(repo, "test-evidence", "record",
+                       "--from-junit", str(junit)).returncode == 0
+        assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 4
 
 
 class TestTestEvidenceKnobs:
