@@ -6,6 +6,48 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When `check-cumulative-critic` reports `uncovered` on a branch whose code you know was reviewed, suspect a stale base before running a fresh review — the gate anchors to `origin/<base>` by design, so unpushed integration commits drag already-shipped work into the required span
+
+**Pattern**: v3.0.3 release (2026-07-14). Wrapping a +0.0.1 release, `check-cumulative-critic`
+reported `uncovered: no composed review evidence spans 136bca56..b9b4356 at HEAD` for a feature
+(`tree-validated-test-evidence`) whose change-log said it had a clean final Critic + a
+verify-resolutions pass. Investigation, not re-review, was the right first move.
+
+**Root cause — a two-layer staleness.** (1) `resolve-base` returned `origin/develop`, which sat at
+**v3.0.1** while local `develop` was at **v3.0.2** — three unpushed commits, including a
+`release-prep(v3.0.2)` that had never been promoted to `main` (a "phantom release": version files
+and `develop` moved, but the `develop→main` promotion + push never happened, across sessions).
+(2) `check-cumulative-critic` composes review facts from `merge-base(base, HEAD)`'s TREE forward;
+with the base stale, the required span became the whole **v3.0.2 + v3.0.3** range. The evidence
+store DID contain a clean fact for every piece (`test-evidence-ingest-test-command` base_tree
+`136bca56`→`9136970e`; `tree-validated-test-evidence` `998c5d31`→`cb5aa9ca`→`669e94d5`, all
+blocking=0), but no single chain composed from the stale `origin/develop` tree to HEAD because the
+reviewed *working* trees never exactly equalled the committed trees (docs/release-prep tails).
+
+**The fix was reconciling the base, not re-reviewing.** `git push origin develop` (a required
+release step regardless) advanced `origin/develop` to the local tree; re-running the gate then
+reported `satisfied: ... 2 review fact(s) + 1 free edge(s), 0 unresolved blocking` — the chain now
+began at `develop`'s actual tree (`998c5d31`, exactly the feature's review base) and the single
+free edge was the docs-only tail the CRT-7M2D allowance excuses. Zero fresh review needed.
+
+**Diagnostic order** (bank this to avoid the 4–10 min wrong remedy the stderr suggests):
+1. `prawduct-hook resolve-base` — is it `origin/<b>`?
+2. Is local `<b>` ahead of `origin/<b>` AND an ancestor of HEAD? (feature cut from unpushed base)
+3. If yes → `git push origin <b>` and re-check the gate BEFORE `/prawduct:critic cumulative`.
+4. If unsure, read the evidence store (`<git-common-dir>/prawduct/evidence.jsonl`): the review
+   chain's earliest `base_tree` should equal `merge-base(resolve-base, HEAD)`'s tree; if it equals
+   the LOCAL integration tree instead, the base is stale.
+
+**Systematic follow-through**: filed COV-7K4N (a stale-base hint on the uncovered path so the gate
+diagnoses this itself + an unpromoted-release-prep session-start advisory for the root cause;
+deferred spike on preferring the nearer of local/remote base). Frequency is low — needs gitflow
+(`base_branch: develop`) AND a feature built on an unpushed local-`develop` advance; trunk repos
+(base = `main`) essentially never hit it since `main` never sits locally-ahead. The gap that
+warrants the fix is the *misleading remedy* when it does fire, not the frequency. Relates to Root
+Cause Discipline (#16), Validate Before Propagating (#15), Honest Confidence (#5), and COV-5H3N
+(the distinct wrong-default-to-`main` facet), PR-7T2K (the mirror-image feature-branch push-state
+case).
+
 ## When you add an ingest/IO surface to a platform-agnostic framework, expose the minimal data primitive — not one ecosystem's file format — or you silently lock out the toolchains the agnosticism promised
 
 **Pattern**: test-evidence-single-run (2026-06-26, v2.2.3). An upstream report (COV-3R9K, scriob)
