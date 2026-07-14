@@ -10,6 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.0.2
+A declared `test_command:` no longer forces a full-suite re-run just to stamp test evidence. The cheap ingest on-ramps now compose with a declared command: `--from-junit` ingests the JUnit report the declared command already emitted (the command must emit JUnit, so the report is honest machine-backed evidence), and `--no-rerun`/`--restamp` refresh the timestamp and coverage half without a run. Only `--from-counts` stays rejected alongside a declared command — hand-typed counts are the one on-ramp with no artifact and reopen the scoped-subset trap the knob closes, so its error now redirects you to `--from-junit`. The run-path checks (the `{junit_xml}` placeholder, no extra pytest args) apply only when the suite is actually run. Surfaced by a v3.x product session re-running a 17,777-test suite twice per stamp.
+
 ## v3.0.1
 Reviewers now run on the **session model** — reviewer-model tiering is removed. Model choice previously lived in skill prose that mapped a diff's risk "tier" to a model (the Critic coordinator pinned `opus`; both the Critic and PR reviewers escalated to Fable on the `escalate` tier), and because `escalate` fires for nearly any declared risk surface, reviews escalated to Fable constantly. That intelligent switching is gone: the Critic and PR reviewers inherit whatever model the session is on (opus reviews as opus, fable as fable), with no `model:` override. The `classify-diff-risk` command, the Critic `--tier` telemetry, and `review-stats` model-family aggregation are retained (inert) so the mechanism can be restored later; nothing in gate semantics or state formats changes for consuming repos.
 
