@@ -1969,6 +1969,20 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         passed = total - failures - errors - skipped
         failed = failures + errors
 
+    # Capture the working-tree SHA this run covers, so a later session with a
+    # byte-identical judgeable tree can trust the record without re-running (the
+    # additive tree-validity clause; spike-tree-validated-test-evidence.md).
+    # Skipped for --from-counts: hand-typed counts carry no machine tie to the
+    # working tree (an embedded/HIL run may not even test it), so that on-ramp
+    # stays timestamp-only. Best-effort — a capture failure omits the field and
+    # freshness falls back to the timestamp model; the clause is purely additive.
+    evidence_tree = None
+    if from_counts is None:
+        from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+        _cap = _evidence_mod.capture_tree(project_dir)
+        if _cap.get("status") == "ok":
+            evidence_tree = _cap.get("tree")
+
     # Base record carries the pytest half PLUS schema-valid placeholder F4a
     # fields, so the file is self-sufficient even if the F4a overlay below is
     # skipped (verifier absent on a broken install). The overlay fills the real
@@ -1996,6 +2010,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         "changes_referenced": [],
         "changes_unjudged": [],
     }
+    if evidence_tree:
+        # Omit (never null) when uncaptured, so a record without the field falls
+        # through to timestamp-only freshness — the clause is additive.
+        record["evidence_tree"] = evidence_tree
     # Atomic write — the freshness gate must never observe a half-written file.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     tmp = evidence_path.with_name(evidence_path.name + ".tmp")

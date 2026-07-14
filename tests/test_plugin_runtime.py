@@ -1691,6 +1691,176 @@ class TestNoRerunRestamp:
         assert ev["passed"] == 4
 
 
+class TestTreeValidatedFreshness:
+    """spike-tree-validated-test-evidence.md §9 — the build gate for the
+    additive tree-validity clause. Each case seeds a real `record` (which
+    captures `evidence_tree`), backdates the record's timestamp so it PREDATES
+    the session (timestamp alone now reads stale), then asserts the tree clause
+    decides correctly: an unchanged judgeable tree reads `current` across the
+    session boundary; ANY judgeable change reads `stale`. Proves the disjunction
+    only ever relaxes stale->current — structurally incapable of the false-stale
+    that retired the fingerprint and git_sha mechanisms.
+    """
+
+    def _seed(self, tmp_path, name: str) -> Path:
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        # A judgeable src file to mutate in the "stale" cases; the suite itself
+        # is trivial and self-contained so the seed `record` never depends on
+        # import paths.
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0, "seed record"
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        # End-to-end: a real run captures evidence_tree AND the F4a overlay's
+        # existing.update() preserves it.
+        assert isinstance(ev.get("evidence_tree"), str) and ev["evidence_tree"], \
+            "a real run must persist evidence_tree through the F4a overlay"
+        ev["timestamp"] = "2000-01-01T00:00:00Z"  # predate the session
+        ev_path.write_text(json.dumps(ev))
+        return repo
+
+    # --- relax-only: an unchanged judgeable tree stays current across sessions ---
+
+    def test_restart_no_change_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "restart")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "unchanged tree must read current despite predating the session"
+
+    def test_metadata_yaml_edit_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "meta")
+        (repo / ".prawduct" / "project-state.yaml").write_text("views_enabled: true\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            ".prawduct/*.yaml is not judgeable — must stay current"
+
+    def test_non_protected_md_edit_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "doc")
+        (repo / "README.md").write_text("# notes\nchanged\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "a non-protected .md is not judgeable — must stay current"
+
+    def test_untracked_incoming_bug_note_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "bug")
+        (repo / "incoming-bugs").mkdir()
+        (repo / "incoming-bugs" / "report.md").write_text("# bug report\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "an untracked .md note is not judgeable — must stay current"
+
+    def test_verbatim_commit_is_current(self, tmp_path):
+        # Committing the already-recorded state must not invalidate: the tree's
+        # judgeable content is unchanged (only the record's own metadata moved).
+        repo = self._seed(tmp_path, "commit")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "commit recorded state verbatim")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "a verbatim commit preserves the judgeable tree — must stay current"
+
+    # --- correctly stale: any judgeable change re-stales ---
+
+    def test_src_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "src")
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a src edit is judgeable — must read stale"
+
+    def test_test_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "tst")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert 1 == 1\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a test edit is judgeable — must read stale"
+
+    def test_untracked_test_file_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "newtest")
+        (repo / "test_extra.py").write_text("def test_x():\n    assert True\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "an untracked test file is judgeable — must read stale"
+
+    def test_lockfile_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "lock")
+        (repo / "uv.lock").write_text("# dependency footprint changed\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a lockfile is judgeable — a recorded dep change must read stale"
+
+    def test_hook_edit_is_stale(self, tmp_path):
+        # The vetted judgeability predicate makes bin/prawduct-hook judgeable, so
+        # editing it invalidates — closing the inverse false-fresh the old
+        # metadata-filter patch introduced by skipping the hook itself.
+        repo = self._seed(tmp_path, "hook")
+        (repo / "bin").mkdir()
+        (repo / "bin" / "prawduct-hook").write_text("#!/usr/bin/env python3\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "the hook is judgeable — editing it must read stale"
+
+    # --- from-counts stays timestamp-only (captures no tree) ---
+
+    def test_from_counts_captures_no_tree_and_stays_stale_when_backdated(self, tmp_path):
+        # --from-counts is the untied on-ramp: it captures no evidence_tree, so a
+        # backdated count record reads stale (timestamp-only), preserving the
+        # pre-clause contract even though the working tree is unchanged.
+        repo = tmp_path / "counts"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_ok.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=1", "failed=0").returncode == 0
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        assert "evidence_tree" not in ev, "--from-counts must not capture a tree"
+        ev["timestamp"] = "2000-01-01T00:00:00Z"
+        ev_path.write_text(json.dumps(ev))
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "backdated --from-counts is stale (timestamp-only; no tree clause)"
+
+
+class TestTreeValidHelperFailsToStale:
+    """The tree-validity clause must FAIL TOWARD STALE on any git error: a
+    capture or diff failure can only leave evidence stale, never flip it fresh
+    (the false-fresh a gate must never produce). Unit-level with monkeypatch —
+    these fail-safe branches are impractical to trigger through a real repo.
+    """
+
+    def _gates(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+        return gates
+
+    def test_capture_failure_reads_not_valid(self, monkeypatch):
+        gates = self._gates()
+        monkeypatch.setattr(
+            gates.evidence, "capture_tree",
+            lambda project_dir: {"status": "error", "reason": "git exploded"},
+        )
+        ok, reason = gates._test_evidence_tree_valid(ROOT, "deadbeefdeadbeef")
+        assert ok is False and "capture" in reason.lower()
+
+    def test_tree_diff_unavailable_reads_not_valid(self, monkeypatch):
+        gates = self._gates()
+        # capture succeeds but returns a DIFFERENT tree, so the diff path is
+        # reached; tree_diff then returns None (missing object / git failure).
+        monkeypatch.setattr(
+            gates.evidence, "capture_tree",
+            lambda project_dir: {"status": "ok", "tree": "1111111111111111"},
+        )
+        monkeypatch.setattr(
+            gates.evidence, "tree_diff",
+            lambda project_dir, a, b: None,
+        )
+        ok, reason = gates._test_evidence_tree_valid(ROOT, "2222222222222222")
+        assert ok is False and "diff" in reason.lower()
+
+
 class TestTestEvidenceKnobs:
     """Gate-soundness ch.2: `test_command:` / `tests_dirs:` in
     project-state.yaml replace the hardcoded `sys.executable -m pytest`-from-

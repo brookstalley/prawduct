@@ -1,8 +1,10 @@
 # Spike: Tree-Validated Test Evidence Freshness
 
-**Status:** design spike (pre-build) · **Date:** 2026-07-14 · **Author:** framework session
+**Status:** prototyped + validated (§9 matrix green) · **Date:** 2026-07-14 · **Author:** framework session
 **Advances:** kernel-v3-evidence-design.md §4 (deferred "Test evidence on the store"), COV-3R9K suggested-fix-1 (previously rejected — see §3), the governance-metadata false-re-run bug (`backlog.md:13`), and the restart false-stale surfaced in the v3.0.2 session.
 **Requirements Confidence:** High on the problem and the failure history; **Medium** on the recommended design — the risk is a *false-fresh* semantic shift (§7), and two prior patches wrongly believed they'd solved the adjacent problem, so this spike gates on a validation matrix (§9) before any schema lands.
+
+**Decisions confirmed by the owner (2026-07-14):** (1) accept the env-drift tradeoff (§7) — the incidental per-session re-run is an expensive, undesigned safety net, and starting a session already-stale on an unchanged tree is the worse friction; (2) the additive "OR tree-valid" framing was never specifically evaluated in the prior rejections (§11 assumption confirmed — those rejected the *replace-timestamp-with-hash* direction for false-stale modes), so it is not scar tissue and is cleared to build.
 
 ---
 
@@ -64,7 +66,9 @@ Each historical failure mode maps to a primitive that neutralizes it:
 
 ## 6. Schema change (lock-in — enumerated per planning.md)
 
-Additive fields on `.prawduct/.test-evidence.json`: `evidence_tree` (str, the captured working-tree SHA) and `head_tree` (str|null). **Questions the field must answer** (its only consumers): *"Is the current judgeable tree identical to the one this run covered?"* and *"Was that tree a clean commit of HEAD?"* Nothing time- or commit-position-derived is stored (that's what failed). **Back-compat:** a record without `evidence_tree` (pre-upgrade, or `--from-counts` where no tree is meaningful) falls through to **today's timestamp-only** behavior — the clause is purely additive, so old records behave exactly as now.
+Additive field on `.prawduct/.test-evidence.json`: **`evidence_tree`** (str, the captured working-tree SHA). **The one question it answers** (its only consumer, the clause in §5): *"Is the current judgeable tree identical to the one this run covered?"* Nothing time- or commit-position-derived is stored (that's what failed). **Back-compat:** a record without `evidence_tree` (pre-upgrade, or `--from-counts` where no tree is meaningful) falls through to **today's timestamp-only** behavior — the clause is purely additive, so old records behave exactly as now.
+
+> **Build refinement (2026-07-14):** the spike originally also proposed `head_tree` (*"was that tree a clean commit of HEAD?"*). Dropped at build time — **no consumer reads it**: the freshness decision is `tree_diff(evidence_tree, current_tree)` judgeable-empty, and the "verbatim-commit stays current" case (§9) is carried by the judgeable filter (the record's own metadata write already perturbs the raw tree SHA), not by a clean-commit flag. Adding a field nothing queries is exactly the speculative lock-in planning.md's "enumerate the consumers first" rule warns against. One field, one consumer, one question. `--from-counts` is likewise excluded from tree capture — hand-typed counts carry no machine tie to the working tree (an embedded/HIL run may not even test it), so that on-ramp stays timestamp-only; this also preserves the standing `test_restamp_flips_stale_record_to_current` contract.
 
 ## 7. The one real decision — env-drift tradeoff (user's call)
 
@@ -72,6 +76,7 @@ The timestamp model *incidentally* forces a re-run every session, which catches 
 - **Bounded:** lockfiles (`uv.lock`, etc.) are tracked, judgeable files, so dependency changes recorded in them *do* invalidate. The gap is env changes with **no** file footprint, plus flakes — both of which the current model also fails to catch on its own (it doesn't compare results, only timing).
 - **Consistent** with how v3 review evidence already vouches across sessions/worktrees for an unchanged tree.
 - **Escapable:** a builder who suspects env drift can always `record` fresh.
+- **Shared blind spot (not new):** the in-repo test knobs `test_command:`/`tests_dirs:` live under the non-judgeable `.prawduct/` prefix, so editing them after a record reads "current" without a re-run. This is the *same* blind spot the session-fresh clause already carries (a knob edit is metadata churn either way), not one the tree clause introduces — flagged for honesty (Critic note, 2026-07-14).
 
 Recommendation: accept the tradeoff (the incidental per-session re-run is an expensive, undesigned safety net), but this is the decision to confirm — not to make silently.
 
@@ -97,6 +102,16 @@ Two prior patches *believed* they'd killed the false-stales and hadn't. So the s
 | Record → edit `uv.lock` | **stale** (dependency footprint) |
 | Record → edit `bin/prawduct-hook` | **stale** (hook is judgeable) |
 | Record → add an untracked test file | **stale**; add an untracked note under `incoming-bugs/` | **current** |
+
+### 9a. Validation outcome (2026-07-14) — all green
+
+Prototyped and validated. The matrix landed as `tests/test_plugin_runtime.py::TestTreeValidatedFreshness` (11 cases: 5 relax-only *current*, 5 judgeable-change *stale*, 1 `--from-counts`-stays-stale), each seeding a real `record` then backdating the timestamp so the freshness decision falls onto the tree clause. Result: **11/11 pass; the full evidence/freshness suite (62 tests) and the whole suite (1724 tests) pass with no regression** — including the standing `test_restamp_flips_stale_record_to_current` contract, which holds precisely because `--from-counts` captures no tree.
+
+Two nuances the matrix pinned down:
+- **`incoming-bugs/` note → current holds only for `.md`.** The standing `is_judgeable_path` treats a non-`.md` file anywhere outside metadata prefixes as judgeable, so an `incoming-bugs/*.txt` would read *stale*. The realistic bug-report shape is `.md` (→ current); not changed here (§10 non-goal: don't touch the predicate).
+- **The verbatim-commit case passes via the judgeable filter, not raw tree-SHA equality.** `record` writes `.prawduct/.test-evidence.json`, so the post-record raw tree SHA already differs from `evidence_tree`; the diff is non-empty but entirely metadata, so the judgeable filter empties it. The "tree preserved" story is really "judgeable-scoped tree preserved" — the stronger, load-bearing invariant.
+
+**Surfaces actually touched:** `lib/gates.py` (`tests_are_current` disjunction + `_test_evidence_tree_valid` helper + `evidence_tree` optional-schema field), `bin/prawduct-hook` (`cmd_test_evidence` capture, skipped for `--from-counts`), `tests/test_plugin_runtime.py` (the matrix). As predicted in §8, the review protocols and `methodology/building.md` needed **no prose change** — they key off the `test-status` exit code, which is unchanged in meaning.
 
 ## 10. Non-goals
 

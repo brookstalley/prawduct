@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)
+
+<!-- prawduct: type=feature -->
+<!-- Statusless on a feature branch = release-pending once merged. Medium framework
+     feature, no build plan: an ~89-line additive clause across lib/gates.py +
+     bin/prawduct-hook plus a validation matrix; the design spike served as the plan.
+     One final Critic + a verify-resolutions delta pass. -->
+
+**Parent:** `.prawduct/artifacts/spike-tree-validated-test-evidence.md` — the design spike for
+kernel-v3 §4's deferred "test evidence on the store" item. Advances COV-3R9K suggested-fix-1 (the
+ADDITIVE framing, distinct from the rejected replace-timestamp direction), closes the
+governance-metadata false-re-run and the restart false-stale surfaced in the v3.0.2 session.
+
+**Why:** test-evidence freshness (`tests_are_current`) keyed on the session timestamp (WHEN a run
+happened), not the tree it ran against — so a restart with no change, a `.prawduct/*.yaml` edit,
+or a doc-only edit all re-staled evidence and forced a full re-run. v3 tree-anchored REVIEW
+evidence but left TEST evidence on the timestamp model.
+
+**What:** an ADDITIVE tree-validity clause — `test-status` is current iff session-fresh OR the
+judgeable-scoped working tree is byte-identical to the tree the recorded run ran against
+(`evidence_tree`, captured via `evidence.capture_tree` at `record`; skipped for `--from-counts`).
+A disjunction that only ever relaxes stale→current, so it is structurally incapable of the
+false-STALE class that retired the content-hash fingerprint and `git_sha`. Classifies paths
+(`is_judgeable_path`), never file contents. The env-drift tradeoff (the incidental per-session
+re-run) was accepted by the owner. Validation matrix (§9): 11 relax/stale cases + 2
+fail-toward-stale unit tests; full suite 1727 passed. Review protocols and `building.md` need no
+prose change (they key off the `test-status` exit code).
+
+- `lib/gates.py`: `_test_evidence_tree_valid` helper + the OR-clause in `tests_are_current`;
+  `evidence_tree` optional-schema field.
+- `bin/prawduct-hook` (`cmd_test_evidence`): capture the working-tree SHA; skipped for `--from-counts`.
+- `tests/test_plugin_runtime.py`: `TestTreeValidatedFreshness` (matrix) + `TestTreeValidHelperFailsToStale` (fail-safe).
+- Dropped the spike's proposed `head_tree` field (no consumer reads it).
+
 ## 2026-07-14: Test-evidence ingest on-ramps work with a declared test_command (test-evidence-declared-command-onramps)
 
 <!-- prawduct: type=fix | release=v3.0.2 | status=shipped -->
