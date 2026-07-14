@@ -17,7 +17,7 @@
 `origin/<base>` is stale. Filed from the v3.0.3 release reflection (`learnings.md` /
 `learnings-detail.md`: "reconcile a stale origin/<base> before re-reviewing"). Owner chose
 fix-shapes #1 (near-term) + #2 (follow-up); fix-shape #3 (base-resolution re-architecture)
-stays deferred.
+stays deferred — re-filed as `[COV-9B4T]` so the deferral stays trackable past COV-7K4N's close.
 
 **Why:** `_resolve_base_branch` anchors the base to `origin/<b>` for a stable remote-tracking
 merge-base. When local `<b>` carries release-prepped-but-unpushed commits (a "phantom release" —
