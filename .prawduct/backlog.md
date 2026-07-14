@@ -964,6 +964,47 @@
   retroactively stales existing composed coverage. Filed at stage=requirements — not buildable
   as written. (critic)
 
+- **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
+  `effort: L · impact: L · area: backlog · source: user · added: 2026-07-13 · status: open · stage: requirements · related: BKL-7M4Q, BKL-8T3W, BKL-3R8P · refs: documentation/backlog-service-requirements.md · reviewed: 2026-07-14`
+
+  Umbrella requirement for replacing .prawduct/backlog.md (git-file backlog, LLM-mediated
+  mutation) with a centralized backlog/issue service that is fast, non-blocking,
+  concurrency-safe, and cross-project. Motivating pain (all observed): slow LLM-in-the-loop
+  CRUD, non-atomic writes (BKL-7M4Q), merge conflicts from parallel humans+agents, git-coupled
+  edits, drop-box upstream reporting. Requirements doc:
+  documentation/backlog-service-requirements.md (draft v2 2026-07-13, evidence-sharpened;
+  prior-art research complete — recommendation: adopt GitHub Issues as system of record + build
+  a thin deterministic adapter in the plugin; awaiting owner review). stage:
+  requirements — design starts after owner vets the doc's pushback and open questions. Related:
+  BKL-7M4Q (crash-safe mutation — superseded by CC1 if this ships), BKL-8T3W (shipped-drift
+  surfacing — becomes GV3 reconciliation), BKL-3R8P (dedup — becomes Q3/AU3), XP flow replaces
+  skills/report-bug drop-box. (user)
+
+- **[MET-6T4K]** Assign-to-agent (GitHub issue→PR autopilot) bypasses the governed build cycle — needs gate + retro-governance path
+  `effort: L · impact: L · area: methodology · source: user · added: 2026-07-14 · status: open · stage: research · related: BKL-5D2C · refs: documentation/backlog-service-requirements.md (Assign-to-agent subsection), docs/principles.md (P6, P22) · reviewed: 2026-07-14`
+
+  Surfaced 2026-07-14 during owner review of documentation/backlog-service-requirements.md (draft v3). Becomes live the moment prawduct adopts GitHub Issues as the backlog backend.
+
+  Tension: off-the-shelf "assign issue to a Claude agent" flows — `@claude` via the official `anthropics/claude-code-action`, or org-enabled assign-to-agent — take a GitHub issue and open a PR unattended. That path bypasses the prawduct build cycle entirely: no stage/requirements gate (Principle 6), no Critic, no reflection. It is safe only for `stage: ready`, well-scoped items, and even then human/CI still gates the merge (the agent cannot self-approve — some independent-review posture survives, but not the Critic specifically). This is a governance-is-structural (Principle 22) hole: a fast lane that skips the gates silently is the "governance optional" failure mode. Note the assignee-as-claim half of the same feature is GOOD (native issue assignment = the CC3 claim + CC4 attribution primitive) — this item is only about the autonomous-execution half.
+
+  Candidate mitigations (to evaluate — this is the research work):
+  1. Assignment-time gate (prevention): only `stage: ready` items with a linked requirement (`refs:`) may be assigned to the agent; a CI check un-assigns/comments otherwise. Principle 6 relocated to the assignment boundary.
+  2. Cycle-in-CI (integration): the action spawns a prawduct-GOVERNED Claude session (plugin installed in CI), running plan -> /prawduct:critic -> reflect and gating the PR on the kernel-v3 evidence store, instead of raw code. Answers "can it use the build cycle?" = yes. Limits to verify: (a) discovery is interactive, so a CI agent cannot confirm requirements with the owner — under-specified items must never be auto-assigned (reinforces #1); (b) Stop-hook enforcement assumes an interactive session boundary, so CI must invoke the gates explicitly; (c) confirm the Critic evidence-store gating actually runs headless in GitHub Actions (kernel v3 was built worktree/CI-friendly — verify end-to-end).
+  3. Retro-governance / onboard out-of-compliance PR (likely keystone — GENERALIZES): a PR-boundary reconciliation that detects any PR lacking cycle evidence (no Critic review fact spanning the diff, no parent requirement, no reflection) and runs the cycle AGAINST the existing diff retroactively — attach/reconstruct the parent requirement, run the Critic over the diff, capture reflection, record the facts — before merge is allowed. Covers not just the agent autopilot but ALL out-of-band PRs (a human who hand-coded, an external/anonymous contributor's fork — and draft v3 just widened the doc to invite third-party/anonymous filing, which raises out-of-band PR volume). Slots under GV3 (traceability + reconciliation), which already exists in the doc.
+
+  Open questions: which mitigation(s) to build; does retro-governance warrant its own capability/backlog item; can headless Critic evidence-store gating run in GitHub Actions (verify); how to represent a PR's "compliance status" (label? check? evidence fact?).
+
+  refs: documentation/backlog-service-requirements.md (## Assign-to-agent subsection), GV3, Principle 6, Principle 22.
+
+  Owner note (2026-07-14): retro-governance (mitigation #3) is a large topic in its own right and warrants its OWN doc/spec later — not just a sub-item of the backlog-service work. It also reaches beyond out-of-band PRs into ONBOARDING EXISTING REPOS: bringing a pre-existing, ungoverned repo under prawduct is the same retroactive-cycle problem at repo scale (reconstruct/attach requirements, run the cycle against existing code, record the facts). Parked for now — do NOT design yet; this item only references it. Resolves the earlier open question ("does retro-governance warrant its own capability/backlog item") = yes, its own doc, later.
+
+- **[REL-3B7Q]** Release tooling: support planless scopes in regen-views (first-class `chunks=none` / `plan=none` sentinel)
+  `effort: M · impact: M · area: release-tooling · source: reflection · added: 2026-07-14 · status: open · stage: design · related: REL-4T8N, REL-9F2T, VWS-6R4T, VWS-7N3K · refs: lib/views.py`
+
+  A change-log entry for proportionally-planless work (`chunks=n/a`, no build plan) blocks `regen-views`: `diagnose_scope_plan_coverage` (lib/views.py) fails closed on any unreleased scope that doesn't resolve to a build-plan file. First hit by the gitignore-drift-advisory scope at v3.0.0 release-prep; worked around by folding its scope into kernel-evidence-store.
+
+  Desired: a first-class sentinel (e.g. `chunks=none` / `plan=none`) that the release validator recognizes and skips scope→plan resolution for, so proportional planless work can carry its own scope and release-notes line without a fabricated build plan. Distinct from the sibling no-plan fail-closed cases already shipped (VWS-7N3K: regen aborts when NO plan resolves at all; VWS-6R4T: fail-loud roster validation of every change-log tag) — this is about a legitimate *per-scope* planless entry that the roster/coverage validator must accept as intentionally planless rather than reject.
+
 ## Archive
 
 - **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch

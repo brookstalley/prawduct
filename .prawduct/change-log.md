@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-13: Session-file .gitignore contract-drift advisory probe (kernel-evidence-store)
+
+<!-- prawduct: type=feature | scope=kernel-evidence-store | release=v3.0.0 -->
+<!-- Built alongside the kernel-evidence-store branch and ships under its scope
+     (proportional effort: a ~100-line advisory probe warranted no build plan, so
+     it has no chunks= of its own). Its own parent requirement and provenance are
+     in the entry body below. Folding the release scope avoids the planless-scope
+     regen-views blocker; the systemic fix (accept planless scopes) is backlogged. -->
+
+**Parent:** `documentation/post-sync-advisory-spec.md` §1–2 (the advisory charter —
+surface *this project should probably do X* nudges that self-resolve off a committed shared
+fact). A fourth production probe under that mechanism, directly precedented by
+`lib/upstream_probes.py` (trigger and resolution are the same observable state). Originated
+from a prior-session review of the migration first-run experience: a plugin cannot start a
+turn to reconcile a drifted `.gitignore`, but a session-start advisory lands the directive
+in model context for the agent to act on at the first user turn.
+
+**Why:** A product repo's `.gitignore` can drift from the framework's session-file contract
+(`lib/core.py` `GITIGNORE_ENTRIES` / `RETIRED_GITIGNORE_ENTRIES` / `MANAGED_FILES`) — via a
+prawduct upgrade that extended the contract, a fresh clone, a hand-edited `.gitignore`, or a
+botched onboard. Session runtime files then get committed (cross-clone noise) or the tracked
+build-plan gets ignored, and nothing surfaced it. Probing the *drifted state itself* is
+strictly better than a version-delta banner line: cause-agnostic, persistent until fixed,
+and zero per-release maintenance (the contract lives in code).
+
+**What:** New `lib/gitignore_probes.py` registered in `bin/prawduct-hook` `cmd_clear`
+alongside the existing probe roster. It fires an `info` advisory (`recommended_action:
+prawduct-hook update-gitignore`, `/prawduct:doctor` as the alternative) when `.gitignore`
+diverges, and self-resolves once reconciled — the committed `.gitignore` is itself the
+shared answer store, so a teammate's fix resolves it for every clone on next sync (a
+documented, reasoned deviation from spec §7.1's `project-state.yaml`-fact default). The fire
+condition is EXACTLY `update_gitignore`'s `modified` condition: both read the new read-only
+`lib.core.gitignore_contract_drift` (backed by a pure `_contract_diff`), so the nudge can
+never outlive the fix. The hook never auto-edits the committed `.gitignore` (the no-noise
+guarantee stays intact). Tests: `tests/test_gitignore_probes.py` (fire/inert/self-resolve,
+count-independent evidence) + a fixer-parity and pairwise-disjointness guard in
+`tests/test_gitignore_management.py`.
+
 ## 2026-07-13: Kernel v3 — shared evidence store; review gates answer by composition (kernel-evidence-store)
 
 <!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=kernel-evidence-store | release=v3.0.0 -->

@@ -23,12 +23,16 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from lib.core import (  # noqa: E402
     GITIGNORE_ENTRIES,
+    MANAGED_FILES,
     RETIRED_GITIGNORE_ENTRIES,
+    gitignore_contract_drift,
     update_gitignore,
 )
 
@@ -172,3 +176,71 @@ class TestExistingBehaviorPinned:
 
         assert "CLAUDE.md" in result["unignored"]
         assert "CLAUDE.md" not in (tmp_path / ".gitignore").read_text().splitlines()
+
+
+class TestContractDriftHelper:
+    """``gitignore_contract_drift`` — the read-only diff the advisory probe reads.
+
+    The load-bearing invariant is *parity with the fixer*: the probe must fire
+    exactly when ``update_gitignore`` would modify the file, or the nudge would
+    outlive the fix (perpetual nag) or miss real drift (silent gap). Both derive
+    from the shared ``_contract_diff``, and this pins that they never disagree.
+    """
+
+    def _drift(self, tmp_path: Path) -> bool:
+        d = gitignore_contract_drift(tmp_path)
+        return bool(d["missing"] or d["incorrectly_ignored"])
+
+    def test_contract_lists_are_pairwise_disjoint(self):
+        """The refactor computes ``missing`` from the *original* line set (not the
+        post-removal one), which is behavior-preserving ONLY because the three
+        contract lists share no entry. Pin that invariant so a future maintainer
+        who adds a path to two lists fails here, not silently in production."""
+        session = set(GITIGNORE_ENTRIES)
+        managed = set(MANAGED_FILES)
+        retired = set(RETIRED_GITIGNORE_ENTRIES)
+        assert session.isdisjoint(managed)
+        assert session.isdisjoint(retired)
+        assert managed.isdisjoint(retired)
+
+    def test_absent_gitignore_reads_as_full_drift(self, tmp_path: Path):
+        d = gitignore_contract_drift(tmp_path)
+        assert d["missing"] == GITIGNORE_ENTRIES
+        assert d["incorrectly_ignored"] == []
+
+    def test_satisfied_contract_is_no_drift(self, tmp_path: Path):
+        (tmp_path / ".gitignore").write_text("\n".join(GITIGNORE_ENTRIES) + "\n")
+        d = gitignore_contract_drift(tmp_path)
+        assert d == {"missing": [], "incorrectly_ignored": []}
+
+    def test_managed_and_retired_entries_are_flagged(self, tmp_path: Path):
+        managed = sorted(MANAGED_FILES)[0]
+        retired = RETIRED_GITIGNORE_ENTRIES[0]
+        (tmp_path / ".gitignore").write_text(
+            "\n".join([*GITIGNORE_ENTRIES, managed, retired]) + "\n"
+        )
+        d = gitignore_contract_drift(tmp_path)
+        assert d["missing"] == []
+        assert managed in d["incorrectly_ignored"]
+        assert retired in d["incorrectly_ignored"]
+
+    @pytest.mark.parametrize(
+        "seed",
+        [
+            None,  # no .gitignore at all
+            "",  # empty file
+            "\n".join(GITIGNORE_ENTRIES) + "\n",  # satisfied
+            "\n".join(GITIGNORE_ENTRIES[:-1]) + "\n",  # one entry short
+            "CLAUDE.md\n",  # a managed file wrongly ignored, everything else missing
+            "\n".join([*GITIGNORE_ENTRIES, RETIRED_GITIGNORE_ENTRIES[0]]) + "\n",  # retired line
+        ],
+    )
+    def test_drift_matches_fixer_modified(self, tmp_path: Path, seed):
+        # Parity: drift-detected BEFORE the fixer runs == the fixer's `modified`.
+        if seed is not None:
+            (tmp_path / ".gitignore").write_text(seed)
+        drift_before = self._drift(tmp_path)
+        modified = update_gitignore(tmp_path)["modified"]
+        assert drift_before == modified
+        # And the fix is a fixed point: after reconciling, no drift remains.
+        assert self._drift(tmp_path) is False
