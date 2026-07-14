@@ -5,7 +5,7 @@
 
 ## 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | release=v3.0.3 | status=shipped -->
 <!-- Statusless on a feature branch = release-pending once merged. Medium framework
      feature, no build plan: an ~89-line additive clause across lib/gates.py +
      bin/prawduct-hook plus a validation matrix; the design spike served as the plan.
