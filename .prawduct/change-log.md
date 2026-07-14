@@ -5,7 +5,7 @@
 
 ## 2026-07-13: Session-file .gitignore contract-drift advisory probe (kernel-evidence-store)
 
-<!-- prawduct: type=feature | scope=kernel-evidence-store | release=v3.0.0 -->
+<!-- prawduct: type=feature | scope=kernel-evidence-store | release=v3.0.0 | status=shipped -->
 <!-- Built alongside the kernel-evidence-store branch and ships under its scope
      (proportional effort: a ~100-line advisory probe warranted no build plan, so
      it has no chunks= of its own). Its own parent requirement and provenance are
@@ -43,7 +43,7 @@ count-independent evidence) + a fixer-parity and pairwise-disjointness guard in
 
 ## 2026-07-13: Kernel v3 — shared evidence store; review gates answer by composition (kernel-evidence-store)
 
-<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=kernel-evidence-store | release=v3.0.0 -->
+<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=kernel-evidence-store | release=v3.0.0 | status=shipped -->
 
 **Why:** The v2 review data plane kept evidence in single-slot, per-worktree files judged
 by mode label and mtime — so a chunk-reviewed branch still demanded a redundant cumulative

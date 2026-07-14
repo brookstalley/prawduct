@@ -554,10 +554,10 @@ views_enabled: true
 # v2.3.2 (2026-07-10): single-pr-bookkeeping shipped (PR #118); entry flipped to
 # status=shipped; pointer cleared. No release-pending plans remain. Plan files
 # are RETAINED as historical artifacts and regen via their scope= tags.
-# 2026-07-12: repointed at kernel-evidence-store — GOV-4C7X plan 1 of the kernel
-# v3 program (SHA-keyed evidence store + coverage algebra + deterministic Critic
-# data plane). feature/kernel-v3-evidence-store off develop, 6 chunks.
-active_build_plan: artifacts/build-plan-kernel-evidence-store.md
+# 2026-07-14: cleared at v3.0.0 release — kernel-evidence-store shipped; plan
+# retained under artifacts/ as a historical record (checkboxes derive from the
+# change-log's status=shipped entries).
+active_build_plan: null
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -678,6 +678,9 @@ scope_rollups:
   hot-path-git-batching:
     chunks: ["01"]
     releases: ["v2.1.8"]
+  kernel-evidence-store:
+    chunks: ["01", "02", "03", "04", "05", "06"]
+    releases: ["v3.0.0"]
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]
