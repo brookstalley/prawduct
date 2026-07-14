@@ -91,6 +91,72 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     )
 
 
+def diagnose_stale_remote_base(project_dir: Path, base_ref: str) -> dict | None:
+    """Detect a *stale remote integration base* — the COV-7K4N condition.
+
+    When ``base_ref`` is a remote-tracking ref (``origin/<b>``) and the local
+    ``<b>`` is ahead of it (integration commits — a merge or a ``release-prep``
+    — committed locally but never pushed), the merge-base anchors to the STALE
+    remote. A feature built on those unpushed local commits then reads as
+    spanning the whole unshipped range, so ``check_cumulative_critic`` can
+    report ``uncovered`` on already-reviewed work whose every commit carries a
+    clean review fact. The remedy is ``git push origin <b>`` — a required
+    release step anyway — which fast-forwards the remote and re-anchors the
+    merge-base to ``<b>``'s tree, where the feature's review chain begins.
+
+    Returns ``None`` unless ``base_ref`` is ``origin/<b>`` with a local ``<b>``
+    that exists and is ahead of it; otherwise::
+
+        {"local", "remote", "commits_ahead", "ancestor_of_head",
+         "release_prep_subject"}
+
+    ``ancestor_of_head`` distinguishes the false-``uncovered`` case (local
+    ``<b>`` is an ancestor of HEAD, so pushing moves the merge-base forward and
+    the gate re-composes to a pass) from a diverged local branch (where pushing
+    would not help — the gate hint suppresses itself). ``release_prep_subject``
+    is the newest unpushed ``release-prep(...)`` subject in ``origin/<b>..<b>``
+    or ``None`` — the "phantom release" signal the session-start advisory keys
+    on. Never raises; any git failure or shape mismatch returns ``None`` (the
+    callers degrade to their generic path).
+    """
+    from . import evidence  # noqa: PLC0415 -- lazy: mirrors resolve_merge_base_tree's import posture; avoids import-cycle risk at module load
+
+    prefix = "origin/"
+    if not base_ref or not base_ref.startswith(prefix):
+        return None
+    local = base_ref[len(prefix):]
+    if not local or not _git_ref_exists(project_dir, local):
+        return None
+    rc, ahead_out, _ = evidence.run_git(
+        project_dir, "rev-list", "--count", f"{base_ref}..{local}"
+    )
+    if rc != 0 or not ahead_out.isdigit():
+        return None
+    commits_ahead = int(ahead_out)
+    if commits_ahead <= 0:
+        return None
+    anc_rc, _, _ = evidence.run_git(
+        project_dir, "merge-base", "--is-ancestor", local, "HEAD"
+    )
+    rc, subjects, _ = evidence.run_git(
+        project_dir, "log", "--format=%s", f"{base_ref}..{local}"
+    )
+    release_prep_subject = None
+    if rc == 0:
+        for line in subjects.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("release-prep("):
+                release_prep_subject = stripped  # log is newest-first → newest match
+                break
+    return {
+        "local": local,
+        "remote": base_ref,
+        "commits_ahead": commits_ahead,
+        "ancestor_of_head": anc_rc == 0,
+        "release_prep_subject": release_prep_subject,
+    }
+
+
 def resolve_merge_base_tree(project_dir: Path) -> dict:
     """Resolve base branch → merge-base commit → that commit's tree SHA —
     the shared prelude of every gate/dispatch that anchors an interval at

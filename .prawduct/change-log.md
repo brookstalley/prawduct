@@ -3,6 +3,59 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-14: Stale remote-base diagnostics for the cumulative-critic gate (stale-remote-base-diagnostics)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless on a feature branch = release-pending once merged. Medium
+     framework fix, no build plan: a ~90-line shared git-inspection helper plus a
+     reactive gate hint and a proactive session-start advisory across lib/coverage.py,
+     lib/gates.py, a new lib/stale_base_probes.py, and bin/prawduct-hook; the backlog
+     item's recorded fix-shape menu (fix-shapes #1 + #2) served as the plan. One
+     final Critic. Closes COV-7K4N. -->
+
+**Parent:** `[COV-7K4N]` (backlog) — false-`uncovered` with a misleading remedy when
+`origin/<base>` is stale. Filed from the v3.0.3 release reflection (`learnings.md` /
+`learnings-detail.md`: "reconcile a stale origin/<base> before re-reviewing"). Owner chose
+fix-shapes #1 (near-term) + #2 (follow-up); fix-shape #3 (base-resolution re-architecture)
+stays deferred.
+
+**Why:** `_resolve_base_branch` anchors the base to `origin/<b>` for a stable remote-tracking
+merge-base. When local `<b>` carries release-prepped-but-unpushed commits (a "phantom release" —
+a `release-prep(vX)` cut locally, never promoted/pushed) and a feature is built on that
+ahead-state, `check_cumulative_critic` composes over `merge-base(origin/<b>, HEAD)` → HEAD and
+drags the whole already-reviewed, already-shipped range into the required span — reporting
+`uncovered` even though every commit carries a clean review fact (blocking=0). The code was never
+unreviewed; the base pointer lagged. The stderr remedy ("run /prawduct:critic cumulative") is then
+both wrong and expensive (~4–10 min re-review for zero signal); the actual fix is `git push origin
+<b>`. Observed live during v3.0.3 (origin/develop at v3.0.1 behind an unpushed release-prep(v3.0.2)).
+
+**What:** one shared detector plus the two fix-shapes that consume it.
+- **Detector** (`coverage.diagnose_stale_remote_base`): returns a dict iff `base_ref` is
+  `origin/<b>` and local `<b>` exists and is ahead of it — `{local, remote, commits_ahead,
+  ancestor_of_head, release_prep_subject}`; `None` on every other shape (remote current, base not
+  a remote ref, local branch absent) and on any git failure (never raises). `ancestor_of_head`
+  separates the false-`uncovered` case (pushing moves the merge-base forward) from a diverged
+  local branch (pushing wouldn't help).
+- **Reactive (fix-shape #1)** — `check_cumulative_critic`'s `uncovered` path appends a NOTE when
+  the base is stale *and* local `<b>` is an ancestor of HEAD: names the cheap `git push origin
+  <b>` remedy (and the phantom release-prep) BEFORE the generic full-review fallback, converting
+  the wrong first action into the right one. Purely additive text on an already-failing path — the
+  verdict and exit code are unchanged.
+- **Proactive (fix-shape #2)** — a new session-start advisory probe (`lib/stale_base_probes.py`,
+  registered in `bin/prawduct-hook` `cmd_clear`) nudges *before* the gate is hit when local `<b>`
+  carries an unpushed `release-prep(...)`. Release-prep-qualified (not merely "ahead of remote") to
+  stay quiet during ordinary development; self-resolves on push (same observable state), like the
+  gitignore/upstream probes. Evidence is count/version-independent so the advisory id is stable
+  across the unpushed lifetime.
+
+- `lib/coverage.py`: `diagnose_stale_remote_base` helper (colocated with `_resolve_base_branch`).
+- `lib/gates.py`: the stale-base NOTE on `check_cumulative_critic`'s `uncovered` path.
+- `lib/stale_base_probes.py` (new): the `unpromoted-release-prep` advisory probe.
+- `bin/prawduct-hook` (`cmd_clear`): register the probe in the roster.
+- `tests/test_stale_base_probes.py` (new): detector unit cases + probe fire/inert/self-resolve.
+- `tests/test_cumulative_gate.py`: `TestStaleBaseHint` (hint fires; suppressed when remote current
+  or local diverged). Full suite 1742 passed.
+
 ## 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)
 
 <!-- prawduct: type=feature | release=v3.0.3 | status=shipped -->

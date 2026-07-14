@@ -691,10 +691,12 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         from lib.upstream_probes import register as _register_upstream_probes  # noqa: PLC0415
         from lib.api_versioning_probes import register as _register_api_versioning_probe  # noqa: PLC0415
         from lib.gitignore_probes import register as _register_gitignore_probe  # noqa: PLC0415
+        from lib.stale_base_probes import register as _register_stale_base_probe  # noqa: PLC0415
         _register_backlog_probes()  # register the backlog feature's probes before the roster runs
         _register_upstream_probes()  # + the upstream-bug-reporting receiving-side probe
         _register_api_versioning_probe()  # + the api-design versioning-undecided migration nudge
         _register_gitignore_probe()  # + the session-file .gitignore contract-drift nudge
+        _register_stale_base_probe()  # + the stale remote-base / unpromoted-release-prep nudge (COV-7K4N)
         run_sync_advisories(
             project_dir, sync_version=_plugin_manifest_version() or ""
         )
