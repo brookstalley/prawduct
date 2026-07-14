@@ -1,6 +1,6 @@
 # Backlog Service — Product Requirements & High-Level Design (PRD)
 
-`status: draft v2 — adversarial pass + owner feedback folded (cache = optional/read-through; gh-vs-http reopened as a spike) · added: 2026-07-14 · source: planning session · stage: design`
+`status: draft v3 — owner-feedback pass folded (2026-07-14): identity resolved (GitHub App across owned orgs + user token for public/foreign filing — O2/D8); ID strategy resolved (repo-prefixed GitHub numbers, owner/repo#number canonical, PFX → migration alias — O4/D4); attachments reprioritized + inline-on-private spike added (O3/D9/S5); org model clarified to federated multi-owner (O1/D3); cache-freshness spike (S4) re-scoped to gate the cache layer, not the slice. Prior v2: cache = optional/read-through, gh-vs-http reopened as a spike. · added: 2026-07-14 · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-requirements.md` — the problem, the 8-project evidence
 sweep, and the adopt-vs-build decision that selected **GitHub Issues as system of record + a
@@ -113,13 +113,13 @@ structured body block for exact round-trip of non-native fields.
 | **status** (submitted→open→in-progress→shipped/dropped) | open/closed **+ state-reason** (completed=shipped, not-planned=dropped) **+ `status:` label** for submitted/in-progress | two axes must survive (DM2) |
 | **stage** (idea→…→ready) | **`stage:` label** | load-bearing: `pick` routing enforces requirements-precede-code |
 | area / effort / impact / source | **labels**; org **Issue Fields** where the owner is an org (enhancement) | soft per-project vocabularies (DM1); labels fit them; org Fields unavailable on personal accounts |
-| **stable ID** `PFX-XXXX` | **alias** (label `id:…` + body block); GitHub's number is transport | **D4 is reconsidered (§10)** — keep minting PFX forever, or use repo-prefixed GitHub numbers going forward and keep PFX only as migration aliases? |
+| **stable ID** (`owner/repo#number` canonical; `repo#number` short) | GitHub's issue **number** is the ID going forward; migrated `PFX-XXXX` become permanent **alias labels** (`id:…`) + body-block entries so old refs resolve | **D4/O4 resolved (§10)** — `owner/repo#number` is GitHub's own cross-ref syntax (auto-links, globally unique, disambiguates same-named repos across owners); no *new* PFX minted |
 | relationships: blocks/blocked-by · parent/child · related | **native dependencies** (GA 8/2025) · **sub-issues** (GA 4/2025) · references | ready-work query needs blockers queryable (DM3) |
 | comments | issue comments | threaded, attributed, timestamped (DM5) |
 | **claim / assignee** | issue **assignee** (human or agent identity) | atomic-take + verify; residual race accepted (CC3) |
 | verification stamp | marker comment or `verified:YYYY-MM-DD` encoding | "premise re-checked against code" is one call + queryable (TF2) |
 | mutation history / audit | issue **timeline/events** (native) | replaces git's free audit log (CC4) |
-| attachments | **release-asset upload wrapped** by the adapter | GitHub has no public attachment API — the one real gap (DM6) |
+| attachments | robust default: **release-asset wrap** *or* **dedicated attachments-branch** written via the git-data API (both deterministic, no PR) | GitHub has **no public attachment API** (verified 2026-03; the native `user-attachments` inline-upload endpoint is browser/session-cookie only — non-G1, an *attended-only* enhancement). Inline rendering **on private repos** is the open axis → **S5** (DM6/D9/O3) |
 
 **Encoding validation is advisory and tolerant** (DM1): unknown values are *flagged*, never rejected
 (a fail-closed validator here is a latent fail-close — learning on tolerating natural encoding
@@ -154,7 +154,7 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 - **[P1]** Dedup-on-create advisory + async — returns ID immediately + candidates (AG3).
 - **[P1]** Latency target: warm reads < 500 ms (from cache), create/update p95 < 2 s (AG5) — *a target, it does not mandate a mirror.*
 - **[P2]** MCP surface over the same core library.
-- **[P2, optional]** Offline write-queue (enhancement over fail-fast+retry).
+- **[P2, optional]** Offline write-queue (enhancement over fail-fast+retry). *Consequence of O4/D4:* since the ID is GitHub's number (assigned only after create returns), a queued create takes a **provisional local ID reconciled to `repo#number` on flush** — the one real cost of dropping prawduct-minted PFX.
 - **[P2, optional]** Bulk prefetch (since-cursor) to warm the cache for heavy sweeps.
 
 ### 8.2 Truth, freshness & integrity
@@ -172,7 +172,7 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 - **[P1]** Structured filters + full-text, sort, paginate (Q1) — *served from cache to avoid GitHub search-index lag (§13).*
 - **[P1]** Lexical similarity for dedup (Q3, lexical) — *cache-based, read-your-writes consistent.*
 - **[P2]** Semantic similarity for dedup (Q3, semantic — GitHub hybrid search GA 4/2026).
-- **[P2]** Cross-project queries + Projects v2 rollup (Q4) — *limited across owners (§13).*
+- **[P2]** Cross-project queries + rollup (Q4). *O1 (federated multi-owner):* native Projects v2 rollup only spans **one owner**; **cross-owner** rollup is **query-side fan-out + merge** in our layer, not a GitHub-native feature.
 - **[P1]** Counts/rollups derived on read (Q5).
 
 ### 8.4 Cross-project flow
@@ -183,7 +183,7 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 
 ### 8.5 Privacy, access & auth
 - **[P0]** Per-project visibility inherits repo access — structural, free (PV1).
-- **[P0]** Agents authenticate with real, scoped, revocable per-machine/agent credentials — not a shared secret (PV2). *(Identity model = O2; it also governs rate-limit headroom, §9/§13.)*
+- **[P0]** Agents authenticate with real, scoped, revocable credentials — not a shared secret (PV2). *Identity model resolved (O2/D8):* **GitHub App installed across owned orgs** (per-owner rate bucket, scoped, revocable, `[bot]` attribution) + a **user token** (`gh`/OAuth/PAT) for public/foreign repos the fleet isn't a member of. Per-**agent** attribution rides in the payload (assignee/marker), since neither transport carries agent-level actor identity. Governs rate-limit headroom, §9/§13.
 - **[P2]** Public submission surface, per-project choice (PV3).
 
 ### 8.6 Automation enablement
@@ -201,9 +201,9 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 ### 8.8 Data model
 - **[P0]** Structured, queryable metadata; soft per-project enums (DM1).
 - **[P0]** Two axes: status + stage, not flattened (DM2).
-- **[P0]** Stable human-readable cross-project IDs; permanent redirects on merge; legacy-alias absorption (DM4). *(Ongoing-ID strategy = D4, §10.)*
+- **[P0]** Stable, cross-project-unambiguous IDs; permanent redirects on merge; legacy-alias absorption (DM4). *Resolved (D4/O4, §10):* `owner/repo#number` canonical / `repo#number` short; migrated `PFX-XXXX` kept only as permanent aliases; no new PFX minted.
 - **[P1]** Relationships queryable (DM3) · **[P1]** threaded comments (DM5) · **[P1]** nothing hard-deleted (DM7).
-- **[P2]** Attachments ≥ 10 MB (DM6) — release-asset wrap.
+- **[P1]** Attachments (DM6) — **inline screenshots are a top use case** (owner, 2026-07-14), so not a P2 rough-edge. Robust default: release-asset wrap *or* attachments-branch via git-data API (both no-PR, G1-clean); native inline-upload is attended-only; inline-on-private gated by **S5** (D9). *(≥10 MB via the same wrap.)*
 
 ### 8.9 Migration & exit
 - **[P0]** One-shot importer: IDs, metadata, bodies, sections preserved verbatim; existing IDs stay valid (MG1). **Highest-risk operation — own design + dry-run + rollback (§13).**
@@ -213,39 +213,42 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 ## 9. Non-functional targets (concretized)
 - **Cost (NF1):** **$0/month.** GitHub Issues, labels, org Fields free; no server. No per-project cost.
 - **Ops (NF2):** near-zero — GitHub hosts the store; the only optional local part is a cache file.
-- **Rate limits (NF3):** GitHub gives ~5k/hr core, tightest **80 writes/min** and **10 semantic searches/min**. The *warm-cache* read path never touches GitHub; the budget is spent on **writes + sync**. **Adversarial caveat (§13):** a *cold* cache or write-heavy sweep across a fleet **sharing one token** hits a single bucket — headroom depends on the identity model (O2): per-agent tokens spread the limit, a shared token concentrates it. **Also:** GitHub's search index is not read-your-writes consistent — Q1/Q3 that must see just-written items run against the cache, not GitHub search.
+- **Rate limits (NF3):** GitHub gives ~5k/hr core, tightest **80 writes/min** and **10 semantic searches/min**. The *warm-cache* read path never touches GitHub; the budget is spent on **writes + sync**. *Identity model resolved (O2/D8):* a **GitHub App installation gets its own bucket per owner** — **5,000/hr baseline, +50/hr per repo and per user beyond 20, cap 12,500** (verified) — so each owned org's heavy traffic (sweeps, grooming, migration) is isolated in its own bucket rather than concentrated in the human's personal quota. Public/foreign filing runs on a user token but is **low-volume**, so concentration there is moot. S3 measures a real cold sweep + write-heavy grooming under this model. **Also:** GitHub's search index is not read-your-writes consistent — Q1/Q3 that must see just-written items run against the cache, not GitHub search.
 
 ## 10. Key design decisions
 - **D1 — GitHub Issues as system of record; Projects v2 only for cross-repo rollup.** (Parent doc's Build/Adopt/Buy.)
 - **D2 — GitHub client (`gh` vs HTTP): REOPENED as a spike (§11-S1).** Latency is *not* the pivot; dependency footprint, auth/identity, and cache revalidation are.
-- **D3 — Labels are the baseline encoding; org Issue Fields an enhancement.** Portfolio spans personal accounts (no Fields); labels fit soft vocabularies. Org consolidation is a later owner option (O1), not a blocker. **Adds a label-taxonomy governance need (§13).**
-- **D4 — Ongoing ID strategy: RECONSIDERED.** Keep minting human `PFX-XXXX` forever (refs continuity + cross-project unambiguity) *vs* use repo-prefixed GitHub numbers going forward and keep `PFX-XXXX` only as migration aliases (less parallel machinery). Open — see §11-O4.
+- **D3 — Labels are the baseline encoding; org Issue Fields an enhancement.** Portfolio spans personal accounts (no Fields); labels fit soft vocabularies. **O1 clarified (2026-07-14):** the model is **federated multi-owner** — one human sign-in's *existing* access across many owners is leveraged; the goal is *not* org consolidation and *not* per-repo credential sprawl. Org consolidation stays an optional enhancement (it unlocks typed Fields + native single-owner rollup); cross-owner rollup is query-side (§8.3-Q4). **Adds a label-taxonomy governance need (§13).**
+- **D4 — Ongoing ID strategy: RESOLVED (O4, 2026-07-14) → repo-prefixed GitHub numbers.** GitHub's issue number is the ID going forward. **Canonical form `owner/repo#number`** — deliberately GitHub's own cross-reference syntax, so an ID *is* a live auto-link, is globally unique, and disambiguates same-named repos across unrelated owners (O1). **Short form `repo#number`** when project config makes the owner unambiguous (like short vs full git SHAs — one authority, context-scoped abbreviation, *not* two ID systems). CLI accepts `repo#number` / `repo-number` / `repo/number` and normalizes. Migrated **`PFX-XXXX` become permanent alias labels + body-block entries** (old refs resolve forever); **no new PFX minted** — this collapses two minting authorities into one, resolving adversarial finding §13-3. *Two named costs:* (a) no pre-GitHub ID → offline creates use a provisional local ID reconciled on flush (§8.1); (b) cross-repo `gh issue transfer` reassigns the number → also store the issue node-id (stable) or re-resolve.
 - **D5 — Cache is optional, read-through, gitignored, git-common-dir keyed, revalidate-on-decision.** The core is correct without it (online-only). Reverses v1's mandatory-mirror stance per owner feedback + §13.
 - **D6 — Sync is synchronous; background refresh is a detached subprocess** (no-asyncio convention); staleness re-evaluated against the cursor.
 - **D7 — GitHub-native throughout, with a clean internal seam + export as the exit** — no premature multi-backend abstraction. *(State the requirement breadth explicitly — "a GitHub-hosted repo" — rather than letting today's client shape it, per the "one instance colonizes the requirement" learning.)*
+- **D8 — Identity model: GitHub App across owned orgs + user token for the public/foreign plane (O2, 2026-07-14).** Derived from which goals each mechanism *can't* meet: the public/foreign plane (upstream/anonymous filing on repos the fleet isn't a member of) **structurally requires a user token** — you can't install an App you don't own — so a user credential can never be retired. A **fine-grained PAT can't be the "spans my orgs" credential** (single resource-owner, verified). So the scoped, safe realization of "leverage one sign-in across my orgs" is a **GitHub App installed per owned org** (per-owner rate bucket, scoped, revocable, `[bot]` attribution); `gh`/user creds are a legitimate low-ceremony *bootstrap* that upgrades to the App when rate/attribution bite. Implies a **credential-resolution layer keyed by target owner**. **Couples to S1:** App auth (JWT→installation token) fits HTTP, not `gh` — this nudges S1 toward HTTP for auth-bearing calls.
+- **D9 — Attachments: release-asset (or attachments-branch) is the deterministic default; native inline is attended-only (O3, 2026-07-14).** The only mechanism that renders screenshots natively-inline *and* respects private-repo access is the `user-attachments` flow — and it's **browser/session-cookie auth, undocumented** (verified; `gh-image`/`gh-attach` both fall back to release-mode for CI), so it can't be the G1 data plane; it's an opt-in *attended* "pretty images" mode at most. Robust, API-only, PR-free options: **release-asset wrap** (release clutter, containable under a reserved tag) and **attachments-branch via git-data API** (off-main → untouched by the strip-`.prawduct`-from-main plan; no working tree, no PR). The tiebreaker — **does either render *inline* on a *private* repo?** — is **S5**. Leaning release-asset pending S5. Rejected: storing images under `.prawduct/issues/` on `main` (stripped from releases *and* forces commit+PR).
 
 ## 11. Open decisions & spikes to settle
 
 **Spikes (must investigate before build — the answer changes the design):**
-- **S1 — `gh` CLI vs direct HTTP.** Criteria, in priority order: (1) **adopter dependency footprint** — does requiring `gh` violate G4 for minimal/CI environments? (2) **auth & per-agent identity** — `gh` reuses existing creds (great solo) but is awkward for scoped per-agent tokens; HTTP gives per-agent token control (PV2/CC4) but we handle tokens. (3) **cache revalidation** — HTTP ETags/conditional-GET vs `gh`. (4) **API-change insulation** — `gh` shields us; HTTP tracks drift. Deliverable: a recommendation with evidence, tied to O2. *(Latency is a footnote, not a criterion.)*
+- **S1 — `gh` CLI vs direct HTTP.** Criteria, in priority order: (1) **adopter dependency footprint** — does requiring `gh` violate G4 for minimal/CI environments? (2) **auth & identity** — `gh` reuses existing creds (great for the solo bootstrap) but can't cleanly mint **GitHub App installation tokens** (JWT-based), which D8 makes the owned-plane workhorse; HTTP handles App + user tokens directly. *Per D8 this now leans HTTP for auth-bearing calls, with `gh` surviving as the bootstrap path.* (3) **cache revalidation** — HTTP ETags/conditional-GET vs `gh`. (4) **API-change insulation** — `gh` shields us; HTTP tracks drift. Deliverable: a recommendation with evidence, tied to O2/D8. *(Latency is a footnote, not a criterion.)*
 - **S2 — Migration dry-run** on discodon (317 open + 1,754-line archive): body-fidelity, ID aliasing, relationship reconstruction, archive-as-closed-issues volume/noise, rollback. Migration is the riskiest single op.
-- **S3 — Rate limits under the *real* identity model** (S1/O2): measure a cold sweep + write-heavy grooming against one token vs per-agent tokens.
-- **S4 — Cache freshness protocol**: how a read "revalidates on decision" cheaply (conditional request / per-item since) without defeating the cache.
+- **S3 — Rate limits under the *real* identity model** (S1/O2/D8): measure a cold sweep + write-heavy grooming under a **GitHub App installation bucket** (per-owner, 5k–12.5k/hr) — confirm an owned-org sweep stays within one installation's budget.
+- **S4 — Cache freshness protocol** *(gates the cache **layer**, not the thin slice)*: how a read "revalidates on decision" cheaply (conditional request / per-item since) without defeating the cache. The **principle** (visible age + revalidate-on-decision, G3) is locked now; the **protocol** is settled only when perf data justifies building the optional cache (D5). Online-only, every read is live, so revalidation is trivially satisfied — S4 travels with the cache.
+- **S5 — Attachment inline rendering on private repos** *(gates the O3 default, D9)*: on one private repo, embed (a) a release-asset download URL and (b) an attachments-branch raw URL via `![]()` and observe which renders inline for an authenticated viewer. Decides release-asset vs attachments-branch; if *neither* renders inline on private, inline-on-private is achievable only via the attended native flow.
 
-**Owner decisions:**
-- **O1 — Org consolidation?** Unlocks typed Issue Fields + native cross-repo Projects. Not required.
-- **O2 — Agent identity:** fine-grained PATs per machine vs a GitHub App installation (affects PV2, CC4, and NF3 headroom). Recommend GitHub App for fleet attribution; PAT is the low-ceremony start.
-- **O3 — Attachment strategy:** release-asset wrap vs orphan-branch (P2).
-- **O4 — Ongoing ID strategy (D4):** mint PFX forever vs GitHub-numbers-going-forward + PFX-as-migration-alias.
+**Owner decisions — all resolved 2026-07-14:**
+- **O1 — Org model → RESOLVED: federated multi-owner (D3).** Not consolidation, not per-repo credentials — leverage one sign-in's existing multi-owner access; cross-owner rollup is query-side (§8.3-Q4).
+- **O2 — Agent identity → RESOLVED: GitHub App across owned orgs + user token for public/foreign (D8).** Not "PAT vs App as a start" — a fine-grained PAT can't span orgs, and the public/foreign plane forces a user token regardless; the App is the scoped realization of "one identity across my orgs."
+- **O3 — Attachment strategy → RESOLVED: release-asset (or attachments-branch), native-inline attended-only; reprioritized up (D9).** Gated by S5. `.prawduct/issues/`-on-main rejected.
+- **O4 — Ongoing ID strategy → RESOLVED: repo-prefixed GitHub numbers, `owner/repo#number` canonical, PFX → migration alias (D4).**
 
 ## 12. Risks & mitigations
 | Risk | Mitigation |
 |---|---|
 | **Cache re-creates the staleness we exist to kill** | cache optional + read-through + **visible age + revalidate-on-decision**; never silently serves stale (G3/D5) |
 | GitHub **search index lag** (not read-your-writes) | dedup/query that must see just-written items runs against the cache, not GitHub search (§9) |
-| **Shared-token rate-limit concentration** across the fleet | per-agent identity (O2) spreads the bucket; sweeps paced + batched; reads from cache (NF3) |
+| **Rate-limit concentration** across the fleet | **GitHub App installation gives a per-owner bucket** (5k–12.5k/hr, D8) isolating each owned org's traffic; public/foreign filing is low-volume on a user token; sweeps paced + batched; warm reads from cache (NF3) |
 | GitHub rate limits under mass grooming | warm-cache reads bypass GitHub; writes/semantic paced; batch idempotent |
-| No attachment API | wrap release-asset upload (O3); accept rough edges |
+| No public attachment API (native inline is browser/session-only) | robust default = release-asset wrap *or* attachments-branch via git-data API (both no-PR, G1); native inline as an attended-only enhancement; **S5** settles inline-on-private (D9) |
 | Claim double-pick race | assignee take-and-verify; documented residual race, not a mutex (CC3) |
 | GitHub outage | never-block floor (fail-fast+retry); optional queue + cache degrade gracefully (G2) |
 | Vendor lock-in | cheap full-fidelity export (G5/MG2) |
@@ -259,7 +262,7 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 |---|---|---|---|
 | 1 | over-complication | Cache/queue were in the core; the minimal viable system is a thin *online* CLI that already delivers the trust win | **Folded** — cache/queue now optional layers (§6, D5) |
 | 2 | user-need | Over-indexed on latency (minor pain) with a mirror that risks re-creating staleness (major pain) | **Folded** — freshness-beats-latency (G3); AG5 no longer mandates a mirror |
-| 3 | over-complication | Two ID systems forever may be redundant | **Open** — D4/O4 |
+| 3 | over-complication | Two ID systems forever may be redundant | **Resolved** (2026-07-14) — D4/O4: repo-prefixed GitHub numbers going forward, PFX → migration alias only; two minting authorities collapsed to one |
 | 4 | missing | Label taxonomy governance (provisioning, cross-repo consistency, collision) | **Folded** — GV5 + risk; Data/Ops next level |
 | 5 | missing | Coexistence with a repo's *existing* Issues on adoption | **Folded** — GV5 + risk; adoption design next level |
 | 6 | missing | GitHub search not read-your-writes consistent → dedup/query miss recent items | **Folded** — cache-based query/dedup (§9, §8.3) |
@@ -284,9 +287,9 @@ Every §8 capability cites its parent requirement ID; every requirement ID in
 ## 16. What "drilling down" produces next (only after confidence in this level)
 1. **Data Model** — field-level GitHub encoding + optional-cache schema (fields derived from §7a).
 2. **Non-Functional Requirements** — latency/rate-limit/cost budgets made testable.
-3. **Security Model** — auth (O2), token scope/revocation, provenance trust, **public-submission abuse** (§13-7).
+3. **Security Model** — auth per D8 (App installation tokens + user-token public/foreign plane; credential-resolution keyed by target owner), token scope/revocation, provenance trust, **public-submission abuse** (§13-7).
 4. **API contract** — CLI/MCP surface: operations, return-value error model, versioning/compat.
 5. **Test Specifications** — incl. migration guard-sweep + offline/never-block behaviors.
 6. **Build plan** — thin vertical slice first (core lib → CLI → one GitHub round-trip → importer dry-run), architecture proven before widening. `.prawduct/artifacts/`.
 
-Plus the spikes (§11 S1–S4) that gate the design. Until this level is agreed, no build plan and no field-level schema.
+Plus the spikes (§11 S1–S5) that gate the design. Until this level is agreed, no build plan and no field-level schema.
