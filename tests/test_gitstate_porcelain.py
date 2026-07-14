@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from lib import gitstate
+from lib import gates, gitstate
 
 
 # =============================================================================
@@ -67,21 +67,24 @@ def _repo(tmp_path: Path, *, baseline: str = "") -> Path:
 
 class TestDocOnlyWithQuotedPaths:
     """A doc-only session touching a space-containing .md path must classify
-    as doc-only — the regression that falsely blocked the reflection gate."""
+    as doc-only — the regression that falsely blocked the reflection gate.
+    (The carveout now lives in gates.session_changes_all_non_judgeable —
+    kernel-v3 chunk 04 — but the quoted-path parse it depends on is this
+    module's, so the regression stays pinned here.)"""
 
     def test_quoted_md_path_is_doc_only(self, tmp_path, monkeypatch):
         project = _repo(tmp_path)
         monkeypatch.setattr(
             gitstate, "git_status_output", lambda _: ' M "my doc.md"\n'
         )
-        assert gitstate._session_changes_are_doc_only(project) is True
+        assert gates.session_changes_all_non_judgeable(project) is True
 
     def test_quoted_code_path_is_not_doc_only(self, tmp_path, monkeypatch):
         project = _repo(tmp_path)
         monkeypatch.setattr(
             gitstate, "git_status_output", lambda _: ' M "my module.py"\n'
         )
-        assert gitstate._session_changes_are_doc_only(project) is False
+        assert gates.session_changes_all_non_judgeable(project) is False
 
     def test_mixed_quoted_and_plain_all_md(self, tmp_path, monkeypatch):
         project = _repo(tmp_path)
@@ -90,7 +93,7 @@ class TestDocOnlyWithQuotedPaths:
             "git_status_output",
             lambda _: ' M "my doc.md"\n M README.md\n',
         )
-        assert gitstate._session_changes_are_doc_only(project) is True
+        assert gates.session_changes_all_non_judgeable(project) is True
 
 
 class TestSessionChangesWithQuotedPaths:

@@ -949,8 +949,10 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # after this check runs, so waivers never carry past the gate they covered).
     waivers = gates._read_gates_waived(prawduct_dir)
 
-    # Gate 1: Reflection (skipped for doc-only changes or when waived)
-    doc_only = gitstate._session_changes_are_doc_only(project_dir, status_output)
+    # Gate 1: Reflection (skipped for doc-only changes or when waived).
+    # "Doc-only" = no judgeable session change (the one predicate, via gates —
+    # kernel-v3 chunk 04).
+    doc_only = gates.session_changes_all_non_judgeable(project_dir, status_output)
     if not doc_only and "reflection" not in waivers:
         reflected_file = prawduct_dir / ".session-reflected"
         try:
@@ -961,20 +963,19 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
 
     # Gate 2: Critic review (only when building against an active plan).
     # STH-4F7C: delegates to the shared lib/gates.py session gate — the same
-    # freshness + schema + verify-resolutions scope logic cmd_stop blocks on.
-    # This advisory copy had diverged (no scope check), so it could report a
-    # stale verify-resolutions record as satisfying.
+    # composed-coverage verdict cmd_stop blocks on (kernel-v3 chunk 04), so
+    # the advisory and the blocking gate can never diverge. Advisory tone:
+    # one warning line, not the full remedy text.
     has_build_plan = gates._has_active_build_plan_file(prawduct_dir) or gates._has_build_plan_in_state(prawduct_dir)
     if has_build_plan and not doc_only and "critic" not in waivers and gitstate.git_has_code_changes(project_dir, status_output):
-        satisfied, scope_reason = gates.critic_findings_satisfy_session_gate(
-            prawduct_dir, project_dir
-        )
-        if not satisfied:
-            if scope_reason:
-                warnings.append(
-                    f"Critic review stale — verify-resolutions scope exceeded: {scope_reason}"
-                )
-            else:
-                warnings.append("Critic review not recorded")
+        verdict = gates.session_review_verdict(project_dir)
+        status = verdict.get("status")
+        if status == "blocked":
+            warnings.append(
+                f"Critic review left {len(verdict.get('unresolved', []))} "
+                "unresolved blocking finding(s)"
+            )
+        elif status != "covered":
+            warnings.append("Critic review not recorded")
 
     return warnings

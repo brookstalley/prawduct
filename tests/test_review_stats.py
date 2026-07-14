@@ -199,19 +199,19 @@ class TestAggregationMath:
         assert "critic / opus / final" in result.stdout
         assert "lib/gates.py: 2 actionable / 2 total" in result.stdout
 
-    def test_pr_scoped_and_pr_full_group_as_distinct_modes(self, tmp_path):
-        # ch.05's "telemetry distinguishes scoped from full runs" mechanism:
-        # the PR evidence's `mode` field ("pr-scoped"/"pr-full") flows through
-        # the existing mode grouping verbatim — no telemetry change needed,
-        # which is exactly what this pins.
+    def test_pr_evidence_modes_flow_through_verbatim(self, tmp_path):
+        # PR evidence `mode` values flow through the existing mode grouping
+        # verbatim — no telemetry special-casing. (kernel-v3 chunk 05 note:
+        # the record-audit era's pr-scoped/pr-full split is gone; today's
+        # protocol emits "pr", and any unfamiliar value still passes through.)
         repo = tmp_path / "repo"
         _write_ledger(repo, [
-            _event(kind="review.pr", role="pr", mode="pr-scoped", duration=120),
-            _event(kind="review.pr", role="pr", mode="pr-full", duration=600),
+            _event(kind="review.pr", role="pr", mode="pr", duration=120),
+            _event(kind="review.pr", role="pr", mode="pr-custom", duration=600),
         ])
         report = json.loads(_run(repo, "--json").stdout)
         modes = {(e["role"], e["mode"]) for e in report["by_role_model_mode"]}
-        assert modes == {("pr", "pr-scoped"), ("pr", "pr-full")}
+        assert modes == {("pr", "pr"), ("pr", "pr-custom")}
 
 
 class TestModelCanonicalization:

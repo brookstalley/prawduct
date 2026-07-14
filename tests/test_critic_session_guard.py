@@ -184,10 +184,60 @@ class TestClearGuardCLI:
         assert (prawduct / ".session-git-baseline").read_text() == " M app.py"
 
 
+def _real_repo(tmp_path: Path) -> Path:
+    """A real git repo with one commit and a dirty file — critic-begin (v3)
+    derives the dispatch manifest from actual git state, so the mock-git
+    harness can't drive it."""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {
+        "HOME": str(tmp_path / "_home"),
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_SYSTEM": "/dev/null",
+    }
+    (tmp_path / "_home").mkdir(exist_ok=True)
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=repo, env=env, check=True,
+                       capture_output=True, timeout=10)
+
+    git("init", "--quiet", "-b", "main")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "T")
+    (repo / "app.py").write_text("x = 1\n")
+    git("add", "app.py")
+    git("commit", "-q", "-m", "init")
+    (repo / "app.py").write_text("x = 2\n")  # dirty diff to dispatch against
+    return repo
+
+
+def _run_real(command: str, repo: Path, *args: str):
+    import subprocess
+
+    root = Path(__file__).resolve().parent.parent
+    env = {
+        "HOME": str(repo.parent / "_home"),
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_SYSTEM": "/dev/null",
+        "CLAUDE_PLUGIN_ROOT": str(root),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    return subprocess.run(
+        ["python3", str(root / "bin" / "prawduct-hook"), command, *args],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+    )
+
+
 class TestCriticBeginEndCLI:
     def test_begin_writes_then_end_removes(self, tmp_path):
-        prawduct = _prawduct(tmp_path)
-        begin = run_plugin_hook("critic-begin", tmp_path)
+        repo = _real_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        begin = _run_real("critic-begin", repo, "--mode", "chunk")
         assert begin.returncode == 0, begin.stderr
         marker = prawduct / cm.MARKER_NAME
         assert marker.is_file()
@@ -195,7 +245,7 @@ class TestCriticBeginEndCLI:
         # A parseable server-side timestamp so review_active can age it.
         datetime.strptime(payload["started_at"], "%Y-%m-%dT%H:%M:%SZ")
 
-        end = run_plugin_hook("critic-end", tmp_path)
+        end = _run_real("critic-end", repo)
         assert end.returncode == 0, end.stderr
         assert not marker.is_file()
 
@@ -204,28 +254,45 @@ class TestCriticBeginEndCLI:
         result = run_plugin_hook("critic-end", tmp_path)
         assert result.returncode == 0, result.stderr
 
+    def test_begin_without_mode_refuses_with_remedy(self, tmp_path):
+        """v3: a bare critic-begin means a stale cached skill is driving a
+        newer hook — refuse at dispatch with the reload remedy, and leave no
+        marker (no review is starting)."""
+        repo = _real_repo(tmp_path)
+        (repo / ".prawduct").mkdir()
+        begin = _run_real("critic-begin", repo)
+        assert begin.returncode == 1
+        assert "--mode is required" in begin.stderr
+        assert not (repo / ".prawduct" / cm.MARKER_NAME).is_file()
+
     def test_begin_clears_leftover_partials(self, tmp_path):
         """A waived or stale-failed coordinator review leaves .critic-partials/
         behind (consolidate removes them only on success). A leftover partial at
         the same commit as a fresh dispatch would merge as if the new reviewer
         wrote it, so critic-begin resets the dir — every review starts clean."""
-        prawduct = _prawduct(tmp_path)
+        repo = _real_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
         partials = prawduct / ".critic-partials"
         partials.mkdir()
         (partials / "manifest.json").write_text("{}")
         (partials / "correctness.json").write_text("{}")
 
-        begin = run_plugin_hook("critic-begin", tmp_path)
+        begin = _run_real("critic-begin", repo, "--mode", "chunk")
         assert begin.returncode == 0, begin.stderr
-        assert not partials.exists(), (
+        assert not (partials / "correctness.json").exists(), (
             "critic-begin must remove leftover partials from a prior review"
         )
         assert "leftover .critic-partials" in begin.stdout
+        # The fresh dispatch manifest replaced the leftovers.
+        assert (partials / "manifest.json").is_file()
         assert (prawduct / cm.MARKER_NAME).is_file()
 
     def test_begin_without_partials_stays_quiet(self, tmp_path):
-        prawduct = _prawduct(tmp_path)
-        begin = run_plugin_hook("critic-begin", tmp_path)
+        repo = _real_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        begin = _run_real("critic-begin", repo, "--mode", "chunk")
         assert begin.returncode == 0, begin.stderr
         assert "leftover" not in begin.stdout
         assert (prawduct / cm.MARKER_NAME).is_file()
@@ -243,11 +310,20 @@ class TestDesignerHandoffMarkerOrdering:
     """
 
     def test_skill_prose_orders_early_exit_before_critic_begin(self):
+        # kernel-v3 chunk 05: dispatch is `critic-begin --mode <mode> …` (the
+        # bare `run \`prawduct-hook critic-begin\`` step died with the
+        # code-written manifest), and a descriptive mention now precedes the
+        # flow in Structural Constraints — so the ordering pin anchors inside
+        # the Getting Started flow, where the instructions live. The invariant
+        # is unchanged: the early exit must precede the dispatch instruction.
         text = (_ROOT / "skills" / "critic" / "SKILL.md").read_text(encoding="utf-8")
-        exit_pos = text.find("Designer-handoff early exit")
-        begin_pos = text.find("run `prawduct-hook critic-begin`")
-        assert exit_pos != -1, "designer-handoff early-exit instruction missing from SKILL.md"
-        assert begin_pos != -1, "critic-begin instruction missing from SKILL.md"
+        flow_pos = text.find("## Getting Started")
+        assert flow_pos != -1, "Getting Started flow missing from SKILL.md"
+        flow = text[flow_pos:]
+        exit_pos = flow.find("Designer-handoff early exit")
+        begin_pos = flow.find("`prawduct-hook critic-begin --mode")
+        assert exit_pos != -1, "designer-handoff early-exit instruction missing from the flow"
+        assert begin_pos != -1, "critic-begin dispatch instruction missing from the flow"
         assert exit_pos < begin_pos, (
             "the designer-handoff early exit must come before critic-begin "
             "(CRT-6F2N: no critic-active marker for a review that never happens)"

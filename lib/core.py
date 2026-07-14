@@ -82,6 +82,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews/",
+    ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
     ".prawduct/.session-reflected",
@@ -287,6 +288,45 @@ def write_template(src: Path, dst: Path, subs: dict[str, str], *, overwrite: boo
     return True
 
 
+def _contract_diff(existing_lines: set[str]) -> dict:
+    """Pure gitignore-contract diff for a set of existing ``.gitignore`` lines.
+
+    The single source of truth for what "satisfies the session-file contract"
+    means, shared by :func:`update_gitignore` (which reads it to decide what to
+    write) and the ``gitignore`` advisory probe (which reads
+    :func:`gitignore_contract_drift` to decide whether to nudge) — so the nudge
+    can never disagree with the fix. Returns
+    ``{"missing", "incorrectly_ignored"}``: session entries that SHOULD be ignored
+    but aren't, and managed/retired entries that ARE ignored but shouldn't be.
+    Both empty ⇔ :func:`update_gitignore` makes no change (its ``modified``
+    condition is exactly ``missing or incorrectly_ignored``). The two entry sets
+    are disjoint (session files to ignore vs. managed files to commit), so the
+    order in which the fixer removes then adds never affects either set.
+    """
+    missing = [e for e in GITIGNORE_ENTRIES if e not in existing_lines]
+    incorrectly_ignored = sorted(
+        e for e in (*MANAGED_FILES, *RETIRED_GITIGNORE_ENTRIES) if e in existing_lines
+    )
+    return {"missing": missing, "incorrectly_ignored": incorrectly_ignored}
+
+
+def gitignore_contract_drift(target: Path) -> dict:
+    """Read-only: how ``target``'s ``.gitignore`` diverges from the contract.
+
+    Reads ``target/.gitignore`` (a missing or unreadable file reads as empty, so
+    every session entry then counts as ``missing``) and returns the
+    :func:`_contract_diff` result. Never mutates and never raises on a missing
+    file — the ``gitignore`` advisory probe calls this on every session start, so
+    it must be cheap and side-effect-free.
+    """
+    gitignore = target / ".gitignore"
+    try:
+        existing_lines = set(gitignore.read_text().splitlines())
+    except OSError:
+        existing_lines = set()
+    return _contract_diff(existing_lines)
+
+
 def update_gitignore(target: Path) -> dict:
     """Add prawduct entries to .gitignore and remove incorrect ones.
 
@@ -308,24 +348,25 @@ def update_gitignore(target: Path) -> dict:
     modified = False
     unignored: list[str] = []
 
+    # Shared contract diff (single source of truth with the advisory probe):
+    # managed/retired entries wrongly ignored, and session entries still missing.
+    # The sets are disjoint, so computing both up front (before the removal
+    # mutates the file) yields the same result as the sequential passes below.
+    diff = _contract_diff(existing_lines)
+    incorrectly_ignored = set(diff["incorrectly_ignored"])
+    missing = diff["missing"]
+
     # Remove lines that gitignore managed files (they should be committed) —
     # plus retired entries the framework used to write itself (tracked-by-
     # default build plans, gate-soundness ch.3).
-    incorrectly_ignored = set()
-    for rel_path in (*MANAGED_FILES, *RETIRED_GITIGNORE_ENTRIES):
-        if rel_path in existing_lines:
-            incorrectly_ignored.add(rel_path)
-
     if incorrectly_ignored:
         lines = content.splitlines(keepends=True)
         filtered = [line for line in lines if line.rstrip("\n") not in incorrectly_ignored]
         content = "".join(filtered)
-        existing_lines -= incorrectly_ignored
         unignored = sorted(incorrectly_ignored)
         modified = True
 
     # Add missing session file entries
-    missing = [e for e in GITIGNORE_ENTRIES if e not in existing_lines]
     if missing:
         parts = []
         if content and not content.endswith("\n"):

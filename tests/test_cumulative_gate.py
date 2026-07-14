@@ -1,473 +1,415 @@
-"""Tests for the cumulative-Critic PR gate — ``prawduct-hook check-cumulative-critic``.
+"""The PR gate answers by composition (kernel-v3 chunk 04 — design Q1/D6).
 
-CRT-7M2D: the gate judges a cumulative-Critic record by COMMIT-COVERAGE, not by
-mtime-recency. A record satisfies the gate iff it is a clean, schema-valid,
-cumulative-mode record whose ``commit_reviewed`` covers HEAD — meaning either
-``commit_reviewed == HEAD`` OR the only files changed since are documentation
-(``.md``). This kills two prior defects of the mtime-vs-``.session-start`` check:
+``gates.check_cumulative_critic`` asks ONE question: does composed review
+coverage span ``merge-base(base_branch, HEAD)`` → ``HEAD`` *by tree*, with
+zero unresolved blocking findings on the path? Evidence is facts in the
+shared store; no mode label, file mtime, ``extends_cumulative`` chain, or
+``.critic-findings.json`` read participates — those v2 mechanisms are
+deleted, and each deleted acceptance keeps a still-blocks regression here
+(learnings: every skip-gate needs a test that a non-eligible case still
+BLOCKS):
 
-  * **False-pass:** a record from this session whose ``commit_reviewed`` predated
-    real code changes still passed (mtime was fresh). Now it FAILS.
-  * **Treadmill:** every inert post-review fix moved HEAD past ``commit_reviewed``,
-    forcing a full ``/prawduct:critic cumulative`` re-run. A doc-only delta now
-    does NOT — coverage holds.
+* mode-label acceptance → labels are never consulted: chunk-labeled facts
+  compose to a pass (CRT-J4PM), and NO label makes an under-spanning fact
+  pass.
+* ``_record_covers_head`` (.md-tail rule) → an unreviewed judgeable commit
+  after the reviewed tree still blocks; a non-judgeable tail composes as a
+  free edge; a governance-protected ``.md`` tail still blocks (CRT-5D8Q:
+  one predicate, one answer).
+* mtime freshness → facts never expire: trees compose, they don't age.
+* ledger fallback → subsumed: the store is multi-record, so a later chunk
+  review can't destroy the PR gate's evidence.
 
-CRT-4J8W extends the gate with the **chain** acceptance: a ``verify-resolutions``
-record carrying an ``extends_cumulative`` anchor X satisfies the gate iff it has
-0 BLOCKING findings, its own ``commit_reviewed`` covers HEAD, X resolves, and
-every non-``.md``, non-metadata file changed in ``X..HEAD`` is in the record's
-``files_reviewed`` — killing the remaining treadmill leg (a full bundle re-review
-after every post-cumulative code fix). The chain is a cheaper-path gate, so the
-reject cases here are the load-bearing coverage (learnings: a skip-gate needs the
-*most* adversarial coverage).
-
-These tests had no predecessor — the gate shipped (v1.4 F2) with zero direct
-coverage. Uses real ``git`` repos so ``rev-parse`` / ``diff`` behave as in
-production (mock-git would diverge on commit resolution and name-only diffs).
+Real git repos throughout (the gate shells out for merge-base and tree
+diffs); facts are written through ``evidence.append_fact`` — the same
+writer consolidation uses.
 """
 
 from __future__ import annotations
 
+import itertools
 import json
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-HOOK = ROOT / "bin" / "prawduct-hook"
-CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
-CHUNK_MODE = "chunk (lighter pass, not ready for push)"
-VERIFY_MODE = "verify-resolutions (delta review, prior findings only)"
+
+sys.path.insert(0, str(ROOT))
+from lib import evidence, gates  # noqa: E402
+
+_ids = itertools.count(1)
 
 
 # ---------------------------------------------------------------------------
-# Helpers (real git, sterile env — mirrors test_critic_mode_inference.py)
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-def _git_env(repo: Path) -> dict[str, str]:
-    return {
-        "HOME": str(repo.parent / "_home"),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_SYSTEM": "/dev/null",
-        "GIT_TERMINAL_PROMPT": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
-
-
-def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args], cwd=str(repo), capture_output=True, text=True,
-        env=_git_env(repo), check=True, timeout=10,
+def _git(repo: Path, *args: str) -> str:
+    proc = subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
+    assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
+    return proc.stdout.strip()
 
 
-def _init_repo(repo: Path) -> None:
-    repo.mkdir(parents=True, exist_ok=True)
-    _git(repo, "init", "--quiet", "-b", "main")
-    _git(repo, "config", "user.email", "test@example.com")
-    _git(repo, "config", "user.name", "Test")
-    _git(repo, "config", "commit.gpgsign", "false")
-
-
-def _commit_file(repo: Path, rel: str, content: str, msg: str) -> str:
-    """Write one file, stage ONLY it, commit. Returns the new HEAD sha.
-
-    Targeted ``git add <rel>`` (not ``-A``) so an untracked
-    ``.prawduct/.critic-findings.json`` never lands in a commit and pollutes the
-    ``commit_reviewed..HEAD`` diff the gate inspects.
-    """
+def _commit(repo: Path, rel: str, content: str, msg: str) -> None:
     path = repo / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
-    _git(repo, "add", rel)
-    _git(repo, "commit", "-m", msg, "--quiet")
-    return _git(repo, "rev-parse", "HEAD").stdout.strip()
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", msg)
 
 
-def _write_findings(
+def _tree(repo: Path, rev: str = "HEAD") -> str:
+    return _git(repo, "rev-parse", f"{rev}^{{tree}}")
+
+
+def _branch_repo(tmp_path: Path) -> Path:
+    """main with one commit, feature branch with one code commit on top —
+    merge-base(main, HEAD) is main's tip, the canonical PR shape."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _commit(repo, "code.py", "x = 1\n", "c1")
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _commit(repo, "feature.py", "y = 2\n", "f1")
+    return repo
+
+
+def _fact(
     repo: Path,
+    base_tree: str,
+    head_tree: str,
+    files: list[str],
     *,
-    commit_reviewed: str | None,
-    mode: str = CUMULATIVE_MODE,
-    blocking: bool = False,
-    include_commit: bool = True,
-    files_reviewed: list[str] | None = None,
-    extends_cumulative: str | None = None,
-) -> None:
-    """Write an UNtracked ``.prawduct/.critic-findings.json`` for the gate.
-
-    ``extends_cumulative`` is the chain anchor SHA (CRT-4J8W); when given it
-    is wrapped in the persisted ``{"commit_reviewed": <sha>}`` dict form.
-    """
-    data: dict = {
-        "mode": mode,
-        "files_reviewed": files_reviewed if files_reviewed is not None else ["app.py"],
-        "findings": (
-            [{"goal": "Nothing Is Broken", "severity": "blocking", "summary": "boom"}]
-            if blocking else []
-        ),
-        "summary": "Cumulative review.",
-    }
-    if include_commit:
-        data["commit_reviewed"] = commit_reviewed
-    if extends_cumulative is not None:
-        data["extends_cumulative"] = {"commit_reviewed": extends_cumulative}
-    prawduct = repo / ".prawduct"
-    prawduct.mkdir(parents=True, exist_ok=True)
-    (prawduct / ".critic-findings.json").write_text(json.dumps(data))
-
-
-def _run_gate(repo: Path) -> subprocess.CompletedProcess:
-    env = dict(_git_env(repo))
-    env["CLAUDE_PROJECT_DIR"] = str(repo)
-    return subprocess.run(
-        ["python3", str(HOOK), "check-cumulative-critic"],
-        cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+    files_reviewed: "list[str] | None" = None,
+    findings: "list[dict] | None" = None,
+    mode: str = "chunk (lighter pass, not ready for push)",
+) -> str:
+    fact_id = f"rev-test-{next(_ids):04d}"
+    result = evidence.append_fact(
+        repo,
+        "review",
+        fact_id,
+        {
+            "base_tree": base_tree,
+            "head_tree": head_tree,
+            "files_changed": list(files),
+            "files_reviewed": list(files_reviewed if files_reviewed is not None else files),
+            "findings": findings or [],
+            "mode": mode,
+        },
     )
+    assert result["status"] == "appended", result
+    return fact_id
+
+
+def _resolution(repo: Path, review_id: str, fid: str, disposition: str = "fixed") -> None:
+    result = evidence.append_fact(
+        repo,
+        "resolution",
+        f"res-test-{next(_ids):04d}",
+        {"finding": {"review_id": review_id, "fid": fid}, "disposition": disposition},
+    )
+    assert result["status"] == "appended", result
+
+
+def _run_gate(repo: Path, capsys) -> tuple[int, str, str]:
+    rc = gates.check_cumulative_critic(repo)
+    captured = capsys.readouterr()
+    return rc, captured.out, captured.err
 
 
 # ---------------------------------------------------------------------------
-# Coverage: the satisfying cases
+# Composition passes — no label ever consulted
 # ---------------------------------------------------------------------------
 
 
-def test_covers_head_exactly_passes(tmp_path):
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    head = _commit_file(repo, "app.py", "print(1)\n", "init")
-    _write_findings(repo, commit_reviewed=head)
-    r = _run_gate(repo)
-    assert r.returncode == 0, r.stderr
-    assert "satisfied" in r.stdout and "covers HEAD" in r.stdout
+class TestComposedCoveragePasses:
+    def test_single_fact_spanning_merge_base_to_head_passes(self, tmp_path, capsys):
+        repo = _branch_repo(tmp_path)
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "satisfied" in out
 
+    def test_crt_j4pm_chunk_facts_compose_no_matching_label_needed(self, tmp_path, capsys):
+        # THE composition fix: chunk-labeled reviews recorded per-chunk span
+        # the bundle; the gate at HEAD passes with no re-run and no
+        # cumulative-labeled record anywhere.
+        repo = _branch_repo(tmp_path)
+        t1 = _tree(repo)
+        _commit(repo, "more.py", "z = 3\n", "f2")
+        t2 = _tree(repo)
+        _fact(repo, _tree(repo, "main"), t1, ["feature.py"])
+        _fact(repo, t1, t2, ["more.py"])
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "2 review fact(s)" in out
 
-def test_doc_only_delta_since_review_still_covered(tmp_path):
-    # THE treadmill fix: HEAD moved past commit_reviewed but only a .md changed,
-    # so the clean cumulative verdict still vouches for the code → no re-run.
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    reviewed = _commit_file(repo, "app.py", "print(1)\n", "code")
-    _commit_file(repo, "README.md", "# docs\n", "docs after review")  # HEAD moves
-    _write_findings(repo, commit_reviewed=reviewed)
-    r = _run_gate(repo)
-    assert r.returncode == 0, f"doc-only delta must stay covered; stderr={r.stderr}"
-    assert "satisfied" in r.stdout
-    assert "stale" not in (r.stdout + r.stderr)
+    def test_facts_from_a_prior_session_never_expire(self, tmp_path, capsys):
+        # mtime-freshness still-works regression: nothing compares timestamps —
+        # a fact whose session is long gone still vouches for its trees.
+        repo = _branch_repo(tmp_path)
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
+        store = evidence.store_path(repo)
+        lines = [json.loads(line) for line in store.read_text().splitlines()]
+        for line in lines:
+            line["ts"] = "2001-01-01T00:00:00Z"
+            line["actor"]["session"] = "1999-12-31T00:00:00Z"
+        store.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
 
+    def test_non_judgeable_tail_composes_as_free_edge(self, tmp_path, capsys):
+        # The doc-only allowance, computed not stored: a plain-.md commit
+        # after the reviewed tree needs no review.
+        repo = _branch_repo(tmp_path)
+        reviewed = _tree(repo)
+        _fact(repo, _tree(repo, "main"), reviewed, ["feature.py"])
+        _commit(repo, "notes.md", "notes\n", "docs")
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "free edge" in out
 
-# ---------------------------------------------------------------------------
-# Coverage: the failing cases (honest)
-# ---------------------------------------------------------------------------
+    def test_empty_span_passes_trivially(self, tmp_path, capsys):
+        # On the base branch itself, merge-base tree == HEAD tree — nothing
+        # to review, nothing to block on.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _commit(repo, "code.py", "x = 1\n", "c1")
+        rc, out, _err = _run_gate(repo, capsys)
+        assert rc == 0
+        assert "empty span" in out
 
-
-def test_code_delta_since_review_is_stale(tmp_path):
-    # THE false-pass fix: a non-doc change since the review means the verdict no
-    # longer covers the code being shipped → the gate must FAIL (re-run needed).
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    reviewed = _commit_file(repo, "app.py", "print(1)\n", "code")
-    _commit_file(repo, "core.py", "x = 2\n", "more code after review")  # HEAD moves
-    _write_findings(repo, commit_reviewed=reviewed)
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "stale" in r.stderr and "core.py" in r.stderr
-
-
-def test_blocking_finding_fails(tmp_path):
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    head = _commit_file(repo, "app.py", "print(1)\n", "init")
-    _write_findings(repo, commit_reviewed=head, blocking=True)
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "blocking" in r.stderr
-
-
-def test_missing_commit_reviewed_fails(tmp_path):
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    _commit_file(repo, "app.py", "print(1)\n", "init")
-    _write_findings(repo, commit_reviewed=None, include_commit=False)
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "no-commit-reviewed" in r.stderr
-
-
-def test_unresolved_commit_reviewed_fails(tmp_path):
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    _commit_file(repo, "app.py", "print(1)\n", "init")
-    _write_findings(repo, commit_reviewed="0" * 40)  # well-formed but absent sha
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "unresolved-commit" in r.stderr
-
-
-def test_wrong_mode_fails(tmp_path):
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    head = _commit_file(repo, "app.py", "print(1)\n", "init")
-    _write_findings(repo, commit_reviewed=head, mode=CHUNK_MODE)
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "wrong-mode" in r.stderr
-    # Gate-soundness ch.4 + ch.5: the message teaches the sequencing rule that
-    # was previously only learnable by paying a full cumulative re-review —
-    # non-.md fixes land first, ONE cumulative, and post-cumulative fixes go
-    # through the verify-resolutions chain (CRT-4J8W), not a full re-run.
-    assert "verify-resolutions" in r.stderr
-    assert "non-.md" in r.stderr
-
-
-def test_missing_findings_file_fails(tmp_path):
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    _commit_file(repo, "app.py", "print(1)\n", "init")
-    (repo / ".prawduct").mkdir()  # no .critic-findings.json
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "missing" in r.stderr
+    def test_squash_merge_tree_identity_composes(self, tmp_path, capsys):
+        # A squash commit carries the same tree as the reviewed branch tip, so
+        # the reviewed-tree fact vouches for it (D3).
+        repo = _branch_repo(tmp_path)
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "--squash", "-q", "feature")
+        _git(repo, "commit", "-q", "-m", "squash: feature")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
 
 
 # ---------------------------------------------------------------------------
-# CRT-4J8W chain: the satisfying cases
+# Still blocks — one regression per deleted v2 acceptance path
 # ---------------------------------------------------------------------------
 
 
-def _chain_repo(tmp_path) -> tuple[Path, str, str]:
-    """Repo with the canonical chain shape: cumulative at X, fix committed
-    after, returning ``(repo, X, head)``."""
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    anchor = _commit_file(repo, "app.py", "print(1)\n", "bundle")  # cumulative @ X
-    head = _commit_file(repo, "core.py", "x = 2\n", "fix after cumulative")
-    return repo, anchor, head
+class TestStillBlocks:
+    def test_no_facts_blocks_with_cumulative_remedy(self, tmp_path, capsys):
+        repo = _branch_repo(tmp_path)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "/prawduct:critic cumulative" in err
 
+    def test_unreviewed_judgeable_commit_after_review_blocks(self, tmp_path, capsys):
+        # Replaces _record_covers_head's stale verdict: the tail commit's tree
+        # was never reviewed and touches code — no free edge, no pass.
+        repo = _branch_repo(tmp_path)
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
+        _commit(repo, "sneaky.py", "s = 1\n", "unreviewed code")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        # The selective-commit caveat (D3): the message names the v-r remedy.
+        assert "verify-resolutions" in err
 
-def test_chain_record_covering_head_passes(tmp_path):
-    # THE run-count fix: cumulative@X + committed fix + verify record at HEAD
-    # whose scope covers X..HEAD → gate satisfied, no full re-review.
-    repo, anchor, head = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=head, mode=VERIFY_MODE,
-        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
-    )
-    r = _run_gate(repo)
-    assert r.returncode == 0, r.stderr
-    assert "satisfied" in r.stdout and "chain" in r.stdout
-    assert anchor[:12] in r.stdout
+    def test_protected_md_tail_still_blocks(self, tmp_path, capsys):
+        # CRT-5D8Q pin at the PR boundary: skills/ prose is judgeable, so the
+        # doc-only free edge must NOT absorb it.
+        repo = _branch_repo(tmp_path)
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
+        _commit(repo, "skills/demo/SKILL.md", "prose\n", "skill prose")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
 
+    def test_under_reviewed_fact_is_not_an_edge(self, tmp_path, capsys):
+        # A scoped review that saw less than its diff weakens coverage, never
+        # strengthens it (D6 edge validity).
+        repo = _branch_repo(tmp_path)
+        _commit(repo, "other.py", "o = 1\n", "f2")
+        _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py", "other.py"],
+            files_reviewed=["feature.py"],
+        )
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
 
-def test_chain_with_doc_only_delta_after_verify_still_passes(tmp_path):
-    # The doc-only allowance applies to the chain's HEAD-coverage too:
-    # reflections/docs committed after the verify pass don't re-stale it.
-    repo, anchor, verify_head = _chain_repo(tmp_path)
-    _commit_file(repo, "README.md", "# docs\n", "docs after verify")
-    _write_findings(
-        repo, commit_reviewed=verify_head, mode=VERIFY_MODE,
-        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
-    )
-    r = _run_gate(repo)
-    assert r.returncode == 0, r.stderr
-    assert "satisfied" in r.stdout
+    def test_rebased_history_gap_blocks(self, tmp_path, capsys):
+        # Rebase/amend changes the tree → coverage gap → re-review (D3,
+        # correct by design).
+        repo = _branch_repo(tmp_path)
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
+        (repo / "feature.py").write_text("y = 99\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "--amend", "--no-edit")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
 
-
-def test_chain_scope_check_ignores_md_and_metadata_paths(tmp_path):
-    # X..HEAD also contains a doc and a .prawduct metadata file that the
-    # verify scope (rightly) never listed — neither may break the chain,
-    # mirroring the gate's doc-only allowance and _is_metadata_path symmetry.
-    repo, anchor, _ = _chain_repo(tmp_path)
-    _commit_file(repo, "notes.md", "# n\n", "docs inside chain range")
-    head = _commit_file(repo, ".prawduct/project-state.yaml", "k: v\n", "state")
-    _write_findings(
-        repo, commit_reviewed=head, mode=VERIFY_MODE,
-        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
-    )
-    r = _run_gate(repo)
-    assert r.returncode == 0, r.stderr
-
-
-# ---------------------------------------------------------------------------
-# CRT-4J8W chain: the failing cases (fail-closed — a cheaper-path gate gets
-# the most adversarial coverage)
-# ---------------------------------------------------------------------------
-
-
-def test_chain_scope_gap_fails(tmp_path):
-    # A non-.md file changed since the extended cumulative but absent from
-    # the verify record's scope: the chain cannot vouch for unreviewed code.
-    repo, anchor, head = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=head, mode=VERIFY_MODE,
-        files_reviewed=["app.py"],  # core.py changed in X..HEAD but not reviewed
-        extends_cumulative=anchor,
-    )
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "chain-scope-gap" in r.stderr and "core.py" in r.stderr
-
-
-def test_chain_unresolved_anchor_fails(tmp_path):
-    repo, _, head = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=head, mode=VERIFY_MODE,
-        files_reviewed=["app.py", "core.py"], extends_cumulative="0" * 40,
-    )
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "chain-unresolved-anchor" in r.stderr
-
-
-def test_chain_record_with_blocking_finding_fails(tmp_path):
-    # The verify pass re-emitted (or newly found) a BLOCKING — the chain
-    # never launders an unresolved blocker through the cheap path.
-    repo, anchor, head = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=head, mode=VERIFY_MODE, blocking=True,
-        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
-    )
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "blocking" in r.stderr
-
-
-def test_chain_stale_when_code_committed_after_verify_fails(tmp_path):
-    # Verify record anchored before the latest code commit (the classic
-    # sequencing mistake: reviewing the fix, THEN committing more code).
-    repo, anchor, verify_head = _chain_repo(tmp_path)
-    _commit_file(repo, "extra.py", "y = 3\n", "code after verify")
-    _write_findings(
-        repo, commit_reviewed=verify_head, mode=VERIFY_MODE,
-        files_reviewed=["app.py", "core.py", "extra.py"],
-        extends_cumulative=anchor,
-    )
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "chain-stale" in r.stderr
-    assert "commit" in r.stderr.lower()  # teaches: commit BEFORE verify
-
-
-def test_verify_record_without_anchor_fails_with_teaching_message(tmp_path):
-    # An anchor-less verify record still cannot certify the bundle — the
-    # message now teaches the chain sequence instead of a flat refusal.
-    repo, _, head = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=head, mode=VERIFY_MODE,
-        files_reviewed=["app.py", "core.py"],
-    )
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "chain-missing-anchor" in r.stderr
-    assert "cumulative" in r.stderr
-
-
-def test_chain_record_with_malformed_anchor_fails_schema(tmp_path):
-    # extends_cumulative must be {"commit_reviewed": <non-empty str>} —
-    # writer drift fails schema validation, never half-evaluates the chain.
-    repo, anchor, head = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=head, mode=VERIFY_MODE,
-        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
-    )
-    findings_path = repo / ".prawduct" / ".critic-findings.json"
-    data = json.loads(findings_path.read_text())
-    data["extends_cumulative"] = {"commit_reviewed": ""}
-    findings_path.write_text(json.dumps(data))
-    r = _run_gate(repo)
-    assert r.returncode == 1
-    assert "invalid" in r.stderr
+    def test_unknown_fact_kind_never_satisfies(self, tmp_path, capsys):
+        # Forward-compat (D2/Q9): a future kind coexists but cannot satisfy a
+        # gate it wasn't written for.
+        repo = _branch_repo(tmp_path)
+        store = evidence.store_path(repo)
+        store.parent.mkdir(parents=True, exist_ok=True)
+        with open(store, "a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "kind": "test-run",
+                        "id": "tr-1",
+                        "ts": "2026-07-13T00:00:00Z",
+                        "body": {
+                            "base_tree": _tree(repo, "main"),
+                            "head_tree": _tree(repo),
+                            "files_changed": ["feature.py"],
+                            "files_reviewed": ["feature.py"],
+                        },
+                    }
+                )
+                + "\n"
+            )
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
 
 
 # ---------------------------------------------------------------------------
-# CRT-4J8W scope helper: chain-anchor emission + demotion relaxation
+# Blocking findings and resolutions (D5 join)
 # ---------------------------------------------------------------------------
 
 
-def _scope(repo: Path) -> tuple[list[str], str]:
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-    from lib.gates import _compute_verify_resolutions_scope
+class TestBlockingAndResolutions:
+    def test_unresolved_blocking_finding_blocks_and_lists_it(self, tmp_path, capsys):
+        repo = _branch_repo(tmp_path)
+        rid = _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "boom"}],
+        )
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "blocking" in err
+        assert f"{rid}/R-1" in err
+        assert "boom" in err
+        assert "verify-resolutions" in err
 
-    return _compute_verify_resolutions_scope(repo / ".prawduct", repo)
+    def test_resolution_fact_unblocks_without_rereview(self, tmp_path, capsys):
+        repo = _branch_repo(tmp_path)
+        rid = _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "boom"}],
+        )
+        _resolution(repo, rid, "R-1", "fixed")
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "satisfied" in out
 
-
-def test_scope_reason_carries_anchor_for_cumulative_prior(tmp_path):
-    # Prior is a cumulative with a fix committed after: the ok-reason must
-    # name the anchor so the Critic embeds extends_cumulative.
-    repo, anchor, _ = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=anchor, mode=CUMULATIVE_MODE,
-        files_reviewed=["app.py"],
-    )
-    scope, reason = _scope(repo)
-    assert reason.startswith("ok:"), reason
-    assert f"extends-cumulative={anchor}" in reason
-    assert "core.py" in scope and "app.py" in scope
-
-
-def test_scope_clean_cumulative_prior_with_delta_no_longer_demotes(tmp_path):
-    # Pre-CRT-4J8W this returned no-actionable-findings; a chain-extendable
-    # prior with a reviewable delta is now a valid verify baseline.
-    repo, anchor, _ = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=anchor, mode=CUMULATIVE_MODE,
-        files_reviewed=["app.py"],  # clean record (no findings) by default
-    )
-    scope, reason = _scope(repo)
-    assert scope, reason
-
-
-def test_scope_anchor_propagates_through_chain_prior(tmp_path):
-    # Prior is itself a chain record: the ORIGINAL cumulative anchor is
-    # carried forward, not the intermediate verify commit.
-    repo, anchor, verify_head = _chain_repo(tmp_path)
-    _commit_file(repo, "extra.py", "y = 3\n", "second fix")
-    _write_findings(
-        repo, commit_reviewed=verify_head, mode=VERIFY_MODE,
-        files_reviewed=["app.py", "core.py"], extends_cumulative=anchor,
-    )
-    scope, reason = _scope(repo)
-    assert reason.startswith("ok:"), reason
-    assert f"extends-cumulative={anchor}" in reason
-    assert "extra.py" in scope
+    def test_waived_disposition_also_resolves(self, tmp_path, capsys):
+        repo = _branch_repo(tmp_path)
+        rid = _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "boom"}],
+        )
+        _resolution(repo, rid, "R-1", "waived")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
 
 
-def test_scope_clean_cumulative_prior_with_no_delta_still_demotes(tmp_path):
-    # Nothing to verify AND nothing to extend over — original demotion holds.
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    head = _commit_file(repo, "app.py", "print(1)\n", "init")
-    _write_findings(
-        repo, commit_reviewed=head, mode=CUMULATIVE_MODE, files_reviewed=["app.py"],
-    )
-    scope, reason = _scope(repo)
-    assert scope == []
-    assert "no-actionable-findings" in reason
+# ---------------------------------------------------------------------------
+# Fail-closed paths
+# ---------------------------------------------------------------------------
 
 
-def test_scope_clean_non_chain_prior_still_demotes(tmp_path):
-    # A clean chunk/final prior is NOT chain-extendable — demotion unchanged.
-    repo, _, head = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=head, mode=CHUNK_MODE, files_reviewed=["app.py"],
-    )
-    scope, reason = _scope(repo)
-    assert scope == []
-    assert "no-actionable-findings" in reason
+class TestFailClosed:
+    def test_schema_ahead_fact_blocks_with_remedy_even_when_covered(self, tmp_path, capsys):
+        # C9 tier 3: a fact from a newer plugin may be the freshest review —
+        # this reader cannot know, so it must never pass around it.
+        repo = _branch_repo(tmp_path)
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
+        store = evidence.store_path(repo)
+        with open(store, "a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {"schema": 99, "kind": "review", "id": "future-1", "ts": "t", "body": {}}
+                )
+                + "\n"
+            )
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "schema-ahead" in err
+        assert "Update the plugin" in err
+
+    def test_unresolvable_configured_base_fails_closed(self, tmp_path, capsys):
+        repo = _branch_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text("base_branch: nonexistent\n")
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "no-base" in err
+
+    def test_no_git_repo_fails_closed(self, tmp_path, capsys):
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        rc, _out, _err = _run_gate(plain, capsys)
+        assert rc == 1
 
 
-def test_scope_no_anchor_in_reason_for_non_chain_prior(tmp_path):
-    # Actionable chunk-mode prior computes a scope but must NOT advertise a
-    # chain anchor — the Critic would otherwise embed a bogus one.
-    repo, _, head = _chain_repo(tmp_path)
-    _write_findings(
-        repo, commit_reviewed=head, mode=CHUNK_MODE, blocking=True,
-        files_reviewed=["app.py", "core.py"],
-    )
-    repo_file = repo / "app.py"
-    repo_file.write_text("print(2)\n")  # uncommitted fix in scope
-    scope, reason = _scope(repo)
-    assert reason.startswith("ok:"), reason
-    assert "extends-cumulative=" not in reason
+# ---------------------------------------------------------------------------
+# Source-level pins: the deleted mechanisms stay deleted
+# ---------------------------------------------------------------------------
+
+
+class TestDeletedMechanismsStayDeleted:
+    def test_gate_module_never_opens_the_findings_cache(self):
+        # Acceptance criterion (chunk 04): no gate reads .critic-findings.json.
+        # The quoted literal is the path-construction form; docstrings that
+        # narrate history use the double-backtick form and don't match.
+        source = (ROOT / "lib" / "gates.py").read_text()
+        assert '".critic-findings.json"' not in source
+
+    def test_deleted_symbols_are_gone(self):
+        source = (ROOT / "lib" / "gates.py").read_text()
+        for symbol in (
+            "def _record_covers_head",
+            "def _compute_verify_resolutions_scope",
+            "def _verify_resolutions_gate_check",
+            "def critic_findings_satisfy_session_gate",
+            "def _ledger_fallback_record",
+            "def _pr_gate_record_qualifies",
+            "def _evaluate_pr_gate_record",
+            "def _chain_anchor",
+        ):
+            assert symbol not in source, f"{symbol} should be deleted (chunk 04)"
+
+    def test_hook_no_longer_dispatches_verify_resolutions_scope(self):
+        source = (ROOT / "bin" / "prawduct-hook").read_text()
+        assert "compute-verify-resolutions-scope" not in source

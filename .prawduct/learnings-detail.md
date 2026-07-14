@@ -581,3 +581,38 @@ the skippable step is worthless when the step is skipped.
 - Token-budget friction: adding a subsystem's prose to a lean instruction file (review-protocol.md,
   3350-token ceiling) meant RELOCATING record detail to review-cycle.md, not expanding — the
   prose-diet lever, and the budget test earned its keep by forcing it.
+
+## When developing requirements to replace a working system, sweep every consumer's actual usage before finalizing — reported pain is a hypothesis, and the loudest complaint is often not the deepest failure
+
+Full narrative (2026-07-13, backlog-service requirements discovery). The owner asked for
+requirements to move the backlog out of git, framing the pain as slow LLM-mediated CRUD, merge
+conflicts, and git-coupled edits. All three were real and independently corroborated (BKL-7M4Q
+crash corruption; discodon's 454 backlog.md commits with 47 merges / 38 conflict-mentioning
+commits; the incoming-bugs drop-box). But a read-only sweep of all 16 local checkouts of the 8
+backlog-bearing projects (scriob, scriob2, discodon + 5 copies, hallucinote ×2, cordyceps,
+trenchant, puzzles, metallm, prawduct) produced a different ranking:
+
+1. Stale item state / trust collapse — hallucinote hit two `stage: ready` items 60–80% done in
+   one session; a scriob scrub found four completed items sitting in Open; an upstream report
+   counted three ready items 60–100% shipped; discodon's EVL-D8K2 described a destructive live
+   code path as "permanently dead" (dangerously inverted); discodon ran a 48-agent
+   assessor+adversarial-verifier workflow over 39 items because item text could no longer be
+   trusted. Consumers now re-verify premises in code before building — universally.
+2. Stale views across checkouts — the wt-discodon-backlog worktree showed 66 closed items as
+   Open and was missing 65 newer ones; discodon-brooks2 held SOL-K3PN found nowhere else.
+   Cross-copy divergence was ~98% staleness, ~2% genuine fork.
+3. Only then: merge conflicts, unsafe mutation, git coupling — the originally-reported pains.
+
+Consequence: the requirements doc gained a Truth & freshness group (TF1 single live view, TF2
+first-class verification stamps, TF3 mass grooming as supported workload) that no tracker
+provides out of the box and that the original sketch never implied. Also observed and folded in:
+per-project soft vocabularies (scriob's `kind:` on 158 items, `owner:`, `reverted-by:`, stage
+values `discovery`/`built`), zero-ceremony tier (metallm: 5 items, no metadata), high-cardinality
+ad-hoc ID prefixes (27–58/project), and bulk-read grooming workloads that must be served from a
+local cache, not a rate-limited API.
+
+Method notes that made it work: requirements were drafted from the problem BEFORE reading the
+vendor research (two parallel web-research agents ran meanwhile), so GitHub/Linear capabilities
+informed a separate adopt/build/buy section rather than anchoring the requirements themselves;
+and the sweep was one read-only background agent — cheap insurance against designing to the
+complaint instead of the disease.

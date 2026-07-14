@@ -81,9 +81,8 @@ Stat block: `reviews`, `duration_total_seconds`, `duration_median_seconds`
 
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
 `verify-resolutions`), derived from the persisted verbose strings. PR-review
-events carry `pr-scoped` (the Critic record survived the audit and was
-consumed) or `pr-full` (record voided or absent — full code-soundness pass),
-so scoped and full runs aggregate as distinct modes.
+events carry `pr` (release-readiness scope — code soundness is certified by
+the composition gate before the reviewer is dispatched).
 
 Model keys are **folded to a family label** (`opus` / `sonnet` / `haiku` /
 `fable`): one model is recorded under several id strings (`opus`,

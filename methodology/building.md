@@ -87,7 +87,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below.
 
-**Resolve findings.** After a **coordinator** review (medium/large `final`, `cumulative`), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — an idempotent no-op when the `SubagentStop` trigger already consolidated, and it guarantees you never read the *previous* review's file if that trigger didn't fire. Then: fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
+**Resolve findings.** After a **coordinator** review (`final`/`cumulative` at 5+ changed files), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — an idempotent no-op when the `SubagentStop` trigger already consolidated, and it guarantees you never read the *previous* review's file if that trigger didn't fire (single-pass reviews consolidate themselves). Then: fix blocking findings before proceeding — the follow-up `/prawduct:critic verify-resolutions` records the resolution facts that unblock them at the gates. Address warnings. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 
@@ -171,7 +171,11 @@ Tests are the most important artifact you produce: contracts that define correct
 
 After medium+ work, invoke the Critic as a separate agent. It receives signals (files changed, work type, work size) and reasons about what to check, through seven prioritized goals: **Nothing Is Broken**, **Nothing Is Missing**, **Nothing Is Unintended**, **Everything Is Coherent**, **Decisions Were Deliberate**, **The System Can Be Understood**, **The Design Is Sound** (definitions: `skills/critic/review-protocol.md`).
 
-In `final` mode the Critic also cross-checks learnings and reconciles the backlog. Medium/large `final` reviews use a coordinator pattern — parallel subagents for correctness (goals 1-3), design (4, 7), and sustainability (5-6).
+In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews at 5+ changed files use a coordinator pattern — parallel subagents for correctness (goals 1-3), design (4, 7), and sustainability (5-6).
+
+### The evidence model
+
+Every consolidated review appends a **fact** to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`; inspect with `prawduct-hook evidence status|list`). A fact records the trees it reviewed, so it never expires by time or session: a pre-commit review vouches for the verbatim commit, from any worktree, in any later session. The Critic and PR gates answer by **composing** facts over trees — mode labels don't matter; a rebase/amend changes the tree and correctly demands a fresh look. Blocking findings block until a `verify-resolutions` pass records resolution facts. `.critic-findings.json` is a derived view of the newest fact (no gate reads it); the writers are the review lifecycle commands, never you.
 
 ### Modes
 
@@ -179,8 +183,8 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 
 - **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
 - **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.
-- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Gates `/prawduct:pr create`.
-- **`verify-resolutions`** — Goals 1-3 against the prior review's scope; re-review after fixing prior findings.
+- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Feeds `/prawduct:pr create`'s gate.
+- **`verify-resolutions`** — Goals 1-3 against the delta since the prior review fact; re-review after fixing prior findings, and the only mode that records resolution facts.
 
 If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
 
@@ -196,7 +200,7 @@ If the mode is missing, unrecognized, or inference cannot make a confident call,
 
 `/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset — complementing the Critic's per-chunk reviews. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — required: a blocking-free record vouching for HEAD (a `cumulative` record, or a `verify-resolutions` chain record extending one; details in `skills/critic/review-cycle.md`). Sequence: land every non-`.md` fix, run `/prawduct:critic cumulative` once; post-cumulative fixes ride the chain (fix → commit → `verify-resolutions`). While it runs (~4-10 min), do findings-independent prep.
+**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — composed review coverage must span merge-base → HEAD by tree with zero unresolved blocking findings (any modes compose; details in `skills/critic/review-cycle.md`). Sequence: land every non-`.md` fix, run `/prawduct:critic cumulative` once, commit verbatim; post-cumulative fixes take a `verify-resolutions` pass (delta cost), never a second full run. While it runs (~4-10 min), do findings-independent prep.
 
 ## Exception Handling
 
