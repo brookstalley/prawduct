@@ -3,6 +3,29 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-14: Ephemeral-reference firewall — durable artifacts stay self-contained (ephemeral-ref-firewall)
+
+<!-- prawduct: type=feature -->
+<!-- Statusless on a feature branch = release-pending once merged. Medium framework
+     change, no build plan (governance prose + one Critic check): a self-containment
+     rule so ephemeral build identifiers (chunk labels, build-plan/work-cycle names)
+     don't leak into durable product artifacts (code comments, long-lived specs). One
+     final Critic. Owner-reported recurring leak; owner approved full-package scope. -->
+
+**Parent:** Owner report (2026-07-14) — ephemeral identifiers ("chunk 03", "the eval-trust
+build plan") recurring in durable artifacts (code comments, long-lived specs) where they mean
+nothing after the build plan is deleted.
+
+**What:** A firewall between build-cycle scaffolding and durable *product* artifacts. Build
+plans and chunk labels are deleted when work ships (`/prawduct:pr`, janitor) and aren't unique
+(every project has a "chunk 03"), so a durable artifact must never depend on one for its
+meaning — comments carry the *why* inline. The distinction is product-artifact vs build-cycle
+bookkeeping (change-log `chunks=`, backlog `closed-by:`, operator-verification, reflections,
+PR/commit text legitimately cite chunks). Installed at: Principle 13 (Coherent Artifacts, using
+Principle 10's construction-equipment metaphor); `methodology/building.md` builder rule;
+`methodology/session-digest.md` (product-facing carrier); Critic Goal 4 (`ephemeral-ref
+firewall` → WARNING). A deterministic grep tripwire was deliberately deferred (case-law-first; filed as `[GOV-3P8K]`).
+
 ## 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)
 
 <!-- prawduct: type=feature | release=v3.0.3 | status=shipped -->

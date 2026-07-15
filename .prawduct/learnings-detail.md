@@ -6,6 +6,20 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When writing a durable artifact (code comment, docstring, long-lived spec), never anchor its meaning to an ephemeral build identifier — carry the *why* inline, because build plans are deleted after completion and every project has many "chunk 03"s
+
+**Pattern**: The owner reported a recurring leak (2026-07-14) — ephemeral identifiers ("chunk 03", "the eval-trust build plan") making it into durable artifacts like code comments and long-lived specs, where they mean nothing once the work is done.
+
+**Root cause — an asymmetry in lifespans, with no firewall.** Build plans and their chunk labels are the *most* ephemeral artifacts in the system: `/prawduct:pr` deletes the plan file on merge (trunk) or release (gitflow), and the janitor sweeps stale ones. Yet the framework had (a) no guidance anywhere on what a code comment should contain (no WHY-vs-WHAT rule) and (b) no check for ephemeral references in durable output. So a comment like `// per chunk 03` — meaningful while the plan exists — silently rots into a dangling pointer the moment the plan is retired, and it isn't even uniquely resolvable (the build-plan template ships Chunk 01/02/03, so every project mints its own "chunk 03").
+
+**The load-bearing distinction is product-artifact vs build-cycle-bookkeeping, NOT durable-file vs ephemeral-file.** A blunt "chunk ids never appear in durable files" rule would be wrong — it would contradict two deliberate existing conventions: change-log `chunks=00,01` tags and backlog `closed-by: <chunk-id>`. Those are *bookkeeping whose job is to record the build work*; the chunk ref there is an audit breadcrumb that degrades gracefully (the entry is still understandable without it). The forbidden case is a *product* artifact (code, comments, docstrings, long-lived specs, `docs/`, data model) whose meaning you can't reconstruct once the plan is gone. The backlog `closed-by` rule ("use a durable handle — a branch/scope name — not an ephemeral SHA or PR number") is the same identifier discipline pointed the other way, and was the precedent cited when writing this.
+
+**The test**: *will this reference still resolve, and mean the right thing, after the build plan is deleted?* If the artifact needs it to be understood and it points at deleted scaffolding, it fails — carry the reason inline instead.
+
+**Installed (full package, owner-approved scope)**: a clause under Principle 13 (using #10's construction-equipment metaphor); a builder rule in `methodology/building.md`; a compact line in `methodology/session-digest.md` (the only surface that reaches already-onboarded/migrated products — a framework-wide default must land there, per the session-digest carrier rule); and a Critic Goal 4 check (`ephemeral-ref firewall` → WARNING, bookkeeping explicitly out of scope). Deliberately NOT built: a grep/hook tripwire (false-positive-prone on "chunk" as a common word; case-law-first — automate only if the rule + Critic prove insufficient) — filed as [[backlog]] GOV-3P8K.
+
+Discovered ephemeral-ref-firewall (2026-07-14). Relates to Coherent Artifacts (#13), Clean Deployment (#10), Reasoned Decisions (#4), Living Documentation (#3), and the backlog `closed-by` durable-handle rule.
+
 ## When `check-cumulative-critic` reports `uncovered` on a branch whose code you know was reviewed, suspect a stale base before running a fresh review — the gate anchors to `origin/<base>` by design, so unpushed integration commits drag already-shipped work into the required span
 
 **Pattern**: v3.0.3 release (2026-07-14). Wrapping a +0.0.1 release, `check-cumulative-critic`
@@ -177,13 +191,18 @@ Surfaced 2026-06-22 during TEL-4M9X (review-stats model-id normalization). After
 
 **Two reusable sub-lessons**: (1) a token-budget guardrail at its ceiling forces trim-vs-bump on any necessary addition — remove genuine redundancy (cross-file duplicate comments, self-restating clauses), don't bump the budget or drop a check; the guardrail correctly makes new content pay for itself. (2) Verifying harness/model behavior beats recalling it: the silent-substitution-to-session-model detail (which I would not have recalled correctly) is exactly what turned the rule from "pass fable and hope" into "pick a confirmed-valid model, then fall back explicitly."
 
-## A clean cumulative (0 blocking/0 warning) makes post-review note-fixes asymmetric — `.md` fixes ride free, any `.py` change forces a fresh full review
+## After a clean cumulative (0 blocking/0 warning), NOTEs are advisory — don't chase cosmetic ones; fixing them reopens the coverage gate on judgeable governance files and forces a no-value review pass
 
 **Pattern**: upstream-bug-reporting (2026-06-20). A cumulative Critic over the bundle came back 0 blocking / 0 warning / 5 notes. Some notes were `.py` (a misleading docstring, a speculative dead-code guard), some `.md` (slim-digest framing); fixing them meant a follow-up commit. Because the follow-up touched `lib/upstream_probes.py` (non-`.md`), the prior cumulative no longer vouched for HEAD, so the PR gate (`check-cumulative-critic`) needed a fresh HEAD-covering record — a full re-review. Had the fixes been `.md`-only, the CRT-7M2D docs-only allowance would have kept the original cumulative HEAD-covering and cost nothing.
 
 **Why the re-review is full, not light**: the cheap post-fix path (`verify-resolutions`, Goals 1-3 over the delta) *demotes to `final`* precisely when prior findings hold no BLOCKING/WARNING — there's nothing to "verify resolved," so it falls back to a full pass. So an all-NOTE cumulative gives no cheap re-review path for a `.py` touch.
 
 **Reusable rule**: self-scrub hard BEFORE the first cumulative (the methodology's "deep-scrub while the Critic runs" only helps if there's a gap to use; a synchronous skill return leaves none — so scrub before invoking). When notes land: fix `.md` notes in place (free), and weigh each `.py` cosmetic note against one opus re-run — fixing a false docstring + dropping dead code was worth it here, but a pure tense-nit was not (left as a defensible description). Route low-value `.py` notes to a backlog item rather than re-reviewing. Ties directly to the Review-wall-clock-is-P0 priority.
+
+**Correction (2026-07-14, ephemeral-ref-firewall).** Two claims above are wrong, proven by direct observation this session — keep the narrative for history but do not act on the struck reasoning:
+- **"`.md` fixes ride free" is false for JUDGEABLE files.** The CRT-7M2D docs-only free-edge covers only *non-judgeable* files (pure docs). Governance/instruction `.md` — `docs/principles.md`, `methodology/`, `skills/*/` protocols, `learnings.md`, `change-log.md` — is judgeable, so a `.md`-only note-fix commit to those left `check-cumulative-critic` **`uncovered`**. The real axis is judgeable-vs-non-judgeable, not `.md`-vs-`.py`.
+- **"verify-resolutions demotes to `final` when no blocking/warning remains" is false.** With 0 prior blocking/warning AND a real delta, verify-resolutions ran as a LIGHT single-pass (Goals 1-3, one reviewer, ~1-2 min) and closed coverage — it did NOT demote. Demotion fires only when the anchor is missing, history was rewritten, the delta widens past 2×prior+5 files, or the prior was clean *and nothing changed since* (`review-cycle.md` demotion table); the original rule omitted the "and nothing changed" clause.
+So the post-fix cost is ONE light pass, not a full re-review — but that is beside the point. The load-bearing lesson is upstream of cost: **a clean cumulative (0 blocking/0 warning) is already "ready to proceed" — NOTEs are advisory.** Don't chase cosmetic ones (they only reopen the gate for a no-value pass); self-scrub before the first review, fix only high-value notes (filing a deferred item = Complete Delivery), and batch ALL durable edits so there is ONE review, not three. Owner flagged this directly during ephemeral-ref-firewall: "avoid excessive reviews when they add no value."
 
 ## Artifacts drift silently during sustained building
 
