@@ -192,7 +192,7 @@
   report from Hallucinote/puzzles)
 
 - **[REL-3M7K]** Release-prep must add the root CHANGELOG.md headline and gate on a green suite before tagging
-  `effort: S · impact: M · area: governance/release · source: builder · added: 2026-06-21 · status: open · stage: ready · related: REL-9F2T · refs: CHANGELOG.md, hooks/banner.py (parse_changelog), skills/pr/SKILL.md, .prawduct/release-notes.md`
+  `effort: S · impact: L · area: governance/release · source: builder · added: 2026-06-21 · status: open · stage: ready · related: REL-9F2T · refs: CHANGELOG.md, hooks/banner.py (parse_changelog), skills/pr/SKILL.md, .prawduct/release-notes.md · reviewed: 2026-07-14`
 
   Root cause found 2026-06-21 during the hook-cli-robustness baseline check: v2.1.6 was tagged +
   version-bumped (81b28fe) but its consumer-facing root CHANGELOG.md headline was never added — the
@@ -209,6 +209,16 @@
   Fix-shape: wire the CHANGELOG.md headline into the /prawduct:pr release-promotion / release-prep
   flow (or generate it from the release= change-log tag like release-notes.md is), and make
   release-prep refuse to bump/tag on a non-green suite. (builder)
+
+  Recurrence log:
+  - v3.0.4 (2026-07-14): recurred (3rd+ occurrence). release-prep(v3.0.4) (3ebf914) again bumped the
+    version + regenerated .prawduct/release-notes.md/change-log.md but omitted the consumer-facing root
+    CHANGELOG.md headline; it had to be backfilled out-of-band in bc23ef5 ("fix(changelog): backfill the
+    missing v3.0.4 headline (release-prep miss)"). Identical failure mode to the v2.1.6 root-cause find
+    above — the headline remains a forgettable hand step because the fix is still unbuilt. Recurrence at
+    this cadence is why impact was raised M→L on 2026-07-14: the cost of not fixing (releases shipping
+    with a missing/late headline, and the CHANGELOG-current-version test flapping) now clearly exceeds
+    the small effort of wiring the headline into release-prep. (reflection)
 
 - **[STH-3K7M]** Capture `git branch --show-current` once on the SessionStart (clear) hot path
   `effort: S · impact: S · area: stop-hook · source: builder · added: 2026-06-21 · status: open · stage: ready · related: STH-6Q9D · refs: lib/briefing.py (_get_current_branch and its callers)`
