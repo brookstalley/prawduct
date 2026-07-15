@@ -5,6 +5,12 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.0.4
+
+**Entry:** 2026-07-14: Ephemeral-reference firewall — durable artifacts stay self-contained (ephemeral-ref-firewall)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.0.3
 
 **Entry:** 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)

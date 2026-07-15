@@ -5,7 +5,7 @@
 
 ## 2026-07-14: Ephemeral-reference firewall — durable artifacts stay self-contained (ephemeral-ref-firewall)
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | release=v3.0.4 | status=shipped -->
 <!-- Statusless on a feature branch = release-pending once merged. Medium framework
      change, no build plan (governance prose + one Critic check): a self-containment
      rule so ephemeral build identifiers (chunk labels, build-plan/work-cycle names)
