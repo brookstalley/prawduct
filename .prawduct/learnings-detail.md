@@ -6,6 +6,20 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When writing a durable artifact (code comment, docstring, long-lived spec), never anchor its meaning to an ephemeral build identifier — carry the *why* inline, because build plans are deleted after completion and every project has many "chunk 03"s
+
+**Pattern**: The owner reported a recurring leak (2026-07-14) — ephemeral identifiers ("chunk 03", "the eval-trust build plan") making it into durable artifacts like code comments and long-lived specs, where they mean nothing once the work is done.
+
+**Root cause — an asymmetry in lifespans, with no firewall.** Build plans and their chunk labels are the *most* ephemeral artifacts in the system: `/prawduct:pr` deletes the plan file on merge (trunk) or release (gitflow), and the janitor sweeps stale ones. Yet the framework had (a) no guidance anywhere on what a code comment should contain (no WHY-vs-WHAT rule) and (b) no check for ephemeral references in durable output. So a comment like `// per chunk 03` — meaningful while the plan exists — silently rots into a dangling pointer the moment the plan is retired, and it isn't even uniquely resolvable (the build-plan template ships Chunk 01/02/03, so every project mints its own "chunk 03").
+
+**The load-bearing distinction is product-artifact vs build-cycle-bookkeeping, NOT durable-file vs ephemeral-file.** A blunt "chunk ids never appear in durable files" rule would be wrong — it would contradict two deliberate existing conventions: change-log `chunks=00,01` tags and backlog `closed-by: <chunk-id>`. Those are *bookkeeping whose job is to record the build work*; the chunk ref there is an audit breadcrumb that degrades gracefully (the entry is still understandable without it). The forbidden case is a *product* artifact (code, comments, docstrings, long-lived specs, `docs/`, data model) whose meaning you can't reconstruct once the plan is gone. The backlog `closed-by` rule ("use a durable handle — a branch/scope name — not an ephemeral SHA or PR number") is the same identifier discipline pointed the other way, and was the precedent cited when writing this.
+
+**The test**: *will this reference still resolve, and mean the right thing, after the build plan is deleted?* If the artifact needs it to be understood and it points at deleted scaffolding, it fails — carry the reason inline instead.
+
+**Installed (full package, owner-approved scope)**: a clause under Principle 13 (using #10's construction-equipment metaphor); a builder rule in `methodology/building.md`; a compact line in `methodology/session-digest.md` (the only surface that reaches already-onboarded/migrated products — a framework-wide default must land there, per the session-digest carrier rule); and a Critic Goal 4 check (`ephemeral-ref firewall` → WARNING, bookkeeping explicitly out of scope). Deliberately NOT built: a grep/hook tripwire (false-positive-prone on "chunk" as a common word; case-law-first — automate only if the rule + Critic prove insufficient) — a backlog candidate, not shipped.
+
+Discovered ephemeral-ref-firewall (2026-07-14). Relates to Coherent Artifacts (#13), Clean Deployment (#10), Reasoned Decisions (#4), Living Documentation (#3), and the backlog `closed-by` durable-handle rule.
+
 ## When `check-cumulative-critic` reports `uncovered` on a branch whose code you know was reviewed, suspect a stale base before running a fresh review — the gate anchors to `origin/<base>` by design, so unpushed integration commits drag already-shipped work into the required span
 
 **Pattern**: v3.0.3 release (2026-07-14). Wrapping a +0.0.1 release, `check-cumulative-critic`
