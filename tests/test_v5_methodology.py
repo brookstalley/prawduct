@@ -238,11 +238,12 @@ class TestCriticSkill:
         # every goal bullet is a specific, severity-mapped check (~3212 est
         # tokens post-diet). 3350 held until the ephemeral-ref firewall check
         # was folded into Goal 4's Documentation-drift bullet (2026-07-14,
-        # owner-approved enforcement of Principle 13, ephemeral-ref-firewall);
-        # that terse pointer needs ~50 tokens, so the ceiling rises to 3450 --
-        # still UNDER the diet's own post-diet +10% formula (~3533), so the diet
-        # stays locked. Posture unchanged: prefer trim over bump; relocate
-        # per-mode/record detail to review-cycle.md before adding here.
+        # owner-approved enforcement of Principle 13, ephemeral-ref-firewall):
+        # the file grew ~70 tokens to ~3400 est (words x1.3), past the old 3350.
+        # Ceiling set to 3450 -- ~50 tokens (~1.5%) headroom, still UNDER the
+        # diet's own post-diet +10% formula (~3533), so the diet stays locked.
+        # Posture unchanged: prefer trim over bump; relocate per-mode/record
+        # detail to review-cycle.md before adding here.
         tokens = estimate_tokens(self.content)
         assert tokens < 3450, f"review-protocol.md is ~{tokens} tokens, should be <3450"
 
