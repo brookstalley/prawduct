@@ -23,6 +23,10 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Tests are contracts.** Fix the code, never weaken the test. Write tests alongside code, not after.
 - **There is no "pre-existing" exception.** If you find a problem — failing test, broad catch,
   stale artifact — fix it or explicitly flag why it can't be fixed now.
+- **Durable artifacts are self-contained.** A code comment, docstring, or long-lived spec must
+  never anchor its meaning to an ephemeral build id (a chunk like "chunk 03", a build-plan or
+  work-cycle name) — they're deleted when the work ships, so it dangles; carry the *why* inline.
+  Exception: bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, PR/commit text).
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).

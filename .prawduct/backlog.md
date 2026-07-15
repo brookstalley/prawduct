@@ -7,6 +7,17 @@
 
 ## Open
 
+- **[GOV-3P8K]** Deterministic tripwire for the ephemeral-ref firewall — grep/hook check that auto-flags ephemeral build identifiers leaking into committed code comments / durable specs
+  `effort: M · impact: S · area: gates · source: critic · added: 2026-07-14 · status: open · stage: idea · refs: skills/critic/review-protocol.md (Goal 4 — Coherence, ephemeral-ref check), docs/principles.md (Principle 13 durable-artifact clause), .prawduct/cross-cutting-concerns.md (Durable-artifact self-containment row — "Deterministic grep tripwire deliberately deferred")`
+
+  Deferred follow-up from the ephemeral-ref-firewall change (2026-07-14). A deterministic grep/hook check that scans committed code comments and durable product specs for ephemeral build identifiers (chunk NN, build-plan / work-cycle names) and flags leaks automatically, complementing the Critic Goal 4 check that shipped in ephemeral-ref-firewall.
+
+  Deliberately DEFERRED, case-law-first — build only if the rule + Critic prove insufficient in practice (the cross-cutting-concerns registry row already records this deferral).
+
+  Design challenge: false positives on "chunk" as an ordinary word (chunked data, memory chunk) and on the blessed bookkeeping exemption (change-log `chunks=`, backlog `closed-by:`, operator-verification). Any deterministic scanner has to separate a real ephemeral-build-ref leak from these legitimate uses.
+
+  Idea-stage: needs a design pass on the detection signal and its false-positive posture before it is buildable. Governance-protected (gates / skills/critic) → full Critic + PR review. (critic)
+
 - **[COV-2P7F]** Unify the "`.prawduct/**` is governance-metadata, not code" predicate across ALL PR fast-paths (not just `.md`)
   `effort: M · impact: M · area: coverage · source: user · added: 2026-07-09 · reviewed: 2026-07-14 · status: open · stage: design · related: CRT-5D8Q, COV-5H3N, COV-8R2K, PR-5K8D · refs: lib/gates.py (_record_covers_head, _compute_verify_resolutions_scope), lib/coverage.py (cmd_check_pr_doc_only), bin/prawduct-hook, incoming-bugs/archive/2026-06-13-governance-metadata-fix-triggers-full-code-pr-gates.md`
 
@@ -1012,6 +1023,18 @@
   A change-log entry for proportionally-planless work (`chunks=n/a`, no build plan) blocks `regen-views`: `diagnose_scope_plan_coverage` (lib/views.py) fails closed on any unreleased scope that doesn't resolve to a build-plan file. First hit by the gitignore-drift-advisory scope at v3.0.0 release-prep; worked around by folding its scope into kernel-evidence-store.
 
   Desired: a first-class sentinel (e.g. `chunks=none` / `plan=none`) that the release validator recognizes and skips scope→plan resolution for, so proportional planless work can carry its own scope and release-notes line without a fabricated build plan. Distinct from the sibling no-plan fail-closed cases already shipped (VWS-7N3K: regen aborts when NO plan resolves at all; VWS-6R4T: fail-loud roster validation of every change-log tag) — this is about a legitimate *per-scope* planless entry that the roster/coverage validator must accept as intentionally planless rather than reject.
+
+- **[COV-7K4N]** check-cumulative-critic false-`uncovered` with a misleading remedy when origin/<base> is stale (feature built on unpushed local integration commits)
+  `effort: S · impact: M · area: coverage · source: reflection · added: 2026-07-14 · status: open · stage: design · related: COV-5H3N, ENV-2W7K, PR-2H8N, PR-7T2K · refs: lib/coverage.py (_resolve_base_branch prefers origin/<b> for a "stable remote-tracking merge-base"), lib/gates.py (check_cumulative_critic uncovered path), docs/release-process.md`
+
+  When `base_branch: develop` is set, `_resolve_base_branch` resolves the base to `origin/develop` by design. If local develop is ahead of origin/develop (release-prep or a merge committed locally but not pushed) and a feature is built on top of that ahead-state, check-cumulative-critic anchors merge-base to the STALE origin/develop and demands one composed review path spanning the whole unshipped range — dragging already-reviewed, already-shipped work into the required span — so it reports `uncovered` even though every commit in the span has a clean Critic fact (blocking=0). The stderr remedy ("run /prawduct:critic cumulative") is then both WRONG and expensive (~4-10 min; it re-reviews the whole promotion delta for zero added signal). Observed live during the v3.0.3 release: origin/develop sat at v3.0.1 while local develop carried an unpushed, never-promoted release-prep(v3.0.2) — a "phantom release." The actual fix was `git push origin develop` to reconcile the base, after which the gate re-composed and passed (2 review facts + 1 free edge). Root cause upstream: a release-prep(vX) that stops before promotion+push leaves develop, the version files, and origin/develop out of sync across sessions.
+
+  FIX-SHAPE (menu; recommend 1 near-term, 2 follow-up, 3 deferred spike):
+  (1) Diagnostic hint on the uncovered path — if base is origin/<b>, local <b> exists, is an ancestor of HEAD, and is ahead of origin/<b>, append "origin/<b> is N commit(s) behind local <b>; try `git push origin <b>` and re-check before a full review." Cheap, text-only, converts the wrong remedy into the right one.
+  (2) Root-cause session-start advisory (observable-state pattern, cf. the gitignore-drift probe): nudge when local develop is ahead of origin/develop with an unpromoted release-prep(vX). Self-resolves once develop is pushed/promoted.
+  (3) [deferred spike] Reconsider base resolution to prefer the nearer of local/remote integration branch when local is ahead AND an ancestor of HEAD — would eliminate the false-uncovered but trades against the deliberate "stable remote-tracking merge-base" design and is load-bearing across every gate (PR, doc-only, cumulative). Governance-protected (lib/gates.py, lib/coverage.py) → full Critic + PR review.
+
+  Dedup note (2026-07-14): distinct facet from COV-5H3N — that item is the *wrong-default-to-main* case when `base_branch:` is UNSET; this is the *stale-remote* case when `base_branch: develop` IS set and origin/develop trails local. Both live in `_resolve_base_branch`; keep separate, cross-linked. Adjacent to PR-7T2K (local-vs-origin divergence breaking a gate, but on the feature branch's push-state at merge, not the base branch) and umbrella'd by ENV-2W7K (gitflow base detection, Wave 2).
 
 ## Archive
 
