@@ -7,6 +7,17 @@
 
 ## Open
 
+- **[GOV-3P8K]** Deterministic tripwire for the ephemeral-ref firewall — grep/hook check that auto-flags ephemeral build identifiers leaking into committed code comments / durable specs
+  `effort: M · impact: S · area: gates · source: critic · added: 2026-07-14 · status: open · stage: idea · refs: skills/critic/review-protocol.md (Goal 4 — Coherence, ephemeral-ref check), docs/principles.md (Principle 13 durable-artifact clause), .prawduct/cross-cutting-concerns.md (Durable-artifact self-containment row — "Deterministic grep tripwire deliberately deferred")`
+
+  Deferred follow-up from the ephemeral-ref-firewall change (2026-07-14). A deterministic grep/hook check that scans committed code comments and durable product specs for ephemeral build identifiers (chunk NN, build-plan / work-cycle names) and flags leaks automatically, complementing the Critic Goal 4 check that shipped in ephemeral-ref-firewall.
+
+  Deliberately DEFERRED, case-law-first — build only if the rule + Critic prove insufficient in practice (the cross-cutting-concerns registry row already records this deferral).
+
+  Design challenge: false positives on "chunk" as an ordinary word (chunked data, memory chunk) and on the blessed bookkeeping exemption (change-log `chunks=`, backlog `closed-by:`, operator-verification). Any deterministic scanner has to separate a real ephemeral-build-ref leak from these legitimate uses.
+
+  Idea-stage: needs a design pass on the detection signal and its false-positive posture before it is buildable. Governance-protected (gates / skills/critic) → full Critic + PR review. (critic)
+
 - **[COV-2P7F]** Unify the "`.prawduct/**` is governance-metadata, not code" predicate across ALL PR fast-paths (not just `.md`)
   `effort: M · impact: M · area: coverage · source: user · added: 2026-07-09 · reviewed: 2026-07-14 · status: open · stage: design · related: CRT-5D8Q, COV-5H3N, COV-8R2K, PR-5K8D · refs: lib/gates.py (_record_covers_head, _compute_verify_resolutions_scope), lib/coverage.py (cmd_check_pr_doc_only), bin/prawduct-hook, incoming-bugs/archive/2026-06-13-governance-metadata-fix-triggers-full-code-pr-gates.md`
 

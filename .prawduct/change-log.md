@@ -5,7 +5,7 @@
 
 ## 2026-07-14: Ephemeral-reference firewall — durable artifacts stay self-contained (ephemeral-ref-firewall)
 
-<!-- prawduct: type=feat -->
+<!-- prawduct: type=feature -->
 <!-- Statusless on a feature branch = release-pending once merged. Medium framework
      change, no build plan (governance prose + one Critic check): a self-containment
      rule so ephemeral build identifiers (chunk labels, build-plan/work-cycle names)
@@ -24,7 +24,7 @@ bookkeeping (change-log `chunks=`, backlog `closed-by:`, operator-verification, 
 PR/commit text legitimately cite chunks). Installed at: Principle 13 (Coherent Artifacts, using
 Principle 10's construction-equipment metaphor); `methodology/building.md` builder rule;
 `methodology/session-digest.md` (product-facing carrier); Critic Goal 4 (`ephemeral-ref
-firewall` → WARNING). A deterministic grep tripwire was deliberately deferred (case-law-first).
+firewall` → WARNING). A deterministic grep tripwire was deliberately deferred (case-law-first; filed as `[GOV-3P8K]`).
 
 ## 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)
 

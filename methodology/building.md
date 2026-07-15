@@ -74,7 +74,7 @@ Test at the right level — **unit** (functions and logic), **integration** (com
 
 **CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
-**Comments and durable specs are self-contained — explain *why*, never reference build scaffolding.** A code comment, docstring, or long-lived spec must not name a chunk ("chunk 03"), build-plan, or work-cycle — they're deleted when the work ships, so the reference resolves to nothing. Carry the reason inline: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: build-cycle bookkeeping (change-log `chunks=`, backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
+**Comments and durable specs are self-contained — explain *why*, never reference build scaffolding.** A code comment, docstring, or long-lived spec must not name a chunk ("chunk 03"), build-plan, or work-cycle — they're deleted when the work ships, so the reference resolves to nothing. Carry the reason inline: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
 
 **Verify.** Two layers:
 
