@@ -42,13 +42,23 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from lib.evidence import SCHEMA_VERSION
-from kernel_v3_harness import (
+# Put the repo root on sys.path before importing lib/ — this module must be
+# self-sufficient rather than depend on another test module having inserted it
+# first (under parallel file distribution the two scenario files can land on
+# different workers, so the ordering dependency flakes). Mirrors the idiom every
+# other lib-importing test uses (e.g. tests/test_advisory_store.py).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from lib.evidence import SCHEMA_VERSION  # noqa: E402
+from kernel_v3_harness import (  # noqa: E402
     HOOK,
     _commit_all,
     _gate,
