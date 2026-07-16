@@ -1,6 +1,6 @@
 # Backlog Service — API Contract
 
-`status: draft v1 — initial drill-down from PRD §16(4). Fixes the operation surface across the three fronts (core library · CLI · MCP), the return-value **error model** (recorded → `api_error_model_approach`), and the **versioning/compat** scheme (recorded → `api_versioning_approach`) the PRD left to "the next level." Design intent of the surface, not the exhaustive flag/JSON-field spelling (that is a build-time `verify-api` step). · source: planning session · stage: design`
+`status: draft v2 — independent-review fold (2026-07-16): a fresh-eyes design critic + a gh/GitHub-fact verifier reviewed v1. Folded — C1: GV3 given a home (new §2.6) — closed_by is native-timeline-authoritative on close-on-merge, an optional handle on manual close, and the bidirectional drift sweep is a janitor workflow (coherence: closed_by added to Data Model §1.1 v3); C2: merge/split crash-safe recovery write-order specified (redirect-before-close, parallel to set-status); C3: retryable disentangled from the G2 never-block obligation (never-block = degrade on ALL errors, never retry-loop; retryable = orthogonal transient-vs-permanent hint for retry-drivers); C4: PV3/PV4 public-filing noted as native + delegated to Security §6; C5: "semantic pre-GA" corrected (semantic search is GA — the gate is per-repo hybrid-search enablement); C6: the "plugin semver IS the handle" claim scoped to the bundled CLI (MCP skew covered by its experimental tier); C7: verify/attach idempotency keys named; F2: list read-your-writes softened to strongly-consistent-in-practice; C10: gh exit 4 → auth mapping added; plus the offline-queue provisional-ID envelope state. The fact-verifier confirmed every load-bearing platform fact (80/min + ~500/hr caps, ETag/304, since-cursor, search-not-read-your-writes, MCP isError mapping, per-install lockstep, no-number-reuse). Prior v1: initial drill-down from PRD §16(4) — operation surface across three fronts + the two recorded decisions. · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4 — esp. AG1–6, G1–G5, O5/D8),
 `documentation/backlog-service-data-model.md` (entities, `set-status`, ready-work fan-out, IDs),
@@ -54,16 +54,16 @@ tier (§7).
 | `file` (create) | new Item | – | **no** (unless keyed) | one-call create: `title`+`body` suffice, every other field defaultable; returns the ID **immediately**, dedup candidates **advisory-async** | AG2, AG3 |
 | `get` / `show` | one Item | ✓ | – | fetch one item (live; or cache w/ visible age) | Q1, TF1 |
 | `update` | one Item | – | field-wise | field-wise edit; **optimistic CAS** on state/`updated_at` → `conflict` for retry | CC2 |
-| `status` (set) | one Item | – | **yes** | the crash-safe two-axis transition — maps to the Data Model's idempotent **`set-status`** primitive (re-run = no-op) | DM2, CC1, §DM4 |
+| `status` (set) | one Item | – | **yes** | the crash-safe two-axis transition — maps to the Data Model's idempotent **`set-status`** primitive (re-run = no-op); a close also records **`closed_by`** (§2.6) | DM2, CC1, GV3 |
 | `claim` / `unclaim` | Item assignee | – | **yes** | atomic take-and-verify; TTL-reap surfaces `claim_conflict` (non-fatal) | CC3 |
-| `verify` | Item block+cache | – | **yes** | record "premise re-checked against code by <actor> on <date>" in one call | TF2 |
+| `verify` | Item block+cache | – | **yes** (keyed on actor+date) | record "premise re-checked against code by <actor> on <date>" in one call — re-stamp same (actor,date) = no-op (the `verified` list is append-with-dedup, Data Model §1.1/§2) | TF2 |
 | `comment` | Item comment | – | **no** | add a threaded, attributed comment | DM5 |
-| `attach` | Item attachment | – | **yes** (by content) | store a file (release-asset **or** attachments-branch, both no-PR); returns the stored URL | DM6 |
+| `attach` | Item attachment | – | **cond.** | store a file (release-asset **or** attachments-branch, both no-PR); returns the stored URL. **Idempotent by content-hash on the attachments-branch path; name-keyed (so overwrite-or-skip) on the release-asset path** — the key depends on which S5 resolves | DM6 |
 
 ### 2.2 Query (read-only)
 | Op | Safe | Purpose | Parent |
 |---|---|---|---|
-| `list` | ✓ | **structured** field/label filters + sort + paginate — runs **online, read-your-writes** off the REST list endpoint (no cache needed) | Q1-structured |
+| `list` | ✓ | **structured** field/label filters + sort + paginate — runs **online off the REST list endpoint**, **strongly consistent in practice** (a just-written item appears immediately; a rare brief replication window exists — the documented 404-retry-after-create case — so it is not an absolute platform guarantee), no cache needed | Q1-structured |
 | `pick` | ✓ | stage-aware ready-work: `open ∧ stage:ready ∧ unassigned` (list filters) **then per-candidate fan-out** for "no open blockers" + "claim past TTL" (Data Model §4). Returns ranked candidate(s) + *why*. An optional `--claim` does atomic take-and-verify (may return `claim_conflict` → caller re-picks) | GV1, DM3, CC3 |
 | `search` | ✓ | **full-text** (`--text`) and **similar** (`--like`, lexical dedup) — served from the cache (GitHub search is **not** read-your-writes; §Sec/NF3); semantic (`--semantic`) is P2, GitHub hybrid-search-gated | Q1-fulltext, Q3 |
 | `counts` | ✓ | per-project rollups derived **on read** (never persisted, except the GV2 briefing snapshot) | Q5 |
@@ -75,6 +75,14 @@ tier (§7).
 | `link` / `unlink` | **yes** | set/clear a typed edge: `blocks`/`blocked-by` (native deps), parent/child (sub-issues), `related` | DM3 |
 | `merge` | **yes** | fold A→B: preserve both bodies, leave a **`superseded-by:` redirect** (nothing hard-deleted) | AU3, DM7 |
 | `split` | **no** | create linked children from one item | AU3 |
+
+**Merge/split are compound multi-issue ops — CC1 crash-safety, parallel to `set-status` (C2).** `merge`
+touches two issues with no GitHub transaction, so it commits a **canonical write-order: write the
+`superseded-by:` redirect on the source *before* closing it** — a crash then leaves the source
+open-but-redirected (a valid, resolvable state), and a re-run completes idempotently; it **never
+closes-then-orphans**. `split` (idem: no) has no single safe order, so it is **recover-by-cleanup**: a
+re-run detects already-created children by link and finishes rather than duplicating. (This is the M5
+discipline the Data Model fixed for status — §4 `set-status` — applied to the relationship ops.)
 
 ### 2.4 Cross-project & automation
 | Op | Idem | Purpose | Parent |
@@ -94,6 +102,18 @@ tier (§7).
 *The MG4 **scrub** is a model-assisted, owner-confirmed **workflow** over these ops (`list`+`search --like`
 to surface stale/dup candidates → owner confirms → `status`/`merge`/`import` on the cleaned set), not a
 single deterministic op — the model is in the *decision*, never the data plane (G1/AG1).*
+
+### 2.6 Governance reconciliation (GV3)
+
+A close via `status`→shipped/dropped records **`closed_by`** — **native** where the close rides a merge
+(GitHub's `closed` timeline event carries the closing PR/commit ref, queryable like `history`/CC4),
+plus an **optional `--closed-by <handle>`** stamped in the `prawduct:` block for a **manual** close
+(which carries no native handle — the case a bare `status`→shipped would otherwise lose). The
+**bidirectional drift sweep** GV3 requires — *shipped-but-PR-died* and *merged-but-item-open* — is a
+periodic `list`+timeline scan run as a **janitor workflow** (deterministic, no model), not a single op:
+the explicit price of trading git's ship-atomicity for traceability (GV3, PRD §8.7). *(Coherence: the
+`closed_by` field is defined in Data Model §1.1 (v3) — this review surfaced that GV3's handle had no
+field home.)*
 
 ## 3. Inputs & outputs
 
@@ -115,6 +135,10 @@ single deterministic op — the model is in the *decision*, never the data plane
   not offset), with a max page size; `batch` returns a **per-item** result array, never all-or-nothing.
 - **Async/advisory.** `file` returns the new ID **before** dedup runs; candidates arrive on a second,
   advisory channel (a follow-up field/call), never blocking the create (AG3).
+- **Queued (optional offline layer).** When the offline write-queue (P2) is present, a create made
+  while GitHub is unreachable returns a **third envelope state** — `{"status":"queued","data":{"provisional_id":…}}`
+  — reconciled to the real `repo#number` on flush (the one real cost of GitHub-assigns-the-ID, PRD §8.1).
+  Absent that layer, an offline create is the `unavailable` error (the G2 fail-fast floor), never a hang.
 
 ## 4. Error model   <!-- recorded → api_error_model_approach -->
 
@@ -134,9 +158,16 @@ extended to the two outer fronts.
 - **MCP** — maps the same core result to MCP's `isError` + content, reusing the identical `code`
   vocabulary.
 
-**`retryable` is first-class (G2 never-block).** It is the flag gates/hooks branch on to **degrade
-gracefully** rather than crash: `unavailable` and `rate_limited` are retryable (with a backoff hint in
-`details`); `validation`, `not_found`, `ambiguous_id`, `alias_collision` are not.
+**Two distinct obligations, never conflated (C3).** (a) **Never-block (G2)** is a *caller* obligation
+to **degrade gracefully on _any_ error** — a gate/hook reading backlog state tolerates `validation` and
+`not_found` as calmly as `unavailable`, never hangs, and **never retry-loops** (a retry-until-success
+loop is the *opposite* of never-hang). (b) **`retryable`** is a separate, orthogonal
+**transient-vs-permanent hint** telling a *retry-driver* (`batch`, `sync`, an unattended worker)
+whether re-attempting *this class* can succeed: `unavailable`/`rate_limited` → **yes** (backoff hint in
+`details`); `conflict`/`claim_conflict` → retry only **after a re-read**;
+`validation`/`not_found`/`ambiguous_id`/`alias_collision`/`auth`/`unsupported` → **no**. Never-block
+governs the caller's *degradation*; `retryable` governs a driver's *re-attempt* — they are not the same
+axis.
 
 **Stable `code` vocabulary (the contract — not free-text):**
 
@@ -148,10 +179,10 @@ gracefully** rather than crash: `unavailable` and `rate_limited` are retryable (
 | `alias_collision` | a second item claims an existing `id:` alias — rejected so refs can't be hijacked | no | DM §5, Sec §5/F3 |
 | `conflict` | optimistic CAS failed (state/`updated_at` moved) → re-read & retry | caller-retry | CC2 |
 | `claim_conflict` | assignee take lost the race — non-fatal, caller re-picks | caller-retry | CC3 |
-| `auth` | identity/scope problem (missing scope, `proxy-injected` w/o `gh`) | no | Sec §1 |
+| `auth` | identity/scope problem (missing scope, `proxy-injected` w/o `gh`); the adapter maps `gh`'s own **exit 4 = auth-required** onto this (C10) | no | Sec §1 |
 | `unavailable` | backend unreachable — the G2 floor, degrade to cache-or-"unavailable" | **yes** | G2, AG4 |
 | `rate_limited` | hit 80/min or the ~500/hr content cap | **yes** (backoff) | NF3 |
-| `unsupported` | op needs an absent layer (fulltext w/o cache, semantic pre-GA) | no | §6 |
+| `unsupported` | op needs an absent layer (fulltext w/o cache; `search --semantic` where the repo's **hybrid-search is not enabled** — semantic search is GA, the gate is enablement, not availability) | no | §6 |
 
 **Security binding (Security §4).** Errors are built from **known fields, never by echoing raw
 `gh`/subprocess/HTTP output** — that is how a token leaks into an error string; the denylist scrub is
@@ -184,6 +215,13 @@ contract** — new keys added, existing keys never removed or repurposed, unknow
 **stability tiers** (§7). A breaking output change rides a **plugin major bump + a deprecation window**
 (§6). *No envelope `schema` field by default* (the plugin version is the handle); add one only if a
 **non-plugin** consumer ever appears — noted, not built (§11).
+
+*Scope of the lockstep claim (C6):* this no-independent-skew reasoning is the **bundled CLI**'s — it is
+**per-installation, not fleet-wide** (§5.1 already routes cross-plugin-version interop through the
+data-format wire). The **MCP** front can serve an **external client not shipped with the plugin**, so
+skew *is* possible there; its compatibility is bounded not by lockstep delivery but by its
+**experimental** tier (§7, "may break within a minor"). "The plugin semver is the handle" is precise
+for the CLI, not a blanket over the whole surface.
 
 **This is a real decision, recorded — explicitly not "deferred."** The failure mode being avoided is
 precisely a one-word "versioning later" note that ships an unversioned surface for a year and then pays
@@ -249,6 +287,12 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
   + ~500/hr caps** (NF3); attachment size routes ≥10 MB through the release-asset wrap (DM6).
 - **Input validation at the boundary.** ID normalization rejects malformed IDs (`validation`); the
   alias-uniqueness guard rejects a forged `id:` collision (`alias_collision`, Security §5/F3).
+- **Public-submission surface (PV3/PV4) — no dedicated op (C4).** Anonymous filing rides **native
+  GitHub issue creation** (a GitHub account is the only barrier); a non-collaborator can't apply labels,
+  so the filing lands **unlabeled = quarantined** and is surfaced by a `submitted`-intake `list` query,
+  not by a bespoke endpoint. Abuse handling (PV4) is **native GitHub controls + the quarantine**, gated
+  structurally on the governed-intake path. The mechanism and trust boundary are the **Security Model's
+  (§6/F6/F7)** — this surface only exposes the `list` triage query over it.
 
 ## 10. Conditional patterns
 
@@ -288,10 +332,30 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
 | A5 | coherence | pick as read vs. claim as write — does `pick` mutate? | **Resolved** — `pick` is **safe** (ranked read); `claim` mutates; optional `pick --claim` is the only atomic combo, and it can return `claim_conflict` (§2.2) |
 | A6 | versioning | the scriob trap — an unversioned surface on a "deferred" note | **Refused** — §5 records a *real* decision (data-format `v:` active + CLI lockstep/tolerant-reader), not a deferral; §12-none-of-this-is "later" |
 | A7 | colonization | letting "CLI" stand in for the whole contract (the named-but-narrowed learning) | **Guarded** — §1 enumerates three fronts; §4 error model spans all three; MCP tiered experimental, not forgotten |
-| A8 | never-block | is G2 actually expressible at the API boundary, or just asserted? | **Expressible** — `retryable` + the `unavailable` code (§4) are the concrete branch gates/hooks read to degrade; not just prose |
+| A8 | never-block | is G2 actually expressible at the API boundary, or just asserted? | **Expressible, then refined (C3, §12a)** — never-block = the caller degrading on the `unavailable` code (and every other error); `retryable` is the *orthogonal* retry-driver hint, **not** the never-block primitive (v1 conflated the two) |
 
-*A further independent pass (fresh-eyes design critic + a CLI/subprocess-fact verifier) is available
-before the build plan — the pattern that caught load-bearing defects in the Data Model + Security Model.*
+*Independent review folded (2026-07-16, Principle 14):* a fresh-eyes design critic + a gh/GitHub-fact
+verifier reviewed v1; confirmed findings are folded below and inline.
+
+### 12a. Independent review (design critic + gh/GitHub-fact verifier, 2026-07-16) — folded into v2
+| # | Sev | Finding | Disposition in v2 |
+|---|---|---|---|
+| C1 | major | GV3 `closed_by` + bidirectional drift sweep had no op, no field, no descope (gap spanned this doc + Data Model) | **Folded** — new §2.6 (native close-ref + optional manual handle + janitor sweep); `closed_by` added to Data Model §1.1 (v3) |
+| C2 | major | `merge`/`split` tagged idempotent but no crash-safe recovery order — the CC1 defect M5 fixed only for status | **Folded** — §2.3 canonical write-order (redirect-before-close; split recover-by-cleanup) |
+| C3 | major | `retryable` framed as *the* never-block primitive — conflates a retry hint with degrade-on-any-error, invites a retry-loop | **Folded** — §4 splits the two obligations; A8 refined |
+| C4 | minor | PV3/PV4 public-filing had no note/trace on the surface doc | **Folded** — §9 note (native + quarantine), delegated to Security §6; §13 trace |
+| C5 | minor | `unsupported` "semantic pre-GA" contradicts PRD "semantic GA 4/2026" | **Folded** — reworded to hybrid-search *enablement*-gated |
+| C6 | minor | "plugin semver IS the handle" over-reaches to the external-client MCP front | **Folded** — §5.2 scoped to the bundled CLI; MCP skew covered by the experimental tier |
+| C7 | minor | `verify`/`attach` idempotency depends on unspecified keying | **Folded** — §2.1 names the keys (verify: actor+date; attach: content-hash / name-keyed, S5-dependent) |
+| F2 | minor | `list` "read-your-writes" stated as absolute; it's strongly-consistent in practice | **Folded** — §2.2 caveat (rare replication window; search-lag is the real contrast) |
+| C10 | minor | `gh` has a documented exit-code scheme (0/1/2/4=auth) | **Folded (enhancement)** — §4 maps `gh` exit 4 → `auth` |
+| F1 | minor | PRD §9 "10 semantic searches/min" looks conflated with code-search 10/min | **Folded in the PRD** — §9 softened (endpoint-dependent; semantic figure unverified, confirm at build) |
+| — | — | offline-queue provisional-ID had no envelope state | **Folded** — §3 `queued` third envelope state |
+
+*Fact-verifier result:* every load-bearing platform fact **confirmed** against current (2026) docs + a
+local `gh 2.86.0` probe (the 80/min + ~500/hr caps, ETag/304-costs-nothing, the `since` cursor,
+search-not-read-your-writes, the MCP `isError` mapping, per-installation plugin/CLI lockstep, no
+issue-number reuse, no multi-issue transaction). No fact error was load-bearing.
 
 ## 13. Traceability
 
@@ -303,7 +367,9 @@ advisory-async · **AG4**→`unavailable`/`sync` · **AG5**→(NFR doc, not here
 **DM1**→§3/§8 soft-enums · **DM3**→`link`/`pick` · **DM4/D4**→§8 IDs/`ambiguous_id` · **DM5**→`comment` ·
 **DM6**→`attach` · **DM7**→`merge` · **Q1-structured**→`list` · **Q1-fulltext/Q3**→`search` ·
 **Q2**→`sync` · **Q4**→`rollup` · **Q5**→`counts` · **XP1/XP2**→`file-upstream` · **AU2**→`batch` ·
-**AU3**→`merge`/`split` · **GV1**→`pick` · **GV2**→`refresh-counts` · **GV5/GV6**→`provision` ·
-**MG1**→`import` · **MG2/G5**→`export`. **G1/AG1**→§2.5 note (model in the *decision*, not the data
-plane). **O5/D8**→§9 caller-token BOLA. **Coherence:** §4 codes ↔ Data Model §5 (alias) + Security §4
-(scrub); §5 versioning ↔ Data Model §7 (block `v:` additive-forever); §9 ↔ Security §2 (BOLA/mass-assign).
+**AU3**→`merge`/`split` · **GV1**→`pick` · **GV2**→`refresh-counts` · **GV3**→§2.6 (`closed_by` + the
+janitor drift sweep) · **GV5/GV6**→`provision` · **MG1**→`import` · **MG2/G5**→`export`. **G1/AG1**→§2.5
+note (model in the *decision*, not the data plane). **O5/D8**→§9 caller-token BOLA. **PV3/PV4**→§9
+(native filing + quarantine, **delegated to Security §6** — no dedicated op). **Coherence:** §4 codes ↔
+Data Model §5 (alias) + Security §4 (scrub); §5 versioning ↔ Data Model §7 (block `v:` additive-forever);
+§9 ↔ Security §2 (BOLA/mass-assign); §2.6 `closed_by` ↔ Data Model §1.1 (GV3 field home).
